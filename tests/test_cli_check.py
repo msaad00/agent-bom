@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from urllib.parse import urlparse
 
 from click.testing import CliRunner
@@ -351,6 +352,57 @@ def test_check_json_output_is_machine_readable(monkeypatch):
     assert payload["verdict"] == "unsafe"
     assert payload["vulnerability_count"] == 1
     assert payload["vulnerabilities"][0]["id"] == "CVE-2023-30861"
+
+
+def test_check_agent_mode_emits_machine_envelope_without_rich_table(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_AGENT_MODE", raising=False)
+    _patch_check_scan(
+        monkeypatch,
+        [
+            Vulnerability(
+                id="CVE-2023-30861",
+                summary="Session cookie disclosure",
+                severity=Severity.HIGH,
+                fixed_version="2.3.2",
+            )
+        ],
+    )
+
+    result = CliRunner().invoke(main, ["--agent-mode", "check", "flask@2.2.0", "--ecosystem", "pypi"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["schema_version"] == "1"
+    assert payload["mode"] == "agent"
+    assert payload["ok"] is False
+    assert payload["command"] == "check"
+    assert payload["exit_code"] == 1
+    assert payload["error"]["type"] == "unsafe_package"
+    assert payload["summary"]["packages"] == 1
+    assert payload["summary"]["vulnerabilities"] == 1
+    assert payload["summary"]["severity_counts"]["high"] == 1
+    assert payload["data"]["document_type"] == "PACKAGE-CHECK"
+    assert payload["data"]["vulnerabilities"][0]["id"] == "CVE-2023-30861"
+    assert "flask@2.2.0 — 1 vulnerability found" not in result.output
+    assert "┏" not in result.output
+    assert "AGENT_BOM_AGENT_MODE" not in os.environ
+
+
+def test_check_agent_mode_env_emits_clean_envelope_for_clean_package(monkeypatch):
+    _patch_check_scan(monkeypatch, [])
+
+    result = CliRunner().invoke(
+        main,
+        ["check", "django@4.1.0", "--ecosystem", "pypi"],
+        env={"AGENT_BOM_AGENT_MODE": "1"},
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["mode"] == "agent"
+    assert payload["ok"] is True
+    assert payload["data"]["verdict"] == "clean"
+    assert payload["summary"]["vulnerabilities"] == 0
 
 
 def test_check_output_requires_json_format(monkeypatch):

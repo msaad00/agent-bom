@@ -118,6 +118,19 @@ def main(ctx: click.Context, profile: str | None, agent_mode: bool):
         import os as _os
 
         _os.environ["AGENT_BOM_PROFILE"] = profile
+    if agent_mode:
+        import os as _os
+
+        previous_agent_mode = _os.environ.get(AGENT_MODE_ENV_VAR)
+        _os.environ[AGENT_MODE_ENV_VAR] = "1"
+
+        def _restore_agent_mode_env() -> None:
+            if previous_agent_mode is None:
+                _os.environ.pop(AGENT_MODE_ENV_VAR, None)
+            else:
+                _os.environ[AGENT_MODE_ENV_VAR] = previous_agent_mode
+
+        ctx.call_on_close(_restore_agent_mode_env)
     if ctx.invoked_subcommand is None:
         _print_startup_banner()
 

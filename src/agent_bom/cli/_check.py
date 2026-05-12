@@ -6,7 +6,7 @@ import json
 import sys
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 from rich.console import Console
@@ -92,6 +92,73 @@ def _parse_package_spec(
 def _write_json_output(payload: dict, output_path: str | None) -> None:
     """Write JSON to stdout or a file."""
     text = json.dumps(payload, indent=2)
+    if output_path and output_path != "-":
+        Path(output_path).write_text(text, encoding="utf-8")
+        return
+    click.echo(text)
+
+
+def _check_severity_counts(vulnerabilities: list | None) -> dict[str, int]:
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unknown": 0}
+    for vuln in vulnerabilities or []:
+        if isinstance(vuln, dict):
+            severity = str(vuln.get("severity") or "unknown").lower()
+        else:
+            severity = str(getattr(getattr(vuln, "severity", None), "value", "unknown")).lower()
+        counts[severity if severity in counts else "unknown"] += 1
+    return counts
+
+
+def _check_agent_summary(payload: dict) -> dict:
+    return {
+        "agents": 0,
+        "servers": None,
+        "packages": 1 if payload.get("package") else 0,
+        "vulnerabilities": int(payload.get("vulnerability_count") or 0),
+        "findings": 0,
+        "severity_counts": _check_severity_counts(payload.get("vulnerabilities")),
+        "posture_grade": None,
+        "verdict": payload.get("verdict"),
+        "package": payload.get("package"),
+        "version": payload.get("version"),
+    }
+
+
+def _check_agent_confidence(payload: dict) -> dict:
+    vulnerabilities = payload.get("vulnerabilities") or []
+    signals = [
+        {"name": "package_version", "present": bool(payload.get("version") and payload.get("version") != "unknown")},
+        {"name": "ecosystem", "present": bool(payload.get("ecosystems"))},
+        {"name": "advisory_backing", "present": bool(vulnerabilities)},
+        {"name": "external_enrichment", "present": any(bool(item.get("advisory_sources")) for item in vulnerabilities)},
+    ]
+    present = sum(1 for signal in signals if signal["present"])
+    level = "high" if present >= 3 else "medium" if present >= 2 else "low"
+    return {"level": level, "signals": signals}
+
+
+def _write_check_output(payload: dict, output_path: str | None, *, agent_mode: bool, exit_code: int) -> None:
+    """Write package-check output in plain JSON or agent-mode envelope form."""
+    if not agent_mode:
+        _write_json_output(payload, output_path)
+        return
+
+    from agent_bom.cli._agent_mode import command_success_envelope, dumps_envelope
+
+    error_type = None
+    if exit_code == 1:
+        error_type = "unsafe_package"
+    elif exit_code == 2:
+        error_type = "incomplete_scan"
+    envelope = command_success_envelope(
+        command="check",
+        data=payload,
+        exit_code=exit_code,
+        summary=_check_agent_summary(payload),
+        confidence=_check_agent_confidence(payload),
+        error_type=error_type,
+    )
+    text = dumps_envelope(envelope)
     if output_path and output_path != "-":
         Path(output_path).write_text(text, encoding="utf-8")
         return
@@ -357,7 +424,9 @@ def _exit_model_verification(
     help="Exit 1 only when vulnerabilities at this severity or higher are found.",
 )
 @click.option("--nvd-api-key", envvar="NVD_API_KEY", default=None, help="NVD API key for higher rate limits when using --enrich.")
+@click.pass_context
 def check(
+    ctx: click.Context,
     package_spec: str,
     ecosystem: Optional[str],
     quiet: bool,
@@ -399,7 +468,12 @@ def check(
     if output_path and output_format != "json":
         raise click.ClickException("`check --output` requires `--format json`.")
 
-    structured_output = output_format == "json"
+    from agent_bom.cli._agent_mode import agent_mode_requested
+
+    parent_params = getattr(getattr(ctx, "parent", None), "params", {}) or {}
+    root_params = getattr(ctx.find_root(), "params", {}) or {}
+    agent_mode = bool(parent_params.get("agent_mode") or root_params.get("agent_mode") or agent_mode_requested())
+    structured_output = output_format == "json" or agent_mode
     console = Console(no_color=no_color, stderr=structured_output or output_path is not None)
     runtime_console = Console(stderr=True, quiet=quiet or structured_output or output_path is not None, no_color=no_color)
     _sync_runtime_consoles(runtime_console)
@@ -412,7 +486,7 @@ def check(
     if version == "unknown":
         message = f"No version specified for {name}; skipping OSV lookup."
         if structured_output:
-            _write_json_output(
+            _write_check_output(
                 _check_result_payload(
                     name=name,
                     version=version,
@@ -422,6 +496,8 @@ def check(
                     exit_code=0,
                 ),
                 output_path,
+                agent_mode=agent_mode,
+                exit_code=0,
             )
         else:
             console.print(f"[yellow]⚠ No version specified for {name} — skipping OSV lookup.[/yellow]")
@@ -458,13 +534,13 @@ def check(
             version = next((p.version for p in pkgs if p.version not in ("unknown", "latest", "")), version)
             for p in pkgs:
                 p.version = version
-            if not quiet:
+            if not quiet and not structured_output:
                 console.print(f"  [green]✓ Resolved @latest → {version}[/green]")
         else:
             eco_str = "/".join(ecosystems)
             message = f"Could not resolve latest version for {name} ({eco_str})."
             if structured_output:
-                _write_json_output(
+                _write_check_output(
                     _check_result_payload(
                         name=name,
                         version=version,
@@ -474,6 +550,8 @@ def check(
                         exit_code=0,
                     ),
                     output_path,
+                    agent_mode=agent_mode,
+                    exit_code=0,
                 )
             else:
                 console.print(f"[yellow]⚠ Could not resolve latest version for {name} ({eco_str})[/yellow]")
@@ -481,12 +559,16 @@ def check(
             sys.exit(0)
 
     eco_display = "/".join(ecosystems)
-    if not quiet:
+    if not quiet and not structured_output:
         console.print(f"\n[bold blue]🔍 Checking {name}@{version} ({eco_display})[/bold blue]\n")
 
     import asyncio
 
-    status_context = console.status("[bold]Scanning package risk...[/bold]", spinner="dots") if not quiet else nullcontext()
+    status_context: Any
+    if not quiet and not structured_output:
+        status_context = console.status("[bold]Scanning package risk...[/bold]", spinner="dots")
+    else:
+        status_context = nullcontext()
 
     with status_context:
         from agent_bom.scanners import IncompleteScanError, ScanOptions, consume_scan_warnings, scan_packages
@@ -495,7 +577,7 @@ def check(
             asyncio.run(scan_packages(pkgs, options=ScanOptions(offline=False)))
         except IncompleteScanError as exc:
             if structured_output:
-                _write_json_output(
+                _write_check_output(
                     _check_result_payload(
                         name=name,
                         version=version,
@@ -505,13 +587,15 @@ def check(
                         exit_code=2,
                     ),
                     output_path,
+                    agent_mode=agent_mode,
+                    exit_code=2,
                 )
             else:
                 console.print(f"  [yellow]⚠[/yellow] {exc}")
             sys.exit(2)
 
     scan_warnings = consume_scan_warnings()
-    if scan_warnings and not quiet:
+    if scan_warnings and not quiet and not structured_output:
         console.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
 
     matched_pkg = next((p for p in pkgs if p.vulnerabilities), pkgs[0])
@@ -543,7 +627,7 @@ def check(
             "Best-effort matching found no vulnerabilities, but distro metadata was insufficient for a trustworthy clean verdict."
         )
         if structured_output:
-            _write_json_output(
+            _write_check_output(
                 _check_result_payload(
                     name=name,
                     version=version,
@@ -554,6 +638,8 @@ def check(
                     warnings=scan_warnings,
                 ),
                 output_path,
+                agent_mode=agent_mode,
+                exit_code=2,
             )
             sys.exit(2)
         if quiet:
@@ -568,7 +654,7 @@ def check(
 
     if not vulns:
         if structured_output:
-            _write_json_output(
+            _write_check_output(
                 _check_result_payload(
                     name=name,
                     version=version,
@@ -579,6 +665,8 @@ def check(
                     warnings=scan_warnings,
                 ),
                 output_path,
+                agent_mode=agent_mode,
+                exit_code=0,
             )
             sys.exit(0)
         if quiet:
@@ -587,7 +675,7 @@ def check(
             console.print(f"  [green]✓ No known vulnerabilities in {name}@{version}[/green]\n")
         sys.exit(0)
 
-    if not quiet:
+    if not quiet and not structured_output:
         from rich.table import Table
 
         from agent_bom.cwe_impact import classify_cwe_impact
@@ -645,7 +733,7 @@ def check(
 
     if exit_zero:
         if structured_output:
-            _write_json_output(
+            _write_check_output(
                 _check_result_payload(
                     name=name,
                     version=version,
@@ -660,6 +748,8 @@ def check(
                     fail_on_severity_count=len(_vulns_at_or_above(vulns, fail_threshold)),
                 ),
                 output_path,
+                agent_mode=agent_mode,
+                exit_code=0,
             )
             sys.exit(0)
         if quiet:
@@ -674,7 +764,7 @@ def check(
     if fail_threshold and not failing_vulns:
         message = f"{_format_vulnerability_count(len(vulns))} in {name}@{version}; none at or above {fail_threshold}."
         if structured_output:
-            _write_json_output(
+            _write_check_output(
                 _check_result_payload(
                     name=name,
                     version=version,
@@ -688,6 +778,8 @@ def check(
                     fail_on_severity_count=0,
                 ),
                 output_path,
+                agent_mode=agent_mode,
+                exit_code=0,
             )
             sys.exit(0)
         if quiet:
@@ -697,7 +789,7 @@ def check(
         sys.exit(0)
 
     if structured_output:
-        _write_json_output(
+        _write_check_output(
             _check_result_payload(
                 name=name,
                 version=version,
@@ -711,6 +803,8 @@ def check(
                 fail_on_severity_count=len(failing_vulns),
             ),
             output_path,
+            agent_mode=agent_mode,
+            exit_code=1,
         )
         sys.exit(1)
 

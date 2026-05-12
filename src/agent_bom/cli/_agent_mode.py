@@ -160,6 +160,44 @@ def success_envelope(
     }
 
 
+def command_success_envelope(
+    *,
+    command: str,
+    data: dict[str, Any],
+    exit_code: int,
+    summary: dict[str, Any],
+    confidence: dict[str, Any],
+    error_type: str | None = None,
+) -> dict[str, Any]:
+    """Wrap a non-scan command payload in the stable agent-mode envelope."""
+    payload = {
+        "schema_version": AGENT_MODE_SCHEMA_VERSION,
+        "mode": "agent",
+        "ok": exit_code == 0,
+        "command": command,
+        "exit_code": exit_code,
+        "summary": summary,
+        "confidence": confidence,
+        "truncated": False,
+        "truncation": {
+            "enabled": False,
+            "truncated": False,
+            "token_budget": None,
+            "approx_tokens": None,
+            "removed": {},
+        },
+        "data": data,
+    }
+    if exit_code != 0:
+        error = {
+            "type": error_type or "command_exit",
+            "message": str(data.get("message") or f"{command} exited with code {exit_code}"),
+        }
+        payload["error"] = error
+        payload["errors"] = [error]
+    return payload
+
+
 def error_envelope(*, command: str | None, message: str, exit_code: int, error_type: str) -> dict[str, Any]:
     """Build the stable agent-mode error envelope."""
     error = {

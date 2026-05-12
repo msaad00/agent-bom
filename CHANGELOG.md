@@ -27,6 +27,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Auditor export parity** - CSV, Markdown, and SPDX outputs now preserve
   severity provenance, EPSS percentile, KEV dates, CWE IDs, and framework
   compliance tags instead of dropping enrichment metadata outside JSON/SARIF.
+- **`agent-bom check --agent-mode` emitted Rich console tables** - pre-install
+  package checks now honor global agent mode and return the stable JSON
+  envelope instead of mixing human tables into automation output.
 
 ---
 

@@ -174,7 +174,10 @@ main.commands["policy-templates"] = _policy_templates_hidden
 from agent_bom.cli._policy_group import policy_group  # noqa: E402
 
 policy_group.add_command(policy_template, "template")
-policy_group.add_command(policy_template, "templates")
+_policy_templates_group_hidden = _copy.copy(policy_template)
+setattr(_policy_templates_group_hidden, "deprecated", "Use `agent-bom policy template`.")
+_policy_templates_group_hidden.name = "templates"
+policy_group.add_command(_policy_templates_group_hidden, "templates")
 policy_group.add_command(apply_command, "apply")
 policy_group.add_command(guard_cmd, "check")  # guard → policy check
 main.add_command(policy_group)

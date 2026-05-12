@@ -10,6 +10,7 @@ from typing import Any
 
 import click
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 from agent_bom.cli._tenant import TENANT_ENV_VAR
 
 CONFIG_ENV_VAR = "AGENT_BOM_CONFIG"
@@ -249,7 +250,7 @@ def set_current_profile(path: Path, name: str) -> None:
     path.write_text(text)
 
 
-@click.group("profiles")
+@click.group("profiles", cls=SuggestingGroup)
 def profiles_group() -> None:
     """Manage named CLI profiles in ~/.agent-bom/config.toml."""
 

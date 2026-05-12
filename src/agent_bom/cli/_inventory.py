@@ -27,8 +27,19 @@ from agent_bom.parsers import extract_packages
 @click.option("--transitive", is_flag=True, help="Resolve transitive dependencies for npx/uvx packages")
 @click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results")
-@click.option("--json", "as_json", is_flag=True, help="Output inventory and completeness telemetry as JSON")
-def inventory(config: Optional[str], project: Optional[str], transitive: bool, max_depth: int, quiet: bool, as_json: bool):
+@click.option("-f", "--format", "output_format", type=click.Choice(["console", "json"]), default="console", show_default=True)
+@click.option("--json", "as_json", is_flag=True, help="Deprecated alias for `--format json`.")
+@click.pass_context
+def inventory(
+    ctx: click.Context,
+    config: Optional[str],
+    project: Optional[str],
+    transitive: bool,
+    max_depth: int,
+    quiet: bool,
+    output_format: str,
+    as_json: bool,
+):
     """Show discovered agents and MCP servers (no vulnerability scan)."""
     con = _make_console(quiet=quiet)
 
@@ -36,8 +47,11 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
 
     _out.console = con
 
-    discovery_stdout = redirect_stdout(StringIO()) if as_json else nullcontext()
-    discovery_stderr = redirect_stderr(StringIO()) if as_json else nullcontext()
+    if as_json and ctx.parent is not None and ctx.parent.info_name == "mcp":
+        click.echo("Warning: --json is deprecated; use -f json.", err=True)
+    json_output = as_json or output_format == "json"
+    discovery_stdout = redirect_stdout(StringIO()) if json_output else nullcontext()
+    discovery_stderr = redirect_stderr(StringIO()) if json_output else nullcontext()
     inventory_source: Optional[str] = None
     with discovery_stdout, discovery_stderr:
         if config:
@@ -80,13 +94,13 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
                 agents = discover_all(project_dir=project)
 
     if not agents:
-        if as_json:
+        if json_output:
             _print_inventory_json(agents, inventory_source)
             return
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
         sys.exit(0)
 
-    if not as_json:
+    if not json_output:
         con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
         if transitive:
             con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
@@ -101,7 +115,7 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
                 continue
             server.packages = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
 
-    if as_json:
+    if json_output:
         _print_inventory_json(agents, inventory_source)
         return
 

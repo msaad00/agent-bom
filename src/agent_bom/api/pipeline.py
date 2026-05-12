@@ -407,6 +407,7 @@ def _sync_scan_agents_to_fleet(agents: list, tenant_id: str = "default") -> None
         else:
             fleet_agent = FleetAgent(
                 agent_id=str(uuid.uuid4()),
+                canonical_id=getattr(agent, "canonical_id", "") or "",
                 name=agent.name,
                 agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
                 config_path=agent.config_path or "",

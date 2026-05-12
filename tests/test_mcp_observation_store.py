@@ -13,6 +13,7 @@ from agent_bom.api.mcp_observation_store import (
     SQLiteMCPObservationStore,
     merge_observations,
 )
+from agent_bom.canonical_ids import canonical_mcp_server_id
 
 
 def _make_observation(**overrides) -> MCPObservation:
@@ -43,6 +44,19 @@ def test_observation_normalizes_tenant_and_timestamps() -> None:
     assert observation.last_synced == "2026-04-23T15:06:00Z"
 
 
+def test_observation_derives_server_canonical_id_from_stable_id() -> None:
+    observation = _make_observation(server_stable_id="stable-server-1")
+    assert observation.server_canonical_id == "stable-server-1"
+
+
+def test_observation_derives_server_canonical_id_from_server_identity_without_stable_id() -> None:
+    observation = _make_observation(server_stable_id="", server_name="Filesystem", command="npx @modelcontextprotocol/server-filesystem")
+    assert observation.server_canonical_id == canonical_mcp_server_id(
+        "Filesystem",
+        "npx @modelcontextprotocol/server-filesystem",
+    )
+
+
 def test_merge_rejects_tenant_mismatch() -> None:
     existing = _make_observation(tenant_id="tenant-a")
     incoming = _make_observation(tenant_id="tenant-b")
@@ -67,6 +81,15 @@ def test_merge_preserves_blocked_state_and_structured_intelligence() -> None:
 
     assert merged.security_blocked is True
     assert [item["entry_id"] for item in merged.security_intelligence] == ["intel-a", "intel-b"]
+
+
+def test_merge_retains_server_canonical_id() -> None:
+    existing = _make_observation(server_canonical_id="server-canonical-1")
+    incoming = _make_observation(server_canonical_id="server-canonical-1")
+
+    merged = merge_observations(existing, incoming)
+
+    assert merged.server_canonical_id == "server-canonical-1"
 
 
 def test_observation_sanitizes_security_intelligence() -> None:
@@ -102,6 +125,18 @@ def test_inmemory_store_revalidates_observation_before_write() -> None:
     assert stored.last_seen == "2026-04-23T11:05:00Z"
 
 
+def test_inmemory_store_get_by_server_canonical_id() -> None:
+    store = InMemoryMCPObservationStore()
+    observation = _make_observation()
+    store.put(observation)
+
+    stored = store.get_by_server_canonical_id("tenant-a", observation.server_canonical_id)
+
+    assert stored is not None
+    assert stored.observation_id == "obs-1"
+    assert store.get_by_server_canonical_id("tenant-b", observation.server_canonical_id) is None
+
+
 def test_sqlite_store_revalidates_observation_before_write() -> None:
     store, path = _sqlite_store()
     try:
@@ -111,5 +146,20 @@ def test_sqlite_store_revalidates_observation_before_write() -> None:
         assert stored is not None
         assert stored.tenant_id == "tenant-a"
         assert stored.updated_at == "2026-04-23T12:00:00Z"
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_sqlite_store_get_by_server_canonical_id() -> None:
+    store, path = _sqlite_store()
+    try:
+        observation = _make_observation()
+        store.put(observation)
+
+        stored = store.get_by_server_canonical_id("tenant-a", observation.server_canonical_id)
+
+        assert stored is not None
+        assert stored.observation_id == "obs-1"
+        assert store.get_by_server_canonical_id("tenant-b", observation.server_canonical_id) is None
     finally:
         path.unlink(missing_ok=True)

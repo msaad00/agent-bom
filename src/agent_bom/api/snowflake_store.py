@@ -214,6 +214,7 @@ class SnowflakeFleetStore:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS fleet_agents (
                     agent_id VARCHAR PRIMARY KEY,
+                    canonical_id VARCHAR NOT NULL DEFAULT '',
                     name VARCHAR NOT NULL,
                     lifecycle_state VARCHAR NOT NULL,
                     trust_score FLOAT DEFAULT 0.0,
@@ -222,6 +223,7 @@ class SnowflakeFleetStore:
                     data VARIANT NOT NULL
                 )
             """)
+            cur.execute("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS canonical_id VARCHAR NOT NULL DEFAULT ''")
             cur.execute("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
 
     def put(self, agent: FleetAgent) -> None:
@@ -230,13 +232,14 @@ class SnowflakeFleetStore:
                 """MERGE INTO fleet_agents t USING (SELECT %s AS agent_id) s
                    ON t.agent_id = s.agent_id
                    WHEN MATCHED THEN UPDATE SET
-                     name = %s, lifecycle_state = %s, trust_score = %s,
+                     canonical_id = %s, name = %s, lifecycle_state = %s, trust_score = %s,
                      updated_at = %s, tenant_id = %s, data = PARSE_JSON(%s)
                    WHEN NOT MATCHED THEN INSERT
-                     (agent_id, name, lifecycle_state, trust_score, updated_at, tenant_id, data)
-                     VALUES (%s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",
+                     (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, tenant_id, data)
+                     VALUES (%s, %s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     agent.agent_id,
+                    agent.canonical_id,
                     agent.name,
                     agent.lifecycle_state.value,
                     agent.trust_score,
@@ -244,6 +247,7 @@ class SnowflakeFleetStore:
                     agent.tenant_id,
                     agent.model_dump_json(),
                     agent.agent_id,
+                    agent.canonical_id,
                     agent.name,
                     agent.lifecycle_state.value,
                     agent.trust_score,
@@ -260,6 +264,21 @@ class SnowflakeFleetStore:
                 cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,))
             else:
                 cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s", (agent_id, tenant_id))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return FleetAgent.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
+
+    def get_by_canonical_id(self, canonical_id: str, tenant_id: str | None = None) -> FleetAgent | None:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            if tenant_id is None:
+                cur.execute("SELECT data FROM fleet_agents WHERE canonical_id = %s", (canonical_id,))
+            else:
+                cur.execute(
+                    "SELECT data FROM fleet_agents WHERE canonical_id = %s AND tenant_id = %s",
+                    (canonical_id, tenant_id),
+                )
             row = cur.fetchone()
             if row is None:
                 return None
@@ -292,14 +311,15 @@ class SnowflakeFleetStore:
     def list_summary(self) -> list[dict]:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT agent_id, name, lifecycle_state, trust_score, updated_at FROM fleet_agents ORDER BY name")
+            cur.execute("SELECT agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at FROM fleet_agents ORDER BY name")
             return [
                 {
                     "agent_id": r[0],
-                    "name": r[1],
-                    "lifecycle_state": r[2],
-                    "trust_score": r[3],
-                    "updated_at": str(r[4]) if r[4] else None,
+                    "canonical_id": r[1],
+                    "name": r[2],
+                    "lifecycle_state": r[3],
+                    "trust_score": r[4],
+                    "updated_at": str(r[5]) if r[5] else None,
                 }
                 for r in cur.fetchall()
             ]
@@ -346,12 +366,13 @@ class SnowflakeFleetStore:
             params: list = []
             for agent in batch:
                 source_parts.append(
-                    "SELECT %s AS agent_id, %s AS name, %s AS lifecycle_state, "
+                    "SELECT %s AS agent_id, %s AS canonical_id, %s AS name, %s AS lifecycle_state, "
                     "%s AS trust_score, %s AS updated_at, %s AS tenant_id, PARSE_JSON(%s) AS data"
                 )
                 params.extend(
                     [
                         agent.agent_id,
+                        agent.canonical_id,
                         agent.name,
                         agent.lifecycle_state.value,
                         agent.trust_score,
@@ -366,11 +387,11 @@ class SnowflakeFleetStore:
                 f"MERGE INTO fleet_agents t USING ({source_sql}) s "  # nosec B608
                 "ON t.agent_id = s.agent_id "
                 "WHEN MATCHED THEN UPDATE SET "
-                "  name = s.name, lifecycle_state = s.lifecycle_state, "
+                "  canonical_id = s.canonical_id, name = s.name, lifecycle_state = s.lifecycle_state, "
                 "  trust_score = s.trust_score, updated_at = s.updated_at, tenant_id = s.tenant_id, data = s.data "
                 "WHEN NOT MATCHED THEN INSERT "
-                "  (agent_id, name, lifecycle_state, trust_score, updated_at, tenant_id, data) "
-                "  VALUES (s.agent_id, s.name, s.lifecycle_state, s.trust_score, "
+                "  (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, tenant_id, data) "
+                "  VALUES (s.agent_id, s.canonical_id, s.name, s.lifecycle_state, s.trust_score, "
                 "          s.updated_at, s.tenant_id, s.data)"
             )
 

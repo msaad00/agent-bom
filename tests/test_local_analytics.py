@@ -4,6 +4,7 @@ import sqlite3
 
 from click.testing import CliRunner
 
+from agent_bom.canonical_ids import canonical_package_id
 from agent_bom.db.local_analytics import LocalAnalyticsStore
 
 
@@ -43,10 +44,12 @@ def _report(scan_id: str = "scan-1") -> dict:
         "blast_radius": [
             {
                 "vulnerability_id": "CVE-2026-0001",
+                "canonical_id": "finding-canonical-1",
                 "package": "fastapi@0.115.0",
                 "package_name": "fastapi",
                 "package_version": "0.115.0",
                 "ecosystem": "pypi",
+                "asset": {"name": "fastapi", "canonical_id": "asset-canonical-1"},
                 "severity": "critical",
                 "risk_score": 9.4,
                 "affected_agents": ["desktop-agent"],
@@ -83,6 +86,24 @@ def test_local_analytics_store_records_scan_summary_findings_and_packages(tmp_pa
 
     package_rows = store.query("SELECT package_name FROM scan_packages ORDER BY package_name")
     assert package_rows == [{"package_name": "fastapi"}, {"package_name": "uvicorn"}]
+
+    canonical_finding_rows = store.query(
+        "SELECT canonical_id, asset_canonical_id FROM scan_findings WHERE vulnerability_id = ?",
+        ("CVE-2026-0001",),
+    )
+    assert canonical_finding_rows == [{"canonical_id": "finding-canonical-1", "asset_canonical_id": "asset-canonical-1"}]
+
+    canonical_package_rows = store.query("SELECT package_name, package_canonical_id FROM scan_packages ORDER BY package_name")
+    assert canonical_package_rows == [
+        {
+            "package_name": "fastapi",
+            "package_canonical_id": canonical_package_id("fastapi", "0.115.0", "pypi", "pkg:pypi/fastapi@0.115.0"),
+        },
+        {
+            "package_name": "uvicorn",
+            "package_canonical_id": canonical_package_id("uvicorn", "0.32.0", "pypi"),
+        },
+    ]
 
 
 def test_local_analytics_store_records_repeated_artifact_as_distinct_runs(tmp_path):
@@ -275,3 +296,65 @@ def test_local_analytics_store_migrates_initial_scan_id_keyed_schema(tmp_path):
     assert store.query("SELECT run_id, scan_id, package_name FROM scan_packages") == [
         {"run_id": "legacy-scan", "scan_id": "legacy-scan", "package_name": "pkg"}
     ]
+
+
+def test_local_analytics_store_migrates_v2_canonical_columns(tmp_path):
+    db_path = tmp_path / "local.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE scan_runs (
+                run_id TEXT PRIMARY KEY,
+                scan_id TEXT NOT NULL,
+                generated_at TEXT NOT NULL,
+                recorded_at TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                source TEXT NOT NULL,
+                artifact_path TEXT,
+                total_agents INTEGER NOT NULL DEFAULT 0,
+                total_packages INTEGER NOT NULL DEFAULT 0,
+                total_vulnerabilities INTEGER NOT NULL DEFAULT 0,
+                critical_findings INTEGER NOT NULL DEFAULT 0,
+                high_findings INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE scan_findings (
+                run_id TEXT NOT NULL,
+                scan_id TEXT NOT NULL,
+                finding_key TEXT NOT NULL,
+                vulnerability_id TEXT NOT NULL,
+                package_name TEXT NOT NULL,
+                package_version TEXT NOT NULL,
+                package_ref TEXT NOT NULL,
+                ecosystem TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                risk_score REAL NOT NULL DEFAULT 0,
+                schema_version TEXT NOT NULL DEFAULT '',
+                finding_type TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL DEFAULT '',
+                asset_json TEXT NOT NULL DEFAULT '{}',
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                affected_agents_json TEXT NOT NULL DEFAULT '[]',
+                affected_servers_json TEXT NOT NULL DEFAULT '[]',
+                PRIMARY KEY (run_id, finding_key)
+            );
+            CREATE TABLE scan_packages (
+                run_id TEXT NOT NULL,
+                scan_id TEXT NOT NULL,
+                agent_name TEXT NOT NULL,
+                server_name TEXT NOT NULL,
+                package_name TEXT NOT NULL,
+                package_version TEXT NOT NULL,
+                ecosystem TEXT NOT NULL,
+                purl TEXT,
+                PRIMARY KEY (run_id, agent_name, server_name, package_name, package_version, ecosystem)
+            );
+            """
+        )
+
+    store = LocalAnalyticsStore(db_path)
+
+    finding_columns = {row["name"] for row in store.query("SELECT name FROM pragma_table_info('scan_findings')")}
+    package_columns = {row["name"] for row in store.query("SELECT name FROM pragma_table_info('scan_packages')")}
+    assert {"canonical_id", "asset_canonical_id"} <= finding_columns
+    assert "package_canonical_id" in package_columns

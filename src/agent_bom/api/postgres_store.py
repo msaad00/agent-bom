@@ -385,6 +385,7 @@ class PostgresFleetStore:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS fleet_agents (
                     agent_id TEXT PRIMARY KEY,
+                    canonical_id TEXT NOT NULL DEFAULT '',
                     name TEXT NOT NULL,
                     lifecycle_state TEXT NOT NULL,
                     trust_score REAL DEFAULT 0.0,
@@ -393,7 +394,9 @@ class PostgresFleetStore:
                     data JSONB NOT NULL
                 )
             """)
+            conn.execute("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS canonical_id TEXT NOT NULL DEFAULT ''")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_canonical_id ON fleet_agents(canonical_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_tenant ON fleet_agents(tenant_id)")
             conn.execute(
@@ -415,16 +418,26 @@ class PostgresFleetStore:
         data = agent.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
-                """INSERT INTO fleet_agents (agent_id, name, lifecycle_state, trust_score, tenant_id, updated_at, data)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """INSERT INTO fleet_agents (agent_id, canonical_id, name, lifecycle_state, trust_score, tenant_id, updated_at, data)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (agent_id) DO UPDATE SET
+                     canonical_id = EXCLUDED.canonical_id,
                      name = EXCLUDED.name,
                      lifecycle_state = EXCLUDED.lifecycle_state,
                      trust_score = EXCLUDED.trust_score,
                      tenant_id = EXCLUDED.tenant_id,
                      updated_at = EXCLUDED.updated_at,
                      data = EXCLUDED.data""",
-                (agent.agent_id, agent.name, agent.lifecycle_state.value, agent.trust_score, agent.tenant_id, agent.updated_at, data),
+                (
+                    agent.agent_id,
+                    agent.canonical_id,
+                    agent.name,
+                    agent.lifecycle_state.value,
+                    agent.trust_score,
+                    agent.tenant_id,
+                    agent.updated_at,
+                    data,
+                ),
             )
             conn.commit()
 
@@ -438,6 +451,22 @@ class PostgresFleetStore:
                 row = conn.execute(
                     "SELECT data FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s",
                     (agent_id, tenant_id),
+                ).fetchone()
+            if row is None:
+                return None
+            raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
+            return FleetAgent.model_validate_json(raw)
+
+    def get_by_canonical_id(self, canonical_id: str, tenant_id: str | None = None):
+        from .fleet_store import FleetAgent
+
+        with _tenant_connection(self._pool) as conn:
+            if tenant_id is None:
+                row = conn.execute("SELECT data FROM fleet_agents WHERE canonical_id = %s", (canonical_id,)).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT data FROM fleet_agents WHERE canonical_id = %s AND tenant_id = %s",
+                    (canonical_id, tenant_id),
                 ).fetchone()
             if row is None:
                 return None
@@ -475,8 +504,10 @@ class PostgresFleetStore:
 
     def list_summary(self) -> list[dict]:
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute("SELECT agent_id, name, lifecycle_state, trust_score FROM fleet_agents ORDER BY name").fetchall()
-            return [{"agent_id": r[0], "name": r[1], "lifecycle_state": r[2], "trust_score": r[3]} for r in rows]
+            rows = conn.execute(
+                "SELECT agent_id, canonical_id, name, lifecycle_state, trust_score FROM fleet_agents ORDER BY name"
+            ).fetchall()
+            return [{"agent_id": r[0], "canonical_id": r[1], "name": r[2], "lifecycle_state": r[3], "trust_score": r[4]} for r in rows]
 
     def list_by_tenant(self, tenant_id: str) -> list:
         from .fleet_store import FleetAgent

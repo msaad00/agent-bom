@@ -11,6 +11,7 @@ from agent_bom.api.fleet_store import (
     InMemoryFleetStore,
     SQLiteFleetStore,
 )
+from agent_bom.canonical_ids import canonical_agent_id
 
 
 def _make_agent(agent_id: str, name: str, tenant_id: str = "default") -> FleetAgent:
@@ -43,6 +44,22 @@ def test_fleet_agent_tenant_serialization():
     data = agent.model_dump_json()
     restored = FleetAgent.model_validate_json(data)
     assert restored.tenant_id == "team-a"
+
+
+def test_fleet_agent_derives_canonical_id():
+    agent = _make_agent("a1", "Desktop Agent", tenant_id="team-a")
+    assert agent.canonical_id == canonical_agent_id("claude_desktop", "Desktop Agent")
+
+
+def test_fleet_agent_canonical_id_prefers_source_id():
+    agent = FleetAgent(
+        agent_id="a1",
+        name="Renamed Agent",
+        agent_type="cursor",
+        source_id="device-123",
+        updated_at="2026-01-01T00:00:00Z",
+    )
+    assert agent.canonical_id == canonical_agent_id("cursor", "Renamed Agent", source_id="device-123")
 
 
 # ─── InMemoryFleetStore ──────────────────────────────────────────────────────
@@ -82,6 +99,17 @@ def test_in_memory_list_tenants():
 def test_in_memory_list_tenants_empty():
     store = InMemoryFleetStore()
     assert store.list_tenants() == []
+
+
+def test_in_memory_get_by_canonical_id_is_tenant_scoped():
+    store = InMemoryFleetStore()
+    team_a = _make_agent("a1", "agent1", "team-a")
+    team_b = _make_agent("a2", "agent1", "team-b")
+    store.put(team_a)
+    store.put(team_b)
+
+    assert store.get_by_canonical_id(team_a.canonical_id, tenant_id="team-a").agent_id == "a1"
+    assert store.get_by_canonical_id(team_a.canonical_id, tenant_id="team-missing") is None
 
 
 # ─── SQLiteFleetStore ────────────────────────────────────────────────────────
@@ -139,6 +167,18 @@ def test_sqlite_batch_put_preserves_tenant(sqlite_store):
     sqlite_store.batch_put(agents)
     assert sqlite_store.list_by_tenant("team-a")[0].tenant_id == "team-a"
     assert sqlite_store.list_by_tenant("team-b")[0].tenant_id == "team-b"
+
+
+def test_sqlite_get_by_canonical_id(sqlite_store):
+    agent = _make_agent("a1", "agent1", "team-a")
+    sqlite_store.put(agent)
+
+    stored = sqlite_store.get_by_canonical_id(agent.canonical_id, tenant_id="team-a")
+
+    assert stored is not None
+    assert stored.agent_id == "a1"
+    assert sqlite_store.get_by_canonical_id(agent.canonical_id, tenant_id="team-b") is None
+    assert sqlite_store.list_summary()[0]["canonical_id"] == agent.canonical_id
 
 
 # ─── Cross-tenant isolation ──────────────────────────────────────────────────

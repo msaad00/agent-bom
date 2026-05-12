@@ -195,9 +195,9 @@ class MockConnection:
             elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at, triggered_by" in sql_lower:
                 rows = list(self._store.get("scan_jobs", {}).values())
                 cursor.rows = [(r[0], r[1], r[2], r[3], r[4], (r[5] if len(r) > 6 else None)) for r in rows]
-            elif "from fleet_agents" in sql_lower and "agent_id, name, lifecycle_state, trust_score" in sql_lower:
+            elif "from fleet_agents" in sql_lower and "agent_id, canonical_id, name, lifecycle_state, trust_score" in sql_lower:
                 rows = list(self._store.get("fleet_agents", {}).values())
-                cursor.rows = [(r[0], r[1], r[2], r[3]) for r in rows]
+                cursor.rows = [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
             elif "from graph_nodes" in sql_lower and "id, entity_type, label" in sql_lower:
                 rows = list(self._store.get("graph_nodes", {}).values())
                 if params:
@@ -454,6 +454,7 @@ def test_fleet_store_put_get(mock_pool):
     # Set up mock data for retrieval
     mock_pool._conn._store.setdefault("fleet_agents", {})["a-1"] = (
         "a-1",
+        agent.canonical_id,
         "test-agent",
         "discovered",
         0.0,
@@ -466,6 +467,36 @@ def test_fleet_store_put_get(mock_pool):
     assert retrieved is not None
     assert retrieved.agent_id == "a-1"
     assert retrieved.name == "test-agent"
+    assert retrieved.canonical_id == agent.canonical_id
+
+
+def test_fleet_store_get_by_canonical_id(mock_pool):
+    from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
+    from agent_bom.api.postgres_store import PostgresFleetStore
+
+    store = PostgresFleetStore(pool=mock_pool)
+    agent = FleetAgent(
+        agent_id="a-1",
+        name="test-agent",
+        agent_type="claude_desktop",
+        lifecycle_state=FleetLifecycleState.DISCOVERED,
+        updated_at="2026-01-01T00:00:00Z",
+    )
+    mock_pool._conn._store.setdefault("fleet_agents", {})[agent.canonical_id] = (
+        "a-1",
+        agent.canonical_id,
+        "test-agent",
+        "discovered",
+        0.0,
+        "default",
+        "2026-01-01T00:00:00Z",
+        agent.model_dump_json(),
+    )
+
+    retrieved = store.get_by_canonical_id(agent.canonical_id)
+
+    assert retrieved is not None
+    assert retrieved.agent_id == "a-1"
 
 
 def test_fleet_store_get_nonexistent(mock_pool):
@@ -489,7 +520,8 @@ def test_fleet_store_get_by_name(mock_pool):
     )
 
     mock_pool._conn._store.setdefault("fleet_agents", {})["test-agent"] = (
-        "test-agent",
+        "a-1",
+        agent.canonical_id,
         "test-agent",
         "approved",
         0.0,
@@ -519,11 +551,24 @@ def test_fleet_store_list_all(mock_pool):
 
 
 def test_fleet_store_list_summary(mock_pool):
+    from agent_bom.api.fleet_store import FleetAgent
     from agent_bom.api.postgres_store import PostgresFleetStore
 
     store = PostgresFleetStore(pool=mock_pool)
+    agent = FleetAgent(agent_id="a-1", name="summary-agent", agent_type="cursor", updated_at="2026-01-01T00:00:00Z")
+    mock_pool._conn._store.setdefault("fleet_agents", {})["a-1"] = (
+        "a-1",
+        agent.canonical_id,
+        "summary-agent",
+        "discovered",
+        0.7,
+        "default",
+        "2026-01-01T00:00:00Z",
+        agent.model_dump_json(),
+    )
     result = store.list_summary()
     assert isinstance(result, list)
+    assert result[0]["canonical_id"] == agent.canonical_id
 
 
 def test_fleet_store_list_by_tenant(mock_pool):
@@ -550,6 +595,7 @@ def test_fleet_store_update_state(mock_pool):
     # Mock existing agent
     mock_pool._conn._store.setdefault("fleet_agents", {})["a-1"] = (
         "a-1",
+        "agent-canonical-1",
         "test",
         "discovered",
         0.0,

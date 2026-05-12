@@ -15,6 +15,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.canonical_ids import canonical_agent_id
 from agent_bom.platform_invariants import normalize_tenant_id, normalize_timestamp, now_utc_iso
 
 # ─── Models ──────────────────────────────────────────────────────────────────
@@ -32,6 +33,7 @@ class FleetAgent(BaseModel):
     """A managed agent in the fleet registry."""
 
     agent_id: str
+    canonical_id: str = ""
     name: str
     agent_type: str
     config_path: str = ""
@@ -73,6 +75,8 @@ class FleetAgent(BaseModel):
             self.created_at = now_utc_iso()
         if not self.updated_at:
             self.updated_at = self.created_at
+        if not self.canonical_id:
+            self.canonical_id = canonical_agent_id(self.agent_type, self.name, source_id=self.source_id)
         return self
 
 
@@ -84,6 +88,7 @@ class FleetStore(Protocol):
 
     def put(self, agent: FleetAgent) -> None: ...
     def get(self, agent_id: str, tenant_id: str | None = None) -> FleetAgent | None: ...
+    def get_by_canonical_id(self, canonical_id: str, tenant_id: str | None = None) -> FleetAgent | None: ...
     def get_by_name(self, name: str) -> FleetAgent | None: ...
     def delete(self, agent_id: str, tenant_id: str | None = None) -> bool: ...
     def list_all(self) -> list[FleetAgent]: ...
@@ -130,6 +135,16 @@ class InMemoryFleetStore:
                 return None
             return agent
 
+    def get_by_canonical_id(self, canonical_id: str, tenant_id: str | None = None) -> FleetAgent | None:
+        with self._lock:
+            for agent in self._agents.values():
+                if agent.canonical_id != canonical_id:
+                    continue
+                if tenant_id is not None and agent.tenant_id != tenant_id:
+                    continue
+                return agent
+            return None
+
     def get_by_name(self, name: str) -> FleetAgent | None:
         with self._lock:
             for a in self._agents.values():
@@ -157,6 +172,7 @@ class InMemoryFleetStore:
             return [
                 {
                     "agent_id": a.agent_id,
+                    "canonical_id": a.canonical_id,
                     "name": a.name,
                     "lifecycle_state": a.lifecycle_state,
                     "trust_score": a.trust_score,
@@ -258,6 +274,7 @@ class SQLiteFleetStore:
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS fleet_agents (
                 agent_id TEXT PRIMARY KEY,
+                canonical_id TEXT NOT NULL DEFAULT '',
                 name TEXT NOT NULL,
                 lifecycle_state TEXT NOT NULL,
                 trust_score REAL DEFAULT 0.0,
@@ -265,19 +282,33 @@ class SQLiteFleetStore:
                 data TEXT NOT NULL
             )
         """)
+        if "canonical_id" not in _table_columns(self._conn, "fleet_agents"):
+            self._conn.execute("ALTER TABLE fleet_agents ADD COLUMN canonical_id TEXT NOT NULL DEFAULT ''")
+        self._backfill_canonical_ids()
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_canonical_id ON fleet_agents(canonical_id)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state_trust_name ON fleet_agents(lifecycle_state, trust_score DESC, name)")
         self._conn.commit()
+
+    def _backfill_canonical_ids(self) -> None:
+        rows = self._conn.execute("SELECT agent_id, data FROM fleet_agents WHERE canonical_id = ''").fetchall()
+        for agent_id, raw in rows:
+            agent = FleetAgent.model_validate_json(raw)
+            self._conn.execute(
+                "UPDATE fleet_agents SET canonical_id = ?, data = ? WHERE agent_id = ?",
+                (agent.canonical_id, agent.model_dump_json(), agent_id),
+            )
 
     def put(self, agent: FleetAgent) -> None:
         normalized = FleetAgent.model_validate(agent.model_dump())
         self._conn.execute(
             """INSERT OR REPLACE INTO fleet_agents
-               (agent_id, name, lifecycle_state, trust_score, updated_at, data)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, data)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 normalized.agent_id,
+                normalized.canonical_id,
                 normalized.name,
                 normalized.lifecycle_state.value,
                 normalized.trust_score,
@@ -294,6 +325,19 @@ class SQLiteFleetStore:
             row = self._conn.execute(
                 "SELECT data FROM fleet_agents WHERE agent_id = ? AND json_extract(data, '$.tenant_id') = ?",
                 (agent_id, tenant_id),
+            ).fetchone()
+        if row is None:
+            return None
+        agent: FleetAgent = FleetAgent.model_validate_json(row[0])
+        return agent
+
+    def get_by_canonical_id(self, canonical_id: str, tenant_id: str | None = None) -> FleetAgent | None:
+        if tenant_id is None:
+            row = self._conn.execute("SELECT data FROM fleet_agents WHERE canonical_id = ?", (canonical_id,)).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT data FROM fleet_agents WHERE canonical_id = ? AND json_extract(data, '$.tenant_id') = ?",
+                (canonical_id, tenant_id),
             ).fetchone()
         if row is None:
             return None
@@ -324,15 +368,16 @@ class SQLiteFleetStore:
 
     def list_summary(self) -> list[dict[str, Any]]:
         rows = self._conn.execute(
-            "SELECT agent_id, name, lifecycle_state, trust_score, updated_at FROM fleet_agents ORDER BY name"
+            "SELECT agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at FROM fleet_agents ORDER BY name"
         ).fetchall()
         return [
             {
                 "agent_id": r[0],
-                "name": r[1],
-                "lifecycle_state": r[2],
-                "trust_score": r[3],
-                "updated_at": r[4],
+                "canonical_id": r[1],
+                "name": r[2],
+                "lifecycle_state": r[3],
+                "trust_score": r[4],
+                "updated_at": r[5],
             }
             for r in rows
         ]
@@ -404,19 +449,24 @@ class SQLiteFleetStore:
             return 0
         self._conn.executemany(
             """INSERT OR REPLACE INTO fleet_agents
-               (agent_id, name, lifecycle_state, trust_score, updated_at, data)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, data)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             [
                 (
-                    a.agent_id,
-                    a.name,
-                    a.lifecycle_state.value,
-                    a.trust_score,
-                    a.updated_at,
-                    a.model_dump_json(),
+                    normalized.agent_id,
+                    normalized.canonical_id,
+                    normalized.name,
+                    normalized.lifecycle_state.value,
+                    normalized.trust_score,
+                    normalized.updated_at,
+                    normalized.model_dump_json(),
                 )
-                for a in agents
+                for normalized in (FleetAgent.model_validate(agent.model_dump()) for agent in agents)
             ],
         )
         self._conn.commit()
         return len(agents)
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # nosec B608 - table is static

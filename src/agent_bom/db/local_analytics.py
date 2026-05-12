@@ -15,9 +15,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from agent_bom.canonical_ids import canonical_package_id
 from agent_bom.config import LOCAL_ANALYTICS_DB
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_LOCAL_ANALYTICS_PATH = Path.home() / ".agent-bom" / "local-analytics.sqlite"
 
 
@@ -47,6 +48,7 @@ class LocalAnalyticsStore:
         if _table_exists(conn, "scan_runs") and "run_id" not in _table_columns(conn, "scan_runs"):
             self._migrate_v1_schema(conn)
         self._create_schema(conn)
+        self._migrate_canonical_columns(conn)
         conn.execute(
             """
             INSERT INTO local_schema_meta(component, version, applied_at)
@@ -100,6 +102,8 @@ class LocalAnalyticsStore:
                 title TEXT NOT NULL DEFAULT '',
                 asset_json TEXT NOT NULL DEFAULT '{}',
                 raw_json TEXT NOT NULL DEFAULT '{}',
+                canonical_id TEXT NOT NULL DEFAULT '',
+                asset_canonical_id TEXT NOT NULL DEFAULT '',
                 affected_agents_json TEXT NOT NULL DEFAULT '[]',
                 affected_servers_json TEXT NOT NULL DEFAULT '[]',
                 PRIMARY KEY (run_id, finding_key),
@@ -115,6 +119,7 @@ class LocalAnalyticsStore:
                 package_version TEXT NOT NULL,
                 ecosystem TEXT NOT NULL,
                 purl TEXT,
+                package_canonical_id TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (run_id, agent_name, server_name, package_name, package_version, ecosystem),
                 FOREIGN KEY (run_id) REFERENCES scan_runs(run_id) ON DELETE CASCADE
             );
@@ -125,6 +130,23 @@ class LocalAnalyticsStore:
             CREATE INDEX IF NOT EXISTS idx_scan_findings_source ON scan_findings(source);
             CREATE INDEX IF NOT EXISTS idx_scan_findings_type ON scan_findings(finding_type);
             CREATE INDEX IF NOT EXISTS idx_scan_packages_name ON scan_packages(package_name);
+            """
+        )
+
+    def _migrate_canonical_columns(self, conn: sqlite3.Connection) -> None:
+        finding_columns = _table_columns(conn, "scan_findings") if _table_exists(conn, "scan_findings") else set()
+        package_columns = _table_columns(conn, "scan_packages") if _table_exists(conn, "scan_packages") else set()
+        if "canonical_id" not in finding_columns:
+            conn.execute("ALTER TABLE scan_findings ADD COLUMN canonical_id TEXT NOT NULL DEFAULT ''")
+        if "asset_canonical_id" not in finding_columns:
+            conn.execute("ALTER TABLE scan_findings ADD COLUMN asset_canonical_id TEXT NOT NULL DEFAULT ''")
+        if "package_canonical_id" not in package_columns:
+            conn.execute("ALTER TABLE scan_packages ADD COLUMN package_canonical_id TEXT NOT NULL DEFAULT ''")
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_scan_findings_canonical_id ON scan_findings(canonical_id);
+            CREATE INDEX IF NOT EXISTS idx_scan_findings_asset_canonical_id ON scan_findings(asset_canonical_id);
+            CREATE INDEX IF NOT EXISTS idx_scan_packages_canonical_id ON scan_packages(package_canonical_id);
             """
         )
 
@@ -237,18 +259,19 @@ class LocalAnalyticsStore:
                     run_id, scan_id, finding_key, vulnerability_id, package_name, package_version,
                     package_ref, ecosystem, severity, risk_score,
                     schema_version, finding_type, source, title, asset_json, raw_json,
-                    affected_agents_json, affected_servers_json
+                    canonical_id, asset_canonical_id, affected_agents_json, affected_servers_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [_finding_row(run_id, scan_id, finding) for finding in findings],
             )
             conn.executemany(
                 """
                 INSERT INTO scan_packages(
-                    run_id, scan_id, agent_name, server_name, package_name, package_version, ecosystem, purl
+                    run_id, scan_id, agent_name, server_name, package_name, package_version, ecosystem, purl,
+                    package_canonical_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [_package_row(run_id, scan_id, package_row) for package_row in package_rows],
             )
@@ -343,7 +366,8 @@ def _iter_packages(report_json: dict[str, Any]) -> Iterable[dict[str, Any]]:
 
 
 def _finding_row(run_id: str, scan_id: str, finding: dict[str, Any]) -> tuple[Any, ...]:
-    asset = finding.get("asset") if isinstance(finding.get("asset"), dict) else {}
+    raw_asset = finding.get("asset")
+    asset: dict[str, Any] = raw_asset if isinstance(raw_asset, dict) else {}
     vulnerability_id = _vulnerability_id_from_finding(finding)
     package_ref = str(finding.get("package") or "")
     package_name = str(finding.get("package_name") or _package_name_from_ref(package_ref))
@@ -367,21 +391,28 @@ def _finding_row(run_id: str, scan_id: str, finding: dict[str, Any]) -> tuple[An
         str(finding.get("title") or ""),
         json.dumps(asset, sort_keys=True),
         json.dumps(finding, sort_keys=True, default=str),
+        str(finding.get("canonical_id") or ""),
+        str(asset.get("canonical_id") or ""),
         json.dumps(list(finding.get("affected_agents") or []), sort_keys=True),
         json.dumps(list(finding.get("affected_servers") or []), sort_keys=True),
     )
 
 
 def _package_row(run_id: str, scan_id: str, package: dict[str, Any]) -> tuple[Any, ...]:
+    package_name = str(package.get("name") or "")
+    package_version = str(package.get("version") or "")
+    ecosystem = str(package.get("ecosystem") or "")
+    purl = package.get("purl")
     return (
         run_id,
         scan_id,
         str(package.get("agent_name") or ""),
         str(package.get("server_name") or ""),
-        str(package.get("name") or ""),
-        str(package.get("version") or ""),
-        str(package.get("ecosystem") or ""),
-        package.get("purl"),
+        package_name,
+        package_version,
+        ecosystem,
+        purl,
+        str(package.get("canonical_id") or canonical_package_id(package_name, package_version, ecosystem, str(purl or "") or None)),
     )
 
 

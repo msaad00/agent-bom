@@ -6,9 +6,10 @@ import sqlite3
 import threading
 from typing import Protocol
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.canonical_ids import canonical_mcp_server_id
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.platform_invariants import normalize_tenant_id, normalize_timestamp, now_utc_iso
 from agent_bom.security import sanitize_command_args, sanitize_security_warnings, sanitize_text, sanitize_url
@@ -18,6 +19,7 @@ class MCPObservation(BaseModel):
     tenant_id: str = "default"
     observation_id: str
     server_stable_id: str
+    server_canonical_id: str = ""
     server_fingerprint: str = ""
     server_name: str
     agent_name: str = ""
@@ -87,6 +89,12 @@ class MCPObservation(BaseModel):
     def _sanitize_command(cls, value: object) -> str:
         return sanitize_text(value, max_len=200)
 
+    @model_validator(mode="after")
+    def _apply_canonical_id(self) -> MCPObservation:
+        if not self.server_canonical_id:
+            self.server_canonical_id = self.server_stable_id or canonical_mcp_server_id(self.server_name, self.command)
+        return self
+
 
 def _pick_timestamp(*values: str | None, prefer: str) -> str | None:
     candidates = [value for value in values if value]
@@ -119,6 +127,7 @@ def merge_observations(existing: MCPObservation | None, incoming: MCPObservation
         tenant_id=incoming.tenant_id,
         observation_id=incoming.observation_id,
         server_stable_id=incoming.server_stable_id or existing.server_stable_id,
+        server_canonical_id=incoming.server_canonical_id or existing.server_canonical_id,
         server_fingerprint=incoming.server_fingerprint or existing.server_fingerprint,
         server_name=incoming.server_name or existing.server_name,
         agent_name=incoming.agent_name or existing.agent_name,
@@ -151,6 +160,7 @@ def merge_observations(existing: MCPObservation | None, incoming: MCPObservation
 class MCPObservationStore(Protocol):
     def put(self, observation: MCPObservation) -> None: ...
     def get(self, tenant_id: str, observation_id: str) -> MCPObservation | None: ...
+    def get_by_server_canonical_id(self, tenant_id: str, server_canonical_id: str) -> MCPObservation | None: ...
     def list_by_tenant(self, tenant_id: str) -> list[MCPObservation]: ...
 
 
@@ -167,6 +177,13 @@ class InMemoryMCPObservationStore:
     def get(self, tenant_id: str, observation_id: str) -> MCPObservation | None:
         with self._lock:
             return self._rows.get((tenant_id, observation_id))
+
+    def get_by_server_canonical_id(self, tenant_id: str, server_canonical_id: str) -> MCPObservation | None:
+        with self._lock:
+            for (row_tenant, _), row in self._rows.items():
+                if row_tenant == tenant_id and row.server_canonical_id == server_canonical_id:
+                    return row
+            return None
 
     def list_by_tenant(self, tenant_id: str) -> list[MCPObservation]:
         with self._lock:
@@ -197,24 +214,41 @@ class SQLiteMCPObservationStore:
             CREATE TABLE IF NOT EXISTS mcp_observations (
                 tenant_id TEXT NOT NULL,
                 observation_id TEXT NOT NULL,
+                server_canonical_id TEXT NOT NULL DEFAULT '',
                 server_name TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 data TEXT NOT NULL,
                 PRIMARY KEY (tenant_id, observation_id)
             )
         """)
+        if "server_canonical_id" not in _table_columns(self._conn, "mcp_observations"):
+            self._conn.execute("ALTER TABLE mcp_observations ADD COLUMN server_canonical_id TEXT NOT NULL DEFAULT ''")
+        self._backfill_server_canonical_ids()
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_mcp_observations_tenant_server ON mcp_observations(tenant_id, server_name)")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mcp_observations_tenant_canonical ON mcp_observations(tenant_id, server_canonical_id)"
+        )
         self._conn.commit()
+
+    def _backfill_server_canonical_ids(self) -> None:
+        rows = self._conn.execute("SELECT tenant_id, observation_id, data FROM mcp_observations WHERE server_canonical_id = ''").fetchall()
+        for tenant_id, observation_id, raw in rows:
+            observation = MCPObservation.model_validate_json(raw)
+            self._conn.execute(
+                "UPDATE mcp_observations SET server_canonical_id = ?, data = ? WHERE tenant_id = ? AND observation_id = ?",
+                (observation.server_canonical_id, observation.model_dump_json(), tenant_id, observation_id),
+            )
 
     def put(self, observation: MCPObservation) -> None:
         normalized = MCPObservation.model_validate(observation.model_dump())
         self._conn.execute(
             """INSERT OR REPLACE INTO mcp_observations
-               (tenant_id, observation_id, server_name, updated_at, data)
-               VALUES (?, ?, ?, ?, ?)""",
+               (tenant_id, observation_id, server_canonical_id, server_name, updated_at, data)
+               VALUES (?, ?, ?, ?, ?, ?)""",
             (
                 normalized.tenant_id,
                 normalized.observation_id,
+                normalized.server_canonical_id,
                 normalized.server_name,
                 normalized.updated_at,
                 normalized.model_dump_json(),
@@ -232,9 +266,23 @@ class SQLiteMCPObservationStore:
         obs: MCPObservation = MCPObservation.model_validate_json(row[0])
         return obs
 
+    def get_by_server_canonical_id(self, tenant_id: str, server_canonical_id: str) -> MCPObservation | None:
+        row = self._conn.execute(
+            "SELECT data FROM mcp_observations WHERE tenant_id = ? AND server_canonical_id = ? ORDER BY updated_at DESC LIMIT 1",
+            (tenant_id, server_canonical_id),
+        ).fetchone()
+        if row is None:
+            return None
+        obs: MCPObservation = MCPObservation.model_validate_json(row[0])
+        return obs
+
     def list_by_tenant(self, tenant_id: str) -> list[MCPObservation]:
         rows = self._conn.execute(
             "SELECT data FROM mcp_observations WHERE tenant_id = ? ORDER BY server_name, updated_at DESC",
             (tenant_id,),
         ).fetchall()
         return [MCPObservation.model_validate_json(row[0]) for row in rows]
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # nosec B608 - table is static

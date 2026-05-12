@@ -348,7 +348,13 @@ class TestSnowflakeFleetStore:
 
         SnowflakeFleetStore(SF_PARAMS)
         calls = [str(c) for c in conn.cursor().execute.call_args_list]
-        assert any("CREATE TABLE IF NOT EXISTS fleet_agents" in c and "tenant_id VARCHAR NOT NULL DEFAULT 'default'" in c for c in calls)
+        assert any(
+            "CREATE TABLE IF NOT EXISTS fleet_agents" in c
+            and "canonical_id VARCHAR NOT NULL DEFAULT ''" in c
+            and "tenant_id VARCHAR NOT NULL DEFAULT 'default'" in c
+            for c in calls
+        )
+        assert any("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS canonical_id" in c for c in calls)
         assert any("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS tenant_id" in c for c in calls)
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
@@ -361,6 +367,7 @@ class TestSnowflakeFleetStore:
         calls = conn.cursor().execute.call_args_list
         merge_call = [c for c in calls if "MERGE INTO fleet_agents" in str(c)]
         assert len(merge_call) > 0
+        assert any(agent.canonical_id in str(c) for c in merge_call)
         assert any(agent.tenant_id in str(c) for c in merge_call)
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
@@ -396,6 +403,19 @@ class TestSnowflakeFleetStore:
         assert result.name == "test-agent"
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_get_by_canonical_id(self, mock_connect):
+        agent = self._make_agent()
+        cur = _mock_cursor(fetchone_val=(agent.model_dump_json(),))
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        result = store.get_by_canonical_id(agent.canonical_id, tenant_id="tenant-alpha")
+        assert result is not None
+        assert result.agent_id == "a1"
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "WHERE canonical_id = %s AND tenant_id = %s" in sql
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_delete(self, mock_connect):
         cur = _mock_cursor(rowcount=1)
         conn = _mock_connection(cursor=cur)
@@ -420,7 +440,7 @@ class TestSnowflakeFleetStore:
     def test_list_summary(self, mock_connect):
         cur = _mock_cursor(
             fetchall_val=[
-                ("a1", "agent-a", "discovered", 0.8, "2025-01-01T00:00:00Z"),
+                ("a1", "agent-canonical-1", "agent-a", "discovered", 0.8, "2025-01-01T00:00:00Z"),
             ]
         )
         conn = _mock_connection(cursor=cur)
@@ -429,6 +449,7 @@ class TestSnowflakeFleetStore:
         result = store.list_summary()
         assert len(result) == 1
         assert result[0]["agent_id"] == "a1"
+        assert result[0]["canonical_id"] == "agent-canonical-1"
         assert result[0]["trust_score"] == 0.8
 
     @patch("agent_bom.api.snowflake_store._sf_connect")

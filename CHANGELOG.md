@@ -16,6 +16,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
   'cryptography'` after `pip install agent-bom`. The CLI also catches the
   ImportError defensively and prints a clean `pip install 'agent-bom[runtime]'`
   hint with exit code 2 instead of a traceback.
+- **`agent-bom sbom -o` (and `image -o` / `iac -o`) ignored when a CLI profile
+  is active** - sibling scan commands forward `--output` to `scan` via
+  `ctx.invoke(scan, output=...)`. Click reports the parameter source as
+  DEFAULT in that case, so `apply_scan_profile_defaults` was overriding the
+  caller's explicit path with the profile's `output =` value (e.g.
+  `agent-bom-report.json`). The profile default is now applied only when the
+  caller value is empty, preserving wrapper-command behavior while still
+  honoring profile defaults for bare `agent-bom agents` invocations.
 
 ---
 

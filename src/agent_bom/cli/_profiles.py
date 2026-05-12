@@ -187,11 +187,24 @@ def apply_scan_profile_defaults(
     format_source = ctx.get_parameter_source("output_format") if ctx is not None else None
     explicit_output = output_source in {click.core.ParameterSource.COMMANDLINE, click.core.ParameterSource.ENVIRONMENT}
     explicit_format = format_source in {click.core.ParameterSource.COMMANDLINE, click.core.ParameterSource.ENVIRONMENT}
+    # When `scan` is invoked via ``ctx.invoke`` from a sibling command
+    # (`sbom`, `image`, `iac`, …), Click reports the parameter source as
+    # DEFAULT even though the caller passed an explicit value. Treat a
+    # truthy caller value as a request to honor it; otherwise fall back to
+    # the active profile default. Without this guard, a profile that pins
+    # ``output = "agent-bom-report.json"`` overrides ``agent-bom sbom -o
+    # custom.json`` because the source is DEFAULT.
+    caller_supplied_output = bool(output)
+    caller_supplied_format = bool(output_format) and output_format != "console"
 
-    profile_output = output if explicit_format and not explicit_output else profile_default(ctx, profile, "output", output, "output")
+    profile_output = (
+        output
+        if explicit_output or caller_supplied_output or (explicit_format and not explicit_output)
+        else profile_default(ctx, profile, "output", output, "output")
+    )
     profile_format = (
         output_format
-        if explicit_output and not explicit_format
+        if explicit_format or caller_supplied_format or (explicit_output and not explicit_format)
         else profile_default(ctx, profile, "output_format", output_format, "format", "output_format")
     )
 

@@ -162,6 +162,52 @@ output = "profile.json"
     assert result.exit_code == 0, result.output
 
 
+def test_scan_profile_does_not_clobber_ctx_invoke_output(monkeypatch, tmp_path):
+    """When a sibling command (`sbom`, `image`, `iac`) calls `scan` via
+    ``ctx.invoke(..., output=...)``, Click reports the parameter source as
+    DEFAULT even though the caller passed an explicit value. The profile
+    default must not clobber the caller's value in that case — otherwise
+    ``agent-bom sbom test.spdx.json -o custom.json`` silently writes to the
+    profile-configured filename.
+    """
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+current_profile = "prod"
+
+[profiles.prod]
+format = "json"
+output = "agent-bom-report.json"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+
+    @click.command()
+    @click.option("--output")
+    @click.option("--format", "output_format", default="console")
+    def _inner(output: str | None, output_format: str) -> None:
+        values = apply_scan_profile_defaults(
+            output=output,
+            output_format=output_format,
+            preset=None,
+            nvd_api_key=None,
+            push_url=None,
+            push_api_key=None,
+            clickhouse_url=None,
+        )
+        # Caller-supplied output (ctx.invoke from sbom_cmd) must win even when
+        # the click parameter source is DEFAULT.
+        assert values[:2] == ("custom.json", "json")
+
+    @click.command()
+    @click.pass_context
+    def _outer(ctx):
+        ctx.invoke(_inner, output="custom.json", output_format="json")
+
+    result = CliRunner().invoke(_outer)
+    assert result.exit_code == 0, result.output
+
+
 def test_profiles_group_lists_and_switches_current_profile(monkeypatch, tmp_path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(

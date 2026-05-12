@@ -44,6 +44,7 @@ def make_entry_point(
 
         # Resolve the group — supports both direct reference and lazy callable
         _group = group() if callable(group) and not isinstance(group, click.Group) else group
+        _normalize_agent_mode_argv()
 
         try:
             _group(standalone_mode=not agent_mode_requested())
@@ -95,3 +96,19 @@ def _command_name() -> str | None:
         if not arg.startswith("-"):
             return arg
     return None
+
+
+def _normalize_agent_mode_argv() -> None:
+    """Accept --agent-mode before or after the subcommand.
+
+    Click only parses global options before the subcommand. Assistant callers
+    commonly append flags after the command (`agent-bom agents --agent-mode`),
+    so normalize that spelling into the existing env-backed global contract
+    before Click sees argv.
+    """
+    args = sys.argv[1:]
+    if "--agent-mode" not in args:
+        return
+    if args[:1] == ["--agent-mode"]:
+        return
+    sys.argv[:] = [sys.argv[0], "--agent-mode", *(arg for arg in args if arg != "--agent-mode")]

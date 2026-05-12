@@ -97,6 +97,7 @@ RESPONSE_HMAC = {
     "ts": "2026-03-09T10:00:01.100000+00:00",
     "type": "response_hmac",
     "id": 1,
+    "response_sha256": "abc123",
     "hmac_sha256": "a" * 64,
 }
 
@@ -560,6 +561,19 @@ def test_display_json_with_summary(capsys):
     assert code == 0
     out = json.loads(capsys.readouterr().out)
     assert out["summary"]["total_tool_calls"] == 5
+
+
+def test_display_json_fails_on_hmac_mismatch(capsys):
+    log = AuditLog(
+        tool_calls=[ToolCallEntry(ts="", tool="t", policy="allowed", reason="", agent_id="", args={}, payload_sha256="abc", message_id=1)],
+        hmac_entries=[ResponseHMACEntry(ts="", message_id=1, response_sha256="abc", hmac_sha256="0" * 64)],
+    )
+
+    code = display_json(log, hmac_verification=verify_hmac_entries(log, "secret"))
+
+    assert code == 2
+    out = json.loads(capsys.readouterr().out)
+    assert out["hmac_verification"]["failed"] == 1
 
 
 def test_display_rich_empty():

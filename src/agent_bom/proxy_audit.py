@@ -628,8 +628,8 @@ def compute_payload_hash(payload: dict) -> str:
 
 
 def compute_response_hmac(payload: dict, key: str) -> str:
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hmac.new(key.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+    payload_sha256 = compute_payload_hash(payload)
+    return hmac.new(key.encode("utf-8"), payload_sha256.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _record_digest(record: dict) -> str:

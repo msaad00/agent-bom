@@ -139,6 +139,54 @@ def test_check_exit_zero_reports_without_failing(monkeypatch):
     assert "reported without failing due to --exit-zero" in result.output
 
 
+def test_check_fail_on_severity_exits_zero_when_findings_below_threshold(monkeypatch):
+    _patch_check_scan(
+        monkeypatch,
+        [
+            Vulnerability(
+                id="CVE-2026-0001",
+                summary="Moderate issue",
+                severity=Severity.MEDIUM,
+                fixed_version="2.0.0",
+            )
+        ],
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["check", "demo@1.0.0", "--ecosystem", "pypi", "--fail-on-severity", "high", "--format", "json", "--quiet"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["fail_on_severity"] == "high"
+    assert payload["fail_on_severity_count"] == 0
+
+
+def test_check_fail_on_severity_exits_one_when_threshold_matches(monkeypatch):
+    _patch_check_scan(
+        monkeypatch,
+        [
+            Vulnerability(
+                id="CVE-2026-0002",
+                summary="Critical issue",
+                severity=Severity.CRITICAL,
+                fixed_version="2.0.0",
+            )
+        ],
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["check", "demo@1.0.0", "--ecosystem", "pypi", "--fail-on-severity", "high", "--format", "json", "--quiet"],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["fail_on_severity"] == "high"
+    assert payload["fail_on_severity_count"] == 1
+
+
 def test_check_incomplete_offline_scan_exits_two(monkeypatch):
     async def _scan_packages(_pkgs, **_kwargs):
         raise IncompleteScanError("Offline mode requires a populated local vulnerability DB.")

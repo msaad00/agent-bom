@@ -2292,6 +2292,14 @@ def scan(
             except (FileNotFoundError, ValueError) as exc:
                 logger.warning("Delta baseline error: %s — skipping delta filter", exc)
 
+    if not save_report:
+        try:
+            from agent_bom.db.local_analytics import record_scan_report_best_effort
+
+            record_scan_report_best_effort(current_report_json, source="cli")
+        except Exception as exc:  # pragma: no cover - best-effort analytics must never break scans
+            logger.debug("Local analytics persistence failed: %s", exc, exc_info=True)
+
     # Step 5: Output
     _step_t0 = _time.monotonic()
     _posture_console_only = posture and output_format == "console" and not output
@@ -2361,7 +2369,6 @@ def scan(
             tracker.close()
         except Exception as exc:
             logger.debug("Asset tracking failed: %s", exc, exc_info=True)
-
     # Step 7: Diff against baseline
     if baseline:
         from agent_bom.history import diff_reports

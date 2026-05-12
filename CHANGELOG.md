@@ -9,6 +9,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **`agent-bom audit` fails on base install** - `cryptography` is now a core
+  dependency (it was previously only in `[runtime]`/`[oidc]` extras), so the
+  proxy audit log viewer no longer crashes with `No module named
+  'cryptography'` after `pip install agent-bom`. The CLI also catches the
+  ImportError defensively and prints a clean `pip install 'agent-bom[runtime]'`
+  hint with exit code 2 instead of a traceback.
+
 ---
 
 ## [0.86.5] - 2026-05-11

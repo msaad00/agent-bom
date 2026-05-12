@@ -50,6 +50,7 @@ dependencies = [
     "tornado>=6.5.5",  # CVE-2026-31958 (multipart DoS), GHSA-78cv-mqj4-43f7 (cookie injection) — transitive via streamlit
     # NOTE: stale pyopenssl suppressions were retired after snowflake-connector-python moved to a compatible range.
     # Tracked: https://github.com/msaad00/agent-bom/issues/930
+    "cryptography>=46.0.7",  # Required by audit chain (aes-cmac-128), proxy response signing, OIDC; top-level `audit` CLI fails without it.
 ]
 
 [project.optional-dependencies]

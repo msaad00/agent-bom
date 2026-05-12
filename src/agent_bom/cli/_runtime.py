@@ -922,7 +922,18 @@ def audit_replay_cmd(log_path, tool, entry_type, blocked_only, alerts_only, sign
       agent-bom runtime audit audit.jsonl --verify-chain
       agent-bom runtime audit audit.jsonl --json
     """
-    from agent_bom.audit_replay import replay
+    try:
+        from agent_bom.audit_replay import replay
+    except ImportError as exc:
+        if exc.name == "cryptography":
+            click.echo(
+                "ERROR: cryptography is required for `agent-bom audit`.\n"
+                "Install it with:  pip install 'agent-bom[runtime]'  "
+                "(or: pip install cryptography)",
+                err=True,
+            )
+            sys.exit(2)
+        raise
 
     exit_code = replay(
         log_path,

@@ -442,6 +442,34 @@ def test_audit_replay_cmd_alerts_only(tmp_path):
     assert result.exit_code == 0
 
 
+def test_audit_replay_cmd_cryptography_missing_emits_install_hint(tmp_path, monkeypatch):
+    """If cryptography is not importable, `agent-bom audit` should surface a
+    clean `pip install 'agent-bom[runtime]'` hint and exit 2, not a traceback.
+    """
+    import builtins
+    import json
+    import sys
+
+    log_file = tmp_path / "audit.jsonl"
+    log_file.write_text(json.dumps({"type": "tools/call", "tool": "x"}) + "\n")
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "agent_bom.audit_replay":
+            raise ImportError("No module named 'cryptography'", name="cryptography")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.delitem(sys.modules, "agent_bom.audit_replay", raising=False)
+
+    runner = CliRunner()
+    result = runner.invoke(audit_replay_cmd, [str(log_file)])
+    assert result.exit_code == 2
+    assert "cryptography" in result.output
+    assert "agent-bom[runtime]" in result.output
+
+
 def test_audit_drain_dlq_cmd_writes_json_summary_and_deletes_drained(tmp_path):
     import json
 

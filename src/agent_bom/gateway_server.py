@@ -714,6 +714,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         event is emitted to the configured audit_sink so denies and warns
         flow into the existing /v1/proxy/audit relay.
         """
+        # P1-20 v0.86.5 audit: gateway --bearer-token (or API-key store) must
+        # gate the firewall-check endpoint, not just /mcp/{server}. Otherwise
+        # the policy evaluator is reachable unauthenticated on shared
+        # deployments and leaks every rule via the matched_rule field.
+        if _gateway_requires_auth(settings):
+            tenant_id, auth_method = _authenticate_gateway_request(request, settings)
+            request.state.tenant_id = tenant_id
+            request.state.auth_method = auth_method
         try:
             payload = await request.json()
         except json.JSONDecodeError as exc:
@@ -795,11 +803,19 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         return JSONResponse(response_payload)
 
     @app.get("/metrics")
-    async def metrics() -> Response:
+    async def metrics(request: Request) -> Response:
         # Prometheus text-exposition format must be plain text, not JSON.
         # Previous JSONResponse wrapped the body in quotes + escaped newlines,
         # which breaks every Prometheus scraper. Serve as `Response` with the
         # exposition media type so scrapers parse it.
+        #
+        # P1-20 v0.86.5 audit: scraping endpoints carry decision counters and
+        # tenant tags — gate them with the same bearer/API-key check that
+        # protects /mcp/{server} when incoming auth is configured.
+        if _gateway_requires_auth(settings):
+            tenant_id, auth_method = _authenticate_gateway_request(request, settings)
+            request.state.tenant_id = tenant_id
+            request.state.auth_method = auth_method
         from agent_bom.api.metrics import render_prometheus_lines
 
         body = "\n".join(render_prometheus_lines()) + "\n"

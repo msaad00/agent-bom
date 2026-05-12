@@ -243,7 +243,9 @@ def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_
         assert upstream_calls[0]["tool"] == "query_issues"
 
         # ── Stage 6: metrics reflect both outcomes
-        metrics_resp = gw.get("/metrics")
+        # P1-20 v0.86.5 audit: /metrics is now gated by the same bearer/API-key
+        # check that protects /mcp/{server}; reuse the tenant-alpha key.
+        metrics_resp = gw.get("/metrics", headers={"X-API-Key": "tenant-alpha-gateway-key"})
         assert metrics_resp.status_code == 200
         body_text = metrics_resp.text
         assert body_text.startswith("# HELP"), "not Prometheus exposition"

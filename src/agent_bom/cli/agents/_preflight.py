@@ -277,6 +277,9 @@ def run_iac_only_scan(
 
     iac_report = AIBOMReport(agents=[], blast_radii=[])
     iac_report.iac_findings_data = {
+        "schema_version": "1.0",
+        "document_type": "IAC-FINDINGS",
+        "spec_version": "1.0",
         "total": len(all_iac_findings),
         "findings": [
             {

@@ -534,7 +534,8 @@ async def list_keys(request: Request) -> dict:
 
     tenant_id = getattr(request.state, "tenant_id", "default")
     keys = get_key_store().list_keys(tenant_id=tenant_id)
-    return {"keys": [k.to_dict() for k in keys]}
+    # P1-16 v0.86.5 audit: schema_version on terminal list response.
+    return {"schema_version": "v1", "keys": [k.to_dict() for k in keys]}
 
 
 @router.get("/v1/auth/policy", tags=["enterprise"])
@@ -886,6 +887,8 @@ async def list_audit_entries(
     store = get_audit_log()
     entries = store.list_entries(action=action, resource=resource, since=since, limit=limit, offset=offset, tenant_id=tenant_id)
     return {
+        # P1-16 v0.86.5 audit: schema_version on terminal list response.
+        "schema_version": "v1",
         "entries": [e.to_dict() for e in entries],
         "total": store.count(action=action, tenant_id=tenant_id),
         "limit": limit,
@@ -1032,11 +1035,26 @@ async def create_exception(request: Request, req: ExceptionRequest) -> dict:
 
 
 @router.get("/v1/exceptions", tags=["enterprise"])
-async def list_exceptions(request: Request, status: str | None = None) -> dict:
+async def list_exceptions(
+    request: Request,
+    status: str | None = None,
+    # P1-17 v0.86.5 audit: cap exception pagination to keep parity with /v1/audit.
+    limit: Annotated[int, Query(ge=1, le=1000)] = 1000,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict:
     """List all vulnerability exceptions."""
     tenant_id = getattr(request.state, "tenant_id", "default")
-    exceptions = _get_exception_store().list_all(status=status, tenant_id=tenant_id)
-    return {"exceptions": [e.to_dict() for e in exceptions], "total": len(exceptions)}
+    all_exceptions = _get_exception_store().list_all(status=status, tenant_id=tenant_id)
+    total = len(all_exceptions)
+    page = all_exceptions[offset : offset + limit]
+    return {
+        # P1-16 v0.86.5 audit: schema_version on terminal list response.
+        "schema_version": "v1",
+        "exceptions": [e.to_dict() for e in page],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/v1/exceptions/{exception_id}", tags=["enterprise"])

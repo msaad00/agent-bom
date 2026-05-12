@@ -272,3 +272,51 @@ def test_firewall_check_invalid_json_body() -> None:
     with TestClient(create_gateway_app(settings)) as client:
         resp = client.post("/v1/firewall/check", content=b"{not json", headers={"content-type": "application/json"})
     assert resp.status_code == 400
+
+
+# ── P1-20 v0.86.5 audit: bearer token gates /v1/firewall/check + /metrics ──────
+
+
+def test_p1_20_firewall_check_requires_bearer_when_configured() -> None:
+    settings = GatewaySettings(registry=_registry(), policy={}, bearer_token="s3cr3t")  # noqa: S106
+    with TestClient(create_gateway_app(settings)) as client:
+        # Missing auth -> 401 envelope from the gateway.
+        unauth = client.post(
+            "/v1/firewall/check",
+            json={"source_agent": "cursor", "target_agent": "claude-desktop"},
+        )
+        assert unauth.status_code == 401
+
+        # Wrong bearer -> 401.
+        bad = client.post(
+            "/v1/firewall/check",
+            json={"source_agent": "cursor", "target_agent": "claude-desktop"},
+            headers={"Authorization": "Bearer wrong"},
+        )
+        assert bad.status_code == 401
+
+        # Correct bearer -> 200.
+        ok = client.post(
+            "/v1/firewall/check",
+            json={"source_agent": "cursor", "target_agent": "claude-desktop"},
+            headers={"Authorization": "Bearer s3cr3t"},
+        )
+        assert ok.status_code == 200
+
+
+def test_p1_20_metrics_requires_bearer_when_configured() -> None:
+    settings = GatewaySettings(registry=_registry(), policy={}, bearer_token="s3cr3t")  # noqa: S106
+    with TestClient(create_gateway_app(settings)) as client:
+        unauth = client.get("/metrics")
+        assert unauth.status_code == 401
+        ok = client.get("/metrics", headers={"Authorization": "Bearer s3cr3t"})
+        assert ok.status_code == 200
+        assert ok.headers["content-type"].startswith("text/plain")
+
+
+def test_p1_20_metrics_remains_open_when_no_auth_configured() -> None:
+    """When no bearer token + no API key store, /metrics stays open (loopback)."""
+    settings = GatewaySettings(registry=_registry(), policy={})
+    with TestClient(create_gateway_app(settings)) as client:
+        resp = client.get("/metrics")
+    assert resp.status_code == 200

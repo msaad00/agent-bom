@@ -31,9 +31,9 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from werkzeug.security import safe_join
 
@@ -847,16 +847,16 @@ async def stream_scan(request: Request, job_id: str):
 @router.get("/v1/jobs", tags=["scan"])
 async def list_jobs(
     request: Request,
-    limit: int = 50,
-    offset: int = 0,
+    # P1-17 v0.86.5 audit: enforce limit/offset caps via Pydantic so callers
+    # cannot pass `?limit=10000` to fan out the in-memory scan-job list.
+    limit: Annotated[int, Query(ge=1, le=1000)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
     include_details: bool = False,
 ) -> dict:
     """List all scan jobs (for the UI job history panel).
 
-    Supports pagination via ``limit`` (default 50, max 200) and ``offset``.
+    Supports pagination via ``limit`` (default 50, max 1000) and ``offset``.
     """
-    limit = max(1, min(limit, 200))
-    offset = max(0, offset)
     tenant_id = _tenant_id(request)
     store = _get_store()
     summary = store.list_summary(tenant_id=tenant_id)
@@ -883,6 +883,9 @@ async def list_jobs(
 
         enriched.append(item)
     return {
+        # P1-16 v0.86.5 audit: emit schema_version on terminal list responses
+        # so downstream consumers can pin a contract independent of API path.
+        "schema_version": "v1",
         "jobs": enriched,
         "count": len(enriched),
         "total": total,
@@ -923,8 +926,10 @@ async def list_findings(
     request: Request,
     severity: str | None = None,
     sort: str = "effective_reach",
-    limit: int = 500,
-    offset: int = 0,
+    # P1-17 v0.86.5 audit: enforce limit cap server-side instead of trusting
+    # the historical `min(limit, 1000)` clamp at use-site.
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict:
     """List vulnerability findings aggregated from completed scan results.
 
@@ -947,11 +952,12 @@ async def list_findings(
         sort_key = "effective_reach"
     findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
 
-    limit = max(1, min(limit, 1000))
-    offset = max(0, offset)
     total = len(findings)
     page = redact_for_persistence(findings[offset : offset + limit], EvidenceTier.SAFE_TO_STORE)
     return {
+        # P1-16 v0.86.5 audit: emit schema_version so consumers can pin a
+        # contract independent of API path.
+        "schema_version": "v1",
         "findings": page,
         "count": len(page),
         "total": total,
@@ -965,8 +971,9 @@ async def list_findings(
 @router.get("/v1/inventory", tags=["scan"])
 async def list_inventory(
     request: Request,
-    limit: int = 500,
-    offset: int = 0,
+    # P1-17 v0.86.5 audit: enforce limit cap server-side via Pydantic.
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict:
     """List agent and package inventory aggregated from completed scan results."""
     tenant_id = _tenant_id(request)
@@ -981,8 +988,6 @@ async def list_inventory(
         jobs.append({"job_id": job.job_id, "created_at": job.created_at, "completed_at": job.completed_at or ""})
 
     packages = _inventory_packages_from_agents(agents)
-    limit = max(1, min(limit, 1000))
-    offset = max(0, offset)
     total = len(agents)
     page = agents[offset : offset + limit]
     return {

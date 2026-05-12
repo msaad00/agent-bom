@@ -183,6 +183,9 @@ def _check_result_payload(
         )
 
     return {
+        "schema_version": "1.0",
+        "document_type": "PACKAGE-CHECK",
+        "spec_version": "1.0",
         "package": name,
         "version": version,
         "ecosystems": ecosystems,

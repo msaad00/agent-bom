@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import ValidationError
 
 from agent_bom.api.audit_log import log_action
@@ -130,10 +131,26 @@ async def create_source(request: Request, body: SourceCreate) -> dict:
 
 
 @router.get("/v1/sources", tags=["sources"])
-async def list_sources(request: Request) -> dict:
+async def list_sources(
+    request: Request,
+    # P1-17 v0.86.5 audit: cap pagination so hostile callers cannot probe an
+    # entire tenant's source registry in a single request.
+    limit: Annotated[int, Query(ge=1, le=1000)] = 1000,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict:
     tenant_id = _tenant_id(request)
-    sources = [source.model_dump() for source in _get_source_store().list_all(tenant_id=tenant_id)]
-    return {"sources": sources, "count": len(sources)}
+    all_sources = [source.model_dump() for source in _get_source_store().list_all(tenant_id=tenant_id)]
+    total = len(all_sources)
+    page = all_sources[offset : offset + limit]
+    return {
+        # P1-16 v0.86.5 audit: schema_version on terminal list response.
+        "schema_version": "v1",
+        "sources": page,
+        "count": len(page),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/v1/sources/{source_id}", tags=["sources"])

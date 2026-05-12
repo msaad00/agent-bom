@@ -13,7 +13,7 @@ import click
 from rich.console import Console
 
 from agent_bom.output import print_diff
-from agent_bom.output.compliance_narrative import ALL_FRAMEWORK_SLUGS
+from agent_bom.output.compliance_narrative import ACCEPTED_FRAMEWORK_SLUGS
 
 if TYPE_CHECKING:
     from agent_bom.models import Agent, AIBOMReport, BlastRadius
@@ -587,7 +587,7 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
 @click.argument("scan_file", type=click.Path(exists=True))
 @click.option(
     "--framework",
-    type=click.Choice(ALL_FRAMEWORK_SLUGS),
+    type=click.Choice(ACCEPTED_FRAMEWORK_SLUGS, case_sensitive=False),
     default=None,
     help="Generate a single-framework narrative instead of the full set.",
 )

@@ -90,7 +90,13 @@ def test_supported_snowflake_routes_remain_wired(mock_connect, monkeypatch):
             assert schedules.json() == []
 
             assert exceptions.status_code == 200
-            assert exceptions.json() == {"exceptions": [], "total": 0}
+            assert exceptions.json() == {
+                "schema_version": "v1",
+                "exceptions": [],
+                "total": 0,
+                "limit": 1000,
+                "offset": 0,
+            }
     finally:
         _clear_store_globals()
 

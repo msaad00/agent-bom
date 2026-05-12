@@ -77,6 +77,16 @@ def _all_framework_slugs() -> list[str]:
 
 
 ALL_FRAMEWORK_SLUGS: list[str] = _all_framework_slugs()
+FRAMEWORK_SLUG_ALIASES: dict[str, str] = {
+    "mitre-attack": "attack",
+    "mitre_attack": "attack",
+}
+ACCEPTED_FRAMEWORK_SLUGS: list[str] = [*ALL_FRAMEWORK_SLUGS, *FRAMEWORK_SLUG_ALIASES]
+
+
+def normalize_framework_slug(slug: str) -> str:
+    normalized = slug.strip().lower()
+    return FRAMEWORK_SLUG_ALIASES.get(normalized, normalized)
 
 
 # ─── Dataclasses ─────────────────────────────────────────────────────────────
@@ -611,6 +621,7 @@ def generate_compliance_narrative(
     """
     # Validate slug early so we fail fast before any computation
     if framework is not None:
+        framework = normalize_framework_slug(framework)
         _get_catalog(framework)  # raises ValueError for unknown slugs
 
     # Build a lightweight list-of-dicts from blast_radii (avoids re-importing models)

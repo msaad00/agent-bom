@@ -12,8 +12,10 @@ Endpoints:
 
 from __future__ import annotations
 
-from collections import Counter, deque
+import time
+from collections import Counter, OrderedDict, deque
 from pathlib import Path as _Path
+from threading import Lock
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
@@ -44,6 +46,46 @@ _proxy_alerts: deque[dict] = deque(maxlen=1000)
 _proxy_alerts_total: int = 0
 _proxy_metrics: dict | None = None
 _proxy_metrics_by_tenant: dict[str, dict] = {}
+
+# P1-19 v0.86.5 audit: dedupe inbound proxy alerts by event_id over a 24h
+# window so a hostile or buggy proxy cannot replay credential-leak alerts and
+# inflate detector tallies. Per-(tenant_id, event_id) entries expire after
+# AUDIT_DEDUPE_WINDOW_SECONDS.
+AUDIT_DEDUPE_WINDOW_SECONDS = 24 * 60 * 60
+AUDIT_DEDUPE_MAX_ENTRIES = 50_000
+_audit_dedupe: "OrderedDict[tuple[str, str], float]" = OrderedDict()
+_audit_dedupe_lock = Lock()
+
+
+def _purge_expired_dedupe(now: float) -> None:
+    cutoff = now - AUDIT_DEDUPE_WINDOW_SECONDS
+    while _audit_dedupe:
+        key, ts = next(iter(_audit_dedupe.items()))
+        if ts >= cutoff:
+            break
+        _audit_dedupe.popitem(last=False)
+    while len(_audit_dedupe) > AUDIT_DEDUPE_MAX_ENTRIES:
+        _audit_dedupe.popitem(last=False)
+
+
+def _claim_audit_event(tenant_id: str, event_id: str) -> bool:
+    """Reserve a (tenant, event_id) pair. Returns True if new, False if replay."""
+    if not event_id:
+        return True
+    now = time.time()
+    key = (tenant_id or "default", event_id)
+    with _audit_dedupe_lock:
+        _purge_expired_dedupe(now)
+        if key in _audit_dedupe:
+            return False
+        _audit_dedupe[key] = now
+        return True
+
+
+def _reset_audit_dedupe_for_tests() -> None:
+    """Test helper to clear the dedupe table between cases."""
+    with _audit_dedupe_lock:
+        _audit_dedupe.clear()
 
 
 def push_proxy_alert(alert: dict) -> None:
@@ -102,6 +144,8 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
     from agent_bom.api.stores import _get_firewall_decision_store
 
     firewall_store = _get_firewall_decision_store()
+    duplicate_event_ids: list[str] = []
+    accepted_alerts: list[dict] = []
     for alert in body.alerts:
         enriched = dict(alert)
         enriched.setdefault("source_id", source_id)
@@ -113,6 +157,14 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         # process-wide; without this tag every tenant sees every other
         # tenant's alerts on shared deployments.
         enriched.setdefault("tenant_id", tenant_id)
+        # P1-19 v0.86.5 audit: dedupe by event_id so a buggy or hostile proxy
+        # cannot replay credential_leak alerts and inflate per-detector
+        # tallies. Empty event_id falls through to keep legacy callers working.
+        event_id = str(enriched.get("event_id") or "")
+        if event_id and not _claim_audit_event(tenant_id, event_id):
+            duplicate_event_ids.append(event_id)
+            continue
+        accepted_alerts.append(enriched)
         push_proxy_alert(enriched)
         # Tally inter-agent firewall decisions for the runtime-tab dashboard
         # (#982 PR 4). Non-firewall alerts are silently ignored by record().
@@ -156,6 +208,19 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         except Exception:
             pass
 
+    # P1-19 v0.86.5 audit: count both the alerts that crossed the wire and the
+    # runtime_alerts surfaced via summary so credential_leak detections always
+    # register, regardless of which envelope key the caller used.
+    summary_runtime_alerts = 0
+    if isinstance(body.summary, dict):
+        candidate = body.summary.get("runtime_alerts")
+        if isinstance(candidate, int):
+            summary_runtime_alerts = max(0, candidate)
+        elif isinstance(candidate, list):
+            summary_runtime_alerts = len(candidate)
+    accepted_count = len(accepted_alerts)
+    effective_alert_count = max(accepted_count, summary_runtime_alerts)
+
     log_action(
         "proxy.audit_ingested",
         actor=actor,
@@ -164,14 +229,18 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         session_id=session_id,
         request_id=request_id,
         trace_id=trace_id,
-        alert_count=len(body.alerts),
+        alert_count=effective_alert_count,
+        duplicate_alert_count=len(duplicate_event_ids),
         has_summary=body.summary is not None,
     )
     response = {
         "ingested": True,
         "source_id": source_id,
         "session_id": session_id,
-        "alert_count": len(body.alerts),
+        "alert_count": effective_alert_count,
+        "accepted_alert_count": accepted_count,
+        "duplicate_alert_count": len(duplicate_event_ids),
+        "duplicate_event_ids": duplicate_event_ids,
         "has_summary": body.summary is not None,
     }
     if body.idempotency_key:

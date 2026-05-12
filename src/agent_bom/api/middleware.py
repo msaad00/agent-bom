@@ -1661,3 +1661,127 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
             request._receive = _receive  # type: ignore[attr-defined]
 
         return await call_next(request)
+
+
+# ─── P1-18 v0.86.5 audit: structured error envelope ───────────────────────────
+
+# Map HTTP status codes to stable string codes that downstream consumers can
+# pin on without parsing free-form messages. The mapping is intentionally
+# narrow — every API error funnels through one of these buckets, with anything
+# else falling back to ``INTERNAL_ERROR``.
+_ERROR_CODE_BY_STATUS = {
+    400: "BAD_REQUEST",
+    401: "AUTH_FAILED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    405: "METHOD_NOT_ALLOWED",
+    409: "CONFLICT",
+    413: "PAYLOAD_TOO_LARGE",
+    415: "UNSUPPORTED_MEDIA_TYPE",
+    422: "VALIDATION_ERROR",
+    429: "RATE_LIMITED",
+    500: "INTERNAL_ERROR",
+    503: "SERVICE_UNAVAILABLE",
+}
+
+
+def _error_code_for_status(status_code: int) -> str:
+    return _ERROR_CODE_BY_STATUS.get(status_code, "INTERNAL_ERROR")
+
+
+def _error_message_for(status_code: int, detail: object) -> str:
+    """Best-effort short human message derived from the FastAPI detail."""
+    if isinstance(detail, str) and detail.strip():
+        return detail
+    if isinstance(detail, list) and detail:
+        # RequestValidationError serializes to a list of field-level errors;
+        # collapse the first message so the envelope still has a human field.
+        first = detail[0]
+        if isinstance(first, dict):
+            msg = first.get("msg")
+            if isinstance(msg, str) and msg.strip():
+                return msg
+    if isinstance(detail, dict):
+        msg = detail.get("message") or detail.get("msg")
+        if isinstance(msg, str) and msg.strip():
+            return msg
+    return {
+        400: "Bad request",
+        401: "Authentication required",
+        403: "Forbidden",
+        404: "Not found",
+        409: "Conflict",
+        413: "Payload too large",
+        422: "Validation error",
+        429: "Rate limited",
+        500: "Internal error",
+        503: "Service unavailable",
+    }.get(status_code, "Request failed")
+
+
+def _build_error_envelope(
+    *,
+    status_code: int,
+    detail: object,
+    correlation_id: str,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
+    payload = {
+        "error": {
+            "code": _error_code_for_status(status_code),
+            "message": _error_message_for(status_code, detail),
+            "correlation_id": correlation_id,
+            # Preserve the original FastAPI detail payload for backward
+            # compatibility — existing UIs that displayed `detail` still work
+            # while new clients can read `error.code` / `error.message`.
+            "details": detail,
+        },
+        # Top-level alias kept so callers that grew up on
+        # ``{"detail": "..."}`` still parse. New code should read ``error``.
+        "detail": detail,
+    }
+    response_headers = dict(headers or {})
+    response_headers.setdefault("X-Request-ID", correlation_id)
+    return JSONResponse(status_code=status_code, content=payload, headers=response_headers)
+
+
+def install_error_envelope(application: object) -> None:
+    """Register FastAPI exception handlers that emit the v1 error envelope.
+
+    The envelope is ``{error: {code, message, correlation_id, details}}`` and
+    is also surfaced as a top-level ``detail`` field for backward compatibility
+    with the historical FastAPI shape.
+    """
+    from fastapi import HTTPException
+    from fastapi.exceptions import RequestValidationError
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    def _correlation_id(request: StarletteRequest) -> str:
+        return getattr(request.state, "request_id", "") or request.headers.get("x-request-id") or str(uuid.uuid4())
+
+    async def http_exception_handler(request: StarletteRequest, exc: HTTPException):
+        return _build_error_envelope(
+            status_code=exc.status_code,
+            detail=exc.detail,
+            correlation_id=_correlation_id(request),
+            headers=getattr(exc, "headers", None),
+        )
+
+    async def starlette_http_exception_handler(request: StarletteRequest, exc: StarletteHTTPException):
+        return _build_error_envelope(
+            status_code=exc.status_code,
+            detail=exc.detail,
+            correlation_id=_correlation_id(request),
+            headers=getattr(exc, "headers", None),
+        )
+
+    async def validation_exception_handler(request: StarletteRequest, exc: RequestValidationError):
+        return _build_error_envelope(
+            status_code=422,
+            detail=exc.errors(),
+            correlation_id=_correlation_id(request),
+        )
+
+    application.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[attr-defined]
+    application.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)  # type: ignore[attr-defined]
+    application.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[attr-defined]

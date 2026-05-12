@@ -272,7 +272,7 @@ def test_control_plane_contract_scan_graph_policy_audit_flow(control_plane_contr
     assert upstream_calls[0]["tenant_id"] == "tenant-alpha"
     assert upstream_calls[0]["headers"]["Authorization"] == "Bearer tenant-alpha-token"
 
-    metrics = gw.get("/metrics")
+    metrics = gw.get("/metrics", headers={"X-API-Key": "tenant-alpha-key"})
     assert metrics.status_code == 200
     assert 'agent_bom_gateway_relays_total{upstream="jira",outcome="blocked"} 1' in metrics.text
     assert 'agent_bom_gateway_relays_total{upstream="jira",outcome="forwarded"} 1' in metrics.text

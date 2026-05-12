@@ -250,6 +250,21 @@ class TestAIBOMDocument:
         assert result["summary"]["total_agents"] == 2
         assert result["summary"]["total_vulnerabilities"] >= 2
 
+    def test_report_surfaces_canonical_ids_alongside_stable_ids(self):
+        report = _make_full_report()
+        result = to_json(report)
+
+        agent = result["agents"][0]
+        server = agent["mcp_servers"][0]
+        package = server["packages"][0]
+        finding = result["findings"][0]
+
+        assert agent["canonical_id"] == agent["stable_id"]
+        assert server["canonical_id"] == server["stable_id"]
+        assert package["canonical_id"] == package["stable_id"]
+        assert finding["canonical_id"] == finding["id"]
+        assert finding["asset"]["canonical_id"] == finding["asset"]["stable_id"]
+
     def test_mcp_context_detected(self):
         report = _make_full_report()
         assert report.has_mcp_context is True

@@ -90,6 +90,7 @@ def _prompt_scan_findings(prompt_scan: dict) -> list[dict[str, object]]:
             {
                 "schema_version": FINDING_SCHEMA_VERSION,
                 "id": _stable_report_finding_id("prompt_scan", source_file, line_number, title, item.get("matched_text")),
+                "canonical_id": _stable_report_finding_id("prompt_scan", source_file, line_number, title, item.get("matched_text")),
                 "finding_type": "PROMPT_SECURITY",
                 "source": "PROMPT_SCAN",
                 "asset": {
@@ -98,6 +99,7 @@ def _prompt_scan_findings(prompt_scan: dict) -> list[dict[str, object]]:
                     "identifier": source_file or None,
                     "location": source_file or None,
                     "stable_id": _stable_report_finding_id("prompt_asset", source_file),
+                    "canonical_id": _stable_report_finding_id("prompt_asset", source_file),
                 },
                 "severity": severity,
                 "effective_severity": severity,
@@ -127,6 +129,7 @@ def _browser_extension_findings(browser_extensions: dict) -> list[dict[str, obje
             {
                 "schema_version": FINDING_SCHEMA_VERSION,
                 "id": _stable_report_finding_id("browser_extension", browser, extension_id, item.get("version")),
+                "canonical_id": _stable_report_finding_id("browser_extension", browser, extension_id, item.get("version")),
                 "finding_type": "BROWSER_EXTENSION_RISK",
                 "source": "BROWSER_EXTENSION_SCAN",
                 "asset": {
@@ -135,6 +138,7 @@ def _browser_extension_findings(browser_extensions: dict) -> list[dict[str, obje
                     "identifier": extension_id,
                     "location": item.get("path"),
                     "stable_id": _stable_report_finding_id("browser_extension_asset", browser, extension_id),
+                    "canonical_id": _stable_report_finding_id("browser_extension_asset", browser, extension_id),
                 },
                 "severity": severity,
                 "effective_severity": severity,
@@ -381,6 +385,7 @@ def _build_ai_bom_entities_snapshot(report: AIBOMReport) -> dict:
         agents.append(
             {
                 "id": agent.stable_id,
+                "canonical_id": agent.canonical_id,
                 "name": agent.name,
                 "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
@@ -398,6 +403,7 @@ def _build_ai_bom_entities_snapshot(report: AIBOMReport) -> dict:
             if server.stable_id not in servers:
                 servers[server.stable_id] = {
                     "id": server.stable_id,
+                    "canonical_id": server.canonical_id,
                     "name": server.name,
                     "surface": server.surface.value,
                     "fingerprint": server.fingerprint,
@@ -420,6 +426,7 @@ def _build_ai_bom_entities_snapshot(report: AIBOMReport) -> dict:
                 if tool.stable_id not in tools:
                     tools[tool.stable_id] = {
                         "id": tool.stable_id,
+                        "canonical_id": tool.canonical_id,
                         "name": tool.name,
                         "fingerprint": tool.fingerprint,
                         "description": tool.description,
@@ -437,6 +444,7 @@ def _build_ai_bom_entities_snapshot(report: AIBOMReport) -> dict:
                 if resource.stable_id not in resources:
                     resources[resource.stable_id] = {
                         "id": resource.stable_id,
+                        "canonical_id": resource.canonical_id,
                         "uri": resource.uri,
                         "name": resource.name,
                         "fingerprint": resource.fingerprint,
@@ -452,6 +460,7 @@ def _build_ai_bom_entities_snapshot(report: AIBOMReport) -> dict:
                 if prompt.stable_id not in prompts:
                     prompts[prompt.stable_id] = {
                         "id": prompt.stable_id,
+                        "canonical_id": prompt.canonical_id,
                         "name": prompt.name,
                         "fingerprint": prompt.fingerprint,
                         "description": prompt.description,
@@ -467,6 +476,7 @@ def _build_ai_bom_entities_snapshot(report: AIBOMReport) -> dict:
                 if pkg.stable_id not in packages:
                     packages[pkg.stable_id] = {
                         "id": pkg.stable_id,
+                        "canonical_id": pkg.canonical_id,
                         "name": pkg.name,
                         "version": pkg.version,
                         "ecosystem": pkg.ecosystem,
@@ -828,6 +838,7 @@ def to_json(report: AIBOMReport) -> dict:
             {
                 "name": agent.name,
                 "stable_id": agent.stable_id,
+                "canonical_id": agent.canonical_id,
                 "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
                 "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",
@@ -842,6 +853,7 @@ def to_json(report: AIBOMReport) -> dict:
                     {
                         "name": server.name,
                         "stable_id": server.stable_id,
+                        "canonical_id": server.canonical_id,
                         "surface": server.surface.value,
                         "fingerprint": server.fingerprint,
                         "command": server.command,
@@ -868,6 +880,7 @@ def to_json(report: AIBOMReport) -> dict:
                             {
                                 "name": t.name,
                                 "stable_id": t.stable_id,
+                                "canonical_id": t.canonical_id,
                                 "fingerprint": t.fingerprint,
                                 "description": t.description,
                                 "discovery_source": t.discovery_source,
@@ -882,6 +895,7 @@ def to_json(report: AIBOMReport) -> dict:
                             {
                                 "uri": r.uri,
                                 "stable_id": r.stable_id,
+                                "canonical_id": r.canonical_id,
                                 "fingerprint": r.fingerprint,
                                 "name": r.name,
                                 "description": r.description,
@@ -895,6 +909,7 @@ def to_json(report: AIBOMReport) -> dict:
                             {
                                 "name": p.name,
                                 "stable_id": p.stable_id,
+                                "canonical_id": p.canonical_id,
                                 "fingerprint": p.fingerprint,
                                 "description": p.description,
                                 "arguments": p.arguments,
@@ -907,6 +922,7 @@ def to_json(report: AIBOMReport) -> dict:
                             {
                                 "name": pkg.name,
                                 "stable_id": pkg.stable_id,
+                                "canonical_id": pkg.canonical_id,
                                 "version": pkg.version,
                                 "ecosystem": pkg.ecosystem,
                                 "purl": pkg.purl,
@@ -1020,6 +1036,7 @@ def to_json(report: AIBOMReport) -> dict:
             {
                 "schema_version": BLAST_RADIUS_SCHEMA_VERSION,
                 **({"package_name": br.package.name, "package_version": br.package.version, "package_stable_id": br.package.stable_id}),
+                "package_canonical_id": br.package.canonical_id,
                 **effective_blast_radius_tags(br),
                 "risk_score": br.risk_score,
                 "reachability": br.reachability,

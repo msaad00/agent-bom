@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_bom.canonical_ids import canonical_graph_edge_id
 from agent_bom.graph.types import RelationshipType
 from agent_bom.graph.util import _now_iso
 
@@ -52,9 +53,16 @@ class UnifiedEdge:
         rel = self.relationship.value if isinstance(self.relationship, RelationshipType) else self.relationship
         return f"{rel}:{self.source}:{self.target}"
 
+    @property
+    def canonical_id(self) -> str:
+        """Stable edge identity for scan-history joins without changing edge.id."""
+        rel = self.relationship.value if isinstance(self.relationship, RelationshipType) else str(self.relationship)
+        return canonical_graph_edge_id(self.source, self.target, rel)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
+            "canonical_id": self.canonical_id,
             "source": self.source,
             "target": self.target,
             "source_id": self.source,

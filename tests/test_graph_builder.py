@@ -121,6 +121,7 @@ class TestBuildUnifiedGraphFromReport:
                     "name": "claude-desktop",
                     "type": "claude-desktop",
                     "source_id": "device-a",
+                    "stable_id": "legacy-agent-stable-id",
                     "enrollment_name": "eng-laptop-a",
                     "owner": "alice",
                     "mcp_servers": [
@@ -137,6 +138,7 @@ class TestBuildUnifiedGraphFromReport:
                     "name": "claude-desktop",
                     "type": "claude-desktop",
                     "source_id": "device-b",
+                    "stable_id": "legacy-agent-stable-id",
                     "enrollment_name": "eng-laptop-b",
                     "owner": "bob",
                     "mcp_servers": [
@@ -156,6 +158,7 @@ class TestBuildUnifiedGraphFromReport:
 
         assert "agent:device-a:claude-desktop" in g.nodes
         assert "agent:device-b:claude-desktop" in g.nodes
+        assert g.nodes["agent:device-a:claude-desktop"].canonical_id != g.nodes["agent:device-b:claude-desktop"].canonical_id
         assert g.nodes["agent:device-a:claude-desktop"].attributes["source_id"] == "device-a"
         assert g.nodes["agent:device-b:claude-desktop"].attributes["owner"] == "bob"
         assert g.has_edge("agent:device-a:claude-desktop", "server:device-a:claude-desktop:team-chat-server")
@@ -179,6 +182,7 @@ class TestBuildUnifiedGraphFromReport:
         assert "agent:device%3Aprod:claude-desktop" in g.nodes
         assert "agent:device:prod:claude-desktop" not in g.nodes
         assert g.nodes["agent:device%3Aprod:claude-desktop"].attributes["source_id"] == "device:prod"
+        assert g.nodes["agent:device%3Aprod:claude-desktop"].attributes["source_ids"]["source_id"] == "device:prod"
 
     def test_provider_nodes_and_hosts_edges(self):
         g = build_unified_graph_from_report(_minimal_report())
@@ -530,7 +534,18 @@ class TestBuildUnifiedGraphFromReport:
         g = build_unified_graph_from_report(report)
 
         assert "pkg:pypi:torch-audio@1.0.0" in g.nodes
+        assert g.nodes["pkg:pypi:torch-audio@1.0.0"].to_dict()["canonical_id"]
         assert g.has_edge("pkg:pypi:torch-audio@1.0.0", "vuln:CVE-2024-1234")
+
+    def test_graph_nodes_and_edges_emit_canonical_ids_without_replacing_readable_ids(self):
+        g = build_unified_graph_from_report(_minimal_report())
+        agent = g.nodes["agent:claude-desktop"]
+        edge = next(e for e in g.edges if e.source == "agent:claude-desktop" and e.target == "server:claude-desktop:mcp-fs")
+
+        assert agent.to_dict()["id"] == "agent:claude-desktop"
+        assert agent.to_dict()["canonical_id"] == agent.canonical_id
+        assert edge.to_dict()["id"] == "uses:agent:claude-desktop:server:claude-desktop:mcp-fs"
+        assert edge.to_dict()["canonical_id"] == edge.canonical_id
 
     def test_agent_to_server_edge(self):
         g = build_unified_graph_from_report(_minimal_report())

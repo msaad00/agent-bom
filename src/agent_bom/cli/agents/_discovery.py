@@ -98,33 +98,37 @@ def run_local_discovery(
     **kwargs: Any,
 ) -> None:
     """Steps 1–1g4: discover agents from local sources, SBOM, images, etc."""
-    from rich.rule import Rule
-
     # Allow callers to inject discover_all (enables patch("agent_bom.cli.agents.discover_all"))
     _discover = _discover_all if _discover_all is not None else _discover_all_default
     con = ctx.con
+    preloaded_inventory_data: dict[str, Any] | None = None
+    inventory_label: str | None = None
+    if inventory:
+        if inventory == "-":
+            inventory_label = "stdin"
+        elif "agent-bom-demo-" in inventory:
+            inventory_label = "curated sample environment"
+        elif "agent-bom-self-scan" in inventory:
+            inventory_label = "self-scan"
+        else:
+            inventory_label = inventory
+        from agent_bom.inventory import load_inventory
+
+        try:
+            preloaded_inventory_data = load_inventory(inventory)
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            raise click.BadParameter(str(exc), param_hint="--inventory") from exc
+
+    from rich.rule import Rule
+
     con.print(Rule("Discovery", style="blue"))
 
     # Step 1: Agent discovery
     if skill_only:
         ctx.agents = []  # skill-only: no agent discovery
     elif inventory:
-        if inventory == "-":
-            label = "stdin"
-        elif "agent-bom-demo-" in inventory:
-            label = "curated sample environment"
-        elif "agent-bom-self-scan" in inventory:
-            label = "self-scan"
-        else:
-            label = inventory
-        from agent_bom.inventory import load_inventory
-
-        try:
-            inventory_data = load_inventory(inventory)
-        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-            raise click.BadParameter(str(exc), param_hint="--inventory") from exc
-        ctx.agents = _build_agents_from_inventory(inventory_data, inventory)
-        con.print(f"\n  [green]✓[/green] {len(ctx.agents)} agent(s) from {label}")
+        ctx.agents = _build_agents_from_inventory(preloaded_inventory_data or {"agents": []}, inventory)
+        con.print(f"\n  [green]✓[/green] {len(ctx.agents)} agent(s) from {inventory_label or inventory}")
     elif no_discover:
         ctx.agents = []
     elif config_dir:

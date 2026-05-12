@@ -185,6 +185,19 @@ def test_agent_mode_entry_wraps_usage_errors(monkeypatch, capsys):
     assert payload["errors"][0]["type"] == "usage"
 
 
+def test_agent_mode_entry_accepts_late_flag(monkeypatch, capsys):
+    monkeypatch.delenv("AGENT_BOM_AGENT_MODE", raising=False)
+    monkeypatch.setattr(sys, "argv", ["agent-bom", "not-a-command", "--agent-mode"])
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main()
+
+    assert excinfo.value.code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "agent"
+    assert payload["ok"] is False
+
+
 def test_scan_external_scan_invalid_json_exits_nonzero(tmp_path):
     inventory = {
         "schema_version": "1",
@@ -246,6 +259,24 @@ def test_scan_no_scan_flag():
     with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--no-scan"])
     assert result.exit_code == 0
+
+
+def test_scan_records_local_analytics_without_save():
+    calls = []
+
+    def _record(report_json, **kwargs):
+        calls.append((report_json, kwargs))
+        return "local-scan"
+
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.db.local_analytics.record_scan_report_best_effort", side_effect=_record),
+    ):
+        result = _run(["scan", "--demo", "--no-scan", "--quiet"])
+
+    assert result.exit_code == 0
+    assert calls
+    assert calls[0][1]["source"] == "cli"
 
 
 def test_scan_empty_state_shows_real_client_paths(monkeypatch):

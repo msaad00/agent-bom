@@ -154,6 +154,8 @@ def _check_result_payload(
     vulnerabilities: list | None = None,
     warnings: list[str] | None = None,
     exit_zero: bool = False,
+    fail_on_severity: str | None = None,
+    fail_on_severity_count: int | None = None,
 ) -> dict:
     """Build machine-readable check output."""
     serialized_vulns = []
@@ -188,6 +190,8 @@ def _check_result_payload(
         "message": message,
         "exit_code": exit_code,
         "exit_zero": exit_zero,
+        "fail_on_severity": fail_on_severity,
+        "fail_on_severity_count": fail_on_severity_count,
         "vulnerability_count": len(serialized_vulns),
         "scan_warnings": warnings or [],
         "vulnerabilities": serialized_vulns,
@@ -196,6 +200,16 @@ def _check_result_payload(
 
 def _format_vulnerability_count(count: int) -> str:
     return f"{count} vulnerability found" if count == 1 else f"{count} vulnerabilities found"
+
+
+_CHECK_SEVERITY_RANK = {"none": 0, "unknown": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+
+
+def _vulns_at_or_above(vulnerabilities: list, threshold: str | None) -> list:
+    if not threshold:
+        return list(vulnerabilities)
+    threshold_rank = _CHECK_SEVERITY_RANK[threshold.lower()]
+    return [vuln for vuln in vulnerabilities if _CHECK_SEVERITY_RANK.get(str(vuln.severity.value).lower(), 0) >= threshold_rank]
 
 
 def _resolve_check_ecosystems(name: str, version: str, ecosystem: Optional[str], detected_eco: str) -> list[str]:
@@ -333,6 +347,12 @@ def _exit_model_verification(
     help="Exit 0 even when vulnerabilities are found (useful for exploratory or parallel checks)",
 )
 @click.option("--enrich", is_flag=True, help="Add NVD CVSS, EPSS, and CISA KEV enrichment to matched vulnerabilities.")
+@click.option(
+    "--fail-on-severity",
+    type=click.Choice(["critical", "high", "medium", "low"], case_sensitive=False),
+    default=None,
+    help="Exit 1 only when vulnerabilities at this severity or higher are found.",
+)
 @click.option("--nvd-api-key", envvar="NVD_API_KEY", default=None, help="NVD API key for higher rate limits when using --enrich.")
 def check(
     package_spec: str,
@@ -343,6 +363,7 @@ def check(
     output_path: str | None,
     exit_zero: bool,
     enrich: bool,
+    fail_on_severity: str | None,
     nvd_api_key: str | None,
 ):
     """Check a package for known vulnerabilities before installing.
@@ -370,6 +391,7 @@ def check(
       (or `agent-bom scan`) with `--format/--output`.
       Use --exit-zero for exploratory or parallel workflows where findings
       should be reported without failing the command.
+      Use --fail-on-severity to make CI fail only at the selected threshold.
     """
     if output_path and output_format != "json":
         raise click.ClickException("`check --output` requires `--format json`.")
@@ -491,6 +513,7 @@ def check(
 
     matched_pkg = next((p for p in pkgs if p.vulnerabilities), pkgs[0])
     vulns = matched_pkg.vulnerabilities
+    fail_threshold = fail_on_severity.lower() if fail_on_severity else None
 
     if enrich and any(pkg.vulnerabilities for pkg in pkgs):
         from agent_bom.enrichment import enrich_vulnerabilities
@@ -630,6 +653,8 @@ def check(
                     vulnerabilities=vulns,
                     warnings=scan_warnings,
                     exit_zero=True,
+                    fail_on_severity=fail_threshold,
+                    fail_on_severity_count=len(_vulns_at_or_above(vulns, fail_threshold)),
                 ),
                 output_path,
             )
@@ -640,6 +665,32 @@ def check(
             console.print(
                 f"  [yellow]⚠ {_format_vulnerability_count(len(vulns))} — reported without failing due to --exit-zero.[/yellow]\n"
             )
+        sys.exit(0)
+
+    failing_vulns = _vulns_at_or_above(vulns, fail_threshold)
+    if fail_threshold and not failing_vulns:
+        message = f"{_format_vulnerability_count(len(vulns))} in {name}@{version}; none at or above {fail_threshold}."
+        if structured_output:
+            _write_json_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=ecosystems,
+                    verdict="unsafe",
+                    message=message,
+                    exit_code=0,
+                    vulnerabilities=vulns,
+                    warnings=scan_warnings,
+                    fail_on_severity=fail_threshold,
+                    fail_on_severity_count=0,
+                ),
+                output_path,
+            )
+            sys.exit(0)
+        if quiet:
+            click.echo(f"{name}@{version}: {_format_vulnerability_count(len(vulns))} (below {fail_threshold})")
+        else:
+            console.print(f"  [yellow]⚠ {message}[/yellow]\n")
         sys.exit(0)
 
     if structured_output:
@@ -653,6 +704,8 @@ def check(
                 exit_code=1,
                 vulnerabilities=vulns,
                 warnings=scan_warnings,
+                fail_on_severity=fail_threshold,
+                fail_on_severity_count=len(failing_vulns),
             ),
             output_path,
         )

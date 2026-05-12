@@ -191,6 +191,7 @@ export default function MeshPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
   const [layoutMode, setLayoutMode] = useState<MeshLayoutMode>("topology");
+  const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
 
   // Filters
   const [nodeFilter, setNodeFilter] = useState<NodeTypeFilter>({
@@ -349,6 +350,11 @@ export default function MeshPage() {
     [hoveredNodeId, visibleEdges]
   );
 
+  const pathFocusIds = useMemo(() => {
+    if (!pathFocusEnabled || !stats.topExposurePath || searchQuery || hoveredNodeId) return null;
+    return new Set(stats.topExposurePath.nodeIds);
+  }, [hoveredNodeId, pathFocusEnabled, searchQuery, stats.topExposurePath]);
+
   const displayNodes = useMemo(() => {
     if (searchMatches && searchMatches.size > 0) {
       return visibleNodes?.map((n) => ({
@@ -356,22 +362,28 @@ export default function MeshPage() {
         data: { ...n.data, dimmed: !searchMatches.has(n.id), highlighted: searchMatches.has(n.id) },
       }));
     }
+    if (pathFocusIds) {
+      return visibleNodes?.map((n) => ({
+        ...n,
+        data: { ...n.data, dimmed: !pathFocusIds.has(n.id), highlighted: pathFocusIds.has(n.id) },
+      }));
+    }
     if (!connectedIds) return visibleNodes;
     return visibleNodes?.map((n) => ({
       ...n,
       data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) },
     }));
-  }, [visibleNodes, connectedIds, searchMatches]);
+  }, [visibleNodes, connectedIds, searchMatches, pathFocusIds]);
 
   const displayEdges = useMemo(() => {
-    const activeSet = searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds;
+    const activeSet = searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds ?? pathFocusIds;
     return readableGraphEdges(visibleEdges, activeSet, {
       baseOpacity: 0.3,
       highSignalOpacity: 0.58,
       inactiveOpacity: 0.06,
       captureMode,
     });
-  }, [visibleEdges, connectedIds, searchMatches, captureMode]);
+  }, [visibleEdges, connectedIds, searchMatches, pathFocusIds, captureMode]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -512,7 +524,11 @@ export default function MeshPage() {
       </div>
 
       {/* Stats bar */}
-      <MeshStats stats={stats} />
+      <MeshStats
+        stats={stats}
+        pathFocusActive={Boolean(pathFocusIds)}
+        onTogglePathFocus={stats.topExposurePath ? () => setPathFocusEnabled((current) => !current) : undefined}
+      />
 
       {/* Filter toolbar */}
       <MeshToolbar

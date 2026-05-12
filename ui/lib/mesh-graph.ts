@@ -26,6 +26,30 @@ export interface MeshStatsData {
   mediumCount: number;
   lowCount: number;
   kevCount: number;
+  topExposurePath?: MeshExposurePath | undefined;
+}
+
+export interface MeshExposurePath {
+  label: string;
+  vulnerabilityId: string;
+  severity: VulnerabilitySeverity;
+  packageName: string;
+  packageVersion: string;
+  ecosystem: string;
+  serverName: string;
+  affectedAgents: string[];
+  affectedServers: string[];
+  exposedCredentials: string[];
+  reachableTools: string[];
+  riskScore: number;
+  cvssScore?: number | undefined;
+  epssScore?: number | undefined;
+  isKev: boolean;
+  fixedVersion?: string | undefined;
+  impactCategory?: string | undefined;
+  attackVectorSummary?: string | undefined;
+  nodeIds: string[];
+  edgeIds: string[];
 }
 
 export interface ServerGroup {
@@ -261,6 +285,31 @@ function compareVulnerabilities(left: Vulnerability, right: Vulnerability): numb
   return (right.epss_score ?? 0) - (left.epss_score ?? 0);
 }
 
+function uniqueStrings(values: (string | undefined)[]): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+function blastRiskScore(vuln: Vulnerability, blast: ScanResult["blast_radius"][number] | undefined): number {
+  const direct = blast?.risk_score ?? blast?.blast_score;
+  if (typeof direct === "number" && Number.isFinite(direct)) return direct;
+  const severityBase = severityWeight(vuln.severity) * 20;
+  const cvssBoost = typeof vuln.cvss_score === "number" ? vuln.cvss_score : 0;
+  const epssBoost = typeof vuln.epss_score === "number" ? vuln.epss_score * 10 : 0;
+  const kevBoost = vuln.cisa_kev || vuln.is_kev ? 12 : 0;
+  return Math.round((severityBase + cvssBoost + epssBoost + kevBoost) * 10) / 10;
+}
+
+function betterExposurePath(left: MeshExposurePath | undefined, right: MeshExposurePath): MeshExposurePath {
+  if (!left) return right;
+  if (right.riskScore !== left.riskScore) return right.riskScore > left.riskScore ? right : left;
+  const severityDiff = severityWeight(right.severity) - severityWeight(left.severity);
+  if (severityDiff !== 0) return severityDiff > 0 ? right : left;
+  if (right.affectedAgents.length !== left.affectedAgents.length) {
+    return right.affectedAgents.length > left.affectedAgents.length ? right : left;
+  }
+  return right.vulnerabilityId.localeCompare(left.vulnerabilityId) < 0 ? right : left;
+}
+
 function normalizeSeverity(severity: string | undefined): VulnerabilitySeverity {
   const normalized = String(severity ?? "none").toLowerCase();
   if (normalized === "critical" || normalized === "high" || normalized === "medium" || normalized === "low") {
@@ -366,6 +415,7 @@ export function buildMeshGraph(
   let mediumCount = 0;
   let lowCount = 0;
   let kevCount = 0;
+  let topExposurePath: MeshExposurePath | undefined;
 
   // ── Agent nodes ──
   for (const agent of activeAgents) {
@@ -673,6 +723,57 @@ export function buildMeshGraph(
                 color: sevColor(vuln.severity),
               },
             });
+
+            const affectedAgentKeys = [...group.agents].filter((agentKey) => {
+              const affected = br?.affected_agents ?? [];
+              if (affected.length === 0) return true;
+              const label = group.agentLabels.get(agentKey) ?? "";
+              return affected.includes(agentKey) || affected.includes(agentKey.split("@")[0] ?? agentKey) || affected.includes(label);
+            });
+            const pathAgentKeys = affectedAgentKeys.length > 0 ? affectedAgentKeys : [...group.agents].slice(0, 1);
+            const pathAgentIds = pathAgentKeys.map(meshAgentNodeId);
+            const reachableTools = uniqueStrings([...(br?.reachable_tools ?? []), ...(br?.exposed_tools ?? [])]);
+            const exposedCredentials = uniqueStrings(br?.exposed_credentials ?? []);
+            const toolNodeIds = reachableTools
+              .slice(0, 2)
+              .map((tool) => `tool:${serverId}:${tool}`)
+              .filter((nodeId) => seen.has(nodeId));
+            const credentialNodeIds = exposedCredentials
+              .slice(0, 2)
+              .map((credential) => `cred:${serverId}:${credential}`)
+              .filter((nodeId) => seen.has(nodeId));
+            const pathNodeIds = uniqueStrings([...pathAgentIds, serverId, pkgId, vulnId, ...toolNodeIds, ...credentialNodeIds]);
+            const pathEdgeIds = uniqueStrings([
+              ...pathAgentKeys.map((agentKey) => `${meshAgentNodeId(agentKey)}->${serverId}`),
+              `${serverId}->${pkgId}`,
+              `${pkgId}->${vulnId}`,
+              ...toolNodeIds.map((nodeId) => `${serverId}->${nodeId}`),
+              ...credentialNodeIds.map((nodeId) => `${serverId}->${nodeId}`),
+            ]);
+            const affectedAgents = pathAgentKeys.map((agentKey) => group.agentLabels.get(agentKey) ?? agentKey);
+            const riskScore = blastRiskScore(vuln, br);
+            topExposurePath = betterExposurePath(topExposurePath, {
+              label: `${affectedAgents.slice(0, 2).join(", ")} -> ${group.name} -> ${pkg.name}@${pkg.version} -> ${vuln.id}`,
+              vulnerabilityId: vuln.id,
+              severity: vuln.severity,
+              packageName: pkg.name,
+              packageVersion: pkg.version,
+              ecosystem: pkg.ecosystem,
+              serverName: group.name,
+              affectedAgents,
+              affectedServers: br?.affected_servers?.length ? br.affected_servers : [group.name],
+              exposedCredentials,
+              reachableTools,
+              riskScore,
+              cvssScore: vuln.cvss_score,
+              epssScore: vuln.epss_score,
+              isKev: Boolean(vuln.cisa_kev || vuln.is_kev),
+              fixedVersion: vuln.fixed_version,
+              impactCategory: br?.impact_category,
+              attackVectorSummary: br?.attack_vector_summary,
+              nodeIds: pathNodeIds,
+              edgeIds: pathEdgeIds,
+            });
           }
         }
       }
@@ -696,6 +797,7 @@ export function buildMeshGraph(
     mediumCount,
     lowCount,
     kevCount,
+    topExposurePath,
   };
 
   return { nodes, edges, stats };

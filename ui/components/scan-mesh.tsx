@@ -22,6 +22,7 @@ export function ScanMeshView({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [pathFocusEnabled, setPathFocusEnabled] = useState(true);
 
   useEffect(() => {
     api.getScan(id).then(setJob).catch((e) => setError(e.message)).finally(() => setLoading(false));
@@ -49,19 +50,29 @@ export function ScanMeshView({ id }: { id: string }) {
   });
 
   const connectedIds = useMemo(() => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null), [hoveredNodeId, layoutEdges]);
+  const pathFocusIds = useMemo(() => {
+    if (!pathFocusEnabled || !stats.topExposurePath || hoveredNodeId) return null;
+    return new Set(stats.topExposurePath.nodeIds);
+  }, [hoveredNodeId, pathFocusEnabled, stats.topExposurePath]);
 
   const displayNodes = useMemo(() => {
+    if (pathFocusIds) {
+      return layoutNodes?.map((n) => ({
+        ...n,
+        data: { ...n.data, dimmed: !pathFocusIds.has(n.id), highlighted: pathFocusIds.has(n.id) },
+      }));
+    }
     if (!connectedIds) return layoutNodes;
     return layoutNodes?.map((n) => ({ ...n, data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) } }));
-  }, [layoutNodes, connectedIds]);
+  }, [layoutNodes, connectedIds, pathFocusIds]);
 
   const displayEdges = useMemo(() => {
-    return readableGraphEdges(layoutEdges, connectedIds, {
+    return readableGraphEdges(layoutEdges, connectedIds ?? pathFocusIds, {
       baseOpacity: 0.3,
       highSignalOpacity: 0.58,
       inactiveOpacity: 0.06,
     });
-  }, [layoutEdges, connectedIds]);
+  }, [layoutEdges, connectedIds, pathFocusIds]);
 
   const legendItems = useMemo(() => legendItemsForVisibleNodes(displayNodes), [displayNodes]);
 
@@ -93,7 +104,11 @@ export function ScanMeshView({ id }: { id: string }) {
         </div>
         <GraphLegend items={legendItems} />
       </div>
-      <MeshStats stats={stats} />
+      <MeshStats
+        stats={stats}
+        pathFocusActive={Boolean(pathFocusIds)}
+        onTogglePathFocus={stats.topExposurePath ? () => setPathFocusEnabled((current) => !current) : undefined}
+      />
       <div className="flex-1 relative">
         <ReactFlow
           nodes={displayNodes} edges={displayEdges} nodeTypes={lineageNodeTypes}

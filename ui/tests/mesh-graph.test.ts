@@ -85,12 +85,104 @@ describe("buildMeshGraph", () => {
     );
 
     expect(stats.totalAgents).toBe(2);
+    expect(stats.topExposurePath?.vulnerabilityId).toBe("CVE-2026-0001");
+    expect(stats.topExposurePath?.nodeIds).toEqual(
+      expect.arrayContaining([
+        "agent:claude-desktop",
+        "agent:cursor",
+        "server:filesystem::",
+        "pkg:server:filesystem:::npm:server-filesystem@1.0.0",
+        "vuln:server-filesystem:CVE-2026-0001",
+      ]),
+    );
+    expect(stats.topExposurePath?.reachableTools).toEqual(["read_file"]);
     expect(nodes.filter((node) => node.id === "agent:cursor")).toHaveLength(1);
     expect(nodes.some((node) => node.id === "agent:claude-desktop")).toBe(true);
     expect(nodes.some((node) => node.id === "agent:cursor")).toBe(true);
     expect(nodes.some((node) => node.id === "agent:zed")).toBe(false);
     expect(edges.some((edge) => edge.id === "agent:claude-desktop->server:filesystem::")).toBe(true);
     expect(edges.some((edge) => edge.id === "agent:cursor->server:filesystem::")).toBe(true);
+  });
+
+  it("ranks the mesh command path by blast score, severity, and blast radius evidence", () => {
+    const result: ScanResult = {
+      agents: [
+        {
+          name: "analyst-agent",
+          agent_type: "desktop",
+          mcp_servers: [
+            {
+              name: "database",
+              packages: [
+                {
+                  name: "pillow",
+                  version: "9.0.0",
+                  ecosystem: "pypi",
+                  vulnerabilities: [{ id: "CVE-2022-22817", severity: "high", fixed_version: "9.0.1" }],
+                },
+                {
+                  name: "werkzeug",
+                  version: "2.2.2",
+                  ecosystem: "pypi",
+                  vulnerabilities: [{ id: "CVE-2023-25577", severity: "critical", fixed_version: "2.2.3" }],
+                },
+              ],
+              tools: [
+                { name: "read_file", description: "Read a file" },
+                { name: "execute_sql", description: "Run SQL" },
+              ],
+              env: {
+                DATABASE_URL: "redacted",
+              },
+            },
+          ],
+        },
+      ],
+      blast_radius: [
+        {
+          vulnerability_id: "CVE-2022-22817",
+          severity: "high",
+          package: "pillow",
+          affected_agents: ["analyst-agent"],
+          affected_servers: ["database"],
+          exposed_credentials: [],
+          reachable_tools: ["read_file"],
+          blast_score: 45,
+        },
+        {
+          vulnerability_id: "CVE-2023-25577",
+          severity: "critical",
+          package: "werkzeug",
+          affected_agents: ["analyst-agent"],
+          affected_servers: ["database"],
+          exposed_credentials: ["DATABASE_URL"],
+          reachable_tools: ["execute_sql"],
+          blast_score: 96,
+          impact_category: "code-execution",
+          attack_vector_summary: "Agent can reach database server package and SQL tool.",
+        },
+      ],
+    };
+
+    const { stats } = buildMeshGraph(
+      result,
+      { packages: true, vulnerabilities: true, credentials: true, tools: true },
+      "high",
+      { vulnerableOnly: true, maxVulnerabilitiesPerPackage: 1 },
+    );
+
+    expect(stats.topExposurePath?.vulnerabilityId).toBe("CVE-2023-25577");
+    expect(stats.topExposurePath?.riskScore).toBe(96);
+    expect(stats.topExposurePath?.fixedVersion).toBe("2.2.3");
+    expect(stats.topExposurePath?.impactCategory).toBe("code-execution");
+    expect(stats.topExposurePath?.nodeIds).toEqual(
+      expect.arrayContaining([
+        "agent:analyst-agent",
+        "server:database::",
+        "pkg:server:database:::pypi:werkzeug@2.2.2",
+        "vuln:werkzeug:CVE-2023-25577",
+      ]),
+    );
   });
 
   it("respects selected agent scope without dropping the shared server edge", () => {

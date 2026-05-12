@@ -28,7 +28,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from agent_bom.audit_integrity import compute_audit_record_mac
+from agent_bom.audit_integrity import (
+    compute_audit_record_mac,
+    compute_audit_record_mac_with_key,
+    resolve_verifier_chain_key,
+)
 
 # ─── Entry dataclasses ────────────────────────────────────────────────────────
 
@@ -67,6 +71,7 @@ class ResponseHMACEntry:
     ts: str
     message_id: object
     hmac_sha256: str
+    response_sha256: str = ""
 
 
 @dataclass
@@ -148,6 +153,7 @@ def parse_audit_log(path: Path) -> AuditLog:
                     ts=entry.get("ts", ""),
                     message_id=entry.get("id"),
                     hmac_sha256=entry.get("hmac_sha256", ""),
+                    response_sha256=str(entry.get("response_sha256", "")),
                 )
             )
 
@@ -215,33 +221,35 @@ def parse_audit_log(path: Path) -> AuditLog:
 
 
 def verify_hmac_entries(log: AuditLog, sign_key: str) -> tuple[int, int]:
-    """Verify HMAC entries against corresponding tool call payloads.
+    """Verify HMAC entries written by the proxy ``--response-sign-key``.
 
-    Returns (verified_count, failed_count).
+    Returns ``(verified_count, failed_count)``.
+
+    The proxy stores the canonical sha256 of the live response as
+    ``response_sha256`` and the HMAC of that hash as ``hmac_sha256``. The
+    verifier recomputes ``HMAC-SHA256(sign_key, response_sha256_hex)`` and
+    compares it to the stored value in constant time. Legacy records that
+    pre-date the ``response_sha256`` field are skipped (counted as neither
+    verified nor failed) because the original wire response is not
+    available for re-derivation.
     """
-    # Build a map of message_id → ToolCallEntry for correlation
-    call_map: dict[object, ToolCallEntry] = {tc.message_id: tc for tc in log.tool_calls if tc.message_id is not None}
-
     verified = 0
     failed = 0
+    key_bytes = sign_key.encode("utf-8")
     for hmac_entry in log.hmac_entries:
-        tc = call_map.get(hmac_entry.message_id)
-        if tc is None:
-            continue  # response for a non-tool-call message (tools/list etc.)
-        # Recompute expected HMAC from the stored payload hash — we can only
-        # verify the audit record itself here since we don't have the raw
-        # wire payload. This confirms the log wasn't tampered with.
-        raw_hash = tc.payload_sha256
-        expected = hmac.new(
-            sign_key.encode("utf-8"),
-            raw_hash.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        # Compare constant-time
-        if len(hmac_entry.hmac_sha256) != 64:
+        stored_hmac = hmac_entry.hmac_sha256
+        if len(stored_hmac) != 64:
             failed += 1
             continue
-        if hmac.compare_digest(expected, hmac_entry.hmac_sha256):
+        response_hash = hmac_entry.response_sha256
+        if not response_hash:
+            # Legacy entry without response_sha256: cannot recompute the HMAC
+            # without the original response body. Treat as unverifiable rather
+            # than counting it as a failure, which would tank otherwise-clean
+            # logs produced before this field shipped.
+            continue
+        expected = hmac.new(key_bytes, response_hash.encode("utf-8"), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(expected, stored_hmac):
             verified += 1
         else:
             failed += 1
@@ -252,10 +260,22 @@ def verify_hash_chain(path: Path) -> tuple[int, int]:
     """Verify prev-hash chaining across JSONL audit records.
 
     Returns ``(verified_count, tampered_count)``.
+
+    The chain MAC algorithm is read from each record's
+    ``record_hash_algorithm`` field; ``aes-cmac-128`` records are validated
+    against the operator-configured ``AGENT_BOM_AUDIT_HMAC_KEY`` (or the
+    sidecar key persisted next to the log by the proxy when no operator key
+    is set). Records emitted without ``record_hash_algorithm`` are treated
+    as legacy and validated against the process-global chain key.
     """
     verified = 0
     tampered = 0
     previous_hash = ""
+
+    # Resolve the verification key once per call so a sidecar-persisted
+    # ephemeral key is honoured even when AGENT_BOM_AUDIT_HMAC_KEY is unset
+    # in the verifier process.
+    chain_key = resolve_verifier_chain_key(path)
 
     for raw_line in path.read_text().splitlines():
         line = raw_line.strip()
@@ -272,8 +292,14 @@ def verify_hash_chain(path: Path) -> tuple[int, int]:
 
         actual_prev = str(entry.get("prev_hash", ""))
         actual_hash = str(entry.get("record_hash", ""))
+        algorithm = str(entry.get("record_hash_algorithm", "")).strip().lower()
         payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "record_hash"}}
-        expected_hash = compute_audit_record_mac(payload, actual_prev)
+        if algorithm in {"", "aes-cmac-128"}:
+            expected_hash = compute_audit_record_mac_with_key(payload, actual_prev, chain_key)
+        else:
+            # Unknown algorithm — fall back to the process-global computation
+            # so legacy records still produce a meaningful result.
+            expected_hash = compute_audit_record_mac(payload, actual_prev)
 
         if actual_prev == previous_hash and actual_hash and hmac.compare_digest(actual_hash, expected_hash):
             verified += 1
@@ -453,7 +479,8 @@ def display_rich(
         verified, failed = verify_hmac_entries(log, verify_hmac_key)
         if failed:
             console.print(f"[bold red]HMAC verification FAILED for {failed} entries![/bold red]")
-            exit_code = 1
+            # Cryptographic verification failure outranks blocked/relay (exit 1)
+            exit_code = 2
         elif verified:
             console.print(f"[green]HMAC verification passed for {verified} entries[/green]")
 
@@ -461,7 +488,7 @@ def display_rich(
         verified_chain, tampered_chain = verify_chain_result
         if tampered_chain:
             console.print(f"[bold red]Audit chain verification FAILED for {tampered_chain} entries![/bold red]")
-            exit_code = 1
+            exit_code = 2
         elif verified_chain:
             console.print(f"[green]Audit chain verification passed for {verified_chain} entries[/green]")
 
@@ -494,7 +521,13 @@ def entry_type_alias(entry_type: str) -> str:
     return aliases.get(normalized, normalized)
 
 
-def display_json(log: AuditLog, *, chain_verification: tuple[int, int] | None = None) -> int:
+def display_json(
+    log: AuditLog,
+    *,
+    chain_verification: tuple[int, int] | None = None,
+    hmac_verification: tuple[int, int] | None = None,
+    blocked_only: bool = False,
+) -> int:
     """Output structured JSON summary (for CI/scripting)."""
     s = log.summary
     out = {
@@ -531,12 +564,27 @@ def display_json(log: AuditLog, *, chain_verification: tuple[int, int] | None = 
             "verified": chain_verification[0],
             "tampered": chain_verification[1],
         }
+    if hmac_verification is not None:
+        out["hmac_verification"] = {
+            "verified": hmac_verification[0],
+            "failed": hmac_verification[1],
+        }
     sys.stdout.write(json.dumps(out, indent=2))
     sys.stdout.write("\n")
     blocked = out["blocked"]
     errors = out["relay_errors"]
     tampered = chain_verification[1] if chain_verification is not None else 0
-    return 1 if (blocked or errors or tampered) else 0
+    hmac_failed = hmac_verification[1] if hmac_verification is not None else 0
+    # Exit-code contract: cryptographic failure (chain tamper / HMAC mismatch)
+    # → exit 2, content failure (blocked calls / relay errors / blocked-only
+    # match) → exit 1, clean → exit 0. Cryptographic failure outranks content.
+    if tampered or hmac_failed:
+        return 2
+    if blocked_only:
+        return 1 if blocked else 0
+    if blocked or errors:
+        return 1
+    return 0
 
 
 # ─── Public entry point ───────────────────────────────────────────────────────
@@ -554,7 +602,17 @@ def replay(
     verify_chain: bool = False,
     as_json: bool = False,
 ) -> int:
-    """Parse and display an audit log. Returns exit code (0 = clean, 1 = issues)."""
+    """Parse and display an audit log.
+
+    Exit-code contract:
+
+    * ``0`` — log is clean (no blocked calls, no relay errors, no integrity
+      failures)
+    * ``1`` — ``--blocked-only`` matched at least one blocked entry, or the
+      log contains blocked calls / relay errors
+    * ``2`` — ``--verify-chain`` detected tamper, ``--verify-hmac`` detected
+      a signature mismatch, or the log file is missing
+    """
     path = Path(log_path)
     if not path.exists():
         sys.stderr.write(f"Error: audit log not found: {log_path}\n")
@@ -562,11 +620,17 @@ def replay(
 
     log = parse_audit_log(path)
     chain_result = verify_hash_chain(path) if verify_chain else None
+    hmac_result = verify_hmac_entries(log, sign_key) if (verify_hmac and sign_key) else None
 
     if as_json:
-        return display_json(log, chain_verification=chain_result)
+        return display_json(
+            log,
+            chain_verification=chain_result,
+            hmac_verification=hmac_result,
+            blocked_only=blocked_only,
+        )
 
-    return display_rich(
+    display_exit = display_rich(
         log,
         tool_filter=tool,
         type_filter=entry_type,
@@ -575,3 +639,11 @@ def replay(
         verify_hmac_key=sign_key if verify_hmac else None,
         verify_chain_result=chain_result,
     )
+
+    # Apply the documented exit-code contract on top of display output. The
+    # display function tracks blocked/relay (exit 1) and crypto failures
+    # (exit 2). The --blocked-only case also raises to 1 if it matched any
+    # blocked entries even when there are no relay errors.
+    if display_exit == 0 and blocked_only and any(c.policy == "blocked" for c in log.tool_calls):
+        return 1
+    return display_exit

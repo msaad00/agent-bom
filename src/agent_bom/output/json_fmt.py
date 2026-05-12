@@ -825,6 +825,7 @@ def to_json(report: AIBOMReport) -> dict:
             "schema_version": "1.0",
             **ai_bom_entities,
         },
+        "packages": ai_bom_entities.get("packages", []),
         "summary": {
             "total_agents": report.total_agents,
             "total_mcp_servers": report.total_servers,

@@ -354,6 +354,56 @@ def test_check_json_output_is_machine_readable(monkeypatch):
     assert payload["vulnerabilities"][0]["id"] == "CVE-2023-30861"
 
 
+def test_check_sarif_output_is_machine_readable(monkeypatch):
+    _patch_check_scan(
+        monkeypatch,
+        [
+            Vulnerability(
+                id="CVE-2023-30861",
+                summary="Session cookie disclosure",
+                severity=Severity.HIGH,
+                fixed_version="2.3.2",
+                cvss_score=7.5,
+                epss_score=0.42,
+                epss_percentile=93.0,
+                is_kev=True,
+                cwe_ids=["CWE-200"],
+            )
+        ],
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["check", "flask@2.2.0", "--ecosystem", "pypi", "--format", "sarif", "--quiet"],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    run = payload["runs"][0]
+    rule = run["tool"]["driver"]["rules"][0]
+    finding = run["results"][0]
+    assert payload["version"] == "2.1.0"
+    assert rule["id"] == "CVE-2023-30861"
+    assert rule["properties"]["security-severity"] == "7.5"
+    assert rule["properties"]["epss_score"] == 0.42
+    assert rule["properties"]["is_kev"] is True
+    assert rule["properties"]["cwe_ids"] == ["CWE-200"]
+    assert finding["ruleId"] == "CVE-2023-30861"
+    assert finding["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == "pkg:pypi/flask@2.2.0"
+
+
+def test_check_agent_mode_rejects_sarif_format(monkeypatch):
+    _patch_check_scan(monkeypatch, [])
+
+    result = CliRunner().invoke(
+        main,
+        ["--agent-mode", "check", "django@4.1.0", "--ecosystem", "pypi", "--format", "sarif"],
+    )
+
+    assert result.exit_code == 1
+    assert "--agent-mode requires" in result.output
+
+
 def test_check_agent_mode_emits_machine_envelope_without_rich_table(monkeypatch):
     monkeypatch.delenv("AGENT_BOM_AGENT_MODE", raising=False)
     _patch_check_scan(

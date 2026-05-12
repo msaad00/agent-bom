@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from contextlib import nullcontext
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Optional
 
@@ -98,6 +99,15 @@ def _write_json_output(payload: dict, output_path: str | None) -> None:
     click.echo(text)
 
 
+def _write_sarif_output(payload: dict, output_path: str | None) -> None:
+    """Write package-check SARIF to stdout or a file."""
+    text = json.dumps(_check_payload_to_sarif(payload), indent=2)
+    if output_path and output_path != "-":
+        Path(output_path).write_text(text, encoding="utf-8")
+        return
+    click.echo(text)
+
+
 def _check_severity_counts(vulnerabilities: list | None) -> dict[str, int]:
     counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unknown": 0}
     for vuln in vulnerabilities or []:
@@ -137,9 +147,121 @@ def _check_agent_confidence(payload: dict) -> dict:
     return {"level": level, "signals": signals}
 
 
-def _write_check_output(payload: dict, output_path: str | None, *, agent_mode: bool, exit_code: int) -> None:
+def _check_payload_to_sarif(payload: dict) -> dict:
+    """Convert a package-check payload to SARIF 2.1.0."""
+    package = payload.get("package") or "unknown"
+    version = payload.get("version") or "unknown"
+    ecosystems = payload.get("ecosystems") or []
+    package_ref = f"{package}@{version}"
+    rules: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
+    severity_level = {
+        "critical": "error",
+        "high": "error",
+        "medium": "warning",
+        "low": "note",
+        "none": "none",
+        "unknown": "note",
+    }
+
+    for vuln in payload.get("vulnerabilities") or []:
+        vuln_id = str(vuln.get("id") or "unknown")
+        severity = str(vuln.get("severity") or "unknown").lower()
+        level = severity_level.get(severity, "warning")
+        cvss_score = vuln.get("cvss_score")
+        properties = {
+            "package": package,
+            "version": version,
+            "ecosystems": ecosystems,
+            "severity": severity,
+            "fixed_version": vuln.get("fixed_version"),
+            "is_kev": bool(vuln.get("is_kev")),
+            "kev_date_added": vuln.get("kev_date_added"),
+            "kev_due_date": vuln.get("kev_due_date"),
+            "epss_score": vuln.get("epss_score"),
+            "epss_percentile": vuln.get("epss_percentile"),
+            "cwe_ids": vuln.get("cwe_ids") or [],
+            "aliases": vuln.get("aliases") or [],
+            "advisory_sources": vuln.get("advisory_sources") or [],
+        }
+        if cvss_score is not None:
+            properties["security-severity"] = str(cvss_score)
+
+        rules.append(
+            {
+                "id": vuln_id,
+                "shortDescription": {"text": f"{severity.upper()}: {vuln_id} in {package_ref}"},
+                "fullDescription": {"text": str(vuln.get("summary") or f"Vulnerability {vuln_id}")},
+                "helpUri": f"https://osv.dev/vulnerability/{vuln_id}",
+                "defaultConfiguration": {"level": level},
+                "properties": properties,
+            }
+        )
+        fingerprint = sha256(f"check:{package}:{version}:{vuln_id}".encode("utf-8")).hexdigest()
+        message = f"{vuln_id} ({severity}) in {package_ref}."
+        if vuln.get("fixed_version"):
+            message += f" Fix: upgrade to {vuln['fixed_version']}."
+        results.append(
+            {
+                "ruleId": vuln_id,
+                "level": level,
+                "kind": "fail",
+                "message": {"text": message},
+                "fingerprints": {"agent-bom/check/v1": fingerprint},
+                "locations": [
+                    {
+                        "physicalLocation": {
+                            "artifactLocation": {"uri": f"pkg:{ecosystems[0] if ecosystems else 'generic'}/{package}@{version}"},
+                            "region": {"startLine": 1, "startColumn": 1},
+                        }
+                    }
+                ],
+                "properties": properties,
+            }
+        )
+
+    return {
+        "version": "2.1.0",
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "agent-bom check",
+                        "informationUri": "https://github.com/msaad00/agent-bom",
+                        "semanticVersion": __version__,
+                        "rules": rules,
+                    }
+                },
+                "results": results,
+                "properties": {
+                    "schema_version": payload.get("schema_version"),
+                    "document_type": payload.get("document_type"),
+                    "verdict": payload.get("verdict"),
+                    "exit_code": payload.get("exit_code"),
+                    "package": package,
+                    "version": version,
+                    "ecosystems": ecosystems,
+                    "vulnerability_count": payload.get("vulnerability_count"),
+                },
+            }
+        ],
+    }
+
+
+def _write_check_output(
+    payload: dict,
+    output_path: str | None,
+    *,
+    agent_mode: bool,
+    exit_code: int,
+    output_format: str = "json",
+) -> None:
     """Write package-check output in plain JSON or agent-mode envelope form."""
     if not agent_mode:
+        if output_format == "sarif":
+            _write_sarif_output(payload, output_path)
+            return
         _write_json_output(payload, output_path)
         return
 
@@ -405,12 +527,12 @@ def _exit_model_verification(
     "--format",
     "-f",
     "output_format",
-    type=click.Choice(["console", "json"], case_sensitive=False),
+    type=click.Choice(["console", "json", "sarif"], case_sensitive=False),
     default="console",
     show_default=True,
     help="Output format.",
 )
-@click.option("--output", "-o", "output_path", type=str, default=None, help="Write JSON output to a file (use '-' for stdout).")
+@click.option("--output", "-o", "output_path", type=str, default=None, help="Write machine-readable output to a file (use '-' for stdout).")
 @click.option(
     "--exit-zero",
     is_flag=True,
@@ -456,24 +578,26 @@ def check(
     \b
     Notes:
       `check` supports terminal output by default and `--format json`
-      for machine-readable pre-install verdicts.
+      or `--format sarif` for machine-readable pre-install verdicts.
       Use `--enrich` when the verdict needs CVSS, EPSS, KEV, or NVD
       status evidence for triage or CI policy.
-      For SARIF, HTML, PDF, or SBOM output, use `agent-bom agents`
-      (or `agent-bom scan`) with `--format/--output`.
+      For HTML, PDF, or SBOM output, use `agent-bom agents` (or
+      `agent-bom scan`) with `--format/--output`.
       Use --exit-zero for exploratory or parallel workflows where findings
       should be reported without failing the command.
       Use --fail-on-severity to make CI fail only at the selected threshold.
     """
-    if output_path and output_format != "json":
-        raise click.ClickException("`check --output` requires `--format json`.")
-
     from agent_bom.cli._agent_mode import agent_mode_requested
 
     parent_params = getattr(getattr(ctx, "parent", None), "params", {}) or {}
     root_params = getattr(ctx.find_root(), "params", {}) or {}
     agent_mode = bool(parent_params.get("agent_mode") or root_params.get("agent_mode") or agent_mode_requested())
-    structured_output = output_format == "json" or agent_mode
+    output_format = output_format.lower()
+    if output_path and output_format not in {"json", "sarif"}:
+        raise click.ClickException("`check --output` requires `--format json` or `--format sarif`.")
+    if agent_mode and output_format == "sarif":
+        raise click.ClickException("--agent-mode requires `--format json`.")
+    structured_output = output_format in {"json", "sarif"} or agent_mode
     console = Console(no_color=no_color, stderr=structured_output or output_path is not None)
     runtime_console = Console(stderr=True, quiet=quiet or structured_output or output_path is not None, no_color=no_color)
     _sync_runtime_consoles(runtime_console)
@@ -498,6 +622,7 @@ def check(
                 output_path,
                 agent_mode=agent_mode,
                 exit_code=0,
+                output_format=output_format,
             )
         else:
             console.print(f"[yellow]⚠ No version specified for {name} — skipping OSV lookup.[/yellow]")
@@ -552,6 +677,7 @@ def check(
                     output_path,
                     agent_mode=agent_mode,
                     exit_code=0,
+                    output_format=output_format,
                 )
             else:
                 console.print(f"[yellow]⚠ Could not resolve latest version for {name} ({eco_str})[/yellow]")
@@ -589,6 +715,7 @@ def check(
                     output_path,
                     agent_mode=agent_mode,
                     exit_code=2,
+                    output_format=output_format,
                 )
             else:
                 console.print(f"  [yellow]⚠[/yellow] {exc}")
@@ -640,6 +767,7 @@ def check(
                 output_path,
                 agent_mode=agent_mode,
                 exit_code=2,
+                output_format=output_format,
             )
             sys.exit(2)
         if quiet:
@@ -667,6 +795,7 @@ def check(
                 output_path,
                 agent_mode=agent_mode,
                 exit_code=0,
+                output_format=output_format,
             )
             sys.exit(0)
         if quiet:
@@ -750,6 +879,7 @@ def check(
                 output_path,
                 agent_mode=agent_mode,
                 exit_code=0,
+                output_format=output_format,
             )
             sys.exit(0)
         if quiet:
@@ -780,6 +910,7 @@ def check(
                 output_path,
                 agent_mode=agent_mode,
                 exit_code=0,
+                output_format=output_format,
             )
             sys.exit(0)
         if quiet:
@@ -805,6 +936,7 @@ def check(
             output_path,
             agent_mode=agent_mode,
             exit_code=1,
+            output_format=output_format,
         )
         sys.exit(1)
 

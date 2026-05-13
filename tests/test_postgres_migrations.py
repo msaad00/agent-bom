@@ -10,6 +10,7 @@ POSTGRES_DIR = Path(__file__).parent.parent / "deploy" / "supabase" / "postgres"
 ALEMBIC_DIR = POSTGRES_DIR / "alembic"
 VERSIONS_DIR = ALEMBIC_DIR / "versions"
 BASELINE = VERSIONS_DIR / "20260416_01_control_plane_baseline.py"
+GRAPH_HOT_PATH_INDEXES = VERSIONS_DIR / "20260513_01_graph_hot_path_indexes.py"
 BOOTSTRAP = ALEMBIC_DIR / "bootstrap.py"
 
 
@@ -27,6 +28,7 @@ def test_alembic_scaffolding_exists():
     assert BOOTSTRAP.exists()
     assert (ALEMBIC_DIR / "script.py.mako").exists()
     assert BASELINE.exists()
+    assert GRAPH_HOT_PATH_INDEXES.exists()
 
 
 def test_baseline_migration_points_at_bootstrap_sql():
@@ -47,3 +49,18 @@ GRANT CONNECT ON DATABASE agent_bom TO agent_bom_readonly;
     assert "GRANT CONNECT ON DATABASE pilot_customer TO agent_bom_app;" in rewritten
     assert "GRANT CONNECT ON DATABASE pilot_customer TO agent_bom_readonly;" in rewritten
     assert "GRANT CONNECT ON DATABASE agent_bom TO agent_bom_app;" not in rewritten
+
+
+def test_graph_hot_path_index_migration_chains_from_baseline():
+    sql = GRAPH_HOT_PATH_INDEXES.read_text()
+    assert re.search(r'revision\s*=\s*"20260513_01"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260416_01"', sql)
+    for index_name in (
+        "idx_pg_graph_nodes_scan_id_cover",
+        "idx_pg_graph_edges_scan_source_traversable",
+        "idx_pg_attack_paths_source_risk",
+        "idx_pg_graph_node_search_trgm",
+        "idx_pg_graph_node_search_lower_trgm",
+    ):
+        assert index_name in sql
+    assert "CREATE EXTENSION IF NOT EXISTS pg_trgm" in sql

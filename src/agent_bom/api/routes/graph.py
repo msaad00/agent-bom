@@ -494,7 +494,7 @@ def _severity_for_exposure_path(path: AttackPath, nodes_by_id: dict[str, Any]) -
             severity = str(node.severity).lower()
     if severity:
         return severity
-    if path.composite_risk >= 90:
+    if path.composite_risk >= 90 or path.composite_risk >= 9:
         return "critical"
     if path.composite_risk >= 70 or path.composite_risk >= 7:
         return "high"
@@ -905,7 +905,7 @@ async def get_graph(
         paged_ids = {n.id for n in paged_nodes}
         paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
         attack_paths = [
-            _serialize_attack_path(p, graph.edges)
+            _serialize_attack_path(p, graph.edges, nodes_by_id=graph.nodes, scan_id=graph.scan_id)
             for p in _derived_attack_paths(graph)
             if p.hops and all(hop in paged_ids for hop in p.hops)
         ]
@@ -951,13 +951,23 @@ async def get_graph(
         tenant_id=tenant,
         source_ids=paged_ids,
     )
+    attack_path_hop_ids = {hop for path in source_attack_paths for hop in path.hops}
+    attack_path_nodes = await _graph_store_call(
+        graph_store.nodes_by_ids,
+        scan_id=effective_scan_id,
+        tenant_id=tenant,
+        node_ids=attack_path_hop_ids - paged_ids,
+    )
+    nodes_by_id = {node.id: node for node in [*paged_nodes, *attack_path_nodes]}
     return {
         "scan_id": effective_scan_id,
         "tenant_id": tenant,
         "created_at": created_at,
         "nodes": [n.to_dict() for n in paged_nodes],
         "edges": [e.to_dict() for e in paged_edges],
-        "attack_paths": [_serialize_attack_path(path, paged_edges) for path in source_attack_paths],
+        "attack_paths": [
+            _serialize_attack_path(path, paged_edges, nodes_by_id=nodes_by_id, scan_id=effective_scan_id) for path in source_attack_paths
+        ],
         "interaction_risks": [],
         "stats": await _graph_store_call(
             graph_store.snapshot_stats,
@@ -1176,6 +1186,13 @@ async def get_graph_paths(
         tenant_id=tenant,
         node_ids=path_node_ids,
     )
+    path_nodes = await _graph_store_call(
+        graph_store.nodes_by_ids,
+        scan_id=requested_scan_id,
+        tenant_id=tenant,
+        node_ids=path_node_ids,
+    )
+    nodes_by_id = {node.id: node for node in path_nodes}
 
     return {
         "source": source_node_id,
@@ -1184,7 +1201,11 @@ async def get_graph_paths(
         "reachable_count": len(reachable),
         "reachable_nodes": sorted(reachable),
         "paths": [{"target": p[-1], "hops": p, "depth": len(p) - 1} for p in paged_paths],
-        "attack_paths": [_serialize_attack_path(ap, path_edges) for ap in attack_paths if ap.source == source_node_id],
+        "attack_paths": [
+            _serialize_attack_path(ap, path_edges, nodes_by_id=nodes_by_id, scan_id=requested_scan_id)
+            for ap in attack_paths
+            if ap.source == source_node_id
+        ],
         "pagination": pagination,
     }
 
@@ -1374,7 +1395,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
             source_ids=set(body.roots),
         )
         attack_paths = [
-            _serialize_attack_path(ap, filtered_graph.edges)
+            _serialize_attack_path(ap, filtered_graph.edges, nodes_by_id=filtered_graph.nodes, scan_id=filtered_graph.scan_id)
             for ap in root_attack_paths
             if ap.source in body.roots and all(hop in filtered_graph.nodes for hop in ap.hops)
         ]

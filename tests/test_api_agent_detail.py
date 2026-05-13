@@ -203,6 +203,36 @@ def test_merge_observations_rejects_tenant_mismatch():
         merge_observations(existing, incoming)
 
 
+def test_agents_endpoint_uses_sidebar_cache_until_refresh(monkeypatch):
+    from agent_bom.api.routes import discovery as discovery_routes
+
+    discovery_routes._clear_agents_response_cache_for_tests()
+    observation_store = InMemoryMCPObservationStore()
+    calls = {"discover": 0}
+
+    def _discover_once():
+        calls["discover"] += 1
+        return _mock_agents()
+
+    monkeypatch.setattr("agent_bom.discovery.discover_all", _discover_once)
+    monkeypatch.setattr("agent_bom.api.routes.discovery._get_store", _mock_job_store)
+    monkeypatch.setattr("agent_bom.api.routes.discovery._get_fleet_store", _mock_fleet_store)
+    monkeypatch.setattr("agent_bom.api.routes.discovery._get_mcp_observation_store", lambda: observation_store)
+    client = TestClient(app)
+
+    first = client.get("/v1/agents")
+    second = client.get("/v1/agents")
+    refreshed = client.get("/v1/agents", params={"refresh": "true"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert refreshed.status_code == 200
+    assert calls["discover"] == 2
+    assert first.json() == second.json()
+    assert refreshed.json()["count"] == 1
+    discovery_routes._clear_agents_response_cache_for_tests()
+
+
 @patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)
 @patch("agent_bom.api.routes.discovery._get_fleet_store", side_effect=_mock_fleet_store)
 def test_agent_detail_found(_fleet, _mock):

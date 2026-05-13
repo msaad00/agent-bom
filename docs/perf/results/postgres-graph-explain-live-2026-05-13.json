@@ -1,0 +1,48 @@
+{
+  "commands": {
+    "dry_run": "uv run python scripts/run_graph_postgres_explain.py --dry-run",
+    "live": "AGENT_BOM_POSTGRES_DSN=postgresql://... uv run python scripts/run_graph_postgres_explain.py --run --scan-id <new> --old-scan-id <old>"
+  },
+  "edge_targets": "10000,50000,100000",
+  "evidence_status": "explain_analyze_artifacts",
+  "gaps": [
+    "EXPLAIN ANALYZE timings are database-local and should be paired with API client timings for full deployment evidence.",
+    "Plan quality depends on loaded scan cardinality, index availability, Postgres version, and tenant/session settings."
+  ],
+  "generated_at": "2026-05-13T06:34:28.995684+00:00",
+  "old_scan_id": "graph-benchmark-estate-old",
+  "owner_issue": 2145,
+  "plans": {
+    "attack_path_drilldown": {
+      "output": "docs/perf/results/postgres-graph-explain-live-2026-05-13/plans/attack_path_drilldown.txt",
+      "returncode": 0
+    },
+    "bounded_traversal_edges": {
+      "output": "docs/perf/results/postgres-graph-explain-live-2026-05-13/plans/bounded_traversal_edges.txt",
+      "returncode": 0
+    },
+    "graph_diff_nodes": {
+      "output": "docs/perf/results/postgres-graph-explain-live-2026-05-13/plans/graph_diff_nodes.txt",
+      "returncode": 0
+    },
+    "node_detail": {
+      "output": "docs/perf/results/postgres-graph-explain-live-2026-05-13/plans/node_detail.txt",
+      "returncode": 0
+    },
+    "node_search": {
+      "output": "docs/perf/results/postgres-graph-explain-live-2026-05-13/plans/node_search.txt",
+      "returncode": 0
+    }
+  },
+  "psql_bin": "/tmp/psql",
+  "query_artifacts": {
+    "attack_path_drilldown": "docs/perf/results/postgres-graph-explain-live-2026-05-13/attack_path_drilldown.sql",
+    "bounded_traversal_edges": "docs/perf/results/postgres-graph-explain-live-2026-05-13/bounded_traversal_edges.sql",
+    "graph_diff_nodes": "docs/perf/results/postgres-graph-explain-live-2026-05-13/graph_diff_nodes.sql",
+    "node_detail": "docs/perf/results/postgres-graph-explain-live-2026-05-13/node_detail.sql",
+    "node_search": "docs/perf/results/postgres-graph-explain-live-2026-05-13/node_search.sql"
+  },
+  "scan_id": "graph-benchmark-estate-current",
+  "schema_version": 1,
+  "tenant_id": "default"
+}

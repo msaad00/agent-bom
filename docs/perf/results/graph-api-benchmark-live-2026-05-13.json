@@ -1,0 +1,169 @@
+{
+  "base_url": "http://127.0.0.1:8429",
+  "commands": {
+    "dry_run": "uv run python scripts/run_graph_api_benchmark.py --dry-run",
+    "live": "AGENT_BOM_API_TOKEN=... uv run python scripts/run_graph_api_benchmark.py --base-url http://127.0.0.1:8000 --scan-id <scan> --old-scan-id <old> --new-scan-id <new>"
+  },
+  "evidence_status": "measured_api_client_wall_clock",
+  "gaps": [
+    "Client-side timings include local network and client JSON transfer time.",
+    "Server-side DB plans are measured separately by scripts/run_graph_postgres_explain.py."
+  ],
+  "generated_at": "2026-05-13T06:28:35.235983+00:00",
+  "owner_issue": 2145,
+  "repeat": 10,
+  "request_plan": [
+    {
+      "method": "GET",
+      "name": "graph_search",
+      "path": "/v1/graph/search",
+      "query": {
+        "entity_types": "package,vulnerability",
+        "limit": "50",
+        "q": "langchain",
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "node_detail",
+      "path": "/v1/graph/node/pkg:go:langchain@1.0.0",
+      "query": {
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "attack_path_drilldown",
+      "path": "/v1/graph/paths",
+      "query": {
+        "limit": "100",
+        "max_depth": "4",
+        "scan_id": "graph-benchmark-estate-current",
+        "source_id": "agent:agent-00000"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_diff",
+      "path": "/v1/graph/diff",
+      "query": {
+        "new": "graph-benchmark-estate-current",
+        "old": "graph-benchmark-estate-old"
+      }
+    },
+    {
+      "json": {
+        "direction": "both",
+        "include_attack_paths": true,
+        "max_depth": 3,
+        "max_edges": 5000,
+        "max_nodes": 500,
+        "roots": [
+          "agent:agent-00000"
+        ],
+        "scan_id": "graph-benchmark-estate-current",
+        "timeout_ms": 2500,
+        "traversable_only": true
+      },
+      "method": "POST",
+      "name": "bounded_traversal",
+      "path": "/v1/graph/query",
+      "query": {}
+    }
+  ],
+  "results": [
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 64.061,
+        "mean_ms": 25.643,
+        "p50_ms": 21.141,
+        "p95_ms": 64.061,
+        "p99_ms": 64.061,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "graph_search",
+      "path": "/v1/graph/search",
+      "response_bytes_last": 45219,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 109.534,
+        "mean_ms": 98.378,
+        "p50_ms": 97.76,
+        "p95_ms": 109.534,
+        "p99_ms": 109.534,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "node_detail",
+      "path": "/v1/graph/node/pkg:go:langchain@1.0.0",
+      "response_bytes_last": 2187,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 2146.839,
+        "mean_ms": 1719.623,
+        "p50_ms": 1625.596,
+        "p95_ms": 2146.839,
+        "p99_ms": 2146.839,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "attack_path_drilldown",
+      "path": "/v1/graph/paths",
+      "response_bytes_last": 82239,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 338.559,
+        "mean_ms": 227.502,
+        "p50_ms": 208.873,
+        "p95_ms": 338.559,
+        "p99_ms": 338.559,
+        "samples": 10
+      },
+      "method": "GET",
+      "name": "graph_diff",
+      "path": "/v1/graph/diff",
+      "response_bytes_last": 440664,
+      "status_counts": {
+        "200": 10
+      }
+    },
+    {
+      "failures_sample": [],
+      "latency": {
+        "max_ms": 1179.635,
+        "mean_ms": 881.329,
+        "p50_ms": 828.342,
+        "p95_ms": 1179.635,
+        "p99_ms": 1179.635,
+        "samples": 10
+      },
+      "method": "POST",
+      "name": "bounded_traversal",
+      "path": "/v1/graph/query",
+      "response_bytes_last": 1066983,
+      "status_counts": {
+        "200": 10
+      }
+    }
+  ],
+  "schema_version": 1,
+  "tenant_id": "default"
+}

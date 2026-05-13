@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════
 
 DEFAULT_GRAPH_TENANT_ID = "default"
-_GRAPH_SCHEMA_VERSION = 2
+_GRAPH_SCHEMA_VERSION = 3
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
 _GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "graph_nodes": ("id", "scan_id"),
@@ -90,6 +90,12 @@ CREATE TABLE IF NOT EXISTS graph_edges (
     traversable     INTEGER DEFAULT 1,
     first_seen      TEXT NOT NULL,
     last_seen       TEXT NOT NULL,
+    valid_from      TEXT DEFAULT '',
+    valid_to        TEXT DEFAULT NULL,
+    confidence      REAL DEFAULT 1.0,
+    provenance      TEXT DEFAULT '{}',
+    source_scan_id  TEXT DEFAULT '',
+    source_run_id   TEXT DEFAULT '',
     evidence        TEXT DEFAULT '{}',
     activity_id     INTEGER DEFAULT 1,
     scan_id         TEXT NOT NULL,
@@ -102,6 +108,7 @@ CREATE INDEX IF NOT EXISTS idx_ge_target ON graph_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_ge_rel ON graph_edges(relationship);
 CREATE INDEX IF NOT EXISTS idx_ge_scan ON graph_edges(scan_id);
 CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan ON graph_edges(tenant_id, scan_id);
+CREATE INDEX IF NOT EXISTS idx_ge_tenant_valid ON graph_edges(tenant_id, valid_from, valid_to);
 
 -- ── Snapshots ──
 CREATE TABLE IF NOT EXISTS graph_snapshots (
@@ -233,6 +240,22 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
         conn.execute("ALTER TABLE attack_paths ADD COLUMN summary TEXT DEFAULT ''")
     if "tool_exposure" not in existing_columns:
         conn.execute("ALTER TABLE attack_paths ADD COLUMN tool_exposure TEXT DEFAULT '[]'")
+    edge_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_edges)").fetchall()}
+    # v3 adds replay metadata. Empty valid_from is interpreted as first_seen for
+    # stores created before this migration, so old snapshots remain queryable.
+    edge_migrations = {
+        "valid_from": "ALTER TABLE graph_edges ADD COLUMN valid_from TEXT DEFAULT ''",
+        "valid_to": "ALTER TABLE graph_edges ADD COLUMN valid_to TEXT DEFAULT NULL",
+        "confidence": "ALTER TABLE graph_edges ADD COLUMN confidence REAL DEFAULT 1.0",
+        "provenance": "ALTER TABLE graph_edges ADD COLUMN provenance TEXT DEFAULT '{}'",
+        "source_scan_id": "ALTER TABLE graph_edges ADD COLUMN source_scan_id TEXT DEFAULT ''",
+        "source_run_id": "ALTER TABLE graph_edges ADD COLUMN source_run_id TEXT DEFAULT ''",
+    }
+    for column, statement in edge_migrations.items():
+        if column not in edge_columns:
+            conn.execute(statement)
+    conn.execute("UPDATE graph_edges SET valid_from = first_seen WHERE valid_from = '' OR valid_from IS NULL")
+    conn.execute("UPDATE graph_edges SET source_scan_id = scan_id WHERE source_scan_id = '' OR source_scan_id IS NULL")
     if backfill_legacy_tenants:
         _backfill_empty_tenant_ids(conn)
     conn.commit()
@@ -350,8 +373,22 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
     """Persist a UnifiedGraph as an immutable per-scan snapshot."""
     tenant = normalize_graph_tenant_id(graph.tenant_id)
     scan = graph.scan_id
-    now = _now_iso()
+    now = graph.created_at or _now_iso()
     batch_size = _graph_write_batch_size()
+    previous_scan = latest_snapshot_id(conn, tenant_id=tenant)
+    if previous_scan == scan:
+        previous_scan = previous_snapshot_id(conn, tenant_id=tenant, before_scan_id=scan)
+    previous_edges: dict[tuple[str, str, str], sqlite3.Row] = {}
+    if previous_scan:
+        for row in conn.execute(
+            """
+            SELECT source_id, target_id, relationship, first_seen, valid_from, valid_to
+            FROM graph_edges
+            WHERE tenant_id = ? AND scan_id = ?
+            """,
+            (tenant, previous_scan),
+        ):
+            previous_edges[(row["source_id"], row["target_id"], row["relationship"])] = row
 
     # ── Nodes ──
     def node_rows() -> Iterator[tuple[Any, ...]]:
@@ -395,6 +432,12 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
     def edge_rows() -> Iterator[tuple[Any, ...]]:
         for edge in graph.edges:
             rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
+            previous = previous_edges.get((edge.source, edge.target, rel))
+            valid_from = edge.valid_from or edge.first_seen or now
+            first_seen = edge.first_seen
+            if previous is not None:
+                valid_from = previous["valid_from"] or previous["first_seen"] or valid_from
+                first_seen = previous["first_seen"] or first_seen
             yield (
                 edge.source,
                 edge.target,
@@ -402,8 +445,14 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
                 edge.direction,
                 edge.weight,
                 1 if edge.traversable else 0,
-                edge.first_seen,
+                first_seen,
                 edge.last_seen,
+                valid_from,
+                edge.valid_to,
+                edge.confidence,
+                json.dumps(edge.provenance, default=str),
+                edge.source_scan_id or scan,
+                edge.source_run_id,
                 json.dumps(edge.evidence, default=str),
                 edge.activity_id,
                 scan,
@@ -415,13 +464,35 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
         """\
         INSERT OR REPLACE INTO graph_edges (
             source_id, target_id, relationship, direction, weight,
-            traversable, first_seen, last_seen, evidence,
+            traversable, first_seen, last_seen, valid_from, valid_to,
+            confidence, provenance, source_scan_id, source_run_id, evidence,
             activity_id, scan_id, tenant_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         edge_rows(),
         batch_size=batch_size,
     )
+
+    incoming_edge_keys = {
+        (
+            edge.source,
+            edge.target,
+            edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship),
+        )
+        for edge in graph.edges
+    }
+    removed_edge_keys = set(previous_edges) - incoming_edge_keys
+    if removed_edge_keys:
+        _executemany_batched(
+            conn,
+            """
+            UPDATE graph_edges
+            SET valid_to = COALESCE(valid_to, ?)
+            WHERE tenant_id = ? AND scan_id = ? AND source_id = ? AND target_id = ? AND relationship = ?
+            """,
+            ((now, tenant, previous_scan, source, target, relationship) for source, target, relationship in sorted(removed_edge_keys)),
+            batch_size=batch_size,
+        )
 
     # ── Attack paths ──
     for ap in graph.attack_paths:
@@ -548,6 +619,12 @@ def load_graph(
                 traversable=bool(row["traversable"]),
                 first_seen=row["first_seen"],
                 last_seen=row["last_seen"],
+                valid_from=row["valid_from"] or row["first_seen"],
+                valid_to=row["valid_to"],
+                confidence=row["confidence"],
+                provenance=json.loads(row["provenance"] or "{}"),
+                source_scan_id=row["source_scan_id"] or row["scan_id"],
+                source_run_id=row["source_run_id"] or "",
                 evidence=json.loads(row["evidence"]),
                 activity_id=row["activity_id"],
             )
@@ -656,6 +733,111 @@ def diff_snapshots(
         "nodes_changed": sorted(nid for nid in (old_ids & new_ids) if old_nodes[nid] != new_nodes[nid]),
         "edges_added": sorted(new_edges - old_edges),
         "edges_removed": sorted(old_edges - new_edges),
+        "edges_changed": changed_edges_between_scans(conn, scan_id_old, scan_id_new, tenant_id=tenant_id)["edges_changed"],
+    }
+
+
+def _edge_history_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "source_id": row["source_id"],
+        "target_id": row["target_id"],
+        "relationship": row["relationship"],
+        "direction": row["direction"],
+        "weight": float(row["weight"] or 0.0),
+        "traversable": bool(row["traversable"]),
+        "first_seen": row["first_seen"],
+        "last_seen": row["last_seen"],
+        "valid_from": row["valid_from"] or row["first_seen"],
+        "valid_to": row["valid_to"],
+        "confidence": float(row["confidence"] if row["confidence"] is not None else 1.0),
+        "provenance": json.loads(row["provenance"] or "{}"),
+        "source_scan_id": row["source_scan_id"] or row["scan_id"],
+        "source_run_id": row["source_run_id"] or "",
+        "evidence": json.loads(row["evidence"] or "{}"),
+        "activity_id": int(row["activity_id"] or 1),
+        "scan_id": row["scan_id"],
+        "tenant_id": row["tenant_id"],
+    }
+
+
+def _edge_change_fingerprint(edge: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "direction": edge["direction"],
+        "weight": edge["weight"],
+        "traversable": edge["traversable"],
+        "confidence": edge["confidence"],
+        "provenance": edge["provenance"],
+        "evidence": edge["evidence"],
+        "activity_id": edge["activity_id"],
+    }
+
+
+def active_edges_at(conn: sqlite3.Connection, at: str, *, tenant_id: str = "") -> list[dict[str, Any]]:
+    """Return the latest known edge versions active at an ISO timestamp."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
+    rows = conn.execute(
+        """
+        SELECT ge.*
+        FROM graph_edges ge
+        JOIN graph_snapshots gs ON gs.tenant_id = ge.tenant_id AND gs.scan_id = ge.scan_id
+        WHERE ge.tenant_id = ?
+          AND gs.created_at <= ?
+          AND COALESCE(NULLIF(ge.valid_from, ''), ge.first_seen) <= ?
+          AND (ge.valid_to IS NULL OR ge.valid_to = '' OR ge.valid_to > ?)
+        ORDER BY gs.created_at ASC, ge.scan_id ASC
+        """,
+        (tenant_id, at, at, at),
+    ).fetchall()
+    active_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        edge = _edge_history_row(row)
+        key = (edge["source_id"], edge["target_id"], edge["relationship"])
+        active_by_key[key] = edge
+    return [active_by_key[key] for key in sorted(active_by_key)]
+
+
+def changed_edges_between_scans(
+    conn: sqlite3.Connection,
+    scan_id_old: str,
+    scan_id_new: str,
+    *,
+    tenant_id: str = "",
+) -> dict[str, Any]:
+    """Return rich edge lifecycle changes between two scan snapshots."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
+
+    def rows_for(scan_id: str) -> dict[tuple[str, str, str], dict[str, Any]]:
+        rows = conn.execute(
+            "SELECT * FROM graph_edges WHERE scan_id = ? AND tenant_id = ?",
+            (scan_id, tenant_id),
+        ).fetchall()
+        return {(edge["source_id"], edge["target_id"], edge["relationship"]): edge for edge in (_edge_history_row(row) for row in rows)}
+
+    old_edges = rows_for(scan_id_old)
+    new_edges = rows_for(scan_id_new)
+    old_keys, new_keys = set(old_edges), set(new_edges)
+    shared = old_keys & new_keys
+    changed = [
+        {"before": old_edges[key], "after": new_edges[key]}
+        for key in sorted(shared)
+        if _edge_change_fingerprint(old_edges[key]) != _edge_change_fingerprint(new_edges[key])
+    ]
+    unchanged = [
+        new_edges[key] for key in sorted(shared) if _edge_change_fingerprint(old_edges[key]) == _edge_change_fingerprint(new_edges[key])
+    ]
+    return {
+        "scan_id_old": scan_id_old,
+        "scan_id_new": scan_id_new,
+        "edges_added": [new_edges[key] for key in sorted(new_keys - old_keys)],
+        "edges_removed": [old_edges[key] for key in sorted(old_keys - new_keys)],
+        "edges_changed": changed,
+        "edges_unchanged": unchanged,
+        "summary": {
+            "added": len(new_keys - old_keys),
+            "removed": len(old_keys - new_keys),
+            "changed": len(changed),
+            "unchanged": len(unchanged),
+        },
     }
 
 

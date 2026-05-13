@@ -86,7 +86,11 @@ import {
   type UnifiedGraphResponse,
 } from "@/lib/api";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
-import { shouldUseLargeGraphOverview } from "@/lib/large-graph-overview";
+import {
+  LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
+  LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
+  shouldUseLargeGraphOverview,
+} from "@/lib/large-graph-overview";
 import {
   applyFilters,
   decodeFiltersFromParams,
@@ -1638,6 +1642,7 @@ function GraphPageInner() {
             <li>Node IDs are stable identifiers inside the graph model; the detail panel shows the node ID, first seen, last seen, sources, and edge counts.</li>
             <li>Pagination changes the visible canvas, not the persisted snapshot itself. Narrow the scope when the graph gets large; page when you need broader coverage.</li>
             <li>Relevant paths is for operator triage. Expanded is for topology review. Attack-path cards are the fix-first shortlist, not the whole graph.</li>
+            <li>Pages at or above {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} visible nodes or {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} visible edges use the limited 2D overview. Narrowing, search results, attack-path focus, and reachability drill-ins return to React Flow.</li>
             <li>Hop depth controls how far traversal can move from the selected agent or root. Entity layers control what kinds of nodes can render, without changing the persisted graph.</li>
           </ul>
         </details>

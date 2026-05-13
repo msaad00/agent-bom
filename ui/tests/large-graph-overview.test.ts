@@ -5,6 +5,8 @@ import type { LineageNodeData } from "@/components/lineage-nodes";
 import {
   buildLargeGraphOverviewModel,
   LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
+  LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES,
+  LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
   LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
   shouldUseLargeGraphOverview,
   summarizeLargeGraphOverview,
@@ -91,6 +93,33 @@ describe("large graph overview", () => {
     );
     expect(model.edges.find((entry) => entry.id === "pkg-cve")?.relationship).toBe("vulnerable_to");
     expect(model.edges.some((entry) => entry.id === "missing")).toBe(false);
+    expect(model.omittedNodeCount).toBe(0);
+    expect(model.omittedEdgeCount).toBe(1);
+  });
+
+  it("keeps a deterministic high-signal draw budget for oversized pages", () => {
+    const nodes: Node<LineageNodeData>[] = [
+      node("agent-a", { nodeType: "agent" }),
+      node("critical-a", { nodeType: "vulnerability", severity: "critical" }),
+    ];
+    for (let index = 0; index < LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES + 50; index += 1) {
+      nodes.push(node(`pkg-${index}`, { nodeType: "package", riskScore: index % 11 }));
+    }
+
+    const edges: Edge[] = [];
+    for (let index = 0; index < LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES + 100; index += 1) {
+      edges.push(edge(`e-${index}`, "agent-a", "critical-a", index === 3 ? "exposes_cred" : "depends_on"));
+    }
+
+    const model = buildLargeGraphOverviewModel(nodes, edges);
+
+    expect(model.nodes).toHaveLength(LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES);
+    expect(model.edges).toHaveLength(LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES);
+    expect(model.omittedNodeCount).toBe(52);
+    expect(model.omittedEdgeCount).toBe(100);
+    expect(model.nodeById.has("agent-a")).toBe(true);
+    expect(model.nodeById.has("critical-a")).toBe(true);
+    expect(model.edges.some((entry) => entry.relationship === "exposes_cred")).toBe(true);
   });
 
   it("summarizes findings and dominant relationship families for the graph header", () => {

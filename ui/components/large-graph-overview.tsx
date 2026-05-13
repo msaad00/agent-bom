@@ -9,6 +9,10 @@ import { GraphLegend } from "@/components/graph-chrome";
 import type { LegendItem } from "@/lib/graph-utils";
 import {
   buildLargeGraphOverviewModel,
+  LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
+  LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES,
+  LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
+  LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
   summarizeLargeGraphOverview,
   type LargeGraphNode,
 } from "@/lib/large-graph-overview";
@@ -177,6 +181,7 @@ export function LargeGraphOverview({
   const dragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const model = useMemo(() => buildLargeGraphOverviewModel(nodes, edges), [nodes, edges]);
   const summary = useMemo(() => summarizeLargeGraphOverview(nodes, edges), [nodes, edges]);
+  const isBudgeted = model.omittedNodeCount > 0 || model.omittedEdgeCount > 0;
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [viewport, setViewport] = useState<Viewport>({ scale: 1, offsetX: 0, offsetY: 0 });
 
@@ -197,7 +202,7 @@ export function LargeGraphOverview({
   }, [model, selectedNodeId, viewport]);
 
   return (
-    <div className="flex h-full min-h-[72vh] flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/30">
+    <div className="flex h-full min-h-[72vh] flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/30" data-testid="large-graph-overview">
       <div className="border-b border-zinc-800 bg-zinc-950/95 p-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-950/25 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
@@ -205,8 +210,23 @@ export function LargeGraphOverview({
             Large graph overview
           </span>
           <span className="min-w-0 text-xs text-zinc-500">
-            Canvas renderer for broad estate exploration without loading the focused card graph.
+            2D canvas overview for broad estate scans; focused investigations still use React Flow.
           </span>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-500">
+          <span>
+            Switches on at {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes or{" "}
+            {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges.
+          </span>
+          <span>
+            Draw budget: {model.nodes.length.toLocaleString()}/{model.sourceNodeCount.toLocaleString()} nodes,{" "}
+            {model.edges.length.toLocaleString()}/{model.sourceEdgeCount.toLocaleString()} edges.
+          </span>
+          {isBudgeted && (
+            <span className="text-amber-300">
+              Lower-signal items are omitted from this overview; use search, filters, or drill-in for exact detail.
+            </span>
+          )}
         </div>
         <div className="mt-2">
           <RelationshipRail items={summary.topRelationships} />
@@ -225,6 +245,7 @@ export function LargeGraphOverview({
           ref={canvasRef}
           className="h-full min-h-[58vh] w-full cursor-grab active:cursor-grabbing"
           aria-label="Large security graph overview"
+          data-testid="large-graph-overview-canvas"
           onMouseDown={(event) => {
             dragRef.current = {
               x: event.clientX,
@@ -254,6 +275,7 @@ export function LargeGraphOverview({
             let nearest: LargeGraphNode | null = null;
             let nearestDistance = Infinity;
             for (const node of model.nodes) {
+              if (node.hidden) continue;
               const distance = Math.hypot(node.x - point.x, node.y - point.y);
               if (distance < nearestDistance) {
                 nearest = node;
@@ -288,6 +310,16 @@ export function LargeGraphOverview({
               <GraphLegend items={legendItems} embedded />
             </div>
           </details>
+        </div>
+        <div className="pointer-events-none absolute bottom-3 left-3 max-w-[min(34rem,calc(100vw-2rem))] rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-400 backdrop-blur">
+          Large mode supports pan, zoom, node selection, server-side search, filters, selected-node detail, and reachability drill-in.
+          React Flow-only affordances such as node cards, minimap, and path highlighting return after narrowing the graph below{" "}
+          {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes / {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges
+          or entering a bounded drill-in.
+          <span className="sr-only">
+            Maximum overview draw budget is {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES.toLocaleString()} nodes and{" "}
+            {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES.toLocaleString()} edges.
+          </span>
         </div>
       </div>
     </div>

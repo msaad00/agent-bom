@@ -6,6 +6,8 @@ import { RELATIONSHIP_COLOR_MAP } from "@/lib/graph-schema";
 
 export const LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD = 500;
 export const LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD = 1200;
+export const LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES = 3000;
+export const LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES = 6000;
 
 export interface LargeGraphOverviewDecision {
   nodeCount: number;
@@ -44,6 +46,10 @@ export interface LargeGraphOverviewModel {
   nodes: LargeGraphNode[];
   edges: LargeGraphEdge[];
   nodeById: Map<string, LargeGraphNode>;
+  sourceNodeCount: number;
+  sourceEdgeCount: number;
+  omittedNodeCount: number;
+  omittedEdgeCount: number;
 }
 
 export interface LargeGraphOverviewSummary {
@@ -124,6 +130,31 @@ function edgeSize(edge: Edge): number {
   return edgeRelationship(edge) === "vulnerable_to" ? 1.4 : 0.8;
 }
 
+function nodeSignalScore(node: Node<LineageNodeData>, index: number): number {
+  const data = node.data;
+  let score = 0;
+  const severity = severityRank(data.severity);
+  if (data.highlighted === true) score += 1_000_000;
+  if (data.nodeType === "agent" || data.nodeType === "server" || data.nodeType === "sharedServer") score += 800_000;
+  if (data.nodeType === "credential" || data.nodeType === "tool") score += 500_000;
+  if (data.nodeType === "vulnerability" || data.nodeType === "misconfiguration") score += 350_000 + severity * 20_000;
+  if (typeof data.riskScore === "number" && Number.isFinite(data.riskScore)) score += Math.min(100, Math.max(0, data.riskScore)) * 100;
+  return score - index / 10_000;
+}
+
+function edgeSignalScore(edge: Edge, nodeById: Map<string, LargeGraphNode>, index: number): number {
+  const relationship = edgeRelationship(edge);
+  let score = 0;
+  if (relationship === "vulnerable_to") score += 500_000;
+  if (relationship === "exposes_cred" || relationship === "reaches_tool") score += 450_000;
+  if (relationship === "uses" || relationship === "depends_on") score += 150_000;
+  const source = nodeById.get(edge.source);
+  const target = nodeById.get(edge.target);
+  if (source?.highlighted || target?.highlighted) score += 750_000;
+  if (source?.forceLabel || target?.forceLabel) score += 200_000;
+  return score - index / 10_000;
+}
+
 export function summarizeLargeGraphOverview(
   nodes: Node<LineageNodeData>[],
   edges: Edge[],
@@ -156,7 +187,12 @@ export function buildLargeGraphOverviewModel(
   edges: Edge[],
 ): LargeGraphOverviewModel {
   const total = Math.max(nodes.length, 1);
-  const overviewNodes: LargeGraphNode[] = nodes.map((node, index) => {
+  const rankedNodes = nodes
+    .map((node, index) => ({ node, index, score: nodeSignalScore(node, index) }))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES)
+    .sort((left, right) => left.index - right.index);
+  const overviewNodes: LargeGraphNode[] = rankedNodes.map(({ node, index }) => {
     const fallback = fallbackPosition(index, total);
     const data = node.data;
     const x = numericPosition(node.position?.x) ?? fallback.x;
@@ -182,25 +218,32 @@ export function buildLargeGraphOverviewModel(
     };
   });
   const nodeById = new Map(overviewNodes.map((node) => [node.id, node]));
-  const overviewEdges: LargeGraphEdge[] = edges.flatMap((edge, index) => {
-    if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) return [];
+  const drawableEdges = edges
+    .map((edge, index) => ({ edge, index, score: edgeSignalScore(edge, nodeById, index) }))
+    .filter(({ edge }) => nodeById.has(edge.source) && nodeById.has(edge.target))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES)
+    .sort((left, right) => left.index - right.index);
+  const overviewEdges: LargeGraphEdge[] = drawableEdges.map(({ edge, index }) => {
     const relationship = edgeRelationship(edge);
-    return [
-      {
-        id: edge.id || `${edge.source}:${edge.target}:${relationship}:${index}`,
-        source: edge.source,
-        target: edge.target,
-        relationship,
-        color: RELATIONSHIP_COLOR_MAP[relationship] ?? "#52525b",
-        size: edgeSize(edge),
-        hidden: edge.hidden === true,
-      },
-    ];
+    return {
+      id: edge.id || `${edge.source}:${edge.target}:${relationship}:${index}`,
+      source: edge.source,
+      target: edge.target,
+      relationship,
+      color: RELATIONSHIP_COLOR_MAP[relationship] ?? "#52525b",
+      size: edgeSize(edge),
+      hidden: edge.hidden === true,
+    };
   });
 
   return {
     nodes: overviewNodes,
     edges: overviewEdges,
     nodeById,
+    sourceNodeCount: nodes.length,
+    sourceEdgeCount: edges.length,
+    omittedNodeCount: Math.max(0, nodes.length - overviewNodes.length),
+    omittedEdgeCount: Math.max(0, edges.length - overviewEdges.length),
   };
 }

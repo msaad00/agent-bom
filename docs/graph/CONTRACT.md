@@ -89,9 +89,9 @@ The graph renderer ships deterministic focused and expanded modes. Operators can
 | Relevant paths default | 2-hop neighbourhood, 50-node page size, high-severity vulnerable scope, sibling fan-outs of 5+ collapsed into expandable cluster pills. | Starts every investigation readable, even on dense self-scans. |
 | Expanded mode | 3-hop neighbourhood, 250-node page size, sibling fan-outs of 20+ collapsed. | Lets operators widen context deliberately without turning the first view into a whole-tenant canvas. |
 | Zoomed out | Level-of-detail renderer swaps detail cards for summary cards and cluster bubbles below the zoom thresholds. | Dense snapshots stay navigable instead of turning into unreadable labels. |
-| Large snapshots | Snapshot selector, search, filters, pagination, and graph query endpoints bound the visible canvas. | Large tenants navigate by scope, not by rendering the whole tenant in one frame. |
+| Large overview | Visible pages at or above 500 nodes or 1,200 edges switch from React Flow to a limited 2D canvas overview. The overview draws up to 3,000 high-signal nodes and 6,000 high-signal edges; search, filters, selected-node detail, and reachability drill-ins remain server-backed. | Keeps broad estate pages from blanking or stalling while preserving React Flow for bounded investigations. |
 
-Operators reaching large-snapshot scale should pivot to scoped queries, security-graph attack paths, the blast-radius drilldown, or the snapshot + page + search workflow described in `site-docs/deployment/performance-and-sizing.md`. The graph is designed for investigation, not for "render the whole tenant in one canvas."
+Operators reaching large-snapshot scale should pivot to scoped queries, security-graph attack paths, the blast-radius drilldown, or the snapshot + page + search workflow described in `site-docs/deployment/performance-and-sizing.md`. The large overview is intentionally not a full React Flow replacement: it supports pan, zoom, node selection, and high-level topology, but not node cards, minimap, or path highlighting. The graph is designed for investigation, not for "render the whole tenant in one canvas."
 
 ---
 

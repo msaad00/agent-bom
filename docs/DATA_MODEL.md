@@ -207,6 +207,28 @@ control-plane parity:
 For the operator-facing backend matrix and current parity boundaries, see
 `site-docs/deployment/backend-parity.md`.
 
+### Neptune — design-only candidate
+
+Neptune is not wired as a graph backend today. The current implementation
+contract remains SQLite for local graph persistence and Postgres/Supabase for
+the transactional control plane.
+
+The candidate Neptune lane maps to the API `GraphStoreProtocol` rather than
+the analysis-only `GraphBackend` abstraction:
+
+| Graph concept | Candidate Neptune shape | Required invariant |
+|---|---|---|
+| graph snapshot | snapshot metadata vertex or side table keyed by `tenant_id` + `scan_id` | immutable per-scan reads |
+| node | vertex keyed by `tenant_id`, `scan_id`, stable graph node ID | tenant predicate on every query |
+| edge | relationship keyed by `tenant_id`, `scan_id`, source, target, relationship | tenant predicate and bounded traversal |
+| attack path | materialized path vertex/edge payload | no ad hoc unbounded traversal in API calls |
+| temporal edge fields | relationship attributes (`valid_from`, `valid_to`, confidence, provenance) | preserve replay/diff semantics |
+| saved presets | stay in the transactional API store unless a graph-only deployment is designed | no silent feature loss |
+
+No production SLO, support claim, Helm value, dependency extra, or adapter class
+is implied by this mapping. See
+`docs/decisions/008-pluggable-neptune-graph-backend.md` for the design boundary.
+
 ### Deployment-context posture contract — `GET /v1/posture/counts`
 
 This endpoint is the lightweight capability contract used by the UI to

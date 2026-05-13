@@ -10,6 +10,7 @@ Endpoints:
   GET  /v1/graph/impact         — blast radius of a node (reverse BFS)
   GET  /v1/graph/search         — full-text graph search
   GET  /v1/graph/agents         — paginated agent node selector
+  GET  /v1/graph/clusters       — semantic cluster rollups
   POST /v1/graph/query          — programmable traversal query
   GET  /v1/graph/node/{id}      — single node detail with edges + impact
   GET  /v1/graph/snapshots      — list persisted scan snapshots
@@ -35,6 +36,7 @@ from pydantic import BaseModel, Field
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.graph import SEVERITY_RANK, AttackPath, EntityType, GraphFilterOptions, GraphSemanticLayer, RelationshipType, UnifiedGraph
+from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -1282,6 +1284,52 @@ async def search_graph(
             "next_cursor": next_cursor or "",
             "has_more": bool(next_cursor) if cursor else offset + limit < total,
         },
+    }
+
+
+@router.get("/v1/graph/clusters", tags=["graph"])
+async def get_graph_clusters(
+    request: Request,
+    scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
+    kinds: Optional[str] = Query(None, description="Comma-separated semantic cluster kinds"),
+    min_members: int = Query(2, ge=1, le=100, description="Minimum members required to emit a cluster"),
+    limit: int = Query(250, ge=1, le=1000, description="Maximum clusters to return"),
+) -> dict:
+    """Return API-backed semantic clusters for graph readability.
+
+    The response is intentionally reversible: each cluster carries member IDs
+    and expansion metadata so the dashboard can collapse and expand topology
+    without deriving families client-side.
+    """
+
+    tenant = _tenant(request)
+    graph_store = _get_graph_store_or_503()
+    requested_scan_id = scan_id or ""
+    if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
+        raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
+
+    selected_kinds = {kind.strip() for kind in kinds.split(",") if kind.strip()} if kinds else set(SEMANTIC_CLUSTER_KINDS)
+    unknown_kinds = selected_kinds - set(SEMANTIC_CLUSTER_KINDS)
+    if unknown_kinds:
+        raise HTTPException(status_code=400, detail=f"Unknown semantic cluster kind(s): {', '.join(sorted(unknown_kinds))}")
+
+    graph = await _graph_store_call(
+        graph_store.load_graph,
+        scan_id=requested_scan_id,
+        tenant_id=tenant,
+    )
+    clusters = [
+        cluster
+        for cluster in build_semantic_clusters(graph.nodes.values(), graph.edges, min_members=min_members)
+        if cluster.kind in selected_kinds
+    ][:limit]
+    return {
+        "scan_id": graph.scan_id,
+        "tenant_id": graph.tenant_id,
+        "created_at": graph.created_at,
+        "clusters": [cluster.to_dict() for cluster in clusters],
+        "stats": semantic_cluster_stats(clusters),
+        "available_kinds": list(SEMANTIC_CLUSTER_KINDS),
     }
 
 

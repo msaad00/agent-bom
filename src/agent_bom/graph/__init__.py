@@ -25,6 +25,7 @@ from agent_bom.graph.dependency_reach import (
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
 from agent_bom.graph.ocsf import ENTITY_OCSF_MAP, FINDING_ENTITY_TYPES, ocsf_type_uid
+from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, SemanticCluster, build_semantic_clusters, semantic_cluster_stats
 from agent_bom.graph.severity import (
     OCSF_SEVERITY_NAMES,
     OCSF_TO_SYSLOG,
@@ -49,6 +50,7 @@ __all__ = [
     "NodeStatus",
     "GraphLayout",
     "OCSFSeverity",
+    "SEMANTIC_CLUSTER_KINDS",
     # Severity
     "SEVERITY_TO_OCSF",
     "OCSF_SEVERITY_NAMES",
@@ -75,8 +77,11 @@ __all__ = [
     "InteractionRisk",
     "GraphFilterOptions",
     "LegendEntry",
+    "SemanticCluster",
     "ENTITY_LEGEND",
     "RELATIONSHIP_LEGEND",
+    "build_semantic_clusters",
+    "semantic_cluster_stats",
     # Compat
     "NODE_KIND_TO_ENTITY",
     "EDGE_KIND_TO_RELATIONSHIP",

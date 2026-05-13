@@ -18,6 +18,7 @@ from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, _init_db, active_e
 from agent_bom.graph import (
     AttackPath,
     EntityType,
+    NodeDimensions,
     RelationshipType,
     UnifiedEdge,
     UnifiedGraph,
@@ -1826,6 +1827,115 @@ class TestGraphStoreBackendSelection:
         }
         assert "source_id" in parameter_names
         assert "source" not in parameter_names
+
+    def test_graph_clusters_return_reversible_semantic_rollups(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="agent:a",
+                entity_type=EntityType.AGENT,
+                label="agent-a",
+                data_sources=["fleet-sync"],
+                dimensions=NodeDimensions(agent_type="codex", environment="prod"),
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="agent:b",
+                entity_type=EntityType.AGENT,
+                label="agent-b",
+                data_sources=["fleet-sync"],
+                dimensions=NodeDimensions(agent_type="codex", environment="prod"),
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="server:fs-a",
+                entity_type=EntityType.SERVER,
+                label="mcp-fs-a",
+                dimensions=NodeDimensions(surface="mcp", environment="prod"),
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="server:fs-b",
+                entity_type=EntityType.SERVER,
+                label="mcp-fs-b",
+                dimensions=NodeDimensions(surface="mcp", environment="prod"),
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="pkg:npm:express@4.18.2",
+                entity_type=EntityType.PACKAGE,
+                label="express@4.18.2",
+                severity="high",
+                risk_score=8.1,
+                attributes={"name": "express", "ecosystem": "npm", "version": "4.18.2"},
+                dimensions=NodeDimensions(ecosystem="npm", environment="prod"),
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="pkg:npm:express@4.19.0",
+                entity_type=EntityType.PACKAGE,
+                label="express@4.19.0",
+                severity="critical",
+                risk_score=9.6,
+                attributes={"name": "express", "ecosystem": "npm", "version": "4.19.0"},
+                dimensions=NodeDimensions(ecosystem="npm", environment="prod"),
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="vuln:CVE-2026-1", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1", severity="critical")
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="vuln:CVE-2026-2", entity_type=EntityType.VULNERABILITY, label="CVE-2026-2", severity="high")
+        )
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:fs-a", relationship=RelationshipType.USES))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:fs-a", target="pkg:npm:express@4.18.2", relationship=RelationshipType.DEPENDS_ON)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="pkg:npm:express@4.18.2", target="vuln:CVE-2026-1", relationship=RelationshipType.VULNERABLE_TO)
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/clusters", params={"scan_id": "store-scan", "min_members": 2})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["scan_id"] == "store-scan"
+        clusters = {cluster["id"]: cluster for cluster in body["clusters"]}
+        package_cluster = clusters["cluster:package_family:npm-express"]
+        assert package_cluster["kind"] == "package_family"
+        assert package_cluster["label"] == "npm / express"
+        assert package_cluster["count"] == 2
+        assert package_cluster["max_risk"] == 96.0
+        assert package_cluster["severity"] == "critical"
+        assert package_cluster["risk_summary"]["critical"] == 1
+        assert package_cluster["relationship_counts"]["depends_on"] == 1
+        assert package_cluster["relationship_counts"]["vulnerable_to"] == 1
+        assert package_cluster["expansion"] == {
+            "mode": "members",
+            "member_ids": ["pkg:npm:express@4.18.2", "pkg:npm:express@4.19.0"],
+            "collapse_id": "cluster:package_family:npm-express",
+            "reversible": True,
+        }
+        assert clusters["cluster:cve_family:cve-2026"]["member_ids"] == ["vuln:CVE-2026-1", "vuln:CVE-2026-2"]
+        assert clusters["cluster:agent_fleet:codex"]["layer"] == "orchestration"
+        assert body["stats"]["cluster_count"] >= 4
+        assert body["stats"]["package_family_count"] == 1
+        assert "source_environment" in body["available_kinds"]
+        assert any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_clusters_reject_unknown_kind(self, recording_graph_store):
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/clusters", params={"kinds": "package_family,nope"})
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Unknown semantic cluster kind(s): nope"
 
     def test_graph_impact_uses_store_native_traversal(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")

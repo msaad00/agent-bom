@@ -17,6 +17,7 @@ import type {
   GraphQueryResponse,
   GraphNodeDetailResponse,
   GraphSearchResponse,
+  GraphSemanticClustersResponse,
   GraphAgentsResponse,
   GraphDiffResponse,
   GraphExportFormat,
@@ -102,6 +103,10 @@ export type {
   GraphImpactResponse,
   GraphNodeDetailResponse,
   GraphSearchResponse,
+  GraphSemanticClusterKind,
+  GraphSemanticClusterExpansion,
+  GraphSemanticCluster,
+  GraphSemanticClustersResponse,
   GraphAgentSelectorItem,
   GraphAgentsResponse,
   GraphDiffResponse,
@@ -565,6 +570,22 @@ export const api = {
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     if (filters?.cursor) params.set("cursor", filters.cursor);
     return get<GraphSearchResponse>(`/v1/graph/search?${params.toString()}`);
+  },
+
+  /** Load API-backed semantic graph clusters without client-only inference */
+  getGraphClusters: (filters?: {
+    scanId?: string;
+    kinds?: string[];
+    minMembers?: number;
+    limit?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.kinds && filters.kinds.length > 0) params.set("kinds", filters.kinds.join(","));
+    if (filters?.minMembers != null) params.set("min_members", String(filters.minMembers));
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    const qs = params.toString();
+    return get<GraphSemanticClustersResponse>(`/v1/graph/clusters${qs ? `?${qs}` : ""}`);
   },
 
   /** List agent nodes for large graph selectors without loading the full graph */

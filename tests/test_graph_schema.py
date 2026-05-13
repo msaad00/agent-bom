@@ -1221,3 +1221,41 @@ class TestGraphSchemaEndpoint:
         assert new_entry["layer"] == "asset"
         # Silence flake8 for the unused alias — kept for future legend tests.
         assert _container is not None
+
+
+def test_semantic_clusters_are_reversible_api_contract():
+    from agent_bom.graph import EntityType, NodeDimensions, RelationshipType, UnifiedEdge, UnifiedNode
+    from agent_bom.graph.semantic_clusters import build_semantic_clusters, semantic_cluster_stats
+
+    nodes = [
+        UnifiedNode(
+            id="pkg:npm:express@4.18.2",
+            entity_type=EntityType.PACKAGE,
+            label="express@4.18.2",
+            severity="high",
+            attributes={"name": "express", "ecosystem": "npm"},
+            dimensions=NodeDimensions(ecosystem="npm"),
+        ),
+        UnifiedNode(
+            id="pkg:npm:express@4.19.0",
+            entity_type=EntityType.PACKAGE,
+            label="express@4.19.0",
+            severity="critical",
+            attributes={"name": "express", "ecosystem": "npm"},
+            dimensions=NodeDimensions(ecosystem="npm"),
+        ),
+        UnifiedNode(id="vuln:CVE-2026-1", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"),
+    ]
+    edges = [UnifiedEdge(source="pkg:npm:express@4.18.2", target="vuln:CVE-2026-1", relationship=RelationshipType.VULNERABLE_TO)]
+
+    clusters = build_semantic_clusters(nodes, edges, min_members=2)
+
+    assert len(clusters) == 1
+    cluster = clusters[0].to_dict()
+    assert cluster["id"] == "cluster:package_family:npm-express"
+    assert cluster["entity_types"] == ["package"]
+    assert cluster["member_ids"] == ["pkg:npm:express@4.18.2", "pkg:npm:express@4.19.0"]
+    assert cluster["expansion"]["collapse_id"] == cluster["id"]
+    assert cluster["expansion"]["reversible"] is True
+    assert cluster["relationship_counts"] == {"vulnerable_to": 1}
+    assert semantic_cluster_stats(clusters)["member_count"] == 2

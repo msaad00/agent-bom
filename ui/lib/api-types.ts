@@ -218,6 +218,46 @@ export interface GraphSearchResponse {
   pagination: GraphPagination;
 }
 
+export type GraphSemanticClusterKind =
+  | "package_family"
+  | "cve_family"
+  | "agent_fleet"
+  | "server_fleet"
+  | "credential_family"
+  | "tool_capability"
+  | "source_environment";
+
+export interface GraphSemanticClusterExpansion {
+  mode: "members" | string;
+  member_ids: string[];
+  collapse_id: string;
+  reversible: boolean;
+}
+
+export interface GraphSemanticCluster {
+  id: string;
+  kind: GraphSemanticClusterKind;
+  label: string;
+  layer: string;
+  entity_types: string[];
+  count: number;
+  member_ids: string[];
+  max_risk: number;
+  severity: "critical" | "high" | "medium" | "low" | "none" | string;
+  risk_summary: Record<string, number>;
+  relationship_counts: Record<string, number>;
+  expansion: GraphSemanticClusterExpansion;
+}
+
+export interface GraphSemanticClustersResponse {
+  scan_id: string;
+  tenant_id: string;
+  created_at: string;
+  clusters: GraphSemanticCluster[];
+  stats: Record<string, number>;
+  available_kinds: GraphSemanticClusterKind[];
+}
+
 export interface GraphAgentSelectorItem {
   id: string;
   label: string;

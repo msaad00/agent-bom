@@ -1376,6 +1376,14 @@ class TestGraphStoreBackendSelection:
         }
         assert body["cards"][0]["affected"]["agents"] == ["agent-a"]
         assert body["cards"][0]["affected"]["packages"] == ["express"]
+        assert body["cards"][0]["exposure_path"]["id"] == "agent:a::vuln:cve::agent:a->server:a:fs->pkg:npm:express->vuln:cve"
+        assert body["cards"][0]["exposure_path"]["rank"] == 1
+        assert body["cards"][0]["exposure_path"]["source"]["role"] == "agent"
+        assert body["cards"][0]["exposure_path"]["target"]["role"] == "finding"
+        assert body["cards"][0]["exposure_path"]["nodeIds"] == ["agent:a", "server:a:fs", "pkg:npm:express", "vuln:cve"]
+        assert body["cards"][0]["exposure_path"]["findings"] == ["CVE-2026-1"]
+        assert body["cards"][0]["exposure_path"]["exposedCredentials"] == ["AWS_SECRET_ACCESS_KEY"]
+        assert body["cards"][0]["exposure_path"]["reachableTools"] == ["run_shell"]
         assert {reason["kind"] for reason in body["cards"][0]["risk_reasons"]} >= {
             "critical_reach",
             "credential_exposure",
@@ -1503,6 +1511,11 @@ class TestGraphStoreBackendSelection:
         assert response.status_code == 200
         body = response.json()
         assert body["attack_paths"][0]["summary"] == "agent-a reaches CVE-2026-1 outside the current node page"
+        assert body["attack_paths"][0]["exposure_path"]["rank"] == 1
+        assert body["attack_paths"][0]["exposure_path"]["source"]["label"] == "agent-a"
+        assert body["attack_paths"][0]["exposure_path"]["target"]["label"] == "CVE-2026-1"
+        assert body["attack_paths"][0]["exposure_path"]["relationships"][0]["relationship"] == "uses"
+        assert body["attack_paths"][0]["exposure_path"]["reachableTools"] == ["run_shell"]
         assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:cve"}
         assert body["pagination"]["total"] == 1
         assert any(call[0] == "attack_paths" for call in recording_graph_store.calls)

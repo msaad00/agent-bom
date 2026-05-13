@@ -1,6 +1,7 @@
 /** Shared API response and request contracts. */
 
 import type { AttackPath, UnifiedEdge, UnifiedGraphData, UnifiedNode } from "./graph-schema";
+import type { ExposurePath } from "./exposure-path";
 
 export type JobStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 
@@ -97,7 +98,12 @@ export interface GraphSnapshot {
   risk_summary: Record<string, number>;
 }
 
-export interface UnifiedGraphResponse extends UnifiedGraphData {
+export interface GraphAttackPath extends AttackPath {
+  exposure_path?: ExposurePath | undefined;
+}
+
+export interface UnifiedGraphResponse extends Omit<UnifiedGraphData, "attack_paths"> {
+  attack_paths: GraphAttackPath[];
   pagination: GraphPagination;
 }
 
@@ -118,7 +124,8 @@ export interface FixFirstPathCard {
   rank: number;
   title: string;
   summary: string;
-  attack_path: AttackPath;
+  attack_path: GraphAttackPath;
+  exposure_path?: ExposurePath | undefined;
   nodes?: UnifiedNode[] | undefined;
   sequence_labels: string[];
   risk_reasons: FixFirstRiskReason[];

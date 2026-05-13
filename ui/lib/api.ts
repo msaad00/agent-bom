@@ -92,6 +92,7 @@ export type {
   ScanJobStatus,
   ScanResult,
   GraphPagination,
+  GraphAttackPath,
   GraphSnapshot,
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,

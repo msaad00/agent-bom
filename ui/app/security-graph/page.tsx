@@ -247,7 +247,9 @@ function SecurityGraphPageContent() {
   const selectedExposurePath = useMemo(
     () =>
       selectedAttackPath
-        ? toExposurePathFromAttackPath(selectedAttackPath, graphNodeById, {
+        ? selectedFixFirstCard?.exposure_path ??
+          selectedAttackPath.exposure_path ??
+          toExposurePathFromAttackPath(selectedAttackPath, graphNodeById, {
             scanId: selectedScanId || undefined,
             rank: selectedFixFirstCard?.rank,
           })

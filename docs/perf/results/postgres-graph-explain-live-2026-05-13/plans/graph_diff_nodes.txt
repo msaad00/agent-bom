@@ -1,0 +1,139 @@
+                                                               QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------------
+ [                                                                                                                                      +
+   {                                                                                                                                    +
+     "Plan": {                                                                                                                          +
+       "Node Type": "Limit",                                                                                                            +
+       "Parallel Aware": false,                                                                                                         +
+       "Async Capable": false,                                                                                                          +
+       "Startup Cost": 0.83,                                                                                                            +
+       "Total Cost": 784.56,                                                                                                            +
+       "Plan Rows": 500,                                                                                                                +
+       "Plan Width": 64,                                                                                                                +
+       "Actual Startup Time": 8.870,                                                                                                    +
+       "Actual Total Time": 38.421,                                                                                                     +
+       "Actual Rows": 500,                                                                                                              +
+       "Actual Loops": 1,                                                                                                               +
+       "Shared Hit Blocks": 13440,                                                                                                      +
+       "Shared Read Blocks": 0,                                                                                                         +
+       "Shared Dirtied Blocks": 0,                                                                                                      +
+       "Shared Written Blocks": 0,                                                                                                      +
+       "Local Hit Blocks": 0,                                                                                                           +
+       "Local Read Blocks": 0,                                                                                                          +
+       "Local Dirtied Blocks": 0,                                                                                                       +
+       "Local Written Blocks": 0,                                                                                                       +
+       "Temp Read Blocks": 0,                                                                                                           +
+       "Temp Written Blocks": 0,                                                                                                        +
+       "Plans": [                                                                                                                       +
+         {                                                                                                                              +
+           "Node Type": "Merge Join",                                                                                                   +
+           "Parent Relationship": "Outer",                                                                                              +
+           "Parallel Aware": false,                                                                                                     +
+           "Async Capable": false,                                                                                                      +
+           "Join Type": "Full",                                                                                                         +
+           "Startup Cost": 0.83,                                                                                                        +
+           "Total Cost": 32812.53,                                                                                                      +
+           "Plan Rows": 20933,                                                                                                          +
+           "Plan Width": 64,                                                                                                            +
+           "Actual Startup Time": 8.869,                                                                                                +
+           "Actual Total Time": 38.397,                                                                                                 +
+           "Actual Rows": 500,                                                                                                          +
+           "Actual Loops": 1,                                                                                                           +
+           "Inner Unique": true,                                                                                                        +
+           "Merge Cond": "(graph_nodes.id = graph_nodes_1.id)",                                                                         +
+           "Filter": "((graph_nodes.id IS NULL) OR (graph_nodes_1.id IS NULL) OR (graph_nodes.attributes <> graph_nodes_1.attributes))",+
+           "Rows Removed by Filter": 3072,                                                                                              +
+           "Shared Hit Blocks": 13440,                                                                                                  +
+           "Shared Read Blocks": 0,                                                                                                     +
+           "Shared Dirtied Blocks": 0,                                                                                                  +
+           "Shared Written Blocks": 0,                                                                                                  +
+           "Local Hit Blocks": 0,                                                                                                       +
+           "Local Read Blocks": 0,                                                                                                      +
+           "Local Dirtied Blocks": 0,                                                                                                   +
+           "Local Written Blocks": 0,                                                                                                   +
+           "Temp Read Blocks": 0,                                                                                                       +
+           "Temp Written Blocks": 0,                                                                                                    +
+           "Plans": [                                                                                                                   +
+             {                                                                                                                          +
+               "Node Type": "Index Scan",                                                                                               +
+               "Parent Relationship": "Outer",                                                                                          +
+               "Parallel Aware": false,                                                                                                 +
+               "Async Capable": false,                                                                                                  +
+               "Scan Direction": "Forward",                                                                                             +
+               "Index Name": "graph_nodes_pkey",                                                                                        +
+               "Relation Name": "graph_nodes",                                                                                          +
+               "Alias": "graph_nodes",                                                                                                  +
+               "Startup Cost": 0.41,                                                                                                    +
+               "Total Cost": 16203.16,                                                                                                  +
+               "Plan Rows": 17774,                                                                                                      +
+               "Plan Width": 483,                                                                                                       +
+               "Actual Startup Time": 0.041,                                                                                            +
+               "Actual Total Time": 18.588,                                                                                             +
+               "Actual Rows": 3088,                                                                                                     +
+               "Actual Loops": 1,                                                                                                       +
+               "Index Cond": "((scan_id = 'graph-benchmark-estate-old'::text) AND (tenant_id = 'default'::text))",                      +
+               "Rows Removed by Index Recheck": 0,                                                                                      +
+               "Shared Hit Blocks": 6140,                                                                                               +
+               "Shared Read Blocks": 0,                                                                                                 +
+               "Shared Dirtied Blocks": 0,                                                                                              +
+               "Shared Written Blocks": 0,                                                                                              +
+               "Local Hit Blocks": 0,                                                                                                   +
+               "Local Read Blocks": 0,                                                                                                  +
+               "Local Dirtied Blocks": 0,                                                                                               +
+               "Local Written Blocks": 0,                                                                                               +
+               "Temp Read Blocks": 0,                                                                                                   +
+               "Temp Written Blocks": 0                                                                                                 +
+             },                                                                                                                         +
+             {                                                                                                                          +
+               "Node Type": "Index Scan",                                                                                               +
+               "Parent Relationship": "Inner",                                                                                          +
+               "Parallel Aware": false,                                                                                                 +
+               "Async Capable": false,                                                                                                  +
+               "Scan Direction": "Forward",                                                                                             +
+               "Index Name": "graph_nodes_pkey",                                                                                        +
+               "Relation Name": "graph_nodes",                                                                                          +
+               "Alias": "graph_nodes_1",                                                                                                +
+               "Startup Cost": 0.41,                                                                                                    +
+               "Total Cost": 16236.65,                                                                                                  +
+               "Plan Rows": 20934,                                                                                                      +
+               "Plan Width": 483,                                                                                                       +
+               "Actual Startup Time": 0.010,                                                                                            +
+               "Actual Total Time": 17.431,                                                                                             +
+               "Actual Rows": 3572,                                                                                                     +
+               "Actual Loops": 1,                                                                                                       +
+               "Index Cond": "((scan_id = 'graph-benchmark-estate-current'::text) AND (tenant_id = 'default'::text))",                  +
+               "Rows Removed by Index Recheck": 0,                                                                                      +
+               "Shared Hit Blocks": 7300,                                                                                               +
+               "Shared Read Blocks": 0,                                                                                                 +
+               "Shared Dirtied Blocks": 0,                                                                                              +
+               "Shared Written Blocks": 0,                                                                                              +
+               "Local Hit Blocks": 0,                                                                                                   +
+               "Local Read Blocks": 0,                                                                                                  +
+               "Local Dirtied Blocks": 0,                                                                                               +
+               "Local Written Blocks": 0,                                                                                               +
+               "Temp Read Blocks": 0,                                                                                                   +
+               "Temp Written Blocks": 0                                                                                                 +
+             }                                                                                                                          +
+           ]                                                                                                                            +
+         }                                                                                                                              +
+       ]                                                                                                                                +
+     },                                                                                                                                 +
+     "Planning": {                                                                                                                      +
+       "Shared Hit Blocks": 265,                                                                                                        +
+       "Shared Read Blocks": 0,                                                                                                         +
+       "Shared Dirtied Blocks": 0,                                                                                                      +
+       "Shared Written Blocks": 0,                                                                                                      +
+       "Local Hit Blocks": 0,                                                                                                           +
+       "Local Read Blocks": 0,                                                                                                          +
+       "Local Dirtied Blocks": 0,                                                                                                       +
+       "Local Written Blocks": 0,                                                                                                       +
+       "Temp Read Blocks": 0,                                                                                                           +
+       "Temp Written Blocks": 0                                                                                                         +
+     },                                                                                                                                 +
+     "Planning Time": 0.603,                                                                                                            +
+     "Triggers": [                                                                                                                      +
+     ],                                                                                                                                 +
+     "Execution Time": 38.478                                                                                                           +
+   }                                                                                                                                    +
+ ]
+(1 row)

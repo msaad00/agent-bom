@@ -61,6 +61,8 @@ def test_graph_benchmark_scripts_write_dry_run_artifacts(tmp_path: Path) -> None
     estate_report = tmp_path / "estate-report.json"
     estate_summary = tmp_path / "estate-summary.json"
     api_output = tmp_path / "api.json"
+    sqlite_db = tmp_path / "graph.db"
+    store_summary = tmp_path / "store-load.json"
     explain_dir = tmp_path / "explain"
     explain_summary = tmp_path / "explain.json"
 
@@ -74,6 +76,18 @@ def test_graph_benchmark_scripts_write_dry_run_artifacts(tmp_path: Path) -> None
             str(estate_report),
             "--summary-output",
             str(estate_summary),
+        ],
+        [
+            sys.executable,
+            "scripts/seed_graph_benchmark_store.py",
+            "--backend",
+            "sqlite",
+            "--sqlite-db",
+            str(sqlite_db),
+            "--report",
+            str(estate_report),
+            "--summary-output",
+            str(store_summary),
         ],
         [sys.executable, "scripts/run_graph_api_benchmark.py", "--dry-run", "--output", str(api_output)],
         [
@@ -91,6 +105,11 @@ def test_graph_benchmark_scripts_write_dry_run_artifacts(tmp_path: Path) -> None
         assert result.returncode == 0, result.stderr
 
     assert json.loads(estate_summary.read_text())["evidence_status"] == "synthetic_estate_shape_only"
+    store_load = json.loads(store_summary.read_text())
+    assert store_load["evidence_status"] == "graph_store_loaded"
+    assert store_load["snapshots"]["graph-benchmark-estate-current"]["total_edges"] > 0
+    assert store_load["benchmark_nodes"]["source_node"].startswith("agent:")
+    assert store_load["benchmark_nodes"]["detail_node"]
     assert json.loads(api_output.read_text())["evidence_status"] == "scaffold_validated_not_measured"
     explain = json.loads(explain_summary.read_text())
     assert explain["evidence_status"] == "explain_sql_scaffold_not_measured"

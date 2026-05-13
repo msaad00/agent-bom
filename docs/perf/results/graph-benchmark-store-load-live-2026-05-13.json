@@ -1,0 +1,87 @@
+{
+  "backend": "sqlite",
+  "benchmark_nodes": {
+    "detail_node": "pkg:go:langchain@1.0.0",
+    "source_node": "agent:agent-00000"
+  },
+  "commands": {
+    "postgres": "AGENT_BOM_POSTGRES_URL=postgresql://... uv run python scripts/seed_graph_benchmark_store.py --backend postgres",
+    "sqlite": "uv run python scripts/seed_graph_benchmark_store.py --backend sqlite --sqlite-db /tmp/agent-bom-graph-benchmark.db"
+  },
+  "evidence_status": "graph_store_loaded",
+  "generated_at": "2026-05-13T06:33:45.537481+00:00",
+  "new_scan_id": "graph-benchmark-estate-current",
+  "old_agent_count": 200,
+  "old_scan_id": "graph-benchmark-estate-old",
+  "owner_issue": 2145,
+  "schema_version": 1,
+  "snapshots": {
+    "graph-benchmark-estate-current": {
+      "attack_path_count": 291,
+      "highest_interaction_risk": 0.0,
+      "interaction_risk_count": 0,
+      "max_attack_path_risk": 8.0,
+      "node_types": {
+        "agent": 250,
+        "credential": 28,
+        "package": 5826,
+        "provider": 5,
+        "server": 604,
+        "tool": 3475,
+        "vulnerability": 291
+      },
+      "relationship_types": {
+        "depends_on": 5958,
+        "exposes_cred": 74,
+        "hosts": 250,
+        "provides_tool": 3475,
+        "reaches_tool": 590,
+        "uses": 604,
+        "vulnerable_to": 291
+      },
+      "severity_counts": {
+        "critical": 80,
+        "high": 70,
+        "low": 76,
+        "medium": 65
+      },
+      "total_edges": 11242,
+      "total_nodes": 10479
+    },
+    "graph-benchmark-estate-old": {
+      "attack_path_count": 255,
+      "highest_interaction_risk": 0.0,
+      "interaction_risk_count": 0,
+      "max_attack_path_risk": 8.0,
+      "node_types": {
+        "agent": 200,
+        "credential": 23,
+        "package": 4981,
+        "provider": 5,
+        "server": 497,
+        "tool": 2936,
+        "vulnerability": 255
+      },
+      "relationship_types": {
+        "depends_on": 5080,
+        "exposes_cred": 59,
+        "hosts": 200,
+        "provides_tool": 2936,
+        "reaches_tool": 482,
+        "uses": 497,
+        "vulnerable_to": 255
+      },
+      "severity_counts": {
+        "critical": 71,
+        "high": 62,
+        "low": 68,
+        "medium": 54
+      },
+      "total_edges": 9509,
+      "total_nodes": 8897
+    }
+  },
+  "source_report": "docs/perf/results/graph-benchmark-estate-live-2026-05-13-report.json",
+  "source_report_sha256": "33496e7159fdde3618cb205eb7675da82766f6b4fe2e56175d07d39b0a89dd83",
+  "tenant_id": "default"
+}

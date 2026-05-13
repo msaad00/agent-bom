@@ -1,0 +1,46 @@
+{
+  "agents": 250,
+  "counts": {
+    "blast_radius_rows": 291,
+    "package_instances": 5958,
+    "servers": 604,
+    "tools": 3475,
+    "unique_packages": 2981
+  },
+  "evidence_status": "synthetic_estate_shape_only",
+  "generated_at": "2026-05-13T06:33:43.569638+00:00",
+  "schema_version": 1,
+  "seed": 2145,
+  "skew": {
+    "packages_per_server": {
+      "max": 28,
+      "median": 9.0,
+      "min": 3,
+      "p95": 23,
+      "p99": 27
+    },
+    "servers_per_agent": {
+      "max": 25,
+      "median": 1.0,
+      "min": 1,
+      "p95": 8,
+      "p99": 23
+    },
+    "tools_per_server": {
+      "max": 44,
+      "median": 4.0,
+      "min": 1,
+      "p95": 17,
+      "p99": 31
+    }
+  },
+  "source_mix_agent_mentions": {
+    "cloud-inventory": 69,
+    "github-action": 50,
+    "k8s-fleet": 50,
+    "local": 50,
+    "operator-push": 100
+  },
+  "vulnerable_package_rate_observed": 0.0976,
+  "vulnerable_package_rate_target": 0.08
+}

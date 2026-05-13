@@ -185,7 +185,13 @@ class UnifiedGraph:
                 traversable=edge.traversable,
                 first_seen=edge.first_seen,
                 last_seen=edge.last_seen,
+                valid_from=edge.valid_from,
+                valid_to=edge.valid_to,
+                source_scan_id=edge.source_scan_id,
+                source_run_id=edge.source_run_id,
                 evidence=edge.evidence,
+                confidence=edge.confidence,
+                provenance=edge.provenance,
                 activity_id=edge.activity_id,
             )
             self.adjacency[edge.target].append(reverse)

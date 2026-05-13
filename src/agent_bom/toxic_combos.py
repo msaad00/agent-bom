@@ -531,15 +531,31 @@ def prioritize_findings(
 
 def to_serializable(combos: list[ToxicCombination]) -> list[dict]:
     """Convert toxic combinations to JSON-serializable dicts."""
-    return [
-        {
-            "pattern": c.pattern.value,
-            "severity": c.severity,
-            "title": c.title,
-            "description": c.description,
-            "components": c.components,
-            "risk_score": c.risk_score,
-            "remediation": c.remediation,
-        }
-        for c in combos
-    ]
+    serialized: list[dict] = []
+    for c in combos:
+        vulnerability_ids = sorted(
+            {
+                str(component.get("id", "")).strip()
+                for component in c.components
+                if str(component.get("type", "")).lower() in {"cve", "vulnerability"} and str(component.get("id", "")).strip()
+            }
+        )
+        serialized.append(
+            {
+                "name": f"{c.pattern.value}:{c.title}",
+                "label": c.title,
+                "vulnerability_ids": vulnerability_ids,
+                "component_ids": [
+                    str(component.get("id", "")).strip() for component in c.components if str(component.get("id", "")).strip()
+                ],
+                "component_types": sorted({str(component.get("type", "")).strip() for component in c.components if component.get("type")}),
+                "pattern": c.pattern.value,
+                "severity": c.severity,
+                "title": c.title,
+                "description": c.description,
+                "components": c.components,
+                "risk_score": c.risk_score,
+                "remediation": c.remediation,
+            }
+        )
+    return serialized

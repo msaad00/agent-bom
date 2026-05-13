@@ -17,7 +17,7 @@ from agent_bom.asset_provenance import package_version_provenance, sanitize_disc
 from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id, source_ids
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
-from agent_bom.graph.node import NodeDimensions, UnifiedNode
+from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
 from agent_bom.graph.severity import SEVERITY_RISK_SCORE
 from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
@@ -822,17 +822,35 @@ def build_unified_graph_from_report(
     toxic_data = report_json.get("toxic_combinations")
     if toxic_data:
         for combo in toxic_data if isinstance(toxic_data, list) else toxic_data.get("combinations", []):
-            combo_vulns = combo.get("vulnerability_ids", combo.get("vulns", []))
-            combo_label = combo.get("name", combo.get("label", "toxic_combo"))
-            toxic_node_id = f"toxic:{combo_label}"
+            components = combo.get("components", []) if isinstance(combo.get("components", []), list) else []
+            component_vulns = [
+                str(component.get("id", "")).strip()
+                for component in components
+                if str(component.get("type", "")).lower() in {"cve", "vulnerability"} and str(component.get("id", "")).strip()
+            ]
+            combo_vulns = combo.get("vulnerability_ids", combo.get("vulns", component_vulns))
+            if not isinstance(combo_vulns, list):
+                combo_vulns = [combo_vulns]
+            combo_vulns = [str(vuln_id).strip() for vuln_id in combo_vulns if str(vuln_id).strip()]
+            combo_label = combo.get("label") or combo.get("title") or combo.get("name") or combo.get("pattern") or "toxic_combo"
+            combo_key = combo.get("id") or combo.get("name") or combo.get("label")
+            if not combo_key:
+                combo_key = stable_node_id("toxic-combination", str(combo.get("pattern", "")), str(combo_label))[:12]
+            toxic_node_id = f"toxic:{combo_key}"
             graph.add_node(
                 UnifiedNode(
                     id=toxic_node_id,
                     entity_type=EntityType.MISCONFIGURATION,
                     label=combo_label,
+                    severity=str(combo.get("severity", "") or ""),
                     risk_score=float(combo.get("risk_score", 0) or 0),
                     attributes={
-                        "combo": combo_label,
+                        "combo": combo_key,
+                        "pattern": combo.get("pattern", ""),
+                        "title": combo.get("title", combo_label),
+                        "description": combo.get("description", ""),
+                        "components": components,
+                        "remediation": combo.get("remediation", ""),
                         "risk_score": combo.get("risk_score", 0),
                         "vulnerability_ids": combo_vulns,
                     },
@@ -847,7 +865,13 @@ def build_unified_graph_from_report(
                             source=vuln_node_id,
                             target=toxic_node_id,
                             relationship=RelationshipType.TRIGGERS,
-                            evidence={"combo": combo_label, "risk": combo.get("risk_score", 0)},
+                            evidence={
+                                "combo": combo_key,
+                                "pattern": combo.get("pattern", ""),
+                                "title": combo.get("title", combo_label),
+                                "risk": combo.get("risk_score", 0),
+                                "remediation": combo.get("remediation", ""),
+                            },
                         )
                     )
 

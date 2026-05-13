@@ -380,6 +380,10 @@ class TestSerialization:
         assert data[0]["pattern"] == "credential_blast"
         assert data[0]["severity"] == "critical"
         assert data[0]["risk_score"] == 9.5
+        assert data[0]["label"] == "Test combo"
+        assert data[0]["vulnerability_ids"] == ["CVE-2024-0001"]
+        assert data[0]["component_ids"] == ["CVE-2024-0001"]
+        assert data[0]["component_types"] == ["cve"]
 
     def test_empty_serialization(self):
         assert to_serializable([]) == []

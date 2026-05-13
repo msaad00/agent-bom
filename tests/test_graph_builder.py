@@ -819,6 +819,42 @@ class TestModelProvenance:
         assert "toxic:rce_chain" in g.nodes
         assert g.has_edge("vuln:CVE-2024-1234", "toxic:rce_chain")
 
+    def test_toxic_combo_title_component_shape_projects_to_graph(self):
+        report = _minimal_report()
+        report["toxic_combinations"] = [
+            {
+                "pattern": "credential_blast",
+                "severity": "critical",
+                "title": "Credential Blast: CVE-2024-1234 exposes GITHUB_TOKEN",
+                "description": "Critical package vulnerability exposes an agent credential.",
+                "components": [
+                    {"type": "cve", "id": "CVE-2024-1234", "label": "high severity"},
+                    {"type": "credential", "id": "GITHUB_TOKEN", "label": "GITHUB_TOKEN"},
+                ],
+                "risk_score": 9.5,
+                "remediation": "Upgrade express and rotate GITHUB_TOKEN.",
+            }
+        ]
+
+        g = build_unified_graph_from_report(report)
+
+        toxic_nodes = [node for node in g.nodes.values() if node.id.startswith("toxic:")]
+        assert len(toxic_nodes) == 1
+        toxic = toxic_nodes[0]
+        assert toxic.label == "Credential Blast: CVE-2024-1234 exposes GITHUB_TOKEN"
+        assert toxic.severity == "critical"
+        assert toxic.attributes["pattern"] == "credential_blast"
+        assert toxic.attributes["vulnerability_ids"] == ["CVE-2024-1234"]
+        assert toxic.attributes["remediation"] == "Upgrade express and rotate GITHUB_TOKEN."
+        trigger_edges = [
+            edge
+            for edge in g.edges
+            if edge.source == "vuln:CVE-2024-1234" and edge.target == toxic.id and edge.relationship == RelationshipType.TRIGGERS
+        ]
+        assert len(trigger_edges) == 1
+        assert trigger_edges[0].evidence["pattern"] == "credential_blast"
+        assert trigger_edges[0].evidence["remediation"] == "Upgrade express and rotate GITHUB_TOKEN."
+
 
 class TestFrameworkTopology:
     def test_framework_agents_and_static_topology_edges_enter_graph(self):

@@ -121,10 +121,10 @@ def _display_path(path: str) -> str:
         return str(resolved)
 
 
-def _run_psql(dsn: str, sql_path: Path, output_path: Path) -> dict[str, Any]:
+def _run_psql(psql_bin: str, dsn: str, sql_path: Path, output_path: Path) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
-        ["psql", dsn, "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--file", str(sql_path)],
+        [psql_bin, dsn, "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--file", str(sql_path)],
         check=False,
         capture_output=True,
         text=True,
@@ -151,6 +151,7 @@ def generate(args: argparse.Namespace) -> dict[str, Any]:
         "scan_id": args.scan_id,
         "old_scan_id": args.old_scan_id,
         "edge_targets": args.edge_targets,
+        "psql_bin": args.psql_bin,
         "query_artifacts": {name: _display_path(path) for name, path in query_paths.items()},
         "commands": {
             "dry_run": "uv run python scripts/run_graph_postgres_explain.py --dry-run",
@@ -171,7 +172,7 @@ def generate(args: argparse.Namespace) -> dict[str, Any]:
     if not dsn:
         raise SystemExit("AGENT_BOM_POSTGRES_DSN or --dsn is required unless --dry-run is used.")
     plan_dir = args.output_dir / "plans"
-    summary["plans"] = {name: _run_psql(dsn, Path(path), plan_dir / f"{name}.txt") for name, path in query_paths.items()}
+    summary["plans"] = {name: _run_psql(args.psql_bin, dsn, Path(path), plan_dir / f"{name}.txt") for name, path in query_paths.items()}
     summary["gaps"] = [
         "EXPLAIN ANALYZE timings are database-local and should be paired with API client timings for full deployment evidence.",
         "Plan quality depends on loaded scan cardinality, index availability, Postgres version, and tenant/session settings.",
@@ -182,6 +183,7 @@ def generate(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate or run Postgres EXPLAIN ANALYZE artifacts for graph hot paths.")
     parser.add_argument("--dsn", default="", help="Postgres DSN. Defaults to AGENT_BOM_POSTGRES_DSN.")
+    parser.add_argument("--psql-bin", default=os.environ.get("AGENT_BOM_PSQL_BIN", "psql"), help="psql executable path.")
     parser.add_argument("--tenant-id", default="default")
     parser.add_argument("--scan-id", default="graph-benchmark-estate-current")
     parser.add_argument("--old-scan-id", default="graph-benchmark-estate-old")

@@ -26,7 +26,7 @@ export interface ExposureRelationshipRef {
   relationship: string;
   direction?: "directed" | "bidirectional" | undefined;
   traversable?: boolean | undefined;
-  confidence?: string | undefined;
+  confidence?: string | number | undefined;
   evidenceCount?: number | undefined;
 }
 

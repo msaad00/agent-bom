@@ -26,7 +26,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -178,6 +178,10 @@ def _node_labels_for_types(graph: UnifiedGraph, path_hops: list[str], entity_typ
 
 
 def _finding_ids_for_path(graph: UnifiedGraph, path_hops: list[str], vuln_ids: list[str]) -> list[str]:
+    return _finding_ids_for_nodes(graph.nodes, path_hops, vuln_ids)
+
+
+def _finding_ids_for_nodes(nodes: dict[str, Any], path_hops: list[str], vuln_ids: list[str]) -> list[str]:
     ids: list[str] = []
     seen: set[str] = set()
     for value in vuln_ids:
@@ -186,7 +190,7 @@ def _finding_ids_for_path(graph: UnifiedGraph, path_hops: list[str], vuln_ids: l
             ids.append(cleaned)
             seen.add(cleaned)
     for hop in path_hops:
-        node = graph.nodes.get(hop)
+        node = nodes.get(hop)
         if not node or node.entity_type not in {EntityType.VULNERABILITY, EntityType.MISCONFIGURATION}:
             continue
         label = node.label or node.id
@@ -334,6 +338,7 @@ def _fix_first_card_for_path(graph: UnifiedGraph, path, rank: int) -> dict:
         "title": " ".join(title_parts),
         "summary": path.summary or "Review this path before opening the full topology graph.",
         "attack_path": path.to_dict(),
+        "exposure_path": _exposure_path_for_attack_path(path, nodes_by_id=graph.nodes, edges=graph.edges, rank=rank, scan_id=graph.scan_id),
         "nodes": [graph.nodes[hop].to_dict() for hop in path.hops if hop in graph.nodes],
         "sequence_labels": sequence,
         "risk_reasons": _risk_reasons_for_path(graph, path),
@@ -407,10 +412,170 @@ def _edge_relationships_for_hops(hops: list[str], edges) -> list[str]:
     return relationships
 
 
-def _serialize_attack_path(path: AttackPath, edges=None) -> dict:
+def _exposure_role_for_node(node) -> str:
+    entity_type = _node_type_value(node)
+    if entity_type in {EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value}:
+        return "finding"
+    if entity_type == EntityType.PACKAGE.value:
+        return "package"
+    if entity_type in {EntityType.SERVER.value, EntityType.CONTAINER.value, EntityType.CLOUD_RESOURCE.value}:
+        return "server"
+    if entity_type in {EntityType.AGENT.value, EntityType.USER.value, EntityType.GROUP.value, EntityType.SERVICE_ACCOUNT.value}:
+        return "agent"
+    if entity_type == EntityType.CREDENTIAL.value:
+        return "credential"
+    if entity_type == EntityType.TOOL.value:
+        return "tool"
+    if entity_type == EntityType.ENVIRONMENT.value:
+        return "environment"
+    if entity_type == EntityType.CLUSTER.value:
+        return "cluster"
+    return "unknown"
+
+
+def _exposure_ref_for_node(node_id: str, nodes_by_id: dict[str, Any]) -> dict[str, Any]:
+    node = nodes_by_id.get(node_id)
+    if node is None:
+        return {"id": node_id, "label": node_id, "role": "unknown"}
+    ref: dict[str, Any] = {
+        "id": node.id,
+        "label": node.label,
+        "role": _exposure_role_for_node(node),
+    }
+    if getattr(node, "severity", ""):
+        ref["severity"] = node.severity
+    if float(getattr(node, "risk_score", 0.0) or 0.0) > 0:
+        ref["riskScore"] = node.risk_score
+    return ref
+
+
+def _exposure_relationships_for_path(path: AttackPath, edges) -> list[dict[str, Any]]:
+    by_pair: dict[tuple[str, str], Any] = {}
+    for edge in edges or []:
+        by_pair.setdefault((edge.source, edge.target), edge)
+        if edge.is_bidirectional:
+            by_pair.setdefault((edge.target, edge.source), edge)
+
+    relationships: list[dict[str, Any]] = []
+    for index, (source, target) in enumerate(zip(path.hops, path.hops[1:], strict=False)):
+        edge = by_pair.get((source, target))
+        relationship = ""
+        if edge is not None:
+            relationship = _rel_value(edge)
+            edge_id = edge.id
+            direction = edge.direction
+            traversable = edge.traversable
+            confidence = edge.confidence
+        else:
+            relationship = path.edges[index] if index < len(path.edges) else "related"
+            edge_id = f"{relationship}:{source}:{target}"
+            direction = "directed"
+            traversable = True
+            confidence = 1.0
+        relationships.append(
+            {
+                "id": edge_id,
+                "source": source,
+                "target": target,
+                "relationship": relationship,
+                "direction": direction,
+                "traversable": traversable,
+                "confidence": confidence,
+            }
+        )
+    return relationships
+
+
+def _severity_for_exposure_path(path: AttackPath, nodes_by_id: dict[str, Any]) -> str:
+    severity = ""
+    for hop in path.hops:
+        node = nodes_by_id.get(hop)
+        if node is not None and SEVERITY_RANK.get(str(getattr(node, "severity", "") or "").lower(), 0) > SEVERITY_RANK.get(severity, 0):
+            severity = str(node.severity).lower()
+    if severity:
+        return severity
+    if path.composite_risk >= 90 or path.composite_risk >= 9:
+        return "critical"
+    if path.composite_risk >= 70 or path.composite_risk >= 7:
+        return "high"
+    if path.composite_risk >= 40 or path.composite_risk >= 4:
+        return "medium"
+    return "none"
+
+
+def _exposure_path_for_attack_path(
+    path: AttackPath,
+    *,
+    nodes_by_id: dict[str, Any],
+    edges=None,
+    rank: int | None = None,
+    scan_id: str = "",
+) -> dict[str, Any]:
+    hops = [_exposure_ref_for_node(hop, nodes_by_id) for hop in path.hops]
+    empty_ref = {"id": "", "label": "", "role": "unknown"}
+    source = _exposure_ref_for_node(path.source, nodes_by_id) if path.source else (hops[0] if hops else empty_ref)
+    target = _exposure_ref_for_node(path.target, nodes_by_id) if path.target else (hops[-1] if hops else empty_ref)
+    relationships = _exposure_relationships_for_path(path, edges)
+    packages = [hop for hop in hops if hop["role"] == "package"]
+    servers = [hop for hop in hops if hop["role"] == "server"]
+    agents = [hop for hop in hops if hop["role"] == "agent"]
+    findings = _finding_ids_for_nodes(nodes_by_id, path.hops, path.vuln_ids)
+    label_parts = [findings[0] if findings else target["label"], agents[0]["label"] if agents else source["label"]]
+    exposure: dict[str, Any] = {
+        "id": f"{path.source}::{path.target}::{'->'.join(path.hops)}",
+        "label": " via ".join(part for part in label_parts if part) or path.summary or "Exposure path",
+        "summary": path.summary,
+        "riskScore": path.composite_risk,
+        "severity": _severity_for_exposure_path(path, nodes_by_id),
+        "source": source,
+        "target": target,
+        "hops": hops,
+        "relationships": relationships,
+        "nodeIds": list(path.hops),
+        "edgeIds": [relationship["id"] for relationship in relationships],
+        "findings": findings,
+        "affectedAgents": [hop["label"] for hop in agents],
+        "affectedServers": [hop["label"] for hop in servers],
+        "reachableTools": list(path.tool_exposure),
+        "exposedCredentials": list(path.credential_exposure),
+        "provenance": {"source": "graph_attack_path", "scanId": scan_id} if scan_id else {"source": "graph_attack_path"},
+    }
+    if rank is not None:
+        exposure["rank"] = rank
+    if packages or servers:
+        package_node = nodes_by_id.get(packages[0]["id"]) if packages else None
+        exposure["dependencyContext"] = {
+            "packageName": packages[0]["label"] if packages else "",
+            "packageVersion": getattr(package_node, "attributes", {}).get("version", "") if package_node is not None else "",
+            "ecosystem": getattr(package_node, "attributes", {}).get("ecosystem", "") if package_node is not None else "",
+            "serverName": servers[0]["label"] if servers else "",
+        }
+    finding_node = nodes_by_id.get(path.target)
+    if finding_node is not None:
+        attributes = getattr(finding_node, "attributes", {}) or {}
+        exposure["evidence"] = {
+            "cvssScore": attributes.get("cvss_score"),
+            "epssScore": attributes.get("epss_score"),
+            "isKev": bool(attributes.get("is_kev")),
+            "impactCategory": attributes.get("impact_category"),
+            "source": "graph_attack_path",
+        }
+    return exposure
+
+
+def _serialize_attack_path(
+    path: AttackPath,
+    edges=None,
+    *,
+    nodes_by_id: dict[str, Any] | None = None,
+    rank: int | None = None,
+    scan_id: str = "",
+) -> dict:
     data = path.to_dict()
     if not data.get("edges") and edges is not None:
         data["edges"] = _edge_relationships_for_hops(path.hops, edges)
+    if nodes_by_id is not None:
+        data["exposure_path"] = _exposure_path_for_attack_path(path, nodes_by_id=nodes_by_id, edges=edges, rank=rank, scan_id=scan_id)
     return data
 
 
@@ -740,7 +905,7 @@ async def get_graph(
         paged_ids = {n.id for n in paged_nodes}
         paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
         attack_paths = [
-            _serialize_attack_path(p, graph.edges)
+            _serialize_attack_path(p, graph.edges, nodes_by_id=graph.nodes, scan_id=graph.scan_id)
             for p in _derived_attack_paths(graph)
             if p.hops and all(hop in paged_ids for hop in p.hops)
         ]
@@ -786,13 +951,23 @@ async def get_graph(
         tenant_id=tenant,
         source_ids=paged_ids,
     )
+    attack_path_hop_ids = {hop for path in source_attack_paths for hop in path.hops}
+    attack_path_nodes = await _graph_store_call(
+        graph_store.nodes_by_ids,
+        scan_id=effective_scan_id,
+        tenant_id=tenant,
+        node_ids=attack_path_hop_ids - paged_ids,
+    )
+    nodes_by_id = {node.id: node for node in [*paged_nodes, *attack_path_nodes]}
     return {
         "scan_id": effective_scan_id,
         "tenant_id": tenant,
         "created_at": created_at,
         "nodes": [n.to_dict() for n in paged_nodes],
         "edges": [e.to_dict() for e in paged_edges],
-        "attack_paths": [_serialize_attack_path(path, paged_edges) for path in source_attack_paths],
+        "attack_paths": [
+            _serialize_attack_path(path, paged_edges, nodes_by_id=nodes_by_id, scan_id=effective_scan_id) for path in source_attack_paths
+        ],
         "interaction_risks": [],
         "stats": await _graph_store_call(
             graph_store.snapshot_stats,
@@ -933,6 +1108,7 @@ async def get_graph_attack_paths(
         tenant_id=tenant,
         node_ids=hop_ids,
     )
+    nodes_by_id = {node.id: node for node in nodes}
     path_edges = await _graph_store_call(
         graph_store.edges_for_node_ids,
         scan_id=effective_scan_id,
@@ -956,7 +1132,10 @@ async def get_graph_attack_paths(
         "created_at": created_at,
         "nodes": [node.to_dict() for node in nodes],
         "edges": [edge.to_dict() for edge in path_edges],
-        "attack_paths": [_serialize_attack_path(path, path_edges) for path in paths],
+        "attack_paths": [
+            _serialize_attack_path(path, path_edges, nodes_by_id=nodes_by_id, rank=offset + index + 1, scan_id=effective_scan_id)
+            for index, path in enumerate(paths)
+        ],
         "interaction_risks": [],
         "stats": stats,
         "pagination": _page_meta(total, offset, limit),
@@ -1007,6 +1186,13 @@ async def get_graph_paths(
         tenant_id=tenant,
         node_ids=path_node_ids,
     )
+    path_nodes = await _graph_store_call(
+        graph_store.nodes_by_ids,
+        scan_id=requested_scan_id,
+        tenant_id=tenant,
+        node_ids=path_node_ids,
+    )
+    nodes_by_id = {node.id: node for node in path_nodes}
 
     return {
         "source": source_node_id,
@@ -1015,7 +1201,11 @@ async def get_graph_paths(
         "reachable_count": len(reachable),
         "reachable_nodes": sorted(reachable),
         "paths": [{"target": p[-1], "hops": p, "depth": len(p) - 1} for p in paged_paths],
-        "attack_paths": [_serialize_attack_path(ap, path_edges) for ap in attack_paths if ap.source == source_node_id],
+        "attack_paths": [
+            _serialize_attack_path(ap, path_edges, nodes_by_id=nodes_by_id, scan_id=requested_scan_id)
+            for ap in attack_paths
+            if ap.source == source_node_id
+        ],
         "pagination": pagination,
     }
 
@@ -1205,7 +1395,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
             source_ids=set(body.roots),
         )
         attack_paths = [
-            _serialize_attack_path(ap, filtered_graph.edges)
+            _serialize_attack_path(ap, filtered_graph.edges, nodes_by_id=filtered_graph.nodes, scan_id=filtered_graph.scan_id)
             for ap in root_attack_paths
             if ap.source in body.roots and all(hop in filtered_graph.nodes for hop in ap.hops)
         ]

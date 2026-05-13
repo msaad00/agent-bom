@@ -1316,6 +1316,9 @@ class TestGraphStoreBackendSelection:
         assert body["scan_id"] == "store-scan"
         assert body["attack_paths"][0]["summary"] == "agent-a reaches CVE-2026-1"
         assert body["attack_paths"][0]["tool_exposure"] == ["run_shell"]
+        assert body["attack_paths"][0]["exposure_path"]["source"]["id"] == "agent:a"
+        assert body["attack_paths"][0]["exposure_path"]["target"]["id"] == "vuln:cve"
+        assert body["attack_paths"][0]["exposure_path"]["severity"] == "high"
         assert any(call[0] == "latest_snapshot_id" for call in recording_graph_store.calls)
         assert any(call[0] == "page_nodes" for call in recording_graph_store.calls)
 
@@ -1376,6 +1379,14 @@ class TestGraphStoreBackendSelection:
         }
         assert body["cards"][0]["affected"]["agents"] == ["agent-a"]
         assert body["cards"][0]["affected"]["packages"] == ["express"]
+        assert body["cards"][0]["exposure_path"]["id"] == "agent:a::vuln:cve::agent:a->server:a:fs->pkg:npm:express->vuln:cve"
+        assert body["cards"][0]["exposure_path"]["rank"] == 1
+        assert body["cards"][0]["exposure_path"]["source"]["role"] == "agent"
+        assert body["cards"][0]["exposure_path"]["target"]["role"] == "finding"
+        assert body["cards"][0]["exposure_path"]["nodeIds"] == ["agent:a", "server:a:fs", "pkg:npm:express", "vuln:cve"]
+        assert body["cards"][0]["exposure_path"]["findings"] == ["CVE-2026-1"]
+        assert body["cards"][0]["exposure_path"]["exposedCredentials"] == ["AWS_SECRET_ACCESS_KEY"]
+        assert body["cards"][0]["exposure_path"]["reachableTools"] == ["run_shell"]
         assert {reason["kind"] for reason in body["cards"][0]["risk_reasons"]} >= {
             "critical_reach",
             "credential_exposure",
@@ -1427,6 +1438,7 @@ class TestGraphStoreBackendSelection:
         assert queue["stats"]["attack_path_count"] == 1
         assert queue["attack_paths"][0]["hops"] == ["agent:a", "server:a:fs", "pkg:npm:form-data", "vuln:cve"]
         assert queue["attack_paths"][0]["edges"] == ["uses", "depends_on", "vulnerable_to"]
+        assert queue["attack_paths"][0]["exposure_path"]["severity"] == "critical"
         assert {(edge["source_id"], edge["target_id"]) for edge in queue["edges"]} >= {
             ("agent:a", "server:a:fs"),
             ("server:a:fs", "pkg:npm:form-data"),
@@ -1503,6 +1515,11 @@ class TestGraphStoreBackendSelection:
         assert response.status_code == 200
         body = response.json()
         assert body["attack_paths"][0]["summary"] == "agent-a reaches CVE-2026-1 outside the current node page"
+        assert body["attack_paths"][0]["exposure_path"]["rank"] == 1
+        assert body["attack_paths"][0]["exposure_path"]["source"]["label"] == "agent-a"
+        assert body["attack_paths"][0]["exposure_path"]["target"]["label"] == "CVE-2026-1"
+        assert body["attack_paths"][0]["exposure_path"]["relationships"][0]["relationship"] == "uses"
+        assert body["attack_paths"][0]["exposure_path"]["reachableTools"] == ["run_shell"]
         assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:cve"}
         assert body["pagination"]["total"] == 1
         assert any(call[0] == "attack_paths" for call in recording_graph_store.calls)
@@ -1754,11 +1771,27 @@ class TestGraphStoreBackendSelection:
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
         recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
         recording_graph_store.graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="tool-t"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1", severity="critical")
+        )
         recording_graph_store.graph.add_edge(
             UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
         )
         recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
             UnifiedEdge(source="server:s", target="tool:t", relationship=RelationshipType.PROVIDES_TOOL, traversable=False)
+        )
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "server:s", "vuln:cve"],
+                edges=["uses", "vulnerable_to"],
+                composite_risk=9.8,
+                summary="agent-a reaches CVE-2026-1",
+            )
         )
         client = TestClient(app)
 
@@ -1766,9 +1799,11 @@ class TestGraphStoreBackendSelection:
 
         assert response.status_code == 200
         body = response.json()
-        assert body["reachable_count"] == 1
-        assert body["reachable_nodes"] == ["server:s"]
-        assert [path["target"] for path in body["paths"]] == ["server:s"]
+        assert body["reachable_count"] == 2
+        assert body["reachable_nodes"] == ["server:s", "vuln:cve"]
+        assert [path["target"] for path in body["paths"]] == ["server:s", "vuln:cve"]
+        assert body["attack_paths"][0]["exposure_path"]["nodeIds"] == ["agent:a", "server:s", "vuln:cve"]
+        assert body["attack_paths"][0]["exposure_path"]["severity"] == "critical"
         assert any(call[0] == "bfs_paths" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
@@ -1870,6 +1905,8 @@ class TestGraphStoreBackendSelection:
         }
         assert body["attack_paths"][0]["target"] == "vuln:CVE-2026-1"
         assert body["attack_paths"][0]["summary"] == "agent-a -> server-s -> CVE-2026-1"
+        assert body["attack_paths"][0]["exposure_path"]["target"]["label"] == "CVE-2026-1"
+        assert body["attack_paths"][0]["exposure_path"]["severity"] == "critical"
         assert any(call[0] == "traverse_subgraph" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 

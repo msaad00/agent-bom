@@ -1,0 +1,25 @@
+{
+  "commands": {
+    "dry_run": "uv run python scripts/run_graph_postgres_explain.py --dry-run",
+    "live": "AGENT_BOM_POSTGRES_DSN=postgresql://... uv run python scripts/run_graph_postgres_explain.py --run --scan-id <new> --old-scan-id <old>"
+  },
+  "edge_targets": "10000,50000,100000",
+  "evidence_status": "explain_sql_scaffold_not_measured",
+  "gaps": [
+    "Dry-run writes EXPLAIN SQL only; it does not seed Postgres or execute EXPLAIN ANALYZE.",
+    "Measured artifacts must be captured from a database loaded with the matching synthetic estate snapshots."
+  ],
+  "generated_at": "2026-05-13T05:59:51.330122+00:00",
+  "old_scan_id": "graph-benchmark-estate-old",
+  "owner_issue": 2145,
+  "query_artifacts": {
+    "attack_path_drilldown": "docs/perf/results/postgres-graph-explain-sample/attack_path_drilldown.sql",
+    "bounded_traversal_edges": "docs/perf/results/postgres-graph-explain-sample/bounded_traversal_edges.sql",
+    "graph_diff_nodes": "docs/perf/results/postgres-graph-explain-sample/graph_diff_nodes.sql",
+    "node_detail": "docs/perf/results/postgres-graph-explain-sample/node_detail.sql",
+    "node_search": "docs/perf/results/postgres-graph-explain-sample/node_search.sql"
+  },
+  "scan_id": "graph-benchmark-estate-current",
+  "schema_version": 1,
+  "tenant_id": "default"
+}

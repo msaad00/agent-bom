@@ -4,8 +4,8 @@ name: Perf Scale Evidence
 # so docs/perf/results/ stays current as the graph builder evolves. The
 # 1k-estate run takes <1 minute on github-hosted runners and is the floor
 # evidence referenced from docs/perf/ingest-throughput.md and
-# docs/ENTERPRISE_DEPLOYMENT.md. Postgres-backed persistence numbers are
-# still tracked in #1806.
+# docs/ENTERPRISE_DEPLOYMENT.md. Graph API/Postgres benchmark scaffolds are
+# dry-run validated here; measured deployment evidence is tracked in #2145.
 
 on:
   schedule:
@@ -53,6 +53,22 @@ jobs:
 
       - name: Validate evidence against schema
         run: uv run python scripts/check_scale_evidence.py
+
+      - name: Validate graph API/Postgres benchmark scaffold
+        run: |
+          set -euo pipefail
+          uv run python scripts/generate_graph_benchmark_estate.py \
+            --agents 25 \
+            --report-output /tmp/graph-benchmark-estate-report.json \
+            --summary-output /tmp/graph-benchmark-estate-summary.json
+          uv run python scripts/run_graph_api_benchmark.py \
+            --dry-run \
+            --output /tmp/graph-api-benchmark.json
+          uv run python scripts/run_graph_postgres_explain.py \
+            --dry-run \
+            --output-dir /tmp/postgres-graph-explain \
+            --summary-output /tmp/postgres-graph-explain.json
+          uv run pytest tests/test_graph_benchmark_scaffold.py -q
 
       - name: Upload result artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

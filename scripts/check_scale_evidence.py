@@ -16,6 +16,7 @@ PERF_DIR = ROOT / "docs" / "perf"
 
 REQUIRED_FILES = (
     PERF_DIR / "p95-p99-graph-query.md",
+    PERF_DIR / "graph-api-postgres-benchmark.md",
     PERF_DIR / "ingest-throughput.md",
     PERF_DIR / "fleet-reconciliation.md",
 )
@@ -40,8 +41,10 @@ def _check_file(path: Path) -> list[str]:
     for marker in REQUIRED_MARKERS:
         if marker not in text:
             errors.append(f"{path.relative_to(ROOT)} missing marker: {marker}")
-    if "TBD" not in text and "Evidence status: measured" not in text:
-        errors.append(f"{path.relative_to(ROOT)} must either keep TBD placeholders or declare measured evidence")
+    if "TBD" not in text and "Evidence status: measured" not in text and "Evidence status: scaffolded" not in text:
+        errors.append(
+            f"{path.relative_to(ROOT)} must either keep TBD placeholders, declare measured evidence, or declare scaffolded evidence"
+        )
     if "Evidence status: measured" in text:
         marker = "Raw result artifact: `"
         if marker not in text:

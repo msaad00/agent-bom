@@ -1,0 +1,78 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "commands": {
+    "dry_run": "uv run python scripts/run_graph_api_benchmark.py --dry-run",
+    "live": "AGENT_BOM_API_TOKEN=... uv run python scripts/run_graph_api_benchmark.py --base-url http://127.0.0.1:8000 --scan-id <scan> --old-scan-id <old> --new-scan-id <new>"
+  },
+  "evidence_status": "scaffold_validated_not_measured",
+  "gaps": [
+    "Dry-run does not start the API, authenticate, or measure network/server latency.",
+    "Live results must record the API auth mode, tenant, graph backend, and scan IDs used."
+  ],
+  "generated_at": "2026-05-13T05:57:22.330599+00:00",
+  "owner_issue": 2145,
+  "repeat": 20,
+  "request_plan": [
+    {
+      "method": "GET",
+      "name": "graph_search",
+      "path": "/v1/graph/search",
+      "query": {
+        "entity_types": "package,vulnerability",
+        "limit": "50",
+        "q": "langchain",
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "node_detail",
+      "path": "/v1/graph/node/package:langchain",
+      "query": {
+        "scan_id": "graph-benchmark-estate-current"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "attack_path_drilldown",
+      "path": "/v1/graph/paths",
+      "query": {
+        "limit": "100",
+        "max_depth": "4",
+        "scan_id": "graph-benchmark-estate-current",
+        "source_id": "agent:agent-00000"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_diff",
+      "path": "/v1/graph/diff",
+      "query": {
+        "new": "graph-benchmark-estate-current",
+        "old": "graph-benchmark-estate-old"
+      }
+    },
+    {
+      "json": {
+        "direction": "both",
+        "include_attack_paths": true,
+        "max_depth": 3,
+        "max_edges": 5000,
+        "max_nodes": 500,
+        "roots": [
+          "agent:agent-00000"
+        ],
+        "scan_id": "graph-benchmark-estate-current",
+        "timeout_ms": 2500,
+        "traversable_only": true
+      },
+      "method": "POST",
+      "name": "bounded_traversal",
+      "path": "/v1/graph/query",
+      "query": {}
+    }
+  ],
+  "results": [],
+  "schema_version": 1,
+  "tenant_id": "default"
+}

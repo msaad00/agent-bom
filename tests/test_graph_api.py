@@ -14,7 +14,7 @@ from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.routes import graph as graph_routes
 from agent_bom.api.server import app
 from agent_bom.api.stores import set_graph_store
-from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, _init_db, load_graph, save_graph
+from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, _init_db, active_edges_at, changed_edges_between_scans, load_graph, save_graph
 from agent_bom.graph import (
     AttackPath,
     EntityType,
@@ -352,6 +352,101 @@ class TestGraphEndpointLogic:
         assert diff["nodes_added"][0]["entity_type"] == "agent"
         assert diff["nodes_added"][0]["label"] == "new-agent"
         assert {node["id"] for node in diff["nodes_removed"]} >= {"agent:b"}
+
+    def test_edge_history_tracks_new_changed_removed_and_unchanged_edges(self, graph_db):
+        g1 = UnifiedGraph(scan_id="history-s1", tenant_id="default", created_at="2026-06-01T00:00:00Z")
+        for node_id in ("agent:a", "server:b", "tool:c", "vuln:d"):
+            entity_type = EntityType.AGENT if node_id.startswith("agent:") else EntityType.SERVER
+            g1.add_node(UnifiedNode(id=node_id, entity_type=entity_type, label=node_id))
+        g1.add_edge(
+            UnifiedEdge(
+                source="agent:a",
+                target="server:b",
+                relationship=RelationshipType.USES,
+                confidence=0.95,
+                provenance={"collector": "scan-one"},
+                source_run_id="run-1",
+            )
+        )
+        g1.add_edge(UnifiedEdge(source="server:b", target="tool:c", relationship=RelationshipType.PROVIDES_TOOL, confidence=0.8))
+        g1.add_edge(UnifiedEdge(source="tool:c", target="vuln:d", relationship=RelationshipType.VULNERABLE_TO))
+        save_graph(graph_db, g1)
+
+        g2 = UnifiedGraph(scan_id="history-s2", tenant_id="default", created_at="2026-06-02T00:00:00Z")
+        for node_id in ("agent:a", "server:b", "tool:c", "vuln:d"):
+            entity_type = EntityType.AGENT if node_id.startswith("agent:") else EntityType.SERVER
+            g2.add_node(UnifiedNode(id=node_id, entity_type=entity_type, label=node_id))
+        g2.add_edge(
+            UnifiedEdge(
+                source="agent:a",
+                target="server:b",
+                relationship=RelationshipType.USES,
+                confidence=0.55,
+                provenance={"collector": "scan-two"},
+                source_run_id="run-2",
+            )
+        )
+        g2.add_edge(UnifiedEdge(source="server:b", target="tool:c", relationship=RelationshipType.PROVIDES_TOOL, confidence=0.8))
+        g2.add_edge(UnifiedEdge(source="agent:a", target="tool:c", relationship=RelationshipType.REACHES_TOOL))
+        save_graph(graph_db, g2)
+
+        changes = changed_edges_between_scans(graph_db, "history-s1", "history-s2", tenant_id="default")
+
+        assert changes["summary"] == {"added": 1, "removed": 1, "changed": 1, "unchanged": 1}
+        assert [(edge["source_id"], edge["target_id"], edge["relationship"]) for edge in changes["edges_added"]] == [
+            ("agent:a", "tool:c", "reaches_tool")
+        ]
+        assert [(edge["source_id"], edge["target_id"], edge["relationship"]) for edge in changes["edges_removed"]] == [
+            ("tool:c", "vuln:d", "vulnerable_to")
+        ]
+        changed = changes["edges_changed"][0]
+        assert changed["before"]["confidence"] == 0.95
+        assert changed["after"]["confidence"] == 0.55
+        assert changed["after"]["source_scan_id"] == "history-s2"
+        assert changed["after"]["source_run_id"] == "run-2"
+        assert changed["after"]["provenance"] == {"collector": "scan-two"}
+        assert [(edge["source_id"], edge["target_id"], edge["relationship"]) for edge in changes["edges_unchanged"]] == [
+            ("server:b", "tool:c", "provides_tool")
+        ]
+
+        s1_created = graph_db.execute("SELECT created_at FROM graph_snapshots WHERE scan_id = 'history-s1'").fetchone()[0]
+        s2_created = graph_db.execute("SELECT created_at FROM graph_snapshots WHERE scan_id = 'history-s2'").fetchone()[0]
+        active_s1 = {(edge["source_id"], edge["target_id"], edge["relationship"]) for edge in active_edges_at(graph_db, s1_created)}
+        active_s2 = {(edge["source_id"], edge["target_id"], edge["relationship"]) for edge in active_edges_at(graph_db, s2_created)}
+
+        assert ("tool:c", "vuln:d", "vulnerable_to") in active_s1
+        assert ("tool:c", "vuln:d", "vulnerable_to") not in active_s2
+        assert ("agent:a", "tool:c", "reaches_tool") in active_s2
+
+    def test_edge_history_fields_round_trip_without_legacy_payload_breakage(self, graph_db):
+        g = UnifiedGraph(scan_id="edge-fields", tenant_id="default")
+        g.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        g.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        g.add_edge(
+            UnifiedEdge(
+                source="agent:a",
+                target="server:s",
+                relationship=RelationshipType.USES,
+                valid_from="2026-05-01T00:00:00Z",
+                valid_to=None,
+                confidence=0.72,
+                provenance={"source": "fixture"},
+                source_scan_id="source-scan",
+                source_run_id="source-run",
+            )
+        )
+        save_graph(graph_db, g)
+
+        loaded = load_graph(graph_db, scan_id="edge-fields")
+        edge = loaded.edges[0]
+
+        assert edge.valid_from == "2026-05-01T00:00:00Z"
+        assert edge.valid_to is None
+        assert edge.confidence == 0.72
+        assert edge.provenance == {"source": "fixture"}
+        assert edge.source_scan_id == "source-scan"
+        assert edge.source_run_id == "source-run"
+        assert UnifiedEdge.from_dict({"source": "a", "target": "b", "relationship": "uses"}).confidence == 1.0
 
     def test_bfs_from_persisted_graph(self, graph_db):
         _build_persisted_graph(graph_db)
@@ -890,6 +985,22 @@ class _RecordingGraphStore:
         self.calls.append(("diff_snapshots", tenant_id, scan_id_old, scan_id_new))
         return {"nodes_added": [], "nodes_removed": [], "nodes_changed": [], "edges_added": [], "edges_removed": []}
 
+    def active_edges_at(self, at: str, *, tenant_id: str = "") -> list[dict]:
+        self.calls.append(("active_edges_at", tenant_id, at))
+        return [edge.to_dict() for edge in self.graph.edges]
+
+    def changed_edges_between_scans(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict:
+        self.calls.append(("changed_edges_between_scans", tenant_id, scan_id_old, scan_id_new))
+        return {
+            "scan_id_old": scan_id_old,
+            "scan_id_new": scan_id_new,
+            "edges_added": [],
+            "edges_removed": [],
+            "edges_changed": [],
+            "edges_unchanged": [],
+            "summary": {"added": 0, "removed": 0, "changed": 0, "unchanged": 0},
+        }
+
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict]:
         self.calls.append(("list_snapshots", tenant_id, limit))
         return [{"scan_id": self.graph.scan_id, "created_at": self.graph.created_at, "node_count": 1, "edge_count": 0, "risk_summary": {}}]
@@ -1207,6 +1318,21 @@ class TestGraphStoreBackendSelection:
         assert body["attack_paths"][0]["tool_exposure"] == ["run_shell"]
         assert any(call[0] == "latest_snapshot_id" for call in recording_graph_store.calls)
         assert any(call[0] == "page_nodes" for call in recording_graph_store.calls)
+
+    def test_graph_edge_history_routes_use_pluggable_store(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        client = TestClient(app)
+
+        active_response = client.get("/v1/graph/edges/active", params={"at": "2026-05-13T00:00:00Z"})
+        changes_response = client.get("/v1/graph/edges/changes", params={"old": "s1", "new": "s2"})
+
+        assert active_response.status_code == 200
+        assert active_response.json()[0]["valid_from"]
+        assert changes_response.status_code == 200
+        assert changes_response.json()["summary"] == {"added": 0, "removed": 0, "changed": 0, "unchanged": 0}
+        assert ("active_edges_at", "default", "2026-05-13T00:00:00Z") in recording_graph_store.calls
+        assert ("changed_edges_between_scans", "default", "s1", "s2") in recording_graph_store.calls
 
     def test_fix_first_graph_view_returns_ranked_operator_cards(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))

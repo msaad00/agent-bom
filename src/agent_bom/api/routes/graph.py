@@ -3,6 +3,8 @@
 Endpoints:
   GET  /v1/graph                — load unified graph (filtered, paginated)
   GET  /v1/graph/diff           — diff between two scan snapshots
+  GET  /v1/graph/edges/active   — edge versions active at a timestamp
+  GET  /v1/graph/edges/changes  — edge lifecycle changes between scans
   GET  /v1/graph/attack-paths   — global risk-sorted attack path queue
   GET  /v1/graph/paths          — attack paths from a source node
   GET  /v1/graph/impact         — blast radius of a node (reverse BFS)
@@ -870,6 +872,25 @@ async def get_graph_diff(
 ) -> dict:
     """Diff two scan snapshots — nodes/edges added, removed, changed."""
     return await _graph_store_call(_get_graph_store_or_503().diff_snapshots, old, new, tenant_id=_tenant(request))
+
+
+@router.get("/v1/graph/edges/active", tags=["graph"])
+async def get_active_graph_edges(
+    request: Request,
+    at: str = Query(..., description="ISO timestamp for replay lookup"),
+) -> list[dict]:
+    """Return edge versions active at a timestamp for replay views."""
+    return await _graph_store_call(_get_graph_store_or_503().active_edges_at, at, tenant_id=_tenant(request))
+
+
+@router.get("/v1/graph/edges/changes", tags=["graph"])
+async def get_graph_edge_changes(
+    request: Request,
+    old: str = Query(..., description="Old scan ID"),
+    new: str = Query(..., description="New scan ID"),
+) -> dict:
+    """Return edge lifecycle changes between two scan snapshots."""
+    return await _graph_store_call(_get_graph_store_or_503().changed_edges_between_scans, old, new, tenant_id=_tenant(request))
 
 
 @router.get("/v1/graph/attack-paths", tags=["graph"])

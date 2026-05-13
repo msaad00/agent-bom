@@ -119,6 +119,10 @@ class GraphStoreProtocol(Protocol):
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]: ...
 
+    def active_edges_at(self, at: str, *, tenant_id: str = "") -> list[dict[str, Any]]: ...
+
+    def changed_edges_between_scans(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]: ...
+
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]: ...
 
     def delete_tenant(self, *, tenant_id: str = "") -> int: ...
@@ -417,6 +421,12 @@ class SQLiteGraphStore:
             traversable=bool(row["traversable"]),
             first_seen=row["first_seen"],
             last_seen=row["last_seen"],
+            valid_from=row["valid_from"] or row["first_seen"],
+            valid_to=row["valid_to"],
+            confidence=row["confidence"],
+            provenance=json.loads(row["provenance"] or "{}"),
+            source_scan_id=row["source_scan_id"] or row["scan_id"],
+            source_run_id=row["source_run_id"] or "",
             evidence=json.loads(row["evidence"]),
             activity_id=row["activity_id"],
         )
@@ -432,6 +442,12 @@ class SQLiteGraphStore:
             traversable=edge.traversable,
             first_seen=edge.first_seen,
             last_seen=edge.last_seen,
+            valid_from=edge.valid_from,
+            valid_to=edge.valid_to,
+            confidence=edge.confidence,
+            provenance=edge.provenance,
+            source_scan_id=edge.source_scan_id,
+            source_run_id=edge.source_run_id,
             evidence=edge.evidence,
             activity_id=edge.activity_id,
         )
@@ -474,7 +490,7 @@ class SQLiteGraphStore:
             params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
         return conn.execute(
             f"""
-            SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
+            SELECT *
             FROM graph_edges
             WHERE {" AND ".join(where)}
             """,  # nosec B608 - clause fragments and placeholders are generated internally
@@ -890,7 +906,7 @@ class SQLiteGraphStore:
                 return None
             rows = conn.execute(
                 """
-                SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
+                SELECT *
                 FROM graph_edges
                 WHERE tenant_id = ? AND scan_id = ? AND (source_id = ? OR target_id = ?)
                 ORDER BY source_id ASC, target_id ASC, relationship ASC
@@ -1079,6 +1095,34 @@ class SQLiteGraphStore:
             }
         try:
             return sqlite_graph_store.diff_snapshots(conn, scan_id_old, scan_id_new, tenant_id=tenant_id)
+        finally:
+            conn.close()
+
+    def active_edges_at(self, at: str, *, tenant_id: str = "") -> list[dict[str, Any]]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return []
+        try:
+            return sqlite_graph_store.active_edges_at(conn, at, tenant_id=tenant_id)
+        finally:
+            conn.close()
+
+    def changed_edges_between_scans(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return {
+                "scan_id_old": scan_id_old,
+                "scan_id_new": scan_id_new,
+                "edges_added": [],
+                "edges_removed": [],
+                "edges_changed": [],
+                "edges_unchanged": [],
+                "summary": {"added": 0, "removed": 0, "changed": 0, "unchanged": 0},
+            }
+        try:
+            return sqlite_graph_store.changed_edges_between_scans(conn, scan_id_old, scan_id_new, tenant_id=tenant_id)
         finally:
             conn.close()
 
@@ -1288,30 +1332,14 @@ class SQLiteGraphStore:
             placeholders = ",".join("?" for _ in node_ids)
             rows = conn.execute(
                 f"""
-                SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
+                SELECT *
                 FROM graph_edges
                 WHERE tenant_id = ? AND scan_id = ?
                   AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
                 """,  # nosec B608 - placeholders are generated solely from "?" markers
                 [tenant_id, effective_scan_id, *node_ids, *node_ids],
             ).fetchall()
-            from agent_bom.graph import RelationshipType, UnifiedEdge
-
-            return [
-                UnifiedEdge(
-                    source=row["source_id"],
-                    target=row["target_id"],
-                    relationship=RelationshipType(row["relationship"]),
-                    direction=row["direction"],
-                    weight=row["weight"],
-                    traversable=bool(row["traversable"]),
-                    first_seen=row["first_seen"],
-                    last_seen=row["last_seen"],
-                    evidence=json.loads(row["evidence"]),
-                    activity_id=row["activity_id"],
-                )
-                for row in rows
-            ]
+            return [self._edge_from_row(row) for row in rows]
         finally:
             conn.close()
 

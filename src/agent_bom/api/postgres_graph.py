@@ -173,6 +173,12 @@ class PostgresGraphStore:
                     traversable INTEGER DEFAULT 1,
                     first_seen TEXT NOT NULL,
                     last_seen TEXT NOT NULL,
+                    valid_from TEXT DEFAULT '',
+                    valid_to TEXT DEFAULT NULL,
+                    confidence DOUBLE PRECISION DEFAULT 1.0,
+                    provenance TEXT DEFAULT '{}',
+                    source_scan_id TEXT DEFAULT '',
+                    source_run_id TEXT DEFAULT '',
                     evidence TEXT DEFAULT '{}',
                     activity_id INTEGER DEFAULT 1,
                     scan_id TEXT NOT NULL,
@@ -184,6 +190,7 @@ class PostgresGraphStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan ON graph_edges(tenant_id, scan_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source ON graph_edges(tenant_id, scan_id, source_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_target ON graph_edges(tenant_id, scan_id, target_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_valid ON graph_edges(tenant_id, valid_from, valid_to)")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS graph_snapshots (
@@ -224,6 +231,14 @@ class PostgresGraphStore:
             )
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS summary TEXT DEFAULT ''")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS tool_exposure TEXT DEFAULT '[]'")
+            conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_from TEXT DEFAULT ''")
+            conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS valid_to TEXT DEFAULT NULL")
+            conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION DEFAULT 1.0")
+            conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS provenance TEXT DEFAULT '{}'")
+            conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS source_scan_id TEXT DEFAULT ''")
+            conn.execute("ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS source_run_id TEXT DEFAULT ''")
+            conn.execute("UPDATE graph_edges SET valid_from = first_seen WHERE valid_from = '' OR valid_from IS NULL")
+            conn.execute("UPDATE graph_edges SET source_scan_id = scan_id WHERE source_scan_id = '' OR source_scan_id IS NULL")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interaction_risks (
@@ -391,6 +406,30 @@ class PostgresGraphStore:
         batch_size = _graph_write_batch_size()
 
         with _tenant_connection(self._pool) as conn:
+            previous_row = conn.execute(
+                """
+                SELECT scan_id
+                FROM graph_snapshots
+                WHERE tenant_id = %s
+                ORDER BY created_at DESC, scan_id DESC
+                LIMIT 1
+                """,
+                (tenant,),
+            ).fetchone()
+            previous_scan = str(previous_row[0]) if previous_row else ""
+            if previous_scan == scan:
+                previous_scan = self.previous_snapshot_id(tenant_id=tenant, before_scan_id=scan)
+            previous_edges: dict[tuple[str, str, str], Any] = {}
+            if previous_scan:
+                for row in conn.execute(
+                    """
+                    SELECT source_id, target_id, relationship, first_seen, valid_from, valid_to
+                    FROM graph_edges
+                    WHERE tenant_id = %s AND scan_id = %s
+                    """,
+                    (tenant, previous_scan),
+                ).fetchall():
+                    previous_edges[(row[0], row[1], row[2])] = row
 
             def node_rows() -> Iterator[tuple[Any, ...]]:
                 for node in graph.nodes.values():
@@ -431,6 +470,12 @@ class PostgresGraphStore:
             def edge_rows() -> Iterator[tuple[Any, ...]]:
                 for edge in graph.edges:
                     rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
+                    previous = previous_edges.get((edge.source, edge.target, rel))
+                    valid_from = edge.valid_from or edge.first_seen or now
+                    first_seen = edge.first_seen
+                    if previous is not None:
+                        valid_from = previous[4] or previous[3] or valid_from
+                        first_seen = previous[3] or first_seen
                     yield (
                         edge.source,
                         edge.target,
@@ -438,8 +483,14 @@ class PostgresGraphStore:
                         edge.direction,
                         edge.weight,
                         1 if edge.traversable else 0,
-                        edge.first_seen,
+                        first_seen,
                         edge.last_seen,
+                        valid_from,
+                        edge.valid_to,
+                        edge.confidence,
+                        json.dumps(edge.provenance, default=str),
+                        edge.source_scan_id or scan,
+                        edge.source_run_id,
                         json.dumps(edge.evidence, default=str),
                         edge.activity_id,
                         scan,
@@ -526,21 +577,52 @@ class PostgresGraphStore:
                 """
                 INSERT INTO graph_edges (
                     source_id, target_id, relationship, direction, weight,
-                    traversable, first_seen, last_seen, evidence,
-                    activity_id, scan_id, tenant_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    traversable, first_seen, last_seen, valid_from, valid_to,
+                    confidence, provenance, source_scan_id, source_run_id,
+                    evidence, activity_id, scan_id, tenant_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (source_id, target_id, relationship, scan_id, tenant_id) DO UPDATE SET
                     direction = EXCLUDED.direction,
                     weight = EXCLUDED.weight,
                     traversable = EXCLUDED.traversable,
                     first_seen = EXCLUDED.first_seen,
                     last_seen = EXCLUDED.last_seen,
+                    valid_from = EXCLUDED.valid_from,
+                    valid_to = EXCLUDED.valid_to,
+                    confidence = EXCLUDED.confidence,
+                    provenance = EXCLUDED.provenance,
+                    source_scan_id = EXCLUDED.source_scan_id,
+                    source_run_id = EXCLUDED.source_run_id,
                     evidence = EXCLUDED.evidence,
                     activity_id = EXCLUDED.activity_id
                 """,
                 edge_rows(),
                 batch_size=batch_size,
             )
+            incoming_edge_keys = {
+                (
+                    edge.source,
+                    edge.target,
+                    edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship),
+                )
+                for edge in graph.edges
+            }
+            removed_edge_keys = set(previous_edges) - incoming_edge_keys
+            if removed_edge_keys:
+                _execute_many_batched(
+                    conn,
+                    """
+                    UPDATE graph_edges
+                    SET valid_to = COALESCE(valid_to, %s),
+                        activity_id = CASE WHEN activity_id = 1 THEN 3 ELSE activity_id END
+                    WHERE tenant_id = %s AND scan_id = %s AND source_id = %s AND target_id = %s AND relationship = %s
+                    """,
+                    (
+                        (now, tenant, previous_scan, source, target, relationship)
+                        for source, target, relationship in sorted(removed_edge_keys)
+                    ),
+                    batch_size=batch_size,
+                )
             _execute_many_batched(
                 conn,
                 """
@@ -653,7 +735,8 @@ class PostgresGraphStore:
             for row in conn.execute(
                 """
                 SELECT source_id, target_id, relationship, direction, weight, traversable,
-                       first_seen, last_seen, evidence, activity_id
+                       first_seen, last_seen, valid_from, valid_to, confidence, provenance,
+                       source_scan_id, source_run_id, evidence, activity_id, scan_id
                 FROM graph_edges
                 WHERE tenant_id = %s AND scan_id = %s
                 """,
@@ -671,8 +754,14 @@ class PostgresGraphStore:
                         traversable=bool(row[5]),
                         first_seen=row[6],
                         last_seen=row[7],
-                        evidence=json.loads(row[8]),
-                        activity_id=row[9],
+                        valid_from=row[8] or row[6],
+                        valid_to=row[9],
+                        confidence=row[10],
+                        provenance=json.loads(row[11] or "{}"),
+                        source_scan_id=row[12] or row[16],
+                        source_run_id=row[13] or "",
+                        evidence=json.loads(row[14]),
+                        activity_id=row[15],
                     )
                 )
 
@@ -1049,7 +1138,117 @@ class PostgresGraphStore:
                 "nodes_changed": sorted(nid for nid in (old_ids & new_ids) if old_nodes[nid] != new_nodes[nid]),
                 "edges_added": sorted(new_edges - old_edges),
                 "edges_removed": sorted(old_edges - new_edges),
+                "edges_changed": self.changed_edges_between_scans(scan_id_old, scan_id_new, tenant_id=tenant_id)["edges_changed"],
             }
+
+    @staticmethod
+    def _edge_history_dict(row) -> dict[str, Any]:
+        return {
+            "source_id": row[0],
+            "target_id": row[1],
+            "relationship": row[2],
+            "direction": row[3],
+            "weight": float(row[4] or 0.0),
+            "traversable": bool(row[5]),
+            "first_seen": row[6],
+            "last_seen": row[7],
+            "valid_from": row[8] or row[6],
+            "valid_to": row[9],
+            "confidence": float(row[10] if row[10] is not None else 1.0),
+            "provenance": json.loads(row[11] or "{}"),
+            "source_scan_id": row[12] or row[16],
+            "source_run_id": row[13] or "",
+            "evidence": json.loads(row[14] or "{}"),
+            "activity_id": int(row[15] or 1),
+            "scan_id": row[16],
+            "tenant_id": row[17],
+        }
+
+    @staticmethod
+    def _edge_change_fingerprint(edge: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "direction": edge["direction"],
+            "weight": edge["weight"],
+            "traversable": edge["traversable"],
+            "confidence": edge["confidence"],
+            "provenance": edge["provenance"],
+            "evidence": edge["evidence"],
+            "activity_id": edge["activity_id"],
+        }
+
+    def active_edges_at(self, at: str, *, tenant_id: str = "") -> list[dict[str, Any]]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                """
+                SELECT ge.source_id, ge.target_id, ge.relationship, ge.direction, ge.weight, ge.traversable,
+                       ge.first_seen, ge.last_seen, ge.valid_from, ge.valid_to, ge.confidence, ge.provenance,
+                       ge.source_scan_id, ge.source_run_id, ge.evidence, ge.activity_id, ge.scan_id, ge.tenant_id
+                FROM graph_edges ge
+                JOIN graph_snapshots gs ON gs.tenant_id = ge.tenant_id AND gs.scan_id = ge.scan_id
+                WHERE ge.tenant_id = %s
+                  AND gs.created_at <= %s
+                  AND COALESCE(NULLIF(ge.valid_from, ''), ge.first_seen) <= %s
+                  AND (ge.valid_to IS NULL OR ge.valid_to = '' OR ge.valid_to > %s)
+                ORDER BY gs.created_at ASC, ge.scan_id ASC
+                """,
+                (tenant_id, at, at, at),
+            ).fetchall()
+        active_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for row in rows:
+            edge = self._edge_history_dict(row)
+            active_by_key[(edge["source_id"], edge["target_id"], edge["relationship"])] = edge
+        return [active_by_key[key] for key in sorted(active_by_key)]
+
+    def changed_edges_between_scans(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+
+        def by_scan(conn, scan_id: str) -> dict[tuple[str, str, str], dict[str, Any]]:
+            rows = conn.execute(
+                """
+                SELECT source_id, target_id, relationship, direction, weight, traversable,
+                       first_seen, last_seen, valid_from, valid_to, confidence, provenance,
+                       source_scan_id, source_run_id, evidence, activity_id, scan_id, tenant_id
+                FROM graph_edges
+                WHERE tenant_id = %s AND scan_id = %s
+                """,
+                (tenant_id, scan_id),
+            ).fetchall()
+            return {
+                (edge["source_id"], edge["target_id"], edge["relationship"]): edge
+                for edge in (self._edge_history_dict(row) for row in rows)
+            }
+
+        with _tenant_connection(self._pool) as conn:
+            old_edges = by_scan(conn, scan_id_old)
+            new_edges = by_scan(conn, scan_id_new)
+
+        old_keys, new_keys = set(old_edges), set(new_edges)
+        shared = old_keys & new_keys
+        changed = [
+            {"before": old_edges[key], "after": new_edges[key]}
+            for key in sorted(shared)
+            if self._edge_change_fingerprint(old_edges[key]) != self._edge_change_fingerprint(new_edges[key])
+        ]
+        unchanged = [
+            new_edges[key]
+            for key in sorted(shared)
+            if self._edge_change_fingerprint(old_edges[key]) == self._edge_change_fingerprint(new_edges[key])
+        ]
+        return {
+            "scan_id_old": scan_id_old,
+            "scan_id_new": scan_id_new,
+            "edges_added": [new_edges[key] for key in sorted(new_keys - old_keys)],
+            "edges_removed": [old_edges[key] for key in sorted(old_keys - new_keys)],
+            "edges_changed": changed,
+            "edges_unchanged": unchanged,
+            "summary": {
+                "added": len(new_keys - old_keys),
+                "removed": len(old_keys - new_keys),
+                "changed": len(changed),
+                "unchanged": len(unchanged),
+            },
+        }
 
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
@@ -1275,7 +1474,9 @@ class PostgresGraphStore:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 f"""
-                SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
+                SELECT source_id, target_id, relationship, direction, weight, traversable,
+                       first_seen, last_seen, valid_from, valid_to, confidence, provenance,
+                       source_scan_id, source_run_id, evidence, activity_id, scan_id
                 FROM graph_edges
                 WHERE tenant_id = %s AND scan_id = %s
                   AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
@@ -1294,8 +1495,14 @@ class PostgresGraphStore:
                     traversable=bool(row[5]),
                     first_seen=row[6],
                     last_seen=row[7],
-                    evidence=json.loads(row[8]),
-                    activity_id=row[9],
+                    valid_from=row[8] or row[6],
+                    valid_to=row[9],
+                    confidence=row[10],
+                    provenance=json.loads(row[11] or "{}"),
+                    source_scan_id=row[12] or row[16],
+                    source_run_id=row[13] or "",
+                    evidence=json.loads(row[14]),
+                    activity_id=row[15],
                 )
                 for row in rows
             ]

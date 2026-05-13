@@ -10,8 +10,8 @@ Raw result artifact: `docs/perf/results/scale-evidence-local-2026-04-26.json`
 Local synthetic graph search, selector, and bounded-neighborhood CPU paths stay
 sub-millisecond at 1k / 5k / 10k agent-estate sizes when callers use bounded
 selectors and bounded graph traversal. This page does not claim HTTP API,
-Postgres, diff, or attack-path drilldown latency; those remain tracked in
-#1806.
+Postgres, diff, or attack-path drilldown latency; the benchmark scaffold for
+those lanes is tracked in #2145.
 
 ## Scope
 
@@ -63,8 +63,11 @@ python scripts/check_scale_evidence.py
 
 ## EXPLAIN ANALYZE
 
-Not covered by this local synthetic run. Add representative Postgres query
-plans under #1806 when the API/Postgres benchmark lane is measured:
+Not covered by this local synthetic run. The graph-specific Postgres EXPLAIN
+scaffold lives in
+[`graph-api-postgres-benchmark.md`](graph-api-postgres-benchmark.md); add
+representative measured query plans under #2145 when the API/Postgres benchmark
+lane is measured:
 
 - graph node search
 - node detail

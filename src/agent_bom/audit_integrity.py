@@ -128,13 +128,14 @@ def verify_audit_jsonl_chain(log_path: Path, *, max_lines: int = 50_000) -> dict
 
     try:
         lines = log_path.read_text().splitlines()
-    except OSError as exc:
+    except OSError:
+        _logger.warning("Failed to read runtime audit log: %s", log_path, exc_info=True)
         return {
             "verified": 0,
             "tampered": 1,
             "checked": 1,
             "algorithms": [],
-            "error": f"audit_log_unreadable: {exc}",
+            "error": "audit_log_unreadable",
         }
 
     chain_key = resolve_verifier_chain_key(log_path)

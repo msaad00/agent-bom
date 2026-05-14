@@ -110,6 +110,19 @@ def _sanitize_sarif_text(field_name: str, value: Any, *, fallback: str = "") -> 
     return str(redacted)
 
 
+def _trust_assessment_sarif_property(data: dict[str, Any]) -> dict[str, str]:
+    """Project safe dual-axis trust fields into SARIF run properties."""
+    allowed_fields = (
+        "verdict",
+        "content_verdict",
+        "provenance_verdict",
+        "review_verdict",
+        "overall_recommendation",
+        "confidence",
+    )
+    return {field: str(data[field]) for field in allowed_fields if data.get(field) is not None}
+
+
 def _build_run_taxonomies(results: list[dict]) -> list[dict]:
     """Build SARIF run-level taxonomies from per-result framework tags."""
     tags_by_property: dict[str, set[str]] = {key: set() for key in _FRAMEWORK_TAXONOMY_META}
@@ -624,6 +637,11 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
         "results": results,
         **({"automationDetails": {"id": f"agent-bom/{report.scan_id}"}} if report.scan_id else {}),
     }
+    trust_assessment = getattr(report, "trust_assessment_data", None)
+    if isinstance(trust_assessment, dict) and trust_assessment:
+        run["properties"] = {
+            "trust_assessment": _trust_assessment_sarif_property(trust_assessment),
+        }
     if taxonomies:
         run["taxonomies"] = taxonomies
 

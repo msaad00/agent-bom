@@ -1251,6 +1251,10 @@ def test_skill_trust_impl_success(tmp_path):
     data = json.loads(result)
     assert "verdict" in data
     assert "categories" in data
+    assert data["verdict"] == "benign"
+    assert data["content_verdict"] == "benign"
+    assert data["provenance_verdict"] == "unverified"
+    assert data["overall_recommendation"] == "review"
     assert data["provenance"]["status"] == "unsigned"
 
 

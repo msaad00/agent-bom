@@ -72,13 +72,18 @@ def test_clean_unsigned_skill_requires_review_without_malicious_status(tmp_path)
 
     assert file_report["audit"]["findings"] == []
     assert file_report["trust"]["content_verdict"] == "benign"
-    assert file_report["trust"]["verdict"] == "suspicious"
+    assert file_report["trust"]["provenance_verdict"] == "unverified"
+    assert file_report["trust"]["verdict"] == "benign"
     assert file_report["trust"]["review_verdict"] == "review"
-    assert file_report["status"] == "suspicious"
+    assert file_report["trust"]["overall_recommendation"] == "review"
+    assert file_report["status"] == "pending"
     assert data["summary"]["findings"] == 0
+    assert data["summary"]["suspicious_files"] == 0
     assert data["summary"]["high_risk_files"] == 0
     assert data["summary"]["malicious_files"] == 0
+    assert data["summary"]["suspicious_status_files"] == 0
     assert data["summary"]["malicious_status_files"] == 0
+    assert data["summary"]["pending_status_files"] == 1
 
 
 def test_scan_skill_targets_redacts_server_args_in_output(tmp_path):

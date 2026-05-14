@@ -13,7 +13,7 @@ from typing import Iterable
 from agent_bom.integrity import verify_instruction_file
 from agent_bom.parsers.skill_audit import SkillAuditResult, audit_skill_result
 from agent_bom.parsers.skills import SkillScanResult, discover_skill_files, parse_skill_file
-from agent_bom.parsers.trust_assessment import TrustAssessmentResult, assess_trust
+from agent_bom.parsers.trust_assessment import ProvenanceVerdict, TrustAssessmentResult, Verdict, assess_trust
 from agent_bom.security import sanitize_command_args
 from agent_bom.skill_bundles import SkillBundle, build_skill_bundle
 from agent_bom.skill_intel import ThreatIntelResult, ThreatIntelStatus, lookup_bundle_threat_intel
@@ -286,6 +286,8 @@ def _review_to_status(report: SkillFileReport) -> ThreatIntelStatus:
         return ThreatIntelStatus.CLEAN
     if verdict in {"blocked", "high_risk"}:
         return ThreatIntelStatus.MALICIOUS
+    if report.trust.content_verdict == Verdict.BENIGN:
+        return ThreatIntelStatus.PENDING
     return ThreatIntelStatus.SUSPICIOUS
 
 
@@ -294,6 +296,9 @@ def _build_skill_report(path: Path, *, intel_source: str | None = None) -> Skill
     scan = parse_skill_file(path)
     audit = audit_skill_result(scan)
     trust = assess_trust(scan, audit)
+    provenance = _provenance_to_dict(path)
+    if provenance.get("status") != "verified":
+        trust.provenance_verdict = ProvenanceVerdict.UNVERIFIED
     bundle = build_skill_bundle(path)
     threat_intel = lookup_bundle_threat_intel(bundle, intel_source)
     report = SkillFileReport(
@@ -301,7 +306,7 @@ def _build_skill_report(path: Path, *, intel_source: str | None = None) -> Skill
         scan=scan,
         audit=audit,
         trust=trust,
-        provenance=_provenance_to_dict(path),
+        provenance=provenance,
         bundle=bundle,
         threat_intel=threat_intel,
     )

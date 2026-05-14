@@ -802,6 +802,9 @@ def _trust_assessment_section(report: "AIBOMReport") -> str:
     skill_name = _esc(data.get("skill_name", ""))
     source_file = _esc(data.get("source_file", ""))
     verdict = data.get("verdict", "benign").upper()
+    content_verdict = data.get("content_verdict", data.get("verdict", "benign")).upper()
+    provenance_verdict = data.get("provenance_verdict", "unverified").upper()
+    recommendation = data.get("overall_recommendation") or data.get("review_verdict", "review")
     confidence = data.get("confidence", "low")
     categories = data.get("categories", [])
     recommendations = data.get("recommendations", [])
@@ -831,6 +834,16 @@ def _trust_assessment_section(report: "AIBOMReport") -> str:
         f'font-size:.82rem;font-weight:700;letter-spacing:.04em">{verdict}</span>'
         f'<span style="color:#64748b;font-size:.78rem;margin-left:8px">({confidence} confidence)</span>'
     )
+    axis_html = (
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">'
+        f'<span style="background:#0f766e;color:#fff;padding:4px 10px;border-radius:6px;font-size:.76rem">'
+        f"content: {_esc(content_verdict)}</span>"
+        f'<span style="background:#4338ca;color:#fff;padding:4px 10px;border-radius:6px;font-size:.76rem">'
+        f"provenance: {_esc(provenance_verdict)}</span>"
+        f'<span style="background:#475569;color:#fff;padding:4px 10px;border-radius:6px;font-size:.76rem">'
+        f"recommendation: {_esc(str(recommendation).upper())}</span>"
+        "</div>"
+    )
 
     title_suffix = f" &mdash; {skill_name}" if skill_name else ""
     source_note = (
@@ -857,6 +870,7 @@ def _trust_assessment_section(report: "AIBOMReport") -> str:
         f'<div class="panel">'
         f"{source_note}"
         f'<div style="margin-bottom:16px">{verdict_badge}</div>'
+        f"{axis_html}"
         f"{table_html}"
         f"{rec_html}"
         f"</div></section>"

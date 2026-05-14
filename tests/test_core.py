@@ -1591,6 +1591,9 @@ def test_html_trust_assessment_section():
         "skill_name": "test-skill",
         "source_file": "/tmp/SKILL.md",
         "verdict": "suspicious",
+        "content_verdict": "benign",
+        "provenance_verdict": "unverified",
+        "overall_recommendation": "review",
         "confidence": "medium",
         "categories": [
             {"name": "Purpose & Capability", "key": "purpose", "level": "pass", "summary": "Standard tool"},
@@ -1605,6 +1608,9 @@ def test_html_trust_assessment_section():
     assert "Trust Assessment" in html
     assert "test-skill" in html
     assert "SUSPICIOUS" in html
+    assert "content: BENIGN" in html
+    assert "provenance: UNVERIFIED" in html
+    assert "recommendation: REVIEW" in html
     assert "medium confidence" in html
     assert "Purpose &amp; Capability" in html
     assert "Excessive credential access" in html

@@ -101,7 +101,55 @@
             "items": { "type": "string" }
           },
           "audit": { "type": "object" },
-          "trust": { "type": "object" },
+          "trust": {
+            "type": "object",
+            "properties": {
+              "skill_name": { "type": "string" },
+              "source_file": { "type": "string" },
+              "verdict": {
+                "type": "string",
+                "enum": ["benign", "suspicious", "malicious"]
+              },
+              "content_verdict": {
+                "type": "string",
+                "enum": ["benign", "suspicious", "malicious"]
+              },
+              "provenance_verdict": {
+                "type": "string",
+                "enum": ["verified", "unverified"]
+              },
+              "review_verdict": {
+                "type": "string",
+                "enum": ["trusted", "review", "high_risk", "blocked"]
+              },
+              "overall_recommendation": {
+                "type": "string",
+                "enum": ["trusted", "review", "high_risk", "blocked"]
+              },
+              "confidence": {
+                "type": "string",
+                "enum": ["high", "medium", "low"]
+              },
+              "categories": { "type": "array" },
+              "recommendations": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "review_reasons": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "reviewer_guidance": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "publisher_guidance": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            },
+            "additionalProperties": true
+          },
           "provenance": { "type": "object" },
           "threat_intel": {
             "oneOf": [

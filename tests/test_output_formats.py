@@ -549,6 +549,28 @@ class TestMarkdown:
         assert "1 affected agent(s), 1 affected server(s), 1 reachable tool(s), 1 exposed credential reference(s)" in md
         assert "Upgrade lodash to 4.17.21" in md
 
+    def test_skill_trust_axes_render_in_markdown(self):
+        report = _make_report()
+        report.trust_assessment_data = {
+            "skill_name": "scan",
+            "source_file": "SKILL.md",
+            "verdict": "benign",
+            "content_verdict": "benign",
+            "provenance_verdict": "unverified",
+            "review_verdict": "review",
+            "overall_recommendation": "review",
+            "confidence": "medium",
+            "categories": [],
+            "recommendations": [],
+        }
+
+        md = to_markdown(report)
+
+        assert "## Skill Trust Assessment" in md
+        assert "| Content verdict | `benign` |" in md
+        assert "| Provenance verdict | `unverified` |" in md
+        assert "| Recommendation | `review` |" in md
+
 
 def test_exposure_path_is_embedded_in_sarif_properties():
     tool = MCPTool(name="deploy", description="Deploy workloads")
@@ -575,6 +597,30 @@ def test_exposure_path_is_embedded_in_sarif_properties():
         "source": "agent:prod-agent",
         "target": "server:prod-mcp",
     } in exposure_path["relationships"]
+
+
+def test_skill_trust_axes_are_embedded_in_sarif_properties():
+    report = _make_report()
+    report.trust_assessment_data = {
+        "skill_name": "scan",
+        "source_file": "SKILL.md",
+        "verdict": "benign",
+        "content_verdict": "benign",
+        "provenance_verdict": "unverified",
+        "review_verdict": "review",
+        "overall_recommendation": "review",
+        "confidence": "medium",
+        "categories": [],
+        "recommendations": [],
+    }
+
+    sarif = to_sarif(report)
+    trust = sarif["runs"][0]["properties"]["trust_assessment"]
+
+    assert trust["verdict"] == "benign"
+    assert trust["content_verdict"] == "benign"
+    assert trust["provenance_verdict"] == "unverified"
+    assert trust["overall_recommendation"] == "review"
 
 
 def test_html_renders_exposure_path_investigation_briefs():

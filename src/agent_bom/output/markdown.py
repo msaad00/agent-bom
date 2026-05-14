@@ -41,6 +41,10 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
     lines.append(f"| Low | {sev_counts.get('low', 0)} |")
     lines.append("")
 
+    trust_lines = _trust_assessment_section(report)
+    if trust_lines:
+        lines.extend(trust_lines)
+
     if not brs and not policy_findings:
         lines.append("No vulnerabilities found.")
         return "\n".join(lines) + "\n"
@@ -176,6 +180,30 @@ def _severity_counts(brs: list[BlastRadius]) -> dict[str, int]:
 def _non_cve_findings(report: AIBOMReport) -> list[Finding]:
     """Return unified findings that do not already appear in the CVE table."""
     return [finding for finding in report.to_findings() if finding.finding_type != FindingType.CVE]
+
+
+def _trust_assessment_section(report: AIBOMReport) -> list[str]:
+    """Render dual-axis skill trust metadata in Markdown."""
+    data = getattr(report, "trust_assessment_data", None)
+    if not isinstance(data, dict) or not data:
+        return []
+
+    lines = [
+        "## Skill Trust Assessment",
+        "",
+        "| Field | Value |",
+        "|-------|-------|",
+        f"| Verdict | `{_md_cell(data.get('verdict', 'benign'))}` |",
+        f"| Content verdict | `{_md_cell(data.get('content_verdict', 'benign'))}` |",
+        f"| Provenance verdict | `{_md_cell(data.get('provenance_verdict', 'unverified'))}` |",
+        f"| Recommendation | `{_md_cell(data.get('overall_recommendation') or data.get('review_verdict', 'review'))}` |",
+    ]
+    if data.get("skill_name"):
+        lines.append(f"| Skill | {_md_cell(data['skill_name'])} |")
+    if data.get("source_file"):
+        lines.append(f"| Source | `{_md_cell(data['source_file'])}` |")
+    lines.append("")
+    return lines
 
 
 _SEV_ORDER = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2, Severity.LOW: 3, Severity.UNKNOWN: 4, Severity.NONE: 5}

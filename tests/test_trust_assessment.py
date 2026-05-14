@@ -7,6 +7,7 @@ from agent_bom.parsers.skill_audit import SkillAuditResult, SkillFinding, audit_
 from agent_bom.parsers.skills import SkillMetadata, SkillScanResult
 from agent_bom.parsers.trust_assessment import (
     Confidence,
+    ProvenanceVerdict,
     ReviewVerdict,
     TrustAssessmentResult,
     TrustCategoryResult,
@@ -193,6 +194,9 @@ def test_trust_assessment_result_to_dict():
     d = result.to_dict()
     assert d["verdict"] == "benign"
     assert d["review_verdict"] == "trusted"
+    assert d["overall_recommendation"] == "trusted"
+    assert d["provenance_verdict"] == "verified"
+    assert d["content_verdict"] == "benign"
     assert d["confidence"] == "high"
     assert d["skill_name"] == "test-tool"
     assert len(d["categories"]) == 1
@@ -516,6 +520,7 @@ def test_content_verdict_ignores_metadata_only_findings():
     result = assess_trust(scan, audit)
 
     assert result.content_verdict == Verdict.BENIGN
+    assert result.provenance_verdict == ProvenanceVerdict.VERIFIED
     assert result.verdict == Verdict.BENIGN
 
 
@@ -632,8 +637,12 @@ def test_assess_trust_no_frontmatter():
     result = assess_trust(scan, audit)
 
     assert len(result.categories) == 5
-    # Without metadata, most categories should be WARN or INFO
-    assert result.verdict in (Verdict.SUSPICIOUS, Verdict.MALICIOUS)
+    # Without metadata, the content axis stays benign while review captures the
+    # catalog/provenance gaps.
+    assert result.verdict == Verdict.BENIGN
+    assert result.content_verdict == Verdict.BENIGN
+    assert result.provenance_verdict == ProvenanceVerdict.UNVERIFIED
+    assert result.review_verdict == ReviewVerdict.REVIEW
 
 
 def test_assess_trust_agent_bom_skill():
@@ -651,6 +660,7 @@ def test_assess_trust_agent_bom_skill():
 
     assert result.verdict == Verdict.BENIGN
     assert result.content_verdict == Verdict.BENIGN
+    assert result.provenance_verdict == ProvenanceVerdict.VERIFIED
     assert result.confidence in (Confidence.HIGH, Confidence.MEDIUM)
 
 

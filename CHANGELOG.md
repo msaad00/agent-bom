@@ -9,7 +9,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Graph investigation product lane** - the post-`v0.86.5` main branch now
+  carries the first Wiz-grade graph roadmap slice: bitemporal graph edges,
+  measured graph benchmark evidence, a hardened large-graph overview fallback,
+  API-native `ExposurePath`, toxic-combo projection into the graph, renderer
+  switch contracts for React Flow / large overview / WebGL, semantic clusters,
+  and the optional Neptune backend design. These are code and docs on `main`;
+  live Neptune SLOs and a full query DSL remain future work.
+- **Agentic integration positioning** - README and release review docs now tie
+  the MCP server, proxy, gateway, Shield SDK, skills, CI, control-plane API,
+  auth, and self-hosted data boundary into one adoption story for humans and
+  AI agents instead of listing them as separate surfaces.
+
 ### Fixed
+- **SQLite graph upgrade blocker** - the release-blocking read-path migration
+  regression is tracked as the v0.86.6 blocker: existing local graph DBs must
+  add time-versioned edge columns before any `/v1/graph*` endpoint claims
+  release readiness.
 - **`agent-bom audit` fails on base install** - `cryptography` is now a core
   dependency (it was previously only in `[runtime]`/`[oidc]` extras), so the
   proxy audit log viewer no longer crashes with `No module named

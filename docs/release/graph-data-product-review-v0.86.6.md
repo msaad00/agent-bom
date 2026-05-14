@@ -31,6 +31,47 @@ Target state: every graph surface should answer four questions immediately:
 3. What entities and relationships prove it?
 4. What is the fix or containment step?
 
+## Current Main Status
+
+This document started as a design review. The main branch has since shipped a
+large part of that plan, so the release narrative should separate delivered
+capability from future graph-platform work.
+
+Shipped on `main` after `v0.86.5`:
+
+- **Time-versioned graph edges** — SQLite and Postgres edges carry
+  `valid_from`, `valid_to`, confidence, provenance, source scan, and source run
+  metadata, with `/v1/graph/edges/active` and `/v1/graph/edges/changes` API
+  routes.
+- **Measured graph benchmark evidence** — benchmark artifacts now report real
+  measured API path timings while keeping synthetic-estate disclaimers explicit.
+- **Large graph fallback hardening** — broad graph views have a defensive
+  overview path instead of forcing every dense scene into the focused renderer.
+- **API-native `ExposurePath` contract** — fix-first and attack-path APIs share
+  a structured path shape for risk, hops, evidence, fix target, and provenance.
+- **Toxic-combo projection** — compound risk conditions are represented as graph
+  entities and relationships instead of living only in narrative summaries.
+- **Renderer switch contract** — the UI can choose React Flow, large overview,
+  or WebGL paths by graph size and focus state.
+- **Semantic clusters** — package, CVE, agent, server, credential, tool, and
+  source-family clusters reduce raw topology before rendering.
+- **Postgres hot-path indexes** — graph search, node hydration, and attack-path
+  SQL paths have explicit index coverage for the known slow paths.
+- **Neptune backend lane** — the adapter boundary and optional enterprise graph
+  backend design are documented; implementation remains optional and must not
+  weaken the SQLite/Postgres defaults.
+
+Release blockers and non-claims:
+
+- Existing SQLite graph DBs must migrate time-versioned edge columns before
+  `v0.86.6` can be tagged; otherwise existing `/v1/graph*` users can hit
+  `OperationalError: no such column: valid_from`.
+- A live Neptune deployment, production Neptune latency SLO, openCypher query
+  endpoint, and 50k-node WebGL operations claim are not shipped claims in this
+  review.
+- SARIF, Markdown, and HTML outputs still need `ExposurePath` propagation before
+  the path contract can be described as format-wide.
+
 ## External Benchmark
 
 Public references do not disclose Wiz or CrowdStrike's exact browser graph

@@ -8,6 +8,8 @@ import { Activity, GitBranch, Layers3, Network, ShieldAlert, Sparkles } from "lu
 import { GraphLegend } from "@/components/graph-chrome";
 import type { LineageNodeData } from "@/components/lineage-nodes";
 import type { LegendItem } from "@/lib/graph-utils";
+import type { UnifiedGraphData } from "@/lib/graph-schema";
+import type { UnifiedGraphFlowFilters } from "@/lib/unified-graph-flow";
 import {
   LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES,
@@ -16,16 +18,28 @@ import {
 } from "@/lib/large-graph-overview";
 import {
   buildSigmaGraphOverviewModel,
+  buildSigmaGraphOverviewModelFromUnifiedGraph,
   type SigmaEdgeAttributes,
   type SigmaNodeAttributes,
 } from "@/lib/sigma-graph-overview";
 
-interface SigmaGraphOverviewProps {
-  nodes: Node<LineageNodeData>[];
-  edges: Edge[];
+type SigmaGraphOverviewProps = {
   legendItems: LegendItem[];
   onNodeSelect?: (nodeId: string) => void;
-}
+} & (
+  {
+    nodes: Node<LineageNodeData>[];
+    edges: Edge[];
+    graph?: never;
+    filters?: never;
+  }
+  | {
+      graph: UnifiedGraphData;
+      filters?: UnifiedGraphFlowFilters;
+      nodes?: never;
+      edges?: never;
+    }
+);
 
 function StatPill({
   icon: Icon,
@@ -74,6 +88,8 @@ function RelationshipRail({ items }: { items: Array<{ relationship: string; coun
 }
 
 export function SigmaGraphOverview({
+  graph,
+  filters,
   nodes,
   edges,
   legendItems,
@@ -85,7 +101,13 @@ export function SigmaGraphOverview({
   const onNodeSelectRef = useRef<SigmaGraphOverviewProps["onNodeSelect"]>(onNodeSelect);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const model = useMemo(() => buildSigmaGraphOverviewModel(nodes, edges), [nodes, edges]);
+  const model = useMemo(
+    () =>
+      graph
+        ? buildSigmaGraphOverviewModelFromUnifiedGraph(graph, filters)
+        : buildSigmaGraphOverviewModel(nodes, edges),
+    [edges, filters, graph, nodes],
+  );
   const isBudgeted = model.overview.omittedNodeCount > 0 || model.overview.omittedEdgeCount > 0;
 
   useEffect(() => {

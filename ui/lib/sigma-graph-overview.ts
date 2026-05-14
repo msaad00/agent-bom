@@ -2,12 +2,17 @@ import Graph from "graphology";
 import type { Edge, Node } from "@xyflow/react";
 
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
+import type { UnifiedGraphData } from "@/lib/graph-schema";
 import {
   buildLargeGraphOverviewModel,
   summarizeLargeGraphOverview,
   type LargeGraphOverviewModel,
   type LargeGraphOverviewSummary,
 } from "@/lib/large-graph-overview";
+import {
+  buildUnifiedFlowGraph,
+  type UnifiedGraphFlowFilters,
+} from "@/lib/unified-graph-flow";
 
 export type SigmaNodeAttributes = {
   label: string;
@@ -39,6 +44,36 @@ export interface SigmaGraphOverviewModel {
   overview: LargeGraphOverviewModel;
   summary: LargeGraphOverviewSummary;
 }
+
+const SIGMA_DEFAULT_LAYERS: Record<LineageNodeType, boolean> = {
+  provider: true,
+  agent: true,
+  user: true,
+  group: true,
+  serviceAccount: true,
+  environment: true,
+  fleet: true,
+  cluster: true,
+  server: true,
+  sharedServer: true,
+  package: true,
+  vulnerability: true,
+  credential: true,
+  tool: true,
+  model: true,
+  dataset: true,
+  container: true,
+  cloudResource: true,
+  misconfiguration: true,
+};
+
+const SIGMA_DEFAULT_FILTERS: UnifiedGraphFlowFilters = {
+  layers: SIGMA_DEFAULT_LAYERS,
+  severity: null,
+  agentName: null,
+  vulnOnly: false,
+  maxDepth: 8,
+};
 
 function edgeIsHighlighted(
   source: { highlighted: boolean; forceLabel: boolean } | undefined,
@@ -95,4 +130,12 @@ export function buildSigmaGraphOverviewModel(
     overview,
     summary: summarizeLargeGraphOverview(nodes, edges),
   };
+}
+
+export function buildSigmaGraphOverviewModelFromUnifiedGraph(
+  graph: UnifiedGraphData,
+  filters: UnifiedGraphFlowFilters = SIGMA_DEFAULT_FILTERS,
+): SigmaGraphOverviewModel {
+  const flow = buildUnifiedFlowGraph(graph, filters);
+  return buildSigmaGraphOverviewModel(flow.nodes, flow.edges);
 }

@@ -26,9 +26,15 @@ class EntityType(str, Enum):
     CREDENTIAL = "credential"
 
     # Identity & governance (OCSF Category 5)
+    ORG = "org"
+    ACCOUNT = "account"
     USER = "user"
     GROUP = "group"
+    ROLE = "role"
+    POLICY = "policy"
     SERVICE_ACCOUNT = "service_account"
+    SERVICE_PRINCIPAL = "service_principal"
+    FEDERATED_IDENTITY = "federated_identity"
 
     # Organizational hierarchy
     PROVIDER = "provider"
@@ -84,6 +90,12 @@ class RelationshipType(str, Enum):
     OWNS = "owns"  # org/team → environment/resource
     PART_OF = "part_of"  # agent → fleet, server → cluster
     MEMBER_OF = "member_of"  # user → group, package → dependency_group
+    ASSUMES = "assumes"  # user/service principal → role
+    TRUSTS = "trusts"  # role/account → principal/account
+    ATTACHED = "attached"  # principal/role/group → policy
+    INHERITS = "inherits"  # principal/group/role → policy/role
+    CAN_ACCESS = "can_access"  # identity principal/account → resource
+    CROSS_ACCOUNT_TRUST = "cross_account_trust"  # account/principal → external account/principal
 
     # ── Runtime events (dynamic) ──
     INVOKED = "invoked"  # agent → tool (runtime)

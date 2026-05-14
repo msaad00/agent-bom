@@ -247,8 +247,10 @@ class TestBuildUnifiedGraphFromReport:
 
         resource_id = "cloud_resource:gcp:cloud-run:service:projects/acme/locations/us-central1/services/support-agent"
         principal_id = "service_account:gcp:support-agent@acme.iam.gserviceaccount.com"
+        account_id = "account:gcp:acme"
         resource = g.nodes.get(resource_id)
         principal = g.nodes.get(principal_id)
+        account = g.nodes.get(account_id)
 
         assert resource is not None
         assert resource.entity_type == EntityType.CLOUD_RESOURCE
@@ -259,9 +261,16 @@ class TestBuildUnifiedGraphFromReport:
         assert principal is not None
         assert principal.entity_type == EntityType.SERVICE_ACCOUNT
         assert principal.attributes["principal_type"] == "service-account"
+        assert account is not None
+        assert account.entity_type == EntityType.ACCOUNT
+        assert account.attributes["scope_key"] == "project_id"
         assert g.has_edge("provider:gcp", resource_id)
+        assert g.has_edge("provider:gcp", account_id)
+        assert g.has_edge(account_id, resource_id)
         assert g.has_edge(resource_id, "agent:claude-desktop")
         assert g.has_edge(principal_id, resource_id)
+        assert any(e.source == principal_id and e.target == account_id and e.relationship == RelationshipType.MEMBER_OF for e in g.edges)
+        assert any(e.source == principal_id and e.target == resource_id and e.relationship == RelationshipType.CAN_ACCESS for e in g.edges)
         # Direct principal → agent edge (audit P0 #1): single-hop reach so
         # "which principals can touch this agent?" doesn't have to traverse
         # the cloud_resource intermediate.
@@ -279,6 +288,56 @@ class TestBuildUnifiedGraphFromReport:
         # principal-to-agent relationship is mediated by a cloud_resource
         # rather than direct ownership.
         assert principal_to_agent.evidence.get("via") == resource_id
+
+    def test_cloud_principal_role_policy_metadata_becomes_identity_graph(self):
+        report = _minimal_report()
+        report["agents"][0]["source"] = "aws-bedrock"
+        report["agents"][0]["metadata"] = {
+            "cloud_origin": {
+                "provider": "aws",
+                "service": "bedrock",
+                "resource_type": "agent",
+                "resource_id": "arn:aws:bedrock:us-east-1:123456789012:agent/agent-abc",
+                "resource_name": "support-agent",
+                "location": "us-east-1",
+                "scope": {
+                    "org_id": "o-example",
+                    "account_id": "123456789012",
+                },
+            },
+            "cloud_principal": {
+                "provider": "aws",
+                "principal_type": "role",
+                "principal_id": "arn:aws:iam::123456789012:role/AgentRuntimeRole",
+                "principal_name": "AgentRuntimeRole",
+                "policies": [
+                    {
+                        "policy_id": "arn:aws:iam::123456789012:policy/AgentRuntimePolicy",
+                        "policy_name": "AgentRuntimePolicy",
+                    }
+                ],
+                "source_field": "agentResourceRoleArn",
+            },
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        org_id = "org:aws:o-example"
+        account_id = "account:aws:123456789012"
+        role_id = "role:aws:arn:aws:iam::123456789012:role/AgentRuntimeRole"
+        policy_id = "policy:aws:arn:aws:iam::123456789012:policy/AgentRuntimePolicy"
+        resource_id = "cloud_resource:aws:bedrock:agent:arn:aws:bedrock:us-east-1:123456789012:agent/agent-abc"
+
+        assert g.nodes[org_id].entity_type == EntityType.ORG
+        assert g.nodes[account_id].entity_type == EntityType.ACCOUNT
+        assert g.nodes[role_id].entity_type == EntityType.ROLE
+        assert g.nodes[policy_id].entity_type == EntityType.POLICY
+        assert g.nodes[role_id].attributes["principal_type"] == "role"
+        assert any(e.source == account_id and e.target == org_id and e.relationship == RelationshipType.PART_OF for e in g.edges)
+        assert any(e.source == account_id and e.target == resource_id and e.relationship == RelationshipType.HOSTS for e in g.edges)
+        assert any(e.source == role_id and e.target == account_id and e.relationship == RelationshipType.MEMBER_OF for e in g.edges)
+        assert any(e.source == role_id and e.target == resource_id and e.relationship == RelationshipType.CAN_ACCESS for e in g.edges)
+        assert any(e.source == role_id and e.target == policy_id and e.relationship == RelationshipType.ATTACHED for e in g.edges)
 
     def test_no_principal_agent_edge_when_principal_metadata_absent(self):
         # If cloud_origin is present but cloud_principal is missing, only

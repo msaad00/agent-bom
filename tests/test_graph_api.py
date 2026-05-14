@@ -857,6 +857,56 @@ class TestGraphEndpointLogic:
         assert reachable == {"server:s", "vuln:cve"}
         assert paths == [["agent:a", "server:s"], ["agent:a", "server:s", "vuln:cve"]]
 
+    def test_sqlite_graph_store_bfs_paths_traverse_persisted_identity_hops(self, tmp_path):
+        from agent_bom.graph.builder import build_unified_graph_from_report
+
+        report = {
+            "scan_id": "identity-hop-scan",
+            "agents": [
+                {
+                    "name": "cloud-agent",
+                    "type": "bedrock",
+                    "status": "configured",
+                    "source": "aws-bedrock",
+                    "metadata": {
+                        "cloud_origin": {
+                            "provider": "aws",
+                            "service": "bedrock",
+                            "resource_type": "agent",
+                            "resource_id": "arn:aws:bedrock:us-east-1:123456789012:agent/agent-abc",
+                            "resource_name": "cloud-agent",
+                            "location": "us-east-1",
+                            "scope": {"account_id": "123456789012"},
+                        },
+                        "cloud_principal": {
+                            "provider": "aws",
+                            "principal_type": "role",
+                            "principal_id": "arn:aws:iam::123456789012:role/AgentRuntimeRole",
+                            "principal_name": "AgentRuntimeRole",
+                        },
+                    },
+                    "mcp_servers": [],
+                }
+            ],
+        }
+        graph = build_unified_graph_from_report(report, tenant_id="default")
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        store.save_graph(graph)
+
+        account_id = "account:aws:123456789012"
+        resource_id = "cloud_resource:aws:bedrock:agent:arn:aws:bedrock:us-east-1:123456789012:agent/agent-abc"
+        paths, reachable = store.bfs_paths(
+            tenant_id="default",
+            scan_id="identity-hop-scan",
+            source=account_id,
+            max_depth=2,
+        )
+
+        assert resource_id in reachable
+        assert "agent:cloud-agent" in reachable
+        assert [account_id, resource_id] in paths
+        assert [account_id, resource_id, "agent:cloud-agent"] in paths
+
     def test_sqlite_graph_store_impact_of_uses_reverse_edges(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
         graph = UnifiedGraph(scan_id="impact-scan", tenant_id="default")

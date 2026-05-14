@@ -16,6 +16,7 @@ from agent_bom.asset_provenance import (
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.finding import FindingType
 from agent_bom.models import AIBOMReport, Severity
+from agent_bom.output.exposure_path import exposure_path_for_blast_radius
 from agent_bom.security import sanitize_sensitive_payload
 
 _SARIF_SEVERITY_MAP = {
@@ -173,7 +174,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
     results = []
     seen_rule_ids: set[str] = set()
 
-    for br in report.blast_radii:
+    for rank, br in enumerate(report.blast_radii, 1):
         vuln = br.vulnerability
         rule_id = vuln.id
 
@@ -255,6 +256,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
         # a compliance tag to trigger enrichment.
         result_properties: dict = {
             "blast_score": br.risk_score,
+            "exposure_path": exposure_path_for_blast_radius(br, rank=rank),
             "epss_score": vuln.epss_score,
             "is_kev": vuln.is_kev,
             "exploit_likelihood": vuln.exploit_likelihood,

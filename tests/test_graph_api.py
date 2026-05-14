@@ -1467,6 +1467,21 @@ def recording_graph_store():
 
 
 class TestGraphStoreBackendSelection:
+    def test_exposure_path_schema_is_documented_in_openapi(self):
+        app.openapi_schema = None
+        schema = TestClient(app).get("/openapi.json").json()
+
+        fix_first_card = schema["paths"]["/v1/graph/views/fix-first"]["get"]["responses"]["200"]["content"]["application/json"]["schema"][
+            "properties"
+        ]["cards"]["items"]
+        attack_path_item = schema["paths"]["/v1/graph/attack-paths"]["get"]["responses"]["200"]["content"]["application/json"]["schema"][
+            "properties"
+        ]["attack_paths"]["items"]
+
+        assert fix_first_card["properties"]["exposure_path"]["required"][:5] == ["id", "label", "summary", "riskScore", "severity"]
+        assert "affectedAgents" in attack_path_item["properties"]["exposure_path"]["properties"]
+        assert "exposedCredentials" in attack_path_item["properties"]["exposure_path"]["properties"]
+
     def test_graph_routes_use_pluggable_store(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
         recording_graph_store.graph.attack_paths.append(

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from agent_bom.finding import FindingType
+from agent_bom.output.exposure_path import exposure_path_brief
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 if TYPE_CHECKING:
@@ -353,6 +354,32 @@ def _blast_table(blast_radii: list["BlastRadius"]) -> str:
         + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
         + f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
     )
+
+
+def _exposure_path_section(blast_radii: list["BlastRadius"]) -> str:
+    if not blast_radii:
+        return ""
+    cards = []
+    for rank, br in enumerate(sorted(blast_radii, key=lambda b: b.risk_score, reverse=True)[:10], 1):
+        brief = exposure_path_brief(br, rank=rank)
+        sev = br.vulnerability.severity.value.lower()
+        color = _SEV_COLOR.get(sev, "#6b7280")
+        cards.append(
+            '<div class="exposure-path-card">'
+            f'<div class="path-rank" style="border-color:{color};color:{color}">#{_esc(brief["rank"])}</div>'
+            '<div class="path-body">'
+            f'<div class="path-title">{_esc(brief["path"])}</div>'
+            f'<div class="path-summary">{_esc(brief["why"])}</div>'
+            '<div class="path-meta">'
+            f'<span style="color:{color};font-weight:700">{_esc(brief["severity"])}</span>'
+            f"<span>risk {_esc(brief['risk'])}</span>"
+            f"<span>{_esc(brief['proof'])}</span>"
+            f"</div>"
+            f'<div class="path-fix">{_esc(brief["fix"])}</div>'
+            "</div>"
+            "</div>"
+        )
+    return "".join(cards)
 
 
 def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
@@ -1196,6 +1223,13 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             f"</div>"
             f'<div class="panel">{_vuln_table(blast_radii)}</div>'
             f"</section>"
+            f'<section id="exposure-paths">'
+            f'<div class="sec-title">&#x1f9ed; Exposure Paths'
+            f'<sup style="font-size:.65rem;color:#475569;margin-left:6px;font-weight:400">'
+            f"ranked investigation briefs from blast-radius evidence"
+            f"</sup></div>"
+            f'<div class="panel exposure-paths">{_exposure_path_section(blast_radii)}</div>'
+            f"</section>"
             f'<section id="blast">'
             f'<div class="sec-title">&#x1f4a5; Blast Radius'
             f'<sup style="font-size:.65rem;color:#475569;margin-left:6px;font-weight:400">'
@@ -1375,6 +1409,16 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     .vuln-id{{color:#93c5fd;font-size:.78rem}}
 
     /* REMEDIATION */
+    .exposure-paths{{display:grid;gap:12px}}
+    .exposure-path-card{{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid #1e293b}}
+    .exposure-path-card:last-child{{border-bottom:none}}
+    .path-rank{{width:42px;height:42px;border:2px solid #334155;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;background:#0f172a}}
+    .path-body{{min-width:0;flex:1}}
+    .path-title{{color:#e2e8f0;font-weight:700;font-size:.92rem;margin-bottom:4px}}
+    .path-summary{{color:#94a3b8;font-size:.82rem;line-height:1.45;margin-bottom:8px}}
+    .path-meta{{display:flex;flex-wrap:wrap;gap:8px;color:#64748b;font-size:.74rem;margin-bottom:8px}}
+    .path-meta span{{background:#0f172a;border:1px solid #1e293b;border-radius:999px;padding:3px 8px}}
+    .path-fix{{color:#4ade80;font-size:.78rem;font-weight:600}}
     .remediation-item{{display:flex;align-items:flex-start;gap:14px;padding:16px 0;border-bottom:1px solid #1e293b;transition:background .1s}}
     .remediation-item:hover{{background:rgba(255,255,255,.02);margin:0 -12px;padding-left:12px;padding-right:12px;border-radius:8px}}
     .subsection-label{{font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:#64748b;margin-bottom:10px}}
@@ -1428,6 +1472,10 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       .stat-value,.sec-title{{color:#0f172a}}
       .data-table th{{background:#f1f5f9;color:#334155;border-bottom:2px solid #cbd5e1}}
       .data-table td{{border-bottom:1px solid #e2e8f0}}
+      .path-rank,.path-meta span{{background:#f1f5f9;border-color:#e2e8f0}}
+      .path-title{{color:#0f172a}}
+      .path-summary{{color:#475569}}
+      .path-fix{{color:#15803d}}
       #cy{{height:400px;background:#f8fafc;border:1px solid #e2e8f0}}
       .legend{{color:#475569}}
       a{{color:#2563eb}}
@@ -1473,6 +1521,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     {'<a href="#attackflow" class="sidebar-link"><span class="link-icon">&#x26a1;</span> Attack Flow</a>' if blast_radii else ""}
     {f'<a href="#vulns" class="sidebar-link"><span class="link-icon">&#x1f41b;</span> Vulnerabilities <span class="link-badge" style="background:#7f1d1d;color:#fca5a5">{len(blast_radii)}</span></a>' if blast_radii else ""}
     {f'<a href="#policyfindings" class="sidebar-link"><span class="link-icon">&#x1f6e1;&#xfe0f;</span> Policy Findings <span class="link-badge" style="background:#78350f;color:#fcd34d">{len(policy_findings)}</span></a>' if policy_findings else ""}
+    {'<a href="#exposure-paths" class="sidebar-link"><span class="link-icon">&#x1f9ed;</span> Exposure Paths</a>' if blast_radii else ""}
     {'<a href="#blast" class="sidebar-link"><span class="link-icon">&#x1f4a5;</span> Blast Radius</a>' if blast_radii else ""}
     {'<a href="#remediation" class="sidebar-link"><span class="link-icon">&#x1f527;</span> Remediation</a>' if blast_radii else ""}
   </div>

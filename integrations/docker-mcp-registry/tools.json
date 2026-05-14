@@ -25,6 +25,16 @@
     ]
   },
   {
+    "name": "exposure_paths",
+    "description": "Return ranked ExposurePath JSON from the graph store for headless security agents.",
+    "arguments": [
+      {"name": "tenant_id", "type": "string", "desc": "Tenant ID for the graph snapshot (default: default)"},
+      {"name": "scan_id", "type": "string", "desc": "Optional graph scan ID; omit to use latest snapshot"},
+      {"name": "limit", "type": "integer", "desc": "Maximum ranked exposure paths to return (1-100)"},
+      {"name": "min_risk", "type": "number", "desc": "Minimum path risk score to include (0-100)"}
+    ]
+  },
+  {
     "name": "policy_check",
     "description": "Evaluate a security policy against current scan results — returns pass/fail per rule.",
     "arguments": [

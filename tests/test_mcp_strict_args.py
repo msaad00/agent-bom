@@ -27,7 +27,7 @@ def mcp_server():
 def test_every_tool_advertises_additional_properties_false(mcp_server) -> None:  # noqa: ANN001
     """Every registered tool's JSON schema must reject unknown properties."""
     tools = list(mcp_server._tool_manager._tools.values())
-    assert len(tools) >= 30, f"expected ~36 tools, got {len(tools)}"
+    assert len(tools) >= 30, f"expected ~37 tools, got {len(tools)}"
     leaks: list[str] = []
     for tool in tools:
         params = tool.parameters or {}

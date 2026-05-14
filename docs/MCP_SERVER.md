@@ -56,7 +56,7 @@ Add to `~/.snowflake/cortex/mcp.json`:
 }
 ```
 
-CoCo can then call the same 36 `agent-bom` tools over MCP.
+CoCo can then call the same 37 `agent-bom` tools over MCP.
 
 agent-bom also discovers Cortex auxiliary security files alongside `mcp.json`:
 

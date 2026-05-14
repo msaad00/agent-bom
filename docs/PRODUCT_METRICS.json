@@ -1,10 +1,10 @@
 {
-  "generated_on": "2026-04-30",
+  "generated_on": "2026-05-14",
   "version": "0.86.5",
   "metrics": [
     {
       "name": "MCP tools",
-      "value": 36,
+      "value": 37,
       "source": "src/agent_bom/mcp_server_metadata.py",
       "notes": "Counted from the advertised server-card tools."
     },
@@ -28,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 438,
+      "value": 468,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -46,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 421,
+      "value": 470,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },
@@ -58,9 +58,9 @@
     },
     {
       "name": "Compliance surfaces",
-      "value": 15,
+      "value": 16,
       "source": "src/agent_bom/compliance_coverage.py",
-      "notes": "15 tag-mapped frameworks plus the OWASP AISVS benchmark surface."
+      "notes": "14 tag-mapped frameworks plus the OWASP AISVS benchmark surface."
     },
     {
       "name": "Proxy inline detectors",

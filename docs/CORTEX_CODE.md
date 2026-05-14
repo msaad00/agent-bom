@@ -41,7 +41,7 @@ Or, if `agent-bom` is already installed:
 }
 ```
 
-This makes the same 36 `agent-bom` MCP tools available in CoCo conversations.
+This makes the same 37 `agent-bom` MCP tools available in CoCo conversations.
 
 ## What agent-bom discovers for Cortex
 

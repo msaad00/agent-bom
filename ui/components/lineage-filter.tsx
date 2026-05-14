@@ -259,15 +259,15 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
   };
 
   return (
-    <div className="w-48 bg-zinc-950/90 backdrop-blur-sm border-r border-zinc-800 p-3 space-y-4 overflow-y-auto text-xs">
+    <div className="w-48 bg-[var(--surface)] backdrop-blur-sm border-r border-[var(--border-subtle)] p-3 space-y-4 overflow-y-auto text-xs text-[var(--text-secondary)]">
       <div className="flex items-center justify-between -mt-1 -mx-1 mb-1">
-        <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 px-1">Filters</span>
+        <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-tertiary)] px-1">Filters</span>
         {onReset && (
           <button
             type="button"
             onClick={onReset}
             title="Reset to the bounded graph scope"
-            className="flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900/80 px-2 py-1 text-[10px] text-zinc-400 transition hover:border-emerald-600/40 hover:text-emerald-200"
+            className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1 text-[10px] text-[var(--text-secondary)] transition hover:border-emerald-600/40 hover:text-emerald-600 dark:hover:text-emerald-200"
           >
             <RotateCcw className="h-3 w-3" />
             Reset
@@ -291,8 +291,8 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
                 title={enabled ? undefined : DISABLED_TOOLTIP}
                 className={`flex items-center gap-2 ${
                   enabled || checked
-                    ? "cursor-pointer text-zinc-400 hover:text-zinc-200"
-                    : "cursor-not-allowed text-zinc-600 opacity-50"
+                    ? "cursor-pointer text-[var(--text-secondary)] hover:text-[var(--foreground)]"
+                    : "cursor-not-allowed text-[var(--text-tertiary)] opacity-50"
                 }`}
               >
                 <input
@@ -319,7 +319,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
         <select
           value={filters.severity ?? ""}
           onChange={(e) => onChange({ ...filters, severity: e.target.value || null })}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
+          className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none focus:border-emerald-600"
         >
           {SEVERITY_OPTIONS.map(({ value, label }) => {
             const enabled = isSeverityEnabled(value);
@@ -352,7 +352,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
               relationshipScope: e.target.value as FilterState["relationshipScope"],
             })
           }
-          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
+          className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none focus:border-emerald-600"
         >
           {RELATIONSHIP_SCOPE_OPTIONS.map(({ value, label }) => {
             const enabled = isScopeEnabled(value);
@@ -386,7 +386,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
                 runtimeMode: e.target.value as FilterState["runtimeMode"],
               })
             }
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
+            className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none focus:border-emerald-600"
           >
             <option value="all">Static + runtime</option>
             <option value="static">Static only</option>
@@ -401,7 +401,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
                 maxDepth: Number(e.target.value),
               })
             }
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
+            className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none focus:border-emerald-600"
           >
             <option value="1">Depth 1</option>
             <option value="2">Depth 2</option>
@@ -428,7 +428,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
       )}
 
       <div>
-        <label className="flex items-center gap-2 cursor-pointer text-zinc-400 hover:text-zinc-200">
+        <label className="flex items-center gap-2 cursor-pointer text-[var(--text-secondary)] hover:text-[var(--foreground)]">
           <input
             type="checkbox"
             checked={filters.vulnOnly}
@@ -448,7 +448,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
         <select
           value={String(filters.pageSize)}
           onChange={(e) => onChange({ ...filters, pageSize: Number(e.target.value) })}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
+          className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none focus:border-emerald-600"
         >
           <option value="25">25 nodes</option>
           <option value="50">50 nodes</option>
@@ -500,21 +500,21 @@ function VirtualizedAgentPicker({
         }}
         placeholder={`Filter ${agentNames.length.toLocaleString()} agents`}
         aria-label="Filter graph agents"
-        className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-300 placeholder:text-zinc-600 focus:border-emerald-600 focus:outline-none"
+        className="w-full rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 text-[var(--foreground)] placeholder:text-[var(--text-tertiary)] focus:border-emerald-600 focus:outline-none"
       />
       <button
         type="button"
         onClick={() => onSelect(null)}
         className={`flex h-8 w-full items-center rounded px-2 text-left text-[11px] transition ${
           selectedAgent === null
-            ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-            : "border border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+            ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
+            : "border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
         }`}
       >
         All agents
       </button>
       <div
-        className="overflow-y-auto rounded border border-zinc-800 bg-zinc-950/70"
+        className="overflow-y-auto rounded border border-[var(--border-subtle)] bg-[var(--surface)]"
         style={{ height: listHeight }}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
         role="listbox"
@@ -534,10 +534,10 @@ function VirtualizedAgentPicker({
                 onClick={() => onSelect(agentName)}
                 className={`block h-8 w-full truncate px-2 text-left font-mono text-[11px] transition ${
                   isSelected
-                    ? "bg-emerald-500/15 text-emerald-200"
+                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-200"
                     : enabled
-                      ? "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
-                      : "cursor-not-allowed text-zinc-600 opacity-50"
+                      ? "text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]"
+                      : "cursor-not-allowed text-[var(--text-tertiary)] opacity-50"
                 }`}
                 title={enabled ? agentName : DISABLED_TOOLTIP}
               >
@@ -546,11 +546,11 @@ function VirtualizedAgentPicker({
             );
           })}
           {visibleAgents.length === 0 && (
-            <div className="px-2 py-3 text-[11px] text-zinc-500">No agents match this filter.</div>
+            <div className="px-2 py-3 text-[11px] text-[var(--text-tertiary)]">No agents match this filter.</div>
           )}
         </div>
       </div>
-      <p className="text-[10px] text-zinc-600">
+      <p className="text-[10px] text-[var(--text-tertiary)]">
         Showing {visibleAgents.length.toLocaleString()} of {filteredAgents.length.toLocaleString()} matches.
       </p>
     </div>
@@ -571,19 +571,19 @@ function FilterSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-950/50">
+    <section className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
       <button
         type="button"
         onClick={onToggle}
         className="flex w-full items-center justify-between px-3 py-2 text-left"
       >
         <div>
-          <h3 className="font-semibold text-zinc-300 uppercase tracking-wider text-[10px]">{title}</h3>
-          {summary ? <p className="mt-1 text-[10px] text-zinc-600">{summary}</p> : null}
+          <h3 className="font-semibold text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">{title}</h3>
+          {summary ? <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">{summary}</p> : null}
         </div>
-        {open ? <ChevronDown className="h-3.5 w-3.5 text-zinc-500" /> : <ChevronRight className="h-3.5 w-3.5 text-zinc-500" />}
+        {open ? <ChevronDown className="h-3.5 w-3.5 text-[var(--text-tertiary)]" /> : <ChevronRight className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />}
       </button>
-      {open ? <div className="border-t border-zinc-800 px-3 py-3">{children}</div> : null}
+      {open ? <div className="border-t border-[var(--border-subtle)] px-3 py-3">{children}</div> : null}
     </section>
   );
 }

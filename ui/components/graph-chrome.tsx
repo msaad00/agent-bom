@@ -86,16 +86,16 @@ export function GraphLegend({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={`${embedded ? "hidden" : "flex"} items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 backdrop-blur-sm`}
+        className={`${embedded ? "hidden" : "flex"} items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-elevated)] backdrop-blur-sm`}
         aria-expanded={visible}
         aria-label={visible ? "Hide legend" : "Show legend"}
       >
         <span className="font-medium">Legend</span>
-        <span className="rounded-full bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-400">{items.length}</span>
+        <span className="rounded-full bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">{items.length}</span>
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${visible ? "rotate-180" : ""}`} />
       </button>
       {visible && (
-        <div className={`${embedded ? "relative w-[min(30rem,calc(100vw-2rem))] shadow-none" : "absolute right-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] shadow-2xl shadow-black/30"} max-h-[60vh] overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900/95 p-3 backdrop-blur-md`}>
+        <div className={`${embedded ? "relative w-[min(30rem,calc(100vw-2rem))] shadow-none" : "absolute right-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] shadow-2xl shadow-[var(--shadow-color)]"} max-h-[60vh] overflow-y-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-[var(--foreground)] backdrop-blur-md`}>
           {nodeItems.length > 0 && <LayeredLegendSections items={nodeItems} />}
           {edgeItems.length > 0 && (
             <LegendSection title="Relationships" items={edgeItems} />
@@ -135,8 +135,8 @@ function LayeredLegendSections({ items }: { items: LegendItem[] }) {
 function LegendSection({ title, items }: { title: string; items: LegendItem[] }) {
   return (
     <div className="first:mt-0 mt-3">
-      <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{title}</div>
-      <div className="grid grid-cols-1 gap-x-3 gap-y-2 text-[11px] text-zinc-300 sm:grid-cols-2">
+      <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{title}</div>
+      <div className="grid grid-cols-1 gap-x-3 gap-y-2 text-[11px] text-[var(--text-secondary)] sm:grid-cols-2">
         {items.map((item) => (
           <span key={`${title}:${item.label}`} className="flex min-w-0 items-center gap-2">
             <LegendMarker item={item} />
@@ -231,7 +231,7 @@ export function FullscreenButton() {
   return (
     <button
       onClick={toggle}
-      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800/80 border border-zinc-700 rounded-lg text-xs text-zinc-300 hover:bg-zinc-700 transition-colors backdrop-blur-sm"
+      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)] transition-colors backdrop-blur-sm"
       title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
     >
       {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
@@ -258,7 +258,7 @@ export function GraphExportButton({ filename }: { filename?: string }) {
   return (
     <button
       onClick={handleExport}
-      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800/80 border border-zinc-700 rounded-lg text-xs text-zinc-300 hover:bg-zinc-700 transition-colors backdrop-blur-sm"
+      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)] transition-colors backdrop-blur-sm"
     >
       <Download className="w-3.5 h-3.5" />
       Export
@@ -312,7 +312,7 @@ export function GraphEvidenceExportButton({
         aria-label="Graph evidence format"
         value={format}
         onChange={(event) => setFormat(event.target.value as GraphExportFormat)}
-        className="rounded-lg border border-zinc-700 bg-zinc-900/90 px-2.5 py-1.5 text-xs text-zinc-300 focus:border-sky-600 focus:outline-none"
+        className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] focus:border-sky-600 focus:outline-none"
       >
         {formats.map((item) => (
           <option key={item} value={item}>
@@ -324,7 +324,7 @@ export function GraphEvidenceExportButton({
         type="button"
         onClick={() => void handleDownload()}
         disabled={!scanId || exporting}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-900/60 bg-cyan-950/30 px-2.5 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-800 hover:bg-cyan-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-700/45 bg-cyan-50 px-2.5 py-1.5 text-xs font-medium text-cyan-800 transition-colors hover:border-cyan-700 hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200 dark:hover:border-cyan-800 dark:hover:bg-cyan-950/50"
         title="Download the selected scan graph in an evidence format for review, import, or audit handoff."
       >
         {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}

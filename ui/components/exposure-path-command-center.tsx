@@ -56,6 +56,7 @@ export function ExposurePathCommandCenter({
   const fixLabel = pathFixLabel(path);
   const evidence = path.evidence;
   const primaryAction = actions[0];
+  const investigationBrief = buildInvestigationBrief(path, fixLabel);
 
   return (
     <div className="space-y-4">
@@ -76,6 +77,19 @@ export function ExposurePathCommandCenter({
           <CommandMetric label="Fix" value={fixLabel ?? "triage"} tone={fixLabel ? "green" : "zinc"} />
         </div>
       </div>
+
+      <section aria-label="Investigation brief" className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {investigationBrief.map((item) => (
+          <div
+            key={item.label}
+            className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2"
+          >
+            <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{item.label}</div>
+            <div className="mt-1 text-sm font-semibold leading-5 text-[color:var(--foreground)]">{item.value}</div>
+            {item.detail && <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{item.detail}</p>}
+          </div>
+        ))}
+      </section>
 
       <section aria-label="Selected exposure path graph">
         <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
@@ -144,6 +158,62 @@ export function ExposurePathCommandCenter({
       )}
     </div>
   );
+}
+
+function buildInvestigationBrief(path: ExposurePath, fixLabel: string | undefined) {
+  const exposed = firstNonEmpty(path.exposedCredentials, path.reachableTools, path.affectedServers, path.affectedAgents);
+  const finding = path.findings[0] ?? path.target.label;
+  const proofCount = path.relationships.length;
+  const evidence = path.evidence;
+  const riskSignals = [
+    evidence?.isKev ? "KEV" : "",
+    typeof evidence?.epssScore === "number" ? `EPSS ${evidence.epssScore.toFixed(3)}` : "",
+    typeof evidence?.cvssScore === "number" ? `CVSS ${evidence.cvssScore}` : "",
+  ].filter(Boolean);
+
+  return [
+    {
+      label: "What is exposed",
+      value: exposed.value,
+      detail: exposed.label,
+    },
+    {
+      label: "Why it matters",
+      value: finding,
+      detail: riskSignals.length > 0 ? riskSignals.join(" · ") : path.severity || "ranked by graph risk",
+    },
+    {
+      label: "What proves it",
+      value: `${proofCount} relationship${proofCount === 1 ? "" : "s"}`,
+      detail: path.provenance?.source ?? "graph evidence",
+    },
+    {
+      label: "What fixes it",
+      value: fixLabel ?? "triage path",
+      detail: path.fix?.version ? `Target ${path.fix.version}` : primaryFixDetail(path),
+    },
+  ];
+}
+
+function firstNonEmpty(...groups: string[][]) {
+  const labels = ["credentials", "tools", "servers", "agents"];
+  for (let index = 0; index < groups.length; index += 1) {
+    const values = groups[index] ?? [];
+    if (values.length > 0) {
+      const first = values[0] ?? "unknown";
+      return {
+        value: values.length > 1 ? `${first} +${values.length - 1}` : first,
+        label: labels[index] ?? "entities",
+      };
+    }
+  }
+  return { value: "path target", label: "selected exposure path" };
+}
+
+function primaryFixDetail(path: ExposurePath): string {
+  if (path.fix?.label) return path.fix.label;
+  if (path.dependencyContext?.packageName) return path.dependencyContext.packageName;
+  return "validate, contain, or accept risk";
 }
 
 function ExposurePathGraph({ path }: { path: ExposurePath }) {

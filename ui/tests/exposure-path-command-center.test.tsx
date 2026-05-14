@@ -76,6 +76,10 @@ describe("ExposurePathCommandCenter", () => {
 
     expect(screen.getByText("Command center")).toBeInTheDocument();
     expect(screen.getByText("analyst-agent -> werkzeug@2.2.2 -> CVE-2026-0002")).toBeInTheDocument();
+    expect(screen.getByText("What is exposed")).toBeInTheDocument();
+    expect(screen.getByText("Why it matters")).toBeInTheDocument();
+    expect(screen.getByText("What proves it")).toBeInTheDocument();
+    expect(screen.getByText("What fixes it")).toBeInTheDocument();
     expect(screen.getByText("Selected path graph")).toBeInTheDocument();
     expect(screen.getByText("Relationship proof")).toBeInTheDocument();
     expect(screen.getByText("Evidence drawer")).toBeInTheDocument();

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -81,6 +83,100 @@ def compute_audit_record_mac_with_key(payload: dict[str, Any], prev_hash: str, k
     mac = CMAC(algorithms.AES(_normalize_cmac_key(key)))
     mac.update(message)
     return mac.finalize().hex()
+
+
+def compute_audit_record_hmac_with_key(payload: dict[str, Any], prev_hash: str, key: bytes) -> str:
+    """Return a HMAC-SHA256 chain digest for an audit payload."""
+    canonical = canonical_audit_payload(payload)
+    message = f"{prev_hash}|{canonical}".encode("utf-8")
+    return hmac.new(key, message, hashlib.sha256).hexdigest()
+
+
+def compute_audit_record_hash(
+    payload: dict[str, Any],
+    prev_hash: str,
+    algorithm: str,
+    *,
+    key: bytes | None = None,
+) -> str | None:
+    """Return the expected record hash for a declared audit-chain algorithm.
+
+    Runtime proxy logs declare ``aes-cmac-128``. Older runtime logs omitted
+    the field, so the empty algorithm remains a CMAC-compatible legacy path.
+    HMAC-SHA256 support exists for JSONL chain records that use the same
+    algorithm family as the control-plane audit table. Unknown algorithms are
+    not guessed; they are treated as unverifiable by callers.
+    """
+    normalized = algorithm.strip().lower().replace("_", "-")
+    if normalized in {"", "aes-cmac-128"}:
+        if key is not None:
+            return compute_audit_record_mac_with_key(payload, prev_hash, key)
+        return compute_audit_record_mac(payload, prev_hash)
+    if normalized == "hmac-sha256":
+        if key is not None:
+            return compute_audit_record_hmac_with_key(payload, prev_hash, key)
+        return compute_audit_record_hmac_with_key(payload, prev_hash, audit_chain_key())
+    return None
+
+
+def verify_audit_jsonl_chain(log_path: Path, *, max_lines: int = 50_000) -> dict[str, Any]:
+    """Verify a runtime JSONL audit chain with per-record algorithm dispatch."""
+    verified = 0
+    tampered = 0
+    previous_hash = ""
+    algorithms_seen: set[str] = set()
+
+    try:
+        lines = log_path.read_text().splitlines()
+    except OSError as exc:
+        return {
+            "verified": 0,
+            "tampered": 1,
+            "checked": 1,
+            "algorithms": [],
+            "error": f"audit_log_unreadable: {exc}",
+        }
+
+    chain_key = resolve_verifier_chain_key(log_path)
+
+    processed = 0
+    for raw_line in lines:
+        if processed >= max_lines:
+            break
+        line = raw_line.strip()
+        if not line:
+            continue
+        processed += 1
+
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            tampered += 1
+            continue
+        if not isinstance(entry, dict):
+            tampered += 1
+            continue
+
+        actual_prev = str(entry.get("prev_hash", ""))
+        actual_hash = str(entry.get("record_hash", ""))
+        algorithm = str(entry.get("record_hash_algorithm", "")).strip().lower().replace("_", "-")
+        algorithms_seen.add(algorithm or "aes-cmac-128")
+        payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "record_hash"}}
+        expected_hash = compute_audit_record_hash(payload, actual_prev, algorithm, key=chain_key)
+
+        if expected_hash and actual_prev == previous_hash and actual_hash and hmac.compare_digest(actual_hash, expected_hash):
+            verified += 1
+        else:
+            tampered += 1
+
+        previous_hash = actual_hash or previous_hash
+
+    return {
+        "verified": verified,
+        "tampered": tampered,
+        "checked": verified + tampered,
+        "algorithms": sorted(algorithms_seen),
+    }
 
 
 def _sidecar_path_for(log_path: str | os.PathLike[str]) -> Path:

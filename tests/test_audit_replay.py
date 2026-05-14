@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from agent_bom import audit_integrity
-from agent_bom.audit_integrity import compute_audit_record_mac
+from agent_bom.audit_integrity import compute_audit_record_hash, compute_audit_record_mac
 from agent_bom.audit_replay import (
     AlertEntry,
     AuditLog,
@@ -49,6 +49,20 @@ def _chained(entries: list[dict]) -> list[dict]:
         digest_payload = {k: v for k, v in payload.items() if k not in {"prev_hash", "record_hash"}}
         payload["record_hash"] = compute_audit_record_mac(digest_payload, prev_hash)
         prev_hash = payload["record_hash"]
+        chained.append(payload)
+    return chained
+
+
+def _hmac_chained(entries: list[dict]) -> list[dict]:
+    chained: list[dict] = []
+    prev_hash = ""
+    for entry in entries:
+        payload = dict(entry)
+        payload["prev_hash"] = prev_hash
+        payload["record_hash_algorithm"] = "hmac-sha256"
+        digest_payload = {k: v for k, v in payload.items() if k not in {"prev_hash", "record_hash"}}
+        payload["record_hash"] = compute_audit_record_hash(digest_payload, prev_hash, "hmac-sha256")
+        prev_hash = str(payload["record_hash"])
         chained.append(payload)
     return chained
 
@@ -531,6 +545,27 @@ def test_verify_hash_chain_detects_tamper():
     p = _write_log(entries)
     verified, tampered = verify_hash_chain(p)
     assert verified == 1
+    assert tampered == 1
+
+
+def test_verify_hash_chain_accepts_hmac_sha256_records(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_AUDIT_HMAC_KEY", "unit-test-chain-key")
+    p = _write_log(_hmac_chained([TOOL_CALL, BLOCKED_CALL]))
+
+    verified, tampered = verify_hash_chain(p)
+
+    assert verified == 2
+    assert tampered == 0
+
+
+def test_verify_hash_chain_rejects_unknown_record_algorithm():
+    entries = _chained([TOOL_CALL])
+    entries[0]["record_hash_algorithm"] = "sha1"
+    p = _write_log(entries)
+
+    verified, tampered = verify_hash_chain(p)
+
+    assert verified == 0
     assert tampered == 1
 
 

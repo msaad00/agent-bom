@@ -28,11 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from agent_bom.audit_integrity import (
-    compute_audit_record_mac,
-    compute_audit_record_mac_with_key,
-    resolve_verifier_chain_key,
-)
+from agent_bom.audit_integrity import verify_audit_jsonl_chain
 
 # ─── Entry dataclasses ────────────────────────────────────────────────────────
 
@@ -268,47 +264,8 @@ def verify_hash_chain(path: Path) -> tuple[int, int]:
     is set). Records emitted without ``record_hash_algorithm`` are treated
     as legacy and validated against the process-global chain key.
     """
-    verified = 0
-    tampered = 0
-    previous_hash = ""
-
-    # Resolve the verification key once per call so a sidecar-persisted
-    # ephemeral key is honoured even when AGENT_BOM_AUDIT_HMAC_KEY is unset
-    # in the verifier process.
-    chain_key = resolve_verifier_chain_key(path)
-
-    for raw_line in path.read_text().splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            tampered += 1
-            continue
-        if not isinstance(entry, dict):
-            tampered += 1
-            continue
-
-        actual_prev = str(entry.get("prev_hash", ""))
-        actual_hash = str(entry.get("record_hash", ""))
-        algorithm = str(entry.get("record_hash_algorithm", "")).strip().lower()
-        payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "record_hash"}}
-        if algorithm in {"", "aes-cmac-128"}:
-            expected_hash = compute_audit_record_mac_with_key(payload, actual_prev, chain_key)
-        else:
-            # Unknown algorithm — fall back to the process-global computation
-            # so legacy records still produce a meaningful result.
-            expected_hash = compute_audit_record_mac(payload, actual_prev)
-
-        if actual_prev == previous_hash and actual_hash and hmac.compare_digest(actual_hash, expected_hash):
-            verified += 1
-        else:
-            tampered += 1
-
-        previous_hash = actual_hash or previous_hash
-
-    return verified, tampered
+    result = verify_audit_jsonl_chain(path)
+    return int(result["verified"]), int(result["tampered"])
 
 
 # ─── Rich display ─────────────────────────────────────────────────────────────

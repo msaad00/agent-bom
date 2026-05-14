@@ -37,6 +37,7 @@ import secrets
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
@@ -896,14 +897,69 @@ async def list_audit_entries(
     }
 
 
+def _configured_runtime_audit_log_path() -> Path | None:
+    """Return the configured runtime proxy JSONL audit log, when readable."""
+    log_env = os.environ.get("AGENT_BOM_LOG")
+    if not log_env:
+        return None
+    path = Path(log_env).resolve()
+    if path.is_file() and path.suffix == ".jsonl":
+        return path
+    return None
+
+
 @router.get("/v1/audit/integrity", tags=["enterprise"])
-async def audit_integrity(request: Request, limit: Annotated[int, Query(ge=1, le=10_000)] = 1000) -> dict:
-    """Verify HMAC integrity of audit log entries."""
+async def audit_integrity(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=10_000)] = 1000,
+    include_runtime: bool = True,
+) -> dict:
+    """Verify control-plane and runtime audit-chain integrity."""
     from agent_bom.api.audit_log import get_audit_log
+    from agent_bom.audit_integrity import verify_audit_jsonl_chain
 
     tenant_id = getattr(request.state, "tenant_id", "default")
     verified, tampered = get_audit_log().verify_integrity(limit=limit, tenant_id=tenant_id)
-    return {"verified": verified, "tampered": tampered, "checked": verified + tampered}
+    chains: list[dict[str, Any]] = [
+        {
+            "name": "control_plane",
+            "algorithm": "hmac-sha256",
+            "verified": verified,
+            "tampered": tampered,
+            "checked": verified + tampered,
+            "tenant_scoped": True,
+        }
+    ]
+
+    if include_runtime:
+        runtime_log = _configured_runtime_audit_log_path()
+        if runtime_log is not None:
+            runtime = verify_audit_jsonl_chain(runtime_log, max_lines=limit)
+            runtime_algorithms = list(runtime.get("algorithms") or ["unknown"])
+            chains.append(
+                {
+                    "name": "runtime_proxy",
+                    "algorithm": ",".join(runtime_algorithms),
+                    "algorithms": runtime_algorithms,
+                    "verified": int(runtime.get("verified", 0)),
+                    "tampered": int(runtime.get("tampered", 0)),
+                    "checked": int(runtime.get("checked", 0)),
+                    "tenant_scoped": False,
+                    "source": "AGENT_BOM_LOG",
+                    "error": runtime.get("error", ""),
+                }
+            )
+
+    total_verified = sum(int(chain["verified"]) for chain in chains)
+    total_tampered = sum(int(chain["tampered"]) for chain in chains)
+    algorithms = sorted({algorithm for chain in chains for algorithm in str(chain["algorithm"]).split(",") if algorithm})
+    return {
+        "verified": total_verified,
+        "tampered": total_tampered,
+        "checked": total_verified + total_tampered,
+        "algorithms": algorithms,
+        "chains": chains,
+    }
 
 
 @router.get("/v1/audit/export", tags=["enterprise"])

@@ -15,6 +15,7 @@ from agent_bom.api.models import CreateKeyRequest, FindingFeedbackRequest, JobSt
 from agent_bom.api.routes import enterprise
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store, _get_trend_store, set_job_store, set_trend_store
+from agent_bom.audit_integrity import compute_audit_record_mac
 from agent_bom.baseline import InMemoryTrendStore, TrendPoint
 
 
@@ -516,6 +517,7 @@ async def test_export_audit_entries_supports_jsonl(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_list_audit_entries_and_integrity_are_tenant_scoped(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_LOG", raising=False)
     store = InMemoryAuditLog()
     store.append(AuditEntry(action="scan", actor="alice", resource="job/alpha", details={"tenant_id": "tenant-alpha"}))
     store.append(AuditEntry(action="scan", actor="bob", resource="job/beta", details={"tenant_id": "tenant-beta"}))
@@ -526,7 +528,53 @@ async def test_list_audit_entries_and_integrity_are_tenant_scoped(monkeypatch):
 
     assert listed["total"] == 1
     assert [entry["resource"] for entry in listed["entries"]] == ["job/alpha"]
-    assert integrity == {"verified": 1, "tampered": 0, "checked": 1}
+    assert integrity["verified"] == 1
+    assert integrity["tampered"] == 0
+    assert integrity["checked"] == 1
+    assert integrity["algorithms"] == ["hmac-sha256"]
+    assert integrity["chains"] == [
+        {
+            "name": "control_plane",
+            "algorithm": "hmac-sha256",
+            "verified": 1,
+            "tampered": 0,
+            "checked": 1,
+            "tenant_scoped": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_audit_integrity_includes_runtime_aes_cmac_chain(monkeypatch, tmp_path):
+    store = InMemoryAuditLog()
+    store.append(AuditEntry(action="scan", actor="alice", resource="job/alpha", details={"tenant_id": "tenant-alpha"}))
+    monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
+
+    runtime_log = tmp_path / "proxy-audit.jsonl"
+    previous_hash = ""
+    lines = []
+    for payload in [
+        {"type": "tools/call", "tenant_id": "tenant-alpha", "tool": "read_file"},
+        {"type": "proxy_summary", "tenant_id": "tenant-alpha", "total_tool_calls": 1},
+    ]:
+        record = {**payload, "prev_hash": previous_hash, "record_hash_algorithm": "aes-cmac-128"}
+        digest_payload = {k: v for k, v in record.items() if k not in {"prev_hash", "record_hash"}}
+        record["record_hash"] = compute_audit_record_mac(digest_payload, previous_hash)
+        previous_hash = record["record_hash"]
+        lines.append(json.dumps(record))
+    runtime_log.write_text("\n".join(lines) + "\n")
+    monkeypatch.setenv("AGENT_BOM_LOG", str(runtime_log))
+
+    integrity = await enterprise.audit_integrity(_request("tenant-alpha"))
+
+    assert integrity["verified"] == 3
+    assert integrity["tampered"] == 0
+    assert integrity["checked"] == 3
+    assert integrity["algorithms"] == ["aes-cmac-128", "hmac-sha256"]
+    assert integrity["chains"][1]["name"] == "runtime_proxy"
+    assert integrity["chains"][1]["algorithm"] == "aes-cmac-128"
+    assert integrity["chains"][1]["verified"] == 2
+    assert integrity["chains"][1]["tenant_scoped"] is False
 
 
 @pytest.mark.asyncio

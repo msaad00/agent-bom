@@ -26,9 +26,15 @@ ENTITY_OCSF_MAP: dict[str, dict[str, int]] = {
     EntityType.CLOUD_RESOURCE: {"category_uid": 5, "class_uid": 4001},
     EntityType.CREDENTIAL: {"category_uid": 5, "class_uid": 4001},
     # Identity & access (Category 3)
+    EntityType.ORG: {"category_uid": 3, "class_uid": 3001},
+    EntityType.ACCOUNT: {"category_uid": 3, "class_uid": 3001},
     EntityType.USER: {"category_uid": 3, "class_uid": 3001},
     EntityType.GROUP: {"category_uid": 3, "class_uid": 3001},
+    EntityType.ROLE: {"category_uid": 3, "class_uid": 3001},
+    EntityType.POLICY: {"category_uid": 3, "class_uid": 3001},
     EntityType.SERVICE_ACCOUNT: {"category_uid": 3, "class_uid": 3001},
+    EntityType.SERVICE_PRINCIPAL: {"category_uid": 3, "class_uid": 3001},
+    EntityType.FEDERATED_IDENTITY: {"category_uid": 3, "class_uid": 3001},
     # Findings (Category 2)
     EntityType.VULNERABILITY: {"category_uid": 2, "class_uid": 2001},
     EntityType.MISCONFIGURATION: {"category_uid": 2, "class_uid": 2003},

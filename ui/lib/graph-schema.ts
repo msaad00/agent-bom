@@ -57,9 +57,15 @@ export enum EntityType {
   // Inventory but security-relevant (OCSF Category 5)
   CREDENTIAL = "credential",
   // Identity & governance (OCSF Category 3)
+  ORG = "org",
+  ACCOUNT = "account",
   USER = "user",
   GROUP = "group",
+  ROLE = "role",
+  POLICY = "policy",
   SERVICE_ACCOUNT = "service_account",
+  SERVICE_PRINCIPAL = "service_principal",
+  FEDERATED_IDENTITY = "federated_identity",
   // Organizational hierarchy
   PROVIDER = "provider",
   ENVIRONMENT = "environment",
@@ -92,6 +98,12 @@ export enum RelationshipType {
   OWNS = "owns",
   PART_OF = "part_of",
   MEMBER_OF = "member_of",
+  ASSUMES = "assumes",
+  TRUSTS = "trusts",
+  ATTACHED = "attached",
+  INHERITS = "inherits",
+  CAN_ACCESS = "can_access",
+  CROSS_ACCOUNT_TRUST = "cross_account_trust",
   // Runtime
   INVOKED = "invoked",
   ACCESSED = "accessed",
@@ -215,9 +227,15 @@ export const ENTITY_OCSF_MAP: Record<
   [EntityType.CREDENTIAL]: { category_uid: 5, class_uid: 4001 },
   [EntityType.MISCONFIGURATION]: { category_uid: 2, class_uid: 2003 },
   // Identity (Category 3)
+  [EntityType.ORG]: { category_uid: 3, class_uid: 3001 },
+  [EntityType.ACCOUNT]: { category_uid: 3, class_uid: 3001 },
   [EntityType.USER]: { category_uid: 3, class_uid: 3001 },
   [EntityType.GROUP]: { category_uid: 3, class_uid: 3001 },
+  [EntityType.ROLE]: { category_uid: 3, class_uid: 3001 },
+  [EntityType.POLICY]: { category_uid: 3, class_uid: 3001 },
   [EntityType.SERVICE_ACCOUNT]: { category_uid: 3, class_uid: 3001 },
+  [EntityType.SERVICE_PRINCIPAL]: { category_uid: 3, class_uid: 3001 },
+  [EntityType.FEDERATED_IDENTITY]: { category_uid: 3, class_uid: 3001 },
   // Organizational
   [EntityType.PROVIDER]: { category_uid: 0, class_uid: 0 },
   [EntityType.ENVIRONMENT]: { category_uid: 0, class_uid: 0 },
@@ -373,6 +391,15 @@ export const ENTITY_COLOR_MAP: Record<string, string> = {
   [EntityType.VULNERABILITY]: "#ef4444",   // red
   [EntityType.CREDENTIAL]: "#f59e0b",      // amber
   [EntityType.MISCONFIGURATION]: "#f97316", // orange
+  [EntityType.ORG]: "#115e59",             // teal
+  [EntityType.ACCOUNT]: "#0f766e",         // teal
+  [EntityType.USER]: "#14b8a6",            // teal
+  [EntityType.GROUP]: "#0d9488",           // teal
+  [EntityType.ROLE]: "#ea580c",            // orange
+  [EntityType.POLICY]: "#d97706",          // amber
+  [EntityType.SERVICE_ACCOUNT]: "#0f766e", // teal
+  [EntityType.SERVICE_PRINCIPAL]: "#0f766e", // teal
+  [EntityType.FEDERATED_IDENTITY]: "#0e7490", // cyan
   [EntityType.PROVIDER]: "#6b7280",        // gray
   [EntityType.ENVIRONMENT]: "#6b7280",     // gray
 };
@@ -406,6 +433,12 @@ export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.OWNS]: "#0d9488",
   [RelationshipType.PART_OF]: "#6b7280",
   [RelationshipType.MEMBER_OF]: "#4b5563",
+  [RelationshipType.ASSUMES]: "#ea580c",
+  [RelationshipType.TRUSTS]: "#0891b2",
+  [RelationshipType.ATTACHED]: "#d97706",
+  [RelationshipType.INHERITS]: "#a16207",
+  [RelationshipType.CAN_ACCESS]: "#dc2626",
+  [RelationshipType.CROSS_ACCOUNT_TRUST]: "#be123c",
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -553,6 +586,15 @@ export const ENTITY_LEGEND: LegendEntry[] = [
   { key: "model", label: "Model", color: "#8b5cf6", shape: "square" },
   { key: "container", label: "Container", color: "#6366f1", shape: "square" },
   { key: "cloud_resource", label: "Cloud Resource", color: "#0ea5e9", shape: "square" },
+  { key: "org", label: "Organization", color: "#115e59", shape: "square" },
+  { key: "account", label: "Account", color: "#0f766e", shape: "square" },
+  { key: "user", label: "User", color: "#14b8a6", shape: "circle" },
+  { key: "group", label: "Group", color: "#0d9488", shape: "circle" },
+  { key: "role", label: "Role", color: "#ea580c", shape: "circle" },
+  { key: "policy", label: "Policy", color: "#d97706", shape: "diamond" },
+  { key: "service_account", label: "Service Account", color: "#0f766e", shape: "circle" },
+  { key: "service_principal", label: "Service Principal", color: "#0f766e", shape: "circle" },
+  { key: "federated_identity", label: "Federated Identity", color: "#0e7490", shape: "circle" },
 ];
 
 export const RELATIONSHIP_LEGEND: LegendEntry[] = [
@@ -567,6 +609,12 @@ export const RELATIONSHIP_LEGEND: LegendEntry[] = [
   { key: "lateral_path", label: "Lateral Path", color: "#ea580c", shape: "circle" },
   { key: "invoked", label: "Invoked (runtime)", color: "#10b981", shape: "circle" },
   { key: "accessed", label: "Accessed (runtime)", color: "#3b82f6", shape: "circle" },
+  { key: "assumes", label: "Assumes", color: "#ea580c", shape: "circle" },
+  { key: "trusts", label: "Trusts", color: "#0891b2", shape: "circle" },
+  { key: "attached", label: "Attached", color: "#d97706", shape: "circle" },
+  { key: "inherits", label: "Inherits", color: "#a16207", shape: "circle" },
+  { key: "can_access", label: "Can Access", color: "#dc2626", shape: "circle" },
+  { key: "cross_account_trust", label: "Cross-Account Trust", color: "#be123c", shape: "circle" },
 ];
 
 /** Entity types that represent actual security findings (for SIEM export) */

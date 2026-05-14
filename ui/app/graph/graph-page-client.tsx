@@ -89,8 +89,8 @@ import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import {
   LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
   LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
-  shouldUseLargeGraphOverview,
 } from "@/lib/large-graph-overview";
+import { decideGraphRenderer } from "@/lib/graph-renderer-switch";
 import {
   applyFilters,
   decodeFiltersFromParams,
@@ -1063,7 +1063,7 @@ function GraphPageInner() {
   );
 
   const graphOnlyFindings = displayNodes.length > 0 && !hasContextualGraph;
-  const useLargeGraphOverview = shouldUseLargeGraphOverview({
+  const graphRenderer = decideGraphRenderer({
     nodeCount: displayNodes.length,
     edgeCount: displayEdges.length,
     captureMode,
@@ -1796,7 +1796,7 @@ function GraphPageInner() {
                 setFilters(createExpandedGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))
               }
             />
-          ) : useLargeGraphOverview ? (
+          ) : graphRenderer.kind === "large-overview" ? (
             <LargeGraphOverview
               nodes={displayNodes}
               edges={displayEdges}

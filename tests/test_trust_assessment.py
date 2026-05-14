@@ -495,8 +495,61 @@ def test_review_verdict_blocked_for_prompt_coercion():
     scan = _make_scan()
     audit = _make_audit(findings=[_finding("prompt_coercion", severity="high", title="Guardrail override")])
     result = assess_trust(scan, audit)
+    assert result.content_verdict == Verdict.MALICIOUS
     assert result.review_verdict == ReviewVerdict.BLOCKED
     assert any("guardrail" in reason.lower() or "prompt coercion" in reason.lower() for reason in result.review_reasons)
+
+
+def test_content_verdict_ignores_metadata_only_findings():
+    """Catalog/provenance review findings should not become content risk."""
+    scan = _make_scan()
+    audit = _make_audit(
+        findings=[
+            _finding("unknown_package", severity="low", title="Unknown package"),
+            _finding("unverified_server", severity="medium", title="Unverified server"),
+            _finding("missing_capability_declaration", severity="low", title="Missing capabilities"),
+            _finding("undeclared_dependency", severity="medium", title="Undeclared dependency"),
+            _finding("undocumented_network", severity="medium", title="Undocumented network"),
+        ]
+    )
+
+    result = assess_trust(scan, audit)
+
+    assert result.content_verdict == Verdict.BENIGN
+    assert result.verdict == Verdict.BENIGN
+
+
+def test_credential_file_access_blocks_content_verdict():
+    """Credential file access is behavioral and should remain blocking."""
+    scan = _make_scan()
+    audit = _make_audit(findings=[_finding("credential_file_access", severity="critical", title="Credential file access")])
+
+    result = assess_trust(scan, audit)
+
+    assert result.content_verdict == Verdict.MALICIOUS
+    assert result.review_verdict == ReviewVerdict.BLOCKED
+
+
+def test_shell_access_remains_high_risk_content_verdict():
+    """High-risk behavior categories should still escalate content risk."""
+    scan = _make_scan()
+    audit = _make_audit(findings=[_finding("shell_access", severity="low", title="Shell access")])
+
+    result = assess_trust(scan, audit)
+
+    assert result.content_verdict == Verdict.SUSPICIOUS
+    assert result.review_verdict == ReviewVerdict.HIGH_RISK
+
+
+def test_high_severity_behavioral_finding_is_suspicious():
+    """High-severity behavioral findings should stay suspicious."""
+    scan = _make_scan()
+    audit = _make_audit(findings=[_finding("network_exposure", severity="high", title="Network exposure")])
+
+    result = assess_trust(scan, audit)
+
+    assert result.content_verdict == Verdict.SUSPICIOUS
+    assert result.verdict == Verdict.SUSPICIOUS
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -597,6 +650,7 @@ def test_assess_trust_agent_bom_skill():
     result = assess_trust(scan, audit)
 
     assert result.verdict == Verdict.BENIGN
+    assert result.content_verdict == Verdict.BENIGN
     assert result.confidence in (Confidence.HIGH, Confidence.MEDIUM)
 
 

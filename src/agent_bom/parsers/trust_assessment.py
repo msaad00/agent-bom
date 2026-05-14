@@ -657,6 +657,34 @@ def _compute_axis_verdict(categories: list[TrustCategoryResult]) -> Verdict:
     return Verdict.BENIGN
 
 
+def _compute_content_verdict_from_audit(audit: SkillAuditResult) -> Verdict:
+    """Compute behavioral content risk without metadata/provenance signals.
+
+    Metadata gaps should send a skill to review, but they should not label a
+    clean, zero-finding skill as malicious. Reserve the content axis for
+    findings emitted by the skill audit itself.
+    """
+    findings = audit.findings
+    if any(f.category in _BLOCKED_FINDING_CATEGORIES or f.severity == "critical" for f in findings):
+        return Verdict.MALICIOUS
+    if any(f.category in _HIGH_RISK_FINDING_CATEGORIES for f in findings):
+        return Verdict.SUSPICIOUS
+    if any(f.severity == "high" and _is_behavioral_content_finding(f.category) for f in findings):
+        return Verdict.SUSPICIOUS
+    return Verdict.BENIGN
+
+
+def _combine_verdict(provenance_verdict: Verdict, content_verdict: Verdict) -> Verdict:
+    """Combine axes while preventing provenance-only MALICIOUS verdicts."""
+    if content_verdict == Verdict.MALICIOUS:
+        return Verdict.MALICIOUS
+    if content_verdict == Verdict.SUSPICIOUS:
+        return Verdict.SUSPICIOUS
+    if provenance_verdict in {Verdict.SUSPICIOUS, Verdict.MALICIOUS}:
+        return Verdict.SUSPICIOUS
+    return Verdict.BENIGN
+
+
 # ── Recommendations ──────────────────────────────────────────────────────────
 
 
@@ -726,9 +754,23 @@ _HIGH_RISK_FINDING_CATEGORIES = {
     "agent_delegation",
 }
 
+_REVIEW_ONLY_FINDING_CATEGORIES = {
+    "missing_capability_declaration",
+    "undeclared_dependency",
+    "undocumented_network",
+    "unknown_package",
+    "unverified_server",
+}
+
+
+def _is_behavioral_content_finding(category: str) -> bool:
+    """Return whether an audit finding describes skill behavior."""
+    return category not in _REVIEW_ONLY_FINDING_CATEGORIES
+
 
 def _compute_review_verdict(
-    verdict: Verdict,
+    provenance_verdict: Verdict,
+    content_verdict: Verdict,
     categories: list[TrustCategoryResult],
     audit: SkillAuditResult,
 ) -> ReviewVerdict:
@@ -736,9 +778,13 @@ def _compute_review_verdict(
     findings = audit.findings
     if any(f.category in _BLOCKED_FINDING_CATEGORIES or f.severity == "critical" for f in findings):
         return ReviewVerdict.BLOCKED
-    if verdict == Verdict.MALICIOUS or any(f.category in _HIGH_RISK_FINDING_CATEGORIES for f in findings):
+    if content_verdict == Verdict.MALICIOUS or any(f.category in _HIGH_RISK_FINDING_CATEGORIES for f in findings):
         return ReviewVerdict.HIGH_RISK
-    if verdict == Verdict.SUSPICIOUS or any(c.level in {TrustLevel.WARN, TrustLevel.FAIL} for c in categories):
+    if (
+        content_verdict == Verdict.SUSPICIOUS
+        or provenance_verdict in {Verdict.SUSPICIOUS, Verdict.MALICIOUS}
+        or any(c.level in {TrustLevel.WARN, TrustLevel.FAIL} for c in categories)
+    ):
         return ReviewVerdict.REVIEW
     return ReviewVerdict.TRUSTED
 
@@ -806,14 +852,15 @@ def assess_trust(
         _assess_persistence_privilege(meta, scan, audit),
     ]
 
-    verdict, confidence = _compute_verdict(categories)
+    _legacy_verdict, confidence = _compute_verdict(categories)
     # Per #2197 audit: split verdict into provenance + content so a clean
     # skill that's just unsigned no longer reads as `malicious`.
-    provenance_categories, content_categories = _split_categories(categories)
+    provenance_categories, _content_categories = _split_categories(categories)
     provenance_verdict = _compute_axis_verdict(provenance_categories)
-    content_verdict = _compute_axis_verdict(content_categories)
+    content_verdict = _compute_content_verdict_from_audit(audit)
+    verdict = _combine_verdict(provenance_verdict, content_verdict)
     recommendations = _generate_recommendations(categories)
-    review_verdict = _compute_review_verdict(verdict, categories, audit)
+    review_verdict = _compute_review_verdict(provenance_verdict, content_verdict, categories, audit)
     review_reasons = _build_review_reasons(categories, audit)
     reviewer_guidance = _build_reviewer_guidance(audit)
 

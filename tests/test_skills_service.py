@@ -61,6 +61,26 @@ def test_high_risk_local_skill_review_counts_as_malicious_status():
     assert _review_to_status(report) == ThreatIntelStatus.MALICIOUS
 
 
+def test_clean_unsigned_skill_requires_review_without_malicious_status(tmp_path):
+    """Metadata/provenance gaps should not label a zero-finding skill malicious."""
+    skill_file = tmp_path / "SKILL.md"
+    skill_file.write_text("# Clean skill\n\nRead source files and explain the implementation.\n")
+
+    report = scan_skill_targets([skill_file])
+    data = report.to_dict()
+    file_report = data["files"][0]
+
+    assert file_report["audit"]["findings"] == []
+    assert file_report["trust"]["content_verdict"] == "benign"
+    assert file_report["trust"]["verdict"] == "suspicious"
+    assert file_report["trust"]["review_verdict"] == "review"
+    assert file_report["status"] == "suspicious"
+    assert data["summary"]["findings"] == 0
+    assert data["summary"]["high_risk_files"] == 0
+    assert data["summary"]["malicious_files"] == 0
+    assert data["summary"]["malicious_status_files"] == 0
+
+
 def test_scan_skill_targets_redacts_server_args_in_output(tmp_path):
     raw_token = "ghp_" + "A" * 36
     skill_file = tmp_path / "SKILL.md"

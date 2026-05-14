@@ -77,6 +77,7 @@ agent-bom's graph is a static analytical artifact derived from inventory plus ca
 - **Framework tags from canonical sources only.** Every framework tag attached to a vulnerability node comes from CISA KEV, OSV, NVD, EPSS, MITRE ATLAS, or MITRE ATT&CK. The bundled canonical metadata lives in `src/agent_bom/compliance_coverage.py`. agent-bom never invents a framework label, never derives one from heuristics, and never re-tags advisories from secondary aggregators.
 - **No cross-tenant leakage.** Every `UnifiedGraph` carries a `tenant_id` (`context_graph.py:808`). Persistence enforces row-level security in Postgres, scoped by tenant, on every read and write path. A query for tenant A's graph cannot return tenant B's nodes or edges, regardless of API surface.
 - **Untrusted external metadata is fenced.** Tool descriptions ingested from MCP `tools/list` are passed through `_untrusted_metadata_text()` (`context_graph.py:47`), control characters are stripped, length is bounded, and the field is marked `description_trust = "untrusted_external_mcp_metadata"`. Downstream consumers must treat that field as data, never as a label or instruction.
+- **Alternative graph backends must preserve this contract first.** SQLite and Postgres are the shipped graph persistence backends today. Any future backend, including the proposed Neptune lane, must preserve stable IDs, tenant predicates, snapshot semantics, bounded traversal, audit behavior, and explicit unsupported-operation errors before it can be documented as supported.
 
 ---
 

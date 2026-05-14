@@ -1,7 +1,8 @@
 # Backend Parity Matrix
 
 > **You do not need to read this unless** you are choosing between
-> SQLite, Postgres / Supabase, ClickHouse, and Snowflake — or verifying
+> SQLite, Postgres / Supabase, ClickHouse, Snowflake, and future graph
+> backends such as Neptune — or verifying
 > exactly which API surfaces are wired against each backend today.
 > Most deployments should use Postgres (the documented default).
 
@@ -13,44 +14,46 @@ The product contract is:
 - `Postgres` / `Supabase`: transactional control-plane default
 - `ClickHouse`: analytics and time-series backend
 - `Snowflake`: warehouse-native and governance-oriented backend where parity is explicitly implemented
+- `Neptune`: design-only enterprise graph-store candidate; not wired today
 
 This page documents what is wired today, not what might exist as a class on disk.
 
 ## Current API Backend Matrix
 
-| Capability | SQLite | Postgres / Supabase | ClickHouse | Snowflake |
-|---|---|---|---|---|
-| Scan job persistence | Yes | Yes | No | Yes |
-| Fleet agent persistence | Yes | Yes | No | Yes |
-| Gateway policy persistence | Yes | Yes | No | Yes |
-| Audit log persistence | Yes | Yes | No | Yes, via `SnowflakePolicyStore` |
-| Source registry persistence | Yes | Yes | No | No |
-| Exception workflow persistence | No default API wiring | Yes | No | Yes |
-| API key persistence / RBAC store | No default API wiring | Yes | No | No |
-| Schedule persistence | Yes | Yes | No | Yes |
-| Trend / baseline persistence | Yes | Yes | No | No |
-| Graph persistence | Yes | Yes | No | No |
-| Analytics / OLAP writes | No | No | Yes | No |
-| Snowflake governance discovery routes | No | No | No | Yes |
+| Capability | SQLite | Postgres / Supabase | ClickHouse | Snowflake | Neptune |
+|---|---|---|---|---|---|
+| Scan job persistence | Yes | Yes | No | Yes | No |
+| Fleet agent persistence | Yes | Yes | No | Yes | No |
+| Gateway policy persistence | Yes | Yes | No | Yes | No |
+| Audit log persistence | Yes | Yes | No | Yes, via `SnowflakePolicyStore` | No |
+| Source registry persistence | Yes | Yes | No | No | No |
+| Exception workflow persistence | No default API wiring | Yes | No | Yes | No |
+| API key persistence / RBAC store | No default API wiring | Yes | No | No | No |
+| Schedule persistence | Yes | Yes | No | Yes | No |
+| Trend / baseline persistence | Yes | Yes | No | No | No |
+| Graph persistence | Yes | Yes | No | No | Design only / not wired |
+| Analytics / OLAP writes | No | No | Yes | No | No |
+| Snowflake governance discovery routes | No | No | No | Yes | No |
 
 ## Route-level parity summary
 
 This is the operator-facing answer to: "which API surfaces are real on which
 backend?"
 
-| Route group | SQLite | Postgres / Supabase | ClickHouse | Snowflake |
-|---|---|---|---|---|
-| `/v1/scan*` job lifecycle | Yes | Yes | No | Yes |
-| `/v1/fleet*` | Yes | Yes | No | Yes |
-| `/v1/gateway/policies*` | Yes | Yes | No | Yes |
-| `/v1/sources*` source registry | Yes | Yes | No | No |
-| `/v1/audit*` primary trail | Yes | Yes | No | Partial; Snowflake policy audit exists, but it is not the full transactional audit replacement |
-| `/v1/auth/keys*` | No default API wiring | Yes | No | No |
-| `/v1/auth/me` capability contract | session-local only | Yes | No | No |
-| `/v1/exceptions*` | No default API wiring | Yes | No | Yes |
-| `/v1/schedules*` | Yes | Yes | No | Yes |
-| `/v1/traces`, `/v1/proxy/audit`, `/v1/ocsf/ingest` analytics writes | No | No | Yes | No |
-| Snowflake governance/account discovery routes | No | No | No | Yes |
+| Route group | SQLite | Postgres / Supabase | ClickHouse | Snowflake | Neptune |
+|---|---|---|---|---|---|
+| `/v1/scan*` job lifecycle | Yes | Yes | No | Yes | No |
+| `/v1/fleet*` | Yes | Yes | No | Yes | No |
+| `/v1/gateway/policies*` | Yes | Yes | No | Yes | No |
+| `/v1/sources*` source registry | Yes | Yes | No | No | No |
+| `/v1/audit*` primary trail | Yes | Yes | No | Partial; Snowflake policy audit exists, but it is not the full transactional audit replacement | No |
+| `/v1/auth/keys*` | No default API wiring | Yes | No | No | No |
+| `/v1/auth/me` capability contract | session-local only | Yes | No | No | No |
+| `/v1/exceptions*` | No default API wiring | Yes | No | Yes | No |
+| `/v1/schedules*` | Yes | Yes | No | Yes | No |
+| `/v1/graph*` | Yes | Yes | No | No | Design only / not wired |
+| `/v1/traces`, `/v1/proxy/audit`, `/v1/ocsf/ingest` analytics writes | No | No | Yes | No | No |
+| Snowflake governance/account discovery routes | No | No | No | Yes | No |
 
 The key distinction is:
 
@@ -59,6 +62,18 @@ The key distinction is:
 - warehouse-native discovery parity
 
 These are related, but not interchangeable.
+
+## Neptune graph backend status
+
+Neptune is not a shipped backend in agent-bom today. It is a design-only
+enterprise graph-store candidate for deployments that eventually need
+graph-native traversal at a scale beyond the Postgres default.
+
+The current design target is documented in
+[`../../docs/decisions/008-pluggable-neptune-graph-backend.md`](../../docs/decisions/008-pluggable-neptune-graph-backend.md).
+Any future Neptune implementation must preserve the API `GraphStoreProtocol`
+surface, tenant predicates, audit behavior, and fail-closed configuration
+rules before this matrix can mark it supported.
 
 ## Snowflake parity target
 

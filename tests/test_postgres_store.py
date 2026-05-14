@@ -1263,9 +1263,14 @@ def test_graph_store_init_adds_query_indexes(mock_pool):
     store = PostgresGraphStore(pool=mock_pool)
     assert store is not None
     assert any("idx_pg_graph_nodes_scan_order" in sql for sql, _ in mock_pool._conn.executed)
+    assert any("idx_pg_graph_nodes_scan_id_cover" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_edges_scan_source" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_edges_scan_target" in sql for sql, _ in mock_pool._conn.executed)
+    assert any("idx_pg_graph_edges_scan_source_traversable" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_attack_paths_scan_risk" in sql for sql, _ in mock_pool._conn.executed)
+    assert any("idx_pg_attack_paths_source_risk" in sql for sql, _ in mock_pool._conn.executed)
+    assert any("idx_pg_graph_node_search_trgm" in sql for sql, _ in mock_pool._conn.executed)
+    assert any("idx_pg_graph_node_search_lower_trgm" in sql for sql, _ in mock_pool._conn.executed)
 
 
 def test_graph_store_init_backfills_empty_tenant_rows(mock_pool):
@@ -1400,6 +1405,9 @@ def test_graph_store_search_applies_local_timeout(mock_pool, monkeypatch):
     store.search_nodes(tenant_id="tenant-alpha", scan_id="scan-search", query="agent", limit=10)
 
     assert ("SELECT set_config('statement_timeout', %s, true)", ("2500",)) in mock_pool._conn.executed
+    search_sql = " ".join(sql for sql, _params in mock_pool._conn.executed if "FROM graph_node_search gns" in sql)
+    assert "gns.search_text LIKE %s" in search_sql
+    assert "LOWER(gns.search_text)" not in search_sql
 
 
 def test_graph_store_search_timeout_is_capped_by_statement_timeout(monkeypatch):

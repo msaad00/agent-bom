@@ -164,6 +164,12 @@ class PostgresGraphStore:
             )
             conn.execute(
                 """
+                CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_scan_id_cover
+                ON graph_nodes(tenant_id, scan_id, id) INCLUDE (attributes)
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS graph_edges (
                     source_id TEXT NOT NULL,
                     target_id TEXT NOT NULL,
@@ -191,6 +197,13 @@ class PostgresGraphStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source ON graph_edges(tenant_id, scan_id, source_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_target ON graph_edges(tenant_id, scan_id, target_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_valid ON graph_edges(tenant_id, valid_from, valid_to)")
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source_traversable
+                ON graph_edges(tenant_id, scan_id, source_id)
+                WHERE traversable = 1
+                """
+            )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS graph_snapshots (
@@ -228,6 +241,12 @@ class PostgresGraphStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan ON attack_paths(tenant_id, scan_id)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan_risk ON attack_paths(tenant_id, scan_id, composite_risk DESC)"
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_source_risk
+                ON attack_paths(tenant_id, scan_id, source_node, composite_risk DESC, target_node)
+                """
             )
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS summary TEXT DEFAULT ''")
             conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS tool_exposure TEXT DEFAULT '[]'")
@@ -303,6 +322,12 @@ class PostgresGraphStore:
                     """
                     CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_trgm
                     ON graph_node_search USING gin (search_text gin_trgm_ops)
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_lower_trgm
+                    ON graph_node_search USING gin (LOWER(search_text) gin_trgm_ops)
                     """
                 )
             except Exception:
@@ -1532,7 +1557,7 @@ class PostgresGraphStore:
             search_where = [
                 "gns.tenant_id = %s",
                 "gns.scan_id = %s",
-                "LOWER(gns.search_text) LIKE %s ESCAPE '\\'",
+                "gns.search_text LIKE %s ESCAPE '\\'",
             ]
             params: list[Any] = [tenant_id, effective_scan_id, f"%{_escape_like_query(query.lower())}%"]
             if entity_types:

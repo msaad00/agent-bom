@@ -465,3 +465,18 @@ def test_all_creates_use_if_not_exists():
 
 def test_extensions_present():
     assert "CREATE EXTENSION IF NOT EXISTS pgcrypto" in SQL
+    assert "CREATE EXTENSION IF NOT EXISTS pg_trgm" in SQL
+
+
+def test_graph_hot_path_indexes_exist():
+    indexes = _indexes()
+    for index_name in (
+        "idx_pg_graph_nodes_scan_id_cover",
+        "idx_pg_graph_edges_scan_source_traversable",
+        "idx_pg_attack_paths_source_risk",
+        "idx_pg_graph_node_search_trgm",
+        "idx_pg_graph_node_search_lower_trgm",
+    ):
+        assert index_name in indexes
+    assert "LOWER(search_text) gin_trgm_ops" in SQL
+    assert "WHERE traversable = 1" in SQL

@@ -7,7 +7,8 @@ const CHUNKS_DIR = path.join(NEXT_DIR, "static", "chunks");
 const BUILD_MANIFEST = path.join(NEXT_DIR, "build-manifest.json");
 
 const BUDGETS = {
-  totalClientJsBytes: 2_700_000,
+  // Includes the opt-in Sigma.js + graphology WebGL overview chunk for dense graphs.
+  totalClientJsBytes: 2_850_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

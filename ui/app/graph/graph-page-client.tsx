@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Background,
@@ -97,6 +98,19 @@ import {
   encodeFiltersToParams,
 } from "@/lib/filter-algebra";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+
+const SigmaGraphOverview = dynamic(
+  () => import("@/components/sigma-graph-overview").then((mod) => mod.SigmaGraphOverview),
+  {
+    ssr: false,
+    loading: () => (
+      <GraphPanelSkeleton
+        title="Loading WebGL graph"
+        detail="Preparing the Sigma renderer for the broad graph overview."
+      />
+    ),
+  },
+);
 
 function PulseStyles() {
   return (
@@ -1063,6 +1077,8 @@ function GraphPageInner() {
   );
 
   const graphOnlyFindings = displayNodes.length > 0 && !hasContextualGraph;
+  const webglGraphEnabled =
+    searchParams?.get("renderer") === "webgl" || searchParams?.get("webgl") === "1";
   const graphRenderer = decideGraphRenderer({
     nodeCount: displayNodes.length,
     edgeCount: displayEdges.length,
@@ -1070,6 +1086,7 @@ function GraphPageInner() {
     selectedAttackPath: Boolean(selectedAttackPath),
     reachabilityActive: Boolean(reachabilitySummary),
     graphOnlyFindings,
+    webglEnabled: webglGraphEnabled,
   });
   const graphPanelError = error && snapshots.length > 0 ? graphErrorState(error) : null;
   const findingNodes = useMemo(
@@ -1798,6 +1815,13 @@ function GraphPageInner() {
             />
           ) : graphRenderer.kind === "large-overview" ? (
             <LargeGraphOverview
+              nodes={displayNodes}
+              edges={displayEdges}
+              legendItems={legendItems}
+              onNodeSelect={onLargeGraphNodeSelect}
+            />
+          ) : graphRenderer.kind === "webgl" ? (
+            <SigmaGraphOverview
               nodes={displayNodes}
               edges={displayEdges}
               legendItems={legendItems}

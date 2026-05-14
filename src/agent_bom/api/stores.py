@@ -428,7 +428,12 @@ def _get_graph_store() -> GraphStoreProtocol:
     if _graph_store is None:
         with _store_lock:
             if _graph_store is None:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                backend = os.environ.get("AGENT_BOM_GRAPH_BACKEND", "").strip().lower()
+                if backend == "neptune":
+                    from agent_bom.api.neptune_graph import NeptuneGraphStore
+
+                    _graph_store = NeptuneGraphStore()
+                elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
                     from agent_bom.api.postgres_store import PostgresGraphStore
 
                     _graph_store = PostgresGraphStore()

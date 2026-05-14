@@ -79,6 +79,13 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS` | `bool` | `False` | Disabled by default so third-party provider/connector/parser entry points never execute unless an operator explicitly opts in. |
 
+## Graph Backend Selection
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_GRAPH_BACKEND` | `str` | `''` | SQLite is the local default. Postgres remains selected by AGENT_BOM_POSTGRES_URL. Neptune is an explicit enterprise lane and must fail closed without endpoint configuration so deployments do not silently fall back to a different graph. |
+| `AGENT_BOM_NEPTUNE_ENDPOINT` | `str` | `''` | — |
+| `AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE` | `str` | `'g'` | — |
+
 ## HTTP Client
 | Env var | Type | Default | Description |
 |---|---|---|---|

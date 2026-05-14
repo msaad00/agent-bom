@@ -205,6 +205,16 @@ SCAN_CACHE_MAX_ENTRIES = _int("AGENT_BOM_SCAN_CACHE_MAX_ENTRIES", 100_000)
 LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 
 
+# ── Graph Backend Selection ───────────────────────────────────────────────
+# SQLite is the local default. Postgres remains selected by AGENT_BOM_POSTGRES_URL.
+# Neptune is an explicit enterprise lane and must fail closed without endpoint
+# configuration so deployments do not silently fall back to a different graph.
+
+GRAPH_BACKEND = _str("AGENT_BOM_GRAPH_BACKEND", "")
+NEPTUNE_ENDPOINT = _str("AGENT_BOM_NEPTUNE_ENDPOINT", "")
+NEPTUNE_TRAVERSAL_SOURCE = _str("AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE", "g")
+
+
 # ── AI Enrichment ─────────────────────────────────────────────────────────
 # Used by ai_enrich.py for LLM-powered risk narratives.
 #

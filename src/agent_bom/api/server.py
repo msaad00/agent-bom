@@ -218,6 +218,11 @@ async def _lifespan(app_instance: FastAPI):
             set_schedule_store(SnowflakeScheduleStore(sf))
         if _stores._exception_store is None:
             set_exception_store(SnowflakeExceptionStore(sf))
+    elif os.environ.get("AGENT_BOM_GRAPH_BACKEND", "").strip().lower() == "neptune":
+        from agent_bom.api.neptune_graph import NeptuneGraphStore
+
+        if _stores._graph_store is None:
+            set_graph_store(NeptuneGraphStore())
     elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
         from agent_bom.api import audit_log as _audit_log_mod
         from agent_bom.api import auth as _auth

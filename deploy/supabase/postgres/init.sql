@@ -31,6 +31,7 @@
 -- ── Extensions ────────────────────────────────────────────────────────────────
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ── Table: teams ──────────────────────────────────────────────────────────────
 -- Central multi-tenant entity. All other tables reference team_id.
@@ -232,6 +233,8 @@ CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_entity_type ON graph_nodes(entity_
 CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_scan ON graph_nodes(tenant_id, scan_id);
 CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_scan_order
     ON graph_nodes(tenant_id, scan_id, severity_id DESC, risk_score DESC, label);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_scan_id_cover
+    ON graph_nodes(tenant_id, scan_id, id) INCLUDE (attributes);
 
 CREATE TABLE IF NOT EXISTS graph_edges (
     source_id    TEXT NOT NULL,
@@ -252,6 +255,9 @@ CREATE TABLE IF NOT EXISTS graph_edges (
 CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan ON graph_edges(tenant_id, scan_id);
 CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source ON graph_edges(tenant_id, scan_id, source_id);
 CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_target ON graph_edges(tenant_id, scan_id, target_id);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source_traversable
+    ON graph_edges(tenant_id, scan_id, source_id)
+    WHERE traversable = 1;
 
 CREATE TABLE IF NOT EXISTS graph_snapshots (
     scan_id      TEXT NOT NULL,
@@ -282,6 +288,8 @@ CREATE TABLE IF NOT EXISTS attack_paths (
 
 CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan ON attack_paths(tenant_id, scan_id);
 CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan_risk ON attack_paths(tenant_id, scan_id, composite_risk DESC);
+CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_source_risk
+    ON attack_paths(tenant_id, scan_id, source_node, composite_risk DESC, target_node);
 
 CREATE TABLE IF NOT EXISTS interaction_risks (
     pattern           TEXT NOT NULL,
@@ -321,6 +329,10 @@ CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_scope
     ON graph_node_search(tenant_id, scan_id, entity_type);
 CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_severity
     ON graph_node_search(tenant_id, scan_id, severity);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_trgm
+    ON graph_node_search USING gin (search_text gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_lower_trgm
+    ON graph_node_search USING gin (LOWER(search_text) gin_trgm_ops);
 
 -- ── Tables: OSV Scan Cache ────────────────────────────────────────────────────
 

@@ -243,6 +243,26 @@ async function expectCanvasHasPixels(page: Page) {
   expect(coloredSamples).toBeGreaterThan(20);
 }
 
+async function expectSigmaCanvases(page: Page) {
+  const stage = page.getByTestId("sigma-graph-overview-canvas");
+  await expect(stage).toBeVisible();
+  await page.waitForFunction(() => {
+    const container = document.querySelector<HTMLElement>('[data-testid="sigma-graph-overview-canvas"]');
+    if (!container) return false;
+    const canvases = [...container.querySelectorAll("canvas")];
+    return canvases.some((canvas) => canvas.width > 1 && canvas.height > 1);
+  });
+  const canvasSummary = await stage.evaluate((element) => {
+    const canvases = [...element.querySelectorAll("canvas")];
+    return {
+      count: canvases.length,
+      drawable: canvases.filter((canvas) => canvas.width > 1 && canvas.height > 1).length,
+    };
+  });
+  expect(canvasSummary.count).toBeGreaterThan(0);
+  expect(canvasSummary.drawable).toBeGreaterThan(0);
+}
+
 test("large graph overview renders above threshold and search drills back into React Flow", async ({ page }, testInfo: TestInfo) => {
   await routeLargeGraphPage(page);
 
@@ -264,4 +284,19 @@ test("large graph overview renders above threshold and search drills back into R
   await expect(page.getByText("Root-centered investigation:")).toBeVisible();
   await expect(page.getByRole("heading", { name: "large-package-42" })).toBeVisible();
   await expect(page.getByTestId("large-graph-overview")).toHaveCount(0);
+});
+
+test("sigma webgl overview renders when explicitly requested", async ({ page }, testInfo: TestInfo) => {
+  await routeLargeGraphPage(page);
+
+  await page.goto("/graph?renderer=webgl&vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package");
+  await page.waitForLoadState("networkidle");
+  await page.locator("select").nth(2).selectOption("");
+  await page.getByLabel("Vulnerable only").uncheck();
+
+  await expect(page.getByTestId("sigma-graph-overview")).toBeVisible();
+  await expect(page.getByText("WebGL graph overview")).toBeVisible();
+  await expect(page.getByText("Sigma.js renderer for broad estate scans")).toBeVisible();
+  await expectSigmaCanvases(page);
+  await page.screenshot({ path: testInfo.outputPath("sigma-webgl-overview.png"), fullPage: true });
 });

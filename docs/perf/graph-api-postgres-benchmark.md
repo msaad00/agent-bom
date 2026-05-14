@@ -218,6 +218,22 @@ Top-level Postgres plan times from
 | graph diff nodes | 38.421 ms |
 | bounded traversal edges | 8.903 ms |
 
+## Plan-Driven Hardening
+
+The first follow-up hardening pass targets only query plans supported by the
+checked-in artifacts above:
+
+- node search now queries the already-normalized `graph_node_search.search_text`
+  value directly instead of wrapping it in `LOWER(...)`, so the trigram index is
+  eligible for `%term%` search.
+- the Postgres bootstrap, runtime DDL, and Alembic path include trigram search,
+  source-scoped attack-path ordering, traversable source-edge traversal, and
+  scan/id node-covering indexes.
+- the slowest API timings above are not explained by the database plans alone:
+  attack-path drilldown and bounded traversal show fast single-query plans but
+  much slower API timings. Treat app-side graph hydration/serialization as a
+  separate optimization lane before making production SLO claims.
+
 ## SLOs
 
 No production API/Postgres SLO is declared from this local run. A future SLO

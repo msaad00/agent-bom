@@ -375,6 +375,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         compliance_impl,
         policy_check_impl,
     )
+    from agent_bom.mcp_tools.graph import exposure_paths_impl
     from agent_bom.mcp_tools.registry import registry_lookup_impl
     from agent_bom.mcp_tools.runtime import verify_impl
     from agent_bom.mcp_tools.sbom import generate_sbom_impl, remediate_impl
@@ -545,7 +546,32 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             _truncate_response=_truncate_response,
         )
 
-    # ── Tool 4: policy_check ──────────────────────────────────────────
+    # ── Tool 4: exposure_paths ───────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Exposure Paths")
+    async def exposure_paths(
+        tenant_id: Annotated[str, Field(description="Tenant ID for the graph snapshot. Defaults to 'default'.")] = "default",
+        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+        limit: Annotated[int, Field(ge=1, le=100, description="Maximum number of ranked exposure paths to return.")] = 5,
+        min_risk: Annotated[float, Field(ge=0, le=100, description="Minimum path risk score to include.")] = 0.0,
+    ) -> str:
+        """Return ranked ExposurePath JSON for headless security agents.
+
+        This is the agent-native graph surface: Claude, Cursor, Codex,
+        Windsurf, Cortex, and other MCP clients can request the same
+        investigation objects used by the dashboard without scraping UI state.
+        """
+        return await _execute_tool_async(
+            "exposure_paths",
+            exposure_paths_impl,
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            limit=limit,
+            min_risk=min_risk,
+            _truncate_response=_truncate_response,
+        )
+
+    # ── Tool 5: policy_check ──────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Policy Evaluation")
     async def policy_check(

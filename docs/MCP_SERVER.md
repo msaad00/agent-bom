@@ -1,6 +1,6 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 36 security tools as an MCP server. Any MCP-compatible client
+agent-bom exposes 37 security tools as an MCP server. Any MCP-compatible client
 can connect and get vulnerability scanning, blast radius analysis, compliance
 checks, and supply chain verification through natural conversation.
 
@@ -155,20 +155,20 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (36 tools)
+## Tool Categories (37 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|
 | **Scan** | `scan`, `code_scan`, `vector_db_scan`, `gpu_infra_scan`, `ai_inventory_scan` | Discover agents, scan packages, code, vector stores, GPU infra, and AI usage |
 | **Check** | `check`, `verify`, `marketplace_check`, `license_compliance_scan` | Pre-install CVE gate, integrity verification, marketplace trust, and license policy |
-| **Blast Radius** | `blast_radius` | Map package → vulnerability finding → MCP server (tools + credential env names) → connected agents |
+| **Blast Radius** | `blast_radius`, `exposure_paths` | Map package → vulnerability finding → MCP server (tools + credential env names) → connected agents; return ranked ExposurePath JSON for headless agents |
 | **Registry** | `registry_lookup`, `inventory`, `where`, `fleet_scan` | Query the MCP registry, inspect discovery paths, and summarize fleet inventories |
 | **Compliance** | `compliance`, `cis_benchmark`, `aisvs_benchmark` | Run OWASP, NIST, MITRE ATLAS, CIS, and AISVS-aligned posture checks |
 | **Policy** | `policy_check`, `remediate` | Evaluate policies and generate guided remediation plans |
 | **Inventory** | `inventory` | List agents/servers without CVE scanning |
 | **Trust** | `marketplace_check`, `runtime_correlate`, `tool_risk_assessment` | Score package trust, correlate runtime usage, and assess live tool capability risk |
 | **Skills** | `skill_scan`, `skill_verify`, `skill_trust` | Instruction-file trust, provenance, and tool-poisoning detection |
-| **Graph / Runtime** | `context_graph`, `graph_export`, `runtime_correlate`, `tool_risk_assessment` | Visualize lateral movement, export graph data, and connect runtime logs to findings |
+| **Graph / Runtime** | `exposure_paths`, `context_graph`, `graph_export`, `runtime_correlate`, `tool_risk_assessment` | Return ranked investigation paths, visualize lateral movement, export graph data, and connect runtime logs to findings |
 | **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan` | Scan AI artifacts, prompts, model files, browser extensions, and external scanner results |
 
 ## Example Conversations

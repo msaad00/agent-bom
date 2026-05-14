@@ -232,7 +232,7 @@ graph TB
 | Output | `src/agent_bom/output/__init__.py` | JSON, CycloneDX, SARIF, SPDX, console |
 | Policy | `src/agent_bom/policy.py` | Policy-as-code engine (17 conditions) |
 | Proxy | `src/agent_bom/proxy.py` | Runtime MCP proxy (7 inline detectors) |
-| MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (36 tools) |
+| MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (37 tools) |
 | Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, ClickHouse |
 | Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |
 | Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis — see [Graph Contract](graph/CONTRACT.md) for entity/edge coverage, accuracy guarantees, and scaling boundaries |

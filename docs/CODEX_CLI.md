@@ -20,7 +20,7 @@ command = "agent-bom"
 args = ["mcp", "server"]
 ```
 
-That makes the same 36 read-only `agent-bom` MCP tools available to Codex.
+That makes the same 37 read-only `agent-bom` MCP tools available to Codex.
 
 ## What agent-bom discovers for Codex
 

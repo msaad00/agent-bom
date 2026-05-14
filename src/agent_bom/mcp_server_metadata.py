@@ -10,6 +10,11 @@ _SERVER_CARD_TOOLS = [
     {"name": "check", "description": "Check a specific package for CVEs before installing", "annotations": {"readOnlyHint": True}},
     {"name": "blast_radius", "description": "Look up blast radius for a specific CVE", "annotations": {"readOnlyHint": True}},
     {
+        "name": "exposure_paths",
+        "description": "Return ranked ExposurePath JSON for headless security agents and MCP clients",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "policy_check",
         "description": (
             "Evaluate security policy rules against scan findings — supports 17 conditions"
@@ -165,6 +170,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "scan": ["READ", "NETWORK", "LOCAL_FILE_READ"],
     "check": ["READ", "NETWORK"],
     "blast_radius": ["READ", "ANALYZE"],
+    "exposure_paths": ["READ", "GRAPH", "ANALYZE"],
     "policy_check": ["READ", "POLICY"],
     "registry_lookup": ["READ", "REGISTRY"],
     "generate_sbom": ["READ", "EXPORT"],

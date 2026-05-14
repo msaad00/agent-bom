@@ -157,6 +157,7 @@ def test_server_card_has_all_tools():
     assert "scan" in tool_names
     assert "check" in tool_names
     assert "blast_radius" in tool_names
+    assert "exposure_paths" in tool_names
     assert "policy_check" in tool_names
     assert "registry_lookup" in tool_names
     assert "generate_sbom" in tool_names
@@ -228,7 +229,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     )
     card = build_server_card()
     assert "35 security tools" not in docs
-    assert "36" in docs
+    assert "37" in docs
     for resource in card["resources"]:
         assert resource["uri"] in docs
     for prompt in card["prompts"]:
@@ -488,7 +489,7 @@ def test_mcp_server_help_shows_skill_tools():
 
     runner = CliRunner()
     result = runner.invoke(main, ["mcp", "server", "--help"])
-    assert "36 security tools" in result.output
+    assert "37 security tools" in result.output
     assert "skill_scan" in result.output
     assert "skill_verify" in result.output
     assert "compliance" in result.output

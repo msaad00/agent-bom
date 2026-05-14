@@ -674,10 +674,11 @@ def mcp_server_cmd(
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 36 security tools via MCP protocol:
+    Exposes 37 security tools via MCP protocol:
       scan                   Full scan — CVEs, config security, blast radius, compliance
       check                  Check a specific package for CVEs before installing
       blast_radius           Look up blast radius for a specific CVE
+      exposure_paths         Return ranked ExposurePath JSON for headless agents
       policy_check           Evaluate policy rules against scan findings
       registry_lookup        Query MCP server security metadata registry
       generate_sbom          Generate CycloneDX or SPDX SBOM

@@ -19,6 +19,12 @@ Map the full impact chain of a CVE across agents, servers, credentials, and tool
 blast_radius(cve_id="CVE-2024-21538")
 ```
 
+### exposure_paths
+Return ranked ExposurePath JSON from the graph store for headless security agents.
+```
+exposure_paths(tenant_id="default", limit=5, min_risk=70)
+```
+
 ### registry_lookup
 Look up an MCP server in the 427+ server security metadata registry.
 ```

@@ -1,6 +1,6 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 36 read-only security tools to any MCP client.
+agent-bom runs as an MCP server, exposing 37 read-only security tools to any MCP client.
 The server card also advertises 6 resources and 6 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
 

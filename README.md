@@ -495,6 +495,17 @@ see value and where enterprises wire agent-bom into existing controls.
 | Runtime and app frameworks | MCP proxy/gateway, Shield SDK, Anthropic/OpenAI SDK patterns, LangChain, CrewAI | enforces policy on live tool calls and lets applications add in-process allow/block decisions |
 | Governance and observability | Postgres/Supabase, ClickHouse, Snowflake paths, OTEL, SIEM/export hooks, compliance bundles | persists evidence, trends, audit, graph state, and control mappings without requiring a hosted vendor plane |
 
+This is the product shape for the AI era: the same evidence model is available
+to a human in the browser, a developer in CI, and an assistant through MCP.
+Agents can call strict-argument tools for scans, package checks, registry
+review, and runtime policy context; operators keep control through bearer
+auth, OIDC/SAML/SCIM, tenant scope, audit chains, gateway/proxy policy, and
+customer-owned databases. The network boundary stays explicit: local scans are
+read-only, the MCP server exposes read-only security tools, proxy/gateway paths
+only inspect the traffic they are placed in front of, and self-hosted control
+planes run inside the customer's VPC, Kubernetes cluster, identity, and audit
+boundary.
+
 For cloud, IaC, GPU, skills, and runtime boundaries, use the
 [AI infrastructure coverage matrix](site-docs/architecture/ai-infrastructure.md#coverage-matrix)
 to pick the command and artifact before making a release or buyer-facing claim.
@@ -577,6 +588,9 @@ Backend choices stay explicit and optional:
 
 - `SQLite` for local and single-node use
 - `Postgres` / `Supabase` for the primary transactional control plane
+- `Neptune` as an enterprise graph-backend lane; the backend design is on
+  `main`, while adapter implementation remains optional and is not a default
+  dependency or published production SLO
 - `ClickHouse` for analytics and event-scale persistence
 - `Snowflake` for warehouse-native governance and selected backend paths that
   can coexist with a Postgres-backed control plane

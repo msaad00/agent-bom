@@ -10,10 +10,12 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+import time
+from copy import deepcopy
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import JobStatus
@@ -31,6 +33,12 @@ from agent_bom.security import (
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
+_AGENTS_RESPONSE_CACHE_TTL_SECONDS = 30.0
+_agents_response_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _clear_agents_response_cache_for_tests() -> None:
+    _agents_response_cache.clear()
 
 
 def _tenant_id(request: Request) -> str:
@@ -364,48 +372,62 @@ def _persist_agent_observations(
         store.put(merge_observations(existing, candidate))
 
 
+def _build_agents_response(tenant_id: str) -> dict[str, Any]:
+    from agent_bom.discovery import discover_all
+    from agent_bom.parsers import extract_packages
+
+    agents = discover_all()
+    for agent in agents:
+        for server in agent.mcp_servers:
+            if not server.packages:
+                server.packages = extract_packages(server)
+    scan_history_index = _build_scan_history_index(tenant_id)
+    gateway_index = _build_gateway_index(tenant_id)
+    fleet_index = {item.name: item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
+    for agent in agents:
+        _persist_agent_observations(
+            tenant_id,
+            agent,
+            fleet_agent=fleet_index.get(agent.name),
+            scan_history_index=scan_history_index,
+            gateway_index=gateway_index,
+        )
+    observation_index = _observation_index(tenant_id)
+
+    return {
+        "agents": [
+            _serialize_agent(
+                a,
+                fleet_agent=fleet_index.get(a.name),
+                scan_history_index=scan_history_index,
+                gateway_index=gateway_index,
+                observation_index=observation_index,
+            )
+            for a in agents
+        ],
+        "count": len(agents),
+        "warnings": [],
+    }
+
+
 @router.get("/v1/agents", tags=["discovery"])
-async def list_agents(request: Request) -> dict:
+async def list_agents(
+    request: Request,
+    refresh: bool = Query(False, description="Bypass the sidebar cache and perform live local discovery"),
+) -> dict:
     """Quick auto-discovery of local AI agent configs (Claude Desktop, Cursor, Windsurf...).
     No CVE scan — instant results for the UI sidebar.
     """
     try:
-        from agent_bom.discovery import discover_all
-        from agent_bom.parsers import extract_packages
-
-        agents = discover_all()
-        for agent in agents:
-            for server in agent.mcp_servers:
-                if not server.packages:
-                    server.packages = extract_packages(server)
         tenant_id = _tenant_id(request)
-        scan_history_index = _build_scan_history_index(tenant_id)
-        gateway_index = _build_gateway_index(tenant_id)
-        fleet_index = {item.name: item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
-        for agent in agents:
-            _persist_agent_observations(
-                tenant_id,
-                agent,
-                fleet_agent=fleet_index.get(agent.name),
-                scan_history_index=scan_history_index,
-                gateway_index=gateway_index,
-            )
-        observation_index = _observation_index(tenant_id)
+        now = time.monotonic()
+        cached = _agents_response_cache.get(tenant_id)
+        if not refresh and cached is not None and now - cached[0] <= _AGENTS_RESPONSE_CACHE_TTL_SECONDS:
+            return deepcopy(cached[1])
 
-        return {
-            "agents": [
-                _serialize_agent(
-                    a,
-                    fleet_agent=fleet_index.get(a.name),
-                    scan_history_index=scan_history_index,
-                    gateway_index=gateway_index,
-                    observation_index=observation_index,
-                )
-                for a in agents
-            ],
-            "count": len(agents),
-            "warnings": [],
-        }
+        response = _build_agents_response(tenant_id)
+        _agents_response_cache[tenant_id] = (now, deepcopy(response))
+        return response
     except Exception as exc:  # noqa: BLE001
         _logger.exception("Agent discovery failed")
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc

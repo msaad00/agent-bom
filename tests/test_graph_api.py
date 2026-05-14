@@ -578,6 +578,127 @@ class TestGraphEndpointLogic:
         finally:
             conn.close()
 
+    def test_sqlite_graph_store_read_path_migrates_legacy_edge_history_columns(self, tmp_path):
+        db_path = tmp_path / "legacy-edge-history.db"
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.executescript(
+                """
+                CREATE TABLE graph_nodes (
+                    id TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    category_uid INTEGER DEFAULT 0,
+                    class_uid INTEGER DEFAULT 0,
+                    type_uid INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'active',
+                    risk_score REAL DEFAULT 0.0,
+                    severity TEXT DEFAULT '',
+                    severity_id INTEGER DEFAULT 0,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    attributes TEXT DEFAULT '{}',
+                    compliance_tags TEXT DEFAULT '[]',
+                    data_sources TEXT DEFAULT '[]',
+                    dimensions TEXT DEFAULT '{}',
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    PRIMARY KEY (id, scan_id, tenant_id)
+                );
+                CREATE TABLE graph_edges (
+                    source_id TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    relationship TEXT NOT NULL,
+                    direction TEXT DEFAULT 'directed',
+                    weight REAL DEFAULT 1.0,
+                    traversable INTEGER DEFAULT 1,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    evidence TEXT DEFAULT '{}',
+                    activity_id INTEGER DEFAULT 1,
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    PRIMARY KEY (source_id, target_id, relationship, scan_id, tenant_id)
+                );
+                CREATE TABLE graph_snapshots (
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    created_at TEXT NOT NULL,
+                    node_count INTEGER DEFAULT 0,
+                    edge_count INTEGER DEFAULT 0,
+                    risk_summary TEXT DEFAULT '{}',
+                    PRIMARY KEY (scan_id, tenant_id)
+                );
+                CREATE TABLE attack_paths (
+                    source_node TEXT NOT NULL,
+                    target_node TEXT NOT NULL,
+                    hop_count INTEGER DEFAULT 0,
+                    composite_risk REAL DEFAULT 0.0,
+                    path_nodes TEXT DEFAULT '[]',
+                    path_edges TEXT DEFAULT '[]',
+                    credential_exposure TEXT DEFAULT '[]',
+                    vuln_ids TEXT DEFAULT '[]',
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    computed_at TEXT NOT NULL,
+                    PRIMARY KEY (source_node, target_node, scan_id, tenant_id)
+                );
+                CREATE TABLE interaction_risks (
+                    pattern TEXT NOT NULL,
+                    agents TEXT NOT NULL,
+                    risk_score REAL DEFAULT 0.0,
+                    description TEXT DEFAULT '',
+                    owasp_agentic_tag TEXT DEFAULT NULL,
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    PRIMARY KEY (pattern, agents, scan_id, tenant_id)
+                );
+                CREATE TABLE graph_schema_version (version INTEGER PRIMARY KEY);
+                INSERT INTO graph_schema_version (version) VALUES (2);
+                INSERT INTO graph_nodes (
+                    id, entity_type, label, first_seen, last_seen, scan_id, tenant_id
+                ) VALUES
+                    ('agent:legacy', 'agent', 'Legacy Agent', '2026-05-01T00:00:00Z', '2026-05-01T00:00:00Z', 'legacy-scan', 'default'),
+                    (
+                        'package:legacy', 'package', 'Legacy Package',
+                        '2026-05-01T00:00:00Z', '2026-05-01T00:00:00Z',
+                        'legacy-scan', 'default'
+                    );
+                INSERT INTO graph_edges (
+                    source_id, target_id, relationship, first_seen, last_seen, scan_id, tenant_id
+                ) VALUES (
+                    'agent:legacy', 'package:legacy', 'depends_on',
+                    '2026-05-01T00:00:00Z', '2026-05-01T00:00:00Z', 'legacy-scan', 'default'
+                );
+                INSERT INTO graph_snapshots (
+                    scan_id, tenant_id, created_at, node_count, edge_count
+                ) VALUES ('legacy-scan', 'default', '2026-05-01T00:00:00Z', 2, 1);
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        store = SQLiteGraphStore(db_path)
+
+        assert [snapshot["scan_id"] for snapshot in store.list_snapshots()] == ["legacy-scan"]
+        active_edges = store.active_edges_at("2026-05-02T00:00:00Z")
+
+        assert [(edge["source_id"], edge["target_id"], edge["relationship"]) for edge in active_edges] == [
+            ("agent:legacy", "package:legacy", "depends_on")
+        ]
+        assert active_edges[0]["valid_from"] == "2026-05-01T00:00:00Z"
+
+        conn = sqlite3.connect(db_path)
+        try:
+            edge_columns = {row[1] for row in conn.execute("PRAGMA table_info(graph_edges)").fetchall()}
+            indexes = {row[1] for row in conn.execute("PRAGMA index_list(graph_edges)").fetchall()}
+        finally:
+            conn.close()
+
+        assert {"valid_from", "valid_to", "confidence", "provenance", "source_scan_id", "source_run_id"} <= edge_columns
+        assert "idx_ge_tenant_valid" in indexes
+
     def test_sqlite_graph_store_read_path_does_not_run_legacy_backfill(self, tmp_path, monkeypatch):
         store = SQLiteGraphStore(tmp_path / "read-path-graph.db")
         graph = UnifiedGraph(scan_id="read-scan", tenant_id="tenant-alpha")

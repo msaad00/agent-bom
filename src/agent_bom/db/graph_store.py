@@ -108,7 +108,6 @@ CREATE INDEX IF NOT EXISTS idx_ge_target ON graph_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_ge_rel ON graph_edges(relationship);
 CREATE INDEX IF NOT EXISTS idx_ge_scan ON graph_edges(scan_id);
 CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan ON graph_edges(tenant_id, scan_id);
-CREATE INDEX IF NOT EXISTS idx_ge_tenant_valid ON graph_edges(tenant_id, valid_from, valid_to);
 
 -- ── Snapshots ──
 CREATE TABLE IF NOT EXISTS graph_snapshots (
@@ -256,6 +255,7 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
             conn.execute(statement)
     conn.execute("UPDATE graph_edges SET valid_from = first_seen WHERE valid_from = '' OR valid_from IS NULL")
     conn.execute("UPDATE graph_edges SET source_scan_id = scan_id WHERE source_scan_id = '' OR source_scan_id IS NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_valid ON graph_edges(tenant_id, valid_from, valid_to)")
     if backfill_legacy_tenants:
         _backfill_empty_tenant_ids(conn)
     conn.commit()

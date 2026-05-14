@@ -8,6 +8,7 @@ from __future__ import annotations
 from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
 from agent_bom.finding import Finding, FindingType
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
+from agent_bom.output.exposure_path import exposure_path_brief
 
 
 def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
@@ -107,6 +108,8 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
 
         lines.append("")
 
+        lines.extend(_exposure_path_section(brs))
+
     # Critical/High details
     critical_high = [br for br in brs if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]
     if critical_high:
@@ -205,3 +208,24 @@ def _md_cell(value: object) -> str:
 def _compliance_tags_text(br: BlastRadius) -> str:
     """Return framework-qualified tags for compact Markdown rendering."""
     return ", ".join(framework_qualified_blast_radius_tags(br))
+
+
+def _exposure_path_section(brs: list[BlastRadius]) -> list[str]:
+    """Render the top blast-radius findings as investigation-first paths."""
+    if not brs:
+        return []
+
+    lines = [
+        "## Exposure Paths",
+        "",
+        "| Rank | Risk | Severity | Path | Proof | Fix |",
+        "|------|------|----------|------|-------|-----|",
+    ]
+    for rank, br in enumerate(sorted(brs, key=lambda b: b.risk_score, reverse=True)[:10], 1):
+        brief = exposure_path_brief(br, rank=rank)
+        lines.append(
+            f"| #{brief['rank']} | {brief['risk']} | {brief['severity']} | {_md_cell(brief['path'])} | "
+            f"{_md_cell(brief['proof'])} | {_md_cell(brief['fix'])} |"
+        )
+    lines.append("")
+    return lines

@@ -26,6 +26,15 @@
 | **MEDIUM** | CVE-2024-0003 | express | 4.18.0 | 4.17.21 | 5.3 | - | - | - | - | - | 1 |
 | **LOW** | CVE-2024-0004 | debug | 4.3.0 | 4.17.21 | 2.1 | - | - | - | - | - | 1 |
 
+## Exposure Paths
+
+| Rank | Risk | Severity | Path | Proof | Fix |
+|------|------|----------|------|-------|-----|
+| #1 | 0.0 | CRITICAL | lodash@4.17.20 -> CVE-2024-0001 | 1 affected agent(s) | Upgrade lodash to 4.17.21 |
+| #2 | 0.0 | HIGH | requests@2.28.0 -> CVE-2024-0002 | 1 affected agent(s) | Upgrade requests to 2.31.0 |
+| #3 | 0.0 | MEDIUM | express@4.18.0 -> CVE-2024-0003 | 1 affected agent(s) | Upgrade express to 4.17.21 |
+| #4 | 0.0 | LOW | debug@4.3.0 -> CVE-2024-0004 | 1 affected agent(s) | Upgrade debug to 4.17.21 |
+
 ## Critical & High Findings
 
 ### CVE-2024-0001 — lodash@4.17.20

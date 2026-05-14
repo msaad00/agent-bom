@@ -70,6 +70,92 @@ _SEMANTIC_LAYER_LABELS = {
     GraphSemanticLayer.FINDING.value: "Finding",
 }
 
+_EXPOSURE_PATH_OPENAPI_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": "Investigation-first exposure path shared by graph views and report exports.",
+    "required": ["id", "label", "summary", "riskScore", "severity", "source", "target", "hops", "relationships"],
+    "properties": {
+        "id": {"type": "string"},
+        "rank": {"type": "integer", "minimum": 1},
+        "label": {"type": "string"},
+        "summary": {"type": "string"},
+        "riskScore": {"type": "number"},
+        "severity": {"type": "string"},
+        "source": {"type": "object", "additionalProperties": True},
+        "target": {"type": "object", "additionalProperties": True},
+        "hops": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+        "relationships": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+        "nodeIds": {"type": "array", "items": {"type": "string"}},
+        "edgeIds": {"type": "array", "items": {"type": "string"}},
+        "findings": {"type": "array", "items": {"type": "string"}},
+        "affectedAgents": {"type": "array", "items": {"type": "string"}},
+        "affectedServers": {"type": "array", "items": {"type": "string"}},
+        "reachableTools": {"type": "array", "items": {"type": "string"}},
+        "exposedCredentials": {"type": "array", "items": {"type": "string"}},
+        "dependencyContext": {"type": "object", "additionalProperties": True},
+        "evidence": {"type": "object", "additionalProperties": True},
+        "provenance": {"type": "object", "additionalProperties": True},
+    },
+}
+
+_FIX_FIRST_VIEW_OPENAPI_RESPONSE: dict[str, Any] = {
+    "description": "Fix-first graph view with ranked cards and embedded ExposurePath payloads.",
+    "content": {
+        "application/json": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "scan_id": {"type": "string"},
+                    "tenant_id": {"type": "string"},
+                    "created_at": {"type": "string"},
+                    "cards": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "exposure_path": _EXPOSURE_PATH_OPENAPI_SCHEMA,
+                            },
+                            "additionalProperties": True,
+                        },
+                    },
+                    "summary": {"type": "object", "additionalProperties": True},
+                    "focus": {"type": "object", "additionalProperties": True},
+                },
+            }
+        }
+    },
+}
+
+_ATTACK_PATHS_OPENAPI_RESPONSE: dict[str, Any] = {
+    "description": "Ranked attack-path queue with embedded ExposurePath payloads.",
+    "content": {
+        "application/json": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "scan_id": {"type": "string"},
+                    "tenant_id": {"type": "string"},
+                    "created_at": {"type": "string"},
+                    "nodes": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                    "edges": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                    "attack_paths": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "exposure_path": _EXPOSURE_PATH_OPENAPI_SCHEMA,
+                            },
+                            "additionalProperties": True,
+                        },
+                    },
+                    "stats": {"type": "object", "additionalProperties": True},
+                    "pagination": {"type": "object", "additionalProperties": True},
+                },
+            }
+        }
+    },
+}
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers
@@ -982,7 +1068,7 @@ async def get_graph(
     }
 
 
-@router.get("/v1/graph/views/fix-first", tags=["graph"])
+@router.get("/v1/graph/views/fix-first", tags=["graph"], responses={200: _FIX_FIRST_VIEW_OPENAPI_RESPONSE})
 async def get_fix_first_graph_view(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
@@ -1070,7 +1156,7 @@ async def get_graph_edge_changes(
     return await _graph_store_call(_get_graph_store_or_503().changed_edges_between_scans, old, new, tenant_id=_tenant(request))
 
 
-@router.get("/v1/graph/attack-paths", tags=["graph"])
+@router.get("/v1/graph/attack-paths", tags=["graph"], responses={200: _ATTACK_PATHS_OPENAPI_RESPONSE})
 async def get_graph_attack_paths(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan ID"),

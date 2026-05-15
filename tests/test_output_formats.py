@@ -599,6 +599,30 @@ def test_exposure_path_is_embedded_in_sarif_properties():
     } in exposure_path["relationships"]
 
 
+def test_exposure_path_is_embedded_in_json_report():
+    tool = MCPTool(name="deploy", description="Deploy workloads")
+    server = _make_server(name="prod-mcp", tools=[tool], env={"AWS_SECRET_ACCESS_KEY": "redacted"})
+    agent = _make_agent(name="prod-agent", servers=[server])
+    br = _make_blast_radius(agents=[agent])
+    br.affected_servers = [server]
+    br.exposed_tools = [tool]
+    br.exposed_credentials = ["AWS_SECRET_ACCESS_KEY"]
+    br.risk_score = 9.4
+    report = _make_report(agents=[agent], blast_radii=[br])
+
+    payload = to_json(report)
+    exposure_path = payload["exposure_paths"]["paths"][0]
+
+    assert payload["exposure_paths"]["schema_version"] == "1"
+    assert payload["exposure_paths"]["path_count"] == 1
+    assert payload["blast_radius"][0]["exposure_path"] == exposure_path
+    assert exposure_path["label"] == "lodash@4.17.20 -> CVE-2024-0001"
+    assert exposure_path["affectedAgents"] == ["prod-agent"]
+    assert exposure_path["affectedServers"] == ["prod-mcp"]
+    assert exposure_path["reachableTools"] == ["deploy"]
+    assert exposure_path["exposedCredentials"] == ["AWS_SECRET_ACCESS_KEY"]
+
+
 def test_skill_trust_axes_are_embedded_in_sarif_properties():
     report = _make_report()
     report.trust_assessment_data = {

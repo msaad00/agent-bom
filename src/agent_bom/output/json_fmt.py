@@ -16,6 +16,7 @@ from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.finding import FINDING_SCHEMA_VERSION
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
+from agent_bom.output.exposure_path import exposure_path_for_blast_radius
 from agent_bom.security import (
     sanitize_command_args,
     sanitize_path_label,
@@ -802,6 +803,7 @@ def to_json(report: AIBOMReport) -> dict:
     from agent_bom.scorecard import summarize_scorecard_coverage
 
     all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
+    exposure_paths = [exposure_path_for_blast_radius(br, rank=rank) for rank, br in enumerate(report.blast_radii, start=1)]
     result = {
         "schema_version": SCAN_REPORT_SCHEMA_VERSION,
         "document_type": "AI-BOM",
@@ -1036,6 +1038,7 @@ def to_json(report: AIBOMReport) -> dict:
         "blast_radius": [
             {
                 "schema_version": BLAST_RADIUS_SCHEMA_VERSION,
+                "exposure_path": exposure_paths[rank - 1],
                 **({"package_name": br.package.name, "package_version": br.package.version, "package_stable_id": br.package.stable_id}),
                 "package_canonical_id": br.package.canonical_id,
                 **effective_blast_radius_tags(br),
@@ -1103,8 +1106,14 @@ def to_json(report: AIBOMReport) -> dict:
                 "graph_min_hop_distance": getattr(br, "graph_min_hop_distance", None),
                 "graph_reachable_from_agents": getattr(br, "graph_reachable_from_agents", []),
             }
-            for br in report.blast_radii
+            for rank, br in enumerate(report.blast_radii, start=1)
         ],
+        "exposure_paths": {
+            "schema_version": "1",
+            "source": "blast_radius_output",
+            "path_count": len(exposure_paths),
+            "paths": exposure_paths,
+        },
         "findings": [finding.to_dict() for finding in report.to_findings()],
         "threat_framework_summary": _build_framework_summary(report.blast_radii),
         "scorecard_summary": summarize_scorecard_coverage(all_packages).to_dict(),

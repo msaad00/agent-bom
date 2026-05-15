@@ -1,9 +1,10 @@
 # agent-bom
 
-**Open security scanner and self-hosted control plane for AI-era infrastructure.**
+**Open security scanner and self-hosted control plane for AI/MCP infrastructure.**
 
-Every CVE in your AI stack is a credential leak waiting to happen. `agent-bom`
-follows the chain end-to-end and tells you which fix collapses it first.
+`agent-bom` follows package, agent, MCP, credential-name, cloud, runtime, and
+skill evidence into one reachability-backed AI BOM, then tells humans and AI
+agents which exposure path to fix first.
 
 Blast radius is the core idea:
 
@@ -11,8 +12,9 @@ Blast radius is the core idea:
 CVE -> package -> MCP server -> agent -> credentials -> tools
 ```
 
-This container is the quickest way to run the same scanner, runtime surfaces,
-and self-hosted operator path described in the main repository README.
+This container is the quickest way to run the same scanner, MCP tools, runtime
+surfaces, and self-hosted operator path described in the main repository
+README.
 
 ## Image Model
 
@@ -101,8 +103,11 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
 ## What You Get
 
 - Blast radius from package to server to agent to credentials and tools
-- AI-native coverage across agents, MCP, runtime, containers, cloud, IaC, and GPU
-- One operator path across CLI, CI, API, dashboard, remediation, and MCP tools
+- AI/MCP coverage across agents, MCP, skills, runtime, containers, cloud, IaC,
+  and GPU
+- One evidence model across CLI, CI, API, dashboard, reports, and MCP tools
+- ExposurePath-driven graph investigation for humans and headless agent
+  workflows
 - Runtime MCP protection plus broader review and tamper-evident evidence exports
 
 ## Product Surfaces

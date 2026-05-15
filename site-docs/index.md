@@ -1,11 +1,12 @@
 # agent-bom
 
-**Open security scanner and self-hosted control plane for AI-era infrastructure.**
+**Open security scanner and self-hosted control plane for AI/MCP infrastructure.**
 
-Inventory agents, MCP servers, tools, packages, credential environment names,
-cloud and runtime evidence, then map the reachable blast radius behind each
-finding. For source-by-source boundaries, see the [AI infrastructure coverage
-matrix](architecture/ai-infrastructure.md#coverage-matrix).
+Generate a reachability-backed AI BOM across agents, MCP servers, tools,
+packages, credential environment names, cloud, runtime, and skill surfaces,
+then expose the same evidence through CLI/CI, API/UI, MCP tools, and selected
+runtime controls. For source-by-source boundaries, see the
+[AI infrastructure coverage matrix](architecture/ai-infrastructure.md#coverage-matrix).
 
 ## What it does
 
@@ -43,6 +44,21 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 | **CI evidence** | `uses: msaad00/agent-bom@v0.86.5` | SARIF, pull-request summary, optional code scanning |
 | **Assistant tools** | `agent-bom mcp server` | read-only security tools for MCP clients |
 | **Self-hosted control plane** | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your infrastructure |
+
+## Current graph and agent surfaces
+
+- `ExposurePath` is the shared investigation object for API, UI, reports, JSON,
+  and MCP agent workflows.
+- Sigma.js and graphology provide the WebGL overview path for broad graph
+  scenes; React Flow remains the focused path and evidence renderer.
+- The graph model includes time-versioned edges, semantic clusters, toxic-combo
+  projection, identity taxonomy, and AWS IAM identity enrichment.
+- MCP exposes `exposure_paths` and `should_i_deploy` for headless agents that
+  need ranked investigation context or deploy guidance.
+
+Neptune is an optional enterprise backend lane. The default self-hosted path
+remains SQLite/Postgres, and the docs do not claim a live Neptune production
+SLO or openCypher endpoint.
 
 ## Key capabilities
 

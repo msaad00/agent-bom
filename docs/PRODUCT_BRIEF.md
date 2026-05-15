@@ -1,9 +1,10 @@
 # Product Brief
 
-`agent-bom` is an open security scanner and AI BOM for the AI stack, with a
-self-hosted control plane for teams that need fleet inventory, graph-backed
-findings, MCP/runtime enforcement, and governance evidence inside their own
-environment.
+`agent-bom` is an open security scanner and self-hosted control plane for
+AI/MCP infrastructure. It generates a reachability-backed AI BOM across agents,
+MCP servers, packages, credential environment names, cloud, runtime, and skill
+surfaces, then exposes the same evidence through CLI/CI, API/UI, MCP tools, and
+selected runtime controls.
 
 It is built around a simple thesis: security and visibility for AI infrastructure should be open, transparent, and accessible, not reserved for teams with enterprise budgets.
 
@@ -13,7 +14,10 @@ trust posture. That reachability-backed AI BOM is the core product value.
 The public AI-BOM coverage map is the source of truth for which AI-BOM layers
 are strong today, which are partial, and which next PRs close the gaps.
 
-`agent-bom` is a released OSS product with a working CLI, GitHub Action, Docker images, authenticated API and MCP deployment paths, report formats, a dashboard, and a growing enterprise-hardening track.
+`agent-bom` is a released OSS product with a working CLI, GitHub Action,
+Docker images, authenticated API and MCP deployment paths, report formats, a
+dashboard, WebGL-backed graph overview path, and a growing
+enterprise-hardening track.
 
 Current repo-derived counts live in [PRODUCT_METRICS.md](PRODUCT_METRICS.md). This brief intentionally keeps volatile metrics out of the main narrative.
 
@@ -51,6 +55,11 @@ agent-bom
 3. **Enforce runtime behavior** — MCP server mode, proxy/gateway, and Shield
    SDK turn the same model into agentic workflow controls.
 
+The release story should treat humans and agents as peer consumers. Humans use
+the CLI, reports, and browser cockpit. AI agents use the MCP/API/CLI surfaces
+to request the same `ExposurePath` evidence, skill verdicts, and deploy
+decisions under the same auth, tenant, and audit boundary.
+
 This framing does not narrow the deployment story. It makes "deploy in your
 own cloud / infrastructure" the production form of lane 2, with runtime
 controls from lane 3 added where the customer needs inline enforcement.
@@ -59,8 +68,9 @@ Integrations should be described as distribution and workflow fit, not as a
 miscellaneous compatibility list. The strongest story is:
 
 - **coding agents and MCP clients**: Claude, Cursor, Windsurf, VS Code, Cortex
-  Code, and similar clients can invoke agent-bom as a read-only security tool
-  surface.
+  Code, OpenAI Codex CLI, and similar clients can invoke agent-bom as a
+  read-only security tool surface, including `exposure_paths` and
+  `should_i_deploy` for headless investigation and deploy guidance.
 - **skills and registries**: OpenClaw skills, Cortex Code skill packaging, MCP
   Registry, Smithery, Glama, and Docker MCP registry make repeatable
   agent-bom workflows available where agent users already discover tools.
@@ -180,9 +190,9 @@ This is the right path because it improves product trust without diluting the MC
 
 Good external phrasing:
 
-- Open security scanner and self-hosted control plane for AI-era infrastructure.
-- Generate a reachability-backed AI BOM across agents, MCP, packages, credentials, cloud, and runtime
-- Context-aware security for agents, MCP, runtime, and AI supply chain and infrastructure
+- Open security scanner and self-hosted control plane for AI/MCP infrastructure.
+- Generate a reachability-backed AI BOM across agents, MCP, packages, credentials, cloud, runtime, and skills.
+- Context-aware security for humans and AI agents across MCP, runtime, and AI supply chain infrastructure.
 - Blast radius from package risk to agents, credentials, tools, and runtime
 
 Avoid:

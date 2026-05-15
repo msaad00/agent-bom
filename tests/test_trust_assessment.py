@@ -557,6 +557,20 @@ def test_high_severity_behavioral_finding_is_suspicious():
     assert result.verdict == Verdict.SUSPICIOUS
 
 
+def test_medium_behavioral_finding_requires_review_without_content_suspicion():
+    """Medium behavioral findings are benign content but still need review."""
+    scan = _make_scan()
+    audit = _make_audit(findings=[_finding("network_exposure", severity="medium", title="Network exposure")])
+
+    result = assess_trust(scan, audit)
+
+    assert result.content_verdict == Verdict.BENIGN
+    assert result.verdict == Verdict.BENIGN
+    assert result.provenance_verdict == ProvenanceVerdict.VERIFIED
+    assert result.review_verdict == ReviewVerdict.REVIEW
+    assert result.to_dict()["overall_recommendation"] == "review"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 8. Recommendation tests
 # ═══════════════════════════════════════════════════════════════════════════════

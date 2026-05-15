@@ -799,6 +799,8 @@ def _compute_review_verdict(
         return ReviewVerdict.BLOCKED
     if content_verdict == Verdict.MALICIOUS or any(f.category in _HIGH_RISK_FINDING_CATEGORIES for f in findings):
         return ReviewVerdict.HIGH_RISK
+    if any(f.severity == "medium" and _is_behavioral_content_finding(f.category) for f in findings):
+        return ReviewVerdict.REVIEW
     if (
         content_verdict == Verdict.SUSPICIOUS
         or provenance_verdict == ProvenanceVerdict.UNVERIFIED

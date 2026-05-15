@@ -28,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 473,
+      "value": 461,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -40,13 +40,13 @@
     },
     {
       "name": "UI app pages",
-      "value": 23,
+      "value": 22,
       "source": "ui/app",
       "notes": "Counts page.tsx and page.jsx files recursively."
     },
     {
       "name": "Python modules",
-      "value": 474,
+      "value": 464,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

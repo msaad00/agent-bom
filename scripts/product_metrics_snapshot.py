@@ -7,31 +7,42 @@ import argparse
 import ast
 import json
 import re
+import subprocess
 from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _tracked_files(*pathspecs: str) -> list[Path]:
+    """Return tracked files for metrics so local ignored artifacts do not skew counts."""
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--", *pathspecs],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return [ROOT / line for line in result.stdout.splitlines() if line]
+
+
 def _count_workflows() -> int:
-    return len(list((ROOT / ".github" / "workflows").glob("*.y*ml")))
+    return len(_tracked_files(".github/workflows/*.yml", ".github/workflows/*.yaml"))
 
 
 def _count_test_files() -> int:
-    return len(list((ROOT / "tests").rglob("test_*.py")))
+    return len(_tracked_files("tests/test_*.py", "tests/**/test_*.py"))
 
 
 def _count_api_route_modules() -> int:
-    return len(list((ROOT / "src" / "agent_bom" / "api" / "routes").glob("*.py")))
+    return len(_tracked_files("src/agent_bom/api/routes/*.py"))
 
 
 def _count_ui_app_pages() -> int:
-    app_root = ROOT / "ui" / "app"
-    return len(list(app_root.rglob("page.tsx"))) + len(list(app_root.rglob("page.jsx")))
+    return len(_tracked_files("ui/app/**/page.tsx", "ui/app/**/page.jsx"))
 
 
 def _count_python_modules() -> int:
-    return len(list((ROOT / "src" / "agent_bom").rglob("*.py")))
+    return len(_tracked_files("src/agent_bom/*.py", "src/agent_bom/**/*.py"))
 
 
 def _count_mcp_tools() -> int:

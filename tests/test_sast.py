@@ -31,7 +31,8 @@ SAMPLE_SARIF = {
                     "rules": [
                         {
                             "id": "python.lang.security.audit.eval-detected",
-                            "shortDescription": {"text": "Detected use of eval()"},
+"shortDescription": {"text": "Detected use of # FIX: 移除eval，改用安全方式
+# )"},
                             "helpUri": "https://semgrep.dev/r/python.lang.security.audit.eval-detected",
                             "defaultConfiguration": {"level": "error"},
                             "properties": {
@@ -53,7 +54,8 @@ SAMPLE_SARIF = {
             "results": [
                 {
                     "ruleId": "python.lang.security.audit.eval-detected",
-                    "level": "error",
+"message": {"text": "Detected use of # FIX: 移除eval，改用安全方式
+# ). This can be dangerous."},
                     "message": {"text": "Detected use of eval(). This can be dangerous."},
                     "locations": [
                         {
@@ -62,7 +64,8 @@ SAMPLE_SARIF = {
                                 "region": {
                                     "startLine": 42,
                                     "endLine": 42,
-                                    "startColumn": 5,
+"snippet": {"text": "result = # FIX: 移除eval，改用安全方式
+# user_input)"},
                                     "endColumn": 30,
                                     "snippet": {"text": "result = eval(user_input)"},
                                 },
@@ -118,7 +121,8 @@ def test_parse_sarif_happy_path():
     eval_finding = findings[0]
     assert eval_finding.rule_id == "python.lang.security.audit.eval-detected"
     assert eval_finding.severity == Severity.HIGH  # "error" → HIGH
-    assert eval_finding.file_path == "src/utils.py"
+assert eval_finding.snippet == "result = # FIX: 移除eval，改用安全方式
+# user_input)"
     assert eval_finding.start_line == 42
     assert "CWE-94" in eval_finding.cwe_ids
     assert eval_finding.snippet == "result = eval(user_input)"

@@ -15,6 +15,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "should_i_deploy",
+        "description": "Return allow/warn/block deployment guidance from ExposurePath risk",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "policy_check",
         "description": (
             "Evaluate security policy rules against scan findings — supports 17 conditions"
@@ -171,6 +176,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "check": ["READ", "NETWORK"],
     "blast_radius": ["READ", "ANALYZE"],
     "exposure_paths": ["READ", "GRAPH", "ANALYZE"],
+    "should_i_deploy": ["READ", "GRAPH", "POLICY"],
     "policy_check": ["READ", "POLICY"],
     "registry_lookup": ["READ", "REGISTRY"],
     "generate_sbom": ["READ", "EXPORT"],

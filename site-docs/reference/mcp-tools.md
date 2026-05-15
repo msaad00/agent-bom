@@ -25,6 +25,12 @@ Return ranked ExposurePath JSON from the graph store for headless security agent
 exposure_paths(tenant_id="default", limit=5, min_risk=70)
 ```
 
+### should_i_deploy
+Return an allow/warn/block deployment decision from matched ExposurePath risk.
+```
+should_i_deploy(candidate="requests", tenant_id="default", block_risk=80)
+```
+
 ### registry_lookup
 Look up an MCP server in the 427+ server security metadata registry.
 ```

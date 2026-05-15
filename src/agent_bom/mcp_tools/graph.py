@@ -100,6 +100,37 @@ def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: lis
     }
 
 
+def _candidate_matches_path(candidate: str, path: dict[str, Any]) -> bool:
+    needle = candidate.strip().lower()
+    if not needle:
+        return True
+    haystack: list[str] = [
+        str(path.get("id", "")),
+        str(path.get("label", "")),
+        str(path.get("summary", "")),
+        *[str(value) for value in path.get("nodeIds", [])],
+        *[str(value) for value in path.get("edgeIds", [])],
+        *[str(value) for value in path.get("findings", [])],
+        *[str(value) for value in path.get("reachableTools", [])],
+    ]
+    for endpoint in ("source", "target"):
+        value = path.get(endpoint)
+        if isinstance(value, dict):
+            haystack.extend(str(value.get(key, "")) for key in ("id", "label", "role"))
+    for hop in path.get("hops", []):
+        if isinstance(hop, dict):
+            haystack.extend(str(hop.get(key, "")) for key in ("id", "label", "role"))
+    return any(needle in value.lower() for value in haystack)
+
+
+def _decision_for_risk(risk: float, *, warn_risk: float, block_risk: float) -> str:
+    if risk >= block_risk:
+        return "block"
+    if risk >= warn_risk:
+        return "warn"
+    return "allow"
+
+
 async def exposure_paths_impl(
     *,
     tenant_id: str = "default",
@@ -165,3 +196,82 @@ async def exposure_paths_impl(
     except Exception as exc:
         logger.exception("MCP graph tool error")
         return mcp_error_json(CODE_INTERNAL_UNEXPECTED, exc)
+
+
+async def deploy_decision_impl(
+    *,
+    candidate: str,
+    tenant_id: str = "default",
+    scan_id: str | None = None,
+    limit: int = 5,
+    warn_risk: float = 40.0,
+    block_risk: float = 80.0,
+    _get_graph_store=None,
+    _truncate_response=None,
+) -> str:
+    """Return an allow/warn/block deployment decision from ExposurePath risk."""
+    candidate_value = candidate.strip()
+    if not candidate_value:
+        return mcp_error_json(
+            CODE_VALIDATION_INVALID_ARGUMENT,
+            "candidate must not be empty",
+            details={"argument": "candidate"},
+        )
+    if limit < 1 or limit > 25:
+        return mcp_error_json(
+            CODE_VALIDATION_INVALID_ARGUMENT,
+            "limit must be between 1 and 25",
+            details={"argument": "limit", "value": limit},
+        )
+    if warn_risk < 0 or warn_risk > 100 or block_risk < 0 or block_risk > 100 or warn_risk > block_risk:
+        return mcp_error_json(
+            CODE_VALIDATION_INVALID_ARGUMENT,
+            "warn_risk and block_risk must be ordered thresholds between 0 and 100",
+            details={"warn_risk": warn_risk, "block_risk": block_risk},
+        )
+
+    response = await exposure_paths_impl(
+        tenant_id=tenant_id,
+        scan_id=scan_id,
+        limit=100,
+        min_risk=0.0,
+        _get_graph_store=_get_graph_store,
+        _truncate_response=lambda value: value,
+    )
+    payload = json.loads(response)
+    if "error" in payload:
+        return json.dumps(payload, indent=2)
+
+    matched_paths = [path for path in payload.get("paths", []) if _candidate_matches_path(candidate_value, path)]
+    matched_paths = matched_paths[:limit]
+    max_risk = max((float(path.get("riskScore", 0.0) or 0.0) for path in matched_paths), default=0.0)
+    decision = _decision_for_risk(max_risk, warn_risk=warn_risk, block_risk=block_risk)
+    reasons: list[str] = []
+    if matched_paths:
+        top = matched_paths[0]
+        reasons.append(f"Top matched exposure path risk is {top.get('riskScore', 0)} for {top.get('label') or top.get('id')}.")
+        findings = sorted({str(finding) for path in matched_paths for finding in path.get("findings", []) if finding})
+        if findings:
+            reasons.append(f"Matched findings: {', '.join(findings[:5])}.")
+    else:
+        reasons.append("No matching exposure paths were found for the candidate in the selected graph snapshot.")
+
+    encoded = json.dumps(
+        {
+            "schema_version": "v1",
+            "tool": "should_i_deploy",
+            "tenant_id": tenant_id,
+            "scan_id": payload.get("scan_id", scan_id or ""),
+            "candidate": {"value": candidate_value},
+            "decision": decision,
+            "maxRisk": max_risk,
+            "thresholds": {"warnRisk": warn_risk, "blockRisk": block_risk},
+            "reasons": reasons,
+            "matchedPathCount": len(matched_paths),
+            "matchedPaths": matched_paths,
+            "provenance": {"source": "mcp_should_i_deploy", "basis": "exposure_paths"},
+        },
+        indent=2,
+        default=str,
+    )
+    return _truncate_response(encoded) if _truncate_response is not None else encoded

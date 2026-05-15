@@ -7,7 +7,7 @@ import json
 import pytest
 
 from agent_bom.graph import AttackPath, EntityType, RelationshipType, UnifiedEdge, UnifiedNode
-from agent_bom.mcp_tools.graph import exposure_paths_impl
+from agent_bom.mcp_tools.graph import deploy_decision_impl, exposure_paths_impl
 
 
 class _GraphStore:
@@ -78,3 +78,38 @@ async def test_exposure_paths_impl_validates_agent_limits():
 
     assert payload["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"
     assert payload["error"]["details"]["argument"] == "limit"
+
+
+@pytest.mark.asyncio
+async def test_deploy_decision_blocks_high_risk_candidate():
+    response = await deploy_decision_impl(
+        candidate="requests",
+        _get_graph_store=lambda: _GraphStore(),
+        _truncate_response=lambda value: value,
+    )
+    payload = json.loads(response)
+
+    assert payload["schema_version"] == "v1"
+    assert payload["tool"] == "should_i_deploy"
+    assert payload["decision"] == "block"
+    assert payload["maxRisk"] == 88.0
+    assert payload["matchedPathCount"] == 1
+    assert payload["matchedPaths"][0]["findings"] == ["CVE-2026-0001"]
+
+
+@pytest.mark.asyncio
+async def test_deploy_decision_allows_without_matching_paths():
+    response = await deploy_decision_impl(candidate="safe-service", _get_graph_store=lambda: _GraphStore())
+    payload = json.loads(response)
+
+    assert payload["decision"] == "allow"
+    assert payload["matchedPathCount"] == 0
+
+
+@pytest.mark.asyncio
+async def test_deploy_decision_validates_candidate():
+    response = await deploy_decision_impl(candidate=" ", _get_graph_store=lambda: _GraphStore())
+    payload = json.loads(response)
+
+    assert payload["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"
+    assert payload["error"]["details"]["argument"] == "candidate"

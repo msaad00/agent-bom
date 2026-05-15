@@ -5,10 +5,11 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (37):
+Tools (38):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
+    should_i_deploy     — Return allow/warn/block from ExposurePath risk
     policy_check        — Evaluate a policy against scan results
     registry_lookup     — Query the MCP server security metadata registry
     generate_sbom       — Generate CycloneDX or SPDX SBOM
@@ -375,7 +376,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         compliance_impl,
         policy_check_impl,
     )
-    from agent_bom.mcp_tools.graph import exposure_paths_impl
+    from agent_bom.mcp_tools.graph import deploy_decision_impl, exposure_paths_impl
     from agent_bom.mcp_tools.registry import registry_lookup_impl
     from agent_bom.mcp_tools.runtime import verify_impl
     from agent_bom.mcp_tools.sbom import generate_sbom_impl, remediate_impl
@@ -571,7 +572,31 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             _truncate_response=_truncate_response,
         )
 
-    # ── Tool 5: policy_check ──────────────────────────────────────────
+    # ── Tool 5: should_i_deploy ───────────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Should I Deploy")
+    async def should_i_deploy(
+        candidate: Annotated[str, Field(description="Candidate package, resource, CVE, node ID, or deployment label to evaluate.")],
+        tenant_id: Annotated[str, Field(description="Tenant ID for the graph snapshot. Defaults to 'default'.")] = "default",
+        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+        limit: Annotated[int, Field(ge=1, le=25, description="Maximum matched exposure paths to return.")] = 5,
+        warn_risk: Annotated[float, Field(ge=0, le=100, description="Risk score at or above which the decision becomes warn.")] = 40.0,
+        block_risk: Annotated[float, Field(ge=0, le=100, description="Risk score at or above which the decision becomes block.")] = 80.0,
+    ) -> str:
+        """Return an agent-native deploy gate decision from graph risk."""
+        return await _execute_tool_async(
+            "should_i_deploy",
+            deploy_decision_impl,
+            candidate=candidate,
+            tenant_id=tenant_id,
+            scan_id=scan_id,
+            limit=limit,
+            warn_risk=warn_risk,
+            block_risk=block_risk,
+            _truncate_response=_truncate_response,
+        )
+
+    # ── Tool 6: policy_check ──────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Policy Evaluation")
     async def policy_check(

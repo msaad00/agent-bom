@@ -70,7 +70,7 @@ enterprise graph-store candidate for deployments that eventually need
 graph-native traversal at a scale beyond the Postgres default.
 
 The current design target is documented in
-[`../../docs/decisions/008-pluggable-neptune-graph-backend.md`](../../docs/decisions/008-pluggable-neptune-graph-backend.md).
+[`docs/decisions/008-pluggable-neptune-graph-backend.md`](https://github.com/msaad00/agent-bom/blob/main/docs/decisions/008-pluggable-neptune-graph-backend.md).
 Any future Neptune implementation must preserve the API `GraphStoreProtocol`
 surface, tenant predicates, audit behavior, and fail-closed configuration
 rules before this matrix can mark it supported.

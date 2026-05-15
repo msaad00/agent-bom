@@ -654,6 +654,7 @@ _CLOUD_DISCOVERY_NO_PROVIDERS = dict(
     aws_include_eks=False,
     aws_include_step_functions=False,
     aws_include_ec2=False,
+    aws_include_iam=False,
     aws_ec2_tag=None,
     azure_flag=False,
     azure_subscription=None,

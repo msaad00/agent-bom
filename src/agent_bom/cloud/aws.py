@@ -33,6 +33,7 @@ from .normalization import (
     build_package_purl,
     normalize_cloud_lifecycle_state,
     parse_container_image_package,
+    sanitize_discovery_warning,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ def discover(
     include_eks: bool = False,
     include_step_functions: bool = False,
     include_ec2: bool = False,
+    include_iam: bool = False,
     ec2_tag_filter: dict[str, str] | None = None,
     tag_filter: dict[str, str] | None = None,
 ) -> tuple[list[Agent], list[str]]:
@@ -223,6 +225,9 @@ def discover(
                 warnings.extend(service_warnings)
                 ecs_image_refs.extend(service_ecs_refs)
 
+    if include_iam:
+        _enrich_agents_with_iam(_new_discovery_session(), agents, account_id=account_id, warnings=warnings)
+
     # ── ECS images as agents ──────────────────────────────────────────────
     for ecs_ref in ecs_image_refs:
         if isinstance(ecs_ref, dict):
@@ -301,6 +306,7 @@ def discover(
         include_eks=include_eks,
         include_step_functions=include_step_functions,
         include_ec2=include_ec2,
+        include_iam=include_iam,
     )
     envelope = DiscoveryEnvelope(
         scan_mode=ScanMode.CLOUD_READ_ONLY,
@@ -352,6 +358,10 @@ _AWS_STEP_FUNCTIONS_PERMISSIONS: tuple[str, ...] = (
     "states:DescribeStateMachine",
 )
 _AWS_EC2_PERMISSIONS: tuple[str, ...] = ("ec2:DescribeInstances",)
+_AWS_IAM_PERMISSIONS: tuple[str, ...] = (
+    "iam:GetRole",
+    "iam:ListAttachedRolePolicies",
+)
 _AWS_BASELINE_PERMISSIONS: tuple[str, ...] = ("sts:GetCallerIdentity",)
 
 
@@ -363,6 +373,7 @@ def _aws_permissions_for_jobs(
     include_eks: bool,
     include_step_functions: bool,
     include_ec2: bool,
+    include_iam: bool = False,
 ) -> tuple[str, ...]:
     """Return the IAM action list this run is allowed to exercise.
 
@@ -383,6 +394,8 @@ def _aws_permissions_for_jobs(
         perms.extend(_AWS_STEP_FUNCTIONS_PERMISSIONS)
     if include_ec2:
         perms.extend(_AWS_EC2_PERMISSIONS)
+    if include_iam:
+        perms.extend(_AWS_IAM_PERMISSIONS)
     return tuple(sorted(set(perms)))
 
 
@@ -399,6 +412,182 @@ def _resolve_account_id(session: Any) -> str | None:
         return None
     account_id = str(identity.get("Account", "")).strip()
     return account_id or None
+
+
+def _role_name_from_arn(role_arn: str) -> str:
+    """Extract the IAM role name/path segment accepted by GetRole."""
+    marker = ":role/"
+    if marker not in role_arn:
+        return role_arn.rsplit("/", 1)[-1].strip()
+    return role_arn.split(marker, 1)[1].strip()
+
+
+def _account_id_from_arn(arn: str) -> str:
+    parts = arn.split(":")
+    return parts[4] if len(parts) > 4 else ""
+
+
+def _principal_type_from_aws_principal(principal_id: str) -> str:
+    if principal_id.endswith(":root"):
+        return "account"
+    if ":role/" in principal_id:
+        return "iam-role"
+    if ":user/" in principal_id:
+        return "user"
+    return "account" if principal_id.isdigit() else "federated-identity"
+
+
+def _principal_name_from_id(principal_id: str) -> str:
+    if principal_id.endswith(":root"):
+        account_id = _account_id_from_arn(principal_id)
+        return account_id or principal_id
+    return principal_id.rsplit("/", 1)[-1]
+
+
+def _principal_values(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item or "").strip()]
+    return [str(value)]
+
+
+def _extract_trust_principals(policy_document: Any, *, account_id: str | None) -> list[dict[str, str]]:
+    """Extract low-risk trust principals from an AssumeRole policy document."""
+    if not isinstance(policy_document, dict):
+        return []
+    statements = policy_document.get("Statement", [])
+    if isinstance(statements, dict):
+        statements = [statements]
+    if not isinstance(statements, list):
+        return []
+
+    entries: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for statement in statements:
+        if not isinstance(statement, dict) or statement.get("Effect") != "Allow":
+            continue
+        principal = statement.get("Principal")
+        if not isinstance(principal, dict):
+            continue
+        for raw_value in _principal_values(principal.get("AWS")):
+            if raw_value == "*":
+                continue
+            principal_type = _principal_type_from_aws_principal(raw_value)
+            principal_account = raw_value if raw_value.isdigit() else _account_id_from_arn(raw_value)
+            relationship = "cross_account_trust" if account_id and principal_account and principal_account != account_id else "trusts"
+            key = (principal_type, raw_value)
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append(
+                {
+                    "principal_type": principal_type,
+                    "principal_id": principal_account if principal_type == "account" and principal_account else raw_value,
+                    "principal_name": _principal_name_from_id(raw_value),
+                    "relationship": relationship,
+                    "source_field": "AssumeRolePolicyDocument.Principal.AWS",
+                }
+            )
+        for raw_value in _principal_values(principal.get("Service")):
+            key = ("service-principal", raw_value)
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append(
+                {
+                    "principal_type": "service-principal",
+                    "principal_id": raw_value,
+                    "principal_name": raw_value,
+                    "relationship": "trusts",
+                    "source_field": "AssumeRolePolicyDocument.Principal.Service",
+                }
+            )
+        for raw_value in _principal_values(principal.get("Federated")):
+            key = ("federated-identity", raw_value)
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append(
+                {
+                    "principal_type": "federated-identity",
+                    "principal_id": raw_value,
+                    "principal_name": _principal_name_from_id(raw_value),
+                    "relationship": "trusts",
+                    "source_field": "AssumeRolePolicyDocument.Principal.Federated",
+                }
+            )
+    return entries
+
+
+def _enrich_agents_with_iam(session: Any, agents: list[Agent], *, account_id: str | None, warnings: list[str]) -> None:
+    """Attach live IAM role policy/trust metadata to discovered principals."""
+    role_arns = sorted(
+        {
+            str(agent.metadata.get("cloud_principal", {}).get("principal_id") or "").strip()
+            for agent in agents
+            if isinstance(agent.metadata.get("cloud_principal"), dict)
+            and str(agent.metadata["cloud_principal"].get("principal_type") or "").lower() in {"iam-role", "role"}
+            and str(agent.metadata["cloud_principal"].get("principal_id") or "").strip()
+        }
+    )
+    if not role_arns:
+        return
+
+    iam = session.client("iam")
+    enriched: dict[str, dict[str, Any]] = {}
+    for role_arn in role_arns:
+        role_name = _role_name_from_arn(role_arn)
+        try:
+            role_detail = iam.get_role(RoleName=role_name).get("Role", {})
+            paginator = iam.get_paginator("list_attached_role_policies")
+            policies = [
+                {
+                    "policy_id": str(policy.get("PolicyArn") or ""),
+                    "policy_name": str(policy.get("PolicyName") or policy.get("PolicyArn") or ""),
+                    "attachment_type": "managed",
+                    "source_field": "ListAttachedRolePolicies.AttachedPolicies",
+                }
+                for page in paginator.paginate(RoleName=role_name)
+                for policy in page.get("AttachedPolicies", [])
+                if policy.get("PolicyArn") or policy.get("PolicyName")
+            ]
+        except Exception as exc:
+            warnings.append(f"IAM role enrichment skipped for {role_name}: {sanitize_discovery_warning(exc)}")
+            continue
+        enriched[role_arn] = {
+            "policies": policies,
+            "trust_principals": _extract_trust_principals(
+                role_detail.get("AssumeRolePolicyDocument"),
+                account_id=account_id,
+            ),
+        }
+
+    for agent in agents:
+        principal = agent.metadata.get("cloud_principal")
+        if not isinstance(principal, dict):
+            continue
+        role_arn = str(principal.get("principal_id") or "").strip()
+        payload = enriched.get(role_arn)
+        if not payload:
+            continue
+        existing_policies = principal.get("policies")
+        if not isinstance(existing_policies, list):
+            existing_policies = []
+        by_id = {
+            str(policy.get("policy_id") or policy.get("arn") or policy.get("name") or ""): policy
+            for policy in existing_policies
+            if isinstance(policy, dict)
+        }
+        for policy in payload["policies"]:
+            if policy["policy_id"]:
+                by_id[policy["policy_id"]] = policy
+        principal["policies"] = list(by_id.values())
+        principal["trust_principals"] = payload["trust_principals"]
+        principal["iam_enriched"] = True
+        principal["iam_enrichment_source"] = "aws-iam"
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +623,7 @@ def _discover_bedrock(session: Any, region: str, *, account_id: str | None = Non
 
             agent_arn = detail.get("agentArn", f"arn:aws:bedrock:{region}:agent/{agent_id}")
             foundation_model = detail.get("foundationModel", "unknown")
+            runtime_role_arn = detail.get("agentResourceRoleArn", "")
 
             # Discover action groups → Lambda functions
             mcp_servers = _get_action_group_servers(client, session, agent_id, region, warnings)
@@ -471,6 +661,17 @@ def _discover_bedrock(session: Any, region: str, *, account_id: str | None = Non
                     raw_state=agent_status,
                     state_source="agentStatus",
                 )
+            cloud_principal = build_cloud_principal(
+                provider="aws",
+                service="bedrock",
+                resource_type="agent",
+                principal_type="iam-role",
+                principal_id=runtime_role_arn or None,
+                source_field="agentResourceRoleArn",
+                raw_identity={"role_arn": runtime_role_arn},
+            )
+            if cloud_principal:
+                agent.metadata["cloud_principal"] = cloud_principal
             agents.append(agent)
 
     return agents, warnings

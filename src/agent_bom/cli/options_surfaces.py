@@ -239,6 +239,7 @@ def cloud_options(fn):
             click.option("--aws-include-eks", is_flag=True, help="Discover EKS cluster workloads via kubectl (used with --aws)"),
             click.option("--aws-include-step-functions", is_flag=True, help="Discover Step Functions workflows (used with --aws)"),
             click.option("--aws-include-ec2", is_flag=True, help="Discover EC2 instances by tag (used with --aws)"),
+            click.option("--aws-include-iam", is_flag=True, help="Enrich AWS identity graph with IAM role policies and trust principals"),
             click.option(
                 "--aws-ec2-tag", default=None, metavar="KEY=VALUE", help="EC2 tag filter for --aws-include-ec2 (e.g. 'Environment=ai-prod')"
             ),

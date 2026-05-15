@@ -18,6 +18,7 @@ def run_cloud_discovery(
     aws_include_eks: bool,
     aws_include_step_functions: bool,
     aws_include_ec2: bool,
+    aws_include_iam: bool,
     aws_ec2_tag: Any,
     azure_flag: bool,
     azure_subscription: Any,
@@ -77,6 +78,8 @@ def run_cloud_discovery(
             if aws_ec2_tag and "=" in aws_ec2_tag:
                 k, v = aws_ec2_tag.split("=", 1)
                 aws_kwargs["ec2_tag_filter"] = {k: v}
+        if aws_include_iam:
+            aws_kwargs["include_iam"] = True
         cloud_providers.append(("aws", aws_kwargs))
     if not skill_only and azure_flag:
         cloud_providers.append(("azure", {"subscription_id": azure_subscription}))

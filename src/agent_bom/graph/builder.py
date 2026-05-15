@@ -1336,6 +1336,32 @@ def _policy_entries(principal: dict[str, Any]) -> list[dict[str, str]]:
     return policies
 
 
+def _trust_entries(principal: dict[str, Any]) -> list[dict[str, str]]:
+    raw_trusts = principal.get("trust_principals") or []
+    if isinstance(raw_trusts, dict):
+        raw_trusts = [raw_trusts]
+    if not isinstance(raw_trusts, list):
+        return []
+
+    trusts: list[dict[str, str]] = []
+    for raw_trust in raw_trusts:
+        if not isinstance(raw_trust, dict):
+            continue
+        principal_id = _clean_graph_part(raw_trust.get("principal_id")) or _clean_graph_part(raw_trust.get("arn"))
+        if not principal_id:
+            continue
+        trusts.append(
+            {
+                "id": principal_id,
+                "name": _clean_graph_part(raw_trust.get("principal_name")) or principal_id,
+                "type": _clean_graph_part(raw_trust.get("principal_type")) or "federated-identity",
+                "relationship": _clean_graph_part(raw_trust.get("relationship")) or "trusts",
+                "source_field": _clean_graph_part(raw_trust.get("source_field")),
+            }
+        )
+    return trusts
+
+
 def _add_agent_cloud_lineage(
     graph: UnifiedGraph,
     *,
@@ -1577,6 +1603,42 @@ def _add_agent_cloud_lineage(
                 target=policy_node_id,
                 relationship=RelationshipType.ATTACHED,
                 evidence={"source": "cloud_principal", "principal_type": principal_type},
+            )
+        )
+    for trust in _trust_entries(principal):
+        trust_entity_type = _identity_entity_type(trust["type"])
+        trust_node_id = _identity_node_id(trust_entity_type, provider, trust["id"])
+        graph.add_node(
+            UnifiedNode(
+                id=trust_node_id,
+                entity_type=trust_entity_type,
+                label=trust["name"],
+                attributes={
+                    "principal_id": trust["id"],
+                    "principal_name": trust["name"],
+                    "principal_type": trust["type"],
+                    "cloud_provider": provider,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+            )
+        )
+        relationship = (
+            RelationshipType.CROSS_ACCOUNT_TRUST
+            if trust["relationship"] == RelationshipType.CROSS_ACCOUNT_TRUST.value
+            else RelationshipType.TRUSTS
+        )
+        graph.add_edge(
+            UnifiedEdge(
+                source=principal_node_id,
+                target=trust_node_id,
+                relationship=relationship,
+                evidence={
+                    "source": "cloud_principal_trust",
+                    "principal_type": principal_type,
+                    "trusted_principal_type": trust["type"],
+                    "source_field": trust["source_field"],
+                },
             )
         )
     # Direct principal → agent edge so single-hop "which principals can

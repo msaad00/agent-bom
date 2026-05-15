@@ -86,6 +86,7 @@ def cloud_group(ctx: click.Context) -> None:
 @click.option("--include-lambda", is_flag=True, help="Include Lambda functions")
 @click.option("--include-eks", is_flag=True, help="Include EKS workloads")
 @click.option("--include-ec2", is_flag=True, help="Include EC2 instances")
+@click.option("--include-iam", is_flag=True, help="Enrich identity graph with IAM role policies and trust principals")
 @click.option("--cis", is_flag=True, default=True, help="Run CIS benchmark (default: on)")
 @click.option("--no-cis", is_flag=True, help="Skip CIS benchmark")
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
@@ -97,6 +98,7 @@ def aws_cmd(
     include_lambda: bool,
     include_eks: bool,
     include_ec2: bool,
+    include_iam: bool,
     cis: bool,
     no_cis: bool,
     output_format: str,
@@ -115,6 +117,7 @@ def aws_cmd(
         aws_include_lambda=include_lambda,
         aws_include_eks=include_eks,
         aws_include_ec2=include_ec2,
+        aws_include_iam=include_iam,
         aws_cis_benchmark=cis and not no_cis,
         auto_update_db=False,
         output_format=output_format,

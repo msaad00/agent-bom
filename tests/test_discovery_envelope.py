@@ -113,6 +113,7 @@ def test_aws_permissions_baseline_only() -> None:
     # Gated services should not appear when their flag is off.
     assert "ec2:DescribeInstances" not in perms
     assert "lambda:GetFunction" not in perms
+    assert "iam:GetRole" not in perms
 
 
 def test_aws_permissions_include_optional_services() -> None:
@@ -125,6 +126,7 @@ def test_aws_permissions_include_optional_services() -> None:
         include_eks=True,
         include_step_functions=True,
         include_ec2=True,
+        include_iam=True,
     )
     for needle in (
         "ecs:DescribeTasks",
@@ -133,6 +135,8 @@ def test_aws_permissions_include_optional_services() -> None:
         "eks:DescribeCluster",
         "states:DescribeStateMachine",
         "ec2:DescribeInstances",
+        "iam:GetRole",
+        "iam:ListAttachedRolePolicies",
     ):
         assert needle in perms
 

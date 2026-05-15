@@ -64,6 +64,7 @@ def emit_dry_run_plan(
     aws_include_eks: bool,
     aws_include_step_functions: bool,
     aws_include_ec2: bool,
+    aws_include_iam: bool,
     azure_flag: bool,
     gcp_flag: bool,
     gcp_project: str | None,
@@ -136,6 +137,8 @@ def emit_dry_run_plan(
             reads.append("  [green]Would query:[/green]  AWS Step Functions ListStateMachines API")
         if aws_include_ec2:
             reads.append("  [green]Would query:[/green]  AWS EC2 DescribeInstances API (tag-filtered)")
+        if aws_include_iam:
+            reads.append("  [green]Would query:[/green]  AWS IAM GetRole + ListAttachedRolePolicies APIs")
     if azure_flag:
         reads.append("  [green]Would query:[/green]  Azure AI Foundry/Container Apps APIs")
     if gcp_flag:

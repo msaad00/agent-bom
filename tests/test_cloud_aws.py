@@ -116,6 +116,86 @@ def test_discover_with_bedrock_agent():
         assert "bedrock:MyAgent" in agents[0].name
 
 
+def test_bedrock_principal_can_be_iam_enriched():
+    """Optional IAM enrichment attaches role policy and trust metadata."""
+    mock_boto3, mock_session = _mock_boto3()
+    mock_botocore = MagicMock()
+    mock_botocore.exceptions.ClientError = type("ClientError", (Exception,), {})
+    mock_botocore.exceptions.NoCredentialsError = type("NoCredentialsError", (Exception,), {})
+
+    mock_sts = MagicMock()
+    mock_sts.get_caller_identity.return_value = {"Account": "123456789012"}
+
+    mock_bedrock = MagicMock()
+    agents_paginator = MagicMock()
+    agents_paginator.paginate.return_value = [
+        {"agentSummaries": [{"agentId": "agent-1", "agentName": "SupportAgent", "agentStatus": "PREPARED"}]}
+    ]
+    action_groups_paginator = MagicMock()
+    action_groups_paginator.paginate.return_value = [{"actionGroupSummaries": []}]
+    mock_bedrock.get_paginator.side_effect = lambda op: {
+        "list_agents": agents_paginator,
+        "list_agent_action_groups": action_groups_paginator,
+    }[op]
+    role_arn = "arn:aws:iam::123456789012:role/AgentRuntimeRole"
+    mock_bedrock.get_agent.return_value = {
+        "agent": {
+            "agentArn": "arn:aws:bedrock:us-east-1:123456789012:agent/agent-1",
+            "agentResourceRoleArn": role_arn,
+            "foundationModel": "anthropic.claude-3-sonnet",
+        }
+    }
+
+    mock_iam = MagicMock()
+    mock_iam.get_role.return_value = {
+        "Role": {
+            "Arn": role_arn,
+            "AssumeRolePolicyDocument": {
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": "bedrock.amazonaws.com",
+                            "AWS": "arn:aws:iam::210987654321:root",
+                        },
+                    }
+                ]
+            },
+        }
+    }
+    policy_paginator = MagicMock()
+    policy_paginator.paginate.return_value = [
+        {
+            "AttachedPolicies": [
+                {
+                    "PolicyName": "AgentRuntimePolicy",
+                    "PolicyArn": "arn:aws:iam::123456789012:policy/AgentRuntimePolicy",
+                }
+            ]
+        }
+    ]
+    mock_iam.get_paginator.return_value = policy_paginator
+
+    mock_session.client.side_effect = lambda service, **_kwargs: {
+        "sts": mock_sts,
+        "bedrock-agent": mock_bedrock,
+        "iam": mock_iam,
+    }[service]
+
+    with patch.dict(sys.modules, {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}):
+        from agent_bom.cloud import aws
+
+        agents, warnings = aws.discover(region="us-east-1", include_ecs=False, include_iam=True)
+
+    assert warnings == []
+    principal = agents[0].metadata["cloud_principal"]
+    assert principal["principal_id"] == role_arn
+    assert principal["iam_enriched"] is True
+    assert principal["policies"][0]["policy_id"] == "arn:aws:iam::123456789012:policy/AgentRuntimePolicy"
+    assert {entry["principal_type"] for entry in principal["trust_principals"]} == {"account", "service-principal"}
+    assert any(entry["relationship"] == "cross_account_trust" for entry in principal["trust_principals"])
+
+
 def test_discover_persists_sts_account_scope_on_aws_origins():
     """Representative AWS assets carry normalized account scope from STS."""
     mock_boto3, mock_session = _mock_boto3()

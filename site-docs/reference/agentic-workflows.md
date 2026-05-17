@@ -9,7 +9,7 @@ plane or runtime enforcement rollout.
 | Local CLI | `agent-bom agents --demo --offline`, then `agent-bom agents -p .` | Reads local agent and MCP configuration from the developer machine. No control-plane credentials required. | Terminal findings, JSON, SARIF, SBOM, HTML, graph export. | Scheduled scan, Docker, GitHub Action. |
 | Claude, Cursor, Windsurf, VS Code, Cortex, Codex CLI | `agent-bom mcp server` | Exposes read-only security tools to the assistant. The assistant does not need direct scanner credentials beyond the local process boundary. | MCP tool output, inventory, blast-radius answers, compliance checks, ranked `ExposurePath` JSON, deploy guidance. | Shared MCP configuration, skills, fleet sync. |
 | GitHub Actions | `uses: msaad00/agent-bom@v0.86.5` with SARIF upload enabled | Runs in CI with repository-scoped token permissions. Fork PR behavior depends on GitHub security policy. | `agent-bom-results.sarif`, pull-request summary, code-scanning alert category. | Branch protection, required code scanning, artifact retention. |
-| Skills and instruction files | `agent-bom skills scan .` | Reads repo-local instructions such as `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, and `skills/*.md`. | Skill trust findings, referenced package and MCP inventory, credential-env names. | Signed skills, provenance verification, registry publishing. |
+| Skills and instruction files | `agent-bom skills scan . --policy skills-policy.yaml` | Reads repo-local instructions such as `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, and `skills/*.md`. | Skill trust findings, referenced package and MCP inventory, credential-env names, policy warn/block result. | Signed skills, provenance verification, registry publishing. |
 | Cloud and AI infrastructure | `agent-bom agents --preset enterprise` plus provider-specific flags only where credentials are approved. | Uses read-only provider APIs or local inventory files. Keep provider secrets in the operator boundary, not in repo docs. | Cloud, warehouse, GPU, model, dataset, and runtime package evidence. | Fleet sync, compliance exports, graph-backed findings. |
 | Runtime proxy | `agent-bom proxy --no-isolate --log audit.jsonl --block-undeclared -- ...` | Wraps selected local MCP traffic. Policy can block before an upstream tool receives the call. Container containment requires a stdio MCP path plus a configured sandbox image or an existing container command. | Tier-A audit JSONL, policy decisions, runtime alerts, metrics, and sandbox posture when isolation is enabled. | Sidecar proxy, gateway policy pull, SIEM export. |
 | Shared gateway | `agent-bom gateway serve --from-control-plane ...` | Centralizes auth, tenancy, routing, and policy for remote MCP upstreams. | Gateway health, policy evaluation, relay metrics, audit relay. | Helm/EKS gateway, tenant policies, autoscaling. |
@@ -54,6 +54,24 @@ Produces the same graph-backed investigation context a human sees in the UI,
 but as MCP tool output for an AI agent or coding assistant. `should_i_deploy`
 returns deploy guidance; it does not modify code, open pull requests, or mutate
 cloud resources.
+
+### Skills CI Gate
+
+```yaml
+- uses: msaad00/agent-bom@v0.86.5
+  with:
+    scan-type: skills
+    scan-ref: .
+    format: json
+    output: agent-bom-skills.json
+    policy: skills-policy.yaml
+    warn-on-review-verdict: review
+    fail-on-review-verdict: blocked
+```
+
+Produces JSON skills evidence and a policy result. Use this lane for
+instruction files and skills; keep package/SARIF gates in a separate job until
+the skills finding schema is exported as SARIF.
 
 ### Hosted Gateway Or Proxy Review
 

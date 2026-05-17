@@ -883,6 +883,7 @@ class TestServerLifespanAutoDetect:
         monkeypatch.setenv("SNOWFLAKE_USER", "test_user")
         monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", "/keys/rsa.p8")
         monkeypatch.setenv("AGENT_BOM_DB", "/tmp/should_not_use.db")
+        monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://should-not-use.example/agent_bom")
         monkeypatch.delenv("SNOWFLAKE_PASSWORD", raising=False)
 
         mock_sf_connect.return_value = _mock_connection()
@@ -894,6 +895,8 @@ class TestServerLifespanAutoDetect:
         st._store = None
         st._fleet_store = None
         st._policy_store = None
+        st._source_store = None
+        st._credential_ref_store = None
         st._schedule_store = None
         st._exception_store = None
 
@@ -923,5 +926,7 @@ class TestServerLifespanAutoDetect:
         st._store = None
         st._fleet_store = None
         st._policy_store = None
+        st._source_store = None
+        st._credential_ref_store = None
         st._schedule_store = None
         st._exception_store = None

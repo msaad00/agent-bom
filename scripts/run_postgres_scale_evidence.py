@@ -15,7 +15,8 @@ Postgres throughput depends on Postgres tuning, network RTT, and the
 specific workload mix the control plane runs. A local CPU benchmark
 cannot say anything useful about those. This script needs:
 
-* A Postgres instance (`AGENT_BOM_POSTGRES_DSN` env var or `--dsn` flag).
+* A Postgres instance (`AGENT_BOM_POSTGRES_URL` / legacy
+  `AGENT_BOM_POSTGRES_DSN` env var, or `--dsn` flag).
 * Optionally, `multiprocessing` to fan out N "replica" worker processes
   hammering the same DB so we measure connection-pool contention, not
   just single-process throughput.
@@ -41,11 +42,11 @@ Usage
 ─────
 
     # local (against docker compose Postgres)
-    AGENT_BOM_POSTGRES_DSN=postgresql://agent_bom:agent_bom@localhost:5432/agent_bom \\
+    AGENT_BOM_POSTGRES_URL=postgresql://agent_bom:agent_bom@localhost:5432/agent_bom \\
         scripts/run_postgres_scale_evidence.py --sizes 1000,5000
 
     # CI (against service container, full sizes, 4 simulated replicas)
-    AGENT_BOM_POSTGRES_DSN=$DSN \\
+    AGENT_BOM_POSTGRES_URL=$DSN \\
         scripts/run_postgres_scale_evidence.py \\
             --sizes 10000,50000,100000 --replicas 4
 
@@ -154,6 +155,12 @@ def _job_get_iter(job_store, sample_ids: list[tuple[str, str]]) -> list[float]:
     return timings
 
 
+def _set_postgres_env(dsn: str) -> None:
+    """Set current and legacy Postgres DSN env vars for child workers."""
+    os.environ["AGENT_BOM_POSTGRES_URL"] = dsn
+    os.environ["AGENT_BOM_POSTGRES_DSN"] = dsn
+
+
 # ─── Per-replica worker (run in a child process) ─────────────────────────────
 
 
@@ -164,7 +171,7 @@ def _replica_worker(dsn: str, size: int, replica_idx: int, kinds: list[str]) -> 
     `kinds` (subset of {"audit","job_put","job_get"}), and returns
     timing distributions. The parent aggregates across replicas.
     """
-    os.environ["AGENT_BOM_POSTGRES_DSN"] = dsn
+    _set_postgres_env(dsn)
 
     # Lazy import — psycopg may not be installed in dry-run mode.
     from agent_bom.api.postgres_audit import PostgresAuditLog
@@ -270,7 +277,10 @@ def generate(
         return base
 
     if not dsn:
-        raise SystemExit("AGENT_BOM_POSTGRES_DSN env var or --dsn required (use --dry-run to validate the harness without Postgres).")
+        raise SystemExit(
+            "AGENT_BOM_POSTGRES_URL env var, AGENT_BOM_POSTGRES_DSN env var, or --dsn required "
+            "(use --dry-run to validate the harness without Postgres)."
+        )
 
     base["results"] = [_run_clustered(dsn, size, replicas, kinds) for size in sizes]
     base["gaps"] = [
@@ -286,8 +296,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Drive the agent-bom Postgres stores at clustered scale and emit JSON evidence.")
     parser.add_argument(
         "--dsn",
-        default=os.environ.get("AGENT_BOM_POSTGRES_DSN"),
-        help="Postgres DSN (defaults to AGENT_BOM_POSTGRES_DSN env).",
+        default=os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("AGENT_BOM_POSTGRES_DSN"),
+        help="Postgres DSN (defaults to AGENT_BOM_POSTGRES_URL, then legacy AGENT_BOM_POSTGRES_DSN).",
     )
     parser.add_argument(
         "--sizes",

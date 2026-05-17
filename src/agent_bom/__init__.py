@@ -19,3 +19,28 @@ if _pyproject.exists():
             __version__ = _m.group(1)
     except Exception:
         pass  # Never block import due to pyproject read failure
+
+from agent_bom.sdk import (  # noqa: E402
+    AgentBomSDKError,
+    DiffResult,
+    InventoryResult,
+    PackageCheckResult,
+    async_check,
+    check,
+    diff,
+    inventory,
+    scan,
+)
+
+__all__ = [
+    "__version__",
+    "AgentBomSDKError",
+    "DiffResult",
+    "InventoryResult",
+    "PackageCheckResult",
+    "async_check",
+    "check",
+    "diff",
+    "inventory",
+    "scan",
+]

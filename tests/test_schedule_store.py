@@ -231,6 +231,32 @@ class TestSchedulerLoop:
         asyncio.run(_run())
         assert len(triggered) >= 1
 
+    def test_in_memory_store_ignores_postgres_env(self, monkeypatch):
+        """Global Postgres env should not block non-Postgres schedule stores."""
+        from agent_bom.api.scheduler import scheduler_loop
+
+        store = InMemoryScheduleStore()
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+        monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example.invalid/agent_bom")
+
+        triggered = []
+
+        def mock_scan(config):
+            triggered.append(config)
+            return "job-123"
+
+        async def _run():
+            task = asyncio.create_task(scheduler_loop(store, mock_scan, interval_seconds=0))
+            await asyncio.sleep(0.1)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(_run())
+        assert len(triggered) >= 1
+
     def test_skips_disabled_schedule(self):
         """Scheduler loop skips disabled schedules."""
         from agent_bom.api.scheduler import scheduler_loop
@@ -284,7 +310,10 @@ class TestSchedulerLoop:
         """Only the replica holding the advisory lock should trigger schedules."""
         from agent_bom.api.scheduler import scheduler_loop
 
-        store = InMemoryScheduleStore()
+        class PostgresScheduleStore(InMemoryScheduleStore):
+            pass
+
+        store = PostgresScheduleStore()
         store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
         monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example.invalid/agent_bom")
 

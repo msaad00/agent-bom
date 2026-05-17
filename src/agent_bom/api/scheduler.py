@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 _SCHEDULER_LEADER_LOCK_ID = 4_197_042_001
 
 
+def _uses_postgres_schedule_store(schedule_store) -> bool:
+    """Return whether schedules are backed by the clustered Postgres store."""
+    return type(schedule_store).__name__ == "PostgresScheduleStore"
+
+
 def validate_cron_expression(cron_expr: str) -> bool:
     """Return True when a cron expression is in the scheduler's supported subset."""
     parts = cron_expr.strip().split()
@@ -125,9 +130,10 @@ async def scheduler_loop(
 
     consecutive_failures = 0
     leader_conn = None
+    needs_leader_lock = bool(os.environ.get("AGENT_BOM_POSTGRES_URL")) and _uses_postgres_schedule_store(schedule_store)
 
     def _try_acquire_postgres_leader_lock():
-        if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        if not needs_leader_lock:
             return None
         try:
             from agent_bom.api.postgres_store import _get_pool
@@ -146,7 +152,7 @@ async def scheduler_loop(
     try:
         while True:
             try:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL") and leader_conn is None:
+                if needs_leader_lock and leader_conn is None:
                     leader_conn = _try_acquire_postgres_leader_lock()
                     if leader_conn is None:
                         await asyncio.sleep(interval_seconds)

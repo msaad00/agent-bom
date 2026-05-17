@@ -193,9 +193,9 @@ async def exposure_paths_impl(
         }
         encoded = json.dumps(payload, indent=2, default=str)
         return _truncate_response(encoded) if _truncate_response is not None else encoded
-    except Exception as exc:
+    except Exception:
         logger.exception("MCP graph tool error")
-        return mcp_error_json(CODE_INTERNAL_UNEXPECTED, exc)
+        return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")
 
 
 async def deploy_decision_impl(

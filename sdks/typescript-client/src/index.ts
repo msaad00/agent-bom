@@ -49,9 +49,12 @@ export interface DeployDecisionRequest {
 }
 
 export interface DeployDecision {
-  verdict: "allow" | "warn" | "block" | string;
+  decision: "allow" | "warn" | "block" | string;
   reasons?: string[];
-  paths?: JsonValue[];
+  matchedPaths?: JsonValue[];
+  matchedPathCount?: number;
+  maxRisk?: number;
+  thresholds?: Record<string, JsonValue>;
   [key: string]: JsonValue | undefined;
 }
 

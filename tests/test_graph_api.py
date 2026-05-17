@@ -1712,6 +1712,92 @@ class TestGraphStoreBackendSelection:
         assert any(call[0] == "attack_paths" for call in recording_graph_store.calls)
         assert any(call[0] == "nodes_by_ids" for call in recording_graph_store.calls)
 
+    def test_exposure_paths_rest_route_matches_agent_native_contract(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1", severity="high", risk_score=88.0)
+        )
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO))
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "server:s", "vuln:cve"],
+                edges=["uses", "vulnerable_to"],
+                composite_risk=88.0,
+                summary="agent-a reaches CVE-2026-1 through server-s",
+                tool_exposure=["run_shell"],
+                credential_exposure=["AWS_TOKEN"],
+                vuln_ids=["CVE-2026-1"],
+            )
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/exposure-paths", params={"limit": 1, "min_risk": 70})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["schema_version"] == "v1"
+        assert body["tool"] == "exposure_paths"
+        assert body["tenant_id"] == "default"
+        assert body["filters"] == {"limit": 1, "min_risk": 70.0}
+        assert body["paths"][0]["riskScore"] == 88.0
+        assert body["paths"][0]["source"]["id"] == "agent:a"
+        assert body["paths"][0]["target"]["id"] == "vuln:cve"
+        assert body["paths"][0]["reachableTools"] == ["run_shell"]
+        assert body["paths"][0]["exposedCredentials"] == ["AWS_TOKEN"]
+        assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:cve"}
+        assert {edge["source_id"] for edge in body["edges"]} == {"agent:a", "server:s"}
+
+    def test_should_i_deploy_rest_route_returns_agent_native_decision(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1", severity="high", risk_score=88.0)
+        )
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO))
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "server:s", "vuln:cve"],
+                edges=["uses", "vulnerable_to"],
+                composite_risk=88.0,
+                summary="agent-a reaches CVE-2026-1 through server-s",
+                vuln_ids=["CVE-2026-1"],
+            )
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/graph/should-i-deploy",
+            json={"candidate": "server:s", "tenant_id": "ignored-by-route", "warnRisk": 40, "blockRisk": 80},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["schema_version"] == "v1"
+        assert body["tool"] == "should_i_deploy"
+        assert body["tenant_id"] == "default"
+        assert body["decision"] == "block"
+        assert body["maxRisk"] == 88.0
+        assert body["matchedPathCount"] == 1
+        assert body["matchedPaths"][0]["findings"] == ["CVE-2026-1"]
+
+    def test_agent_native_graph_rest_routes_validate_inputs(self, recording_graph_store):
+        client = TestClient(app)
+
+        exposure_response = client.get("/v1/graph/exposure-paths", params={"limit": 0})
+        empty_candidate = client.post("/v1/graph/should-i-deploy", json={"candidate": " "})
+        bad_thresholds = client.post("/v1/graph/should-i-deploy", json={"candidate": "server:s", "warnRisk": 90, "blockRisk": 20})
+
+        assert exposure_response.status_code == 422
+        assert empty_candidate.status_code == 422
+        assert empty_candidate.json()["detail"]["details"]["argument"] == "candidate"
+        assert bad_thresholds.status_code == 422
+        assert bad_thresholds.json()["detail"]["details"] == {"warn_risk": 90.0, "block_risk": 20.0}
+
     def test_persisted_graph_routes_return_incident_edges_for_dense_finding_pages(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "dense-live-graph.db")
         graph = UnifiedGraph(scan_id="dense-live-scan", tenant_id="default")

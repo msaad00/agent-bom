@@ -205,7 +205,8 @@ async def _lifespan(app_instance: FastAPI):
     """Start background cleanup task on startup, cancel on shutdown."""
     configure_otel_tracing()
     # Priority: Snowflake > Postgres > SQLite > InMemory (lazy default)
-    if os.environ.get("SNOWFLAKE_ACCOUNT"):
+    snowflake_configured = bool(os.environ.get("SNOWFLAKE_ACCOUNT"))
+    if snowflake_configured:
         from agent_bom.api.snowflake_store import (
             SnowflakeExceptionStore,
             SnowflakeFleetStore,
@@ -306,7 +307,7 @@ async def _lifespan(app_instance: FastAPI):
             set_audit_log(SQLiteAuditLog(db_path))
 
     if _stores._source_store is None:
-        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        if os.environ.get("AGENT_BOM_POSTGRES_URL") and not snowflake_configured:
             from agent_bom.api.postgres_store import PostgresSourceStore
 
             set_source_store(PostgresSourceStore())
@@ -320,7 +321,7 @@ async def _lifespan(app_instance: FastAPI):
             set_source_store(InMemorySourceStore())
 
     if _stores._credential_ref_store is None:
-        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        if os.environ.get("AGENT_BOM_POSTGRES_URL") and not snowflake_configured:
             from agent_bom.api.postgres_store import PostgresCredentialRefStore
 
             set_credential_ref_store(PostgresCredentialRefStore())
@@ -335,7 +336,7 @@ async def _lifespan(app_instance: FastAPI):
 
     # ── Schedule store ──
     if _stores._schedule_store is None:
-        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        if os.environ.get("AGENT_BOM_POSTGRES_URL") and not snowflake_configured:
             from agent_bom.api.postgres_store import PostgresScheduleStore
 
             set_schedule_store(PostgresScheduleStore())

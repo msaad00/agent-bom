@@ -17,18 +17,15 @@ Capture date: 2026-05-15
 
 | Asset | Route | Visible version |
 |---|---|---|
-| `docs/images/dashboard-live.png` | `/?capture=1` | `0.86.5` |
-| `docs/images/dashboard-paths-live.png` | `/?capture=1` | `0.86.5` |
-| `docs/images/mesh-live.png` | `/mesh?capture=1` | `0.86.5` |
-| `docs/images/security-graph-live.png` | `/security-graph?capture=1` | `0.86.5` |
-| `docs/images/lineage-graph-live.png` | `/graph?capture=1&investigate=1&root=agent:cursor&q=cursor` | `0.86.5` |
-| `docs/images/dependency-map-live.png` | `/insights?capture=1` | `0.86.5` |
-| `docs/images/remediation-live.png` | `/remediation` | `0.86.5` |
+| `docs/images/dashboard-live.png` | `/?capture=1` | `0.87.0` |
+| `docs/images/dashboard-paths-live.png` | `/?capture=1` | `0.87.0` |
+| `docs/images/mesh-live.png` | `/mesh?capture=1` | `0.87.0` |
+| `docs/images/security-graph-live.png` | `/security-graph?capture=1` | `0.87.0` |
+| `docs/images/lineage-graph-live.png` | `/graph?capture=1&investigate=1&root=agent:cursor&q=cursor` | `0.87.0` |
+| `docs/images/dependency-map-live.png` | `/insights?capture=1` | `0.87.0` |
+| `docs/images/remediation-live.png` | `/remediation` | `0.87.0` |
 
-The visible version stays `0.86.5` because this PR refreshes proof from current
-`main` before the release-version bump. The release bump PR should update
-`docs/images/product-screenshots.json` and recapture only if the UI-visible
-version changes.
+The screenshot manifest targets `v0.87.0`. Recapture is only required if the release proof must show the new version string in the image pixels.
 
 ## Claim Boundaries
 

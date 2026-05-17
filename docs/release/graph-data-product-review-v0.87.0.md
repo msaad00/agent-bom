@@ -1,6 +1,6 @@
-# Graph and Data Product Review for v0.86.6
+# Graph and Data Product Review for v0.87.0
 
-Date: 2026-05-12
+Date: 2026-05-15
 
 This review exists because screenshot polish is only the visible symptom. The
 graph product has to become a security investigation system: readable at first
@@ -53,24 +53,39 @@ Shipped on `main` after `v0.86.5`:
   entities and relationships instead of living only in narrative summaries.
 - **Renderer switch contract** — the UI can choose React Flow, large overview,
   or WebGL paths by graph size and focus state.
+- **Sigma/WebGL overview** — the WebGL overview path is wired through
+  Sigma.js/graphology for broad graph scenes, while React Flow remains the
+  focused investigation renderer.
 - **Semantic clusters** — package, CVE, agent, server, credential, tool, and
   source-family clusters reduce raw topology before rendering.
 - **Postgres hot-path indexes** — graph search, node hydration, and attack-path
   SQL paths have explicit index coverage for the known slow paths.
+- **Legacy SQLite graph migration** — existing local graph DB files are upgraded
+  in place before read paths query the time-versioned edge columns.
+- **Identity graph depth** — the schema includes organization, account, role,
+  policy, service principal, and federated identity nodes, with AWS IAM
+  enrichment gated behind an explicit opt-in flag.
+- **Headless MCP graph tools** — `exposure_paths` returns ranked investigation
+  paths and `should_i_deploy` returns allow/warn/block deploy guidance from the
+  same risk model.
+- **Report propagation** — ExposurePath evidence is present in SARIF, Markdown,
+  HTML, JSON, and MCP responses.
 - **Neptune backend lane** — the adapter boundary and optional enterprise graph
-  backend design are documented; implementation remains optional and must not
-  weaken the SQLite/Postgres defaults.
+  backend implementation are on `main`; it remains optional and must not weaken
+  the SQLite/Postgres defaults.
 
-Release blockers and non-claims:
+Closed blockers and non-claims:
 
-- Existing SQLite graph DBs must migrate time-versioned edge columns before
-  `v0.86.6` can be tagged; otherwise existing `/v1/graph*` users can hit
-  `OperationalError: no such column: valid_from`.
+- The legacy SQLite graph DB migration blocker is closed. Existing graph DBs
+  must still be smoke-tested during release because this path protects existing
+  customer state.
 - A live Neptune deployment, production Neptune latency SLO, openCypher query
   endpoint, and 50k-node WebGL operations claim are not shipped claims in this
   review.
-- SARIF, Markdown, and HTML outputs still need `ExposurePath` propagation before
-  the path contract can be described as format-wide.
+- Sigma/WebGL is a shipped overview renderer path, not a claim that every
+  browser session can interactively operate on unbounded graph sizes.
+- AWS IAM enrichment is opt-in and read-only. It does not imply complete IAM
+  coverage for every cloud provider or every AWS service role pattern.
 
 ## External Benchmark
 
@@ -141,7 +156,10 @@ Frontend graph model:
 - React Flow adapter: `ui/lib/unified-graph-flow.ts`
 - mesh graph adapter: `ui/lib/mesh-graph.ts`
 - attack path helpers: `ui/lib/attack-paths.ts`
-- renderers today: `@xyflow/react`, Dagre, radial, force, Sankey
+- renderer switch: `ui/lib/graph-renderer-switch.ts`
+- renderers today: `@xyflow/react` for focused investigation and
+  `sigma`/`graphology` for WebGL overview scenes, with Dagre, radial, force,
+  and Sankey layout helpers for focused views
 
 Visible surfaces:
 
@@ -165,7 +183,8 @@ drift:
 - lineage focuses root investigation
 - dependency map focuses package inventory
 
-Required fix: introduce a shared `ExposurePath` contract for UI and API:
+Implemented fix: keep using the shared `ExposurePath` contract for UI, API,
+reports, JSON, and MCP:
 
 ```text
 ExposurePath
@@ -202,7 +221,7 @@ Keep React Flow for:
 - focused neighborhood investigation
 - remediation and fix-first flows
 
-Add WebGL for:
+WebGL now covers the overview path for:
 
 - environment-scale graph exploration
 - high-density inventory visualization
@@ -240,7 +259,7 @@ cluster types:
 - credential family
 - tool capability
 
-Cluster nodes must be accurate and reversible:
+Cluster nodes must stay accurate and reversible:
 
 ```text
 cluster:package_family:pypi:cryptography
@@ -274,7 +293,7 @@ trusted.
 
 ### 5. Time and diff need to be visual, not hidden
 
-The schema has temporal fields. The product needs:
+The edge schema has temporal fields. The remaining product work is visual:
 
 - new since last scan
 - removed since last scan
@@ -354,81 +373,76 @@ It should not show:
 - huge empty canvas
 - raw topology with no selected story
 
-## PR Plan
+## Delivery Status
 
-### PR 1: Shared ExposurePath contract
+### PR 1: Shared ExposurePath contract — shipped
 
-Scope:
+Delivered scope:
 
-- add frontend shared `ExposurePath` model
-- adapt `/security-graph`, `/mesh`, dashboard attack cards, and scan mesh to the
-  same selected path shape
-- keep backend API unchanged where possible by adapting existing `AttackPath`
-  and `blast_radius`
+- API-native `ExposurePath` contract shipped for fix-first and attack-path
+  views.
+- Dashboard and graph surfaces promote the path as the primary investigation
+  brief.
+- SARIF, Markdown, HTML, JSON, and MCP responses carry ExposurePath evidence.
 
-Acceptance:
+Remaining guardrail:
 
-- one path ranking helper used across graph surfaces
-- one card/strip component used across graph surfaces
-- tests prove CVE/package/agent focus produces the same path across surfaces
+- Keep the file-export and graph-endpoint shapes aligned before adding new
+  fields.
 
-### PR 2: Security graph command center redesign
+### PR 2: Security graph command center redesign — shipped
 
-Scope:
+Delivered scope:
 
-- selected path graph as first visual, not a full raw topology
-- path queue as secondary list
-- evidence drawer for selected nodes/edges
-- cluster summary strip
+- selected path and path queue are first-class dashboard and security graph
+  objects
+- semantic clusters and toxic-combo graph projection are available to reduce
+  raw topology
+- light-mode graph token fixes are shipped
 
-Acceptance:
+Remaining guardrail:
 
-- first viewport answers what/why/fix/evidence
-- selected path readable at README scale
-- Playwright screenshot checks dark and light themes
+- Published screenshots must be recaptured from packaged UI and real demo data
+  before the release notes use the refreshed graph story.
 
-### PR 3: Sigma/WebGL overview renderer
+### PR 3: Sigma/WebGL overview renderer — shipped as overview path
 
-Scope:
+Delivered scope:
 
-- add `sigma`, `graphology`, and layout worker
-- add `GraphRendererSwitch`
-- render overview graph in WebGL when visible graph exceeds threshold
-- preserve React Flow for focused path
+- `sigma` and `graphology` are installed and used for the overview path.
+- `GraphRendererSwitch` selects React Flow, large overview, or WebGL based on
+  graph shape and focus state.
+- React Flow remains the focused path/evidence renderer.
 
-Acceptance:
+Remaining guardrail:
 
-- 5k-node fixture renders without blank canvas
-- zoom/pan/filter stays responsive
-- selected path can be projected into overview mode
-- no loss of node/edge labels in focused mode
+- Do not market a 50k-node operational claim until a release artifact includes
+  the measured browser proof.
 
-### PR 4: Semantic clustering and summarization
+### PR 4: Semantic clustering and summarization — shipped at API/model layer
 
-Scope:
+Delivered scope:
 
-- cluster package families, CVEs, agents, environments, servers
-- add cluster metadata to graph API or frontend adapter
-- add expandable cluster windows
+- package, CVE, agent, server, credential, tool, and source-family clusters are
+  emitted for graph consumers.
+- Cluster metadata includes counts and risk rollups for reversible expansion.
 
-Acceptance:
+Remaining guardrail:
 
-- 10k+ entity fixture defaults to fewer than 500 rendered nodes
-- cluster counts and max risk are accurate
-- expansion preserves canonical node and edge IDs
+- UI screenshots should prove the cluster rendering that public docs describe.
 
-### PR 5: Temporal graph overlays
+### PR 5: Temporal graph overlays — data layer shipped, visual overlays pending
 
-Scope:
+Delivered scope:
 
-- add new/changed/removed overlays from graph diff
-- path appeared/resolved cards
-- first_seen/last_seen displayed in drawer
+- graph edges carry bitemporal fields, confidence, provenance, source scan ID,
+  and source run ID
+- active-edge and change-query API routes are available
 
-Acceptance:
+Remaining work:
 
-- scan-to-scan diff visible in graph UI
-- graph snapshot tests cover node, edge, and path changes
+- Add explicit new/changed/resolved overlays in the graph UI before claiming a
+  full temporal investigation workflow.
 
 ## Release Gate For Graph Claims
 

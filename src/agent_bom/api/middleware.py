@@ -808,6 +808,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/scan", "analyst"),
         ("POST", "/v1/credentials", "analyst"),
         ("POST", "/v1/credentials/", "analyst"),
+        ("POST", "/v1/datasets/", "analyst"),
         ("POST", "/v1/gateway/evaluate", "analyst"),
         ("POST", "/v1/firewall/check", "analyst"),
         ("POST", "/v1/proxy/audit", "analyst"),

@@ -104,6 +104,65 @@ test("posts normalized bulk findings", async () => {
   });
 });
 
+test("registers dataset versions", async () => {
+  let seenUrl = "";
+  let payload;
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    tenantId: "tenant-d",
+    fetch: async (url, init) => {
+      seenUrl = String(url);
+      payload = JSON.parse(init.body);
+      return jsonResponse({
+        schema_version: "v1",
+        dataset: {
+          tenant_id: "tenant-d",
+          dataset_id: "hf-corpus",
+          version_id: "v1",
+          created_at: "2026-05-17T00:00:00Z",
+          source: "ci",
+        },
+      });
+    },
+  });
+
+  const response = await client.registerDatasetVersion({
+    datasetId: "hf-corpus",
+    versionId: "v1",
+    source: "ci",
+  });
+
+  assert.equal(seenUrl, "https://agent-bom.example.com/v1/datasets/hf-corpus/versions");
+  assert.equal(response.dataset.version_id, "v1");
+  assert.deepEqual(payload, {
+    version_id: "v1",
+    source: "ci",
+    tenant_id: "tenant-d",
+  });
+});
+
+test("lists dataset versions", async () => {
+  let seenUrl = "";
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    fetch: async (url) => {
+      seenUrl = String(url);
+      return jsonResponse({
+        schema_version: "v1",
+        tenant_id: "tenant-d",
+        dataset_id: "hf-corpus",
+        versions: [],
+        count: 0,
+      });
+    },
+  });
+
+  const response = await client.datasetVersions("hf-corpus");
+
+  assert.equal(seenUrl, "https://agent-bom.example.com/v1/datasets/hf-corpus/versions");
+  assert.equal(response.count, 0);
+});
+
 test("throws typed errors for non-2xx responses", async () => {
   const client = new AgentBomClient({
     baseUrl: "https://agent-bom.example.com",

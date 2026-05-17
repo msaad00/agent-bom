@@ -32,8 +32,13 @@ const ingest = await client.ingestFindings({
   source: "agent-runtime",
   findings: [{ id: "finding-1", severity: "high" }],
 });
+const dataset = await client.registerDatasetVersion({
+  datasetId: "hf-corpus",
+  versionId: "2026-05-17",
+  source: "ci",
+});
 
-console.log(health.status, paths.paths.length, decision.decision, ingest.ingested);
+console.log(health.status, paths.paths.length, decision.decision, ingest.ingested, dataset.dataset.version_id);
 ```
 
 ## Boundary

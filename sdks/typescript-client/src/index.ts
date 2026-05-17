@@ -66,6 +66,17 @@ export interface BulkFindingIngestRequest {
   tenantId?: string;
 }
 
+export interface DatasetVersionCreateRequest {
+  datasetId: string;
+  versionId?: string;
+  artifactUri?: string;
+  digest?: string;
+  digestAlgorithm?: string;
+  source?: string;
+  metadata?: Record<string, JsonValue>;
+  tenantId?: string;
+}
+
 export interface BulkFindingIngestResponse {
   schema_version: string;
   batch_id: string;
@@ -75,6 +86,32 @@ export interface BulkFindingIngestResponse {
   source: string;
   warnings?: string[];
   [key: string]: JsonValue | undefined;
+}
+
+export interface DatasetVersionRecord {
+  tenant_id: string;
+  dataset_id: string;
+  version_id: string;
+  created_at: string;
+  source: string;
+  artifact_uri?: string | null;
+  digest?: string | null;
+  digest_algorithm?: string;
+  metadata?: Record<string, JsonValue>;
+}
+
+export interface DatasetVersionResponse {
+  schema_version: string;
+  dataset: DatasetVersionRecord;
+  warnings?: string[];
+}
+
+export interface DatasetVersionsResponse {
+  schema_version: string;
+  tenant_id: string;
+  dataset_id: string;
+  versions: DatasetVersionRecord[];
+  count: number;
 }
 
 export class AgentBomApiError extends Error {
@@ -159,6 +196,31 @@ export class AgentBomClient {
       metadata: request.metadata,
       tenant_id: request.tenantId ?? this.tenantId,
     });
+  }
+
+  registerDatasetVersion(
+    request: DatasetVersionCreateRequest,
+  ): Promise<DatasetVersionResponse> {
+    return this.request<DatasetVersionResponse>(
+      "POST",
+      `/v1/datasets/${encodeURIComponent(request.datasetId)}/versions`,
+      {
+        version_id: request.versionId,
+        artifact_uri: request.artifactUri,
+        digest: request.digest,
+        digest_algorithm: request.digestAlgorithm,
+        source: request.source,
+        metadata: request.metadata,
+        tenant_id: request.tenantId ?? this.tenantId,
+      },
+    );
+  }
+
+  datasetVersions(datasetId: string): Promise<DatasetVersionsResponse> {
+    return this.request<DatasetVersionsResponse>(
+      "GET",
+      `/v1/datasets/${encodeURIComponent(datasetId)}/versions`,
+    );
   }
 
   async request<T>(

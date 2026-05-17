@@ -39,7 +39,7 @@ def skills_group(ctx: click.Context) -> None:
 
 @skills_group.command("scan")
 @click.argument("paths", nargs=-1, type=click.Path(exists=True, path_type=Path))
-@click.option("-f", "--format", "output_format", type=click.Choice(["console", "json"]), default="console", show_default=True)
+@click.option("-f", "--format", "output_format", type=click.Choice(["console", "json", "sarif"]), default="console", show_default=True)
 @click.option("-o", "--output", "output_path", type=click.Path(path_type=Path), help="Write output to this file")
 @click.option(
     "--fail-on-verdict",
@@ -125,8 +125,13 @@ def skills_scan_cmd(
     if policy or warn_on_verdict or fail_on_review_verdict or warn_on_review_verdict or fail_on_verdict:
         payload["policy"] = policy_result.to_dict()
 
-    if output_format == "json":
-        rendered = json.dumps(payload, indent=2)
+    if output_format in {"json", "sarif"}:
+        if output_format == "sarif":
+            from agent_bom.output.skills_sarif import skills_report_to_sarif
+
+            rendered = json.dumps(skills_report_to_sarif(report), indent=2)
+        else:
+            rendered = json.dumps(payload, indent=2)
         if output_path:
             output_path.write_text(rendered)
         else:

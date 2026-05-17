@@ -123,6 +123,18 @@ inputs:
     description: 'For scan-type=skills, fail if any scanned file reaches this trust verdict or worse (suspicious or malicious).'
     required: false
     default: ''
+  warn-on-verdict:
+    description: 'For scan-type=skills, warn without failing if any scanned file reaches this content verdict or worse (suspicious or malicious).'
+    required: false
+    default: ''
+  fail-on-review-verdict:
+    description: 'For scan-type=skills, fail if any scanned file reaches this handling verdict or worse (review, high_risk, blocked).'
+    required: false
+    default: ''
+  warn-on-review-verdict:
+    description: 'For scan-type=skills, warn without failing if any scanned file reaches this handling verdict or worse (review, high_risk, blocked).'
+    required: false
+    default: ''
   gpu-scan:
     description: 'Enable GPU infrastructure scanning (NVIDIA NIM/CUDA containers, DCGM).'
     required: false
@@ -235,6 +247,9 @@ runs:
         INPUT_BASELINE: ${{ inputs.baseline }}
         INPUT_SKILL_ONLY: ${{ inputs.skill-only }}
         INPUT_FAIL_ON_VERDICT: ${{ inputs.fail-on-verdict }}
+        INPUT_WARN_ON_VERDICT: ${{ inputs.warn-on-verdict }}
+        INPUT_FAIL_ON_REVIEW_VERDICT: ${{ inputs.fail-on-review-verdict }}
+        INPUT_WARN_ON_REVIEW_VERDICT: ${{ inputs.warn-on-review-verdict }}
         INPUT_GPU_SCAN: ${{ inputs.gpu-scan }}
         INPUT_EXCLUDE_UNFIXABLE: ${{ inputs.exclude-unfixable }}
       run: |
@@ -368,7 +383,8 @@ runs:
         fi
 
         # Skills scans have their own narrower CLI surface and should not
-        # inherit vulnerability-scan flags like --auto-update-db or --policy.
+        # inherit vulnerability-scan flags like --auto-update-db. The shared
+        # policy input is passed below as a skills policy file.
         if [ "$INPUT_SCAN_TYPE" != "skills" ]; then
           if [ "$INPUT_SCAN_TYPE" != "secrets" ] && [ "$INPUT_SCAN_TYPE" != "code" ]; then
             # Severity gate
@@ -475,17 +491,56 @@ runs:
           ARGS+=(--skill-only)
         fi
 
-        # Skills verdict gate
-        if [ -n "$INPUT_FAIL_ON_VERDICT" ]; then
-          if [ "$INPUT_FAIL_ON_VERDICT" != "suspicious" ] && [ "$INPUT_FAIL_ON_VERDICT" != "malicious" ]; then
-            echo "::error::fail-on-verdict must be one of: suspicious, malicious"
-            exit 1
-          fi
+        validate_skill_verdict_choice() {
+          case "$1" in
+            suspicious|malicious) return 0 ;;
+            *)
+              echo "::error::$2 must be one of: suspicious, malicious"
+              exit 1
+              ;;
+          esac
+        }
+
+        validate_skill_review_choice() {
+          case "$1" in
+            review|high_risk|blocked) return 0 ;;
+            *)
+              echo "::error::$2 must be one of: review, high_risk, blocked"
+              exit 1
+              ;;
+          esac
+        }
+
+        add_skill_arg_or_warn() {
           if [ "$INPUT_SCAN_TYPE" = "skills" ]; then
-            ARGS+=(--fail-on-verdict "$INPUT_FAIL_ON_VERDICT")
+            ARGS+=("$1" "$2")
           else
-            echo "::warning::fail-on-verdict only applies to scan-type=skills and will be ignored"
+            echo "::warning::$1 only applies to scan-type=skills and will be ignored"
           fi
+        }
+
+        # Skills verdict and policy gates
+        if [ "$INPUT_SCAN_TYPE" = "skills" ] && [ -n "$INPUT_POLICY" ]; then
+          ARGS+=(--policy "$INPUT_POLICY")
+        elif [ "$INPUT_SCAN_TYPE" != "skills" ] && [ -n "$INPUT_POLICY" ]; then
+          :
+        fi
+
+        if [ -n "$INPUT_FAIL_ON_VERDICT" ]; then
+          validate_skill_verdict_choice "$INPUT_FAIL_ON_VERDICT" "fail-on-verdict"
+          add_skill_arg_or_warn "--fail-on-verdict" "$INPUT_FAIL_ON_VERDICT"
+        fi
+        if [ -n "$INPUT_WARN_ON_VERDICT" ]; then
+          validate_skill_verdict_choice "$INPUT_WARN_ON_VERDICT" "warn-on-verdict"
+          add_skill_arg_or_warn "--warn-on-verdict" "$INPUT_WARN_ON_VERDICT"
+        fi
+        if [ -n "$INPUT_FAIL_ON_REVIEW_VERDICT" ]; then
+          validate_skill_review_choice "$INPUT_FAIL_ON_REVIEW_VERDICT" "fail-on-review-verdict"
+          add_skill_arg_or_warn "--fail-on-review-verdict" "$INPUT_FAIL_ON_REVIEW_VERDICT"
+        fi
+        if [ -n "$INPUT_WARN_ON_REVIEW_VERDICT" ]; then
+          validate_skill_review_choice "$INPUT_WARN_ON_REVIEW_VERDICT" "warn-on-review-verdict"
+          add_skill_arg_or_warn "--warn-on-review-verdict" "$INPUT_WARN_ON_REVIEW_VERDICT"
         fi
 
         # GPU infrastructure scanning

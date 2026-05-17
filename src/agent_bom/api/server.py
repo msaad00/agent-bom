@@ -37,6 +37,7 @@ from agent_bom.api.middleware import (
 # ─── Extracted modules ────────────────────────────────────────────────────────
 from agent_bom.api.models import (
     AnalyticsHealth,
+    EntitlementHealth,
     HealthResponse,
     JobStatus,
     ScanJob,
@@ -717,6 +718,7 @@ from agent_bom.api.routes.credentials import router as _credentials_router  # no
 from agent_bom.api.routes.datasets import router as _datasets_router  # noqa: E402
 from agent_bom.api.routes.discovery import router as _discovery_router  # noqa: E402
 from agent_bom.api.routes.enterprise import router as _enterprise_router  # noqa: E402
+from agent_bom.api.routes.entitlements import router as _entitlements_router  # noqa: E402
 from agent_bom.api.routes.fleet import router as _fleet_router  # noqa: E402
 from agent_bom.api.routes.frameworks import router as _frameworks_router  # noqa: E402
 from agent_bom.api.routes.gateway import router as _gateway_router  # noqa: E402
@@ -737,6 +739,7 @@ app.include_router(_connectors_router)
 app.include_router(_credentials_router)
 app.include_router(_datasets_router)
 app.include_router(_discovery_router)
+app.include_router(_entitlements_router)
 app.include_router(_enterprise_router)
 app.include_router(_fleet_router)
 app.include_router(_frameworks_router)
@@ -878,12 +881,15 @@ async def root():
 @app.get("/health", response_model=HealthResponse, tags=["meta"])
 async def health() -> HealthResponse:
     """Liveness probe."""
+    from agent_bom.entitlements import load_entitlement_state
+
     return HealthResponse(
         status="ok",
         version=__version__,
         tracing=TracingHealth(**get_tracing_health()),
         analytics=_analytics_health(),
         storage=_storage_health(),
+        entitlements=EntitlementHealth(**load_entitlement_state().health_summary()),
     )
 
 

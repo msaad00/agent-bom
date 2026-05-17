@@ -75,6 +75,12 @@ This framing does not narrow the deployment story. It makes "deploy in your
 own cloud / infrastructure" the production form of lane 2, with runtime
 controls from lane 3 added where the customer needs inline enforcement.
 
+Use [PRODUCT_BOUNDARIES.md](PRODUCT_BOUNDARIES.md) as the source of truth for
+OSS, self-hosted enterprise, and Snowflake lane wording. In particular,
+managed `agent-bom Cloud` is not shipped today, and Snowflake is a governance
+and selected-backend lane rather than the default transactional backend for
+every API/UI workflow.
+
 Integrations should be described as distribution and workflow fit, not as a
 miscellaneous compatibility list. The strongest story is:
 

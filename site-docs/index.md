@@ -117,3 +117,4 @@ SLO or openCypher endpoint.
 
 [Deployment Overview](deployment/overview.md){ .md-button .md-button--primary }
 [Your Own AWS / EKS](deployment/own-infra-eks.md){ .md-button }
+[Product Boundaries](deployment/product-boundaries.md){ .md-button }

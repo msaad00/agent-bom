@@ -91,6 +91,8 @@ Current boundaries:
   roadmap items, not shipped surfaces
 - AWS IAM enrichment is opt-in and bounded by the documented read-only provider
   scope; do not treat it as complete IAM coverage across every cloud
+- OSS, self-hosted enterprise, and Snowflake product-lane boundaries are
+  documented in [docs/PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md)
 
 ## Try the demo
 

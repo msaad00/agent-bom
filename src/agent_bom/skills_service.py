@@ -86,6 +86,10 @@ class SkillFileReport:
                         "server": finding.server,
                         "recommendation": finding.recommendation,
                         "context": finding.context,
+                        "evidence_source": finding.evidence_source,
+                        "confidence": finding.confidence,
+                        "source_line": finding.source_line,
+                        "source_column": finding.source_column,
                     }
                     for finding in self.audit.findings
                 ],

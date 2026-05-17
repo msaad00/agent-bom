@@ -58,7 +58,7 @@ _NPM_INSTALL_RE = re.compile(
 )
 _ENV_VAR_RE = re.compile(r"\b([A-Z][A-Z0-9_]{2,})\b")
 _MCP_JSON_RE = re.compile(
-    r"```(?:json|jsonc)?\s*\n(\{[\s\S]*?\"mcpServers\"[\s\S]*?\})\s*\n```",
+    r"```(?:json|jsonc)?\s*\n(?P<body>\{[\s\S]*?\"mcpServers\"[\s\S]*?\})\s*\n```",
     re.MULTILINE,
 )
 _CODE_BLOCK_RE = re.compile(r"```[\w]*\n([\s\S]*?)```", re.MULTILINE)
@@ -221,7 +221,7 @@ class SkillScanResult:
     servers: list[MCPServer] = field(default_factory=list)
     credential_env_vars: list[str] = field(default_factory=list)
     source_files: list[str] = field(default_factory=list)
-    raw_content: dict[str, str] = field(default_factory=dict)  # source_file -> raw text (truncated)
+    raw_content: dict[str, str] = field(default_factory=dict)  # source_file -> raw text for audit analysis
     metadata: SkillMetadata | None = None  # Parsed frontmatter (SKILL.md format)
 
 
@@ -236,13 +236,12 @@ def parse_skill_file(path: Path) -> SkillScanResult:
     """
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
-        truncated_content = content[:8000] if len(content) > 8000 else content
     except OSError:
         logger.warning("Could not read skill file: %s", path)
         return SkillScanResult()
 
     if not content.strip():
-        return SkillScanResult(source_files=[str(path)], raw_content={str(path): truncated_content})
+        return SkillScanResult(source_files=[str(path)], raw_content={str(path): content})
 
     packages: list[Package] = []
     servers: list[MCPServer] = []
@@ -312,12 +311,22 @@ def parse_skill_file(path: Path) -> SkillScanResult:
     # MCP server JSON blocks
     for match in _MCP_JSON_RE.finditer(content):
         try:
-            config = json.loads(match.group(1))
+            config = json.loads(_strip_jsonc(match.group("body")))
             mcp_servers = config.get("mcpServers", {})
             for name, srv_config in mcp_servers.items():
-                command = srv_config.get("command", "")
+                if not isinstance(srv_config, dict):
+                    continue
+                command = str(srv_config.get("command") or "")
                 args = srv_config.get("args", [])
+                if isinstance(args, str):
+                    args = [args]
+                if not isinstance(args, list):
+                    args = []
                 env = srv_config.get("env", {})
+                if not isinstance(env, dict):
+                    env = {}
+                url = _server_url(srv_config)
+                transport = _server_transport(srv_config, url=url)
                 # Redact values — only keep keys for credential detection
                 redacted_env = {k: "***REDACTED***" for k in env}
                 servers.append(
@@ -326,7 +335,9 @@ def parse_skill_file(path: Path) -> SkillScanResult:
                         command=command,
                         args=args,
                         env=redacted_env,
-                        transport=TransportType.STDIO,
+                        transport=transport,
+                        url=url,
+                        config_path=str(path),
                     )
                 )
         except (json.JSONDecodeError, AttributeError):
@@ -344,9 +355,72 @@ def parse_skill_file(path: Path) -> SkillScanResult:
         servers=servers,
         credential_env_vars=credential_vars,
         source_files=[str(path)],
-        raw_content={str(path): truncated_content},
+        raw_content={str(path): content},
         metadata=metadata,
     )
+
+
+def _strip_jsonc(raw: str) -> str:
+    """Strip JSONC comments and trailing commas from an MCP config block."""
+    out: list[str] = []
+    i = 0
+    in_string = False
+    quote = ""
+    while i < len(raw):
+        char = raw[i]
+        nxt = raw[i + 1] if i + 1 < len(raw) else ""
+        if in_string:
+            out.append(char)
+            if char == "\\" and i + 1 < len(raw):
+                out.append(raw[i + 1])
+                i += 2
+                continue
+            if char == quote:
+                in_string = False
+                quote = ""
+            i += 1
+            continue
+        if char in {"'", '"'}:
+            in_string = True
+            quote = char
+            out.append(char)
+            i += 1
+            continue
+        if char == "/" and nxt == "/":
+            i += 2
+            while i < len(raw) and raw[i] != "\n":
+                i += 1
+            continue
+        if char == "/" and nxt == "*":
+            i += 2
+            while i + 1 < len(raw) and not (raw[i] == "*" and raw[i + 1] == "/"):
+                i += 1
+            i += 2
+            continue
+        out.append(char)
+        i += 1
+    return re.sub(r",\s*([}\]])", r"\1", "".join(out))
+
+
+def _server_url(config: dict) -> str | None:
+    for key in ("url", "serverUrl", "server_url", "endpoint"):
+        value = config.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _server_transport(config: dict, *, url: str | None) -> TransportType:
+    raw = str(config.get("transport") or config.get("type") or "").lower()
+    if raw in {"sse", "eventsource"}:
+        return TransportType.SSE
+    if raw in {"streamable-http", "http", "https", "remote"}:
+        return TransportType.STREAMABLE_HTTP
+    if raw == "stdio":
+        return TransportType.STDIO
+    if url:
+        return TransportType.SSE if "/sse" in url.lower() else TransportType.STREAMABLE_HTTP
+    return TransportType.STDIO
 
 
 def _parse_pkg_spec(spec: str, version_sep: str) -> tuple[str, str]:

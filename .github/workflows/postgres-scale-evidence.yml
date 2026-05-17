@@ -63,7 +63,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      AGENT_BOM_POSTGRES_DSN: postgresql://agent_bom:agent_bom@localhost:5432/agent_bom
+      AGENT_BOM_POSTGRES_URL: postgresql://agent_bom:agent_bom@localhost:5432/agent_bom
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:

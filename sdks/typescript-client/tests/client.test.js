@@ -57,13 +57,13 @@ test("posts deploy decision payload without undefined fields", async () => {
     tenantId: "tenant-c",
     fetch: async (_url, init) => {
       payload = JSON.parse(init.body);
-      return jsonResponse({ verdict: "allow", reasons: [] });
+      return jsonResponse({ decision: "allow", reasons: [] });
     },
   });
 
   const decision = await client.shouldIDeploy({ candidate: "flask@2.0.0" });
 
-  assert.equal(decision.verdict, "allow");
+  assert.equal(decision.decision, "allow");
   assert.deepEqual(payload, {
     candidate: "flask@2.0.0",
     tenant_id: "tenant-c",

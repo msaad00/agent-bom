@@ -29,7 +29,7 @@ const decision = await client.shouldIDeploy({
   blockRisk: 80,
 });
 
-console.log(health.status, paths.paths.length, decision.verdict);
+console.log(health.status, paths.paths.length, decision.decision);
 ```
 
 ## Boundary

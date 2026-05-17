@@ -1,5 +1,5 @@
 ## ── Builder stage ────────────────────────────────────────────────────────────
-FROM python:3.14.3-alpine3.23@sha256:faee120f7885a06fcc9677922331391fa690d911c020abb9e8025ff3d908e510 AS builder
+FROM python:3.14.5-alpine3.23@sha256:7128d274340c3aa2e34596c7a62fff85de8f4d71d46731f9dbe3c0e2cfd9117c AS builder
 
 WORKDIR /app
 ARG HTTP_PROXY
@@ -28,7 +28,7 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake]"
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
-FROM python:3.14.3-alpine3.23@sha256:faee120f7885a06fcc9677922331391fa690d911c020abb9e8025ff3d908e510
+FROM python:3.14.5-alpine3.23@sha256:7128d274340c3aa2e34596c7a62fff85de8f4d71d46731f9dbe3c0e2cfd9117c
 
 ARG VERSION=0.86.5
 ARG HTTP_PROXY

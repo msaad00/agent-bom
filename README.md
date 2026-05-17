@@ -14,9 +14,9 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security scanner and self-hosted control plane for AI-era infrastructure.</b></p>
+<p align="center"><b>Open security scanner and self-hosted control plane for AI/MCP infrastructure.</b></p>
 
-<p align="center"><code>agent-bom</code> inventories agents, MCP servers, tools, packages, credential environment names, cloud and runtime evidence, then maps the reachable blast radius behind each finding.</p>
+<p align="center"><code>agent-bom</code> generates a reachability-backed AI BOM across agents, MCP servers, packages, credential environment names, cloud, runtime, and skill surfaces, then exposes the same evidence through CLI/CI, API/UI, MCP tools, and selected runtime controls.</p>
 
 <p align="center">
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -47,6 +47,24 @@ better-sqlite3@9.0.0  (npm package)
 ```
 
 Blast radius is the core idea: `package -> vulnerability finding -> MCP server (tools + credential env names) -> connected agents`. You can search by CVE, package, server, tool, credential name, or agent, but the evidence graph keeps the vulnerable package instance as the source of the reachable exposure path. CWE-aware impact keeps a DoS from being reported like credential compromise. The image above is a schematic; the bundled demo findings are backed by real OSV/GHSA advisories.
+
+## What is current on main
+
+The current graph and agent surfaces are shipped as product features, not
+roadmap placeholders:
+
+- `ExposurePath` is the shared investigation object across API responses, the
+  dashboard brief, SARIF/Markdown/HTML reports, JSON output, and MCP tools.
+- Sigma.js and graphology are wired as the WebGL overview path behind the graph
+  renderer switch, while React Flow remains the focused path/evidence renderer.
+- Time-versioned edges, semantic clusters, toxic-combo projection, identity
+  graph taxonomy, AWS IAM identity enrichment, and hot-path graph indexes are on
+  `main`.
+- MCP includes `exposure_paths` and `should_i_deploy` tools for headless agents
+  that need ranked investigation context or allow/warn/block deploy guidance.
+- Neptune is optional enterprise graph-backend work. It is not required for the
+  default SQLite/Postgres self-hosted path, and there is no published production
+  Neptune latency SLO or openCypher endpoint claim.
 
 ## Try the demo
 
@@ -473,7 +491,7 @@ agent-bom
 | CLI (`agent-bom agents`) | local audit + project scan | `agent-bom agents -p .` | console, JSON, SARIF, SBOM, HTML |
 | Endpoint fleet (`--push-url .../v1/fleet/sync`) | employee laptops pushing into self-hosted fleet | `agent-bom agents --preset enterprise --push-url https://agent-bom.example.com/v1/fleet/sync` | fleet inventory + trust factors |
 | GitHub Action (`uses: msaad00/agent-bom@v0.86.5`) | CI/CD + SARIF | `uses: msaad00/agent-bom@v0.86.5` | `agent-bom-results.sarif` |
-| Docker (`agentbom/agent-bom`) | isolated CLI/API jobs and non-browser self-hosted entrypoints | `docker run --rm agentbom/agent-bom:0.86.3 agents --demo` | same artifacts as CLI |
+| Docker (`agentbom/agent-bom`) | isolated CLI/API jobs and non-browser self-hosted entrypoints | `docker run --rm agentbom/agent-bom:0.86.5 agents --demo` | same artifacts as CLI |
 | Browser UI image (`agentbom/agent-bom-ui`) | browser dashboard paired with the same API/control plane | `docker compose -f docker-compose.pilot.yml up -d` | dashboard at `http://localhost:3000` |
 | Kubernetes / Helm | self-hosted API + dashboard, scheduled discovery | `helm upgrade --install agent-bom deploy/helm/agent-bom --set controlPlane.enabled=true` | API, UI, jobs, optional gateway/proxy |
 | REST API (`agent-bom api` / `agent-bom serve`) | platform integration and self-hosted control plane | `agent-bom serve --port 8422 --persist jobs.db` | `/docs`, `/health`, `/v1/scan`, `/v1/fleet` |

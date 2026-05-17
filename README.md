@@ -16,7 +16,7 @@
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI/MCP infrastructure.</b></p>
 
-<p align="center"><code>agent-bom</code> generates a reachability-backed AI BOM across agents, MCP servers, packages, credential environment names, cloud, runtime, and skill surfaces, then exposes the same evidence through CLI/CI, API/UI, MCP tools, and selected runtime controls.</p>
+<p align="center"><code>agent-bom</code> is also an open security data plane: it generates a reachability-backed AI BOM across agents, MCP servers, packages, credential environment names, cloud, runtime, and skill surfaces, then exposes the same evidence to humans and AI agents through CLI/CI, API/UI, MCP tools, and selected runtime controls.</p>
 
 <p align="center">
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -65,6 +65,32 @@ roadmap placeholders:
 - Neptune is optional enterprise graph-backend work. It is not required for the
   default SQLite/Postgres self-hosted path, and there is no published production
   Neptune latency SLO or openCypher endpoint claim.
+
+## Human and agent surfaces
+
+The product is built as one evidence model with multiple consumers, not as a
+dashboard-only workflow:
+
+| Surface | Primary consumer | Shipped boundary |
+|---|---|---|
+| **CLI / CI** | developers, release gates, automation | local scans, SARIF/SBOM/HTML/JSON output, deterministic exit codes |
+| **API / UI** | security teams, auditors, operators | authenticated control plane, graph cockpit, fleet, compliance, audit, evidence review |
+| **MCP tools** | Claude, Cursor, Codex, Windsurf, Cortex, and custom agents | 38 read-only tools, strict arguments, `exposure_paths`, `should_i_deploy` |
+| **Proxy / gateway / Shield** | runtime operators and selected applications | scoped MCP traffic inspection, policy decisions, redacted audit, runtime evidence |
+
+The UI remains a full-fidelity cockpit for humans. MCP/API/CLI give agents and
+other platforms the same underlying security primitives without requiring a
+human to click through the dashboard.
+
+Current boundaries:
+
+- the TypeScript package is `@agent-bom/runtime`, focused on MCP runtime
+  detectors; it is not yet a full scanner or API client SDK
+- there is no managed agent-bom Cloud offering in this repo today
+- streaming SIEM/Kafka-style posture feeds and detection-as-code YAML are
+  roadmap items, not shipped surfaces
+- AWS IAM enrichment is opt-in and bounded by the documented read-only provider
+  scope; do not treat it as complete IAM coverage across every cloud
 
 ## Try the demo
 

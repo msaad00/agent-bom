@@ -18,6 +18,9 @@ Two modes matter:
 
 ## Major clients
 
+These clients are first-class today because `agent-bom` can both expose MCP
+tools to them and discover their local MCP configuration during scans.
+
 | Client | Primary config path(s) | Recommended setup | Notes |
 |--------|-------------------------|-------------------|-------|
 | Claude Desktop | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json` Linux: `~/.config/Claude/claude_desktop_config.json` Windows: `~/AppData/Roaming/Claude/claude_desktop_config.json` | `agent-bom mcp server` or `uvx agent-bom mcp server` | Good fit for MCP server mode. Proxy wrapping works for JSON-configured stdio servers. |
@@ -27,6 +30,11 @@ Two modes matter:
 | Windsurf | macOS: `~/.windsurf/mcp.json`, `~/Library/Application Support/Windsurf/User/globalStorage/windsurf.mcp/mcp.json` Linux: `~/.windsurf/mcp.json` Windows: `~/.windsurf/mcp.json` | `agent-bom mcp server` | Same `mcpServers` JSON shape as Claude/Cursor. |
 | Codex CLI | `~/.codex/config.toml` on macOS, Linux, and Windows | `agent-bom mcp server` via `[mcp_servers.agent-bom]` | Codex uses TOML, not JSON. `proxy-configure` does not rewrite TOML configs; wrap manually when needed. |
 | Gemini CLI | `~/.gemini/settings.json` on macOS, Linux, and Windows | `agent-bom mcp server` | Uses standard JSON MCP config. |
+
+For agent-facing investigation, the most useful tools to start with are
+`exposure_paths` for ranked graph context and `should_i_deploy` for
+allow/warn/block deploy guidance. Both return evidence; neither mutates code,
+cloud resources, or third-party systems.
 
 ## Snowflake and skills
 

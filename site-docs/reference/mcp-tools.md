@@ -1,6 +1,9 @@
 # MCP Tools Reference
 
-agent-bom exposes MCP tools for scanning, blast radius, trust, compliance, runtime, and remediation.
+agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
+runtime, and remediation. The tools are read-only by default: agent consumers
+can request evidence and deploy guidance, but the MCP server does not mutate
+repos, cloud resources, or runtime targets.
 
 ## Tools
 
@@ -25,11 +28,18 @@ Return ranked ExposurePath JSON from the graph store for headless security agent
 exposure_paths(tenant_id="default", limit=5, min_risk=70)
 ```
 
+Use this when an AI agent needs the same ranked investigation queue that a
+human reviews in the graph cockpit.
+
 ### should_i_deploy
 Return an allow/warn/block deployment decision from matched ExposurePath risk.
 ```
 should_i_deploy(candidate="requests", tenant_id="default", block_risk=80)
 ```
+
+Use this as a decision aid in CI or assistant workflows. It returns reasons,
+matched paths, and a verdict; it does not deploy, remediate, or open pull
+requests.
 
 ### registry_lookup
 Look up an MCP server in the 427+ server security metadata registry.
@@ -80,12 +90,21 @@ Runs 17 behavioral risk patterns (credential file access, confirmation bypass, m
 | Credentials | proportionate, scoped, documented env vars |
 | Persistence & Privilege | no persistence, no escalation, no telemetry |
 
-Returns a verdict (`benign` / `suspicious` / `malicious`), confidence level, per-category results, and all findings with severity and recommendations.
+Returns a backward-compatible verdict (`benign` / `suspicious` /
+`malicious`), dual-axis `content_verdict` and `provenance_verdict` fields,
+`review_verdict`, `overall_recommendation`, confidence level, per-category
+results, and all findings with severity and recommendations. Clean content
+with missing provenance should remain content-benign while routing the overall
+recommendation to review.
 
 ```
 skill_trust(skill_path="./SKILL.md")
 # → {
-#     "verdict": "suspicious",
+#     "verdict": "benign",
+#     "content_verdict": "benign",
+#     "provenance_verdict": "unverified",
+#     "review_verdict": "review",
+#     "overall_recommendation": "review",
 #     "confidence": "high",
 #     "categories": [
 #       { "name": "Install Mechanism", "level": "fail", "summary": "Unverified install source" },

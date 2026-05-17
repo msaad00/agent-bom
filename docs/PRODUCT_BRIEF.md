@@ -120,7 +120,7 @@ notes discuss agent-native product direction.
 |---|---|---|
 | Human cockpit | Next.js dashboard, graph cockpit, reports, compliance and audit views | every UI action backed by a source registry and persisted workflow state |
 | Agent interface | 38 read-only MCP tools, strict arguments, `exposure_paths`, `should_i_deploy` | long-lived posture subscription tool, autonomous remediation actions |
-| Scanner/data plane | CLI, Docker, GitHub Action, REST API, imports, graph exports | a full Python scanner SDK and full TypeScript scanner/API SDK |
+| Scanner/data plane | CLI, Docker, GitHub Action, REST API, imports, graph exports, initial TypeScript control-plane client | a full Python scanner SDK and full TypeScript scanner SDK |
 | Runtime | MCP proxy, gateway, Shield SDK, runtime audit and policy decisions | first-class Kafka/Splunk/EventBridge posture streaming |
 | Graph scale | SQLite/Postgres default path, WebGL overview, optional Neptune adapter work | production Neptune SLOs, public openCypher endpoint, mandatory graph-database backend |
 | Extensibility | Python package internals, skills, runtime detector package | productized detection-as-code YAML registry and stable plugin SDK |

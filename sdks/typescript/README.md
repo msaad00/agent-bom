@@ -39,7 +39,9 @@ const responseAlerts = [
 console.log([...argumentAlerts, ...responseAlerts]);
 ```
 
-For full scans, graph exports, SBOM/SARIF output, MCP tools, or control-plane
-queries, use the `agent-bom` CLI, REST API, or MCP server. A scanner/API SDK is
-roadmap work and should not be described as shipped until it wraps those public
-contracts directly.
+For full scans, graph exports, SBOM/SARIF output, or MCP tools, use the
+`agent-bom` CLI, REST API, or MCP server.
+
+For TypeScript control-plane queries, use the separate `@agent-bom/client`
+package under `sdks/typescript-client`. That package wraps API calls; this
+package remains the runtime detector library.

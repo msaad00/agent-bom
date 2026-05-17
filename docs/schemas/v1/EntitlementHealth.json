@@ -1,0 +1,36 @@
+{
+  "properties": {
+    "current_oss_paths_gated": {
+      "default": false,
+      "title": "Current Oss Paths Gated",
+      "type": "boolean"
+    },
+    "enabled_feature_count": {
+      "default": 0,
+      "title": "Enabled Feature Count",
+      "type": "integer"
+    },
+    "lane": {
+      "default": "oss",
+      "title": "Lane",
+      "type": "string"
+    },
+    "metadata_only": {
+      "default": true,
+      "title": "Metadata Only",
+      "type": "boolean"
+    },
+    "status": {
+      "default": "missing",
+      "title": "Status",
+      "type": "string"
+    },
+    "support_tier": {
+      "default": "community",
+      "title": "Support Tier",
+      "type": "string"
+    }
+  },
+  "title": "EntitlementHealth",
+  "type": "object"
+}

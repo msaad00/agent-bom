@@ -73,6 +73,11 @@
     },
     {
       "doc": "",
+      "name": "EntitlementHealth",
+      "schema": "EntitlementHealth.json"
+    },
+    {
+      "doc": "",
       "name": "EvaluateRequest",
       "schema": "EvaluateRequest.json"
     },

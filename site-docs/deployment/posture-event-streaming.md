@@ -56,6 +56,7 @@ for SIEM/security-lake interoperability, not a replacement for the graph model.
 | Pull by API | shipped | `GET /v1/findings`, `POST /v1/findings/bulk`, `/v1/graph*`, `/v1/audit*` | works for dashboards, SIEM jobs, agent runtimes, and custom collectors |
 | Pull by MCP | shipped | `exposure_paths`, `should_i_deploy` | best for AI agents and coding assistants |
 | Webhook outbox core | shipped | `agent_bom.posture_streaming.WebhookOutbox` | operator-provided sender performs explicit HTTPS POST; no hidden egress |
+| Webhook outbox observability | shipped | `GET /v1/posture/webhooks/outbox` | tenant-scoped status, stats, dead-letter inspection, admin retry |
 | Kafka | roadmap | topic-per-tenant or topic with tenant key | first enterprise stream sink for posture events |
 | AWS EventBridge + CloudTrail S3/SQS | roadmap | customer account event bus or S3/SQS trail feed | first AWS cloud activity evidence lane |
 | GCP Pub/Sub + Azure Event Hub/Event Grid | roadmap | customer-owned cloud event transports | multi-cloud parity after AWS |
@@ -90,16 +91,18 @@ credential-reference model, not raw destination secrets.
 1. **Webhook outbox core** — tenant-scoped table, signed delivery headers,
    retry policy metadata, dead-letter state, private-network destination
    opt-in, and tests. Shipped in `agent_bom.posture_streaming`.
-2. **OCSF event envelope** — shared serializer for findings, exposure paths,
+2. **Webhook outbox observability API** — tenant-scoped status and stats,
+   dead-letter inspection, and explicit admin retry.
+3. **OCSF event envelope** — shared serializer for findings, exposure paths,
    deploy decisions, skill verdicts, runtime policy decisions, and audit
    integrity events.
-3. **Kafka connector** — enterprise stream sink for findings, exposure paths,
+4. **Kafka connector** — enterprise stream sink for findings, exposure paths,
    skill verdicts, deploy decisions, and audit deltas.
-4. **Cloud activity ingestion** — AWS EventBridge plus CloudTrail S3/SQS first,
+5. **Cloud activity ingestion** — AWS EventBridge plus CloudTrail S3/SQS first,
    then GCP Pub/Sub and Azure Event Hub/Event Grid.
-5. **High-volume AWS adapter** — Kinesis/Firehose for customers that already
+6. **High-volume AWS adapter** — Kinesis/Firehose for customers that already
    centralize telemetry there.
-6. **Agent subscription** — MCP `subscribe_posture_changes` backed by the same
+7. **Agent subscription** — MCP `subscribe_posture_changes` backed by the same
    outbox/replay contract.
 
 Each slice should ship with a first command, an artifact, and a verification

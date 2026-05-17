@@ -14,6 +14,9 @@ push-delivery primitive:
 - `agent_bom.posture_streaming.WebhookOutbox`, a tenant-scoped SQLite outbox
   for signed webhook delivery with idempotency, retry metadata,
   private-network destination opt-in, and dead-letter state
+- REST outbox observability at `GET /v1/posture/webhooks/outbox`,
+  `GET /v1/posture/webhooks/outbox/stats`, and
+  `POST /v1/posture/webhooks/outbox/{row_id}/retry`
 
 The shipped webhook outbox core does not create hidden egress. Operators must
 provide an explicit `WebhookDestination` and delivery function. Managed
@@ -45,15 +48,17 @@ Posture push connectors should emit:
 1. Generic webhook outbox core with signed HTTPS POST headers, retry metadata,
    dead-letter state, and idempotent `event_id` delivery. Shipped in
    `agent_bom.posture_streaming`.
-2. OCSF envelope shared by all connector adapters.
-3. Kafka connector for enterprise posture-event sinks covering findings,
+2. Outbox observability API for tenant-scoped status, stats, dead-letter
+   inspection, and explicit admin retry. Shipped in the REST API.
+3. OCSF envelope shared by all connector adapters.
+4. Kafka connector for enterprise posture-event sinks covering findings,
    `ExposurePath` changes, skill verdicts, deploy decisions, and audit deltas.
-4. AWS EventBridge plus S3/SQS CloudTrail ingestion for cloud activity
+5. AWS EventBridge plus S3/SQS CloudTrail ingestion for cloud activity
    evidence.
-5. GCP Pub/Sub plus Azure Event Hub/Event Grid for multi-cloud parity.
-6. Kinesis/Firehose as a later AWS high-volume adapter for customers that
+6. GCP Pub/Sub plus Azure Event Hub/Event Grid for multi-cloud parity.
+7. Kinesis/Firehose as a later AWS high-volume adapter for customers that
    already centralize telemetry there.
-7. MCP posture subscription tool backed by the same replay contract.
+8. MCP posture subscription tool backed by the same replay contract.
 
 Do not document Kafka, EventBridge, Pub/Sub, Event Hub, Kinesis, Firehose, or
 MCP posture subscriptions as shipped until their adapters and tests land. The

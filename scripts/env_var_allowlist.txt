@@ -137,6 +137,8 @@ AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON
 AGENT_BOM_OTEL_TRACES_ENDPOINT
 AGENT_BOM_OTEL_TRACES_HEADERS
 AGENT_BOM_POSTGRES_URL
+# API posture webhook outbox SQLite path override; deploy-time operator setting.
+AGENT_BOM_POSTURE_WEBHOOK_OUTBOX_DB
 # CLI profile selector; also exposed as the root --profile option.
 AGENT_BOM_PROFILE
 AGENT_BOM_PROTECTION_API_KEY

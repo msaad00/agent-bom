@@ -762,6 +762,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     _ROLE_RULES: tuple[tuple[str, str, str], ...] = (
         ("GET", "/v1/compliance", "viewer"),
         ("GET", "/v1/posture/backpressure", "viewer"),
+        ("GET", "/v1/posture/webhooks/", "analyst"),
         ("GET", "/v1/posture", "viewer"),
         ("GET", "/v1/auth/debug", "viewer"),
         ("GET", "/v1/auth/me", "viewer"),
@@ -786,6 +787,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("DELETE", "/v1/credentials/", "admin"),
         ("DELETE", "/v1/tenant/", "admin"),
         ("POST", "/v1/gateway/policies", "admin"),
+        ("POST", "/v1/posture/webhooks/", "admin"),
         ("PUT", "/v1/gateway/policies/", "admin"),
         ("DELETE", "/v1/gateway/policies/", "admin"),
         ("POST", "/v1/fleet/sync", "admin"),

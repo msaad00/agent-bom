@@ -164,6 +164,38 @@ class QueuedDelivery:
     last_error: str = ""
 
 
+@dataclass(frozen=True)
+class OutboxRecord:
+    """Operator-visible outbox row without signing secret material."""
+
+    row_id: int
+    event_id: str
+    tenant_id: str
+    destination_id: str
+    url: str
+    status: str
+    attempts: int
+    next_attempt_at: float
+    created_at: float
+    delivered_at: float | None = None
+    last_error: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "row_id": self.row_id,
+            "event_id": self.event_id,
+            "tenant_id": self.tenant_id,
+            "destination_id": self.destination_id,
+            "url": self.url,
+            "status": self.status,
+            "attempts": self.attempts,
+            "next_attempt_at": self.next_attempt_at,
+            "created_at": self.created_at,
+            "delivered_at": self.delivered_at,
+            "last_error": self.last_error,
+        }
+
+
 class WebhookOutbox:
     """SQLite-backed webhook outbox with retry and idempotency metadata."""
 
@@ -291,6 +323,95 @@ class WebhookOutbox:
                 (status, attempts, retry_at, sanitize_error(error), row_id),
             )
 
+    def records(self, *, tenant_id: str, status: str | None = None, limit: int = 100) -> list[OutboxRecord]:
+        clean_tenant = _validate_tenant_id(tenant_id)
+        bounded_limit = max(1, min(int(limit), 500))
+        params: list[Any] = [clean_tenant]
+        if status:
+            params.append(status)
+            query = """
+                SELECT id, event_id, tenant_id, destination_id, url, status,
+                       attempts, next_attempt_at, created_at, delivered_at,
+                       last_error
+                FROM posture_webhook_outbox
+                WHERE tenant_id = ? AND status = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """
+        else:
+            query = """
+                SELECT id, event_id, tenant_id, destination_id, url, status,
+                       attempts, next_attempt_at, created_at, delivered_at,
+                       last_error
+                FROM posture_webhook_outbox
+                WHERE tenant_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """
+        params.append(bounded_limit)
+        with self._connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [_outbox_record_from_row(row) for row in rows]
+
+    def stats(self, *, tenant_id: str) -> dict[str, Any]:
+        clean_tenant = _validate_tenant_id(tenant_id)
+        with self._connect() as conn:
+            counts = conn.execute(
+                """
+                SELECT status, COUNT(*) AS count
+                FROM posture_webhook_outbox
+                WHERE tenant_id = ?
+                GROUP BY status
+                """,
+                (clean_tenant,),
+            ).fetchall()
+            pending = conn.execute(
+                """
+                SELECT MIN(created_at) AS oldest_created_at, MIN(next_attempt_at) AS next_attempt_at
+                FROM posture_webhook_outbox
+                WHERE tenant_id = ? AND status = 'pending'
+                """,
+                (clean_tenant,),
+            ).fetchone()
+        by_status = {str(row["status"]): int(row["count"]) for row in counts}
+        return {
+            "tenant_id": clean_tenant,
+            "total": sum(by_status.values()),
+            "by_status": by_status,
+            "oldest_pending_created_at": pending["oldest_created_at"] if pending else None,
+            "next_pending_attempt_at": pending["next_attempt_at"] if pending else None,
+        }
+
+    def requeue_dead_letter(self, *, tenant_id: str, row_id: int, retry_at: float | None = None) -> bool:
+        clean_tenant = _validate_tenant_id(tenant_id)
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE posture_webhook_outbox
+                SET status = 'pending', next_attempt_at = ?, last_error = ''
+                WHERE id = ? AND tenant_id = ? AND status = 'dead_letter'
+                """,
+                (_now() if retry_at is None else retry_at, row_id, clean_tenant),
+            )
+            return bool(cur.rowcount)
+
+
+def _outbox_record_from_row(row: sqlite3.Row) -> OutboxRecord:
+    delivered = row["delivered_at"]
+    return OutboxRecord(
+        row_id=int(row["id"]),
+        event_id=str(row["event_id"]),
+        tenant_id=str(row["tenant_id"]),
+        destination_id=str(row["destination_id"]),
+        url=str(row["url"]),
+        status=str(row["status"]),
+        attempts=int(row["attempts"]),
+        next_attempt_at=float(row["next_attempt_at"]),
+        created_at=float(row["created_at"]),
+        delivered_at=float(delivered) if delivered is not None else None,
+        last_error=str(row["last_error"] or ""),
+    )
+
 
 def signed_webhook_headers(event: PostureEvent, destination: WebhookDestination, *, attempt: int = 1) -> dict[str, str]:
     payload_json = _canonical_json(event.to_dict())
@@ -357,6 +478,7 @@ async def deliver_due_webhooks(
 
 __all__ = [
     "POSTURE_EVENT_SCHEMA_VERSION",
+    "OutboxRecord",
     "PostureEvent",
     "PostureStreamingError",
     "QueuedDelivery",

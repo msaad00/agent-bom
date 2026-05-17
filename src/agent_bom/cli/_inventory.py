@@ -14,7 +14,7 @@ from rich.console import Console
 
 from agent_bom.cli._common import _build_agents_from_inventory, _make_console, read_json_file_for_cli
 from agent_bom.discovery import discover_all
-from agent_bom.inventory import _inventory_schema_path, _inventory_validator
+from agent_bom.inventory import _inventory_payload_and_version, _inventory_schema_path, _inventory_validator
 from agent_bom.mcp_blocklist import flag_blocklisted_mcp_servers
 from agent_bom.models import AIBOMReport
 from agent_bom.output import print_agent_tree, print_summary
@@ -158,22 +158,25 @@ def validate(inventory_file: str):
     """
     console = Console()
 
-    schema_path = _inventory_schema_path()
-    if not schema_path or not schema_path.exists():
-        console.print("[red]Schema file not found. Run from the agent-bom repo root.[/red]")
-        sys.exit(1)
-
     data = read_json_file_for_cli(inventory_file, label="inventory file")
 
     try:
-        validator = _inventory_validator()
+        payload, schema_version = _inventory_payload_and_version(data)
+        schema_path = _inventory_schema_path(schema_version)
+        if not schema_path or not schema_path.exists():
+            console.print("[red]Schema file not found. Run from the agent-bom repo root.[/red]")
+            sys.exit(1)
+        validator = _inventory_validator(schema_version)
+    except ValueError as exc:
+        console.print(f"\n  [red]✗ Invalid — {exc}[/red]\n")
+        sys.exit(1)
     except ImportError:
         console.print("[red]jsonschema not installed. Run: pip install jsonschema[/red]")
         sys.exit(1)
-    errors = sorted(validator.iter_errors(data), key=lambda e: list(e.path))
+    errors = sorted(validator.iter_errors(payload), key=lambda e: list(e.path))
 
     if not errors:
-        agents = data.get("agents", [])
+        agents = payload.get("agents", [])
         total_servers = sum(len(a.get("mcp_servers", [])) for a in agents)
         total_packages = sum(len(s.get("packages", [])) for a in agents for s in a.get("mcp_servers", []))
         console.print(f"\n  [green]✓ Valid[/green] — {len(agents)} agent(s), {total_servers} server(s), {total_packages} package(s)")

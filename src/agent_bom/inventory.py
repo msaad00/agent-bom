@@ -46,6 +46,8 @@ _CSV_REQUIRED_COLUMNS = frozenset({"name", "version", "ecosystem"})
 
 # Size guard to prevent OOM on malicious/huge inputs.
 _MAX_INVENTORY_SIZE = 100 * 1024 * 1024  # 100 MB
+_DEFAULT_INVENTORY_SCHEMA_VERSION = "1"
+_SUPPORTED_INVENTORY_SCHEMA_VERSIONS = frozenset({_DEFAULT_INVENTORY_SCHEMA_VERSION})
 _ECOSYSTEM_ALIASES = {
     "pip": "pypi",
     "python": "pypi",
@@ -56,8 +58,10 @@ _ECOSYSTEM_ALIASES = {
 }
 
 
-def _inventory_schema_path() -> Path | None:
+def _inventory_schema_path(version: str = _DEFAULT_INVENTORY_SCHEMA_VERSION) -> Path | None:
     """Return the inventory schema path from source or installed package data."""
+    if version not in _SUPPORTED_INVENTORY_SCHEMA_VERSIONS:
+        return None
     candidate_paths = [
         Path(__file__).parent.parent.parent / "config" / "schemas" / "inventory.schema.json",
         Path(__file__).parent / "data" / "inventory.schema.json",
@@ -89,20 +93,33 @@ def _inventory_schema_path() -> Path | None:
     return None
 
 
-@lru_cache(maxsize=1)
-def _inventory_validator():
-    """Build and cache the inventory JSON Schema validator."""
+@lru_cache(maxsize=len(_SUPPORTED_INVENTORY_SCHEMA_VERSIONS))
+def _inventory_validator(version: str = _DEFAULT_INVENTORY_SCHEMA_VERSION):
+    """Build and cache the inventory JSON Schema validator for *version*."""
     import jsonschema
 
-    schema_path = _inventory_schema_path()
+    schema_path = _inventory_schema_path(version)
     if not schema_path or not schema_path.exists():
-        raise RuntimeError("Inventory schema file not found")
+        raise RuntimeError(f"Inventory schema file not found for schema_version {version!r}")
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     return jsonschema.Draft202012Validator(schema)
 
 
-def _validate_inventory_payload(data: Any) -> dict[str, Any]:
-    """Validate an inventory payload against the canonical schema."""
+def _coerce_inventory_schema_version(value: Any) -> str:
+    if value is None:
+        return _DEFAULT_INVENTORY_SCHEMA_VERSION
+    if isinstance(value, int):
+        value = str(value)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Inventory schema_version must be a non-empty string")
+    version = value.strip()
+    if version not in _SUPPORTED_INVENTORY_SCHEMA_VERSIONS:
+        supported = ", ".join(sorted(_SUPPORTED_INVENTORY_SCHEMA_VERSIONS))
+        raise ValueError(f"Unsupported inventory schema_version {version!r}; supported versions: {supported}")
+    return version
+
+
+def _inventory_payload_and_version(data: Any) -> tuple[dict[str, Any], str]:
     if not isinstance(data, dict):
         raise ValueError("Inventory JSON root must be an object with an 'agents' array")
 
@@ -112,7 +129,15 @@ def _validate_inventory_payload(data: Any) -> dict[str, Any]:
             raise ValueError("Inventory snapshot in scan report must be an object")
         data = snapshot
 
-    errors = sorted(_inventory_validator().iter_errors(data), key=lambda e: list(e.path))
+    version = _coerce_inventory_schema_version(data.get("schema_version"))
+    return data, version
+
+
+def _validate_inventory_payload(data: Any) -> dict[str, Any]:
+    """Validate an inventory payload against the canonical schema."""
+    data, version = _inventory_payload_and_version(data)
+
+    errors = sorted(_inventory_validator(version).iter_errors(data), key=lambda e: list(e.path))
     if errors:
         first = errors[0]
         path = " -> ".join(str(part) for part in first.path) or "(root)"
@@ -158,6 +183,10 @@ def load_inventory(source: str) -> dict:
         with open(path, newline="", encoding="utf-8") as fp:
             return _load_csv_inventory(fp)
 
+    if path.suffix.lower() in {".jsonl", ".ndjson"}:
+        with open(path, encoding="utf-8") as fp:
+            return _load_ndjson_inventory(fp)
+
     with open(path, encoding="utf-8") as fp:
         return _load_json_inventory(fp)
 
@@ -195,6 +224,68 @@ def _load_json_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
     except json.JSONDecodeError as exc:
         source = getattr(fp, "name", "inventory file")
         raise ValueError(f"Inventory JSON error in {source}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
+
+
+def _load_ndjson_inventory(fp: io.TextIOBase) -> dict:
+    """Parse line-delimited inventory and validate each agent chunk.
+
+    The first non-empty line may be a metadata object with ``schema_version``,
+    ``source``, ``generated_at``, or ``discovery_provenance``. Later lines can
+    be either full inventory objects with ``agents`` or individual agent
+    objects. This keeps fleet-scale pushed inventory parseable without loading
+    one monolithic JSON document before validation.
+    """
+    source = getattr(fp, "name", "inventory file")
+    version = _DEFAULT_INVENTORY_SCHEMA_VERSION
+    metadata: dict[str, Any] = {}
+    metadata_keys = {"schema_version", "source", "generated_at", "discovery_provenance"}
+    agents: list[dict[str, Any]] = []
+    saw_payload = False
+
+    for line_no, raw_line in enumerate(fp, start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Inventory NDJSON error in {source}: line {line_no}, column {exc.colno}: {exc.msg}") from exc
+        if not isinstance(record, dict):
+            raise ValueError(f"Inventory NDJSON error in {source}: line {line_no}: record must be an object")
+
+        if not saw_payload and "agents" not in record and "name" not in record and set(record).issubset(metadata_keys):
+            version = _coerce_inventory_schema_version(record.get("schema_version"))
+            metadata = {key: record[key] for key in metadata_keys if key in record}
+            metadata["schema_version"] = version
+            continue
+
+        saw_payload = True
+        if "agents" in record:
+            chunk, chunk_version = _inventory_payload_and_version(record)
+            if chunk_version != version:
+                raise ValueError(
+                    f"Inventory NDJSON error in {source}: line {line_no}: mixed schema_version {chunk_version!r} does not match {version!r}"
+                )
+            chunk_agents = chunk.get("agents")
+            if not isinstance(chunk_agents, list):
+                raise ValueError(f"Inventory NDJSON error in {source}: line {line_no}: agents must be an array")
+        else:
+            chunk_agents = [record]
+
+        for agent in chunk_agents:
+            try:
+                _validate_inventory_payload({"schema_version": version, "agents": [agent]})
+            except ValueError as exc:
+                raise ValueError(f"Inventory NDJSON error in {source}: line {line_no}: {exc}") from exc
+            agents.append(agent)
+
+    if not agents:
+        raise ValueError(f"Inventory NDJSON in {source} produced no agent records")
+
+    payload = dict(metadata)
+    payload.setdefault("schema_version", version)
+    payload["agents"] = agents
+    return _validate_inventory_payload(payload)
 
 
 def _load_csv_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]

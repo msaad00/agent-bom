@@ -65,7 +65,7 @@ class BasePolicy:
 POLICY: dict[str, BasePolicy] = {
     "Dockerfile": BasePolicy(
         image="python",
-        expected_tags=("3.14.3-alpine3.23",),
+        expected_tags=("3.14.5-alpine3.23",),
         rationale="Alpine + Python 3.14 is the canonical scanner runtime; smallest attack surface.",
     ),
     "ui/Dockerfile": BasePolicy(
@@ -192,7 +192,7 @@ def _policy_key(path: Path) -> str | None:
 
 
 def _collect_dockerfiles() -> list[Path]:
-    skip = {"node_modules", ".venv", ".git", "build", "dist", "site"}
+    skip = {"node_modules", ".venv", ".git", ".claude", "build", "dist", "site"}
     out: list[Path] = []
     for path in ROOT.rglob("Dockerfile*"):
         if any(part in skip for part in path.parts):

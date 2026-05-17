@@ -40,6 +40,24 @@ def test_action_rejects_secrets_and_code_sarif_or_gate_contracts() -> None:
     assert '[ "$INPUT_SCAN_TYPE" != "secrets" ] && [ "$INPUT_SCAN_TYPE" != "code" ]' in run_script
 
 
+def test_action_exposes_policy_aware_skills_gates() -> None:
+    action_text = (ROOT / "action.yml").read_text(encoding="utf-8")
+    action = yaml.safe_load(action_text)
+    scan_step = next(step for step in action["runs"]["steps"] if step.get("id") == "scan")
+    run_script = scan_step["run"]
+
+    assert "warn-on-verdict" in action["inputs"]
+    assert "fail-on-review-verdict" in action["inputs"]
+    assert "warn-on-review-verdict" in action["inputs"]
+    assert "INPUT_WARN_ON_VERDICT" in scan_step["env"]
+    assert "INPUT_FAIL_ON_REVIEW_VERDICT" in scan_step["env"]
+    assert "INPUT_WARN_ON_REVIEW_VERDICT" in scan_step["env"]
+    assert 'ARGS+=(--policy "$INPUT_POLICY")' in run_script
+    assert 'add_skill_arg_or_warn "--warn-on-verdict" "$INPUT_WARN_ON_VERDICT"' in run_script
+    assert 'add_skill_arg_or_warn "--fail-on-review-verdict" "$INPUT_FAIL_ON_REVIEW_VERDICT"' in run_script
+    assert 'add_skill_arg_or_warn "--warn-on-review-verdict" "$INPUT_WARN_ON_REVIEW_VERDICT"' in run_script
+
+
 def test_focused_secrets_and_code_reject_sarif_format(tmp_path: Path) -> None:
     runner = CliRunner()
 

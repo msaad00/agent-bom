@@ -12,9 +12,8 @@ from rich.console import Console
 from rich.table import Table
 
 from agent_bom.cli._grouped_help import SuggestingGroup
+from agent_bom.skills_policy import SkillsPolicyError, evaluate_skills_policy, load_skills_policy
 from agent_bom.skills_service import rescan_skill_catalog, scan_skill_targets, verify_skill_targets
-
-_VERDICT_ORDER = {"benign": 0, "suspicious": 1, "malicious": 2}
 
 
 def _display_path(path: str) -> str:
@@ -47,6 +46,27 @@ def skills_group(ctx: click.Context) -> None:
     type=click.Choice(["suspicious", "malicious"]),
     help="Exit 1 if any scanned file reaches this trust verdict or worse",
 )
+@click.option(
+    "--warn-on-verdict",
+    type=click.Choice(["suspicious", "malicious"]),
+    help="Emit a non-blocking policy warning if content verdict reaches this level or worse",
+)
+@click.option(
+    "--fail-on-review-verdict",
+    type=click.Choice(["review", "high_risk", "blocked"]),
+    help="Exit 1 if handling-oriented review verdict reaches this level or worse",
+)
+@click.option(
+    "--warn-on-review-verdict",
+    type=click.Choice(["review", "high_risk", "blocked"]),
+    help="Emit a non-blocking policy warning if review verdict reaches this level or worse",
+)
+@click.option(
+    "--policy",
+    "policy_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Path to skills policy file (JSON/YAML) with warn/fail rules and suppressions",
+)
 @click.option("--intel-source", type=str, help="Optional local or remote JSON threat-intel feed for bundle hash lookups")
 @click.option(
     "--catalog",
@@ -64,6 +84,10 @@ def skills_scan_cmd(
     output_format: str,
     output_path: Path | None,
     fail_on_verdict: str | None,
+    warn_on_verdict: str | None,
+    fail_on_review_verdict: str | None,
+    warn_on_review_verdict: str | None,
+    policy_path: Path | None,
     intel_source: str | None,
     catalog_path: Path | None,
     verbose: bool,
@@ -85,6 +109,21 @@ def skills_scan_cmd(
     setup_logging(level="ERROR" if quiet else "INFO", json_output=log_json, log_file=str(log_file) if log_file else None)
     report = scan_skill_targets(paths, intel_source=intel_source, catalog_path=catalog_path)
     payload = report.to_dict()
+    try:
+        policy = load_skills_policy(policy_path) if policy_path else None
+        policy_result = evaluate_skills_policy(
+            report,
+            policy=policy,
+            policy_path=policy_path,
+            fail_on_verdict=fail_on_verdict,
+            warn_on_verdict=warn_on_verdict,
+            fail_on_review_verdict=fail_on_review_verdict,
+            warn_on_review_verdict=warn_on_review_verdict,
+        )
+    except SkillsPolicyError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if policy or warn_on_verdict or fail_on_review_verdict or warn_on_review_verdict or fail_on_verdict:
+        payload["policy"] = policy_result.to_dict()
 
     if output_format == "json":
         rendered = json.dumps(payload, indent=2)
@@ -198,17 +237,20 @@ def skills_scan_cmd(
             console.print("\n[bold]Recommended next steps[/bold]")
             for recommendation in recommendations[:5]:
                 console.print(f"  • {recommendation}")
+        if policy_result.status != "pass" and not quiet:
+            console.print("\n[bold]Skills policy[/bold]")
+            for decision in policy_result.violations[:5]:
+                console.print(f"  [red]✗[/red] {decision.reason} — {_display_path(decision.path)}")
+            for decision in policy_result.warnings[:5]:
+                console.print(f"  [yellow]⚠[/yellow] {decision.reason} — {_display_path(decision.path)}")
         if not quiet:
             console.print()
 
         if output_path:
             output_path.write_text(json.dumps(payload, indent=2))
 
-    if fail_on_verdict:
-        threshold = _VERDICT_ORDER[fail_on_verdict]
-        worst = max((_VERDICT_ORDER[file_report.trust.verdict.value] for file_report in report.files), default=0)
-        if worst >= threshold:
-            sys.exit(1)
+    if policy_result.failed:
+        sys.exit(1)
 
 
 @skills_group.command("rescan")

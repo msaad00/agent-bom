@@ -75,6 +75,34 @@ def test_parse_mcp_json_block(tmp_path):
     assert result.servers[0].name == "filesystem"
 
 
+def test_parse_mcp_jsonc_remote_server_block(tmp_path):
+    """JSONC MCP blocks should parse comments, trailing commas, and remote URLs."""
+    md = tmp_path / "config.md"
+    md.write_text(
+        "# MCP Config\n\n"
+        "```jsonc\n"
+        "{\n"
+        '  "mcpServers": {\n'
+        '    "remote": {\n'
+        '      "transport": "sse", // remote stream\n'
+        '      "url": "https://mcp.example.com/sse",\n'
+        '      "env": {"REMOTE_API_TOKEN": "secret"},\n'
+        "    },\n"
+        "  },\n"
+        "}\n"
+        "```\n"
+    )
+
+    result = parse_skill_file(md)
+
+    assert len(result.servers) == 1
+    assert result.servers[0].name == "remote"
+    assert result.servers[0].url == "https://mcp.example.com/sse"
+    assert result.servers[0].transport.value == "sse"
+    assert result.servers[0].config_path == str(md)
+    assert "REMOTE_API_TOKEN" in result.credential_env_vars
+
+
 def test_parse_credential_env_vars(tmp_path):
     """Detects credential env var references, excludes false positives."""
     md = tmp_path / "config.md"
@@ -232,14 +260,14 @@ def test_scan_merges_raw_content(tmp_path):
     assert str(f2) in result.raw_content
 
 
-def test_raw_content_truncated(tmp_path):
-    """Very large files are truncated to 8000 chars in raw_content."""
+def test_raw_content_preserves_large_files_for_audit(tmp_path):
+    """Very large files remain available to the skills audit layer."""
     md = tmp_path / "huge.md"
     md.write_text("x" * 20000)
     from agent_bom.parsers.skills import parse_skill_file
 
     result = parse_skill_file(md)
-    assert len(result.raw_content[str(md)]) == 8000
+    assert len(result.raw_content[str(md)]) == 20000
 
 
 # ── Comment-stripping tests ──────────────────────────────────────────────

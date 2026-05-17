@@ -64,6 +64,10 @@ class SkillFinding:
     context: str = "config_block"  # "config_block" | "code_block" | "env_reference" — where the data was extracted from
     ai_analysis: str | None = None  # LLM-generated context-aware explanation
     ai_adjusted_severity: str | None = None  # LLM may adjust severity or mark "false_positive"
+    evidence_source: str = "static_config"  # static_text | static_config | ast_python | ast_js | external_registry
+    confidence: str = "medium"  # high | medium | low
+    source_line: int | None = None
+    source_column: int | None = None
 
 
 @dataclass
@@ -513,6 +517,7 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
                 snippet = match.group(0).strip()
                 if len(snippet) > 120:
                     snippet = snippet[:117] + "..."
+                line, column = _line_column(content, match.start())
 
                 findings.append(
                     SkillFinding(
@@ -523,10 +528,22 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
                         source_file=filename,
                         recommendation=bp.description,
                         context="behavioral",
+                        evidence_source="static_text",
+                        confidence="high" if bp.severity in {"critical", "high"} else "medium",
+                        source_line=line,
+                        source_column=column,
                     )
                 )
 
     return findings
+
+
+def _line_column(content: str, offset: int) -> tuple[int, int]:
+    """Return 1-based line and column for an offset."""
+    line = content.count("\n", 0, offset) + 1
+    last_newline = content.rfind("\n", 0, offset)
+    column = offset + 1 if last_newline == -1 else offset - last_newline
+    return line, column
 
 
 def _call_name(node: ast.AST) -> str:
@@ -557,7 +574,9 @@ def _scan_python_ast_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
 
     for filename, content in raw_content.items():
         seen_categories: set[str] = set()
-        for block in _PYTHON_FENCED_BLOCK_RE.findall(content):
+        for block_match in _PYTHON_FENCED_BLOCK_RE.finditer(content):
+            block = block_match.group(1)
+            block_start_line, _block_column = _line_column(content, block_match.start(1))
             try:
                 tree = ast.parse(block)
             except SyntaxError:
@@ -585,6 +604,10 @@ def _scan_python_ast_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
                             source_file=filename,
                             recommendation="Remove dynamic code execution or replace it with explicit, statically reviewable logic.",
                             context="code_block",
+                            evidence_source="ast_python",
+                            confidence="high",
+                            source_line=block_start_line + getattr(node, "lineno", 1) - 1,
+                            source_column=getattr(node, "col_offset", 0) + 1,
                         )
                     )
 
@@ -605,6 +628,10 @@ def _scan_python_ast_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
                                 "is narrowly scoped and explicitly reviewed."
                             ),
                             context="code_block",
+                            evidence_source="ast_python",
+                            confidence="high",
+                            source_line=block_start_line + getattr(node, "lineno", 1) - 1,
+                            source_column=getattr(node, "col_offset", 0) + 1,
                         )
                     )
 
@@ -625,6 +652,10 @@ def _scan_python_ast_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
                                 "Require explicit review for file mutations and avoid write/delete flows in reusable skill instructions."
                             ),
                             context="code_block",
+                            evidence_source="ast_python",
+                            confidence="high",
+                            source_line=block_start_line + getattr(node, "lineno", 1) - 1,
+                            source_column=getattr(node, "col_offset", 0) + 1,
                         )
                     )
 
@@ -839,6 +870,7 @@ def _scan_js_ts_semantic_risks(raw_content: dict[str, str]) -> list[SkillFinding
         for match in _JS_TS_FENCED_BLOCK_RE.finditer(content):
             language_hint = match.group("language").lower()
             block = match.group("code")
+            block_start_line, _block_column = _line_column(content, match.start("code"))
             call_names = _collect_js_ts_call_names(block, language_hint=language_hint)
 
             if _JS_DYNAMIC_CODE_CALLS & call_names and "ast_js_dynamic_code_execution" not in seen_categories:
@@ -858,6 +890,10 @@ def _scan_js_ts_semantic_risks(raw_content: dict[str, str]) -> list[SkillFinding
                             "Remove dynamic code execution from skill code blocks or replace it with explicit, reviewable logic."
                         ),
                         context="code_block",
+                        evidence_source="ast_js",
+                        confidence="high",
+                        source_line=block_start_line,
+                        source_column=1,
                     )
                 )
 
@@ -878,6 +914,10 @@ def _scan_js_ts_semantic_risks(raw_content: dict[str, str]) -> list[SkillFinding
                             "Avoid child-process execution in reusable skills unless the action is narrowly scoped and explicitly reviewed."
                         ),
                         context="code_block",
+                        evidence_source="ast_js",
+                        confidence="high",
+                        source_line=block_start_line,
+                        source_column=1,
                     )
                 )
 
@@ -898,6 +938,10 @@ def _scan_js_ts_semantic_risks(raw_content: dict[str, str]) -> list[SkillFinding
                             "Require explicit review for JS/TS file mutations and avoid write/delete flows in reusable skill instructions."
                         ),
                         context="code_block",
+                        evidence_source="ast_js",
+                        confidence="high",
+                        source_line=block_start_line,
+                        source_column=1,
                     )
                 )
 

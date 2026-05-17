@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.models import (
+    CredentialRefStatus,
     ScanRequest,
     SourceCreate,
     SourceKind,
@@ -19,7 +20,7 @@ from agent_bom.api.models import (
     SourceUpdate,
 )
 from agent_bom.api.routes.scan import enqueue_scan_job
-from agent_bom.api.stores import _get_source_store, _get_store
+from agent_bom.api.stores import _get_credential_ref_store, _get_source_store, _get_store
 
 router = APIRouter()
 
@@ -42,6 +43,17 @@ def _source_for_request(request: Request, source_id: str) -> SourceRecord:
     if source is None or source.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail=f"Source {source_id} not found")
     return source
+
+
+def _validate_credential_ref(request: Request, source: SourceRecord) -> None:
+    if not source.credential_ref:
+        return
+    credential = _get_credential_ref_store().get(source.credential_ref)
+    tenant_id = _tenant_id(request)
+    if credential is None or credential.tenant_id != tenant_id:
+        raise HTTPException(status_code=409, detail="Source credential_ref is not available in this tenant")
+    if not credential.enabled or credential.status in (CredentialRefStatus.DISABLED, CredentialRefStatus.RETIRED):
+        raise HTTPException(status_code=409, detail="Source credential_ref is disabled or retired")
 
 
 def _apply_update(source: SourceRecord, body: SourceUpdate) -> SourceRecord:
@@ -118,6 +130,7 @@ async def create_source(request: Request, body: SourceCreate) -> dict:
         created_at=now,
         updated_at=now,
     )
+    _validate_credential_ref(request, source)
     _get_source_store().put(source)
     log_action(
         "source.create",
@@ -161,6 +174,7 @@ async def get_source(request: Request, source_id: str) -> dict:
 @router.put("/v1/sources/{source_id}", tags=["sources"])
 async def update_source(request: Request, source_id: str, body: SourceUpdate) -> dict:
     source = _apply_update(_source_for_request(request, source_id), body)
+    _validate_credential_ref(request, source)
     _get_source_store().put(source)
     log_action(
         "source.update",
@@ -189,6 +203,7 @@ async def delete_source(request: Request, source_id: str) -> None:
 @router.post("/v1/sources/{source_id}/test", tags=["sources"])
 async def test_source(request: Request, source_id: str) -> dict:
     source = _source_for_request(request, source_id)
+    _validate_credential_ref(request, source)
     message = "Configuration recorded"
     status = SourceStatus.CONFIGURED
 
@@ -244,6 +259,7 @@ async def run_source(request: Request, source_id: str) -> dict:
     source = _source_for_request(request, source_id)
     if not source.enabled:
         raise HTTPException(status_code=409, detail="Source is disabled")
+    _validate_credential_ref(request, source)
     job = enqueue_scan_job(
         tenant_id=source.tenant_id,
         triggered_by=f"{_actor(request)}:source:{source.source_id}",

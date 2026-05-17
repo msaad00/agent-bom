@@ -30,7 +30,12 @@ from agent_bom.api.postgres_common import (
     set_current_tenant,
 )
 from agent_bom.api.postgres_graph import PostgresGraphStore, PostgresScanCache
-from agent_bom.api.postgres_policy import PostgresPolicyStore, PostgresScheduleStore, PostgresSourceStore  # noqa: F401
+from agent_bom.api.postgres_policy import (  # noqa: F401
+    PostgresCredentialRefStore,
+    PostgresPolicyStore,
+    PostgresScheduleStore,
+    PostgresSourceStore,
+)
 from agent_bom.api.postgres_tenant_quota import PostgresTenantQuotaStore  # noqa: F401
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 

@@ -1221,6 +1221,41 @@ def test_source_store_put_get_list_delete(mock_pool):
     assert store.delete("source-1") is True
 
 
+def test_credential_ref_store_put_get_list_delete(mock_pool):
+    from agent_bom.api.models import CredentialRefRecord
+    from agent_bom.api.postgres_store import PostgresCredentialRefStore
+
+    store = PostgresCredentialRefStore(pool=mock_pool)
+    credential = CredentialRefRecord(
+        credential_ref_id="cred-1",
+        tenant_id="tenant-alpha",
+        display_name="AWS production role",
+        provider="aws",
+        mode="role_arn",
+        external_ref="arn:aws:iam::123456789012:role/agent-bom-readonly",
+        created_at="2026-04-20T00:00:00+00:00",
+        updated_at="2026-04-20T00:00:00+00:00",
+    )
+    store.put(credential)
+
+    mock_pool._conn._store.setdefault("credential_refs", {})["cred-1"] = (
+        "cred-1",
+        1,
+        "tenant-alpha",
+        "2026-04-20T00:00:00+00:00",
+        credential.model_dump_json(),
+    )
+
+    loaded = store.get("cred-1")
+    assert loaded is not None
+    assert loaded.credential_ref_id == "cred-1"
+
+    listed = store.list_all(tenant_id="tenant-alpha")
+    assert isinstance(listed, list)
+
+    assert store.delete("cred-1") is True
+
+
 def test_tenant_context_is_applied_to_postgres_session(mock_pool):
     from agent_bom.api.postgres_store import PostgresFleetStore, reset_current_tenant, set_current_tenant
 

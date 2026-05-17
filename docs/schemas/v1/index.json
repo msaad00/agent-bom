@@ -52,6 +52,21 @@
       "schema": "CreateKeyRequest.json"
     },
     {
+      "doc": "",
+      "name": "CredentialRefCreate",
+      "schema": "CredentialRefCreate.json"
+    },
+    {
+      "doc": "",
+      "name": "CredentialRefRecord",
+      "schema": "CredentialRefRecord.json"
+    },
+    {
+      "doc": "",
+      "name": "CredentialRefUpdate",
+      "schema": "CredentialRefUpdate.json"
+    },
+    {
       "doc": "Request body for POST /v1/scan/dataset-cards.",
       "name": "DatasetCardsRequest",
       "schema": "DatasetCardsRequest.json"

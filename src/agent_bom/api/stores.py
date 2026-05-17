@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 
 if TYPE_CHECKING:
+    from agent_bom.api.credential_store import CredentialRefStore
     from agent_bom.api.graph_store import GraphStoreProtocol
     from agent_bom.api.mcp_observation_store import MCPObservationStore
     from agent_bom.api.models import ScanJob
@@ -325,6 +326,7 @@ def set_scim_store(store: SCIMStore | None) -> None:
 
 # ─── Source store (pluggable) ───────────────────────────────────────────────
 _source_store: SourceStore | None = None
+_credential_ref_store: CredentialRefStore | None = None
 _mcp_observation_store: MCPObservationStore | None = None
 
 
@@ -339,6 +341,19 @@ def set_source_store(store: SourceStore) -> None:
     """Switch the source registry store backend."""
     global _source_store
     _source_store = store
+
+
+def _get_credential_ref_store() -> CredentialRefStore:
+    """Get the active credential reference store. Must be initialized during lifespan."""
+    if _credential_ref_store is None:
+        raise RuntimeError("Credential reference store not initialized")
+    return _credential_ref_store
+
+
+def set_credential_ref_store(store: CredentialRefStore) -> None:
+    """Switch the credential reference registry backend."""
+    global _credential_ref_store
+    _credential_ref_store = store
 
 
 def _get_mcp_observation_store():

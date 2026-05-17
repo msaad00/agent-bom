@@ -6,6 +6,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
+from agent_bom.api.credential_store import InMemoryCredentialRefStore
 from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore
@@ -37,12 +38,14 @@ OTHER_TENANT_HEADERS = {
 @pytest.fixture
 def source_client(monkeypatch: pytest.MonkeyPatch):
     old_source_store = _stores._source_store
+    old_credential_store = _stores._credential_ref_store
     old_job_store = _stores._store
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
     configure_api(api_key=None)
     _stores.set_source_store(InMemorySourceStore())
+    _stores.set_credential_ref_store(InMemoryCredentialRefStore())
     _stores.set_job_store(InMemoryJobStore())
 
     try:
@@ -52,6 +55,7 @@ def source_client(monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
         configure_api(api_key=None)
         _stores._source_store = old_source_store
+        _stores._credential_ref_store = old_credential_store
         _stores._store = old_job_store
 
 
@@ -111,6 +115,94 @@ def test_source_create_rejects_mismatched_tenant(source_client: TestClient) -> N
     )
     assert resp.status_code == 403
     assert "tenant_id must match" in resp.json()["detail"]
+
+
+def test_credential_reference_crud_and_tenant_isolation(source_client: TestClient) -> None:
+    create = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "AWS prod read-only role",
+            "provider": "aws",
+            "mode": "role_arn",
+            "external_ref": "arn:aws:iam::123456789012:role/agent-bom-readonly",
+            "owner": "platform-security",
+            "scopes": ["iam:GetRole", "iam:ListAttachedRolePolicies"],
+        },
+    )
+    assert create.status_code == 201
+    body = create.json()
+    credential_ref_id = body["credential_ref_id"]
+    assert body["tenant_id"] == "tenant-alpha"
+    assert "secret" not in body
+
+    listed = source_client.get("/v1/credentials", headers=VIEWER_HEADERS)
+    assert listed.status_code == 200
+    assert listed.json()["credentials"][0]["credential_ref_id"] == credential_ref_id
+
+    other_tenant = source_client.get(f"/v1/credentials/{credential_ref_id}", headers=OTHER_TENANT_HEADERS)
+    assert other_tenant.status_code == 404
+
+    delete_forbidden = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ANALYST_HEADERS)
+    assert delete_forbidden.status_code == 403
+
+    deleted = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
+    assert deleted.status_code == 204
+    assert source_client.get("/v1/credentials", headers=VIEWER_HEADERS).json()["count"] == 0
+
+
+def test_credential_reference_rejects_secret_material(source_client: TestClient) -> None:
+    create = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Unsafe credential",
+            "provider": "aws",
+            "external_ref": "secret-manager://agent-bom/prod",
+            "secret_value": "AKIA...",
+        },
+    )
+    assert create.status_code == 422
+
+
+def test_source_with_credential_reference_requires_same_tenant_ref(source_client: TestClient) -> None:
+    missing_ref = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "AWS source with missing credential",
+            "kind": "scan.cloud",
+            "credential_mode": "reference",
+            "credential_ref": "missing-ref",
+        },
+    )
+    assert missing_ref.status_code == 409
+
+    credential = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "AWS prod read-only role",
+            "provider": "aws",
+            "mode": "role_arn",
+            "external_ref": "arn:aws:iam::123456789012:role/agent-bom-readonly",
+        },
+    )
+    credential_ref_id = credential.json()["credential_ref_id"]
+
+    create = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "AWS source",
+            "kind": "scan.cloud",
+            "credential_mode": "reference",
+            "credential_ref": credential_ref_id,
+            "config": {"scan_request": {"inventory": "agents.json", "format": "json"}},
+        },
+    )
+    assert create.status_code == 201
+    assert create.json()["credential_ref"] == credential_ref_id
 
 
 def test_connector_source_test_updates_health(source_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

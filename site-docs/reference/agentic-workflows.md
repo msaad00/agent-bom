@@ -7,8 +7,8 @@ plane or runtime enforcement rollout.
 | Surface | Start with | Trust boundary | Evidence artifact | Move up to |
 |---|---|---|---|---|
 | Local CLI | `agent-bom agents --demo --offline`, then `agent-bom agents -p .` | Reads local agent and MCP configuration from the developer machine. No control-plane credentials required. | Terminal findings, JSON, SARIF, SBOM, HTML, graph export. | Scheduled scan, Docker, GitHub Action. |
-| Claude, Cursor, Windsurf, VS Code, Cortex, Codex CLI | `agent-bom mcp server` | Exposes read-only security tools to the assistant. The assistant does not need direct scanner credentials beyond the local process boundary. | MCP tool output, inventory, blast-radius answers, compliance checks. | Shared MCP configuration, skills, fleet sync. |
-| GitHub Actions | `uses: msaad00/agent-bom@v0.86.3` with SARIF upload enabled | Runs in CI with repository-scoped token permissions. Fork PR behavior depends on GitHub security policy. | `agent-bom-results.sarif`, pull-request summary, code-scanning alert category. | Branch protection, required code scanning, artifact retention. |
+| Claude, Cursor, Windsurf, VS Code, Cortex, Codex CLI | `agent-bom mcp server` | Exposes read-only security tools to the assistant. The assistant does not need direct scanner credentials beyond the local process boundary. | MCP tool output, inventory, blast-radius answers, compliance checks, ranked `ExposurePath` JSON, deploy guidance. | Shared MCP configuration, skills, fleet sync. |
+| GitHub Actions | `uses: msaad00/agent-bom@v0.86.5` with SARIF upload enabled | Runs in CI with repository-scoped token permissions. Fork PR behavior depends on GitHub security policy. | `agent-bom-results.sarif`, pull-request summary, code-scanning alert category. | Branch protection, required code scanning, artifact retention. |
 | Skills and instruction files | `agent-bom skills scan .` | Reads repo-local instructions such as `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, and `skills/*.md`. | Skill trust findings, referenced package and MCP inventory, credential-env names. | Signed skills, provenance verification, registry publishing. |
 | Cloud and AI infrastructure | `agent-bom agents --preset enterprise` plus provider-specific flags only where credentials are approved. | Uses read-only provider APIs or local inventory files. Keep provider secrets in the operator boundary, not in repo docs. | Cloud, warehouse, GPU, model, dataset, and runtime package evidence. | Fleet sync, compliance exports, graph-backed findings. |
 | Runtime proxy | `agent-bom proxy --no-isolate --log audit.jsonl --block-undeclared -- ...` | Wraps selected local MCP traffic. Policy can block before an upstream tool receives the call. Container containment requires a stdio MCP path plus a configured sandbox image or an existing container command. | Tier-A audit JSONL, policy decisions, runtime alerts, metrics, and sandbox posture when isolation is enabled. | Sidecar proxy, gateway policy pull, SIEM export. |
@@ -31,7 +31,7 @@ when the buyer or contributor needs to see the first finding path quickly.
 ### CI Security Review
 
 ```yaml
-- uses: msaad00/agent-bom@v0.86.3
+- uses: msaad00/agent-bom@v0.86.5
   with:
     scan-type: agents
     severity-threshold: high
@@ -42,6 +42,18 @@ when the buyer or contributor needs to see the first finding path quickly.
 
 Produces SARIF and pull-request evidence. If Code Scanning is empty, check the
 SARIF troubleshooting guide before changing scanner behavior.
+
+### Agent Decision Review
+
+```text
+exposure_paths(tenant_id="default", limit=5, min_risk=70)
+should_i_deploy(candidate="requests", tenant_id="default", block_risk=80)
+```
+
+Produces the same graph-backed investigation context a human sees in the UI,
+but as MCP tool output for an AI agent or coding assistant. `should_i_deploy`
+returns deploy guidance; it does not modify code, open pull requests, or mutate
+cloud resources.
 
 ### Hosted Gateway Or Proxy Review
 
@@ -78,3 +90,5 @@ upstream server.
   demos.
 - Runtime causality requires proxy, gateway, trace, or Shield evidence. Static
   scans show reachability and exposure, not live tool-call causality.
+- MCP server mode is read-only. Use proxy, gateway, or Shield when the question
+  depends on selected live tool-call traffic.

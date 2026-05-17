@@ -171,6 +171,22 @@ agent-bom proxy-bootstrap \
 | **Graph / Runtime** | `exposure_paths`, `should_i_deploy`, `context_graph`, `graph_export`, `runtime_correlate`, `tool_risk_assessment` | Return ranked investigation paths, deploy decisions, graph exports, and runtime-to-finding correlations |
 | **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan` | Scan AI artifacts, prompts, model files, browser extensions, and external scanner results |
 
+## Agent-facing decision tools
+
+Two graph-native tools are the primary MCP entry points for headless security
+agents:
+
+- `exposure_paths` returns ranked `ExposurePath` JSON from the graph store so
+  an agent can explain what is exposed, why it matters, which entities prove
+  it, and what fix path is recommended.
+- `should_i_deploy` returns allow/warn/block deploy guidance based on matched
+  `ExposurePath` risk and caller-supplied thresholds.
+
+Both tools are read-only decision aids. They do not modify repositories,
+create tickets, deploy workloads, or mutate cloud resources. Use proxy,
+gateway, Shield, or API audit evidence when a decision depends on selected
+live runtime traffic rather than static reachability.
+
 ## Example Conversations
 
 **"Are my AI agents vulnerable?"**

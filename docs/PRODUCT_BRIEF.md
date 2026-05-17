@@ -1,12 +1,15 @@
 # Product Brief
 
-`agent-bom` is an open security scanner and self-hosted control plane for
-AI/MCP infrastructure. It generates a reachability-backed AI BOM across agents,
-MCP servers, packages, credential environment names, cloud, runtime, and skill
-surfaces, then exposes the same evidence through CLI/CI, API/UI, MCP tools, and
-selected runtime controls.
+`agent-bom` is an open security data plane, scanner, and self-hosted control
+plane for AI/MCP infrastructure. It generates a reachability-backed AI BOM
+across agents, MCP servers, packages, credential environment names, cloud,
+runtime, and skill surfaces, then exposes the same evidence through CLI/CI,
+API/UI, MCP tools, and selected runtime controls.
 
-It is built around a simple thesis: security and visibility for AI infrastructure should be open, transparent, and accessible, not reserved for teams with enterprise budgets.
+It is built around a simple thesis: security and visibility for AI
+infrastructure should be open, transparent, and accessible to both humans and
+AI agents, not reserved for teams with enterprise budgets or a single
+dashboard workflow.
 
 Package risk is only the start. `agent-bom` follows what it can reach across
 MCP servers, agents, credential environment names, tools, runtime behavior, and
@@ -60,6 +63,14 @@ the CLI, reports, and browser cockpit. AI agents use the MCP/API/CLI surfaces
 to request the same `ExposurePath` evidence, skill verdicts, and deploy
 decisions under the same auth, tenant, and audit boundary.
 
+That is the useful lesson from developer-observability products: the cockpit is
+valuable, but the product primitive must be callable. For `agent-bom`, the
+primitive is not a trace; it is graph-backed security evidence:
+`ExposurePath`, findings, skill verdicts, compliance tags, runtime audit, and
+deploy decisions. Public copy should describe this as an open security data
+plane for AI-era infrastructure, while still proving the scanner and
+self-hosted control plane first.
+
 This framing does not narrow the deployment story. It makes "deploy in your
 own cloud / infrastructure" the production form of lane 2, with runtime
 controls from lane 3 added where the customer needs inline enforcement.
@@ -99,6 +110,20 @@ policy model, multiple entry points, no mandatory hosted control plane.
 - Agent security is not just software composition analysis. It is context across packages, MCP servers, agent configuration, credentials, tools, and runtime behavior.
 - Security for agentic infrastructure should be inspectable and explainable. Findings should show blast radius, not just raw package IDs.
 - Strong security and visibility should be available to individual developers and small teams, not only to enterprises with large budgets and long procurement cycles.
+
+## Shipped vs. not yet
+
+This table keeps strategy honest when docs, sales material, demos, and release
+notes discuss agent-native product direction.
+
+| Area | Shipped today | Not yet shipped |
+|---|---|---|
+| Human cockpit | Next.js dashboard, graph cockpit, reports, compliance and audit views | every UI action backed by a source registry and persisted workflow state |
+| Agent interface | 38 read-only MCP tools, strict arguments, `exposure_paths`, `should_i_deploy` | long-lived posture subscription tool, autonomous remediation actions |
+| Scanner/data plane | CLI, Docker, GitHub Action, REST API, imports, graph exports | a full Python scanner SDK and full TypeScript scanner/API SDK |
+| Runtime | MCP proxy, gateway, Shield SDK, runtime audit and policy decisions | first-class Kafka/Splunk/EventBridge posture streaming |
+| Graph scale | SQLite/Postgres default path, WebGL overview, optional Neptune adapter work | production Neptune SLOs, public openCypher endpoint, mandatory graph-database backend |
+| Extensibility | Python package internals, skills, runtime detector package | productized detection-as-code YAML registry and stable plugin SDK |
 
 ## Stable capability brief
 
@@ -177,6 +202,9 @@ That means public repo copy should emphasize real shipped surfaces, not just asp
 
 The next phase should stay disciplined:
 
+- SDK clarity: keep `@agent-bom/runtime` scoped to runtime detectors until a
+  real TypeScript scanner/API client exists; add a Python client only when it
+  wraps stable public CLI/API contracts
 - enterprise hardening: auth defaults, tenant isolation, Helm and deployment defaults, stable operator contracts
 - scanner depth: stronger lockfile and package coverage so buyers do not need a second tool for basic SCA depth
 - supply chain operations: tighter SBOM import/diff workflows so external vendor BOMs and current scans stay comparable

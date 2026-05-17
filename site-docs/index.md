@@ -2,10 +2,11 @@
 
 **Open security scanner and self-hosted control plane for AI/MCP infrastructure.**
 
-Generate a reachability-backed AI BOM across agents, MCP servers, tools,
-packages, credential environment names, cloud, runtime, and skill surfaces,
-then expose the same evidence through CLI/CI, API/UI, MCP tools, and selected
-runtime controls. For source-by-source boundaries, see the
+`agent-bom` is also an open security data plane. It generates a
+reachability-backed AI BOM across agents, MCP servers, tools, packages,
+credential environment names, cloud, runtime, and skill surfaces, then exposes
+the same evidence to humans and AI agents through CLI/CI, API/UI, MCP tools,
+and selected runtime controls. For source-by-source boundaries, see the
 [AI infrastructure coverage matrix](architecture/ai-infrastructure.md#coverage-matrix).
 
 ## What it does
@@ -45,6 +46,19 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 | **Assistant tools** | `agent-bom mcp server` | read-only security tools for MCP clients |
 | **Self-hosted control plane** | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your infrastructure |
 
+## One evidence model, four consumers
+
+| Surface | Who uses it | What is shipped |
+|---|---|---|
+| **CLI / CI** | developers and pipelines | scans, SARIF/SBOM/HTML/JSON, graph exports, deterministic gates |
+| **API / UI** | security teams and auditors | self-hosted control plane, graph cockpit, compliance, audit, evidence review |
+| **MCP tools** | AI agents and coding assistants | 38 read-only tools, strict args, `exposure_paths`, `should_i_deploy` |
+| **Runtime controls** | platform and runtime operators | proxy/gateway/Shield policy decisions, redacted audit, selected live evidence |
+
+The dashboard is not the only door into the product. It is the human cockpit
+over the same evidence that agents can request through MCP and platforms can
+consume through API, CLI, reports, and exports.
+
 ## Current graph and agent surfaces
 
 - `ExposurePath` is the shared investigation object for API, UI, reports, JSON,
@@ -59,6 +73,15 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 Neptune is an optional enterprise backend lane. The default self-hosted path
 remains SQLite/Postgres, and the docs do not claim a live Neptune production
 SLO or openCypher endpoint.
+
+## Current boundaries
+
+- `@agent-bom/runtime` is a TypeScript runtime-detector package, not a full
+  scanner or API SDK.
+- Managed agent-bom Cloud, posture-event streaming connectors, and
+  detection-as-code YAML are roadmap items, not shipped product in this repo.
+- AWS IAM identity enrichment is opt-in and read-only; it does not imply
+  complete identity coverage across every provider.
 
 ## Key capabilities
 

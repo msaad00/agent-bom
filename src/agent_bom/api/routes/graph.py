@@ -6,6 +6,8 @@ Endpoints:
   GET  /v1/graph/edges/active   — edge versions active at a timestamp
   GET  /v1/graph/edges/changes  — edge lifecycle changes between scans
   GET  /v1/graph/attack-paths   — global risk-sorted attack path queue
+  GET  /v1/graph/exposure-paths — agent-native ExposurePath queue
+  POST /v1/graph/should-i-deploy — agent-native deploy decision
   GET  /v1/graph/paths          — attack paths from a source node
   GET  /v1/graph/impact         — blast radius of a node (reverse BFS)
   GET  /v1/graph/search         — full-text graph search
@@ -24,6 +26,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -31,7 +34,7 @@ from typing import Any, Literal, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
@@ -872,6 +875,42 @@ class GraphQueryRequest(BaseModel):
     data_sources: list[str] = Field(default_factory=list)
 
 
+class GraphDeployDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    candidate: str | dict[str, Any] = Field(..., description="Package, image, service, or structured candidate descriptor")
+    tenant_id: str | None = Field(default=None, description="Accepted for SDK compatibility; request tenant scope is authoritative")
+    scan_id: str | None = Field(default=None, description="Scan snapshot ID; latest if omitted")
+    limit: int = Field(5, ge=1, le=25, description="Maximum matched exposure paths")
+    warn_risk: float = Field(40.0, ge=0, le=100, alias="warnRisk", description="Risk threshold for warning")
+    block_risk: float = Field(80.0, ge=0, le=100, alias="blockRisk", description="Risk threshold for blocking")
+    context: dict[str, Any] = Field(default_factory=dict, description="Optional caller context for future policy extensions")
+
+
+def _candidate_to_string(candidate: str | dict[str, Any]) -> str:
+    if isinstance(candidate, str):
+        return candidate.strip()
+    return json.dumps(candidate, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _raise_mcp_error_as_http(payload: dict[str, Any]) -> None:
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return
+    category = str(error.get("category") or "internal")
+    status_by_category = {
+        "validation": 422,
+        "auth": 403,
+        "rate_limited": 429,
+        "not_found": 404,
+        "unsupported": 400,
+        "timeout": 504,
+        "upstream": 502,
+        "internal": 500,
+    }
+    raise HTTPException(status_code=status_by_category.get(category, 500), detail=error)
+
+
 def _node_matches_query(
     node,
     *,
@@ -1228,6 +1267,76 @@ async def get_graph_attack_paths(
         "stats": stats,
         "pagination": _page_meta(total, offset, limit),
     }
+
+
+@router.get("/v1/graph/exposure-paths", tags=["graph"])
+async def get_graph_exposure_paths(
+    request: Request,
+    tenant_id: Optional[str] = Query(None, include_in_schema=False),
+    scan_id: Optional[str] = Query(None, description="Scan ID"),
+    limit: int = Query(5, ge=1, le=100, description="Maximum ExposurePaths"),
+    min_risk: float = Query(0.0, ge=0, le=100, description="Minimum ExposurePath risk score"),
+) -> dict:
+    """Return the MCP-compatible ExposurePath queue over REST for SDK consumers."""
+    del tenant_id  # SDK compatibility only; request tenant scope is authoritative.
+    from agent_bom.mcp_tools.graph import exposure_paths_impl
+
+    graph_store = _get_graph_store_or_503()
+    raw = await exposure_paths_impl(
+        tenant_id=_tenant(request),
+        scan_id=scan_id,
+        limit=limit,
+        min_risk=min_risk,
+        _get_graph_store=lambda: graph_store,
+        _truncate_response=lambda value: value,
+    )
+    payload = json.loads(raw)
+    _raise_mcp_error_as_http(payload)
+    return payload
+
+
+@router.post("/v1/graph/should-i-deploy", tags=["graph"])
+async def post_graph_should_i_deploy(request: Request, body: GraphDeployDecisionRequest) -> dict:
+    """Return the MCP-compatible allow/warn/block deploy decision over REST."""
+    _ = (body.tenant_id, body.context)  # SDK compatibility/future policy context; request tenant scope is authoritative today.
+    from agent_bom.mcp_tools.graph import deploy_decision_impl
+
+    candidate = _candidate_to_string(body.candidate)
+    if not candidate:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT",
+                "category": "validation",
+                "message": "candidate must not be empty",
+                "details": {"argument": "candidate"},
+            },
+        )
+    if body.warn_risk > body.block_risk:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT",
+                "category": "validation",
+                "message": "warn_risk and block_risk must be ordered thresholds between 0 and 100",
+                "details": {"warn_risk": body.warn_risk, "block_risk": body.block_risk},
+            },
+        )
+
+    graph_store = _get_graph_store_or_503()
+    raw = await deploy_decision_impl(
+        candidate=candidate,
+        tenant_id=_tenant(request),
+        scan_id=body.scan_id,
+        limit=body.limit,
+        warn_risk=body.warn_risk,
+        block_risk=body.block_risk,
+        _get_graph_store=lambda: graph_store,
+        _truncate_response=lambda value: value,
+    )
+    payload = json.loads(raw)
+    _raise_mcp_error_as_http(payload)
+    return payload
 
 
 @router.get("/v1/graph/paths", tags=["graph"])

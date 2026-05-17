@@ -31,6 +31,8 @@ class IaCResourceType(str, Enum):
     DCM_GRANT = "dcm_grant"
     DCM_TASK = "dcm_task"
     DCM_SERVICE = "dcm_service"
+    # dbt
+    DBT_PROJECT = "dbt_project"
 
 
 @dataclass

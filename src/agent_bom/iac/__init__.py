@@ -1,4 +1,4 @@
-"""IaC misconfiguration scanning — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm, DCM.
+"""IaC misconfiguration scanning — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm, DCM, dbt.
 
 Coordinator module that discovers and scans IaC files across all supported
 formats.  Each scanner is regex/YAML-based with zero external dependencies.
@@ -30,6 +30,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from agent_bom.iac.cloudformation import _is_cloudformation, scan_cloudformation
+from agent_bom.iac.dbt_security import is_dbt_file, scan_dbt_file
 from agent_bom.iac.dcm import is_dcm_migration, scan_dcm_migration
 from agent_bom.iac.dockerfile import scan_dockerfile
 from agent_bom.iac.helm import scan_chart_yaml, scan_values_yaml
@@ -45,6 +46,7 @@ __all__ = [
     "scan_chart_yaml",
     "scan_values_yaml",
     "scan_dcm_migration",
+    "scan_dbt_file",
     "ScanContext",
     "ScanResult",
     "ScannerVerdict",
@@ -57,6 +59,7 @@ _SCANNER_IDS: tuple[str, ...] = (
     "dockerfile",
     "terraform",
     "dcm",
+    "dbt",
     "kubernetes",
     "cloudformation",
 )
@@ -177,7 +180,8 @@ def scan_iac_with_context(
     for path in sorted(root_path.rglob("*")):
         if not path.is_file():
             continue
-        if any(part.startswith(".") for part in path.relative_to(root_path).parts):
+        relative_parts = path.relative_to(root_path).parts
+        if any(part.startswith(".") for part in relative_parts) and not (".github" in relative_parts and "workflows" in relative_parts):
             continue
         if "node_modules" in path.parts or "__pycache__" in path.parts:
             continue
@@ -210,6 +214,10 @@ def scan_iac_with_context(
             if "dcm" not in disabled:
                 files_matched["dcm"] += 1
                 findings.extend(scan_dcm_migration(path))
+        elif is_dbt_file(path, root_path):
+            if "dbt" not in disabled:
+                files_matched["dbt"] += 1
+                findings.extend(scan_dbt_file(path, root_path))
         elif _is_k8s_manifest(path):
             # K8s before CloudFormation — both match .yaml/.yml but K8s
             # markers (apiVersion + kind) are more specific than "Resources:".

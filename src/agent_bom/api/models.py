@@ -210,12 +210,22 @@ class StorageHealth(BaseModel):
     audit_log: str = "inmemory"
 
 
+class EntitlementHealth(BaseModel):
+    status: str = "missing"
+    lane: str = "oss"
+    support_tier: str = "community"
+    enabled_feature_count: int = 0
+    metadata_only: bool = True
+    current_oss_paths_gated: bool = False
+
+
 class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
     tracing: TracingHealth
     analytics: AnalyticsHealth
     storage: StorageHealth
+    entitlements: EntitlementHealth = Field(default_factory=EntitlementHealth)
 
 
 class ComplianceEvidenceItem(BaseModel):

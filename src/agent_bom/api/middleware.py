@@ -770,6 +770,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("GET", "/v1/auth/secrets/lifecycle", "admin"),
         ("GET", "/v1/auth/secrets/rotation-plan", "admin"),
         ("GET", "/v1/auth/scim/config", "admin"),
+        ("GET", "/v1/entitlements", "admin"),
         ("GET", "/v1/credentials", "viewer"),
         ("GET", "/scim/v2", "admin"),
         ("POST", "/scim/v2", "admin"),

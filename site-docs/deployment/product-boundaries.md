@@ -59,6 +59,8 @@ What is shipped:
 - Postgres/Supabase transactional stores for broad control-plane coverage
 - auth, RBAC, tenant scope, audit, evidence, fleet, graph, and policy surfaces
 - runtime proxy/gateway patterns for selected MCP enforcement paths
+- local entitlement metadata hooks for support/SLA and future commercial
+  feature visibility
 
 Recommended first proof:
 
@@ -83,6 +85,43 @@ What is not implied:
 - SQLite is not the recommended clustered enterprise store
 - API-local filesystem scans should stay disabled in shared EKS-style control
   planes unless an explicit tenant workspace is mounted
+- local entitlement metadata does not make outbound licensing calls and does
+  not gate current OSS scanner or control-plane functionality
+
+### Local Entitlement Metadata
+
+Self-hosted packages can set `AGENT_BOM_ENTITLEMENT_FILE` to a local JSON file
+so admins and health checks can see support/SLA and enabled commercial metadata
+without contacting a vendor service.
+
+Example:
+
+```json
+{
+  "lane": "self-hosted-enterprise",
+  "features": ["support.sla", "retention.extended"],
+  "support": {
+    "tier": "enterprise",
+    "sla": "business-hours"
+  },
+  "expires_at": "2027-01-01T00:00:00Z"
+}
+```
+
+Operator surfaces:
+
+- `GET /health` includes an entitlement summary.
+- `GET /v1/entitlements` returns the full local metadata state for admins.
+- `GET /v1/entitlements/check/{feature}` evaluates one feature and appends an
+  audit entry.
+
+Boundary:
+
+- Missing metadata returns `status: missing` and keeps OSS paths usable.
+- Invalid or expired metadata returns `status: invalid` or `status: expired`
+  and disables only commercial metadata features.
+- The current implementation is metadata-only. It is not hosted billing,
+  telemetry, or a mandatory license check.
 
 ## Snowflake
 

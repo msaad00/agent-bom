@@ -75,7 +75,7 @@ dashboard-only workflow:
 | Surface | Primary consumer | Shipped boundary |
 |---|---|---|
 | **CLI / CI** | developers, release gates, automation | local scans, SARIF/SBOM/HTML/JSON output, deterministic exit codes |
-| **REST API** | security platforms, SIEM jobs, custom services | authenticated control plane routes for scans, findings, graph evidence, audit, and governance |
+| **REST API** | security platforms, SIEM jobs, custom services | authenticated control plane routes for scans, normalized bulk findings, graph evidence, audit, and governance |
 | **MCP tools** | Claude, Cursor, Codex, Windsurf, Cortex, and custom agents | 38 read-only tools, strict arguments, `exposure_paths`, `should_i_deploy` |
 | **TypeScript client** | services and agent runtimes calling the control plane | typed helper for stable REST endpoints; not a scanner SDK |
 | **TypeScript runtime detectors** | MCP/runtime enforcement integrations | local detector package for runtime policy checks; separate from the control-plane client |

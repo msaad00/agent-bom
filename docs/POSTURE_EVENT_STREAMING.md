@@ -5,7 +5,8 @@ This document is the repo-facing contract for issue #2597.
 Current shipped posture delivery is pull-first:
 
 - scan report files: SARIF, SBOM, HTML, JSON, graph exports
-- REST API routes for findings, graph, audit, posture, and runtime state
+- REST API routes for findings, normalized bulk finding ingest, graph, audit,
+  posture, and runtime state
 - MCP tools for agent pull workflows, including `exposure_paths` and
   `should_i_deploy`
 - selected SIEM/export guidance and OCSF projections

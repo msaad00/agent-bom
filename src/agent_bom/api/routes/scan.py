@@ -35,6 +35,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
 from agent_bom.api.models import (
@@ -64,6 +65,8 @@ from agent_bom.evidence import EvidenceTier, redact_for_persistence
 router = APIRouter()
 _logger = logging.getLogger(__name__)
 _LOCAL_SCAN_DISABLE_VALUES = {"0", "false", "no", "off", "disabled"}
+_BULK_FINDINGS_MAX_ITEMS = 1000
+_BULK_FINDINGS_SOURCE_MAX_LENGTH = 128
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -223,6 +226,66 @@ def _visible_to_tenant(job: ScanJob, tenant_id: str) -> bool:
 
 def _completed_jobs_for_tenant(tenant_id: str) -> list[ScanJob]:
     return [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result]
+
+
+class BulkFindingsRequest(BaseModel):
+    """Normalized finding ingest for headless clients and agent runtimes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    findings: list[dict[str, Any]] = Field(min_length=1, max_length=_BULK_FINDINGS_MAX_ITEMS)
+    source: str = Field(default="api", min_length=1, max_length=_BULK_FINDINGS_SOURCE_MAX_LENGTH)
+    schema_version: str = Field(default="v1", min_length=1, max_length=32)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    tenant_id: str | None = Field(default=None, description="Deprecated compatibility field; request tenant scope is authoritative.")
+
+    @field_validator("findings")
+    @classmethod
+    def _findings_must_be_objects(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for item in value:
+            if not item:
+                raise ValueError("findings must contain non-empty objects")
+        return value
+
+    @field_validator("source")
+    @classmethod
+    def _source_must_be_stable_label(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("source is required")
+        return normalized
+
+
+def _bulk_ingested_findings_for_tenant(tenant_id: str) -> list[dict[str, Any]]:
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    return [item for item in get_compliance_hub_store().list(tenant_id) if isinstance(item, dict) and item.get("origin") == "bulk_ingest"]
+
+
+def _normalized_bulk_finding(row: dict[str, Any], *, source: str, batch_id: str, ordinal: int) -> dict[str, Any]:
+    payload = dict(row)
+    payload.setdefault("id", f"{batch_id}:{ordinal}")
+    payload.setdefault("source", source)
+    payload.setdefault("severity", "unknown")
+    payload["origin"] = "bulk_ingest"
+    payload["batch_id"] = batch_id
+    payload["bulk_ordinal"] = ordinal
+    return payload
+
+
+def _redact_finding_page(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    redacted = redact_for_persistence(rows, EvidenceTier.SAFE_TO_STORE)
+    if not isinstance(redacted, list):
+        return []
+    page: list[dict[str, Any]] = []
+    for clean, raw in zip(redacted, rows):
+        if not isinstance(clean, dict):
+            continue
+        for key in ("origin", "batch_id", "bulk_ordinal"):
+            if key not in clean and key in raw:
+                clean[key] = raw[key]
+        page.append(clean)
+    return page
 
 
 def _scan_source_labels(job: ScanJob) -> list[str]:
@@ -942,6 +1005,7 @@ async def list_findings(
     findings: list[dict[str, Any]] = []
     for job in _completed_jobs_for_tenant(tenant_id):
         findings.extend(_iter_scan_findings(job))
+    findings.extend(_bulk_ingested_findings_for_tenant(tenant_id))
 
     if severity:
         normalized = severity.lower()
@@ -953,7 +1017,7 @@ async def list_findings(
     findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
 
     total = len(findings)
-    page = redact_for_persistence(findings[offset : offset + limit], EvidenceTier.SAFE_TO_STORE)
+    page = _redact_finding_page(findings[offset : offset + limit])
     return {
         # P1-16 v0.86.5 audit: emit schema_version so consumers can pin a
         # contract independent of API path.
@@ -965,6 +1029,37 @@ async def list_findings(
         "offset": offset,
         "sort": sort_key,
         "warnings": [],
+    }
+
+
+@router.post("/v1/findings/bulk", tags=["scan"], status_code=201)
+async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> dict:
+    """Append normalized findings for the request tenant.
+
+    This is the agent-native counterpart to `/v1/compliance/ingest`: callers
+    that already have normalized finding objects can post them directly instead
+    of wrapping them as SARIF/CycloneDX/CSV content. Request authentication owns
+    the tenant scope; `tenant_id` in the JSON body is accepted only for legacy
+    clients and is never trusted for routing.
+    """
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    tenant_id = _tenant_id(request)
+    ignored_body_tenant = bool(body.tenant_id and body.tenant_id != tenant_id)
+    batch_id = str(uuid.uuid4())
+    payloads = [
+        _normalized_bulk_finding(row, source=body.source, batch_id=batch_id, ordinal=idx) for idx, row in enumerate(body.findings, start=1)
+    ]
+    new_total = get_compliance_hub_store().add(tenant_id, payloads)
+    warnings = ["tenant_id in body ignored; request tenant scope is authoritative"] if ignored_body_tenant else []
+    return {
+        "schema_version": "v1",
+        "batch_id": batch_id,
+        "ingested": len(payloads),
+        "tenant_total": new_total,
+        "tenant_id": tenant_id,
+        "source": body.source,
+        "warnings": warnings,
     }
 
 

@@ -51,6 +51,11 @@ class _GraphStore:
         return {"attack_path_count": 1, "max_attack_path_risk": 88.0}
 
 
+class _FailingGraphStore:
+    def attack_paths(self, **_kwargs):
+        raise RuntimeError("failed to read /Users/example/.agent-bom/db/graph.db")
+
+
 @pytest.mark.asyncio
 async def test_exposure_paths_impl_returns_agent_native_contract():
     response = await exposure_paths_impl(_get_graph_store=lambda: _GraphStore(), _truncate_response=lambda value: value)
@@ -78,6 +83,16 @@ async def test_exposure_paths_impl_validates_agent_limits():
 
     assert payload["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"
     assert payload["error"]["details"]["argument"] == "limit"
+
+
+@pytest.mark.asyncio
+async def test_exposure_paths_impl_redacts_internal_errors():
+    response = await exposure_paths_impl(_get_graph_store=lambda: _FailingGraphStore())
+    payload = json.loads(response)
+
+    assert payload["error"]["code"] == "AGENTBOM_MCP_INTERNAL_UNEXPECTED"
+    assert payload["error"]["message"] == "An internal error has occurred."
+    assert "graph.db" not in payload["error"]["message"]
 
 
 @pytest.mark.asyncio

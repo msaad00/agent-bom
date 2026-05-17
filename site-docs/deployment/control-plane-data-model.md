@@ -80,6 +80,7 @@ The main operator rule is:
 | Gateway policies | `gateway_policies` | `gateway_policies` | No | `gateway_policies` |
 | Gateway policy audit | `policy_audit_log` | `policy_audit_log` | No | `policy_audit_log` |
 | Source registry | `sources` | `control_plane_sources` | No | No |
+| Credential references | `credential_refs` | `credential_refs` | No | No |
 | API keys / RBAC | No default API wiring | `api_keys` | No | No |
 | Exceptions | No default API wiring | `exceptions` | No | `exceptions` |
 | Schedules | `scan_schedules` | `scan_schedules` | No | `scan_schedules` |
@@ -126,6 +127,14 @@ The logical entity remains "scan jobs."
 This exists because the hosted/control-plane source registry was added
 after the original local source store path. The logical entity remains
 "source registry."
+
+### Credential references
+
+Credential references store customer-managed credential metadata such as a
+role ARN, secret-manager path, workload-identity name, owner, scope, and health
+state. They do not store credential material. Sources may point at a
+`credential_ref_id`; the API validates tenant ownership before a source can be
+created, tested, or run with that reference.
 
 ### Audit chain vs policy audit
 

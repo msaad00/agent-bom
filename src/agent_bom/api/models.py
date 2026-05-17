@@ -201,6 +201,7 @@ class StorageHealth(BaseModel):
     fleet_store: str = "inmemory"
     policy_store: str = "inmemory"
     source_store: str = "inmemory"
+    credential_ref_store: str = "inmemory"
     schedule_store: str = "inmemory"
     exception_store: str = "inmemory"
     trend_store: str = "inmemory"
@@ -440,6 +441,61 @@ class SourceStatus(str, Enum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     DISABLED = "disabled"
+
+
+class CredentialRefStatus(str, Enum):
+    CONFIGURED = "configured"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    DISABLED = "disabled"
+    RETIRED = "retired"
+
+
+class CredentialRefRecord(BaseModel):
+    credential_ref_id: str
+    tenant_id: str = "default"
+    display_name: str
+    provider: str
+    mode: str = "external_ref"
+    external_ref: str
+    description: str = ""
+    owner: str = ""
+    scopes: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    status: CredentialRefStatus = CredentialRefStatus.CONFIGURED
+    last_validated_at: str | None = None
+    last_validation_status: str | None = None
+    last_validation_message: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class CredentialRefCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str
+    provider: str
+    mode: str = "external_ref"
+    external_ref: str
+    description: str = ""
+    owner: str = ""
+    scopes: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    tenant_id: str = "default"
+
+
+class CredentialRefUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = None
+    provider: str | None = None
+    mode: str | None = None
+    external_ref: str | None = None
+    description: str | None = None
+    owner: str | None = None
+    scopes: list[str] | None = None
+    enabled: bool | None = None
+    status: CredentialRefStatus | None = None
 
 
 class SourceRecord(BaseModel):

@@ -373,3 +373,97 @@ class PostgresSourceStore:
                     (tenant_id,),
                 ).fetchall()
             return [SourceRecord.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])) for row in rows]
+
+
+class PostgresCredentialRefStore:
+    """PostgreSQL-backed credential reference registry."""
+
+    def __init__(self, pool=None) -> None:
+        self._pool = pool or _get_pool()
+        self._init_tables()
+
+    def _init_tables(self) -> None:
+        with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "credential_refs")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS credential_refs (
+                    credential_ref_id TEXT PRIMARY KEY,
+                    enabled INTEGER DEFAULT 1,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    updated_at TEXT NOT NULL,
+                    data JSONB NOT NULL
+                )
+            """)
+            conn.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'credential_refs' AND column_name = 'tenant_id'
+                    ) THEN
+                        ALTER TABLE credential_refs ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default';
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'credential_refs' AND column_name = 'updated_at'
+                    ) THEN
+                        ALTER TABLE credential_refs ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+                    END IF;
+                END
+                $$;
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_credential_refs_tenant_updated ON credential_refs(tenant_id, updated_at DESC)")
+            _ensure_tenant_rls(conn, "credential_refs", "tenant_id")
+            conn.commit()
+
+    def put(self, credential) -> None:
+        data = credential.model_dump_json()
+        with _tenant_connection(self._pool) as conn:
+            conn.execute(
+                """INSERT INTO credential_refs (credential_ref_id, enabled, tenant_id, updated_at, data)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (credential_ref_id) DO UPDATE SET
+                     enabled = EXCLUDED.enabled,
+                     tenant_id = EXCLUDED.tenant_id,
+                     updated_at = EXCLUDED.updated_at,
+                     data = EXCLUDED.data""",
+                (
+                    credential.credential_ref_id,
+                    int(credential.enabled),
+                    credential.tenant_id,
+                    credential.updated_at,
+                    data,
+                ),
+            )
+            conn.commit()
+
+    def get(self, credential_ref_id: str):
+        from .models import CredentialRefRecord
+
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute("SELECT data FROM credential_refs WHERE credential_ref_id = %s", (credential_ref_id,)).fetchone()
+            if row is None:
+                return None
+            raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
+            return CredentialRefRecord.model_validate_json(raw)
+
+    def delete(self, credential_ref_id: str) -> bool:
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute("DELETE FROM credential_refs WHERE credential_ref_id = %s", (credential_ref_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def list_all(self, tenant_id: str | None = None) -> list:
+        from .models import CredentialRefRecord
+
+        with _tenant_connection(self._pool) as conn:
+            if tenant_id is None:
+                rows = conn.execute("SELECT data FROM credential_refs ORDER BY updated_at DESC, credential_ref_id").fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT data FROM credential_refs
+                       WHERE tenant_id = %s
+                       ORDER BY updated_at DESC, credential_ref_id""",
+                    (tenant_id,),
+                ).fetchall()
+            return [CredentialRefRecord.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])) for row in rows]

@@ -47,6 +47,7 @@ from agent_bom.api.models import (
     VersionInfo,
 )
 from agent_bom.api.stores import (
+    _get_credential_ref_store,
     _get_schedule_store,
     _get_source_store,
     _get_store,
@@ -56,6 +57,7 @@ from agent_bom.api.stores import (
     _jobs_pop,  # noqa: F401 — re-exported for tests
     _jobs_put,  # noqa: F401 — re-exported for tests
     set_analytics_store,
+    set_credential_ref_store,
     set_exception_store,
     set_fleet_store,
     set_graph_store,
@@ -172,6 +174,10 @@ def _storage_health() -> StorageHealth:
     except RuntimeError:
         source_store = None
     try:
+        credential_ref_store = _get_credential_ref_store()
+    except RuntimeError:
+        credential_ref_store = None
+    try:
         schedule_store = _get_schedule_store()
     except RuntimeError:
         schedule_store = None
@@ -181,6 +187,7 @@ def _storage_health() -> StorageHealth:
         fleet_store=_backend_name(_stores._fleet_store or _stores._get_fleet_store()),
         policy_store=_backend_name(_stores._policy_store or _stores._get_policy_store()),
         source_store=_backend_name(_stores._source_store or source_store),
+        credential_ref_store=_backend_name(_stores._credential_ref_store or credential_ref_store),
         schedule_store=_backend_name(_stores._schedule_store or schedule_store),
         exception_store=_backend_name(_stores._exception_store or _stores._get_exception_store()),
         trend_store=_backend_name(_stores._trend_store or _stores._get_trend_store()),
@@ -230,6 +237,7 @@ async def _lifespan(app_instance: FastAPI):
         from agent_bom.api.auth import set_key_store
         from agent_bom.api.postgres_store import (
             PostgresAuditLog,
+            PostgresCredentialRefStore,
             PostgresExceptionStore,
             PostgresFleetStore,
             PostgresGraphStore,
@@ -248,6 +256,8 @@ async def _lifespan(app_instance: FastAPI):
             set_policy_store(PostgresPolicyStore())
         if _stores._source_store is None:
             set_source_store(PostgresSourceStore())
+        if _stores._credential_ref_store is None:
+            set_credential_ref_store(PostgresCredentialRefStore())
         if _stores._exception_store is None:
             set_exception_store(PostgresExceptionStore())
         if _stores._trend_store is None:
@@ -279,6 +289,10 @@ async def _lifespan(app_instance: FastAPI):
             from agent_bom.api.source_store import SQLiteSourceStore
 
             set_source_store(SQLiteSourceStore(db_path))
+        if _stores._credential_ref_store is None:
+            from agent_bom.api.credential_store import SQLiteCredentialRefStore
+
+            set_credential_ref_store(SQLiteCredentialRefStore(db_path))
         if _stores._trend_store is None:
             from agent_bom.baseline import SQLiteTrendStore
 
@@ -303,6 +317,20 @@ async def _lifespan(app_instance: FastAPI):
             from agent_bom.api.source_store import InMemorySourceStore
 
             set_source_store(InMemorySourceStore())
+
+    if _stores._credential_ref_store is None:
+        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            from agent_bom.api.postgres_store import PostgresCredentialRefStore
+
+            set_credential_ref_store(PostgresCredentialRefStore())
+        elif os.environ.get("AGENT_BOM_DB"):
+            from agent_bom.api.credential_store import SQLiteCredentialRefStore
+
+            set_credential_ref_store(SQLiteCredentialRefStore(os.environ["AGENT_BOM_DB"]))
+        else:
+            from agent_bom.api.credential_store import InMemoryCredentialRefStore
+
+            set_credential_ref_store(InMemoryCredentialRefStore())
 
     # ── Schedule store ──
     if _stores._schedule_store is None:
@@ -685,6 +713,7 @@ from agent_bom.api.pipeline import (  # noqa: E402
 from agent_bom.api.routes.assets import router as _assets_router  # noqa: E402
 from agent_bom.api.routes.compliance import router as _compliance_router  # noqa: E402
 from agent_bom.api.routes.connectors import router as _connectors_router  # noqa: E402
+from agent_bom.api.routes.credentials import router as _credentials_router  # noqa: E402
 from agent_bom.api.routes.discovery import router as _discovery_router  # noqa: E402
 from agent_bom.api.routes.enterprise import router as _enterprise_router  # noqa: E402
 from agent_bom.api.routes.fleet import router as _fleet_router  # noqa: E402
@@ -703,6 +732,7 @@ from agent_bom.api.routes.sources import router as _sources_router  # noqa: E402
 app.include_router(_assets_router)
 app.include_router(_compliance_router)
 app.include_router(_connectors_router)
+app.include_router(_credentials_router)
 app.include_router(_discovery_router)
 app.include_router(_enterprise_router)
 app.include_router(_fleet_router)

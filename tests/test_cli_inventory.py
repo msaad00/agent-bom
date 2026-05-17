@@ -210,6 +210,17 @@ def test_validate_valid_file(tmp_path):
     assert "Valid" in result.output
 
 
+def test_validate_unknown_inventory_schema_version(tmp_path):
+    runner = CliRunner()
+    inv_file = tmp_path / "inv.json"
+    inv_file.write_text(json.dumps({"schema_version": "2", "agents": [{"name": "demo-agent"}]}))
+
+    result = runner.invoke(validate, [str(inv_file)])
+
+    assert result.exit_code == 1
+    assert "Unsupported inventory schema_version '2'" in result.output
+
+
 def test_validate_invalid_json(tmp_path):
     runner = CliRunner()
     inv_file = tmp_path / "bad.json"

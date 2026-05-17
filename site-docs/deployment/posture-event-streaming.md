@@ -1,9 +1,10 @@
 # Posture Event Streaming
 
 `agent-bom` already produces security evidence through reports, API routes,
-MCP tools, audit records, and selected SIEM/export paths. This page defines the
-next connector contract for pushing posture changes into security lakes, SIEMs,
-SOARs, and agent queues without making a shipped-connector claim too early.
+MCP tools, audit records, and selected SIEM/export paths. It also ships the
+first push-delivery primitive: a signed webhook outbox core for posture events.
+This page separates shipped primitives from connector roadmap work so release
+claims stay precise.
 
 ## Current State
 
@@ -14,11 +15,12 @@ Shipped today:
 - `/v1/proxy/audit` and audit-chain verification for runtime events
 - SIEM integration guidance for supported export paths
 - `exposure_paths` and `should_i_deploy` MCP tools for agent pull workflows
+- `agent_bom.posture_streaming.WebhookOutbox` for tenant-scoped, idempotent,
+  signed webhook deliveries with retry and dead-letter metadata
 
 Not shipped today:
 
 - managed posture-event streaming service
-- webhook outbox connector package
 - Kafka, EventBridge, Pub/Sub, Event Hub, Kinesis, or Firehose connector package
 - long-lived `subscribe_posture_changes` MCP tool
 - guaranteed production streaming SLO
@@ -33,8 +35,7 @@ systems do not need per-connector parsers.
 | `event_id` | stable UUID for idempotency |
 | `tenant_id` | tenant that owns the event |
 | `event_type` | `finding.created`, `finding.updated`, `exposure_path.created`, `skill.verdict`, `deploy.decision`, `runtime.policy_decision`, or `audit.integrity` |
-| `occurred_at` | source event timestamp |
-| `observed_at` | connector observation timestamp |
+| `created_at` | source event or enqueue timestamp |
 | `source` | scan, API route, MCP tool, proxy, gateway, or importer that produced the event |
 | `severity` | normalized severity where applicable |
 | `risk_score` | numeric risk score where applicable |
@@ -54,7 +55,7 @@ for SIEM/security-lake interoperability, not a replacement for the graph model.
 |---|---|---|---|
 | Pull by API | shipped | `GET /v1/findings`, `/v1/graph*`, `/v1/audit*` | works for dashboards, SIEM jobs, and custom collectors |
 | Pull by MCP | shipped | `exposure_paths`, `should_i_deploy` | best for AI agents and coding assistants |
-| Webhook outbox | roadmap | signed HTTPS POST to customer URL | should be the first push connector |
+| Webhook outbox core | shipped | `agent_bom.posture_streaming.WebhookOutbox` | operator-provided sender performs explicit HTTPS POST; no hidden egress |
 | Kafka | roadmap | topic-per-tenant or topic with tenant key | first enterprise stream sink for posture events |
 | AWS EventBridge + CloudTrail S3/SQS | roadmap | customer account event bus or S3/SQS trail feed | first AWS cloud activity evidence lane |
 | GCP Pub/Sub + Azure Event Hub/Event Grid | roadmap | customer-owned cloud event transports | multi-cloud parity after AWS |
@@ -86,8 +87,9 @@ credential-reference model, not raw destination secrets.
 
 ## Implementation Slices
 
-1. **Webhook outbox** — tenant-scoped table, signed delivery, retry policy,
-   dead-letter API, and tests.
+1. **Webhook outbox core** — tenant-scoped table, signed delivery headers,
+   retry policy metadata, dead-letter state, private-network destination
+   opt-in, and tests. Shipped in `agent_bom.posture_streaming`.
 2. **OCSF event envelope** — shared serializer for findings, exposure paths,
    deploy decisions, skill verdicts, runtime policy decisions, and audit
    integrity events.

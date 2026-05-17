@@ -18,7 +18,8 @@ Shipped today:
 Not shipped today:
 
 - managed posture-event streaming service
-- Kafka, Pulsar, or EventBridge connector package
+- webhook outbox connector package
+- Kafka, EventBridge, Pub/Sub, Event Hub, Kinesis, or Firehose connector package
 - long-lived `subscribe_posture_changes` MCP tool
 - guaranteed production streaming SLO
 
@@ -54,8 +55,10 @@ for SIEM/security-lake interoperability, not a replacement for the graph model.
 | Pull by API | shipped | `GET /v1/findings`, `/v1/graph*`, `/v1/audit*` | works for dashboards, SIEM jobs, and custom collectors |
 | Pull by MCP | shipped | `exposure_paths`, `should_i_deploy` | best for AI agents and coding assistants |
 | Webhook outbox | roadmap | signed HTTPS POST to customer URL | should be the first push connector |
-| Kafka/Pulsar | roadmap | topic-per-tenant or topic with tenant key | requires retry, DLQ, and idempotency guidance |
-| EventBridge | roadmap | customer account event bus | AWS-first push lane |
+| Kafka | roadmap | topic-per-tenant or topic with tenant key | first enterprise stream sink for posture events |
+| AWS EventBridge + CloudTrail S3/SQS | roadmap | customer account event bus or S3/SQS trail feed | first AWS cloud activity evidence lane |
+| GCP Pub/Sub + Azure Event Hub/Event Grid | roadmap | customer-owned cloud event transports | multi-cloud parity after AWS |
+| Kinesis/Firehose | roadmap | customer stream or delivery stream | later AWS high-volume adapter, not a release blocker |
 | Long-lived MCP subscription | roadmap | `subscribe_posture_changes` | agent-native stream; needs backpressure and replay contract |
 
 ## Reliability Rules
@@ -88,9 +91,13 @@ credential-reference model, not raw destination secrets.
 2. **OCSF event envelope** — shared serializer for findings, exposure paths,
    deploy decisions, skill verdicts, runtime policy decisions, and audit
    integrity events.
-3. **Connector adapters** — Kafka/Pulsar/EventBridge optional extras that
-   consume the outbox contract.
-4. **Agent subscription** — MCP `subscribe_posture_changes` backed by the same
+3. **Kafka connector** — enterprise stream sink for findings, exposure paths,
+   skill verdicts, deploy decisions, and audit deltas.
+4. **Cloud activity ingestion** — AWS EventBridge plus CloudTrail S3/SQS first,
+   then GCP Pub/Sub and Azure Event Hub/Event Grid.
+5. **High-volume AWS adapter** — Kinesis/Firehose for customers that already
+   centralize telemetry there.
+6. **Agent subscription** — MCP `subscribe_posture_changes` backed by the same
    outbox/replay contract.
 
 Each slice should ship with a first command, an artifact, and a verification

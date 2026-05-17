@@ -1,8 +1,9 @@
 # Product Brief
 
-`agent-bom` is an open security data plane, scanner, and self-hosted control
-plane for AI/MCP infrastructure. It generates a reachability-backed AI BOM
-across agents, MCP servers, packages, credential environment names, cloud,
+`agent-bom` is an open security scanner and self-hosted control plane for
+AI/MCP infrastructure. It adds headless agent primitives and human cockpit
+surfaces over the same evidence model. It generates a reachability-backed AI
+BOM across agents, MCP servers, packages, credential environment names, cloud,
 runtime, and skill surfaces, then exposes the same evidence through CLI/CI,
 API/UI, MCP tools, and selected runtime controls.
 
@@ -64,12 +65,13 @@ to request the same `ExposurePath` evidence, skill verdicts, and deploy
 decisions under the same auth, tenant, and audit boundary.
 
 That is the useful lesson from developer-observability products: the cockpit is
-valuable, but the product primitive must be callable. For `agent-bom`, the
-primitive is not a trace; it is graph-backed security evidence:
-`ExposurePath`, findings, skill verdicts, compliance tags, runtime audit, and
-deploy decisions. Public copy should describe this as an open security data
-plane for AI-era infrastructure, while still proving the scanner and
-self-hosted control plane first.
+valuable, but the product primitive must be callable. `agent-bom` is
+Langfuse-like in shape only: humans get a cockpit and agents get callable
+primitives, but the primitive is not a trace. It is graph-backed security
+evidence: `ExposurePath`, findings, skill verdicts, compliance tags, runtime
+audit, and deploy decisions. Public copy should describe this as an open
+security data plane only when paired with exact shipped surfaces and roadmap
+boundaries.
 
 This framing does not narrow the deployment story. It makes "deploy in your
 own cloud / infrastructure" the production form of lane 2, with runtime
@@ -126,8 +128,8 @@ notes discuss agent-native product direction.
 |---|---|---|
 | Human cockpit | Next.js dashboard, graph cockpit, reports, compliance and audit views | every UI action backed by a source registry and persisted workflow state |
 | Agent interface | 38 read-only MCP tools, strict arguments, `exposure_paths`, `should_i_deploy` | long-lived posture subscription tool, autonomous remediation actions |
-| Scanner/data plane | CLI, Docker, GitHub Action, REST API, imports, graph exports, initial TypeScript control-plane client | a full Python scanner SDK and full TypeScript scanner SDK |
-| Runtime | MCP proxy, gateway, Shield SDK, runtime audit and policy decisions | webhook outbox, Kafka/Pulsar/EventBridge adapters, and MCP posture subscriptions |
+| Scanner/data plane | CLI, Docker, GitHub Action, REST API, imports, graph exports, TypeScript control-plane client, TypeScript runtime detector package | Python/Go control-plane SDKs and full scanner SDKs |
+| Runtime | MCP proxy, gateway, Shield SDK, runtime audit and policy decisions | webhook outbox, Kafka connectors, cloud-log ingestion connectors, Kinesis/Firehose adapter, and MCP posture subscriptions |
 | Graph scale | SQLite/Postgres default path, WebGL overview, optional Neptune adapter work | production Neptune SLOs, public openCypher endpoint, mandatory graph-database backend |
 | Extensibility | Python package internals, skills, runtime detector package | productized detection-as-code YAML registry and stable plugin SDK |
 
@@ -208,9 +210,9 @@ That means public repo copy should emphasize real shipped surfaces, not just asp
 
 The next phase should stay disciplined:
 
-- SDK clarity: keep `@agent-bom/runtime` scoped to runtime detectors until a
-  real TypeScript scanner/API client exists; add a Python client only when it
-  wraps stable public CLI/API contracts
+- SDK clarity: keep `@agent-bom/runtime` scoped to runtime detectors and
+  `@agent-bom/client` scoped to control-plane API calls; add Python and Go
+  clients only when they wrap stable public API contracts
 - enterprise hardening: auth defaults, tenant isolation, Helm and deployment defaults, stable operator contracts
 - scanner depth: stronger lockfile and package coverage so buyers do not need a second tool for basic SCA depth
 - supply chain operations: tighter SBOM import/diff workflows so external vendor BOMs and current scans stay comparable

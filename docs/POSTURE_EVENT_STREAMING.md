@@ -36,10 +36,21 @@ Posture push connectors should emit:
 
 ## Delivery Order
 
-1. Webhook outbox with signed HTTPS POST.
+1. Generic webhook outbox with signed HTTPS POST, retry, dead-letter handling,
+   and idempotent `event_id` delivery.
 2. OCSF envelope shared by all connector adapters.
-3. Kafka/Pulsar/EventBridge adapters as optional extras.
-4. MCP posture subscription tool backed by the same replay contract.
+3. Kafka connector for enterprise posture-event sinks covering findings,
+   `ExposurePath` changes, skill verdicts, deploy decisions, and audit deltas.
+4. AWS EventBridge plus S3/SQS CloudTrail ingestion for cloud activity
+   evidence.
+5. GCP Pub/Sub plus Azure Event Hub/Event Grid for multi-cloud parity.
+6. Kinesis/Firehose as a later AWS high-volume adapter for customers that
+   already centralize telemetry there.
+7. MCP posture subscription tool backed by the same replay contract.
 
-Do not document Kafka, Pulsar, EventBridge, or MCP posture subscriptions as
-shipped until their adapters and tests land.
+Do not document webhook outbox, Kafka, EventBridge, Pub/Sub, Event Hub,
+Kinesis, Firehose, or MCP posture subscriptions as shipped until their adapters
+and tests land. The current claim is: posture/event streaming is planned via
+webhook outbox and Kafka-style sinks; AWS cloud-log ingestion should start with
+CloudTrail S3/SQS and EventBridge. Kinesis is a later adapter, not a release
+blocker.

@@ -15,6 +15,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI/MCP infrastructure.</b></p>
+<p align="center">Headless agent primitives and human cockpit surfaces over the same evidence model.</p>
 
 <p align="center"><code>agent-bom</code> is also an open security data plane: it generates a reachability-backed AI BOM across agents, MCP servers, packages, credential environment names, cloud, runtime, and skill surfaces, then exposes the same evidence to humans and AI agents through CLI/CI, API/UI, MCP tools, and selected runtime controls.</p>
 
@@ -74,21 +75,33 @@ dashboard-only workflow:
 | Surface | Primary consumer | Shipped boundary |
 |---|---|---|
 | **CLI / CI** | developers, release gates, automation | local scans, SARIF/SBOM/HTML/JSON output, deterministic exit codes |
-| **API / UI** | security teams, auditors, operators | authenticated control plane, graph cockpit, fleet, compliance, audit, evidence review |
+| **REST API** | security platforms, SIEM jobs, custom services | authenticated control plane routes for scans, findings, graph evidence, audit, and governance |
 | **MCP tools** | Claude, Cursor, Codex, Windsurf, Cortex, and custom agents | 38 read-only tools, strict arguments, `exposure_paths`, `should_i_deploy` |
+| **TypeScript client** | services and agent runtimes calling the control plane | typed helper for stable REST endpoints; not a scanner SDK |
+| **TypeScript runtime detectors** | MCP/runtime enforcement integrations | local detector package for runtime policy checks; separate from the control-plane client |
+| **UI cockpit** | security teams, auditors, operators | graph cockpit, fleet, compliance, audit, and evidence review over the same backend data |
 | **Proxy / gateway / Shield** | runtime operators and selected applications | scoped MCP traffic inspection, policy decisions, redacted audit, runtime evidence |
 
 The UI remains a full-fidelity cockpit for humans. MCP/API/CLI give agents and
 other platforms the same underlying security primitives without requiring a
 human to click through the dashboard.
 
+That makes the product Langfuse-like in shape only: humans get a cockpit and
+agents get callable primitives, but the underlying data is security evidence
+and `ExposurePath` graph context rather than LLM traces or evals.
+
 Current boundaries:
 
-- the TypeScript package is `@agent-bom/runtime`, focused on MCP runtime
-  detectors; it is not yet a full scanner or API client SDK
+- `@agent-bom/runtime` is focused on MCP runtime detectors, while
+  `@agent-bom/client` is the TypeScript control-plane API client; neither is a
+  full scanner SDK
+- CLI scan commands run local scan pipelines today; they do not delegate to the
+  API, though CLI and API share lower scanner and discovery libraries
 - there is no managed agent-bom Cloud offering in this repo today
-- streaming SIEM/Kafka-style posture feeds and detection-as-code YAML are
-  roadmap items, not shipped surfaces
+- posture/event streaming is planned via webhook outbox and Kafka-style sinks;
+  AWS cloud-log ingestion should start with CloudTrail S3/SQS and EventBridge;
+  Kinesis is a later adapter, not a release blocker
+- detection-as-code YAML is a roadmap item, not a shipped surface
 - AWS IAM enrichment is opt-in and bounded by the documented read-only provider
   scope; do not treat it as complete IAM coverage across every cloud
 - OSS, self-hosted enterprise, and Snowflake product-lane boundaries are

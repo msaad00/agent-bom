@@ -55,6 +55,10 @@ but as MCP tool output for an AI agent or coding assistant. `should_i_deploy`
 returns deploy guidance; it does not modify code, open pull requests, or mutate
 cloud resources.
 
+Posture-change subscriptions are not shipped yet. The connector contract is
+tracked in [Posture Event Streaming](../deployment/posture-event-streaming.md)
+so future agent and SIEM push workflows share one event envelope.
+
 ### Skills CI Gate
 
 ```yaml

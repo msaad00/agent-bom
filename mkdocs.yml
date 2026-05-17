@@ -119,6 +119,7 @@ nav:
           - Scaling SLOs and Autoscaling: deployment/scaling-slo.md
           - Worker and Scheduler Concurrency: deployment/worker-and-scheduler-concurrency.md
           - SIEM Integration: deployment/siem-integration.md
+          - Posture Event Streaming: deployment/posture-event-streaming.md
           - Grafana Dashboard: deployment/grafana.md
       - Specialized Reference:
           - Deployment Modes and Alignment: deployment/deployment-modes-and-alignment.md

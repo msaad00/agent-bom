@@ -70,6 +70,40 @@ test("posts deploy decision payload without undefined fields", async () => {
   });
 });
 
+test("posts normalized bulk findings", async () => {
+  let seenUrl = "";
+  let payload;
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    tenantId: "tenant-d",
+    fetch: async (url, init) => {
+      seenUrl = String(url);
+      payload = JSON.parse(init.body);
+      return jsonResponse({
+        schema_version: "v1",
+        batch_id: "batch-1",
+        ingested: 1,
+        tenant_total: 1,
+        tenant_id: "tenant-d",
+        source: "agent-runtime",
+      });
+    },
+  });
+
+  const response = await client.ingestFindings({
+    source: "agent-runtime",
+    findings: [{ id: "finding-1", severity: "high" }],
+  });
+
+  assert.equal(seenUrl, "https://agent-bom.example.com/v1/findings/bulk");
+  assert.equal(response.ingested, 1);
+  assert.deepEqual(payload, {
+    findings: [{ id: "finding-1", severity: "high" }],
+    source: "agent-runtime",
+    tenant_id: "tenant-d",
+  });
+});
+
 test("throws typed errors for non-2xx responses", async () => {
   const client = new AgentBomClient({
     baseUrl: "https://agent-bom.example.com",

@@ -28,8 +28,12 @@ const decision = await client.shouldIDeploy({
   candidate: "flask@2.0.0",
   blockRisk: 80,
 });
+const ingest = await client.ingestFindings({
+  source: "agent-runtime",
+  findings: [{ id: "finding-1", severity: "high" }],
+});
 
-console.log(health.status, paths.paths.length, decision.decision);
+console.log(health.status, paths.paths.length, decision.decision, ingest.ingested);
 ```
 
 ## Boundary

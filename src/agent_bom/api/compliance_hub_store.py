@@ -46,6 +46,9 @@ def _redact_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
             clean["id"] = str(payload["id"])
         if "source" not in clean and "source" in payload:
             clean["source"] = str(payload["source"])
+        for key in ("origin", "batch_id", "bulk_ordinal"):
+            if key not in clean and key in payload:
+                clean[key] = payload[key]
         redacted.append(clean)
     return redacted
 

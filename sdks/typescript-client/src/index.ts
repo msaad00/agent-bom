@@ -58,6 +58,25 @@ export interface DeployDecision {
   [key: string]: JsonValue | undefined;
 }
 
+export interface BulkFindingIngestRequest {
+  findings: Record<string, JsonValue>[];
+  source?: string;
+  schemaVersion?: string;
+  metadata?: Record<string, JsonValue>;
+  tenantId?: string;
+}
+
+export interface BulkFindingIngestResponse {
+  schema_version: string;
+  batch_id: string;
+  ingested: number;
+  tenant_total: number;
+  tenant_id: string;
+  source: string;
+  warnings?: string[];
+  [key: string]: JsonValue | undefined;
+}
+
 export class AgentBomApiError extends Error {
   readonly status: number;
   readonly body: string;
@@ -127,6 +146,18 @@ export class AgentBomClient {
       tenant_id: request.tenantId ?? this.tenantId,
       block_risk: request.blockRisk,
       context: request.context,
+    });
+  }
+
+  ingestFindings(
+    request: BulkFindingIngestRequest,
+  ): Promise<BulkFindingIngestResponse> {
+    return this.request<BulkFindingIngestResponse>("POST", "/v1/findings/bulk", {
+      findings: request.findings,
+      source: request.source,
+      schema_version: request.schemaVersion,
+      metadata: request.metadata,
+      tenant_id: request.tenantId ?? this.tenantId,
     });
   }
 

@@ -53,7 +53,7 @@ for SIEM/security-lake interoperability, not a replacement for the graph model.
 
 | Mode | Status | First proof | Notes |
 |---|---|---|---|
-| Pull by API | shipped | `GET /v1/findings`, `/v1/graph*`, `/v1/audit*` | works for dashboards, SIEM jobs, and custom collectors |
+| Pull by API | shipped | `GET /v1/findings`, `POST /v1/findings/bulk`, `/v1/graph*`, `/v1/audit*` | works for dashboards, SIEM jobs, agent runtimes, and custom collectors |
 | Pull by MCP | shipped | `exposure_paths`, `should_i_deploy` | best for AI agents and coding assistants |
 | Webhook outbox core | shipped | `agent_bom.posture_streaming.WebhookOutbox` | operator-provided sender performs explicit HTTPS POST; no hidden egress |
 | Kafka | roadmap | topic-per-tenant or topic with tenant key | first enterprise stream sink for posture events |

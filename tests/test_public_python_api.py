@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from types import SimpleNamespace
 
@@ -15,8 +16,15 @@ from agent_bom.models import AIBOMReport, Package, Severity, Vulnerability
 def test_public_api_exports_expected_functions():
     assert agent_bom.scan is sdk.scan
     assert agent_bom.check is sdk.check
-    assert agent_bom.inventory is sdk.inventory
     assert agent_bom.diff is sdk.diff
+    assert sdk.inventory.__name__ == "inventory"
+
+
+def test_inventory_sdk_helper_does_not_shadow_inventory_module():
+    inventory_module = importlib.import_module("agent_bom.inventory")
+
+    assert agent_bom.inventory is inventory_module
+    assert sdk.inventory.__name__ == "inventory"
 
 
 def test_scan_delegates_to_cli_scan_runner(monkeypatch):

@@ -28,7 +28,6 @@ from agent_bom.sdk import (  # noqa: E402
     async_check,
     check,
     diff,
-    inventory,
     scan,
 )
 
@@ -41,6 +40,5 @@ __all__ = [
     "async_check",
     "check",
     "diff",
-    "inventory",
     "scan",
 ]

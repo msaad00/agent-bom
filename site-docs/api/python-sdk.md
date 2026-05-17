@@ -4,7 +4,8 @@ Use the public Python API when another tool needs typed `agent-bom` results
 without parsing terminal output.
 
 ```python
-from agent_bom import check, diff, inventory, scan
+from agent_bom import check, diff, scan
+from agent_bom.sdk import inventory
 
 report = scan(project=".", offline=True)
 for finding in report.to_findings():

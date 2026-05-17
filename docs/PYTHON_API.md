@@ -5,7 +5,8 @@ results without shelling out to the CLI. The API is a wrapper over shipped
 scanner, inventory, and diff primitives; it is not a separate scanner.
 
 ```python
-from agent_bom import check, diff, inventory, scan
+from agent_bom import check, diff, scan
+from agent_bom.sdk import inventory
 
 report = scan(project=".", offline=True)
 for finding in report.to_findings():
@@ -28,7 +29,7 @@ print(delta.summary)
 | `scan(...)` | `agent_bom.models.AIBOMReport` | Runs the same local simple scan runner used by CLI scan-consuming commands. |
 | `check(...)` | `PackageCheckResult` | Synchronous single-package vulnerability check. |
 | `async_check(...)` | `PackageCheckResult` | Async single-package vulnerability check for applications already running an event loop. |
-| `inventory(...)` | `InventoryResult` | Parses JSON, CSV, or NDJSON inventory using the canonical inventory loader. |
+| `agent_bom.sdk.inventory(...)` | `InventoryResult` | Parses JSON, CSV, or NDJSON inventory using the canonical inventory loader. Kept under `agent_bom.sdk` to avoid shadowing the existing `agent_bom.inventory` module. |
 | `diff(...)` | `DiffResult` | Diffs two agent-bom reports or SBOM documents using the history diff engine. |
 
 ## Notes

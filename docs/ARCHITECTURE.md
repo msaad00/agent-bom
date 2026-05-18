@@ -126,7 +126,7 @@ The full contract for what the graph promises and what it does not — entity ty
 
 ## 4. Compliance Tagging
 
-Every finding is tagged against 15 tag-mapped frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk-relevant controls — they are not a complete catalog. See [Coverage per framework](#coverage-per-framework) below for the honest control counts.
+Every finding is tagged against curated compliance frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk-relevant controls — they are not a complete catalog. See [Coverage per framework](#coverage-per-framework) below for the generated control counts.
 
 ```mermaid
 graph LR

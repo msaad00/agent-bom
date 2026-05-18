@@ -55,6 +55,7 @@ from agent_bom.firewall import (
 )
 from agent_bom.firewall import evaluate as evaluate_firewall_policy
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc, policy_subject_from_message
 from agent_bom.proxy_policy import summarize_policy_bundle
 
@@ -960,6 +961,16 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         span.set_attribute("agent_bom.gateway.tracestate_present", True)
                     if trace_meta["baggage"]:
                         span.set_attribute("agent_bom.gateway.baggage_present", True)
+                    set_langfuse_runtime_attributes(
+                        span,
+                        surface="gateway",
+                        tenant_id=tenant_id,
+                        method=str(message.get("method", "unknown")),
+                        tool_name=message.get("params", {}).get("name") if is_tools_call(message) else None,
+                        decision="allowed",
+                        upstream=upstream.name,
+                        trace_id=str(trace_meta["trace_id"]),
+                    )
                 upstream_response = await upstream_caller(upstream, forwarded_message, extra_headers)
         except GatewayCircuitOpenError as exc:
             logger.warning("gateway upstream circuit open for %s", upstream.name)

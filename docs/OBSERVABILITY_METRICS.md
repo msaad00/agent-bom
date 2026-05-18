@@ -76,14 +76,21 @@ rate(agent_bom_scan_completions_total[15m]) > 0.1` — failure rate above
 
 ## Tracing (OpenTelemetry)
 
-Tracing is configured by `OTEL_EXPORTER_OTLP_ENDPOINT` and
-`AGENT_BOM_OTEL_ENABLED=1`. When on, every FastAPI request emits a trace
-via the middleware in `src/agent_bom/api/tracing.py`. Recommended
-exporters:
+Tracing is configured by `AGENT_BOM_OTEL_TRACES_ENDPOINT`. Optional
+collector authentication headers can be passed with
+`AGENT_BOM_OTEL_TRACES_HEADERS` as comma-separated `key=value` pairs. When
+configured, FastAPI, gateway, graph, and MCP proxy spans are exported over
+OTLP/HTTP through `src/agent_bom/api/tracing.py`. Recommended exporters:
 
 - **Local / self-hosted:** OTel Collector → Jaeger, Tempo, or any
   OTLP-compatible sink.
 - **AWS:** ADOT collector → CloudWatch / X-Ray.
+- **Langfuse-compatible:** point `AGENT_BOM_OTEL_TRACES_ENDPOINT` at the
+  Langfuse OTLP/HTTP traces endpoint and set `AGENT_BOM_OTEL_TRACES_HEADERS`
+  for Basic auth plus ingestion headers. agent-bom emits redaction-safe
+  `langfuse.*` attributes on runtime proxy and gateway spans, but Langfuse
+  scores, dataset replay, and native trace import remain roadmap work until
+  code and tests land for those paths.
 
 Correlate traces with audit entries via the `trace_id` field written to
 every `compliance.report_exported` audit entry.

@@ -9,6 +9,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Multi-agent operating contract** - promoted shared engineering, PR style,
+  and release-readiness rules into `.agents/AGENTS.md` so any agent following
+  the [agents.md](https://agents.md) convention (Claude, Codex, Cursor,
+  Continue, Aider, Windsurf) reads the same contract. Added a thin Claude-only
+  `CLAUDE.md` addendum for memory and tool semantics.
+- **Public documentation positioning** - external scanner ingest is now
+  described by standard format (CycloneDX, SPDX, SARIF, scanner-native JSON)
+  instead of by vendor name across site-docs, examples, ADRs, MCP server
+  metadata, and the boundaries documentation.
+
 ---
 
 ## [0.87.0] - 2026-05-17

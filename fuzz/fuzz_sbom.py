@@ -5,8 +5,8 @@ Fuzzes:
 2. parse_spdx() — SPDX 2.x/3.0 JSON parser
 3. load_sbom() path — end-to-end SBOM load from bytes
 
-Both parsers accept user-supplied files from external tooling (Syft, Grype,
-Trivy, etc.) and must handle malformed input safely.
+These parsers accept user-supplied files from external SBOM/SCA tooling
+and must handle malformed input safely.
 """
 
 import json

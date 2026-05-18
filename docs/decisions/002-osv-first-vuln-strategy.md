@@ -32,8 +32,8 @@ sources layered on top:
    for future (see gap analysis) but not justified at current scale.
 2. *NVD-only* — Comprehensive but slow (rate-limited API), requires CPE
    matching instead of PURL, and has known coverage gaps for non-CVE advisories.
-3. *Snyk/commercial API* — Good data quality but introduces vendor lock-in and
-   cost for an open-source project.
+3. *Commercial vulnerability APIs* — Good data quality but introduce vendor lock-in
+   and per-token cost for an open-source project.
 
 ## Consequences
 

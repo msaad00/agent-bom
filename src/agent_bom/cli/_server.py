@@ -725,7 +725,7 @@ def mcp_server_cmd(
       ai_inventory_scan      Detect AI SDK imports, shadow AI, deprecated models
       browser_extension_scan Audit browser extensions for AI/MCP capabilities
       dataset_card_scan      Scan dataset cards for license and provenance
-      ingest_external_scan   Import Trivy/Grype/Syft scan results
+      ingest_external_scan   Import external SBOM/SCA scanner output (CycloneDX, SPDX, SARIF, or scanner-native JSON)
       license_compliance_scan License risk detection for dependencies
       model_file_scan        Scan ML model files for security risks
       model_provenance_scan  Verify model origin and supply chain integrity

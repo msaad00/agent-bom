@@ -89,24 +89,23 @@ Closed blockers and non-claims:
 
 ## External Benchmark
 
-Public references do not disclose Wiz or CrowdStrike's exact browser graph
-renderer. The public signal is about the data model and scale:
+Public reference signal for graph-backed cloud-security platforms focuses on
+the data model and scale, not the browser renderer:
 
-- AWS states that Wiz maps detected risks and the technology stack onto a Wiz
-  Security Graph built on Amazon Neptune, with graph context used to prioritize
-  risks and reveal actionable issues.
-- AWS also reports that Wiz stores hundreds of billions of relationships and
-  scans billions of cloud resources daily.
-- CrowdStrike describes Threat Graph as a purpose-built graph database for
-  cybersecurity and describes Asset Graph as a graph database for visibility
-  across devices, users, accounts, applications, cloud workloads, OT, and more.
-- Sigma.js is publicly documented as a WebGL graph renderer built on graphology.
+- Leading commercial cloud-security graph platforms publicly describe their
+  security graphs as backed by managed graph databases (Amazon Neptune is one
+  documented backend), with graph context used to prioritize risks and surface
+  actionable issues.
+- Public materials from those vendors describe storing hundreds of billions of
+  relationships and scanning billions of cloud resources per day.
+- Other endpoint and asset-graph platforms describe purpose-built graph
+  databases for cybersecurity and asset visibility across devices, users,
+  accounts, applications, cloud workloads, and OT.
+- Sigma.js is publicly documented as a WebGL graph renderer built on
+  graphology, and is the path agent-bom uses for the WebGL overview lane.
 
-References:
+Reference:
 
-- https://aws.amazon.com/solutions/case-studies/wiz-neptune/
-- https://www.crowdstrike.com/products/falcon-platform/threat-graph/
-- https://www.crowdstrike.com/en-us/press-releases/crowdstrike-introduces-crowdstrike-asset-graph/
 - https://v4.sigmajs.org/
 
 ## What Amazon Neptune Means For agent-bom
@@ -337,7 +336,7 @@ Default self-hosted path should stay Postgres/SQLite, but enterprise graph
 adapters should be explicit:
 
 - Neo4j: common enterprise graph query backend
-- Amazon Neptune: closest public analog to Wiz's Security Graph stack
+- Amazon Neptune: managed AWS graph backend used by leading commercial cloud-security graph platforms
 - ClickHouse: analytics/time-series pressure, not the traversal source of truth
 
 Do not require Neptune/Neo4j for local-first or self-hosted adoption.

@@ -1,6 +1,9 @@
 # Agent Guidelines for agent-bom
 
-This is the root operating guide for agent contributors working in this repo.
+This is the root operating guide for **any agent or coding assistant** working
+in this repo — Claude, Codex, Cursor, Continue, Aider, Windsurf, or human
+contributors using one. Follows the [agents.md](https://agents.md) convention.
+
 Keep it concise and route deep implementation details to the owning docs,
 tests, or package directories.
 
@@ -8,6 +11,10 @@ tests, or package directories.
 AI-era infrastructure. The product must prove value across local scans, CI
 evidence, fleet inventory, graph-backed findings, MCP/runtime enforcement, and
 customer-controlled deployments.
+
+**Product vision:** plug-n-play for humans and agents — easy, accurate,
+efficient, scalable, secure, up-to-date. Inventory → findings → compliance →
+graphs (environments, lineage, identity, scans, MCP, agents).
 
 ## Operating Contract
 
@@ -116,6 +123,73 @@ Minimum verification matrix:
 | UI | `npm run verify:toolchain`, typecheck, tests; browser/screenshot review for visible changes |
 | docs/positioning only | stale-command search and `git diff --check`; do not claim untested capabilities |
 | dependency/toolchain | package-specific install, lockfile/toolchain verification, and affected tests |
+
+## On task start, ALWAYS
+
+- `git pull --ff-only origin main` before any audit — never assess a stale
+  local working tree.
+- Read recent commits (`git log --oneline -15`) and open PRs (`gh pr list`).
+- Check `pyproject.toml` version vs the latest tag vs PyPI before claiming
+  release state.
+- For end-user audits, install fresh from PyPI in a clean venv. Do not trust
+  the working tree.
+
+## Never
+
+- `Co-Authored-By:` an LLM (Claude, Codex, Copilot, GPT, Gemini, etc.) in
+  commits.
+- Tool-credit prefixes in PR titles, commits, or CHANGELOG entries
+  (`[claude]`, `[codex]`, `[copilot]`, `[cursor]`, etc.) — they ship into
+  GitHub release notes.
+- Name competitor products in PRs, commits, docs, release notes, or any
+  public content. Talk about capability gaps and our own surfaces only.
+- Release with broken imports, red tests, or unreleased `[Unreleased]`
+  CHANGELOG entries left after tagging.
+- Claim a file, feature, or behavior exists without reading the code that
+  proves it.
+- Open more than 4 PRs simultaneously in the same queue — open sequentially
+  as each merges.
+- Re-tag an existing version. Bump and tag forward only.
+- `git push --force` to `main`, `--no-verify`, `--no-gpg-sign`, or amend
+  published commits without an explicit user request.
+
+## Always
+
+- Verify before claiming. "Looks good" without running or reading the code is
+  not allowed.
+- Full-stack alignment on every material change: deps → data model → DB →
+  API → middleware → outputs (JSON / SARIF / CycloneDX / SPDX / Markdown /
+  HTML) → CLI → UI → tests → docs → CI guards → Helm / Docker.
+- Canonicalize platform invariants server-side; don't raise on ad-hoc input
+  where Pydantic validators can normalize.
+- Non-trivial features ship as a 4-PR series: foundation → mechanical →
+  surface → lock-in.
+- When Phase N supersedes a Phase N-1 component, remove the old one in the
+  same PR.
+- Auth-by-default. New endpoints reject anonymous traffic unless the contract
+  explicitly allows it.
+
+## Engineering bar (six lenses, every change)
+
+1. **Correctness** — tests pass; semantics match docs.
+2. **Performance** — measured, not asserted; published benchmarks are real.
+3. **Security** — auth-by-default, redaction-aware, audit-chain-signed where
+   applicable.
+4. **Observability** — healthz / correlation_id / OCSF-shaped logs / metric
+   labels.
+5. **Persistence** — backends abstracted (SQLite default, Postgres ready,
+   ClickHouse planned); RLS where multi-tenant.
+6. **Enterprise readiness** — Helm + values examples + EKS + Docker + Render /
+   Fly + airgap path.
+
+## PR / commit style
+
+- Factual and impersonal. No chat-style prose ("you flagged X", "as we
+  discussed").
+- Title: `feat(area): ...`, `fix(area): ...`, `docs(area): ...`,
+  `chore(deps): ...`, `refactor(area): ...`.
+- Body: Summary (1-3 bullets) → Verification (commands run) → Notes (if any).
+- Pin every claim to evidence (test name, command, screenshot, doc path).
 
 ## Repo Rules
 

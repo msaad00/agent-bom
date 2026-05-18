@@ -238,9 +238,9 @@ license_compliance_scan()
 ```
 
 ### ingest_external_scan
-Import Trivy, Grype, or Syft JSON and return packages with blast-radius analysis.
+Import third-party scanner output (CycloneDX, SPDX, SARIF, or scanner-native JSON) and return packages with blast-radius analysis.
 ```
-ingest_external_scan(path="trivy.json")
+ingest_external_scan(path="scan.json")
 ```
 
 ## Resources

@@ -36,6 +36,21 @@ def test_scan_secrets_detects_real_findings_and_skips_test_fixtures(tmp_path: Pa
     }
 
 
+def test_scan_secrets_suppresses_doc_pii_but_keeps_doc_credentials(tmp_path: Path):
+    doc_key = "sk-" + "proj-" + "abc123def456" + "ghi789jkl012" + "mno345pqr678stu"
+    (tmp_path / "README.md").write_text(
+        f'Contact security@example.com or test 192.168.1.10 in local docs.\nOPENAI_KEY = "{doc_key}"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "notes.txt").write_text("Email docs@example.com from 10.0.0.5.\n", encoding="utf-8")
+
+    result = scan_secrets(tmp_path)
+
+    findings = {(finding.file_path, finding.secret_type, finding.category) for finding in result.findings}
+    assert ("README.md", "OpenAI API Key", "credential") in findings
+    assert not any(finding.category == "pii" for finding in result.findings)
+
+
 def test_scan_secrets_warns_on_non_directory(tmp_path: Path):
     target = tmp_path / "not-a-dir.txt"
     target.write_text("hello", encoding="utf-8")

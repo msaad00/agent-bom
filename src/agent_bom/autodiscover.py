@@ -210,11 +210,15 @@ async def autodiscover_package(
     }
 
 
-async def enrich_unknown_packages(packages: list[Package]) -> int:
+async def enrich_unknown_packages(packages: list[Package], *, global_timeout: float | None = 30.0) -> int:
     """Batch-enrich packages not found in the bundled registry.
 
     Updates Package objects in-place with auto_risk_level,
     auto_risk_justification, maintainer_count, and source_repo.
+
+    The global timeout bounds the whole enrichment pass. Individual requests
+    already have request timeouts, but large inventories can otherwise wait for
+    many slow registry calls in sequence across semaphore batches.
 
     Returns the number of packages successfully enriched.
     """
@@ -248,8 +252,19 @@ async def enrich_unknown_packages(packages: list[Package]) -> int:
                     return True
                 return False
 
-        tasks = [_enrich_one(pkg) for pkg in to_enrich]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [asyncio.create_task(_enrich_one(pkg)) for pkg in to_enrich]
+        done, pending = await asyncio.wait(tasks, timeout=global_timeout)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+            logger.warning(
+                "Auto-discovery metadata enrichment timed out after %.1fs; enriched %s/%s package(s)",
+                global_timeout or 0.0,
+                sum(1 for task in done if task.done() and not task.cancelled() and task.exception() is None and task.result() is True),
+                len(to_enrich),
+            )
+        results = [task.result() if task.exception() is None else task.exception() for task in done if not task.cancelled()]
         enriched = sum(1 for r in results if r is True)
 
     return enriched

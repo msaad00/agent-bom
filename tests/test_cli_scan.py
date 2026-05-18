@@ -818,6 +818,23 @@ def test_scan_no_tree_flag():
     assert result.exit_code == 0
 
 
+def test_scan_prints_package_extraction_progress(monkeypatch):
+    """Real MCP inventories should show which server is being extracted."""
+    from agent_bom.models import TransportType
+
+    pkg = Package(name="example", version="1.0.0", ecosystem="pypi")
+    server = MCPServer(name="demo-server", command="python", transport=TransportType.STDIO)
+    agent = Agent(name="demo-agent", agent_type=AgentType.CUSTOM, config_path="/tmp/demo.json", mcp_servers=[server])
+
+    monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [agent])
+    monkeypatch.setattr("agent_bom.cli.agents.extract_packages", lambda *args, **kwargs: [pkg])
+
+    result = _run(["scan", "--no-scan"])
+
+    assert result.exit_code == 0
+    assert "Extracting packages from demo-agent/demo-server" in result.output
+
+
 def test_demo_scan_hides_synthetic_project_temp_path():
     with (
         patch("agent_bom.cli.agents.discover_all", return_value=[]),

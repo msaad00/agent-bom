@@ -2111,6 +2111,8 @@ async def get_graph_schema() -> dict:
         "semantic_layers": [{"key": layer.value, "label": _SEMANTIC_LAYER_LABELS[layer.value]} for layer in GraphSemanticLayer],
         "node_kinds": sorted(node_kinds, key=lambda d: d["key"]),
         "edge_kinds": sorted(edge_kinds, key=lambda d: d["key"]),
+        "node_types": sorted(entity.value for entity in EntityType),
+        "edge_types": sorted(rel.value for rel in RelationshipType),
     }
 
 

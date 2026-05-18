@@ -19,6 +19,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   advisory lookup, and package/purl inventory matching over REST and MCP, with
   canonical CVE/GHSA/OSV/CWE IDs plus evidence links.
 
+### Fixed
+- Graph schema now exposes static `node_types` and `edge_types` aliases from
+  the canonical enum taxonomy, so empty graph stores still return the complete
+  type catalog for clients.
+
 ### Changed
 - **Multi-agent operating contract** - promoted shared engineering, PR style,
   and release-readiness rules into `.agents/AGENTS.md` so any agent following

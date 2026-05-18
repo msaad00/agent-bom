@@ -2512,7 +2512,7 @@
   "info": {
     "description": "Security scanner for AI supply chain and infrastructure \u2014 map the full trust chain from agents to CVEs, credentials, and blast radius.",
     "title": "agent-bom API",
-    "version": "0.87.0"
+    "version": "0.87.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -12178,6 +12178,75 @@
         "summary": "Receive Push",
         "tags": [
           "push"
+        ]
+      }
+    },
+    "/v1/runtime/blueprints": {
+      "get": {
+        "description": "Return canonical role/profile blueprints for runtime policy design.",
+        "operationId": "list_runtime_blueprints_v1_runtime_blueprints_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Runtime Blueprints V1 Runtime Blueprints Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Runtime Blueprints",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/v1/runtime/blueprints/{blueprint_id}": {
+      "get": {
+        "description": "Return one canonical role/profile blueprint by ID.",
+        "operationId": "get_runtime_blueprint_v1_runtime_blueprints__blueprint_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Runtime Blueprint V1 Runtime Blueprints  Blueprint Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Runtime Blueprint",
+        "tags": [
+          "runtime"
         ]
       }
     },

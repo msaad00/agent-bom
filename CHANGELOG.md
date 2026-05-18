@@ -9,11 +9,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.87.1] - 2026-05-18
+
 ### Added
 - Agent BOM manifest now has a canonical local/tenant inventory contract with
   a top-level `agent-bom manifest` CLI command, `GET /v1/agent-bom/manifest`,
   redacted credential references, graph relationships, and a dashboard cockpit
   for agent/MCP/tool visibility.
+- Architecture docs now include an AI governance control-plane diagram that
+  ties scans, fleet and endpoint inventory, runtime decisions, threat intel,
+  Agent BOM manifests, graph evidence, and human/agent surfaces together.
 - **Runtime production index** - added a tenant-scoped
   `/v1/runtime/production-index` security-observability endpoint for
   proxy/gateway traffic with tool-call volume, policy decision summaries,
@@ -1330,7 +1337,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.87.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.87.1...HEAD
+[0.87.1]: https://github.com/msaad00/agent-bom/compare/v0.87.0...v0.87.1
 [0.87.0]: https://github.com/msaad00/agent-bom/compare/v0.86.5...v0.87.0
 [0.86.5]: https://github.com/msaad00/agent-bom/compare/v0.86.4...v0.86.5
 [0.86.4]: https://github.com/msaad00/agent-bom/compare/v0.86.3...v0.86.4

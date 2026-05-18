@@ -351,6 +351,25 @@ def test_blast_radius_to_finding_cve_id():
     assert finding.cve_id == "CVE-2024-1234"
 
 
+def test_blast_radius_to_finding_derives_remediation_from_fixed_version():
+    br = _make_blast_radius()
+    br.vulnerability.fixed_version = "2.32.4"
+
+    finding = blast_radius_to_finding(br)
+
+    assert finding.remediation_guidance == "Upgrade requests to 2.32.4."
+    assert finding.to_dict()["remediation_guidance"] == "Upgrade requests to 2.32.4."
+
+
+def test_blast_radius_to_finding_preserves_explicit_remediation_text():
+    br = _make_blast_radius()
+    br.vulnerability.remediation = "Apply the vendor patch and restart affected workloads."
+
+    finding = blast_radius_to_finding(br)
+
+    assert finding.remediation_guidance == "Apply the vendor patch and restart affected workloads."
+
+
 def test_blast_radius_to_finding_asset_uses_server():
     br = _make_blast_radius(servers=[_make_server("my-mcp-server")])
     finding = blast_radius_to_finding(br)

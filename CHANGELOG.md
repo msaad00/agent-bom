@@ -18,6 +18,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   a top-level `agent-bom manifest` CLI command, `GET /v1/agent-bom/manifest`,
   redacted credential references, graph relationships, and a dashboard cockpit
   for agent/MCP/tool visibility.
+- Architecture docs now include an AI governance control-plane diagram that
+  ties scans, fleet and endpoint inventory, runtime decisions, threat intel,
+  Agent BOM manifests, graph evidence, and human/agent surfaces together.
 - **Runtime production index** - added a tenant-scoped
   `/v1/runtime/production-index` security-observability endpoint for
   proxy/gateway traffic with tool-call volume, policy decision summaries,

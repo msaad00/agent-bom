@@ -95,6 +95,34 @@ OTLP/HTTP through `src/agent_bom/api/tracing.py`. Recommended exporters:
 Correlate traces with audit entries via the `trace_id` field written to
 every `compliance.report_exported` audit entry.
 
+## Runtime Production Index
+
+`GET /v1/runtime/production-index` returns the security equivalent of a
+production AI gateway usage view for proxy and gateway traffic. It is
+tenant-scoped and metadata-only by construction:
+
+- tool-call volume, allowed/blocked counts, block rate, top tools, and latency
+- policy decision counts and gateway action counts
+- runtime alert severity and detector summaries
+- active proxy/gateway sources and sessions
+- freshness for the latest metrics and alerts
+- retention posture for runtime evidence classes
+
+The endpoint does **not** return raw prompts, raw tool arguments, raw tool
+responses, credential values, or unredacted screenshots. Its retention posture
+uses four explicit modes:
+
+| Mode | Meaning |
+|---|---|
+| `audit_full` | Operator-controlled local JSONL or downstream SIEM retention; not returned by the production index |
+| `redacted` | Safe-to-store runtime alerts after sanitizer and evidence-tier redaction |
+| `metadata_only` | Counts, tool names, detector names, source IDs, and trace/session references |
+| `no_persist` | Raw prompts, raw arguments, raw responses, credential values, and unredacted screenshots |
+
+Use this endpoint when you need to answer "which agents and MCP servers are
+active, what is being blocked, and what evidence is retained?" without turning
+the runtime surface into a generic model billing dashboard.
+
 ## Audit log integrity
 
 Audit-chain integrity is not a metric — it's verified on every

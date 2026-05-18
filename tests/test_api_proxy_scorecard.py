@@ -311,6 +311,153 @@ def test_proxy_alerts_are_tenant_scoped_for_http_reads():
         configure_api(api_key=None)
 
 
+def test_runtime_production_index_summarizes_security_traffic():
+    import agent_bom.api.routes.proxy as proxy_mod
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+    proxy_mod._proxy_metrics_by_tenant.clear()
+    try:
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/proxy/audit",
+            json={
+                "source_id": "gateway-1",
+                "session_id": "sess-1",
+                "alerts": [
+                    {
+                        "type": "runtime_alert",
+                        "action": "gateway.policy_blocked",
+                        "detector": "policy",
+                        "severity": "high",
+                        "message": "blocked shell",
+                        "tool": "shell.exec",
+                        "details": {"args": ["cat", "/Users/alice/prod-secret.txt"]},
+                    },
+                    {
+                        "type": "runtime_alert",
+                        "detector": "credential_leak",
+                        "severity": "critical",
+                        "message": "credential returned",
+                    },
+                ],
+                "summary": {
+                    "type": "proxy_summary",
+                    "total_tool_calls": 10,
+                    "total_blocked": 2,
+                    "calls_by_tool": {"read_file": 7, "shell.exec": 3},
+                    "blocked_by_reason": {"policy": 2},
+                    "latency": {"p95_ms": 18.5},
+                    "uptime_seconds": 120,
+                },
+            },
+        )
+        assert resp.status_code == 200
+
+        data = client.get("/v1/runtime/production-index").json()
+        assert data["schema_version"] == "runtime.production_index.v1"
+        assert data["tenant_id"] == "default"
+        assert data["status"] == "ok"
+        assert data["traffic"]["total_tool_calls"] == 10
+        assert data["traffic"]["allowed_tool_calls"] == 8
+        assert data["traffic"]["blocked_tool_calls"] == 2
+        assert data["traffic"]["block_rate"] == 0.2
+        assert data["traffic"]["calls_by_tool"] == {"read_file": 7, "shell.exec": 3}
+        assert data["traffic"]["top_tools"][0] == {"name": "read_file", "count": 7}
+        assert data["policy_decisions"]["gateway_actions"] == {"gateway.policy_blocked": 1}
+        assert data["alerts"]["alerts_by_severity"]["critical"] == 1
+        assert data["active_sources"] == [{"name": "gateway-1", "count": 2}]
+        assert data["active_sessions"] == [{"name": "sess-1", "count": 2}]
+        assert data["retention_posture"]["event_classes"]["production_index"] == "metadata_only"
+        assert data["retention_posture"]["event_classes"]["raw_tool_arguments"] == "no_persist"
+        encoded = json.dumps(data)
+        assert "prod-secret" not in encoded
+        assert "/Users/alice" not in encoded
+    finally:
+        proxy_mod._proxy_alerts.clear()
+        proxy_mod._proxy_metrics = None
+        proxy_mod._proxy_metrics_by_tenant.clear()
+
+
+def test_runtime_production_index_is_tenant_scoped():
+    import agent_bom.api.routes.proxy as proxy_mod
+    from agent_bom.api.server import configure_api
+
+    enable_trusted_proxy_env()
+    configure_api(api_key=None)
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+    proxy_mod._proxy_metrics_by_tenant.clear()
+    try:
+        client = TestClient(app)
+        alpha_headers = proxy_headers(role="admin", tenant="tenant-alpha")
+        beta_headers = proxy_headers(role="admin", tenant="tenant-beta")
+
+        assert (
+            client.post(
+                "/v1/proxy/audit",
+                headers=alpha_headers,
+                json={
+                    "source_id": "alpha-gateway",
+                    "session_id": "alpha-session",
+                    "alerts": [{"type": "runtime_alert", "detector": "policy", "severity": "high", "message": "alpha-only"}],
+                    "summary": {"type": "proxy_summary", "total_tool_calls": 8, "total_blocked": 1},
+                },
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                "/v1/proxy/audit",
+                headers=beta_headers,
+                json={
+                    "source_id": "beta-gateway",
+                    "session_id": "beta-session",
+                    "alerts": [{"type": "runtime_alert", "detector": "cred", "severity": "critical", "message": "beta-only"}],
+                    "summary": {"type": "proxy_summary", "total_tool_calls": 3, "total_blocked": 0},
+                },
+            ).status_code
+            == 200
+        )
+
+        alpha = client.get("/v1/runtime/production-index", headers=alpha_headers).json()
+        beta = client.get("/v1/runtime/production-index", headers=beta_headers).json()
+        assert alpha["tenant_id"] == "tenant-alpha"
+        assert beta["tenant_id"] == "tenant-beta"
+        assert alpha["traffic"]["total_tool_calls"] == 8
+        assert beta["traffic"]["total_tool_calls"] == 3
+        assert alpha["active_sources"] == [{"name": "alpha-gateway", "count": 1}]
+        assert beta["active_sources"] == [{"name": "beta-gateway", "count": 1}]
+        assert "beta-gateway" not in json.dumps(alpha)
+        assert "alpha-gateway" not in json.dumps(beta)
+    finally:
+        proxy_mod._proxy_alerts.clear()
+        proxy_mod._proxy_metrics = None
+        proxy_mod._proxy_metrics_by_tenant.clear()
+        disable_trusted_proxy_env()
+        configure_api(api_key=None)
+
+
+def test_runtime_production_index_empty_state_has_retention_posture():
+    import agent_bom.api.routes.proxy as proxy_mod
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+    proxy_mod._proxy_metrics_by_tenant.clear()
+    old = os.environ.pop("AGENT_BOM_LOG", None)
+    try:
+        data = TestClient(app).get("/v1/runtime/production-index").json()
+        assert data["status"] == "no_runtime_activity"
+        assert data["traffic"]["total_tool_calls"] == 0
+        assert data["alerts"]["total_alerts"] == 0
+        assert data["freshness"]["has_metrics"] is False
+        assert data["freshness"]["has_alerts"] is False
+        assert sorted(data["retention_posture"]["modes"]) == ["audit_full", "metadata_only", "no_persist", "redacted"]
+    finally:
+        if old is not None:
+            os.environ["AGENT_BOM_LOG"] = old
+
+
 def test_proxy_alerts_drop_tier_b_replay_only_fields():
     import agent_bom.api.routes.proxy as proxy_mod
 

@@ -1,4 +1,4 @@
-"""Proxy status, alerts, shield, and WebSocket streaming API routes.
+"""Proxy status, runtime production index, alerts, shield, and WebSocket streaming API routes.
 
 Endpoints:
     GET       /v1/proxy/status       proxy metrics summary
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 from collections import Counter, OrderedDict, deque
+from datetime import datetime, timezone
 from pathlib import Path as _Path
 from threading import Lock
 from typing import TYPE_CHECKING
@@ -102,6 +103,7 @@ def push_proxy_metrics(metrics: dict) -> None:
     global _proxy_metrics
     sanitized = sanitize_sensitive_payload(metrics)
     _proxy_metrics = sanitized if isinstance(sanitized, dict) else {}
+    _proxy_metrics.setdefault("received_at", datetime.now(timezone.utc).isoformat())
     tenant_id = str(_proxy_metrics.get("tenant_id") or "default")
     _proxy_metrics_by_tenant[tenant_id] = dict(_proxy_metrics)
 
@@ -152,6 +154,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         enriched.setdefault("session_id", session_id)
         enriched.setdefault("request_id", request_id)
         enriched.setdefault("trace_id", trace_id)
+        enriched.setdefault("event_type", enriched.get("action") or enriched.get("type", "runtime_alert"))
         # Tag tenant_id on the in-memory record so per-tenant posture queries
         # (e.g. compliance has_proxy) can scope correctly. The ring buffer is
         # process-wide; without this tag every tenant sees every other
@@ -342,6 +345,179 @@ def _summarize_proxy_alerts(alerts: list[dict]) -> dict:
     }
 
 
+def _safe_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | float | str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _safe_float(value: object, default: float = 0.0) -> float:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float | str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _numeric_mapping(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, int] = {}
+    for raw_key, raw_count in value.items():
+        key = str(raw_key or "unknown")
+        result[key] = max(0, _safe_int(raw_count))
+    return dict(sorted(result.items()))
+
+
+def _top_items(counts: Counter[str] | dict[str, int], *, limit: int = 10) -> list[dict[str, object]]:
+    if isinstance(counts, Counter):
+        items = counts.most_common(limit)
+    else:
+        items = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    return [{"name": name, "count": count} for name, count in items]
+
+
+def _timestamp_value(value: object) -> float:
+    if isinstance(value, int | float):
+        return float(value)
+    if not isinstance(value, str) or not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _latest_timestamp(values: list[object]) -> str:
+    candidates = [value for value in values if value]
+    if not candidates:
+        return ""
+    latest = max(candidates, key=_timestamp_value)
+    return str(latest)
+
+
+def _runtime_retention_posture() -> dict[str, object]:
+    return {
+        "default_mode": "redacted",
+        "modes": {
+            "audit_full": "Operator-controlled local JSONL or downstream SIEM retention; not returned by the production index.",
+            "redacted": "Safe-to-store runtime alerts after secret sanitization and evidence-tier redaction.",
+            "metadata_only": (
+                "Counts, tool names, detector names, source IDs, and trace/session references without raw arguments or payloads."
+            ),
+            "no_persist": "Raw prompts, raw tool arguments, raw responses, credential values, and unredacted screenshots.",
+        },
+        "event_classes": {
+            "proxy_alerts": "redacted",
+            "runtime_analytics_events": "metadata_only",
+            "production_index": "metadata_only",
+            "control_plane_audit_summary": "metadata_only",
+            "raw_tool_arguments": "no_persist",
+            "raw_tool_responses": "no_persist",
+        },
+        "guarantees": [
+            "tenant-scoped HTTP reads",
+            "secret values sanitized before persistence",
+            "raw arguments excluded from production-index responses",
+            "runtime events correlate by source_id, session_id, request_id, and trace_id when present",
+        ],
+    }
+
+
+def _runtime_metrics_for_tenant(tenant_id: str) -> dict | None:
+    metrics: dict | None = None
+    if _proxy_metrics is not None:
+        tenant_metrics = _proxy_metrics_by_tenant.get(tenant_id)
+        if tenant_metrics is not None:
+            metrics = dict(tenant_metrics)
+        elif _alert_visible_to_tenant(_proxy_metrics, tenant_id):
+            metrics = dict(_proxy_metrics)
+    else:
+        log_path = _get_configured_log_path()
+        if log_path:
+            metrics = _read_metrics_from_log(log_path, tenant_id)
+            if metrics is not None:
+                metrics = dict(metrics)
+    return metrics
+
+
+def _build_runtime_production_index(tenant_id: str, metrics: dict | None, alerts: list[dict]) -> dict[str, object]:
+    metrics = dict(metrics or {})
+    alert_summary = _summarize_proxy_alerts(alerts)
+    calls_by_tool = _numeric_mapping(metrics.get("calls_by_tool"))
+    blocked_by_reason = _numeric_mapping(metrics.get("blocked_by_reason"))
+    total_tool_calls = max(_safe_int(metrics.get("total_tool_calls")), sum(calls_by_tool.values()))
+    total_blocked = max(
+        _safe_int(metrics.get("total_blocked")),
+        sum(blocked_by_reason.values()),
+        _safe_int(alert_summary["blocked_alerts"]),
+    )
+    allowed_tool_calls = max(0, total_tool_calls - total_blocked)
+
+    source_counts: Counter[str] = Counter()
+    session_counts: Counter[str] = Counter()
+    gateway_action_counts: Counter[str] = Counter()
+    for alert in alerts:
+        source_id = str(alert.get("source_id") or "unknown")
+        session_id = str(alert.get("session_id") or "unknown")
+        action = str(alert.get("action") or alert.get("event_type") or alert.get("type") or "runtime_alert")
+        source_counts[source_id] += 1
+        session_counts[session_id] += 1
+        if action.startswith("gateway."):
+            gateway_action_counts[action] += 1
+
+    if metrics.get("source_id"):
+        source_counts[str(metrics["source_id"])] += 0
+    if metrics.get("session_id"):
+        session_counts[str(metrics["session_id"])] += 0
+
+    latest_alert_at = _latest_timestamp([alert.get("ts") or alert.get("timestamp") or alert.get("event_timestamp") for alert in alerts])
+    metrics_received_at = str(metrics.get("received_at") or metrics.get("ts") or "")
+    block_rate = (total_blocked / total_tool_calls) if total_tool_calls else 0.0
+    latency = metrics.get("latency") if isinstance(metrics.get("latency"), dict) else {}
+
+    return {
+        "schema_version": "runtime.production_index.v1",
+        "tenant_id": tenant_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "status": "ok" if metrics or alerts else "no_runtime_activity",
+        "traffic": {
+            "total_tool_calls": total_tool_calls,
+            "allowed_tool_calls": allowed_tool_calls,
+            "blocked_tool_calls": total_blocked,
+            "block_rate": round(block_rate, 4),
+            "calls_by_tool": calls_by_tool,
+            "top_tools": _top_items(calls_by_tool),
+            "blocked_by_reason": blocked_by_reason,
+            "uptime_seconds": _safe_float(metrics.get("uptime_seconds")),
+            "latency_p95_ms": _safe_float(latency.get("p95_ms")) if latency else None,
+        },
+        "policy_decisions": {
+            "allowed": allowed_tool_calls,
+            "blocked": total_blocked,
+            "gateway_actions": dict(sorted(gateway_action_counts.items())),
+        },
+        "alerts": {key: value for key, value in alert_summary.items() if key != "recent_alerts"},
+        "active_sources": _top_items(source_counts),
+        "active_sessions": _top_items(session_counts),
+        "freshness": {
+            "has_metrics": bool(metrics),
+            "has_alerts": bool(alerts),
+            "metrics_received_at": metrics_received_at,
+            "latest_alert_at": latest_alert_at,
+        },
+        "retention_posture": _runtime_retention_posture(),
+    }
+
+
 def _read_metrics_from_log(path: _Path, tenant_id: str = "default") -> dict | None:
     """Read the last proxy_summary record from a JSONL audit log."""
     import json as _json
@@ -402,6 +578,21 @@ async def proxy_status(request: Request) -> dict:
         "status": "no_proxy_session",
         "message": "No proxy metrics available. Start a proxy session or set AGENT_BOM_LOG.",
     }
+
+
+@router.get("/v1/runtime/production-index", tags=["runtime", "proxy"])
+async def runtime_production_index(request: Request) -> dict:
+    """Return tenant-scoped runtime security observability for proxy/gateway traffic.
+
+    The production index is metadata-only by construction: it summarizes
+    tool-call volume, policy decisions, alerts, source/session activity, and
+    retention posture without returning raw prompts, raw arguments, raw
+    responses, or credential values.
+    """
+    tenant_id = _request_tenant_id(request)
+    metrics = _runtime_metrics_for_tenant(tenant_id)
+    alerts = _load_proxy_alerts(tenant_id)
+    return _build_runtime_production_index(tenant_id, metrics, alerts)
 
 
 @router.get("/v1/proxy/alerts", tags=["proxy"])

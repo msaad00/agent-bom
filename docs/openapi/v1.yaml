@@ -7880,6 +7880,34 @@ paths:
       summary: Receive Push
       tags:
       - push
+  /v1/runtime/production-index:
+    get:
+      description: 'Return tenant-scoped runtime security observability for proxy/gateway
+        traffic.
+
+
+        The production index is metadata-only by construction: it summarizes
+
+        tool-call volume, policy decisions, alerts, source/session activity, and
+
+        retention posture without returning raw prompts, raw arguments, raw
+
+        responses, or credential values.'
+      operationId: runtime_production_index_v1_runtime_production_index_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Runtime Production Index V1 Runtime Production Index
+                  Get
+                type: object
+          description: Successful Response
+      summary: Runtime Production Index
+      tags:
+      - runtime
+      - proxy
   /v1/scan:
     post:
       description: 'Start a scan. Returns immediately with a job_id.

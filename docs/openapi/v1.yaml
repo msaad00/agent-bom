@@ -852,6 +852,27 @@ components:
       - storage
       title: HealthResponse
       type: object
+    IntelPackageMatchRequest:
+      additionalProperties: false
+      properties:
+        limit:
+          default: 100
+          maximum: 500.0
+          minimum: 1.0
+          title: Limit
+          type: integer
+        packages:
+          items:
+            additionalProperties: true
+            type: object
+          maxItems: 500
+          minItems: 1
+          title: Packages
+          type: array
+      required:
+      - packages
+      title: IntelPackageMatchRequest
+      type: object
     JiraTicketRequest:
       description: Request body for POST /v1/findings/jira.
       properties:
@@ -7136,6 +7157,89 @@ paths:
       summary: Get Fix First Graph View
       tags:
       - graph
+  /v1/intel/advisories/{advisory_id}:
+    get:
+      description: Look up one CVE/GHSA/OSV advisory from local intel.
+      operationId: get_intel_advisory_v1_intel_advisories__advisory_id__get
+      parameters:
+      - in: path
+        name: advisory_id
+        required: true
+        schema:
+          title: Advisory Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Intel Advisory V1 Intel Advisories  Advisory Id  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Intel Advisory
+      tags:
+      - intel
+  /v1/intel/match:
+    post:
+      description: Match inventory package coordinates to local advisory intel.
+      operationId: post_intel_match_v1_intel_match_post
+      parameters:
+      - description: Return packages with zero matched advisories.
+        in: query
+        name: include_unmatched
+        required: false
+        schema:
+          default: true
+          description: Return packages with zero matched advisories.
+          title: Include Unmatched
+          type: boolean
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntelPackageMatchRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Post Intel Match V1 Intel Match Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Post Intel Match
+      tags:
+      - intel
+  /v1/intel/sources:
+    get:
+      description: Return canonical threat-intel source and feed-run metadata.
+      operationId: get_intel_sources_v1_intel_sources_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Intel Sources V1 Intel Sources Get
+                type: object
+          description: Successful Response
+      summary: Get Intel Sources
+      tags:
+      - intel
   /v1/inventory:
     get:
       description: List agent and package inventory aggregated from completed scan

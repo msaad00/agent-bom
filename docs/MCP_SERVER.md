@@ -1,6 +1,6 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 38 security tools as an MCP server. Any MCP-compatible client
+agent-bom exposes 41 security tools as an MCP server. Any MCP-compatible client
 can connect and get vulnerability scanning, blast radius analysis, compliance
 checks, and supply chain verification through natural conversation.
 
@@ -56,7 +56,7 @@ Add to `~/.snowflake/cortex/mcp.json`:
 }
 ```
 
-CoCo can then call the same 38 `agent-bom` tools over MCP.
+CoCo can then call the same 41 `agent-bom` tools over MCP.
 
 agent-bom also discovers Cortex auxiliary security files alongside `mcp.json`:
 
@@ -155,7 +155,7 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (38 tools)
+## Tool Categories (41 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|

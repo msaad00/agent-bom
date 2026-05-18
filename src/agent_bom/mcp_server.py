@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (38):
+Tools (41):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -377,6 +377,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         policy_check_impl,
     )
     from agent_bom.mcp_tools.graph import deploy_decision_impl, exposure_paths_impl
+    from agent_bom.mcp_tools.intel import intel_lookup_impl, intel_match_impl, intel_sources_impl
     from agent_bom.mcp_tools.registry import registry_lookup_impl
     from agent_bom.mcp_tools.runtime import verify_impl
     from agent_bom.mcp_tools.sbom import generate_sbom_impl, remediate_impl
@@ -514,6 +515,60 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             package=package,
             ecosystem=ecosystem,
             _validate_ecosystem=_validate_ecosystem,
+            _truncate_response=_truncate_response,
+        )
+
+    # ── Tool 2b: threat intel lookup ──────────────────────────────────
+
+    @mcp.tool(annotations=_READ_ONLY, title="Threat Intel Advisory Lookup")
+    async def intel_lookup(
+        advisory_id: Annotated[str, Field(description="CVE, GHSA, or OSV advisory ID, e.g. CVE-2024-1234 or GHSA-abcd-1234-wxyz.")],
+    ) -> str:
+        """Look up one advisory from the local threat-intel database."""
+
+        return await _execute_tool_async(
+            "intel_lookup",
+            intel_lookup_impl,
+            advisory_id=advisory_id,
+            _truncate_response=_truncate_response,
+        )
+
+    @mcp.tool(annotations=_READ_ONLY, title="Threat Intel Package Match")
+    async def intel_match(
+        purl: Annotated[str | None, Field(description="Package URL, e.g. pkg:pypi/requests@2.31.0.")] = None,
+        ecosystem: Annotated[
+            str | None,
+            Field(description="Package ecosystem when purl is omitted, e.g. pypi, npm, go, maven, apk."),
+        ] = None,
+        name: Annotated[str | None, Field(description="Package name when purl is omitted.")] = None,
+        version: Annotated[str | None, Field(description="Package version when known.")] = None,
+        packages: Annotated[
+            list[dict] | None,
+            Field(description="Optional package list with purl or ecosystem/name/version objects for batch matching."),
+        ] = None,
+        limit: Annotated[int, Field(description="Maximum packages to match, 1-500.")] = 100,
+    ) -> str:
+        """Match package inventory coordinates to local threat-intel advisories."""
+
+        return await _execute_tool_async(
+            "intel_match",
+            intel_match_impl,
+            packages=packages,
+            purl=purl,
+            ecosystem=ecosystem,
+            name=name,
+            version=version,
+            limit=limit,
+            _truncate_response=_truncate_response,
+        )
+
+    @mcp.tool(annotations=_READ_ONLY, title="Threat Intel Source Catalog")
+    async def intel_sources() -> str:
+        """Return canonical threat-intel sources and local feed-run freshness."""
+
+        return await _execute_tool_async(
+            "intel_sources",
+            intel_sources_impl,
             _truncate_response=_truncate_response,
         )
 

@@ -7,9 +7,16 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from urllib.parse import urlparse
-from urllib.request import urlopen
 
+import httpx
+
+from agent_bom.http_client import _safe_url
+from agent_bom.security import SecurityError, validate_url
 from agent_bom.skill_bundles import SkillBundle
+
+_REMOTE_TIMEOUT_SECONDS = 5.0
+_MAX_REMOTE_FEED_BYTES = 1_000_000
+_JSON_CONTENT_TYPES = {"application/json", "text/json"}
 
 
 class ThreatIntelStatus(str, Enum):
@@ -51,17 +58,56 @@ def _provider_name(document: object, source: str) -> str:
         if isinstance(provider, str) and provider.strip():
             return provider.strip()
     parsed = urlparse(source)
-    if parsed.scheme in {"http", "https"} and parsed.netloc:
-        return parsed.netloc
+    if parsed.scheme in {"http", "https"} and parsed.hostname:
+        return parsed.hostname
     return Path(source).name or "threat-intel"
+
+
+def _is_json_content_type(content_type: str) -> bool:
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    return media_type in _JSON_CONTENT_TYPES or media_type.endswith("+json")
+
+
+def _validate_remote_source(source: str) -> None:
+    parsed = urlparse(source)
+    if parsed.username or parsed.password:
+        raise SecurityError("Remote threat-intel feed URLs must not include credentials")
+    validate_url(source, allowed_schemes=("https",), allow_private=False)
+
+
+def _read_remote_json_bytes(source: str) -> bytes:
+    _validate_remote_source(source)
+    with httpx.Client(timeout=_REMOTE_TIMEOUT_SECONDS, follow_redirects=False, verify=True) as client:
+        with client.stream("GET", source, headers={"Accept": "application/json"}) as response:
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "")
+            if content_type and not _is_json_content_type(content_type):
+                raise ValueError("remote feed must return JSON content")
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in response.iter_bytes():
+                total += len(chunk)
+                if total > _MAX_REMOTE_FEED_BYTES:
+                    raise ValueError("remote feed exceeds maximum size")
+                chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _load_document(source: str) -> object:
     parsed = urlparse(source)
     if parsed.scheme in {"http", "https"}:
-        with urlopen(source, timeout=5) as response:  # nosec B310
-            return json.loads(response.read().decode("utf-8"))
+        return json.loads(_read_remote_json_bytes(source).decode("utf-8"))
     return json.loads(Path(source).read_text(encoding="utf-8"))
+
+
+def _lookup_failure_detail(source: str, exc: Exception) -> str:
+    parsed = urlparse(source)
+    if parsed.scheme in {"http", "https"}:
+        safe_source = _safe_url(source)
+        if isinstance(exc, SecurityError):
+            return f"remote feed rejected: {exc}"
+        return f"remote feed unavailable: {safe_source}"
+    return f"lookup failed: {exc}"
 
 
 def _iter_entries(document: object) -> list[dict[str, object]]:
@@ -116,7 +162,7 @@ def lookup_bundle_threat_intel(bundle: SkillBundle, source: str | None) -> Threa
             status=ThreatIntelStatus.UNAVAILABLE,
             source=source,
             matched=False,
-            detail=f"lookup failed: {exc}",
+            detail=_lookup_failure_detail(source, exc),
         )
 
     provider = _provider_name(document, source)

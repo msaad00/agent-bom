@@ -139,10 +139,12 @@ def main(ctx: click.Context, profile: str | None, agent_mode: bool):
 # Register subcommands from each module
 # ---------------------------------------------------------------------------
 
+from agent_bom.cli._agent_manifest import manifest_cmd  # noqa: E402
 from agent_bom.cli.agents import scan as _agents_cmd  # noqa: E402
 
 # 'agents' is the primary visible command.
 main.add_command(_agents_cmd, "agents")
+main.add_command(manifest_cmd, "manifest")
 
 # 'scan' kept as hidden backward-compat CLI alias (50+ tests + CI use it).
 # Clone the command object so hiding doesn't affect 'agents'.

@@ -3444,6 +3444,30 @@
         ]
       }
     },
+    "/v1/agent-bom/manifest": {
+      "get": {
+        "description": "Return the tenant-scoped Agent BOM manifest from fleet/runtime stores.",
+        "operationId": "get_agent_bom_manifest_v1_agent_bom_manifest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Agent Bom Manifest V1 Agent Bom Manifest Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Agent Bom Manifest",
+        "tags": [
+          "Agent BOM"
+        ]
+      }
+    },
     "/v1/agents": {
       "get": {
         "description": "Quick auto-discovery of local AI agent configs (Claude Desktop, Cursor, Windsurf...).\nNo CVE scan \u2014 instant results for the UI sidebar.",

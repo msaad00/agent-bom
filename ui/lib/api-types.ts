@@ -107,6 +107,52 @@ export interface UnifiedGraphResponse extends Omit<UnifiedGraphData, "attack_pat
   pagination: GraphPagination;
 }
 
+export interface AgentBomManifestNode {
+  id: string;
+  entity_type: string;
+  label: string;
+  attributes: Record<string, unknown>;
+}
+
+export interface AgentBomManifestEdge {
+  id: string;
+  source: string;
+  target: string;
+  relationship: string;
+  attributes: Record<string, unknown>;
+}
+
+export interface AgentBomManifestResponse {
+  schema_version: "agent-bom.manifest/v1" | string;
+  generated_at: string;
+  source: "local-discovery" | "control-plane" | string;
+  tenant_id?: string | undefined;
+  summary: {
+    agents: number;
+    mcp_servers: number;
+    tools: number;
+    credential_refs: number;
+    runtime_observed_servers: number;
+    gateway_registered_servers: number;
+  };
+  agents: Array<Record<string, unknown>>;
+  mcp_servers: Array<Record<string, unknown>>;
+  graph: {
+    nodes: AgentBomManifestNode[];
+    edges: AgentBomManifestEdge[];
+    stats: {
+      nodes: number;
+      edges: number;
+      relationships: string[];
+    };
+  };
+  boundaries: {
+    stores_credential_values: boolean;
+    stores_raw_prompts: boolean;
+    credential_value_policy: string;
+  };
+}
+
 export interface FixFirstRiskReason {
   kind: string;
   label: string;

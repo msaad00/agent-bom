@@ -78,6 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
     links: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/agents", label: "Agents", icon: Server },
+      { href: "/manifest", label: "Agent BOM", icon: Waypoints },
       { href: "/fleet", label: "Fleet", icon: Users },
     ],
   },

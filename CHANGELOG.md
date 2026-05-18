@@ -10,6 +10,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Agent BOM manifest now has a canonical local/tenant inventory contract with
+  a top-level `agent-bom manifest` CLI command, `GET /v1/agent-bom/manifest`,
+  redacted credential references, graph relationships, and a dashboard cockpit
+  for agent/MCP/tool visibility.
 - **Runtime production index** - added a tenant-scoped
   `/v1/runtime/production-index` security-observability endpoint for
   proxy/gateway traffic with tool-call volume, policy decision summaries,

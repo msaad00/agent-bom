@@ -432,6 +432,45 @@ describe('api.downloadScanGraph', () => {
   })
 })
 
+describe('api.getAgentBomManifest', () => {
+  it('loads the canonical Agent BOM manifest route', async () => {
+    const payload = {
+      schema_version: 'agent-bom.manifest/v1',
+      generated_at: '2026-05-18T00:00:00Z',
+      source: 'control-plane',
+      summary: {
+        agents: 1,
+        mcp_servers: 1,
+        tools: 2,
+        credential_refs: 1,
+        runtime_observed_servers: 1,
+        gateway_registered_servers: 0,
+      },
+      agents: [],
+      mcp_servers: [],
+      graph: { nodes: [], edges: [], stats: { nodes: 0, edges: 0, relationships: [] } },
+      boundaries: {
+        stores_credential_values: false,
+        stores_raw_prompts: false,
+        credential_value_policy: 'redacted',
+      },
+    }
+    const fetchMock = mockFetch(payload)
+    global.fetch = fetchMock
+
+    const result = await api.getAgentBomManifest()
+
+    expect(result.schema_version).toBe('agent-bom.manifest/v1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/agent-bom/manifest',
+      expect.objectContaining({
+        headers: {},
+        signal: expect.any(AbortSignal),
+      }),
+    )
+  })
+})
+
 describe('api.getPosture', () => {
   it('returns expected shape', async () => {
     const payload = {

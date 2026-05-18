@@ -120,7 +120,14 @@ reason="$(IFS='; '; echo "${reason_parts[*]}")"
 echo "PR #${PR}: dispatching required workflows for head ${head_sha} (${reason})."
 gh workflow run ci.yml --repo "${REPO}" --ref "${head_ref}"
 
-if printf '%s\n' "${missing[@]}" "${stale[@]}" | grep -qx "CodeQL"; then
+codeql_needed=false
+if [ "${#missing[@]}" -gt 0 ] && printf '%s\n' "${missing[@]}" | grep -qx "CodeQL"; then
+  codeql_needed=true
+fi
+if [ "${#stale[@]}" -gt 0 ] && printf '%s\n' "${stale[@]}" | grep -qx "CodeQL"; then
+  codeql_needed=true
+fi
+if [ "${codeql_needed}" = "true" ]; then
   gh workflow run codeql.yml --repo "${REPO}" --ref "${head_ref}"
 fi
 

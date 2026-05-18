@@ -1,6 +1,6 @@
 {
-  "generated_on": "2026-05-15",
-  "version": "0.87.0",
+  "generated_on": "2026-05-18",
+  "version": "0.87.1",
   "metrics": [
     {
       "name": "MCP tools",
@@ -28,25 +28,25 @@
     },
     {
       "name": "Test files",
-      "value": 461,
+      "value": 477,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
     {
       "name": "API route modules",
-      "value": 18,
+      "value": 24,
       "source": "src/agent_bom/api/routes",
       "notes": "Counts Python files in the routes package, including __init__.py."
     },
     {
       "name": "UI app pages",
-      "value": 22,
+      "value": 23,
       "source": "ui/app",
       "notes": "Counts page.tsx and page.jsx files recursively."
     },
     {
       "name": "Python modules",
-      "value": 464,
+      "value": 483,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

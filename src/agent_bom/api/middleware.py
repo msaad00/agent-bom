@@ -719,6 +719,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "index",
             "insights",
             "jobs",
+            "manifest",
             "mesh",
             "proxy",
             "registry",

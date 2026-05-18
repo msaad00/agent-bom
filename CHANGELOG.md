@@ -16,6 +16,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   active runtime sources, freshness, and explicit retention posture without
   exposing raw prompts, arguments, responses, or credential values.
 
+### Fixed
+- Graph schema now exposes static `node_types` and `edge_types` aliases from
+  the canonical enum taxonomy, so empty graph stores still return the complete
+  type catalog for clients.
+
 ### Changed
 - **Multi-agent operating contract** - promoted shared engineering, PR style,
   and release-readiness rules into `.agents/AGENTS.md` so any agent following

@@ -1114,6 +1114,17 @@ class TestGraphSchemaEndpoint:
         assert node_keys == {et.value for et in EntityType}
         assert edge_keys == {rt.value for rt in RelationshipType}
 
+    def test_schema_endpoint_exposes_static_type_aliases_without_graph_data(self):
+        from agent_bom.graph.types import EntityType, RelationshipType
+
+        client = self._client()
+        body = client.get("/v1/graph/schema").json()
+
+        assert body["node_types"] == sorted(entity.value for entity in EntityType)
+        assert body["edge_types"] == sorted(relationship.value for relationship in RelationshipType)
+        assert len(body["node_types"]) == len(EntityType)
+        assert len(body["edge_types"]) == len(RelationshipType)
+
     def test_schema_entries_carry_label_color_shape_icon(self):
         client = self._client()
         body = client.get("/v1/graph/schema").json()

@@ -32,6 +32,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   type catalog for clients.
 
 ### Changed
+- Root README now serves as a shorter public front door focused on first run,
+  shipped surfaces, deployment links, trust boundaries, and docs handoffs
+  instead of duplicating long deployment and integration reference sections.
 - **Multi-agent operating contract** - promoted shared engineering, PR style,
   and release-readiness rules into `.agents/AGENTS.md` so any agent following
   the [agents.md](https://agents.md) convention (Claude, Codex, Cursor,

@@ -513,6 +513,34 @@ def _source_for_blast_radius(br: object) -> FindingSource:
     return FindingSource.SBOM
 
 
+def _remediation_guidance_for_vulnerability(vuln: object, pkg: object) -> str:
+    """Return actionable guidance for vulnerability findings.
+
+    Some upstream parsers attach explicit remediation text dynamically. When
+    they do not, derive a conservative fix from the normalized vulnerability
+    model so JSON/SARIF/API consumers do not receive a null remediation field
+    for fixable CVEs.
+    """
+    explicit = getattr(vuln, "remediation", None) or getattr(vuln, "recommendation", None)
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+
+    package_name = getattr(pkg, "name", "the affected package") or "the affected package"
+    fixed_version = getattr(vuln, "fixed_version", None)
+    if isinstance(fixed_version, str) and fixed_version.strip():
+        return f"Upgrade {package_name} to {fixed_version.strip()}."
+
+    vuln_id = getattr(vuln, "id", None)
+    if getattr(vuln, "is_kev", False):
+        cve_context = f" {vuln_id}" if vuln_id else ""
+        return f"Prioritize vendor mitigation for{cve_context}; it is listed in CISA KEV and no fixed version is recorded."
+
+    references = getattr(vuln, "references", None) or []
+    if references:
+        return "Review the linked advisory references and apply the vendor-recommended mitigation or upgrade path."
+    return "Review the advisory and apply the vendor-recommended mitigation, upgrade path, or compensating control."
+
+
 def blast_radius_to_finding(br: object) -> "Finding":
     """Convert a BlastRadius instance to a unified Finding.
 
@@ -598,7 +626,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
         epss_score=vuln.epss_score,
         is_kev=bool(vuln.is_kev),
         fixed_version=vuln.fixed_version,
-        remediation_guidance=getattr(vuln, "remediation", None),
+        remediation_guidance=_remediation_guidance_for_vulnerability(vuln, pkg),
         owasp_tags=list(br.owasp_tags),
         atlas_tags=list(br.atlas_tags),
         attack_tags=list(br.attack_tags),

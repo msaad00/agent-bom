@@ -760,6 +760,12 @@ jobs:
         # importable.
         run: uv run python scripts/generate_v1_schemas.py --check
 
+      - name: Verify OpenAPI artifacts match FastAPI routes
+        # Drift gate for generated control-plane clients. Regenerate locally
+        # with `python scripts/export_openapi.py` whenever API routes or
+        # models change.
+        run: uv run python scripts/export_openapi.py --check
+
       - name: Validate canonical README commands parse
         run: |
           uv run agent-bom --version >/dev/null

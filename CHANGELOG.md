@@ -9,44 +9,65 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.87.0] - 2026-05-17
+
 ### Added
-- **Graph investigation product lane** - the post-`v0.86.5` main branch now
-  carries the first Wiz-grade graph roadmap slice: bitemporal graph edges,
-  measured graph benchmark evidence, a hardened large-graph overview fallback,
-  API-native `ExposurePath`, toxic-combo projection into the graph, renderer
-  switch contracts for React Flow / large overview / WebGL, semantic clusters,
-  and the optional Neptune backend design. These are code and docs on `main`;
-  live Neptune SLOs and a full query DSL remain future work.
-- **Agentic integration positioning** - README and release review docs now tie
-  the MCP server, proxy, gateway, Shield SDK, skills, CI, control-plane API,
-  auth, and self-hosted data boundary into one adoption story for humans and
-  AI agents instead of listing them as separate surfaces.
+- **Graph investigation product lane** - shipped bitemporal graph edges,
+  measured benchmark evidence, hardened large-graph overview fallback,
+  API-native `ExposurePath`, toxic-combo graph projection, semantic clusters,
+  renderer-switch contracts, Sigma WebGL overview, light-mode graph token
+  fixes, and optional Neptune backend plumbing (#2541, #2542, #2543, #2544,
+  #2553, #2554, #2555, #2556, #2558, #2562, #2564, #2568).
+- **Identity-aware investigation flows** - added identity graph taxonomy,
+  AWS IAM enrichment, ExposurePath-first dashboard brief, ExposurePath output
+  parity across JSON/SARIF/Markdown/HTML, and agent-native REST/MCP graph
+  tools for exposure paths and deploy decisions (#2565, #2566, #2567, #2572,
+  #2573, #2574, #2577, #2604).
+- **Headless control-plane primitives** - added the TypeScript control-plane
+  client, public Python SDK entry points, versioned inventory ingestion,
+  normalized bulk findings ingest, dataset version registry, posture webhook
+  outbox and status API, posture streaming contract docs, and local
+  entitlement metadata hooks (#2601, #2602, #2603, #2606, #2607, #2609,
+  #2611, #2613, #2614).
+- **IaC and data-stack scanning** - added first-class dbt project security
+  scanning for project metadata, profiles, packages, SQL models/macros, seed
+  files, and dbt CI workflow guardrails (#2615).
+- **Skills scanner hardening** - decoupled content and provenance verdicts,
+  routed medium behavioral findings to review, added policy-aware CI gates,
+  improved scanner evidence accuracy, and emitted SARIF for skill findings
+  (#2569, #2570, #2575, #2590, #2591, #2592).
+- **Release proof and positioning** - refreshed product metrics, release proof
+  screenshots, graph release positioning, agent-first product boundaries,
+  product lane boundaries, and the docs/runtime posture-event contract without
+  claiming unshipped Kafka, Kinesis, Pub/Sub, Event Hub, or EventBridge
+  adapters (#2530, #2560, #2563, #2579, #2580, #2588, #2600, #2602, #2605).
+- **Dependency and release automation updates** - refreshed UI and SDK
+  development dependencies, Python Alpine base image, Docker base-image policy,
+  PyPI native attestations, and Windows endpoint runner pinning (#2520, #2534,
+  #2535, #2536, #2537, #2538, #2539, #2581, #2582, #2583, #2584, #2585).
 
 ### Fixed
-- **SQLite graph upgrade blocker** - the release-blocking read-path migration
-  regression is tracked as the v0.86.6 blocker: existing local graph DBs must
-  add time-versioned edge columns before any `/v1/graph*` endpoint claims
-  release readiness.
-- **`agent-bom audit` fails on base install** - `cryptography` is now a core
-  dependency (it was previously only in `[runtime]`/`[oidc]` extras), so the
-  proxy audit log viewer no longer crashes with `No module named
-  'cryptography'` after `pip install agent-bom`. The CLI also catches the
-  ImportError defensively and prints a clean `pip install 'agent-bom[runtime]'`
-  hint with exit code 2 instead of a traceback.
-- **`agent-bom sbom -o` (and `image -o` / `iac -o`) ignored when a CLI profile
-  is active** - sibling scan commands forward `--output` to `scan` via
-  `ctx.invoke(scan, output=...)`. Click reports the parameter source as
-  DEFAULT in that case, so `apply_scan_profile_defaults` was overriding the
-  caller's explicit path with the profile's `output =` value (e.g.
-  `agent-bom-report.json`). The profile default is now applied only when the
-  caller value is empty, preserving wrapper-command behavior while still
-  honoring profile defaults for bare `agent-bom agents` invocations.
-- **Auditor export parity** - CSV, Markdown, and SPDX outputs now preserve
-  severity provenance, EPSS percentile, KEV dates, CWE IDs, and framework
-  compliance tags instead of dropping enrichment metadata outside JSON/SARIF.
-- **`agent-bom check --agent-mode` emitted Rich console tables** - pre-install
-  package checks now honor global agent mode and return the stable JSON
-  envelope instead of mixing human tables into automation output.
+- **SQLite graph upgrade blocker** - fixed legacy local graph DB read-path
+  migrations so existing `graph.db` files add time-versioned edge columns
+  before `/v1/graph*` endpoints query them (#2561).
+- **Audit chain and runtime integrity** - reconciled runtime AES-CMAC audit
+  verification with the control-plane HMAC audit table and removed raw
+  exception leakage from audit-integrity errors (#2516, #2571).
+- **CLI and output contract gaps** - made `cryptography` a core dependency for
+  `agent-bom audit`, honored `-o/--output` from wrapper scan commands when CLI
+  profiles are active, preserved auditor enrichment metadata across non-JSON
+  exports, and kept `agent-bom check --agent-mode` machine-readable (#2524,
+  #2525, #2526, #2527, #2540).
+- **Scanner/runtime data quality** - threaded offline mode into enriched scans,
+  tightened CLI runtime audit gates, aligned canonical IDs across report and
+  graph surfaces, fixed API gateway data audit gaps, and cached agent discovery
+  responses for the API/UI path (#2517, #2518, #2519, #2521, #2522, #2523,
+  #2557).
+- **Postgres scale evidence workflow** - restored the scheduled Postgres scale
+  evidence workflow environment contract and kept test-only Postgres settings
+  from leaking into unrelated scheduler and Snowflake startup paths (#2616).
 
 ---
 
@@ -1273,7 +1294,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.5...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.87.0...HEAD
+[0.87.0]: https://github.com/msaad00/agent-bom/compare/v0.86.5...v0.87.0
 [0.86.5]: https://github.com/msaad00/agent-bom/compare/v0.86.4...v0.86.5
 [0.86.4]: https://github.com/msaad00/agent-bom/compare/v0.86.3...v0.86.4
 [0.86.3]: https://github.com/msaad00/agent-bom/compare/v0.86.2...v0.86.3

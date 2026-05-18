@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import ipaddress
 import os
 import ssl
@@ -12,6 +13,25 @@ from typing import Any, Optional
 import click
 
 from agent_bom.cli._common import LISTEN_PORT_RANGE
+
+
+def _require_optional_dependencies(command: str, extra: str, modules: dict[str, str]) -> None:
+    """Fail fast with an actionable install hint for optional runtime surfaces."""
+    missing = [label for label, module_name in modules.items() if importlib.util.find_spec(module_name) is None]
+    if not missing:
+        return
+    _fail_missing_optional_dependencies(command, extra, missing)
+
+
+def _fail_missing_optional_dependencies(command: str, extra: str, missing: list[str]) -> None:
+    """Print the shared optional-extra install hint and exit."""
+    missing_text = ", ".join(missing)
+    click.echo(
+        f"ERROR: {missing_text} required for `{command}`.\n"
+        f"Install with:  uv pip install 'agent-bom[{extra}]'  (or: pip install 'agent-bom[{extra}]')",
+        err=True,
+    )
+    sys.exit(1)
 
 
 def _is_loopback_host(host: str) -> bool:
@@ -339,16 +359,11 @@ def serve_cmd(
 
     setup_logging(level=log_level, json_output=log_json)
 
-    try:
-        import uvicorn  # noqa: F401
-    except ImportError:
-        click.echo(
-            "ERROR: FastAPI + Uvicorn are required for `agent-bom serve`.\n"
-            "Install them with:  uv pip install 'agent-bom[ui]'  "
-            "(or: pip install 'agent-bom[ui]')",
-            err=True,
-        )
-        sys.exit(1)
+    _require_optional_dependencies(
+        "agent-bom serve",
+        "ui",
+        {"FastAPI": "fastapi", "Uvicorn": "uvicorn"},
+    )
 
     import os as _os
 
@@ -396,7 +411,10 @@ def serve_cmd(
     ]
     _emit_runtime_summary("agent-bom serve", rows)
 
-    import uvicorn as _uvicorn
+    try:
+        import uvicorn as _uvicorn
+    except ImportError:
+        _fail_missing_optional_dependencies("agent-bom serve", "ui", ["Uvicorn"])
 
     _uvicorn.run(
         "agent_bom.api.server:app",
@@ -552,18 +570,18 @@ def api_cmd(
 
     setup_logging(level=log_level, json_output=log_json)
 
+    _require_optional_dependencies(
+        "agent-bom api",
+        "api",
+        {"FastAPI": "fastapi", "Uvicorn": "uvicorn"},
+    )
+
+    import os as _os
+
     try:
         import uvicorn
     except ImportError:
-        click.echo(
-            "ERROR: uvicorn is required for `agent-bom api`.\n"
-            "Install it with:  uv pip install 'agent-bom[api]'  "
-            "(or: pip install 'agent-bom[api]')",
-            err=True,
-        )
-        sys.exit(1)
-
-    import os as _os
+        _fail_missing_optional_dependencies("agent-bom api", "api", ["Uvicorn"])
 
     resolved_backend, resolved_url = _configure_analytics_backend(
         analytics_backend=analytics_backend,
@@ -730,14 +748,16 @@ def mcp_server_cmd(
 
     setup_logging(level=log_level, json_output=log_json)
 
+    _require_optional_dependencies(
+        "agent-bom mcp server",
+        "mcp-server",
+        {"MCP SDK": "mcp"},
+    )
+
     try:
         from agent_bom.mcp_server import create_mcp_server
     except ImportError:
-        click.echo(
-            "ERROR: mcp SDK is required for `agent-bom mcp server`.\nInstall it with:  pip install 'agent-bom[mcp-server]'",
-            err=True,
-        )
-        sys.exit(1)
+        _fail_missing_optional_dependencies("agent-bom mcp server", "mcp-server", ["MCP SDK"])
 
     if transport in ("sse", "streamable-http"):
         _enforce_remote_mcp_auth_defaults(host, bearer_token, allow_insecure_no_auth)

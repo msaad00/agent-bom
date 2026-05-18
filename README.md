@@ -163,6 +163,11 @@ agent-bom image nginx:latest                  # container image scan
 agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC scan, optionally `--k8s-live`
 ```
 
+The base wheel is the scanner/CLI path. Install the optional runtime surfaces
+when you need them: `pip install 'agent-bom[mcp-server]'` for MCP server mode
+and `pip install 'agent-bom[ui]'` for the local API/dashboard process. Those
+commands fail fast with the same install hints if an extra is missing.
+
 Recommended pilot on one workstation:
 
 ```bash

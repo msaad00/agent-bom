@@ -63,6 +63,11 @@ pip install 'agent-bom[ui]'                      # once, if you want the dashboa
 agent-bom serve                                  # API + dashboard + graph explorer
 ```
 
+The base wheel is the scanner/CLI path. Install optional surfaces explicitly:
+`pip install 'agent-bom[mcp-server]'` for MCP server mode and
+`pip install 'agent-bom[ui]'` for the local API/dashboard process. If an extra
+is missing, the command exits with the matching install hint.
+
 Self-hosted pilot:
 
 ```bash

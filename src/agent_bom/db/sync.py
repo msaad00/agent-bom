@@ -955,7 +955,11 @@ def sync_ghsa(
     _validate_sync_url(base_url, "ghsa url")
 
     token = github_token or os.environ.get("GITHUB_TOKEN")
-    target_ecosystems = ecosystems or list(GHSA_ECOSYSTEMS)
+    target_ecosystems = [ecosystem.lower() for ecosystem in (ecosystems or list(GHSA_ECOSYSTEMS))]
+    unsupported = sorted(set(target_ecosystems) - set(GHSA_ECOSYSTEMS))
+    if unsupported:
+        supported = ", ".join(GHSA_ECOSYSTEMS)
+        raise ValueError(f"Unsupported GHSA ecosystem(s): {', '.join(unsupported)}. Supported ecosystems: {supported}")
 
     _logger.info(
         "Fetching GHSA advisories from %s for ecosystems: %s",
@@ -969,8 +973,10 @@ def sync_ghsa(
 
     from agent_bom.package_utils import normalize_package_name
 
+    cap_hit = False
     for ecosystem in target_ecosystems:
         if count >= max_entries:
+            cap_hit = True
             break
 
         eco_count = 0
@@ -996,6 +1002,7 @@ def sync_ghsa(
 
             for advisory in advisories:
                 if count >= max_entries:
+                    cap_hit = True
                     break
 
                 if _ingest_ghsa_advisory(conn, advisory, normalize_package_name):
@@ -1015,7 +1022,23 @@ def sync_ghsa(
         eco_counts[ecosystem] = eco_count
 
     conn.commit()
-    _update_sync_meta(conn, "ghsa", count)
+    _update_sync_meta(
+        conn,
+        "ghsa",
+        count,
+        {
+            "ecosystems_requested": target_ecosystems,
+            "ecosystem_counts": eco_counts,
+            "max_entries": max_entries,
+            "cap_hit": cap_hit,
+            "coverage": "truncated" if cap_hit else "complete_for_requested_pages",
+        },
+    )
+    if cap_hit:
+        _logger.warning(
+            "GHSA sync hit max_entries=%d; coverage is truncated. Increase --max-ghsa-entries for fuller coverage.",
+            max_entries,
+        )
     eco_summary = ", ".join(f"{e}={c}" for e, c in eco_counts.items() if c > 0)
     _logger.info(
         "GHSA sync complete: ingested %d advisories across %d ecosystems (%s)",
@@ -1072,6 +1095,13 @@ def sync_nvd(
     # Find CVE-backed rows in our DB that are missing CVSS data. Some OSV
     # distro advisories use IDs such as DEBIAN-CVE-2014-6271 but still map to
     # the canonical CVE in aliases or in the ID suffix.
+    total_candidates = conn.execute(
+        """
+        SELECT COUNT(*) FROM vulns
+        WHERE (severity = 'unknown' OR cvss_score IS NULL)
+          AND (id LIKE '%CVE-%' OR aliases LIKE '%CVE-%')
+        """
+    ).fetchone()[0]
     rows = conn.execute(
         """
         SELECT id, COALESCE(aliases, '') AS aliases FROM vulns
@@ -1090,7 +1120,18 @@ def sync_nvd(
 
     if not row_targets:
         _logger.info("NVD enrichment: no CVEs missing CVSS data — nothing to do")
-        _update_sync_meta(conn, "nvd", 0)
+        _update_sync_meta(
+            conn,
+            "nvd",
+            0,
+            {
+                "mode": "enrichment_only",
+                "candidate_rows": total_candidates,
+                "selected_rows": 0,
+                "max_entries": max_entries,
+                "cap_hit": total_candidates > max_entries,
+            },
+        )
         return 0
 
     _logger.info("NVD enrichment: fetching CVSS data for %d CVE-backed rows …", len(row_targets))
@@ -1190,7 +1231,18 @@ def sync_nvd(
         time.sleep(sleep_seconds)
 
     conn.commit()
-    _update_sync_meta(conn, "nvd", enriched)
+    _update_sync_meta(
+        conn,
+        "nvd",
+        enriched,
+        {
+            "mode": "enrichment_only",
+            "candidate_rows": total_candidates,
+            "selected_rows": len(row_targets),
+            "max_entries": max_entries,
+            "cap_hit": total_candidates > max_entries,
+        },
+    )
     _logger.info("NVD enrichment complete: %d CVEs updated", enriched)
     return enriched
 
@@ -1200,11 +1252,22 @@ def sync_nvd(
 # ---------------------------------------------------------------------------
 
 
-def _update_sync_meta(conn: sqlite3.Connection, source: str, count: int) -> None:
-    conn.execute(
-        "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, ?, ?)",
-        (source, _now_utc(), count),
-    )
+def _sync_meta_has_metadata_column(conn: sqlite3.Connection) -> bool:
+    return any(row[1] == "metadata_json" for row in conn.execute("PRAGMA table_info(sync_meta)").fetchall())
+
+
+def _update_sync_meta(conn: sqlite3.Connection, source: str, count: int, metadata: dict[str, Any] | None = None) -> None:
+    metadata_json = json.dumps(metadata or {}, sort_keys=True, separators=(",", ":"))
+    if _sync_meta_has_metadata_column(conn):
+        conn.execute(
+            "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count, metadata_json) VALUES (?, ?, ?, ?)",
+            (source, _now_utc(), count, metadata_json),
+        )
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, ?, ?)",
+            (source, _now_utc(), count),
+        )
     conn.commit()
 
 

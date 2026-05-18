@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -255,7 +256,7 @@ def test_sync_ghsa_ecosystem_filtering() -> None:
 def test_sync_ghsa_default_ecosystems() -> None:
     """When no ecosystems are specified, all GHSA_ECOSYSTEMS are used."""
     # Verify minimum required ecosystems are present (no hardcoded count)
-    required = {"pip", "npm", "go", "maven", "nuget", "rubygems", "cargo"}
+    required = {"pip", "npm", "go", "maven", "nuget", "rubygems", "cargo", "composer", "swift", "pub", "erlang", "actions"}
     assert required.issubset(set(GHSA_ECOSYSTEMS)), f"Missing: {required - set(GHSA_ECOSYSTEMS)}"
     assert len(GHSA_ECOSYSTEMS) >= len(required), "GHSA_ECOSYSTEMS shrunk below minimum"
     # No duplicates
@@ -283,3 +284,10 @@ def test_sync_ghsa_respects_max_entries() -> None:
         count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=3, ecosystems=["pip"])
 
     assert count == 3
+    meta = conn.execute("SELECT metadata_json FROM sync_meta WHERE source='ghsa'").fetchone()
+    assert meta is not None
+    details = json.loads(meta["metadata_json"])
+    assert details["cap_hit"] is True
+    assert details["coverage"] == "truncated"
+    assert details["max_entries"] == 3
+    assert details["ecosystem_counts"] == {"pip": 3}

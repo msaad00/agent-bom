@@ -457,7 +457,21 @@ def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
             return None
 
 
-_SEMVER_PRERELEASE_TAG_RE = None
+_SEMVER_PRERELEASE_TAGS = frozenset(
+    {
+        "canary",
+        "beta",
+        "alpha",
+        "rc",
+        "pre",
+        "dev",
+        "nightly",
+        "next",
+        "snapshot",
+        "m",
+        "preview",
+    }
+)
 
 
 def _strip_semver_prerelease_tag(version: str) -> str:
@@ -470,15 +484,13 @@ def _strip_semver_prerelease_tag(version: str) -> str:
     unchanged when no recognized suffix is present so the caller can
     detect "nothing to retry" and avoid an infinite loop.
     """
-    global _SEMVER_PRERELEASE_TAG_RE
-    if _SEMVER_PRERELEASE_TAG_RE is None:
-        import re
-
-        _SEMVER_PRERELEASE_TAG_RE = re.compile(
-            r"-(?:canary|beta|alpha|rc|pre|dev|nightly|next|snapshot|m|preview)(?:\.[A-Za-z0-9.-]+)?$",
-            re.IGNORECASE,
-        )
-    return _SEMVER_PRERELEASE_TAG_RE.sub("", version)
+    base, separator, suffix = version.partition("-")
+    if not separator:
+        return version
+    tag = suffix.split(".", 1)[0].lower()
+    if tag in _SEMVER_PRERELEASE_TAGS:
+        return base
+    return version
 
 
 @lru_cache(maxsize=65536)

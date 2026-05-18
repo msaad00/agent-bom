@@ -15,6 +15,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
   proxy/gateway traffic with tool-call volume, policy decision summaries,
   active runtime sources, freshness, and explicit retention posture without
   exposing raw prompts, arguments, responses, or credential values.
+- Threat-intel lookup and matching surfaces now expose local source freshness,
+  advisory lookup, and package/purl inventory matching over REST and MCP, with
+  canonical CVE/GHSA/OSV/CWE IDs plus evidence links.
+
+### Fixed
+- Graph schema now exposes static `node_types` and `edge_types` aliases from
+  the canonical enum taxonomy, so empty graph stores still return the complete
+  type catalog for clients.
 
 ### Changed
 - **Multi-agent operating contract** - promoted shared engineering, PR style,

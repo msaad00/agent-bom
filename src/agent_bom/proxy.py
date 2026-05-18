@@ -41,6 +41,7 @@ from agent_bom.api.tracing import (
     parse_tracestate,
 )
 from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_line
+from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
 from agent_bom.security import validate_arguments, validate_command
@@ -1061,6 +1062,17 @@ async def _proxy_sse_server(
                             span.set_attribute("agent_bom.proxy.subject", tool_name)
                             span.set_attribute("agent_bom.proxy.method", msg.get("method", "unknown"))
                             span.set_attribute("agent_bom.proxy.call_counter", call_counter)
+                            set_langfuse_runtime_attributes(
+                                span,
+                                surface="proxy",
+                                tenant_id=control_plane_tenant_id,
+                                method=str(msg.get("method", "unknown")),
+                                tool_name=tool_name,
+                                decision="allowed",
+                                agent_id=agent_id,
+                                trace_id=str(request_trace_meta.get("trace_id") or ""),
+                                arguments=arguments,
+                            )
                         forwarded_message = _inject_jsonrpc_trace_meta(
                             msg,
                             traceparent=request_trace_meta.get("traceparent"),
@@ -1812,7 +1824,19 @@ async def run_proxy(
                 if span is not None and msg is not None:
                     span.set_attribute("agent_bom.proxy.message_kind", msg.get("method", "unknown"))
                     if is_tools_call(msg):
-                        span.set_attribute("agent_bom.proxy.tool_name", extract_tool_name(msg) or "unknown")
+                        tool_name = extract_tool_name(msg) or "unknown"
+                        span.set_attribute("agent_bom.proxy.tool_name", tool_name)
+                        set_langfuse_runtime_attributes(
+                            span,
+                            surface="proxy",
+                            tenant_id=control_plane_tenant_id,
+                            method=str(msg.get("method", "unknown")),
+                            tool_name=tool_name,
+                            decision="allowed",
+                            agent_id=agent_id,
+                            trace_id=str(request_trace_meta.get("trace_id") or ""),
+                            arguments=extract_tool_arguments(msg),
+                        )
                 # Forward to server
                 if process.stdin:
                     if msg is not None:

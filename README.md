@@ -76,7 +76,7 @@ dashboard-only workflow:
 |---|---|---|
 | **CLI / CI** | developers, release gates, automation | local scans, SARIF/SBOM/HTML/JSON output, deterministic exit codes |
 | **REST API** | security platforms, SIEM jobs, custom services | authenticated control plane routes for scans, normalized bulk findings, dataset versions, graph evidence, audit, and governance |
-| **MCP tools** | Claude, Cursor, Codex, Windsurf, Cortex, and custom agents | 38 read-only tools, strict arguments, `exposure_paths`, `should_i_deploy` |
+| **MCP tools** | Claude, Cursor, Codex, Windsurf, Cortex, and custom agents | 41 read-only tools, strict arguments, `exposure_paths`, `should_i_deploy` |
 | **TypeScript client** | services and agent runtimes calling the control plane | typed helper for stable REST endpoints; not a scanner SDK |
 | **TypeScript runtime detectors** | MCP/runtime enforcement integrations | local detector package for runtime policy checks; separate from the control-plane client |
 | **UI cockpit** | security teams, auditors, operators | graph cockpit, fleet, compliance, audit, and evidence review over the same backend data |
@@ -541,7 +541,7 @@ agent-bom
 | Browser UI image (`agentbom/agent-bom-ui`) | browser dashboard paired with the same API/control plane | `docker compose -f docker-compose.pilot.yml up -d` | dashboard at `http://localhost:3000` |
 | Kubernetes / Helm | self-hosted API + dashboard, scheduled discovery | `helm upgrade --install agent-bom deploy/helm/agent-bom --set controlPlane.enabled=true` | API, UI, jobs, optional gateway/proxy |
 | REST API (`agent-bom api` / `agent-bom serve`) | platform integration and self-hosted control plane | `agent-bom serve --port 8422 --persist jobs.db` | `/docs`, `/health`, `/v1/scan`, `/v1/fleet` |
-| MCP server (`agent-bom mcp server`) | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex | `agent-bom mcp server` | 38 read-only MCP security tools |
+| MCP server (`agent-bom mcp server`) | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex | `agent-bom mcp server` | 41 read-only MCP security tools |
 | Runtime proxy (`agent-bom proxy`) | MCP traffic enforcement | `agent-bom proxy --log audit.jsonl --block-undeclared -- ...` | audit JSONL, metrics, policy decisions |
 | Shield SDK (`from agent_bom.shield import Shield`) | in-process protection | `from agent_bom.shield import Shield` | allow/block decisions and redacted alerts |
 
@@ -552,7 +552,7 @@ see value and where enterprises wire agent-bom into existing controls.
 
 | Integration surface | Examples | What agent-bom does |
 |---|---|---|
-| MCP and coding agents | Claude Desktop / Code, Cursor, Windsurf, VS Code, Cortex Code, OpenAI Codex CLI | discovers configured MCP servers, exposes 38 read-only security tools, and returns findings to the assistant workflow |
+| MCP and coding agents | Claude Desktop / Code, Cursor, Windsurf, VS Code, Cortex Code, OpenAI Codex CLI | discovers configured MCP servers, exposes 41 read-only security tools, and returns findings to the assistant workflow |
 | Skills and plugins | OpenClaw skills, Cortex Code skill, MCP Registry, Smithery, Glama, Docker MCP registry | packages repeatable scan, compliance, registry, runtime, and Snowflake discovery workflows where agent users already work |
 | CI/CD and developer workflow | GitHub Action, SARIF, pre-install `check`, Docker, local CLI | blocks unsafe packages, uploads code-scanning evidence, and keeps SBOM/remediation output scriptable |
 | Cloud, warehouse, and AI infra | AWS, Azure, GCP, Snowflake, Databricks, CoreWeave, Nebius, Hugging Face, OpenAI, W&B, MLflow, Ollama | pulls read-only inventory and posture evidence with operator-controlled credentials |
@@ -689,7 +689,7 @@ see [GitHub Action SARIF troubleshooting](docs/GITHUB_ACTION_SARIF_TROUBLESHOOTI
 
 ## MCP server
 
-38 read-only security tools, 6 resources, and 6 workflow prompts available inside any MCP-compatible AI assistant:
+41 read-only security tools, 6 resources, and 6 workflow prompts available inside any MCP-compatible AI assistant:
 
 ```json
 {

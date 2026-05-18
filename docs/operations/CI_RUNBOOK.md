@@ -33,10 +33,23 @@ scripts/refresh_ready_prs.sh
 
 The script only refreshes same-repo, non-draft PRs targeting `main`. By default
 it further limits writes to PRs with auto-merge already enabled, so exploratory
-branches are left alone. The workflow must use `AUTOMATION_GITHUB_TOKEN`, a
-dedicated GitHub App token or PAT with repo pull-request/write access. Do not
-fall back to `GITHUB_TOKEN` for refresh or retrigger events: GitHub suppresses
-workflows triggered by that token, which recreates the frozen-check loop.
+branches are left alone. Branch refresh and close/reopen retrigger require
+`AUTOMATION_GITHUB_TOKEN`, a dedicated GitHub App token or PAT with repo
+pull-request/write access. Do not use `GITHUB_TOKEN` for refresh or
+close/reopen events: GitHub suppresses workflows triggered by that token, which
+recreates the frozen-check loop.
+
+If `AUTOMATION_GITHUB_TOKEN` is not configured, the workflow now uses a
+lower-privilege fallback:
+
+```sh
+scripts/dispatch_required_ci.sh <PR_NUMBER>
+```
+
+That fallback dispatches `ci.yml` and, when needed, `codeql.yml` through
+`workflow_dispatch` for same-repo PR heads that already contain current `main`.
+It cannot update stale branches, but it prevents the common "all visible checks
+passed, required contexts are still expected" state from wasting a merge cycle.
 
 Manual one-shot refresh:
 
@@ -104,11 +117,17 @@ and through `workflow_dispatch` for on-demand. Once this workflow is on the
 default branch and `AUTOMATION_GITHUB_TOKEN` is configured, stranded PRs
 unstrand themselves within five minutes — no operator action required.
 
+When the automation token is absent, the workflow falls back to
+`scripts/dispatch_required_ci.sh` and dispatches required workflows for current
+same-repo PR heads. This is less powerful than branch refresh, but it is enough
+for PRs that are already rebased and only missing required status contexts.
+
 Operator-side troubleshooting if a strand persists past ~10 minutes:
 
 - Did the workflow itself run? `gh run list --workflow=auto-retrigger-stranded.yml --limit 5`
-- Is `AUTOMATION_GITHUB_TOKEN` configured? Without it the workflow intentionally
-  skips write actions because `GITHUB_TOKEN` cannot start required PR checks.
+- Is `AUTOMATION_GITHUB_TOKEN` configured? Without it the workflow can dispatch
+  required checks for current heads, but cannot refresh stale branches or use
+  the close/reopen retrigger path.
 - Was the PR younger than `MIN_AGE_MINUTES` (3 min by default)? It's intentionally
   skipped to give the initial `pull_request` workflow a chance to start.
 - Did `gh api commits/{sha}/check-runs` return zero, or is there a

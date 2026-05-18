@@ -126,8 +126,9 @@ Minimum verification matrix:
 
 ## On task start, ALWAYS
 
-- `git pull --ff-only origin main` before any audit — never assess a stale
-  local working tree.
+- `git fetch origin main` before any audit and compare against the relevant
+  base branch. Rebase, merge, or pull only when the current worktree is meant
+  to move.
 - Read recent commits (`git log --oneline -15`) and open PRs (`gh pr list`).
 - Check `pyproject.toml` version vs the latest tag vs PyPI before claiming
   release state.
@@ -141,8 +142,10 @@ Minimum verification matrix:
 - Tool-credit prefixes in PR titles, commits, or CHANGELOG entries
   (`[claude]`, `[codex]`, `[copilot]`, `[cursor]`, etc.) — they ship into
   GitHub release notes.
-- Name competitor products in PRs, commits, docs, release notes, or any
-  public content. Talk about capability gaps and our own surfaces only.
+- Name competitor products in marketing, positioning, release notes, PR titles,
+  or benchmark claims. Talk about capability gaps and our own surfaces there.
+  Functional integration code and supported-upstream docs may name a service
+  when the exact product name is required for users to configure it.
 - Release with broken imports, red tests, or unreleased `[Unreleased]`
   CHANGELOG entries left after tagging.
 - Claim a file, feature, or behavior exists without reading the code that

@@ -9,6 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Runtime production index** - added a tenant-scoped
+  `/v1/runtime/production-index` security-observability endpoint for
+  proxy/gateway traffic with tool-call volume, policy decision summaries,
+  active runtime sources, freshness, and explicit retention posture without
+  exposing raw prompts, arguments, responses, or credential values.
+
 ### Changed
 - **Multi-agent operating contract** - promoted shared engineering, PR style,
   and release-readiness rules into `.agents/AGENTS.md` so any agent following

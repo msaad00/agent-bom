@@ -205,9 +205,9 @@ class TestScanProjectDirectory:
         assert packages["react"].is_direct is True
         assert packages["@sample/ui"].version == "1.0.0"
         assert packages["@sample/ui"].is_direct is True
-        assert packages["vite"].version == "5.4.0"
+        assert packages["vite"].version == "8.0.5"
         assert packages["vite"].is_direct is True
-        assert packages["rollup"].version == "4.24.0"
+        assert packages["rollup"].version == "4.59.0"
         assert packages["rollup"].is_direct is False
 
         summary = summarize_project_inventory(fixture_root, result)

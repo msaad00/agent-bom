@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 
 import click
 from rich.console import Console
@@ -90,10 +92,23 @@ def doctor_cmd() -> None:
     try:
         from agent_bom.discovery import discover_global_configs
 
-        configs = discover_global_configs()
-        runtime_checks.append(("MCP configs", f"{len(configs)} found", "ok" if configs else "info"))
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            configs = discover_global_configs(quiet=True)
+        server_count = sum(len(agent.mcp_servers) for agent in configs)
+        if configs:
+            client_names = ", ".join(agent.name for agent in configs[:3])
+            suffix = "" if len(configs) <= 3 else f", +{len(configs) - 3} more"
+            runtime_checks.append(
+                (
+                    "MCP discovery",
+                    f"{len(configs)} client config(s), {server_count} MCP server(s) ({client_names}{suffix})",
+                    "ok",
+                )
+            )
+        else:
+            runtime_checks.append(("MCP discovery", "0 client configs, 0 MCP servers", "info"))
     except Exception:
-        runtime_checks.append(("MCP configs", "discovery error", "warn"))
+        runtime_checks.append(("MCP discovery", "discovery error", "warn"))
 
     # API keys
     api_keys = {

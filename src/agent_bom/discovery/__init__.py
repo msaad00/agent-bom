@@ -389,7 +389,7 @@ def detect_installed_agents(discovered_types: set[AgentType]) -> list[Agent]:
     return installed
 
 
-def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> list[Agent]:
+def discover_global_configs(agent_types: Optional[list[AgentType]] = None, *, quiet: bool = False) -> list[Agent]:
     """Discover all global MCP client configurations."""
     agents: list[Agent] = []
     sys_platform = get_platform()
@@ -466,12 +466,14 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> li
                             mcp_servers=servers,
                         )
                         agents.append(agent)
-                        console.print(
-                            f"  [green]✓[/green] Found {_display_label(agent_type.value)} "
-                            f"with {len(servers)} MCP server(s): {_display_label(config_path)}"
-                        )
+                        if not quiet:
+                            console.print(
+                                f"  [green]✓[/green] Found {_display_label(agent_type.value)} "
+                                f"with {len(servers)} MCP server(s): {_display_label(config_path)}"
+                            )
                 except (json.JSONDecodeError, KeyError, TypeError, Exception) as e:
-                    console.print(f"  [yellow]⚠[/yellow] Error parsing {_display_label(config_path)}: {_display_label(e)}")
+                    if not quiet:
+                        console.print(f"  [yellow]⚠[/yellow] Error parsing {_display_label(config_path)}: {_display_label(e)}")
 
     return agents
 

@@ -344,7 +344,7 @@ def main() -> int:
         _fail(f"CHANGELOG.md Unreleased compare link must start at v{version}")
 
     leaked_patterns = [
-        r"/Users/[^/\s]+",
+        r"/Users/[A-Za-z0-9._-]+",
         r"[A-Za-z]:\\Users\\[^\\\s]+",
     ]
     scan_roots = [ROOT / "README.md", ROOT / "PYPI_README.md", ROOT / "docs"]

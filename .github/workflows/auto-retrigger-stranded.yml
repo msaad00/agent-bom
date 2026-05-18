@@ -16,10 +16,11 @@ name: Auto-Retrigger Stranded PRs
 # behind main, then retriggers any PR whose current head SHA is missing or has a
 # stale required check.
 #
-# The refresh/retrigger token must be a dedicated GitHub App token or PAT.
-# GITHUB_TOKEN-authored pushes and close/reopen events do not recursively
-# trigger pull_request workflows, so falling back to GITHUB_TOKEN recreates the
-# frozen-PR loop this workflow is meant to break.
+# Branch refresh and close/reopen retriggering still require a dedicated GitHub
+# App token or PAT. When that token is absent, this workflow falls back to
+# dispatching the required workflows for PR heads that already contain current
+# main. That fallback cannot update stale branches, but it prevents approved PRs
+# from sitting behind "expected" required contexts when no code fix is needed.
 
 on:
   push:
@@ -51,6 +52,7 @@ on:
         type: boolean
 
 permissions:
+  actions: write
   contents: read
   pull-requests: read
 
@@ -71,7 +73,8 @@ jobs:
 
       - name: Find and retrigger stranded PRs
         env:
-          GH_TOKEN: ${{ secrets.AUTOMATION_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AUTOMATION_GITHUB_TOKEN || github.token }}
+          AUTOMATION_TOKEN_CONFIGURED: ${{ secrets.AUTOMATION_GITHUB_TOKEN != '' }}
           AUTOMATION_SSH_SIGNING_KEY: ${{ secrets.AUTOMATION_SSH_SIGNING_KEY }}
           REQUIRED_CHECKS: "Lint and Type Check,Test (Python 3.11),Test (Python 3.13),Build Package,Security Scan,CodeQL,Test (Python 3.14)"
           MIN_AGE_MINUTES: ${{ inputs.min_age_minutes || '3' }}
@@ -80,8 +83,48 @@ jobs:
           REFRESH_READY_PRS: ${{ github.event_name != 'workflow_dispatch' || inputs.refresh_ready_prs }}
         run: |
           set -euo pipefail
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::warning::AUTOMATION_GITHUB_TOKEN is not configured; skipping auto refresh/retrigger. GITHUB_TOKEN-authored events cannot start PR checks."
+
+          if [ "${AUTOMATION_TOKEN_CONFIGURED}" != "true" ]; then
+            echo "::warning::AUTOMATION_GITHUB_TOKEN is not configured; branch refresh and close/reopen retrigger are disabled."
+            echo "::notice::Using GITHUB_TOKEN fallback to dispatch required CI for current PR heads with missing contexts."
+
+            if [ -n "${PR_NUMBER}" ]; then
+              echo "Manual fallback dispatch requested for PR #${PR_NUMBER}."
+              scripts/dispatch_required_ci.sh "${PR_NUMBER}"
+              exit 0
+            fi
+
+            echo "Listing open PRs for fallback dispatch…"
+            mapfile -t PRS < <(
+              gh pr list \
+                --state open \
+                --limit 50 \
+                --json number,headRefOid,updatedAt,isDraft \
+                --jq '.[] | select(.isDraft == false) | "\(.number) \(.headRefOid) \(.updatedAt)"'
+            )
+
+            NOW_EPOCH="$(date -u +%s)"
+            CHECKED=0
+            DISPATCHED=0
+            for line in "${PRS[@]}"; do
+              read -r PR SHA UPDATED <<< "$line"
+              UPDATED_EPOCH="$(date -u -d "$UPDATED" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$UPDATED" +%s)"
+              AGE_SECONDS=$(( NOW_EPOCH - UPDATED_EPOCH ))
+              if [ "$AGE_SECONDS" -lt $(( 60 * MIN_AGE_MINUTES )) ]; then
+                echo "PR #${PR}: too young (${AGE_SECONDS}s old), skipping."
+                continue
+              fi
+
+              CHECKED=$(( CHECKED + 1 ))
+              if scripts/dispatch_required_ci.sh "$PR"; then
+                DISPATCHED=$(( DISPATCHED + 1 ))
+              else
+                echo "PR #${PR}: fallback dispatch check failed (continuing with next PR)."
+              fi
+            done
+
+            echo
+            echo "Summary: ${CHECKED} eligible PR(s) checked, ${DISPATCHED} fallback dispatch command(s) completed."
             exit 0
           fi
 

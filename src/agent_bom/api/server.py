@@ -710,6 +710,7 @@ from agent_bom.api.pipeline import (  # noqa: E402
     iter_pipeline_dag_event_records,  # noqa: F401 — re-exported for tests/artifact consumers
     pipeline_dag_events_jsonl,  # noqa: F401 — re-exported for tests/artifact consumers
 )
+from agent_bom.api.routes.agent_manifest import router as _agent_manifest_router  # noqa: E402
 
 # ─── Route modules ────────────────────────────────────────────────────────
 from agent_bom.api.routes.assets import router as _assets_router  # noqa: E402
@@ -736,6 +737,7 @@ from agent_bom.api.routes.scim import router as _scim_router  # noqa: E402
 from agent_bom.api.routes.sources import router as _sources_router  # noqa: E402
 
 app.include_router(_assets_router)
+app.include_router(_agent_manifest_router)
 app.include_router(_compliance_router)
 app.include_router(_connectors_router)
 app.include_router(_credentials_router)

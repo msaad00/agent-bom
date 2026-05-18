@@ -7,6 +7,7 @@
 | Command | Description |
 |---------|-------------|
 | `agents` | Discover MCP clients, extract dependencies, scan packages, and compute blast radius |
+| `manifest` | Emit the canonical Agent BOM manifest for local agent, MCP server, tool, and credential-reference posture |
 | `skills` | Scan, verify, and rescan AI instruction files and skills |
 | `image` | Scan a container image |
 | `fs` | Scan a filesystem directory or mounted VM disk snapshot |

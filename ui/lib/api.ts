@@ -21,6 +21,7 @@ import type {
   GraphAgentsResponse,
   GraphDiffResponse,
   GraphExportFormat,
+  AgentBomManifestResponse,
   PostureCountsResponse,
   RemediationItem,
   AttackFlowResponse,
@@ -111,6 +112,9 @@ export type {
   GraphAgentsResponse,
   GraphDiffResponse,
   GraphExportFormat,
+  AgentBomManifestResponse,
+  AgentBomManifestNode,
+  AgentBomManifestEdge,
   DeploymentMode,
   PostureCountsResponse,
   RemediationItem,
@@ -439,6 +443,9 @@ export const api = {
   /** MCP registry catalog */
   listRegistry: () => get<RegistryResponse>("/v1/registry"),
   getRegistryServer: (id: string) => get<RegistryServer>(`/v1/registry/${id}`),
+
+  /** Canonical Agent BOM manifest for humans and agent callers. */
+  getAgentBomManifest: () => get<AgentBomManifestResponse>("/v1/agent-bom/manifest"),
 
   /** Get attack flow graph for a completed scan */
   getAttackFlow: (

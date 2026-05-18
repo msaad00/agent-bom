@@ -11,6 +11,9 @@ large graph readability, see [Security Graph Model](security-graph-model.md).
 
 For the shortest operator-facing explanation of inputs, engine, outputs, deployment models, and product surfaces, see [How Agent-BOM Works](how-agent-bom-works.md).
 
+For the governance map that ties Agent BOM manifests, runtime decisions, graph
+evidence, and human/agent surfaces together, see [AI Governance Control Plane](ai-governance-control-plane.md).
+
 For the next-phase hosted product plan that maps UI actions to control-plane
 entities, routes, and rollout order, see [Hosted Product Control-Plane Spec](hosted-product-spec.md).
 

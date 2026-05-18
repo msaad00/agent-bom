@@ -137,6 +137,7 @@ nav:
       - Overview: architecture/overview.md
       - How Agent-BOM Works: architecture/how-agent-bom-works.md
       - Unified Platform Control Plane: architecture/unified-platform-control-plane.md
+      - AI Governance Control Plane: architecture/ai-governance-control-plane.md
       - Self-Hosted Product Architecture: architecture/self-hosted-product-architecture.md
       - UI, API, Auth, and Session Model: architecture/auth-and-session-model.md
       - Security Graph Model: architecture/security-graph-model.md

@@ -51,10 +51,7 @@ on:
         default: true
         type: boolean
 
-permissions:
-  actions: write
-  contents: read
-  pull-requests: read
+permissions: {}
 
 concurrency:
   group: auto-retrigger-stranded
@@ -65,6 +62,10 @@ jobs:
     name: Scan and retrigger
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

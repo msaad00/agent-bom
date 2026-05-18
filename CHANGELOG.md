@@ -24,6 +24,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   canonical CVE/GHSA/OSV/CWE IDs plus evidence links.
 
 ### Fixed
+- Scorecard vulnerability and token-permission hygiene now avoids counting
+  committed parser fixtures as live dependency exposure and scopes selected
+  workflow write tokens to the jobs that require them.
 - Graph schema now exposes static `node_types` and `edge_types` aliases from
   the canonical enum taxonomy, so empty graph stores still return the complete
   type catalog for clients.

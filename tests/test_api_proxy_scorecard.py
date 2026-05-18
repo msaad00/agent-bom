@@ -340,6 +340,23 @@ def test_runtime_production_index_summarizes_security_traffic():
                         "severity": "critical",
                         "message": "credential returned",
                     },
+                    {
+                        "type": "runtime_alert",
+                        "action": "gateway.data_filter_applied",
+                        "detector": "data_filter",
+                        "severity": "medium",
+                        "message": "PCI data masked before tool call",
+                        "tool_name": "crm.getContact",
+                    },
+                    {
+                        "type": "runtime_alert",
+                        "action": "gateway.approval_required",
+                        "detector": "approval_policy",
+                        "severity": "medium",
+                        "message": "approval required for production write",
+                        "tool_name": "salesforce.updateContact",
+                        "effective_decision": "warn",
+                    },
                 ],
                 "summary": {
                     "type": "proxy_summary",
@@ -364,10 +381,24 @@ def test_runtime_production_index_summarizes_security_traffic():
         assert data["traffic"]["block_rate"] == 0.2
         assert data["traffic"]["calls_by_tool"] == {"read_file": 7, "shell.exec": 3}
         assert data["traffic"]["top_tools"][0] == {"name": "read_file", "count": 7}
-        assert data["policy_decisions"]["gateway_actions"] == {"gateway.policy_blocked": 1}
+        assert data["policy_decisions"]["gateway_actions"] == {
+            "gateway.approval_required": 1,
+            "gateway.data_filter_applied": 1,
+            "gateway.policy_blocked": 1,
+        }
+        assert data["authorization_trace"]["authorized"] == 8
+        assert data["authorization_trace"]["blocked"] == 3
+        assert data["authorization_trace"]["data_filter_applied"] == 1
+        assert data["authorization_trace"]["approval_required"] == 1
+        assert data["authorization_trace"]["retention"] == "metadata_only"
+        assert {item["trace_class"] for item in data["authorization_trace"]["recent"]} >= {
+            "approval_required",
+            "data_filter_applied",
+            "blocked",
+        }
         assert data["alerts"]["alerts_by_severity"]["critical"] == 1
-        assert data["active_sources"] == [{"name": "gateway-1", "count": 2}]
-        assert data["active_sessions"] == [{"name": "sess-1", "count": 2}]
+        assert data["active_sources"] == [{"name": "gateway-1", "count": 4}]
+        assert data["active_sessions"] == [{"name": "sess-1", "count": 4}]
         assert data["retention_posture"]["event_classes"]["production_index"] == "metadata_only"
         assert data["retention_posture"]["event_classes"]["raw_tool_arguments"] == "no_persist"
         encoded = json.dumps(data)

@@ -1,7 +1,7 @@
 {
   "release_version": "0.87.0",
-  "captured_at": "2026-05-15T06:23:13Z",
-  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main after the graph/ExposurePath/MCP enhancements, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README/Docker proof uses one focused graph capture rather than duplicate dark/light theme copies. Manifest metadata targets v0.87.0; recapture is only required if the release proof must show the new version string in the image pixels.",
+  "captured_at": "2026-05-18T06:21:02Z",
+  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main after the graph/ExposurePath/MCP enhancements, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README/Docker proof uses one focused graph capture that keeps the active exposure path visible instead of mixing bright path nodes with dimmed context nodes. Manifest metadata targets v0.87.0; recapture is only required if the release proof must show the new version string in the image pixels.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
@@ -18,7 +18,7 @@
     {
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
-      "scope": "Focused agent mesh graph across selected agents, MCP servers, packages, tools, credentials, and findings, cropped to the product graph surface",
+      "scope": "Focused agent mesh graph across the active agent, MCP server, package, tool, and CVE path, cropped to the product graph surface",
       "visible_version": "0.87.0"
     },
     {

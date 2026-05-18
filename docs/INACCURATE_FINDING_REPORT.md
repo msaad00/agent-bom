@@ -33,7 +33,7 @@ private names with stable placeholders like `private-pypi-package`.
 ````markdown
 ### agent-bom version
 
-agent-bom 0.86.3
+agent-bom 0.87.0
 
 ### Finding type
 

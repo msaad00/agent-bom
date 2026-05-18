@@ -12003,6 +12003,31 @@
         ]
       }
     },
+    "/v1/runtime/production-index": {
+      "get": {
+        "description": "Return tenant-scoped runtime security observability for proxy/gateway traffic.\n\nThe production index is metadata-only by construction: it summarizes\ntool-call volume, policy decisions, alerts, source/session activity, and\nretention posture without returning raw prompts, raw arguments, raw\nresponses, or credential values.",
+        "operationId": "runtime_production_index_v1_runtime_production_index_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Runtime Production Index V1 Runtime Production Index Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Runtime Production Index",
+        "tags": [
+          "runtime",
+          "proxy"
+        ]
+      }
+    },
     "/v1/scan": {
       "post": {
         "description": "Start a scan. Returns immediately with a job_id.\nPoll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.",

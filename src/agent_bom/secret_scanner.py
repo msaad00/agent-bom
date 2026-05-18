@@ -112,6 +112,8 @@ _SCAN_FILENAMES = frozenset(
     }
 )
 
+_PII_SCAN_EXTENSIONS = frozenset({".env", ".yaml", ".yml", ".json", ".conf"})
+
 _MAX_FILE_SIZE = 1024 * 1024  # 1MB
 _MAX_FILES = 1000
 
@@ -254,8 +256,10 @@ def _scan_file(file_path: Path, rel_path: str) -> list[SecretFinding]:
                 )
                 break
 
-        # PII patterns (MEDIUM) — only in text/config files
-        if file_path.suffix in (".env", ".yaml", ".yml", ".json", ".txt", ".md", ".conf") or file_path.name in _SCAN_FILENAMES:
+        # PII patterns (MEDIUM) stay limited to structured config/secrets
+        # surfaces. Markdown/plain-text docs are still scanned for credentials
+        # above, but generic emails/IPs there are usually examples or contacts.
+        if file_path.suffix in _PII_SCAN_EXTENSIONS or file_path.name in _SCAN_FILENAMES:
             for name, pattern in PII_PATTERNS:
                 if pattern.search(line):
                     findings.append(

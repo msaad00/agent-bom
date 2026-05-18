@@ -10,6 +10,7 @@ Tables:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sqlite3
@@ -63,7 +64,7 @@ def _validated_db_path(raw: str) -> Path:
 DB_PATH: Path = _validated_db_path(_RAW_DB_PATH)
 
 # Schema version — bump when DDL changes incompatibly
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 # Migration scripts: list of (from_version, to_version, sql) tuples.
 # Add a new entry here whenever _SCHEMA_VERSION is bumped.
@@ -71,6 +72,7 @@ _SCHEMA_VERSION = 3
 _MIGRATIONS: list[tuple[int, int, str]] = [
     (1, 2, "ALTER TABLE vulns ADD COLUMN cwe_ids TEXT DEFAULT '';"),
     (2, 3, "ALTER TABLE vulns ADD COLUMN aliases TEXT DEFAULT '';"),
+    (3, 4, "ALTER TABLE sync_meta ADD COLUMN metadata_json TEXT DEFAULT '';"),
 ]
 
 _DDL = """
@@ -125,7 +127,8 @@ CREATE TABLE IF NOT EXISTS kev_entries (
 CREATE TABLE IF NOT EXISTS sync_meta (
     source          TEXT PRIMARY KEY,   -- osv | epss | kev
     last_synced     TEXT,               -- ISO-8601 UTC
-    record_count    INTEGER DEFAULT 0
+    record_count    INTEGER DEFAULT 0,
+    metadata_json   TEXT DEFAULT ''     -- source-specific coverage/freshness details
 );
 """
 
@@ -286,6 +289,17 @@ def db_stats(conn: sqlite3.Connection) -> dict:
     stats["affected_count"] = conn.execute("SELECT COUNT(*) FROM affected").fetchone()[0]
     stats["epss_count"] = conn.execute("SELECT COUNT(*) FROM epss_scores").fetchone()[0]
     stats["kev_count"] = conn.execute("SELECT COUNT(*) FROM kev_entries").fetchone()[0]
-    rows = conn.execute("SELECT source, last_synced, record_count FROM sync_meta").fetchall()
-    stats["sync_meta"] = {r["source"]: {"last_synced": r["last_synced"], "count": r["record_count"]} for r in rows}
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(sync_meta)").fetchall()}
+    if "metadata_json" in columns:
+        rows = conn.execute("SELECT source, last_synced, record_count, metadata_json FROM sync_meta").fetchall()
+    else:
+        rows = conn.execute("SELECT source, last_synced, record_count, '' AS metadata_json FROM sync_meta").fetchall()
+    stats["sync_meta"] = {
+        r["source"]: {
+            "last_synced": r["last_synced"],
+            "count": r["record_count"],
+            "metadata": json.loads(r["metadata_json"] or "{}"),
+        }
+        for r in rows
+    }
     return stats

@@ -12,6 +12,7 @@ from __future__ import annotations
 import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
+from agent_bom.db.sync import GHSA_ECOSYSTEMS
 
 
 @click.group("db", cls=SuggestingGroup)
@@ -56,7 +57,7 @@ def db_cmd() -> None:
     "--ghsa-ecosystems",
     "ghsa_ecosystems",
     multiple=True,
-    type=click.Choice(["pip", "npm", "go", "maven", "nuget", "rubygems", "cargo"], case_sensitive=False),
+    type=click.Choice(GHSA_ECOSYSTEMS, case_sensitive=False),
     help="Filter GHSA sync to specific ecosystems (default: all). Repeatable.",
 )
 def db_update(
@@ -71,7 +72,8 @@ def db_update(
 
     Pulls from OSV.dev (bulk export), Alpine secdb, FIRST EPSS scores, and CISA KEV catalog by default.
     Pass --source ghsa to also fetch GitHub Security Advisories across all supported
-    ecosystems (pip, npm, go, maven, nuget, rubygems, cargo).
+    ecosystems (pip, npm, go, maven, nuget, rubygems, cargo, composer, swift,
+    pub, erlang, actions).
     Pass --source nvd to enrich CVEs missing CVSS data from the NVD API (requires NVD_API_KEY
     for reasonable speed; without a key the rate limit is 5 req/30s).
 
@@ -156,8 +158,13 @@ def db_status(db_path: str | None) -> None:
         table.add_column("Source")
         table.add_column("Last synced")
         table.add_column("Records", justify="right")
+        table.add_column("Coverage")
         for src, info in sorted(meta.items()):
-            table.add_row(src, info.get("last_synced") or "—", f"{info.get('count', 0):,}")
+            metadata = info.get("metadata") or {}
+            coverage = str(metadata.get("coverage") or metadata.get("mode") or "—")
+            if metadata.get("cap_hit"):
+                coverage = f"{coverage} [yellow](cap hit)[/yellow]"
+            table.add_row(src, info.get("last_synced") or "—", f"{info.get('count', 0):,}", coverage)
         con.print(table)
     else:
         con.print("  [yellow]No sync data — run agent-bom db update to populate.[/yellow]")

@@ -408,6 +408,12 @@ def test_sync_nvd_stores_cwe_ids() -> None:
     row = conn.execute("SELECT cwe_ids FROM vulns WHERE id = 'CVE-2024-99010'").fetchone()
     cwes = set(row["cwe_ids"].split(","))
     assert cwes == {"CWE-79", "CWE-89"}
+    meta = conn.execute("SELECT metadata_json FROM sync_meta WHERE source='nvd'").fetchone()
+    assert meta is not None
+    details = json.loads(meta["metadata_json"])
+    assert details["mode"] == "enrichment_only"
+    assert details["candidate_rows"] == 1
+    assert details["selected_rows"] == 1
 
 
 def test_sync_nvd_derives_canonical_cve_for_debian_advisory() -> None:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Scan AMD ROCm container images for vulnerabilities.
-# Requires: agent-bom, Docker (or Grype/Syft)
+# Requires: agent-bom, Docker (any standards-compliant SBOM/SCA scanner also works for SBOM ingest)
 set -euo pipefail
 
 echo "=== AMD ROCm Image Scanning ==="

@@ -55,7 +55,7 @@ Avoid unless a future release proves it:
 
 - "managed agent-bom Cloud is available"
 - "Snowflake is the full control-plane backend"
-- "drop-in Wiz replacement"
+- "drop-in commercial CNAPP replacement"
 - "complete CNAPP"
 - "all cloud identity providers have live ingestion parity"
 

@@ -1,14 +1,9 @@
 """Atheris fuzz target for external scanner JSON ingestion.
 
-Fuzzes:
-1. detect_and_parse() — auto-detect external scanner JSON format
-2. parse_trivy_json() — Trivy findings ingestion
-3. parse_grype_json() — Grype findings ingestion
-4. parse_syft_json() — Syft inventory ingestion
-
-These parsers accept customer-supplied JSON exports and must reject malformed
-input safely without crashes, runaway recursion, or unsafe assumptions about
-shape.
+Fuzzes the auto-detect and per-format external scanner JSON parsers
+that accept customer-supplied scan exports. These parsers must reject
+malformed input safely without crashes, runaway recursion, or unsafe
+assumptions about shape.
 """
 
 from __future__ import annotations

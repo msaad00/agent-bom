@@ -120,4 +120,3 @@ should model the following evidence:
 
 - [OWASP AI BOM project](https://owaspaibom.org/)
 - [OWASP AI BOM generator](https://genai.owasp.org/resource/owasp-aibom-generator/)
-- [Wiz AI-BOM overview](https://www.wiz.io/academy/ai-security/ai-bom-ai-bill-of-materials)

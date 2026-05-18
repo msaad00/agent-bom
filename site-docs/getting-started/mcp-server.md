@@ -134,7 +134,7 @@ Connect with:
 | `model_file_scan` | Scan model files for embedded threats |
 | `ai_inventory_scan` | Detect AI SDK imports, shadow AI, and deprecated models |
 | `license_compliance_scan` | SPDX license compliance and compatibility checks |
-| `ingest_external_scan` | Import Trivy, Grype, or Syft scan output |
+| `ingest_external_scan` | Import third-party SBOM / SCA scan output (CycloneDX, SPDX, SARIF, scanner JSON) |
 
 ## Resources
 

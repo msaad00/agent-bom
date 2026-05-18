@@ -18,6 +18,30 @@
     ]
   },
   {
+    "name": "intel_lookup",
+    "description": "Look up a CVE, GHSA, or OSV advisory in the local threat-intel database.",
+    "arguments": [
+      {"name": "advisory_id", "type": "string", "desc": "Advisory identifier such as CVE-2026-12345 or GHSA-abcd-1234-wxyz"}
+    ]
+  },
+  {
+    "name": "intel_match",
+    "description": "Match package or purl inventory coordinates against local threat-intel advisories.",
+    "arguments": [
+      {"name": "packages", "type": "array", "desc": "Package coordinates with purl or ecosystem/name/version fields"},
+      {"name": "purl", "type": "string", "desc": "Single package URL, e.g. pkg:pypi/requests@2.31.0"},
+      {"name": "ecosystem", "type": "string", "desc": "Package ecosystem for single-package matching"},
+      {"name": "name", "type": "string", "desc": "Package name for single-package matching"},
+      {"name": "version", "type": "string", "desc": "Package version for single-package matching"},
+      {"name": "limit", "type": "integer", "desc": "Maximum package coordinates to match"}
+    ]
+  },
+  {
+    "name": "intel_sources",
+    "description": "List configured threat-intel sources and local feed freshness metadata.",
+    "arguments": []
+  },
+  {
     "name": "blast_radius",
     "description": "Look up the blast radius of a specific CVE — shows which agents, credentials, and tools are affected.",
     "arguments": [

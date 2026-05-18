@@ -8,6 +8,21 @@ from typing import Any
 _SERVER_CARD_TOOLS = [
     {"name": "scan", "description": "Full discovery → scan → output pipeline", "annotations": {"readOnlyHint": True}},
     {"name": "check", "description": "Check a specific package for CVEs before installing", "annotations": {"readOnlyHint": True}},
+    {
+        "name": "intel_lookup",
+        "description": "Look up a CVE, GHSA, or OSV advisory from local threat intel",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "intel_match",
+        "description": "Match package inventory coordinates to local advisory intel",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "intel_sources",
+        "description": "Return canonical intel sources and local feed-run freshness",
+        "annotations": {"readOnlyHint": True},
+    },
     {"name": "blast_radius", "description": "Look up blast radius for a specific CVE", "annotations": {"readOnlyHint": True}},
     {
         "name": "exposure_paths",
@@ -174,6 +189,9 @@ _SERVER_CARD_TOOLS = [
 _TOOL_CAPABILITY_CLASSES = {
     "scan": ["READ", "NETWORK", "LOCAL_FILE_READ"],
     "check": ["READ", "NETWORK"],
+    "intel_lookup": ["READ", "THREAT_INTEL"],
+    "intel_match": ["READ", "THREAT_INTEL", "INVENTORY"],
+    "intel_sources": ["READ", "THREAT_INTEL"],
     "blast_radius": ["READ", "ANALYZE"],
     "exposure_paths": ["READ", "GRAPH", "ANALYZE"],
     "should_i_deploy": ["READ", "GRAPH", "POLICY"],

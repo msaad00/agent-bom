@@ -1147,6 +1147,16 @@ def test_db_update_single_source(tmp_path):
     assert mock_sync.call_args[1]["sources"] == ["epss"]
 
 
+def test_db_update_ghsa_accepts_full_backend_ecosystem_set(tmp_path):
+    """CLI GHSA ecosystem choices should not lag behind the sync backend."""
+    db_path = str(tmp_path / "test.db")
+    with patch("agent_bom.db.sync.sync_db", return_value={"ghsa": 1}) as mock_sync:
+        result = _run(["db", "update", "--source", "ghsa", "--ghsa-ecosystems", "actions", "--path", db_path])
+
+    assert result.exit_code == 0
+    assert mock_sync.call_args[1]["ghsa_ecosystems"] == ["actions"]
+
+
 # ---------------------------------------------------------------------------
 # check / verify / where CLI commands (quick smoke tests)
 # ---------------------------------------------------------------------------

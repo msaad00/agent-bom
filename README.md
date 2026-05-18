@@ -154,7 +154,7 @@ Security and release references:
 - [Threat model](docs/THREAT_MODEL.md)
 - [Pentest readiness](docs/PENTEST_READINESS.md)
 - [Product metrics](docs/PRODUCT_METRICS.md)
-- [Release proof](docs/release/RELEASE_PROOF.md)
+- [Release verification](docs/RELEASE_VERIFICATION.md)
 - [GitHub Action](https://github.com/marketplace/actions/agent-bom)
 
 ## Product Views
@@ -164,10 +164,6 @@ The docs site carries the full screenshot gallery and capture protocol:
 - [Dashboard and graph capture protocol](docs/CAPTURE.md)
 - [Documentation site](https://msaad00.github.io/agent-bom/)
 - [Deployment overview](site-docs/deployment/overview.md)
-
-The focused mesh graph screenshot is being refreshed under
-[#2666](https://github.com/msaad00/agent-bom/issues/2666) so the public capture
-matches the current Agent BOM and graph surfaces.
 
 ## Contributing
 

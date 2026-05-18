@@ -432,6 +432,53 @@ def _runtime_retention_posture() -> dict[str, object]:
     }
 
 
+def _classify_authorization_event(alert: dict) -> str:
+    action = str(alert.get("action") or alert.get("event_type") or alert.get("type") or "").lower()
+    detector = str(alert.get("detector") or "").lower()
+    effective = str(alert.get("effective_decision") or alert.get("decision") or "").lower()
+    message = str(alert.get("message") or "").lower()
+    haystack = " ".join((action, detector, effective, message))
+    if "approval_required" in haystack or "approval required" in haystack or effective == "warn":
+        return "approval_required"
+    if "data_filter" in haystack or "data filter" in haystack or "redact" in haystack or "mask" in haystack:
+        return "data_filter_applied"
+    if "block" in haystack or "deny" in haystack or effective == "deny":
+        return "blocked"
+    if "allow" in haystack or "authorized" in haystack or effective == "allow":
+        return "authorized"
+    return "observed"
+
+
+def _authorization_trace(*, allowed_tool_calls: int, blocked_tool_calls: int, alerts: list[dict]) -> dict[str, object]:
+    """Return accountable runtime authorization counts without raw arguments."""
+    trace_counts: Counter[str] = Counter()
+    recent: list[dict[str, object]] = []
+    for alert in sorted(alerts, key=lambda item: str(item.get("ts") or item.get("timestamp") or ""), reverse=True):
+        trace_class = _classify_authorization_event(alert)
+        if trace_class != "observed":
+            trace_counts[trace_class] += 1
+        if len(recent) < 10:
+            recent.append(
+                {
+                    "ts": alert.get("ts") or alert.get("timestamp") or alert.get("event_timestamp") or "",
+                    "trace_class": trace_class,
+                    "source_id": alert.get("source_id") or "unknown",
+                    "session_id": alert.get("session_id") or "unknown",
+                    "tool_name": alert.get("tool_name") or alert.get("tool") or "",
+                    "decision": alert.get("effective_decision") or alert.get("decision") or "",
+                    "detector": alert.get("detector") or "",
+                }
+            )
+    return {
+        "authorized": max(0, allowed_tool_calls + trace_counts["authorized"]),
+        "blocked": max(0, blocked_tool_calls + trace_counts["blocked"]),
+        "data_filter_applied": trace_counts["data_filter_applied"],
+        "approval_required": trace_counts["approval_required"],
+        "recent": recent,
+        "retention": "metadata_only",
+    }
+
+
 def _runtime_metrics_for_tenant(tenant_id: str) -> dict | None:
     metrics: dict | None = None
     if _proxy_metrics is not None:
@@ -505,6 +552,11 @@ def _build_runtime_production_index(tenant_id: str, metrics: dict | None, alerts
             "blocked": total_blocked,
             "gateway_actions": dict(sorted(gateway_action_counts.items())),
         },
+        "authorization_trace": _authorization_trace(
+            allowed_tool_calls=allowed_tool_calls,
+            blocked_tool_calls=total_blocked,
+            alerts=alerts,
+        ),
         "alerts": {key: value for key, value in alert_summary.items() if key != "recent_alerts"},
         "active_sources": _top_items(source_counts),
         "active_sessions": _top_items(session_counts),

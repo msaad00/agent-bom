@@ -318,14 +318,14 @@ export default function MeshPage() {
 
   const { nodes: visibleNodes, edges: visibleEdges } = useGraphLayout(layoutMode, rawNodes, rawEdges, {
     radial: {
-      baseRadius: 240,
-      ringSpacing: 220,
+      baseRadius: captureMode ? 170 : 240,
+      ringSpacing: captureMode ? 150 : 220,
     },
     dagre: {
-      nodeWidth: 230,
-      nodeHeight: 84,
-      rankSep: 140,
-      nodeSep: 34,
+      nodeWidth: captureMode ? 170 : 230,
+      nodeHeight: captureMode ? 64 : 84,
+      rankSep: captureMode ? 88 : 140,
+      nodeSep: captureMode ? 20 : 34,
     },
   });
 
@@ -363,21 +363,25 @@ export default function MeshPage() {
       }));
     }
     if (pathFocusIds) {
-      return visibleNodes?.map((n) => ({
+      const pathNodes = visibleNodes?.map((n) => ({
         ...n,
         data: { ...n.data, dimmed: !pathFocusIds.has(n.id), highlighted: pathFocusIds.has(n.id) },
       }));
+      return captureMode ? pathNodes.filter((n) => pathFocusIds.has(n.id)) : pathNodes;
     }
     if (!connectedIds) return visibleNodes;
     return visibleNodes?.map((n) => ({
       ...n,
       data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) },
     }));
-  }, [visibleNodes, connectedIds, searchMatches, pathFocusIds]);
+  }, [visibleNodes, connectedIds, searchMatches, pathFocusIds, captureMode]);
 
   const displayEdges = useMemo(() => {
     const activeSet = searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds ?? pathFocusIds;
-    return readableGraphEdges(visibleEdges, activeSet, {
+    const scopedEdges = captureMode && pathFocusIds
+      ? visibleEdges.filter((edge) => pathFocusIds.has(edge.source) && pathFocusIds.has(edge.target))
+      : visibleEdges;
+    return readableGraphEdges(scopedEdges, activeSet, {
       baseOpacity: 0.3,
       highSignalOpacity: 0.58,
       inactiveOpacity: 0.06,
@@ -473,19 +477,19 @@ export default function MeshPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-background text-foreground">
+    <div className={`${captureMode ? "h-screen" : "h-[calc(100vh-3.5rem)]"} flex flex-col bg-background text-foreground`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
+      <div className={`flex items-center justify-between border-b border-[var(--border-subtle)] ${captureMode ? "px-5 py-3" : "px-4 py-3"}`}>
         <div>
           <h1 className="text-lg font-semibold text-foreground">Agent Mesh</h1>
           <p className="text-xs text-[var(--text-secondary)]">
             Evidence-scoped path view across agents, MCP servers, tools, packages, credential references, and findings
           </p>
-          <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+          <p className={`mt-1 text-[var(--text-tertiary)] ${captureMode ? "text-xs" : "text-[11px]"}`}>
             Default view ranks the highest-risk agent first and hides lower-priority nodes until you expand filters.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className={`flex items-center ${captureMode ? "gap-2" : "gap-3"}`}>
           <div className="flex items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800">
             {[
               { key: "radial" as const, label: "Risk Map", icon: Orbit },

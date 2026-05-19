@@ -18,7 +18,8 @@ from agent_bom.platform_invariants import now_utc_iso
 from agent_bom.security import sanitize_command_args, sanitize_security_warnings, sanitize_text, sanitize_url
 
 AGENT_BOM_MANIFEST_SCHEMA_VERSION = "agent-bom.manifest/v1"
-AGENT_BOM_GRAPH_RELATIONSHIPS = ("uses", "provides_tool", "exposes_cred")
+AGENT_BOM_GRAPH_RELATIONSHIPS = ("owns", "part_of", "uses", "provides_tool", "exposes_cred")
+_RISKY_CREDENTIAL_NAME_TOKENS = ("admin", "root", "prod", "token", "key", "secret", "password")
 
 
 def _value(value: object) -> str:
@@ -35,6 +36,32 @@ def _safe_path(value: object) -> str | None:
 
 def _credential_refs(names: Iterable[str]) -> list[dict[str, str]]:
     return [{"name": sanitize_text(name, max_len=120), "kind": "env"} for name in sorted({name for name in names if name})]
+
+
+def _credential_ref_rows(server: dict[str, object]) -> list[dict[str, object]]:
+    refs = server.get("credential_refs")
+    return refs if isinstance(refs, list) else []
+
+
+def _tool_count(server: dict[str, object]) -> int:
+    explicit = server.get("tool_count")
+    if isinstance(explicit, int):
+        return explicit
+    tools = server.get("tools")
+    return len(tools) if isinstance(tools, list) else 0
+
+
+def _observed_flags(server: dict[str, object]) -> dict[str, object]:
+    observed = server.get("observed")
+    return observed if isinstance(observed, dict) else {}
+
+
+def _security_warnings(server: dict[str, object]) -> list[str]:
+    security = server.get("security")
+    if not isinstance(security, dict):
+        return []
+    warnings = security.get("warnings")
+    return [str(warning) for warning in warnings] if isinstance(warnings, list) else []
 
 
 def _tool(tool: MCPTool) -> dict[str, object]:
@@ -154,17 +181,6 @@ def _observed_server(observation: MCPObservation) -> dict[str, object]:
 
 
 def _summary(agents: list[dict[str, object]], servers: list[dict[str, object]]) -> dict[str, int]:
-    def _credential_ref_rows(server: dict[str, object]) -> list[dict[str, object]]:
-        refs = server.get("credential_refs")
-        return refs if isinstance(refs, list) else []
-
-    def _tool_count(server: dict[str, object]) -> int:
-        explicit = server.get("tool_count")
-        if isinstance(explicit, int):
-            return explicit
-        tools = server.get("tools")
-        return len(tools) if isinstance(tools, list) else 0
-
     credential_refs = {
         str(ref.get("name")) for server in servers for ref in _credential_ref_rows(server) if isinstance(ref, dict) and ref.get("name")
     }
@@ -182,6 +198,103 @@ def _summary(agents: list[dict[str, object]], servers: list[dict[str, object]]) 
         "credential_refs": len(credential_refs),
         "runtime_observed_servers": runtime_observed,
         "gateway_registered_servers": gateway_registered,
+    }
+
+
+def _visibility(agents: list[dict[str, object]], servers: list[dict[str, object]]) -> dict[str, object]:
+    owners = {str(agent.get("owner")) for agent in agents if agent.get("owner")}
+    unowned_agent_ids = [
+        str(agent.get("id") or agent.get("canonical_id") or agent.get("name")) for agent in agents if not agent.get("owner")
+    ]
+    credential_refs = {
+        str(ref.get("name")) for server in servers for ref in _credential_ref_rows(server) if isinstance(ref, dict) and ref.get("name")
+    }
+    risky_credential_refs = sorted(ref for ref in credential_refs if any(token in ref.lower() for token in _RISKY_CREDENTIAL_NAME_TOKENS))
+
+    shadow_runtime_server_ids: list[str] = []
+    untracked_runtime_server_ids: list[str] = []
+    for server in servers:
+        server_id = str(server.get("id") or server.get("canonical_id") or server.get("name") or "")
+        observed = _observed_flags(server)
+        runtime_observed = bool(observed.get("runtime_observed"))
+        if runtime_observed and server_id and not observed.get("gateway_registered"):
+            shadow_runtime_server_ids.append(server_id)
+        if runtime_observed and server_id and not (observed.get("configured_locally") or observed.get("fleet_present")):
+            untracked_runtime_server_ids.append(server_id)
+
+    return {
+        "owners": len(owners),
+        "unowned_agents": len([agent_id for agent_id in unowned_agent_ids if agent_id]),
+        "shadow_runtime_servers": len(shadow_runtime_server_ids),
+        "untracked_runtime_servers": len(untracked_runtime_server_ids),
+        "servers_with_warnings": sum(1 for server in servers if _security_warnings(server)),
+        "risky_credential_refs": len(risky_credential_refs),
+        "risk_signals": {
+            "unowned_agent_ids": sorted(agent_id for agent_id in unowned_agent_ids if agent_id),
+            "shadow_runtime_server_ids": sorted(shadow_runtime_server_ids),
+            "untracked_runtime_server_ids": sorted(untracked_runtime_server_ids),
+            "risky_credential_refs": risky_credential_refs,
+        },
+    }
+
+
+def _blueprint_drift(agents: list[dict[str, object]], servers: list[dict[str, object]]) -> dict[str, object]:
+    signals: list[dict[str, object]] = []
+
+    for agent in agents:
+        agent_id = str(agent.get("id") or agent.get("canonical_id") or agent.get("name") or "")
+        if agent_id and not agent.get("owner"):
+            signals.append(
+                {
+                    "kind": "unowned_agent",
+                    "entity_id": agent_id,
+                    "severity": "info",
+                    "message": "Agent has no owner metadata in the current manifest.",
+                }
+            )
+
+    for server in servers:
+        server_id = str(server.get("id") or server.get("canonical_id") or server.get("name") or "")
+        server_name = str(server.get("name") or server_id)
+        observed = _observed_flags(server)
+        runtime_observed = bool(observed.get("runtime_observed"))
+        if runtime_observed and server_id and not observed.get("gateway_registered"):
+            signals.append(
+                {
+                    "kind": "unregistered_runtime_server",
+                    "entity_id": server_id,
+                    "severity": "warning",
+                    "message": f"{server_name} was observed at runtime but is not registered with the gateway.",
+                }
+            )
+        if runtime_observed and server_id and not (observed.get("configured_locally") or observed.get("fleet_present")):
+            signals.append(
+                {
+                    "kind": "untracked_runtime_server",
+                    "entity_id": server_id,
+                    "severity": "warning",
+                    "message": f"{server_name} was observed at runtime without local or fleet inventory evidence.",
+                }
+            )
+        warnings = _security_warnings(server)
+        if server_id and warnings:
+            signals.append(
+                {
+                    "kind": "server_security_warning",
+                    "entity_id": server_id,
+                    "severity": "warning",
+                    "message": f"{server_name} has {len(warnings)} security warning(s).",
+                }
+            )
+
+    warning_signals = [signal for signal in signals if signal.get("severity") != "info"]
+    status = "not_observed" if not agents and not servers else "needs_review" if warning_signals else "aligned"
+    return {
+        "status": status,
+        "mode": "observation_only",
+        "fail_behavior": "report_only",
+        "signal_count": len(signals),
+        "signals": signals,
     }
 
 
@@ -221,6 +334,26 @@ def _graph(agents: list[dict[str, object]], servers: list[dict[str, object]]) ->
             owner=agent.get("owner"),
             environment=agent.get("environment"),
         )
+        if owner := agent.get("owner"):
+            owner_id = f"user:{sanitize_text(str(owner), max_len=160)}"
+            nodes[owner_id] = _node(owner_id, "user", str(owner), role="owner")
+            edges[f"{owner_id}:owns:{agent_id}"] = _edge(
+                f"{owner_id}:owns:{agent_id}",
+                owner_id,
+                agent_id,
+                "owns",
+                provenance="agent_manifest",
+            )
+        if environment := agent.get("environment"):
+            environment_id = f"environment:{sanitize_text(str(environment), max_len=120)}"
+            nodes[environment_id] = _node(environment_id, "environment", str(environment))
+            edges[f"{agent_id}:part_of:{environment_id}"] = _edge(
+                f"{agent_id}:part_of:{environment_id}",
+                agent_id,
+                environment_id,
+                "part_of",
+                provenance="agent_manifest",
+            )
 
     agent_by_name = {
         str(agent.get("name")): str(agent.get("id") or agent.get("canonical_id") or agent.get("name"))
@@ -307,6 +440,8 @@ def _manifest(
         "generated_at": now_utc_iso(),
         "source": source,
         "summary": _summary(agents, servers),
+        "visibility": _visibility(agents, servers),
+        "blueprint_drift": _blueprint_drift(agents, servers),
         "agents": agents,
         "mcp_servers": servers,
         "graph": _graph(agents, servers),

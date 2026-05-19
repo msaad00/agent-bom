@@ -113,6 +113,34 @@ _SCAN_FILENAMES = frozenset(
 )
 
 _PII_SCAN_EXTENSIONS = frozenset({".env", ".yaml", ".yml", ".json", ".conf"})
+_PII_CODE_EXTENSIONS = frozenset(
+    {
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".go",
+        ".rs",
+        ".java",
+        ".rb",
+        ".php",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".properties",
+        ".tf",
+        ".hcl",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".ps1",
+    }
+)
+_PII_CONTEXT_RE = re.compile(
+    r"(?:=|:|\b(?:addr|address|allowlist|bind|database|endpoint|host|ip|listen|proxy|redis|server|url|uri)\b)",
+    re.IGNORECASE,
+)
 
 _MAX_FILE_SIZE = 1024 * 1024  # 1MB
 _MAX_FILES = 1000
@@ -257,9 +285,10 @@ def _scan_file(file_path: Path, rel_path: str) -> list[SecretFinding]:
                 break
 
         # PII patterns (MEDIUM) stay limited to structured config/secrets
-        # surfaces. Markdown/plain-text docs are still scanned for credentials
-        # above, but generic emails/IPs there are usually examples or contacts.
-        if file_path.suffix in _PII_SCAN_EXTENSIONS or file_path.name in _SCAN_FILENAMES:
+        # surfaces and config-like code lines. Markdown/plain-text docs are
+        # still scanned for credentials above, but generic emails/IPs there
+        # are usually examples or contacts.
+        if _should_scan_pii_line(file_path, line):
             for name, pattern in PII_PATTERNS:
                 if pattern.search(line):
                     findings.append(
@@ -275,6 +304,14 @@ def _scan_file(file_path: Path, rel_path: str) -> list[SecretFinding]:
                     break
 
     return findings
+
+
+def _should_scan_pii_line(file_path: Path, line: str) -> bool:
+    """Limit generic PII checks to structured or config-like file content."""
+    suffix = file_path.suffix.lower()
+    if suffix in _PII_SCAN_EXTENSIONS or file_path.name in _SCAN_FILENAMES:
+        return True
+    return suffix in _PII_CODE_EXTENSIONS and bool(_PII_CONTEXT_RE.search(line))
 
 
 def scan_secrets(project_path: str | Path) -> SecretScanResult:

@@ -11,11 +11,17 @@ def test_duplicate_artifact_guard_detects_finder_copies() -> None:
         "src/agent_bom/model_advisories 2.py",
         "contracts/v1/scan.schema.json",
         "contracts/v1 2/scan.schema.json",
+        "README 2.md",
+        "docs/cli 2.md",
+        "docs/images/agent-bom-live 2.png",
         "tests/test_cloud_resilience 3.py",
     ]
 
     assert find_duplicate_artifacts(paths) == [
+        "README 2.md",
         "contracts/v1 2/scan.schema.json",
+        "docs/cli 2.md",
+        "docs/images/agent-bom-live 2.png",
         "src/agent_bom/model_advisories 2.py",
         "tests/test_cloud_resilience 3.py",
     ]

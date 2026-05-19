@@ -43,6 +43,9 @@ docs/CAPTURE [0-9].md
 docs/images/* [0-9].png
 docs/images/* [0-9].gif
 docs/images/* [0-9].svg
+docs/**/* [0-9].png
+docs/**/* [0-9].gif
+docs/**/* [0-9].svg
 docs/**/* [0-9].md
 site-docs/**/* [0-9].md
 src/agent_bom/**/* [0-9].py

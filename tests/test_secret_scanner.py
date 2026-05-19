@@ -42,6 +42,12 @@ def test_scan_secrets_suppresses_doc_pii_but_keeps_doc_credentials(tmp_path: Pat
         f'Contact security@example.com or test 192.168.1.10 in local docs.\nOPENAI_KEY = "{doc_key}"\n',
         encoding="utf-8",
     )
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "tutorial.md").write_text(
+        "Use 10.0.0.5 or 203.0.113.10 as tutorial addresses, then email docs@example.com.\n",
+        encoding="utf-8",
+    )
     (tmp_path / "notes.txt").write_text("Email docs@example.com from 10.0.0.5.\n", encoding="utf-8")
 
     result = scan_secrets(tmp_path)
@@ -49,6 +55,29 @@ def test_scan_secrets_suppresses_doc_pii_but_keeps_doc_credentials(tmp_path: Pat
     findings = {(finding.file_path, finding.secret_type, finding.category) for finding in result.findings}
     assert ("README.md", "OpenAI API Key", "credential") in findings
     assert not any(finding.category == "pii" for finding in result.findings)
+
+
+def test_scan_secrets_keeps_ipv4_pii_in_code_config_and_secret_contexts(tmp_path: Path):
+    (tmp_path / "app.py").write_text('ADMIN_BIND_IP = "198.51.100.24"\n', encoding="utf-8")
+    (tmp_path / "service.yaml").write_text("upstream_ip: 198.51.100.25\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("SERVICE_IP=198.51.100.26\n", encoding="utf-8")
+    (tmp_path / "implementation-notes.txt").write_text(
+        "The tutorial mentions 198.51.100.27 as an example address.\n",
+        encoding="utf-8",
+    )
+
+    result = scan_secrets(tmp_path)
+
+    ip_findings = {
+        (finding.file_path, finding.secret_type, finding.category)
+        for finding in result.findings
+        if finding.secret_type == "IP Address (IPv4)"
+    }
+    assert ip_findings == {
+        (".env", "IP Address (IPv4)", "pii"),
+        ("app.py", "IP Address (IPv4)", "pii"),
+        ("service.yaml", "IP Address (IPv4)", "pii"),
+    }
 
 
 def test_scan_secrets_warns_on_non_directory(tmp_path: Path):

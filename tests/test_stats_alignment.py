@@ -206,6 +206,22 @@ class TestMarkdownStats:
         for stale in ["(20 clients)", "20 MCP clients", "(21 clients)", "21 MCP clients"]:
             assert stale not in text, f"{doc.name} contains stale '{stale}' — actual is {ACTUAL_CONFIG_LOCATIONS}"
 
+    def test_data_model_atlas_covers_runtime_intel_manifest_schemas(self):
+        text = (ROOT / "docs" / "DATA_MODEL.md").read_text()
+        required = {
+            "agent-bom.manifest/v1",
+            "runtime.production_index.v1",
+            "runtime.blueprints.v1",
+            "runtime.blueprint_drift.v1",
+            "intel.sources.v1",
+            "intel.lookup.v1",
+            "intel.match.v1",
+            "inventory_snapshot.packages",
+            "visibility.risk_signals",
+        }
+        missing = sorted(item for item in required if item not in text)
+        assert not missing, f"DATA_MODEL.md missing schema contracts: {missing}"
+
 
 # ---------------------------------------------------------------------------
 # Integration files alignment

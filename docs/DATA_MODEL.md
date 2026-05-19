@@ -252,6 +252,99 @@ completed scan jobs, fleet inventory, and gateway policy/audit stores.
 If a new scan mode or deployment surface is added, update this table in
 the same PR as the route and nav change.
 
+---
+
+## 5. Agent, runtime, and intel schema envelopes
+
+These API, CLI, MCP, and UI contracts are not separate data models. They are
+typed envelopes over the same inventory, finding, graph, runtime, and local
+intel state described above. New envelopes must name their `schema_version`,
+tenant boundary, persistence behavior, and redaction behavior here.
+
+| Envelope | Producers | Consumers | Key fields | Persistence / tenant boundary |
+|---|---|---|---|---|
+| `agent-bom.manifest/v1` | `agent-bom manifest`, `GET /v1/agent-bom/manifest`, `/manifest` dashboard | local users, fleet control planes, graph previews, downstream governance jobs | `summary`, `agents`, `mcp_servers`, `visibility`, `blueprint_drift`, `graph` | Local mode reads discovered config; control-plane mode reads tenant-scoped fleet and MCP observation stores. Credential values are never emitted; only credential reference names are allowed. |
+| `runtime.production_index.v1` | `GET /v1/runtime/production-index`, `runtime_production_index` MCP tool | runtime cockpit, deploy/runbooks, drift evaluator, SIEM/export hooks | `traffic`, `policy_decisions`, `authorization_trace`, `alerts`, `active_sources`, `active_sessions`, `freshness`, `retention_posture` | Derived from tenant-scoped proxy/gateway metrics and alerts. Raw prompts and tool arguments are `no_persist`; the endpoint is metadata/redaction-first. |
+| `runtime.blueprints.v1` | `GET /v1/runtime/blueprints`, `runtime_blueprints` MCP tool | admins, runtime policy authors, drift evaluator, docs | role/profile blueprint list with `allowed_tool_categories`, `restricted_tool_categories`, `approval_required_for`, `retention_mode`, `evidence_required` | Static canonical catalog in `runtime_blueprints.py`; custom blueprint persistence is not shipped yet. |
+| `runtime.blueprint_drift.v1` | `GET /v1/runtime/blueprints/{blueprint_id}/drift`, `runtime_blueprint_drift` MCP tool | runtime operators, agents, alerting, release evidence | `status`, `drift_score`, `observed.categories`, `violations`, `warnings`, selected `blueprint`, `retention` | Compares the selected blueprint against the tenant-scoped production index. Current behavior is report-only and fail-closed to metadata retention. |
+| `intel.sources.v1` | `GET /v1/intel/sources`, `intel_sources` MCP tool | analysts, agents, freshness monitors, docs | canonical source catalog with `source_id`, tier, kind, URL, license, redistribution policy, `feed_run` | Reads local vuln DB `sync_meta`; source metadata is shared catalog data, feed-run freshness is local deployment state. |
+| `intel.lookup.v1` | `GET /v1/intel/advisories/{advisory_id}`, `intel_lookup` MCP tool | finding enrichment, analyst lookup, agent investigation | `found`, `query`, `advisory.canonical_ids`, severity, CVSS, EPSS, KEV, CWE, affected packages, `evidence_links` | Read-only local vuln DB lookup. It can resolve CVE, GHSA, and OSV aliases and returns source links without implying every link was fetched. |
+| `intel.match.v1` | `POST /v1/intel/match`, `intel_match` MCP tool | inventory enrichment, CI gates, agent posture checks | submitted packages, matched package count, advisory matches, evidence links | Read-only package-coordinate matching. Inputs use purl when present; otherwise `ecosystem` + `name` + optional `version`. |
+
+### `agent-bom.manifest/v1`
+
+The Agent BOM manifest answers "what AI agents, MCP servers, tools, credential
+references, owners, and runtime observations are present?" in one portable
+document. It deliberately emits credential **names** such as `API_KEY`, never
+values.
+
+| Field | Meaning | Source |
+|---|---|---|
+| `summary.agents` / `summary.mcp_servers` / `summary.tools` | high-level local or tenant-scoped inventory counts | local discovery or fleet + MCP observation stores |
+| `summary.credential_refs` | unique credential environment names referenced by servers | sanitized MCP server env metadata |
+| `summary.runtime_observed_servers` | servers seen through runtime observations | MCP observation store |
+| `summary.gateway_registered_servers` | servers registered with the gateway | MCP observation store |
+| `agents[]` | local or fleet agent records | `Agent` dataclass or `FleetAgent` |
+| `mcp_servers[]` | configured and observed MCP server records | `MCPServer` dataclass or `MCPObservation` |
+| `visibility` | ownership, shadow runtime, untracked runtime, warning, and risky credential-reference counts | derived from manifest agents + servers |
+| `blueprint_drift` | observation-only manifest posture signals | derived from manifest agents + servers |
+| `graph` | nodes/edges over agents, users, environments, servers, tools, and credential refs | manifest graph projection |
+
+`visibility.risk_signals` contains identifiers for the counted posture gaps:
+`unowned_agent_ids`, `shadow_runtime_server_ids`,
+`untracked_runtime_server_ids`, and `risky_credential_refs`. The embedded
+`blueprint_drift` block is intentionally observation-only; enforcement happens
+in runtime proxy/gateway policy and the runtime blueprint drift endpoint.
+
+### Runtime blueprint drift
+
+`runtime.blueprint_drift.v1` is a runtime comparison, not a manifest-only
+heuristic. It classifies live production-index tool names into deterministic
+categories, compares those categories against the selected role/profile
+blueprint, and returns:
+
+- `status`: `no_runtime_activity`, `aligned`, `review`, or `drift_detected`
+- `drift_score`: bounded 0-1 score derived from high and medium-weight signals
+- `observed.categories`: category counts by runtime activity
+- `violations`: restricted categories observed at runtime
+- `warnings`: approval-required, outside-allowed, unclassified, or audit-signal
+  cases that need review
+
+The first shipped version is report-only. A future enforcement mode must update
+this section, the runtime route docs, MCP tool metadata, and proxy/gateway
+fail-open/fail-closed notes in the same PR.
+
+### Intel lookup and matching
+
+The threat-intel envelopes are local, source-attributed lookup surfaces over
+the existing vulnerability database. They are not yet the full pluggable
+IntelItem corpus proposed for future connector work.
+
+| Join key | Preferred use |
+|---|---|
+| `purl` | package ecosystems where OSV/GHSA-style package matching is most accurate |
+| `ecosystem` + `name` + `version` | local inventory rows without a purl |
+| `CVE-*` / `GHSA-*` / OSV ID | advisory lookup and evidence links |
+| `CWE-*` | weakness explanation and compliance/remediation mapping |
+
+When full IntelItem provenance lands, it must preserve this read-only lookup
+shape while adding raw-artifact provenance, signatures, corroboration, citation
+spans, and connector health as additional fields or linked resources.
+
+### `inventory_snapshot.packages`
+
+JSON reports now expose flattened packages in both the top-level `packages`
+array and `inventory_snapshot.packages`. The invariant is:
+
+```text
+top-level packages == ai_bom_entities.packages == inventory_snapshot.packages
+```
+
+Nested `agents[].mcp_servers[].packages` remains present so consumers can
+reconstruct where a package was found. The flattened
+`inventory_snapshot.packages` list exists so importers can validate and replay
+inventory without walking every nested agent/server relationship.
+
 ### Graph/cache hot-path indexes
 
 The Postgres graph and cache backends are tuned for the query shapes
@@ -270,7 +363,7 @@ replacement plan explicitly.
 
 ---
 
-## 5. Output formats (`src/agent_bom/output/`)
+## 6. Output formats (`src/agent_bom/output/`)
 
 18 formats, all derived from `AIBOMReport`. The conversion contract is
 **lossy in one direction**: every format strips fields it cannot
@@ -300,7 +393,7 @@ represent, but the canonical report keeps everything.
 
 ---
 
-## 6. Per-scan-type populated-fields matrix
+## 7. Per-scan-type populated-fields matrix
 
 Different scan types populate different subsets of `AIBOMReport`. A
 field empty for scan type X is intentional, not a bug.
@@ -320,7 +413,7 @@ scan type, refer to this table first.
 
 ---
 
-## 7. Trust + tenancy invariants
+## 8. Trust + tenancy invariants
 
 These hold across every layer. If you change them, this doc must
 change in the same PR.
@@ -347,7 +440,7 @@ change in the same PR.
 
 ---
 
-## 8. Pointers
+## 9. Pointers
 
 - README sections that reference these flows: `## How a scan moves through the system`, `## Deploy in your own AWS / EKS`, `## Trust & transparency`, `## Compliance`
 - Architecture deep-dive: [site-docs/architecture/how-agent-bom-works.md](../site-docs/architecture/how-agent-bom-works.md)

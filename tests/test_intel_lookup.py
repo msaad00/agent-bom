@@ -156,6 +156,18 @@ def test_intel_api_match_validates_package_shape(intel_client: TestClient) -> No
     assert "ecosystem" in response.json()["detail"]
 
 
+def test_intel_api_match_value_errors_use_single_error_envelope(intel_client: TestClient) -> None:
+    response = intel_client.post("/v1/intel/match", headers=VIEWER_HEADERS, json={"packages": [{"purl": "not-a-purl"}]})
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert body["error"]["message"] == "purl must start with pkg:"
+    assert body["error"]["details"] == "purl must start with pkg:"
+    assert body["detail"] == "purl must start with pkg:"
+    assert not body["error"]["details"].startswith("{")
+
+
 @pytest.mark.asyncio
 async def test_mcp_intel_tools_return_agent_native_json(intel_db) -> None:  # noqa: ANN001
     lookup = json.loads(await intel_lookup_impl(advisory_id="CVE-2026-12345"))

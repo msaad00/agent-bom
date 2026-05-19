@@ -378,6 +378,12 @@
       "description": "ISO 8601 timestamp when this inventory was generated"
     },
 
+    "packages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Package" },
+      "description": "Optional flattened package list for consumers that need report-level package coordinates. Nested agent mcp_servers packages remain authoritative for ownership and blast-radius correlation."
+    },
+
     "discovery_provenance": {
       "$ref": "#/$defs/DiscoveryProvenance",
       "description": "Default provenance for assets in this inventory."

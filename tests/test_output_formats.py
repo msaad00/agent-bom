@@ -435,12 +435,34 @@ def test_json_inventory_snapshot_round_trips_through_inventory_schema(tmp_path):
 
     errors = sorted(_inventory_validator().iter_errors(snapshot), key=lambda error: list(error.path))
     assert errors == []
+    assert snapshot["packages"][0]["name"] == "openssl"
+    assert snapshot["packages"][0]["version"] == "3.0.16"
+    assert snapshot["packages"][0]["ecosystem"] == "unknown"
     assert snapshot["agents"][0]["mcp_servers"][0]["packages"][0]["ecosystem"] == "unknown"
 
     path = tmp_path / "inventory.json"
     path.write_text(json.dumps(snapshot), encoding="utf-8")
     loaded = load_inventory(str(path))
     assert loaded["agents"][0]["name"] == "image:agent-bom"
+    assert loaded["packages"][0]["name"] == "openssl"
+
+
+def test_json_inventory_snapshot_flattened_packages_preserve_nested_server_packages():
+    pkg_a = _make_pkg(name="lodash", version="4.17.20", ecosystem="npm")
+    pkg_b = _make_pkg(name="requests", version="2.31.0", ecosystem="pypi")
+    agent = _make_agent(
+        servers=[
+            _make_server(name="node-server", packages=[pkg_a]),
+            _make_server(name="python-server", packages=[pkg_b]),
+        ]
+    )
+
+    snapshot = to_json(_make_report(agents=[agent]))["inventory_snapshot"]
+
+    assert [pkg["name"] for pkg in snapshot["packages"]] == ["lodash", "requests"]
+    nested = snapshot["agents"][0]["mcp_servers"]
+    assert nested[0]["packages"] == [snapshot["packages"][0]]
+    assert nested[1]["packages"] == [snapshot["packages"][1]]
 
 
 # ── Markdown ─────────────────────────────────────────────────────────────────

@@ -1487,17 +1487,28 @@ def get_rate_limit_key_status(now: "datetime | None" = None) -> dict:
     fallback_source = None
 
     if not raw_key:
+        production_or_clustered = _production_or_clustered_control_plane()
         return {
             "status": "ephemeral",
+            "severity": "warning" if production_or_clustered else "info",
+            "production_or_clustered": production_or_clustered,
             "rotation_days": RATE_LIMIT_KEY_ROTATION_DAYS,
             "max_age_days": RATE_LIMIT_KEY_MAX_AGE_DAYS,
             "fallback_source": None,
             "last_rotated": None,
             "age_days": None,
             "message": (
-                "No AGENT_BOM_RATE_LIMIT_KEY configured. Rate-limit fingerprints use a "
-                "process-local random key that resets on restart and breaks shared bucket "
-                "scoping across replicas. Set AGENT_BOM_RATE_LIMIT_KEY for production."
+                (
+                    "No AGENT_BOM_RATE_LIMIT_KEY configured. Rate-limit fingerprints use a "
+                    "process-local random key that resets on restart and breaks shared bucket "
+                    "scoping across replicas. Set AGENT_BOM_RATE_LIMIT_KEY for production."
+                )
+                if production_or_clustered
+                else (
+                    "No AGENT_BOM_RATE_LIMIT_KEY configured. Rate-limit fingerprints use a "
+                    "process-local random key that resets on restart; this is acceptable for "
+                    "single-process local development."
+                )
             ),
         }
 

@@ -902,6 +902,36 @@ async def test_runtime_blueprints_impl_lists_and_filters():
 
 
 @pytest.mark.asyncio
+async def test_runtime_blueprint_drift_impl_reports_drift(monkeypatch):
+    import agent_bom.api.routes.proxy as proxy_mod
+    from agent_bom.api.server import push_proxy_metrics
+    from agent_bom.mcp_tools.runtime import runtime_blueprint_drift_impl
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+    proxy_mod._proxy_metrics_by_tenant.clear()
+    monkeypatch.delenv("AGENT_BOM_LOG", raising=False)
+    push_proxy_metrics(
+        {
+            "type": "proxy_summary",
+            "tenant_id": "default",
+            "total_tool_calls": 1,
+            "calls_by_tool": {"prod.deploy_service": 1},
+        }
+    )
+
+    result = await runtime_blueprint_drift_impl(blueprint_id="developer", tenant_id="default", _truncate_response=_trunc)
+    data = json.loads(result)
+    assert data["schema_version"] == "runtime.blueprint_drift.v1"
+    assert data["status"] == "drift_detected"
+    assert data["violations"][0]["type"] == "restricted_tool_category"
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+    proxy_mod._proxy_metrics_by_tenant.clear()
+
+
+@pytest.mark.asyncio
 async def test_proxy_gateway_and_shield_status_impls_empty_state():
     from agent_bom.mcp_tools.runtime import gateway_status_impl, proxy_status_impl, shield_status_impl
 

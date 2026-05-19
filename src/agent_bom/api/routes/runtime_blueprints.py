@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from agent_bom.runtime_blueprints import runtime_role_blueprint, runtime_role_blueprints
+from agent_bom.runtime_blueprints import evaluate_runtime_blueprint_drift, runtime_role_blueprint, runtime_role_blueprints
 
 router = APIRouter(tags=["runtime"])
 
@@ -34,3 +34,16 @@ async def get_runtime_blueprint(request: Request, blueprint_id: str) -> dict[str
         "tenant_id": _request_tenant_id(request),
         "blueprint": blueprint,
     }
+
+
+@router.get("/v1/runtime/blueprints/{blueprint_id}/drift")
+async def get_runtime_blueprint_drift(request: Request, blueprint_id: str) -> dict[str, object]:
+    """Evaluate current runtime posture against one role/profile blueprint."""
+    from agent_bom.api.routes.proxy import _build_runtime_production_index, _load_proxy_alerts, _runtime_metrics_for_tenant
+
+    tenant_id = _request_tenant_id(request)
+    try:
+        production_index = _build_runtime_production_index(tenant_id, _runtime_metrics_for_tenant(tenant_id), _load_proxy_alerts(tenant_id))
+        return evaluate_runtime_blueprint_drift(blueprint_id, production_index, tenant_id=tenant_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Runtime blueprint not found") from exc

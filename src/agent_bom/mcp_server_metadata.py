@@ -132,6 +132,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "runtime_blueprint_drift",
+        "description": "Evaluate live runtime posture against a role/profile blueprint",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "proxy_status",
         "description": "Return current MCP proxy metrics and runtime alert posture",
         "annotations": {"readOnlyHint": True},
@@ -248,6 +253,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "runtime_correlate": ["READ", "LOCAL_FILE_READ", "RUNTIME"],
     "runtime_production_index": ["READ", "RUNTIME", "OBSERVABILITY"],
     "runtime_blueprints": ["READ", "RUNTIME", "POLICY"],
+    "runtime_blueprint_drift": ["READ", "RUNTIME", "POLICY", "ANALYZE"],
     "proxy_status": ["READ", "RUNTIME", "OBSERVABILITY"],
     "gateway_status": ["READ", "RUNTIME", "POLICY"],
     "shield_status": ["READ", "RUNTIME", "SECURITY"],

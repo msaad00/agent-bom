@@ -1,6 +1,6 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 47 read-only security tools to any MCP client.
+agent-bom runs as an MCP server, exposing 48 read-only security tools to any MCP client.
 The server card also advertises 6 resources and 6 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
 
@@ -101,7 +101,12 @@ Connect with:
 |------|-------------|
 | `scan` | Full discovery + vulnerability scan |
 | `check` | Check a package for CVEs |
+| `intel_lookup` | Look up a CVE, GHSA, or OSV advisory |
+| `intel_match` | Match package or purl inventory against local advisories |
+| `intel_sources` | List threat-intel source freshness and licensing metadata |
 | `blast_radius` | Map CVE impact chain |
+| `exposure_paths` | Return ranked ExposurePath investigation paths |
+| `should_i_deploy` | Return allow/warn/block deploy guidance from ExposurePath risk |
 | `registry_lookup` | Look up MCP server security metadata |
 | `compliance` | Run compliance framework checks |
 | `remediate` | Prioritized remediation plan |
@@ -125,6 +130,7 @@ Connect with:
 | `runtime_correlate` | Cross-reference runtime logs with CVEs |
 | `runtime_production_index` | Metadata-only runtime production posture |
 | `runtime_blueprints` | Role/profile blueprints for runtime policy design |
+| `runtime_blueprint_drift` | Evaluate runtime posture against a role/profile blueprint |
 | `proxy_status` | Current MCP proxy metrics and alert posture |
 | `gateway_status` | Gateway policy and inter-agent firewall runtime statistics |
 | `shield_status` | Shield session status without changing enforcement |

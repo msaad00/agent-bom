@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -98,4 +101,205 @@ def runtime_role_blueprint(blueprint_id: str) -> dict[str, object] | None:
     return None
 
 
-__all__ = ["RuntimeRoleBlueprint", "runtime_role_blueprint", "runtime_role_blueprints"]
+_CATEGORY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("payment_write", ("payment", "payroll", "bank", "invoice_update")),
+    ("production_write", ("deploy", "rollback", "production", "prod_write")),
+    ("database_write", ("insert", "update", "delete", "query_write", "write_query")),
+    ("repo_write", ("write", "edit", "commit", "push", "merge", "create_file", "apply_patch")),
+    ("credential_export", ("credential", "secret", "token", "env", "key", "vault")),
+    ("policy_write", ("policy", "firewall", "shield", "admin")),
+    ("tenant_admin", ("tenant", "scim", "saml", "oidc", "entitlement")),
+    ("threat_intel", ("intel", "advisory", "cve", "ghsa", "osv", "kev", "epss")),
+    ("finding_read", ("finding", "sarif", "vulnerability", "vuln")),
+    ("graph_query", ("graph", "exposure", "path", "blast", "lineage")),
+    ("audit_read", ("audit", "trace", "integrity", "evidence")),
+    ("evidence_export", ("export", "report", "evidence", "bundle")),
+    ("package_scan", ("package", "sbom", "dependency", "scan", "image")),
+    ("model_registry_read", ("model", "huggingface", "ollama", "mlflow")),
+    ("dataset_read", ("dataset", "experiment", "feature")),
+    ("runtime_trace", ("runtime", "proxy", "gateway", "session", "span")),
+    ("mcp_discovery", ("mcp", "tool", "server", "inventory", "manifest")),
+    ("business_app_read", ("salesforce", "snowflake", "jira", "servicenow", "slack")),
+    ("report_generate", ("summary", "brief", "report", "dashboard")),
+    ("ticket_create", ("ticket", "issue", "case")),
+    ("local_runtime", ("shell", "terminal", "docker", "process", "exec")),
+    ("repo_read", ("read", "list", "search", "grep", "git", "repo", "file")),
+)
+
+
+def classify_runtime_tool(tool_name: str) -> str:
+    """Map a runtime tool name to a blueprint category.
+
+    Runtime events often carry only a tool name, not a formal capability map.
+    This conservative classifier keeps drift checks deterministic and
+    explainable until deployments attach richer tool metadata.
+    """
+    normalized = tool_name.strip().lower().replace("-", "_").replace("/", "_").replace(".", "_")
+    if not normalized:
+        return "unknown"
+    for category, keywords in _CATEGORY_KEYWORDS:
+        if any(keyword in normalized for keyword in keywords):
+            return category
+    return "unknown"
+
+
+def _iter_runtime_tools(production_index: dict[str, Any]) -> Counter[str]:
+    traffic = production_index.get("traffic")
+    if not isinstance(traffic, dict):
+        return Counter()
+    calls_by_tool = traffic.get("calls_by_tool")
+    if isinstance(calls_by_tool, dict):
+        return Counter({str(tool): int(count) for tool, count in calls_by_tool.items() if str(tool).strip()})
+    top_tools = traffic.get("top_tools")
+    counts: Counter[str] = Counter()
+    if isinstance(top_tools, list):
+        for item in top_tools:
+            if isinstance(item, dict):
+                name = str(item.get("name") or "").strip()
+                if name:
+                    counts[name] += int(item.get("count") or 0)
+    return counts
+
+
+def _as_str_set(value: object) -> set[str]:
+    if not isinstance(value, list | tuple | set):
+        return set()
+    return {str(item) for item in value}
+
+
+def _as_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return default
+
+
+def evaluate_runtime_blueprint_drift(
+    blueprint_id: str,
+    production_index: dict[str, Any],
+    *,
+    tenant_id: str = "default",
+) -> dict[str, object]:
+    """Compare live runtime posture with an approved role/profile blueprint."""
+    blueprint = runtime_role_blueprint(blueprint_id)
+    if blueprint is None:
+        raise KeyError(blueprint_id)
+
+    allowed = _as_str_set(blueprint.get("allowed_tool_categories"))
+    restricted = _as_str_set(blueprint.get("restricted_tool_categories"))
+    approval_required = _as_str_set(blueprint.get("approval_required_for"))
+    tool_counts = _iter_runtime_tools(production_index)
+    category_counts: Counter[str] = Counter()
+    violations: list[dict[str, object]] = []
+    warnings: list[dict[str, object]] = []
+
+    for tool_name, count in sorted(tool_counts.items()):
+        category = classify_runtime_tool(tool_name)
+        category_counts[category] += count
+        if category in restricted:
+            violations.append(
+                {
+                    "type": "restricted_tool_category",
+                    "severity": "high",
+                    "tool_name": tool_name,
+                    "category": category,
+                    "observed_count": count,
+                    "recommendation": "Block this tool for the selected blueprint or move the agent to a higher-privilege blueprint.",
+                }
+            )
+        elif category in approval_required:
+            warnings.append(
+                {
+                    "type": "approval_required_tool_category",
+                    "severity": "medium",
+                    "tool_name": tool_name,
+                    "category": category,
+                    "observed_count": count,
+                    "recommendation": "Require an approval trace before allowing this action for the selected blueprint.",
+                }
+            )
+        elif category not in allowed and category != "unknown":
+            warnings.append(
+                {
+                    "type": "outside_allowed_tool_category",
+                    "severity": "medium",
+                    "tool_name": tool_name,
+                    "category": category,
+                    "observed_count": count,
+                    "recommendation": "Review whether this category belongs in the blueprint or should be blocked.",
+                }
+            )
+        elif category == "unknown":
+            warnings.append(
+                {
+                    "type": "unclassified_tool",
+                    "severity": "low",
+                    "tool_name": tool_name,
+                    "category": category,
+                    "observed_count": count,
+                    "recommendation": "Attach a tool category annotation so drift evaluation can make a stronger decision.",
+                }
+            )
+
+    authorization = production_index.get("authorization_trace")
+    approval_count = 0
+    data_filter_count = 0
+    if isinstance(authorization, dict):
+        approval_count = _as_int(authorization.get("approval_required"))
+        data_filter_count = _as_int(authorization.get("data_filter_applied"))
+    if approval_count:
+        warnings.append(
+            {
+                "type": "runtime_approval_required",
+                "severity": "medium",
+                "observed_count": approval_count,
+                "recommendation": "Preserve approval evidence and confirm the selected blueprint allows this workflow.",
+            }
+        )
+    if data_filter_count:
+        warnings.append(
+            {
+                "type": "runtime_data_filter_applied",
+                "severity": "low",
+                "observed_count": data_filter_count,
+                "recommendation": "Retain redaction evidence for audit and verify filters match the blueprint.",
+            }
+        )
+
+    raw_traffic = production_index.get("traffic")
+    traffic = raw_traffic if isinstance(raw_traffic, dict) else {}
+    total_tool_calls = _as_int(traffic.get("total_tool_calls"), sum(tool_counts.values()))
+    high_weight = sum(_as_int(item.get("observed_count"), 1) for item in violations if item.get("severity") == "high")
+    medium_weight = sum(_as_int(item.get("observed_count"), 1) for item in warnings if item.get("severity") == "medium")
+    drift_score = 0.0 if not total_tool_calls else min(1.0, (high_weight + medium_weight * 0.5) / max(total_tool_calls, 1))
+    status = "no_runtime_activity" if total_tool_calls == 0 else ("drift_detected" if violations else "review" if warnings else "aligned")
+
+    return {
+        "schema_version": "runtime.blueprint_drift.v1",
+        "tenant_id": tenant_id or "default",
+        "blueprint_id": blueprint["blueprint_id"],
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        "status": status,
+        "drift_score": round(drift_score, 4),
+        "runtime_status": production_index.get("status", "unknown"),
+        "observed": {
+            "total_tool_calls": total_tool_calls,
+            "categories": dict(sorted(category_counts.items())),
+            "tools": [
+                {"name": name, "category": classify_runtime_tool(name), "count": count} for name, count in sorted(tool_counts.items())
+            ],
+        },
+        "blueprint": blueprint,
+        "violations": violations,
+        "warnings": warnings,
+        "retention": "metadata_only",
+    }
+
+
+__all__ = [
+    "RuntimeRoleBlueprint",
+    "classify_runtime_tool",
+    "evaluate_runtime_blueprint_drift",
+    "runtime_role_blueprint",
+    "runtime_role_blueprints",
+]

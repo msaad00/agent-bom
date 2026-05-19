@@ -16,6 +16,24 @@ Check a single package for vulnerabilities.
 check(package="langchain", ecosystem="pypi")
 ```
 
+### intel_lookup
+Look up a CVE, GHSA, or OSV advisory in the local threat-intel database.
+```
+intel_lookup(advisory_id="CVE-2026-12345")
+```
+
+### intel_match
+Match package or purl inventory coordinates against local threat-intel advisories.
+```
+intel_match(purl="pkg:pypi/requests@2.31.0")
+```
+
+### intel_sources
+List configured threat-intel sources and local feed freshness metadata.
+```
+intel_sources()
+```
+
 ### blast_radius
 Map the full impact chain of a CVE across agents, servers, credentials, and tools.
 ```
@@ -181,6 +199,12 @@ runtime_production_index(tenant_id="default")
 Return all runtime role/profile blueprints, or a single blueprint by id.
 ```
 runtime_blueprints(blueprint_id="security_analyst")
+```
+
+### runtime_blueprint_drift
+Evaluate live runtime posture against a role/profile blueprint.
+```
+runtime_blueprint_drift(blueprint_id="developer", tenant_id="default")
 ```
 
 ### proxy_status

@@ -55,7 +55,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 |---|---|---|
 | **CLI / CI** | developers and pipelines | local scans, SARIF/SBOM/HTML/JSON, graph exports, deterministic gates |
 | **REST API** | security platforms, SIEM jobs, custom services | self-hosted control-plane routes for scans, normalized bulk findings, dataset versions, graph evidence, audit, and governance |
-| **MCP tools** | AI agents and coding assistants | 47 read-only tools, strict args, `exposure_paths`, `should_i_deploy`, runtime posture |
+| **MCP tools** | AI agents and coding assistants | 48 read-only tools, strict args, `exposure_paths`, `should_i_deploy`, runtime posture |
 | **TypeScript client** | services and agent runtimes calling the control plane | typed helper for stable REST endpoints; not a scanner SDK |
 | **TypeScript runtime detectors** | MCP/runtime enforcement integrations | local detector package for runtime policy checks; separate from the control-plane client |
 | **UI cockpit** | security teams and auditors | graph cockpit, compliance, audit, and evidence review over the same backend data |

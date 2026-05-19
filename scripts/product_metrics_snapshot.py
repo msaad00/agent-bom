@@ -10,6 +10,7 @@ import re
 import subprocess
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -38,7 +39,7 @@ def _count_api_route_modules() -> int:
 
 
 def _count_ui_app_pages() -> int:
-    return len(_tracked_files("ui/app/**/page.tsx", "ui/app/**/page.jsx"))
+    return len(_tracked_files("ui/app/page.tsx", "ui/app/page.jsx", "ui/app/**/page.tsx", "ui/app/**/page.jsx"))
 
 
 def _count_python_modules() -> int:
@@ -217,7 +218,7 @@ def render_markdown(snapshot: dict[str, object]) -> str:
         "| Metric | Value | Source | Notes |",
         "| --- | ---: | --- | --- |",
     ]
-    for entry in snapshot["metrics"]:
+    for entry in cast(list[dict[str, object]], snapshot["metrics"]):
         lines.append(f"| {entry['name']} | {entry['value']} | `{entry['source']}` | {entry['notes']} |")
     lines.extend(
         [

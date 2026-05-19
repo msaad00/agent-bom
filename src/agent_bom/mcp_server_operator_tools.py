@@ -34,6 +34,7 @@ def register_operator_tools(
         firewall_check_impl,
         gateway_status_impl,
         proxy_status_impl,
+        runtime_blueprint_drift_impl,
         runtime_blueprints_impl,
         runtime_correlate_impl,
         runtime_production_index_impl,
@@ -432,6 +433,26 @@ def register_operator_tools(
         return await execute_tool_async(
             "runtime_blueprints",
             runtime_blueprints_impl,
+            blueprint_id=blueprint_id,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Runtime Blueprint Drift")
+    async def runtime_blueprint_drift(
+        blueprint_id: Annotated[
+            str,
+            Field(description="Blueprint id to evaluate, such as developer, security_analyst, mlops, finance, or admin."),
+        ],
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to summarize. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Compare current runtime traffic with an approved role/profile blueprint."""
+        return await execute_tool_async(
+            "runtime_blueprint_drift",
+            runtime_blueprint_drift_impl,
             blueprint_id=blueprint_id,
             tenant_id=tenant_id,
             _truncate_response=truncate_response,

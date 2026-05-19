@@ -9,6 +9,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- MCP server mode now exposes read-only runtime posture tools for production
+  index summaries, runtime blueprints, proxy/gateway status, Shield session
+  status, and inter-agent firewall decision dry-runs.
+
 ---
 
 ## [0.87.1] - 2026-05-18

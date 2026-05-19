@@ -1,6 +1,6 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 41 read-only security tools to any MCP client.
+agent-bom runs as an MCP server, exposing 47 read-only security tools to any MCP client.
 The server card also advertises 6 resources and 6 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
 
@@ -123,6 +123,12 @@ Connect with:
 | `cis_benchmark` | CIS benchmark checks (AWS/Snowflake) |
 | `fleet_scan` | Batch registry lookup + risk scoring |
 | `runtime_correlate` | Cross-reference runtime logs with CVEs |
+| `runtime_production_index` | Metadata-only runtime production posture |
+| `runtime_blueprints` | Role/profile blueprints for runtime policy design |
+| `proxy_status` | Current MCP proxy metrics and alert posture |
+| `gateway_status` | Gateway policy and inter-agent firewall runtime statistics |
+| `shield_status` | Shield session status without changing enforcement |
+| `firewall_check` | Read-only inter-agent firewall decision dry run |
 | `vector_db_scan` | Probe vector DBs for auth misconfigurations |
 | `aisvs_benchmark` | OWASP AISVS v1.0 compliance checks |
 | `gpu_infra_scan` | GPU/AI compute infrastructure scanning |

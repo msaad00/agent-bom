@@ -875,6 +875,66 @@ def test_tool_risk_assessment_impl_success():
     assert data["servers"][0]["capability_risk_level"] == "high"
 
 
+@pytest.mark.asyncio
+async def test_runtime_production_index_impl_empty_state():
+    from agent_bom.mcp_tools.runtime import runtime_production_index_impl
+
+    result = await runtime_production_index_impl(tenant_id="default", _truncate_response=_trunc)
+    data = json.loads(result)
+    assert data["schema_version"] == "runtime.production_index.v1"
+    assert data["status"] == "no_runtime_activity"
+    assert data["authorization_trace"]["retention"] == "metadata_only"
+    assert data["retention_posture"]["event_classes"]["production_index"] == "metadata_only"
+
+
+@pytest.mark.asyncio
+async def test_runtime_blueprints_impl_lists_and_filters():
+    from agent_bom.mcp_tools.runtime import runtime_blueprints_impl
+
+    all_result = await runtime_blueprints_impl(blueprint_id="", tenant_id="default", _truncate_response=_trunc)
+    all_data = json.loads(all_result)
+    assert all_data["schema_version"] == "runtime.blueprints.v1"
+    assert {blueprint["blueprint_id"] for blueprint in all_data["blueprints"]} >= {"developer", "admin"}
+
+    one_result = await runtime_blueprints_impl(blueprint_id="developer", tenant_id="default", _truncate_response=_trunc)
+    one_data = json.loads(one_result)
+    assert one_data["blueprint"]["blueprint_id"] == "developer"
+
+
+@pytest.mark.asyncio
+async def test_proxy_gateway_and_shield_status_impls_empty_state():
+    from agent_bom.mcp_tools.runtime import gateway_status_impl, proxy_status_impl, shield_status_impl
+
+    proxy_result = await proxy_status_impl(tenant_id="default", _truncate_response=_trunc)
+    proxy_data = json.loads(proxy_result)
+    assert proxy_data["status"] == "no_proxy_session"
+
+    gateway_result = await gateway_status_impl(tenant_id="default", _truncate_response=_trunc)
+    gateway_data = json.loads(gateway_result)
+    assert "policy_runtime" in gateway_data
+    assert "firewall_runtime" in gateway_data
+
+    shield_result = await shield_status_impl(session_id="default", _truncate_response=_trunc)
+    shield_data = json.loads(shield_result)
+    assert shield_data["active"] is False
+
+
+def test_firewall_check_impl_is_read_only_default_allow():
+    from agent_bom.mcp_tools.runtime import firewall_check_impl
+
+    result = firewall_check_impl(
+        source_agent="developer-agent",
+        target_agent="ticketing-agent",
+        source_roles="developer",
+        target_roles="support",
+        _truncate_response=_trunc,
+    )
+    data = json.loads(result)
+    assert data["decision"] == "allow"
+    assert data["effective_decision"] == "allow"
+    assert data["recorded"] is False
+
+
 # ---------------------------------------------------------------------------
 # cli/__init__.py — cli_main error path
 # ---------------------------------------------------------------------------

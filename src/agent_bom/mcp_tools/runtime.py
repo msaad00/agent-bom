@@ -5,11 +5,154 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
+
+
+def _request_for_tenant(tenant_id: str) -> SimpleNamespace:
+    return SimpleNamespace(state=SimpleNamespace(tenant_id=tenant_id or "default"))
+
+
+def _csv_set(value: str) -> set[str]:
+    return {part.strip() for part in value.split(",") if part.strip()}
+
+
+async def runtime_production_index_impl(
+    *,
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the runtime_production_index tool."""
+    try:
+        from agent_bom.api.routes.proxy import runtime_production_index
+
+        payload = await runtime_production_index(cast(Any, _request_for_tenant(tenant_id)))
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP runtime production index error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+async def runtime_blueprints_impl(
+    *,
+    blueprint_id: str = "",
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the runtime_blueprints tool."""
+    try:
+        from fastapi import HTTPException
+
+        from agent_bom.api.routes.runtime_blueprints import get_runtime_blueprint, list_runtime_blueprints
+
+        request = _request_for_tenant(tenant_id)
+        if blueprint_id.strip():
+            try:
+                payload = await get_runtime_blueprint(cast(Any, request), blueprint_id.strip())
+            except HTTPException as exc:
+                return json.dumps({"error": sanitize_error(exc.detail)})
+        else:
+            payload = await list_runtime_blueprints(cast(Any, request))
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP runtime blueprints error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+async def proxy_status_impl(
+    *,
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the proxy_status tool."""
+    try:
+        from agent_bom.api.routes.proxy import proxy_status
+
+        payload = await proxy_status(cast(Any, _request_for_tenant(tenant_id)))
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP proxy status error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+async def shield_status_impl(
+    *,
+    session_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the shield_status tool."""
+    try:
+        from agent_bom.api.routes.proxy import shield_status
+
+        payload = await shield_status(session_id=session_id or "default")
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP shield status error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+async def gateway_status_impl(
+    *,
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the gateway_status tool."""
+    try:
+        from agent_bom.api.routes.gateway import gateway_stats
+
+        payload = await gateway_stats(cast(Any, _request_for_tenant(tenant_id)))
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP gateway status error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+def firewall_check_impl(
+    *,
+    source_agent: str,
+    target_agent: str,
+    source_roles: str = "",
+    target_roles: str = "",
+    _truncate_response,
+) -> str:
+    """Implementation of the read-only firewall_check tool."""
+    try:
+        from agent_bom.api.routes.gateway import _firewall_rule_payload, _load_control_plane_firewall_policy
+        from agent_bom.firewall import evaluate
+
+        source = source_agent.strip()
+        target = target_agent.strip()
+        if not source or not target:
+            return json.dumps({"error": "source_agent and target_agent are required"})
+        policy, policy_meta = _load_control_plane_firewall_policy()
+        result = evaluate(
+            policy,
+            source_agent=source,
+            target_agent=target,
+            source_roles=_csv_set(source_roles),
+            target_roles=_csv_set(target_roles),
+        )
+        payload = {
+            "source_agent": source,
+            "target_agent": target,
+            "source_roles": sorted(_csv_set(source_roles)),
+            "target_roles": sorted(_csv_set(target_roles)),
+            "decision": result.decision.value,
+            "effective_decision": result.effective_decision.value,
+            "matched_rule": _firewall_rule_payload(result.matched_rule),
+            "policy": policy_meta,
+            "recorded": False,
+            "note": "Read-only MCP evaluation; use /v1/firewall/check to record control-plane decisions.",
+        }
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP firewall check error")
+        return json.dumps({"error": sanitize_error(exc)})
 
 
 async def runtime_correlate_impl(

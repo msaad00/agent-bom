@@ -171,6 +171,42 @@ fleet_scan(servers=["brave-search", "filesystem", "postgres"])
 ### runtime_correlate
 Cross-reference runtime audit logs with CVE findings for risk amplification.
 
+### runtime_production_index
+Return metadata-only runtime production posture for proxy and gateway traffic.
+```
+runtime_production_index(tenant_id="default")
+```
+
+### runtime_blueprints
+Return all runtime role/profile blueprints, or a single blueprint by id.
+```
+runtime_blueprints(blueprint_id="security_analyst")
+```
+
+### proxy_status
+Return current MCP proxy metrics and runtime alert posture.
+```
+proxy_status(tenant_id="default")
+```
+
+### gateway_status
+Return gateway policy and inter-agent firewall runtime statistics.
+```
+gateway_status(tenant_id="default")
+```
+
+### shield_status
+Return Shield session status without starting, stopping, or unblocking a session.
+```
+shield_status(session_id="default")
+```
+
+### firewall_check
+Dry-run an inter-agent firewall decision without recording control-plane state.
+```
+firewall_check(source_agent="developer-agent", target_agent="ticketing-agent")
+```
+
 ### vector_db_scan
 Probe Qdrant, Weaviate, Chroma, and Milvus instances for authentication misconfigurations and exposure.
 ```

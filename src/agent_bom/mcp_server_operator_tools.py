@@ -30,7 +30,15 @@ def register_operator_tools(
     from agent_bom.mcp_tools.analysis import analytics_query_impl, context_graph_impl
     from agent_bom.mcp_tools.compliance import cis_benchmark_impl
     from agent_bom.mcp_tools.registry import fleet_scan_impl, marketplace_check_impl
-    from agent_bom.mcp_tools.runtime import runtime_correlate_impl
+    from agent_bom.mcp_tools.runtime import (
+        firewall_check_impl,
+        gateway_status_impl,
+        proxy_status_impl,
+        runtime_blueprints_impl,
+        runtime_correlate_impl,
+        runtime_production_index_impl,
+        shield_status_impl,
+    )
     from agent_bom.mcp_tools.sbom import diff_impl
     from agent_bom.mcp_tools.scanning import code_scan_impl
 
@@ -385,5 +393,115 @@ def register_operator_tools(
             otel_trace=otel_trace,
             _safe_path=safe_path,
             _run_scan_pipeline=run_scan_pipeline,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Runtime Production Index")
+    async def runtime_production_index(
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to summarize. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Return metadata-only runtime production posture for agent/tool traffic.
+
+        Summarizes tool-call volume, block rate, policy decisions, authorization
+        trace posture, alerts, active sources/sessions, freshness, and retention
+        mode without returning prompts, raw arguments, responses, or credential
+        values.
+        """
+        return await execute_tool_async(
+            "runtime_production_index",
+            runtime_production_index_impl,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Runtime Blueprints")
+    async def runtime_blueprints(
+        blueprint_id: Annotated[
+            str,
+            Field(description="Optional blueprint id such as developer, security_analyst, mlops, finance, or admin."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope for the response envelope."),
+        ] = "default",
+    ) -> str:
+        """Return canonical role/profile blueprints for runtime policy design."""
+        return await execute_tool_async(
+            "runtime_blueprints",
+            runtime_blueprints_impl,
+            blueprint_id=blueprint_id,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Proxy Status")
+    async def proxy_status(
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to summarize. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Return current MCP proxy metrics and alert summary, if a session is active."""
+        return await execute_tool_async(
+            "proxy_status",
+            proxy_status_impl,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Gateway Status")
+    async def gateway_status(
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to summarize. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Return gateway policy and inter-agent firewall runtime statistics."""
+        return await execute_tool_async(
+            "gateway_status",
+            gateway_status_impl,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Shield Status")
+    async def shield_status(
+        session_id: Annotated[
+            str,
+            Field(description="Shield session id to inspect."),
+        ] = "default",
+    ) -> str:
+        """Return current Shield assessment for a session without changing enforcement state."""
+        return await execute_tool_async(
+            "shield_status",
+            shield_status_impl,
+            session_id=session_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Firewall Check")
+    async def firewall_check(
+        source_agent: Annotated[str, Field(description="Source agent identity, for example claude-desktop.")],
+        target_agent: Annotated[str, Field(description="Target agent or service identity, for example jira-mcp.")],
+        source_roles: Annotated[
+            str,
+            Field(description="Optional comma-separated source roles such as developer,security_analyst."),
+        ] = "",
+        target_roles: Annotated[
+            str,
+            Field(description="Optional comma-separated target roles such as production,finance."),
+        ] = "",
+    ) -> str:
+        """Dry-run an inter-agent firewall decision without recording it to the control-plane tally."""
+        return await execute_tool_async(
+            "firewall_check",
+            firewall_check_impl,
+            source_agent=source_agent,
+            target_agent=target_agent,
+            source_roles=source_roles,
+            target_roles=target_roles,
             _truncate_response=truncate_response,
         )

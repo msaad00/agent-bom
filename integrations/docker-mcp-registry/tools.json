@@ -228,6 +228,52 @@
     ]
   },
   {
+    "name": "runtime_production_index",
+    "description": "Return metadata-only runtime production posture for proxy and gateway traffic.",
+    "arguments": [
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope to summarize"}
+    ]
+  },
+  {
+    "name": "runtime_blueprints",
+    "description": "Return canonical runtime role/profile blueprints for agent and MCP governance.",
+    "arguments": [
+      {"name": "blueprint_id", "type": "string", "desc": "Optional blueprint id such as developer or security_analyst"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope for the response envelope"}
+    ]
+  },
+  {
+    "name": "proxy_status",
+    "description": "Return current MCP proxy metrics and runtime alert posture.",
+    "arguments": [
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope to summarize"}
+    ]
+  },
+  {
+    "name": "gateway_status",
+    "description": "Return gateway policy and inter-agent firewall runtime statistics.",
+    "arguments": [
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope to summarize"}
+    ]
+  },
+  {
+    "name": "shield_status",
+    "description": "Return Shield session status without changing enforcement state.",
+    "arguments": [
+      {"name": "session_id", "type": "string", "desc": "Shield session id to inspect"}
+    ]
+  },
+  {
+    "name": "firewall_check",
+    "description": "Dry-run an inter-agent firewall decision without recording control-plane state.",
+    "arguments": [
+      {"name": "source_agent", "type": "string", "desc": "Source agent identity"},
+      {"name": "target_agent", "type": "string", "desc": "Target agent or service identity"},
+      {"name": "source_roles", "type": "string", "desc": "Optional comma-separated source roles"},
+      {"name": "target_roles", "type": "string", "desc": "Optional comma-separated target roles"}
+    ]
+  },
+  {
     "name": "vector_db_scan",
     "description": "Scan for running vector databases and assess their security posture (auth, encryption, exposure).",
     "arguments": [

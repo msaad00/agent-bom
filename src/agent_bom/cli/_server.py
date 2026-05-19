@@ -692,7 +692,7 @@ def mcp_server_cmd(
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 41 security tools via MCP protocol:
+    Exposes 47 security tools via MCP protocol:
       scan                   Full scan — CVEs, config security, blast radius, compliance
       check                  Check a specific package for CVEs before installing
       blast_radius           Look up blast radius for a specific CVE
@@ -719,6 +719,12 @@ def mcp_server_cmd(
       cis_benchmark          Run CIS benchmark checks (AWS/Snowflake)
       fleet_scan             Batch registry lookup for fleet inventories
       runtime_correlate      Cross-reference runtime logs with CVE findings
+      runtime_production_index Runtime production posture summary
+      runtime_blueprints     Role/profile blueprints for runtime policy design
+      proxy_status           Current MCP proxy metrics and alert posture
+      gateway_status         Gateway policy and firewall runtime statistics
+      shield_status          Shield session status without changing enforcement
+      firewall_check         Read-only inter-agent firewall decision dry run
       vector_db_scan         Discover vector databases and assess auth exposure
       aisvs_benchmark        OWASP AISVS v1.0 compliance checks
       gpu_infra_scan         GPU container and K8s node inventory + DCGM probe

@@ -230,7 +230,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     )
     card = build_server_card()
     assert "35 security tools" not in docs
-    assert "38" in docs
+    assert f"{len(card['tools'])} read-only security tools" in docs
     for resource in card["resources"]:
         assert resource["uri"] in docs
     for prompt in card["prompts"]:
@@ -490,7 +490,7 @@ def test_mcp_server_help_shows_skill_tools():
 
     runner = CliRunner()
     result = runner.invoke(main, ["mcp", "server", "--help"])
-    assert "41 security tools" in result.output
+    assert "47 security tools" in result.output
     assert "skill_scan" in result.output
     assert "skill_verify" in result.output
     assert "compliance" in result.output

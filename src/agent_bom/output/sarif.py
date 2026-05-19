@@ -153,6 +153,20 @@ def _build_run_taxonomies(results: list[dict]) -> list[dict]:
     return taxonomies
 
 
+def _taxonomies_as_tool_extensions(taxonomies: list[dict]) -> list[dict]:
+    """Expose framework catalogs as SARIF tool extensions for catalog readers."""
+    extensions: list[dict] = []
+    for taxonomy in taxonomies:
+        extension = {
+            "name": taxonomy["name"],
+            "fullName": taxonomy.get("fullName", taxonomy["name"]),
+            "informationUri": taxonomy.get("informationUri", ""),
+            "taxa": taxonomy.get("taxa", []),
+        }
+        extensions.append(extension)
+    return extensions
+
+
 def _framework_taxa_references(properties: dict[str, Any]) -> list[dict]:
     """Build result-level SARIF taxa references for declared framework taxonomies."""
     refs: list[dict] = []
@@ -644,6 +658,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
         }
     if taxonomies:
         run["taxonomies"] = taxonomies
+        run["tool"]["extensions"] = _taxonomies_as_tool_extensions(taxonomies)
 
     return {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",

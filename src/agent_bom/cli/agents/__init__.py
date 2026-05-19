@@ -979,6 +979,8 @@ def scan(
                         )
                     continue
                 _smithery_tok = smithery_token if smithery_flag else None
+                if not quiet:
+                    con.print(f"  [dim]Extracting packages from {agent.name}/{server.name}...[/dim]")
                 discovered = extract_packages(
                     server, resolve_transitive=transitive, max_depth=max_depth, smithery_token=_smithery_tok, mcp_registry=mcp_registry_flag
                 )

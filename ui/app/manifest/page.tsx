@@ -7,6 +7,7 @@ import {
   Activity,
   AlertTriangle,
   Download,
+  Eye,
   GitBranch,
   KeyRound,
   Loader2,
@@ -16,6 +17,7 @@ import {
   Server,
   ShieldCheck,
   TerminalSquare,
+  UserRound,
   Wrench,
 } from "lucide-react";
 import { api, type AgentBomManifestResponse } from "@/lib/api";
@@ -31,6 +33,10 @@ function asNumber(value: unknown): number {
 function asStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => String(item)).filter(Boolean);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 function downloadManifest(manifest: AgentBomManifestResponse) {
@@ -74,6 +80,25 @@ function BoundaryBadge({ ok, label }: { ok: boolean; label: string }) {
     >
       {ok ? <ShieldCheck className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
       {label}
+    </span>
+  );
+}
+
+function DriftStatusBadge({ status }: { status: string }) {
+  const needsReview = status === "needs_review";
+  const aligned = status === "aligned";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
+        needsReview
+          ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-300"
+          : aligned
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+            : "border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]"
+      }`}
+    >
+      {needsReview ? <AlertTriangle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
+      blueprint {status.replaceAll("_", " ")}
     </span>
   );
 }
@@ -158,23 +183,54 @@ export default function AgentBomManifestPage() {
 
   const rows = useMemo(() => {
     if (!manifest) return [];
+    const agentsByName = new Map(
+      manifest.agents.map((agent) => {
+        const row = asRecord(agent);
+        return [asString(row.name), row] as const;
+      }),
+    );
+    const agentsById = new Map(
+      manifest.agents.map((agent) => {
+        const row = asRecord(agent);
+        return [asString(row.id, asString(row.canonical_id)), row] as const;
+      }),
+    );
     const needle = query.trim().toLowerCase();
     return manifest.mcp_servers
       .map((server) => {
-        const refs = Array.isArray(server.credential_refs) ? server.credential_refs : [];
-        const tools = Array.isArray(server.tools) ? server.tools : [];
+        const serverRow = asRecord(server);
+        const refs = Array.isArray(serverRow.credential_refs) ? serverRow.credential_refs : [];
+        const tools = Array.isArray(serverRow.tools) ? serverRow.tools : [];
+        const observed = asRecord(serverRow.observed);
+        const agentName = asString(serverRow.agent_name, "local discovery");
+        const agent = agentsByName.get(agentName) ?? agentsById.get(agentName) ?? {};
+        const runtimeObserved = Boolean(observed.runtime_observed);
+        const gatewayRegistered = Boolean(observed.gateway_registered);
+        const configuredLocally = Boolean(observed.configured_locally);
+        const fleetPresent = Boolean(observed.fleet_present);
+        const runtimeState = runtimeObserved
+          ? gatewayRegistered
+            ? "gateway bound"
+            : configuredLocally || fleetPresent
+              ? "runtime observed"
+              : "shadow runtime"
+          : "inventory only";
         return {
-          id: asString(server.id, asString(server.name, "server")),
-          agentName: asString(server.agent_name, "local discovery"),
-          name: asString(server.name, "unnamed"),
-          transport: asString(server.transport, "unknown"),
-          authMode: asString(server.auth_mode, "unknown"),
-          toolCount: asNumber(server.tool_count) || tools.length,
+          id: asString(serverRow.id, asString(serverRow.name, "server")),
+          agentName,
+          owner: asString(agent.owner, "unowned"),
+          environment: asString(agent.environment, "unknown"),
+          name: asString(serverRow.name, "unnamed"),
+          transport: asString(serverRow.transport, "unknown"),
+          authMode: asString(serverRow.auth_mode, "unknown"),
+          toolCount: asNumber(serverRow.tool_count) || tools.length,
           credentialRefs: refs.map((ref) => (typeof ref === "object" && ref ? asString((ref as Record<string, unknown>).name) : "")).filter(Boolean),
-          warnings: asStringList((server.security as Record<string, unknown> | undefined)?.warnings),
+          runtimeState,
+          lastSeen: asString(observed.last_seen, "-"),
+          warnings: asStringList(asRecord(serverRow.security).warnings),
         };
       })
-      .filter((row) => !needle || `${row.agentName} ${row.name} ${row.transport} ${row.authMode}`.toLowerCase().includes(needle));
+      .filter((row) => !needle || `${row.agentName} ${row.owner} ${row.environment} ${row.name} ${row.transport} ${row.authMode} ${row.runtimeState}`.toLowerCase().includes(needle));
   }, [manifest, query]);
 
   return (
@@ -183,9 +239,9 @@ export default function AgentBomManifestPage() {
         <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-sm font-medium text-emerald-400">Agent BOM</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Agent runtime manifest</h1>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">AI visibility cockpit</h1>
             <p className="mt-2 max-w-3xl text-sm text-[var(--muted-foreground)]">
-              Tenant-scoped inventory of agents, MCP servers, tools, credential references, and graph relationships.
+              Tenant-scoped inventory of agents, MCP servers, tools, credential references, ownership, runtime evidence, and graph relationships.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -222,13 +278,44 @@ export default function AgentBomManifestPage() {
               <SummaryCard label="Gateway bound" value={manifest.summary.gateway_registered_servers} icon={Network} tone="text-violet-300" />
             </section>
 
+            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+              <SummaryCard label="Owners" value={manifest.visibility.owners} icon={UserRound} tone="text-teal-300" />
+              <SummaryCard label="Unowned agents" value={manifest.visibility.unowned_agents} icon={AlertTriangle} tone="text-yellow-300" />
+              <SummaryCard label="Shadow runtime" value={manifest.visibility.shadow_runtime_servers} icon={Eye} tone="text-red-300" />
+              <SummaryCard label="Untracked runtime" value={manifest.visibility.untracked_runtime_servers} icon={Network} tone="text-orange-300" />
+              <SummaryCard label="Warnings" value={manifest.visibility.servers_with_warnings} icon={AlertTriangle} tone="text-amber-300" />
+              <SummaryCard label="Risky refs" value={manifest.visibility.risky_credential_refs} icon={KeyRound} tone="text-rose-300" />
+            </section>
+
             <section className="flex flex-wrap items-center gap-2">
               <BoundaryBadge ok={!manifest.boundaries.stores_credential_values} label="credential values redacted" />
               <BoundaryBadge ok={!manifest.boundaries.stores_raw_prompts} label="raw prompts not persisted" />
+              <DriftStatusBadge status={manifest.blueprint_drift.status} />
               <span className="text-xs text-[var(--muted-foreground)]">
                 {manifest.schema_version} · {manifest.tenant_id ?? "local"} · {new Date(manifest.generated_at).toLocaleString()}
               </span>
             </section>
+
+            {manifest.blueprint_drift.status === "needs_review" ? (
+              <section className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-300" />
+                  <div>
+                    <h2 className="text-sm font-semibold text-yellow-100">Observation-only drift review</h2>
+                    <p className="mt-1 text-xs text-yellow-100/80">
+                      {manifest.blueprint_drift.signal_count} signal(s) from manifest/runtime evidence. This view reports drift candidates; enforcement policy is unchanged.
+                    </p>
+                    <ul className="mt-3 grid gap-2 text-xs text-yellow-100/90">
+                      {manifest.blueprint_drift.signals.slice(0, 4).map((signal) => (
+                        <li key={`${signal.kind}:${signal.entity_id}`} className="rounded-md border border-yellow-500/20 bg-black/10 px-3 py-2">
+                          <span className="font-medium">{signal.kind.replaceAll("_", " ")}</span>: {signal.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </section>
+            ) : null}
 
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
               <section className="rounded-lg border border-[var(--border)] bg-[var(--card)]">
@@ -252,22 +339,28 @@ export default function AgentBomManifestPage() {
                     <thead className="bg-[var(--muted)] text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
                       <tr>
                         <th className="px-4 py-3 font-medium">Agent</th>
+                        <th className="px-4 py-3 font-medium">Owner</th>
+                        <th className="px-4 py-3 font-medium">Environment</th>
                         <th className="px-4 py-3 font-medium">MCP server</th>
                         <th className="px-4 py-3 font-medium">Transport</th>
-                        <th className="px-4 py-3 font-medium">Auth</th>
+                        <th className="px-4 py-3 font-medium">Runtime</th>
                         <th className="px-4 py-3 font-medium">Tools</th>
                         <th className="px-4 py-3 font-medium">Credential refs</th>
+                        <th className="px-4 py-3 font-medium">Last seen</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border)]">
                       {rows.map((row) => (
                         <tr key={row.id}>
                           <td className="px-4 py-3 text-[var(--foreground)]">{row.agentName}</td>
+                          <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.owner}</td>
+                          <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.environment}</td>
                           <td className="px-4 py-3 font-medium text-[var(--foreground)]">{row.name}</td>
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.transport}</td>
-                          <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.authMode}</td>
+                          <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.runtimeState}</td>
                           <td className="px-4 py-3 text-[var(--foreground)]">{row.toolCount}</td>
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.credentialRefs.join(", ") || "none"}</td>
+                          <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.lastSeen}</td>
                         </tr>
                       ))}
                     </tbody>

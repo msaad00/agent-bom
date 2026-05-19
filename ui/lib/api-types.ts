@@ -135,6 +135,32 @@ export interface AgentBomManifestResponse {
     runtime_observed_servers: number;
     gateway_registered_servers: number;
   };
+  visibility: {
+    owners: number;
+    unowned_agents: number;
+    shadow_runtime_servers: number;
+    untracked_runtime_servers: number;
+    servers_with_warnings: number;
+    risky_credential_refs: number;
+    risk_signals: {
+      unowned_agent_ids: string[];
+      shadow_runtime_server_ids: string[];
+      untracked_runtime_server_ids: string[];
+      risky_credential_refs: string[];
+    };
+  };
+  blueprint_drift: {
+    status: "not_observed" | "aligned" | "needs_review" | string;
+    mode: "observation_only" | string;
+    fail_behavior: "report_only" | string;
+    signal_count: number;
+    signals: Array<{
+      kind: string;
+      entity_id: string;
+      severity: string;
+      message: string;
+    }>;
+  };
   agents: Array<Record<string, unknown>>;
   mcp_servers: Array<Record<string, unknown>>;
   graph: {

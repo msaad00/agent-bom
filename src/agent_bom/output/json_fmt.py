@@ -669,6 +669,7 @@ def _schema_server(server, *, inherited_provenance: dict | None = None) -> dict[
 def _build_inventory_snapshot(report: AIBOMReport) -> dict:
     """Build a strict inventory-schema payload suitable for --inventory reuse."""
     agents: list[dict[str, object]] = []
+    packages: list[dict[str, object]] = []
     for agent in report.agents:
         agent_provenance = _schema_discovery_provenance(agent_discovery_provenance(agent))
         agents.append(
@@ -687,10 +688,13 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                 }
             )
         )
+        for server in agent.mcp_servers:
+            packages.extend(_schema_package(pkg, inherited_provenance=agent_provenance) for pkg in server.packages)
 
     return {
         "schema_version": INVENTORY_SNAPSHOT_SCHEMA_VERSION,
         "generated_at": report.generated_at.isoformat(),
+        "packages": packages,
         "agents": agents,
     }
 

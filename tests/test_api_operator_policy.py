@@ -109,8 +109,22 @@ def test_status_ephemeral_when_no_key(monkeypatch: pytest.MonkeyPatch) -> None:
     _reload_config()
     status = get_rate_limit_key_status()
     assert status["status"] == "ephemeral"
+    assert status["severity"] == "info"
+    assert status["production_or_clustered"] is False
     assert status["last_rotated"] is None
     assert status["age_days"] is None
+    assert "local development" in status["message"]
+
+
+def test_status_ephemeral_warns_for_production_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_ENV", "production")
+    _reload_config()
+    status = get_rate_limit_key_status()
+    assert status["status"] == "ephemeral"
+    assert status["severity"] == "warning"
+    assert status["production_or_clustered"] is True
+    assert "Set AGENT_BOM_RATE_LIMIT_KEY for production" in status["message"]
 
 
 def test_status_unknown_age_when_key_without_rotation_timestamp(

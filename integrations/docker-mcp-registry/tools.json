@@ -243,6 +243,14 @@
     ]
   },
   {
+    "name": "runtime_blueprint_drift",
+    "description": "Evaluate live runtime posture against a role/profile blueprint.",
+    "arguments": [
+      {"name": "blueprint_id", "type": "string", "desc": "Blueprint id such as developer or security_analyst"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope to summarize"}
+    ]
+  },
+  {
     "name": "proxy_status",
     "description": "Return current MCP proxy metrics and runtime alert posture.",
     "arguments": [

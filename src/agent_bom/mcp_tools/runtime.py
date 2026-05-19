@@ -64,6 +64,28 @@ async def runtime_blueprints_impl(
         return json.dumps({"error": sanitize_error(exc)})
 
 
+async def runtime_blueprint_drift_impl(
+    *,
+    blueprint_id: str,
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the runtime_blueprint_drift tool."""
+    try:
+        from fastapi import HTTPException
+
+        from agent_bom.api.routes.runtime_blueprints import get_runtime_blueprint_drift
+
+        try:
+            payload = await get_runtime_blueprint_drift(cast(Any, _request_for_tenant(tenant_id)), blueprint_id.strip())
+        except HTTPException as exc:
+            return json.dumps({"error": sanitize_error(exc.detail)})
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP runtime blueprint drift error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
 async def proxy_status_impl(
     *,
     tenant_id: str = "default",

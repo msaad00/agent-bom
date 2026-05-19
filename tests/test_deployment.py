@@ -490,7 +490,7 @@ def test_mcp_server_help_shows_skill_tools():
 
     runner = CliRunner()
     result = runner.invoke(main, ["mcp", "server", "--help"])
-    assert "47 security tools" in result.output
+    assert "48 security tools" in result.output
     assert "skill_scan" in result.output
     assert "skill_verify" in result.output
     assert "compliance" in result.output

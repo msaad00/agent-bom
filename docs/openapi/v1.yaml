@@ -8047,6 +8047,36 @@ paths:
       summary: Get Runtime Blueprint
       tags:
       - runtime
+  /v1/runtime/blueprints/{blueprint_id}/drift:
+    get:
+      description: Evaluate current runtime posture against one role/profile blueprint.
+      operationId: get_runtime_blueprint_drift_v1_runtime_blueprints__blueprint_id__drift_get
+      parameters:
+      - in: path
+        name: blueprint_id
+        required: true
+        schema:
+          title: Blueprint Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Runtime Blueprint Drift V1 Runtime Blueprints  Blueprint
+                  Id  Drift Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Runtime Blueprint Drift
+      tags:
+      - runtime
   /v1/runtime/production-index:
     get:
       description: 'Return tenant-scoped runtime security observability for proxy/gateway

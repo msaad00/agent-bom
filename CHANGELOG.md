@@ -10,9 +10,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Runtime blueprints now include a drift evaluation endpoint and MCP tool so
+  operators and agents can compare live runtime posture with an approved role
+  profile without exposing raw prompts, arguments, responses, or credentials.
 - MCP server mode now exposes read-only runtime posture tools for production
   index summaries, runtime blueprints, proxy/gateway status, Shield session
   status, and inter-agent firewall decision dry-runs.
+
+### Fixed
+- Product metrics now count the root dashboard page and refreshed MCP tool
+  counts across generated metrics, MCP docs, Docker MCP metadata, and release
+  consistency checks.
 
 ---
 

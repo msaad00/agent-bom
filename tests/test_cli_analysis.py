@@ -287,12 +287,37 @@ def test_mesh_cmd_live_summary():
         assert "filesystem" in result.output
 
 
-def test_mesh_cmd_summary_rejects_output_path(tmp_path):
+def test_mesh_cmd_summary_writes_output_path(tmp_path):
     runner = CliRunner()
     scan_file = tmp_path / "scan.json"
-    scan_file.write_text(json.dumps({"agents": [{"name": "a", "mcp_servers": []}], "blast_radius": []}))
-    result = runner.invoke(mesh_cmd, [str(scan_file), "--output", str(tmp_path / "mesh.txt")])
-    assert result.exit_code == 2
+    scan_file.write_text(
+        json.dumps(
+            {
+                "agents": [
+                    {
+                        "name": "a",
+                        "mcp_servers": [
+                            {
+                                "name": "filesystem",
+                                "packages": [],
+                                "tools": [{"name": "read_file"}],
+                                "env": {},
+                            }
+                        ],
+                    }
+                ],
+                "blast_radius": [],
+            }
+        )
+    )
+    out = tmp_path / "mesh.txt"
+    result = runner.invoke(mesh_cmd, [str(scan_file), "--output", str(out)])
+    assert result.exit_code == 0
+    assert out.exists()
+    text = out.read_text()
+    assert "Mesh" in text
+    assert "saved scan" in text
+    assert "filesystem" in text
 
 
 def test_mesh_cmd_json_error_is_wrapped(tmp_path):

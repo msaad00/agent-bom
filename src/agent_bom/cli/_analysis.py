@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from collections import Counter
+from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -87,6 +88,14 @@ def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict, *, s
             )
     if not quiet:
         con.print()
+
+
+def _mesh_summary_text(agents_data: list[dict], mesh: dict, *, scope_label: str, quiet: bool = False) -> str:
+    """Render the human mesh summary to plain text for file output."""
+    buffer = StringIO()
+    con = Console(file=buffer, force_terminal=False, color_system=None, width=120)
+    _render_mesh_summary(con, agents_data, mesh, scope_label=scope_label, quiet=quiet)
+    return buffer.getvalue()
 
 
 @click.command("analytics")
@@ -349,8 +358,10 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
         return
 
     if output_path:
-        con.print("[red]--output is only supported with --format json for mesh.[/red]")
-        raise SystemExit(2)
+        Path(output_path).write_text(_mesh_summary_text(agents_data, mesh, scope_label=scope_label, quiet=quiet))
+        if not quiet:
+            con.print(f"[green]Mesh summary exported[/green] → {output_path}")
+        return
 
     _render_mesh_summary(con, agents_data, mesh, scope_label=scope_label, quiet=quiet)
 

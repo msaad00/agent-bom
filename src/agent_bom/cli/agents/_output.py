@@ -64,7 +64,7 @@ _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     "pdf": ("agent-bom-report.pdf", (".pdf",)),
     "prometheus": ("agent-bom-metrics.prom", (".prom", ".txt")),
     "graph": ("agent-bom-graph.json", (".json",)),
-    "mermaid": ("agent-bom-diagram.mmd", (".mmd", ".md")),
+    "mermaid": ("agent-bom-diagram.mmd", (".mmd", ".mermaid", ".md")),
     "svg": ("agent-bom-supply-chain.svg", (".svg",)),
     "graph-html": ("agent-bom-graph.html", (".html", ".htm")),
     "badge": ("agent-bom-badge.json", (".json",)),

@@ -28,7 +28,7 @@ Current SVG inventory:
 | `scan-pipeline-{light,dark}.svg` | 5-stage pipeline (discover → scan → analyze → report → enforce) | "How a scan moves" |
 | `engine-internals-{light,dark}.svg` | Inside the scanner | available for deeper architecture docs; not currently embedded in the README |
 | `compliance-{light,dark}.svg` | Finding → control → evidence packet | Compliance section |
-| `demo-latest.gif` | Terminal demo (1.04MB after compression) | "Try the demo" |
+| `demo-latest.gif` | Terminal demo (453KB after compression) | "Try the demo" |
 
 Current PNG inventory:
 

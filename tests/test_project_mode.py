@@ -430,6 +430,33 @@ def test_discover_all_project_dir_scopes_to_project_only(tmp_path):
     assert [a.name for a in agents] == ["project-only"]
 
 
+def test_discover_all_accepts_project_config_file_scope(tmp_path):
+    """Project-scoped discovery accepts a direct MCP config file path."""
+    from agent_bom.discovery import discover_all
+
+    config_dir = tmp_path / ".cursor"
+    config_dir.mkdir()
+    config_file = config_dir / "mcp.json"
+    config_file.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "filesystem": {
+                        "command": "npx",
+                        "args": ["@modelcontextprotocol/server-filesystem", str(tmp_path)],
+                    }
+                }
+            }
+        )
+    )
+
+    agents = discover_all(project_dir=str(config_file))
+
+    assert len(agents) == 1
+    assert agents[0].config_path == str(config_file)
+    assert [server.name for server in agents[0].mcp_servers] == ["filesystem"]
+
+
 def test_sbom_name_overrides_metadata(tmp_path):
     """--sbom-name takes precedence over auto-detected name."""
     from unittest.mock import AsyncMock, patch

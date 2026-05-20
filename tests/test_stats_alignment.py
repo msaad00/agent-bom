@@ -92,6 +92,13 @@ def _count_test_files() -> int:
     return len(list((ROOT / "tests").glob("test_*.py")))
 
 
+def _graph_taxonomy_counts() -> tuple[int, int]:
+    """Count canonical graph entities and relationships from code."""
+    from agent_bom.graph import EntityType, RelationshipType
+
+    return len(EntityType), len(RelationshipType)
+
+
 # ---------------------------------------------------------------------------
 # Actual counts (computed once per test session)
 # ---------------------------------------------------------------------------
@@ -104,6 +111,7 @@ ACTUAL_DETECTORS = _count_detector_classes()
 ACTUAL_CLOUD_PROVIDERS = _count_cloud_providers()
 ACTUAL_MODULES = _count_python_modules()
 ACTUAL_TEST_FILES = _count_test_files()
+ACTUAL_GRAPH_ENTITY_TYPES, ACTUAL_GRAPH_RELATIONSHIP_TYPES = _graph_taxonomy_counts()
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +230,24 @@ class TestMarkdownStats:
         }
         missing = sorted(item for item in required if item not in text)
         assert not missing, f"DATA_MODEL.md missing schema contracts: {missing}"
+
+    def test_data_model_graph_taxonomy_counts_match_code(self):
+        text = (ROOT / "docs" / "DATA_MODEL.md").read_text()
+        entity_match = re.search(r"### Entity types \((\d+)\)", text)
+        relationship_match = re.search(r"### Relationship types \((\d+)\)", text)
+        assert entity_match, "DATA_MODEL.md missing graph entity type count"
+        assert relationship_match, "DATA_MODEL.md missing graph relationship type count"
+        assert int(entity_match.group(1)) == ACTUAL_GRAPH_ENTITY_TYPES
+        assert int(relationship_match.group(1)) == ACTUAL_GRAPH_RELATIONSHIP_TYPES
+
+    def test_data_model_graph_taxonomy_lists_every_code_value(self):
+        from agent_bom.graph import EntityType, RelationshipType
+
+        text = (ROOT / "docs" / "DATA_MODEL.md").read_text()
+        missing_entities = sorted(entity.name for entity in EntityType if f"`{entity.name}`" not in text)
+        missing_relationships = sorted(relationship.name for relationship in RelationshipType if f"`{relationship.name}`" not in text)
+        assert not missing_entities, f"DATA_MODEL.md missing graph entities: {missing_entities}"
+        assert not missing_relationships, f"DATA_MODEL.md missing graph relationships: {missing_relationships}"
 
 
 # ---------------------------------------------------------------------------

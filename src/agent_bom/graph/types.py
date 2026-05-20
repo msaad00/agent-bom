@@ -13,10 +13,12 @@ class EntityType(str, Enum):
     SERVER = "server"
     PACKAGE = "package"
     TOOL = "tool"
+    TOOL_CALL = "tool_call"
     MODEL = "model"
     DATASET = "dataset"
     CONTAINER = "container"
     CLOUD_RESOURCE = "cloud_resource"
+    RESOURCE = "resource"
 
     # Finding entities (OCSF Category 2)
     VULNERABILITY = "vulnerability"
@@ -24,6 +26,7 @@ class EntityType(str, Enum):
 
     # Inventory but security-relevant (OCSF Category 5, NOT findings)
     CREDENTIAL = "credential"
+    CREDENTIAL_REF = "credential_ref"
 
     # Identity & governance (OCSF Category 5)
     ORG = "org"
@@ -98,8 +101,11 @@ class RelationshipType(str, Enum):
     CROSS_ACCOUNT_TRUST = "cross_account_trust"  # account/principal → external account/principal
 
     # ── Runtime events (dynamic) ──
-    INVOKED = "invoked"  # agent → tool (runtime)
-    ACCESSED = "accessed"  # tool → resource (runtime)
+    ACTED_AS = "acted_as"  # user/service principal → agent (runtime identity)
+    INVOKED = "invoked"  # agent/user → tool call (runtime)
+    CALLED = "called"  # tool call → tool (runtime)
+    USED_CREDENTIAL = "used_credential"  # tool call → credential reference (runtime)
+    ACCESSED = "accessed"  # tool/tool call → resource (runtime)
     DELEGATED_TO = "delegated_to"  # agent → agent (runtime)
 
     # ── Cross-environment correlation (#1892) ──

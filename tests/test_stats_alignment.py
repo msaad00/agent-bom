@@ -210,6 +210,7 @@ class TestMarkdownStats:
         text = (ROOT / "docs" / "DATA_MODEL.md").read_text()
         required = {
             "agent-bom.manifest/v1",
+            "agentic_identity_graph.v1",
             "runtime.production_index.v1",
             "runtime.blueprints.v1",
             "runtime.blueprint_drift.v1",

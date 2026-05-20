@@ -23,7 +23,7 @@ from agent_bom.audit_integrity import (
     compute_audit_record_mac,
     persist_ephemeral_chain_key,
 )
-from agent_bom.event_normalization import build_proxy_event_relationships
+from agent_bom.event_normalization import build_agentic_identity_graph_projection, build_proxy_event_relationships
 
 logger = logging.getLogger(__name__)
 
@@ -589,6 +589,13 @@ def log_tool_call(
     )
     if event_relationships is not None:
         record["event_relationships"] = event_relationships
+        graph_projection = build_agentic_identity_graph_projection(
+            event_relationships,
+            event_id=payload_sha256 or message_id,
+            tenant_id=tenant_id,
+        )
+        if graph_projection is not None:
+            record["agentic_identity_graph"] = graph_projection
 
     write_audit_record(log_file, record)
     log_file.flush()

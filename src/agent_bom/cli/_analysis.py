@@ -233,7 +233,14 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url, ten
 )
 @click.option("--output", "-o", "output_path", default=None, help="Write to file instead of stdout.")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress success messages when writing files.")
-def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str], quiet: bool) -> None:
+@click.option(
+    "--mermaid-limit",
+    type=click.IntRange(min=0),
+    default=80,
+    show_default=True,
+    help="Maximum nodes rendered for Mermaid output; 0 renders the full graph.",
+)
+def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str], quiet: bool, mermaid_limit: int) -> None:
     """Export the transitive dependency graph from a saved JSON scan report.
 
     \b
@@ -264,7 +271,10 @@ def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str], quiet: bool)
     if fmt == "dot":
         output = to_dot(graph)
     elif fmt == "mermaid":
-        output = to_mermaid(graph)
+        if mermaid_limit == 0:
+            output = to_mermaid(graph, max_nodes=None, max_edges=None)
+        else:
+            output = to_mermaid(graph, max_nodes=mermaid_limit)
     elif fmt == "graphml":
         output = to_graphml(graph)
     elif fmt == "cypher":

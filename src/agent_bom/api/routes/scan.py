@@ -709,7 +709,19 @@ async def get_context_graph(request: Request, job_id: str, agent: str | None = N
 
 
 @router.get("/v1/scan/{job_id}/graph-export", tags=["scan"], response_model=None)
-async def get_graph_export(request: Request, job_id: str, format: str = "json") -> dict | str | PlainTextResponse:
+async def get_graph_export(
+    request: Request,
+    job_id: str,
+    format: str = "json",
+    mermaid_limit: Annotated[
+        int,
+        Query(
+            ge=0,
+            le=5000,
+            description="Maximum nodes rendered for Mermaid output; 0 renders the full graph.",
+        ),
+    ] = 80,
+) -> dict | str | PlainTextResponse:
     """Export the dependency graph in graph-native formats.
 
     Query params:
@@ -718,6 +730,7 @@ async def get_graph_export(request: Request, job_id: str, format: str = "json") 
       ?format=mermaid   Mermaid flowchart
       ?format=graphml   GraphML with AIBOM attributes (yEd/Gephi/NetworkX)
       ?format=cypher    Neo4j Cypher import script
+      ?mermaid_limit=80 Maximum nodes rendered for Mermaid; 0 renders all
     """
     from fastapi.responses import PlainTextResponse
 
@@ -739,9 +752,20 @@ async def get_graph_export(request: Request, job_id: str, format: str = "json") 
     result = job.result if isinstance(job.result, dict) else {}
     graph = build_graph_from_scan_data(result)
 
+    def _render_mermaid(g):
+        if mermaid_limit == 0:
+            return PlainTextResponse(
+                to_mermaid(g, max_nodes=None, max_edges=None),
+                media_type="text/plain",
+            )
+        return PlainTextResponse(
+            to_mermaid(g, max_nodes=mermaid_limit),
+            media_type="text/plain",
+        )
+
     _formats = {
         "dot": lambda g: PlainTextResponse(to_dot(g), media_type="text/vnd.graphviz"),
-        "mermaid": lambda g: PlainTextResponse(to_mermaid(g), media_type="text/plain"),
+        "mermaid": _render_mermaid,
         "graphml": lambda g: PlainTextResponse(to_graphml(g), media_type="application/xml"),
         "cypher": lambda g: PlainTextResponse(to_cypher(g), media_type="text/plain"),
     }

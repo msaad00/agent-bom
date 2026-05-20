@@ -380,6 +380,36 @@ def test_to_mermaid_empty_graph():
     assert "-->" not in mmd
 
 
+def test_to_mermaid_elides_large_graph_by_default():
+    g = DepGraph()
+    for index in range(90):
+        g.add_node(f"pkg:{index}", f"pkg-{index}", "pkg")
+        if index:
+            g.add_edge(f"pkg:{index - 1}", f"pkg:{index}", "depends_on")
+
+    mmd = to_mermaid(g)
+
+    assert "Rendered 80 of 90 nodes" in mmd
+    assert "10 nodes / 10 edges omitted" in mmd
+    assert "pkg-0" in mmd
+    assert "pkg-89" not in mmd
+    assert "export JSON, DOT, GraphML, or Cypher for full graph" in mmd
+
+
+def test_to_mermaid_can_render_full_graph_when_requested():
+    g = DepGraph()
+    for index in range(3):
+        g.add_node(f"pkg:{index}", f"pkg-{index}", "pkg")
+        if index:
+            g.add_edge(f"pkg:{index - 1}", f"pkg:{index}", "depends_on")
+
+    mmd = to_mermaid(g, max_nodes=None, max_edges=None)
+
+    assert "Rendered" not in mmd
+    assert "omitted" not in mmd
+    assert "pkg-2" in mmd
+
+
 # ── to_json ──────────────────────────────────────────────────────────────────
 
 

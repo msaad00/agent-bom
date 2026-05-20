@@ -352,7 +352,16 @@ def to_dot(graph: DepGraph, title: str = "agent-bom dependency graph") -> str:
     return "\n".join(lines)
 
 
-def to_mermaid(graph: DepGraph) -> str:
+_MERMAID_DEFAULT_MAX_NODES = 80
+_MERMAID_DEFAULT_MAX_EDGES = 240
+
+
+def to_mermaid(
+    graph: DepGraph,
+    *,
+    max_nodes: int | None = _MERMAID_DEFAULT_MAX_NODES,
+    max_edges: int | None = _MERMAID_DEFAULT_MAX_EDGES,
+) -> str:
     """Render a :class:`DepGraph` as a Mermaid LR flowchart.
 
     Paste the output into a markdown fenced block (`` ```mermaid ``) to render
@@ -360,10 +369,18 @@ def to_mermaid(graph: DepGraph) -> str:
 
     Args:
         graph: Populated dependency graph.
+        max_nodes: Maximum rendered nodes before adding an elision marker.
+            ``None`` renders all nodes.
+        max_edges: Maximum rendered edges before adding an elision marker.
+            ``None`` renders all edges whose endpoints are visible.
 
     Returns:
         Mermaid flowchart string.
     """
+    if max_nodes is not None and max_nodes < 1:
+        raise ValueError("max_nodes must be at least 1 or None")
+    if max_edges is not None and max_edges < 1:
+        raise ValueError("max_edges must be at least 1 or None")
 
     id_map: dict[str, str] = {}
 
@@ -387,6 +404,16 @@ def to_mermaid(graph: DepGraph) -> str:
             "cve": "cve",
         }.get(kind, "pkg")
 
+    nodes = graph.nodes
+    visible_nodes = nodes if max_nodes is None else nodes[:max_nodes]
+    visible_node_ids = {node.id for node in visible_nodes}
+    visible_edges = [edge for edge in graph.edges if edge.source in visible_node_ids and edge.target in visible_node_ids]
+    if max_edges is not None:
+        visible_edges = visible_edges[:max_edges]
+
+    omitted_nodes = max(0, graph.node_count() - len(visible_nodes))
+    omitted_edges = max(0, graph.edge_count() - len(visible_edges))
+
     lines = [
         "flowchart LR",
         "    classDef provider fill:#4a9eff,color:#fff,stroke:#2563eb",
@@ -401,8 +428,17 @@ def to_mermaid(graph: DepGraph) -> str:
         "    classDef cve fill:#da3633,color:#fff,stroke:#991b1b",
         "",
     ]
+    if omitted_nodes or omitted_edges:
+        lines.insert(
+            1,
+            f"    %% Rendered {len(visible_nodes)} of {graph.node_count()} nodes and {len(visible_edges)} of {graph.edge_count()} edges.",
+        )
+        lines.insert(
+            -1,
+            "    classDef omitted fill:#111827,color:#fbbf24,stroke:#f59e0b,stroke-dasharray:4 2",
+        )
 
-    for node in graph.nodes:
+    for node in visible_nodes:
         nid = _safe_id(node.id)
         label = node.label.replace('"', "'")
         cls = _style_class(node.kind)
@@ -413,8 +449,12 @@ def to_mermaid(graph: DepGraph) -> str:
         else:
             lines.append(f'    {nid}("{label}"):::{cls}')
 
+    if omitted_nodes or omitted_edges:
+        omitted_label = f"{omitted_nodes} nodes / {omitted_edges} edges omitted; export JSON, DOT, GraphML, or Cypher for full graph"
+        lines.append(f'    omitted_summary["{omitted_label}"]:::omitted')
+
     lines.append("")
-    for edge in graph.edges:
+    for edge in visible_edges:
         src = _safe_id(edge.source)
         tgt = _safe_id(edge.target)
         lines.append(f"    {src} -->|{edge.kind}| {tgt}")

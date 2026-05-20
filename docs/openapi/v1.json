@@ -12921,7 +12921,7 @@
     },
     "/v1/scan/{job_id}/graph-export": {
       "get": {
-        "description": "Export the dependency graph in graph-native formats.\n\nQuery params:\n  ?format=json      JSON nodes/edges (default)\n  ?format=dot       Graphviz DOT\n  ?format=mermaid   Mermaid flowchart\n  ?format=graphml   GraphML with AIBOM attributes (yEd/Gephi/NetworkX)\n  ?format=cypher    Neo4j Cypher import script",
+        "description": "Export the dependency graph in graph-native formats.\n\nQuery params:\n  ?format=json      JSON nodes/edges (default)\n  ?format=dot       Graphviz DOT\n  ?format=mermaid   Mermaid flowchart\n  ?format=graphml   GraphML with AIBOM attributes (yEd/Gephi/NetworkX)\n  ?format=cypher    Neo4j Cypher import script\n  ?mermaid_limit=80 Maximum nodes rendered for Mermaid; 0 renders all",
         "operationId": "get_graph_export_v1_scan__job_id__graph_export_get",
         "parameters": [
           {
@@ -12941,6 +12941,20 @@
               "default": "json",
               "title": "Format",
               "type": "string"
+            }
+          },
+          {
+            "description": "Maximum nodes rendered for Mermaid output; 0 renders the full graph.",
+            "in": "query",
+            "name": "mermaid_limit",
+            "required": false,
+            "schema": {
+              "default": 80,
+              "description": "Maximum nodes rendered for Mermaid output; 0 renders the full graph.",
+              "maximum": 5000,
+              "minimum": 0,
+              "title": "Mermaid Limit",
+              "type": "integer"
             }
           }
         ],

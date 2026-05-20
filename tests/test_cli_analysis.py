@@ -183,10 +183,26 @@ def test_graph_cmd_mermaid(tmp_path):
     mock_graph = MagicMock()
     with (
         patch("agent_bom.output.graph_export.load_graph_from_scan", return_value=mock_graph),
-        patch("agent_bom.output.graph_export.to_mermaid", return_value="graph TD"),
+        patch("agent_bom.output.graph_export.to_mermaid", return_value="graph TD") as mermaid_mock,
     ):
         result = runner.invoke(graph_cmd, [str(scan_file), "-f", "mermaid"])
         assert result.exit_code == 0
+        mermaid_mock.assert_called_once_with(mock_graph, max_nodes=80)
+
+
+def test_graph_cmd_mermaid_limit_zero_renders_full_graph(tmp_path):
+    runner = CliRunner()
+    scan_file = tmp_path / "scan.json"
+    scan_file.write_text("{}")
+
+    mock_graph = MagicMock()
+    with (
+        patch("agent_bom.output.graph_export.load_graph_from_scan", return_value=mock_graph),
+        patch("agent_bom.output.graph_export.to_mermaid", return_value="graph TD") as mermaid_mock,
+    ):
+        result = runner.invoke(graph_cmd, [str(scan_file), "-f", "mermaid", "--mermaid-limit", "0"])
+        assert result.exit_code == 0
+        mermaid_mock.assert_called_once_with(mock_graph, max_nodes=None, max_edges=None)
 
 
 def test_graph_cmd_load_error(tmp_path):

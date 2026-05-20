@@ -21,23 +21,13 @@ import {
   Wrench,
 } from "lucide-react";
 import { api, type AgentBomManifestResponse } from "@/lib/api";
-
-function asString(value: unknown, fallback = ""): string {
-  return typeof value === "string" && value.trim() ? value : fallback;
-}
-
-function asNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-function asStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item)).filter(Boolean);
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-}
+import {
+  DEFAULT_MANIFEST_FILTERS,
+  deriveManifestRows,
+  filterManifestRows,
+  manifestFilterOptions,
+  type ManifestFilters,
+} from "@/lib/agent-bom-manifest";
 
 function downloadManifest(manifest: AgentBomManifestResponse) {
   const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
@@ -165,7 +155,7 @@ export default function AgentBomManifestPage() {
   const [manifest, setManifest] = useState<AgentBomManifestResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<ManifestFilters>(DEFAULT_MANIFEST_FILTERS);
 
   const load = () => {
     setLoading(true);
@@ -181,57 +171,14 @@ export default function AgentBomManifestPage() {
     load();
   }, []);
 
-  const rows = useMemo(() => {
-    if (!manifest) return [];
-    const agentsByName = new Map(
-      manifest.agents.map((agent) => {
-        const row = asRecord(agent);
-        return [asString(row.name), row] as const;
-      }),
-    );
-    const agentsById = new Map(
-      manifest.agents.map((agent) => {
-        const row = asRecord(agent);
-        return [asString(row.id, asString(row.canonical_id)), row] as const;
-      }),
-    );
-    const needle = query.trim().toLowerCase();
-    return manifest.mcp_servers
-      .map((server) => {
-        const serverRow = asRecord(server);
-        const refs = Array.isArray(serverRow.credential_refs) ? serverRow.credential_refs : [];
-        const tools = Array.isArray(serverRow.tools) ? serverRow.tools : [];
-        const observed = asRecord(serverRow.observed);
-        const agentName = asString(serverRow.agent_name, "local discovery");
-        const agent = agentsByName.get(agentName) ?? agentsById.get(agentName) ?? {};
-        const runtimeObserved = Boolean(observed.runtime_observed);
-        const gatewayRegistered = Boolean(observed.gateway_registered);
-        const configuredLocally = Boolean(observed.configured_locally);
-        const fleetPresent = Boolean(observed.fleet_present);
-        const runtimeState = runtimeObserved
-          ? gatewayRegistered
-            ? "gateway bound"
-            : configuredLocally || fleetPresent
-              ? "runtime observed"
-              : "shadow runtime"
-          : "inventory only";
-        return {
-          id: asString(serverRow.id, asString(serverRow.name, "server")),
-          agentName,
-          owner: asString(agent.owner, "unowned"),
-          environment: asString(agent.environment, "unknown"),
-          name: asString(serverRow.name, "unnamed"),
-          transport: asString(serverRow.transport, "unknown"),
-          authMode: asString(serverRow.auth_mode, "unknown"),
-          toolCount: asNumber(serverRow.tool_count) || tools.length,
-          credentialRefs: refs.map((ref) => (typeof ref === "object" && ref ? asString((ref as Record<string, unknown>).name) : "")).filter(Boolean),
-          runtimeState,
-          lastSeen: asString(observed.last_seen, "-"),
-          warnings: asStringList(asRecord(serverRow.security).warnings),
-        };
-      })
-      .filter((row) => !needle || `${row.agentName} ${row.owner} ${row.environment} ${row.name} ${row.transport} ${row.authMode} ${row.runtimeState}`.toLowerCase().includes(needle));
-  }, [manifest, query]);
+  const allRows = useMemo(() => (manifest ? deriveManifestRows(manifest) : []), [manifest]);
+  const rows = useMemo(() => filterManifestRows(allRows, filters), [allRows, filters]);
+  const options = useMemo(() => manifestFilterOptions(allRows), [allRows]);
+  const hasActiveFilters = JSON.stringify(filters) !== JSON.stringify(DEFAULT_MANIFEST_FILTERS);
+
+  const updateFilter = <K extends keyof ManifestFilters>(key: K, value: ManifestFilters[K]) => {
+    setFilters((current) => ({ ...current, [key]: value }));
+  };
 
   return (
     <main className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">
@@ -322,17 +269,102 @@ export default function AgentBomManifestPage() {
                 <div className="flex flex-col gap-3 border-b border-[var(--border)] p-4 md:flex-row md:items-center md:justify-between">
                   <div>
                     <h2 className="text-sm font-semibold">Agent and MCP inventory</h2>
-                    <p className="mt-1 text-xs text-[var(--muted-foreground)]">{rows.length} visible server rows</p>
+                    <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                      {rows.length} of {allRows.length} server rows visible
+                    </p>
                   </div>
                   <label className="relative w-full md:w-80">
                     <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[var(--muted-foreground)]" />
                     <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
+                      value={filters.query}
+                      onChange={(event) => updateFilter("query", event.target.value)}
                       placeholder="Search agents, servers, transports"
                       className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-2 pl-9 pr-3 text-sm outline-none focus:border-emerald-500"
                     />
                   </label>
+                </div>
+                <div className="grid gap-3 border-b border-[var(--border)] p-4 md:grid-cols-2 xl:grid-cols-6">
+                  <label className="flex flex-col gap-1 text-xs text-[var(--muted-foreground)]">
+                    Source
+                    <select
+                      value={filters.source}
+                      onChange={(event) => updateFilter("source", event.target.value)}
+                      className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
+                    >
+                      <option value="all">All sources</option>
+                      {options.sources.map((source) => (
+                        <option key={source} value={source}>
+                          {source}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-[var(--muted-foreground)]">
+                    Owner
+                    <select
+                      value={filters.owner}
+                      onChange={(event) => updateFilter("owner", event.target.value)}
+                      className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
+                    >
+                      <option value="all">All owners</option>
+                      {options.owners.map((owner) => (
+                        <option key={owner} value={owner}>
+                          {owner}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-[var(--muted-foreground)]">
+                    Risk
+                    <select
+                      value={filters.risk}
+                      onChange={(event) => updateFilter("risk", event.target.value as ManifestFilters["risk"])}
+                      className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
+                    >
+                      <option value="all">All risk</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-[var(--muted-foreground)]">
+                    Freshness
+                    <select
+                      value={filters.freshness}
+                      onChange={(event) => updateFilter("freshness", event.target.value as ManifestFilters["freshness"])}
+                      className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
+                    >
+                      <option value="all">All freshness</option>
+                      <option value="seen_24h">Seen 24h</option>
+                      <option value="seen_7d">Seen 7d</option>
+                      <option value="stale">Stale</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-[var(--muted-foreground)]">
+                    Runtime
+                    <select
+                      value={filters.runtime}
+                      onChange={(event) => updateFilter("runtime", event.target.value as ManifestFilters["runtime"])}
+                      className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
+                    >
+                      <option value="all">All runtime</option>
+                      <option value="gateway bound">Gateway bound</option>
+                      <option value="runtime observed">Runtime observed</option>
+                      <option value="shadow runtime">Shadow runtime</option>
+                      <option value="inventory only">Inventory only</option>
+                    </select>
+                  </label>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      disabled={!hasActiveFilters}
+                      onClick={() => setFilters(DEFAULT_MANIFEST_FILTERS)}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
@@ -340,8 +372,10 @@ export default function AgentBomManifestPage() {
                       <tr>
                         <th className="px-4 py-3 font-medium">Agent</th>
                         <th className="px-4 py-3 font-medium">Owner</th>
+                        <th className="px-4 py-3 font-medium">Source</th>
                         <th className="px-4 py-3 font-medium">Environment</th>
                         <th className="px-4 py-3 font-medium">MCP server</th>
+                        <th className="px-4 py-3 font-medium">Risk</th>
                         <th className="px-4 py-3 font-medium">Transport</th>
                         <th className="px-4 py-3 font-medium">Runtime</th>
                         <th className="px-4 py-3 font-medium">Tools</th>
@@ -354,8 +388,22 @@ export default function AgentBomManifestPage() {
                         <tr key={row.id}>
                           <td className="px-4 py-3 text-[var(--foreground)]">{row.agentName}</td>
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.owner}</td>
+                          <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.source}</td>
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.environment}</td>
                           <td className="px-4 py-3 font-medium text-[var(--foreground)]">{row.name}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`rounded-full px-2 py-1 text-xs ${
+                                row.riskLevel === "high"
+                                  ? "bg-red-500/10 text-red-300"
+                                  : row.riskLevel === "medium"
+                                    ? "bg-yellow-500/10 text-yellow-300"
+                                    : "bg-emerald-500/10 text-emerald-300"
+                              }`}
+                            >
+                              {row.riskLevel}
+                            </span>
+                          </td>
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.transport}</td>
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.runtimeState}</td>
                           <td className="px-4 py-3 text-[var(--foreground)]">{row.toolCount}</td>
@@ -363,6 +411,13 @@ export default function AgentBomManifestPage() {
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.lastSeen}</td>
                         </tr>
                       ))}
+                      {rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} className="px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
+                            No MCP servers match these filters. Run <code className="rounded bg-[var(--muted)] px-1.5 py-0.5">agent-bom manifest</code> to generate local evidence, or clear filters to inspect the full tenant manifest.
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                 </div>

@@ -27,6 +27,18 @@ def test_pr_security_gate_uses_real_self_scan_sarif_not_fixture() -> None:
     assert yaml.safe_load(workflow)["jobs"]["self-scan-pr"]
 
 
+def test_pr_security_gate_uses_sarif_findings_for_self_scan_exit() -> None:
+    workflow = (ROOT / ".github/workflows/pr-security-gate.yml").read_text(encoding="utf-8")
+    job = yaml.safe_load(workflow)["jobs"]["self-scan-pr"]
+    step = next(step for step in job["steps"] if step.get("id") == "self_scan")
+    script = step["run"]
+
+    assert "high_or_critical" in script
+    assert "sys.exit(1)" in script
+    assert 'exit "$SCAN_EXIT"' not in script
+    assert "self-scan returned non-zero but SARIF contains no blocking findings" in script
+
+
 def test_action_rejects_secrets_and_code_sarif_or_gate_contracts() -> None:
     action_text = (ROOT / "action.yml").read_text(encoding="utf-8")
     action = yaml.safe_load(action_text)

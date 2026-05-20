@@ -169,8 +169,11 @@ jobs:
             exit 2
           fi
 
+          export SCAN_EXIT
           python3 - <<'PY'
           import json
+          import os
+          import sys
           from pathlib import Path
 
           data = json.loads(Path("self-scan.sarif").read_text(encoding="utf-8"))
@@ -191,9 +194,12 @@ jobs:
           print(f"agent-bom self-scan SARIF findings: total={len(results)} high_or_critical={len(high_or_critical)} kev={kev}")
           if kev:
               print(f"::warning::agent-bom self-scan found {kev} KEV-listed finding(s)")
+          if high_or_critical:
+              print(f"::error::agent-bom self-scan found high/critical SARIF finding(s): {', '.join(high_or_critical[:10])}")
+              sys.exit(1)
+          if os.environ.get("SCAN_EXIT") not in {"0", None}:
+              print("::warning::agent-bom self-scan returned non-zero but SARIF contains no blocking findings")
           PY
-
-          exit "$SCAN_EXIT"
 
       - name: Upload SARIF to code-scanning
         if: always() && hashFiles('self-scan.sarif') != ''

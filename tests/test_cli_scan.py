@@ -1362,6 +1362,18 @@ def test_scan_format_mermaid_writes_file(tmp_path):
     assert out.exists(), "mermaid output file was not created"
 
 
+def test_scan_format_mermaid_accepts_mermaid_extension(tmp_path):
+    """--format mermaid accepts the explicit .mermaid extension."""
+    out = tmp_path / "diagram.mermaid"
+    with (
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "mermaid", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 0
+    assert out.exists(), "mermaid output file was not created"
+
+
 def test_scan_format_graph_html_writes_file(tmp_path):
     """--format graph-html writes an interactive HTML file."""
     out = tmp_path / "graph.html"

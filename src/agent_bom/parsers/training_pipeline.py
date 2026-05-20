@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.parsers.compliance_tags import tag_training_run
+from agent_bom.runtime.patterns import PII_PATTERNS, RESPONSE_INJECTION_PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,16 @@ _UNSAFE_FORMATS = {"pickle", "pkl", "joblib", "cloudpickle"}
 
 # Safe serialization formats
 _SAFE_FORMATS = {"safetensors", "onnx", "gguf", "ggml", "tflite", "pb"}
+_PIPELINE_PII_TYPES = {
+    "US SSN",
+    "Credit Card (Visa)",
+    "Credit Card (Mastercard)",
+    "Credit Card (Amex)",
+    "Date of Birth",
+    "Passport Number",
+    "IBAN",
+    "Medical Record Number",
+}
 
 
 @dataclass
@@ -157,6 +168,37 @@ def _has_credential(text: str) -> bool:
     """Check if text contains credential-like values."""
     lower = text.lower()
     return any(kw in lower for kw in _CREDENTIAL_KEYWORDS)
+
+
+def _content_security_flags(text: str, *, source: str) -> list[dict[str, str]]:
+    """Return content-level security flags for pipeline metadata."""
+    flags: list[dict[str, str]] = []
+    for pii_type, pattern in PII_PATTERNS:
+        if pii_type not in _PIPELINE_PII_TYPES:
+            continue
+        if pattern.search(text):
+            flags.append(
+                {
+                    "severity": "MEDIUM",
+                    "type": "SENSITIVE_DATA",
+                    "description": (
+                        f"{source} contains {pii_type}-like data. Remove direct PII from pipeline metadata and parameterize inputs."
+                    ),
+                }
+            )
+            break
+
+    for _name, pattern in RESPONSE_INJECTION_PATTERNS:
+        if pattern.search(text):
+            flags.append(
+                {
+                    "severity": "HIGH",
+                    "type": "PROMPT_INJECTION",
+                    "description": f"{source} contains instruction-override text that can poison agent or prompt execution.",
+                }
+            )
+            break
+    return flags
 
 
 def _parse_requirements(path: Path) -> list[str]:
@@ -400,6 +442,7 @@ def parse_kubeflow_pipeline_yaml(path: Path) -> TrainingPipelineScanResult | Non
             }
         )
 
+    run.security_flags.extend(_content_security_flags(content, source=f"Kubeflow pipeline '{run.name}'"))
     result.training_runs.append(run)
 
     # Create serving configs for container images
@@ -498,6 +541,7 @@ def parse_wandb_metadata(path: Path) -> TrainingRun | None:
                         }
                     )
                     break
+            run.security_flags.extend(_content_security_flags(config_text, source=f"W&B config for run '{run.name}'"))
         except OSError:
             pass
 

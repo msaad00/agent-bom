@@ -1312,6 +1312,29 @@ def test_cli_image_rejects_reference_and_tarball_together(monkeypatch):
     assert "Provide exactly one image reference or --tar/--image-tar path" in result.output
 
 
+def test_cli_image_output_json_extension_writes_report(monkeypatch, tmp_path):
+    from agent_bom.models import Package
+
+    output = tmp_path / "image-report.json"
+
+    monkeypatch.setattr(
+        "agent_bom.image.scan_image",
+        lambda image_ref, registry_user=None, registry_pass=None, platform=None: (
+            [Package(name="openssl", version="3.0.16", ecosystem="deb")],
+            "native",
+        ),
+    )
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", lambda *args, **kwargs: [])
+
+    result = CliRunner().invoke(main, ["image", "nginx:1.20.0", "-o", str(output), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    assert output.exists()
+    data = json.loads(output.read_text(encoding="utf-8"))
+    assert data["scan_sources"] == ["image"]
+    assert any(package["name"] == "openssl" for package in data["packages"])
+
+
 def test_cli_scan_has_k8s_flags():
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])

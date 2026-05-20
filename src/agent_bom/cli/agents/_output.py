@@ -64,7 +64,7 @@ _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     "pdf": ("agent-bom-report.pdf", (".pdf",)),
     "prometheus": ("agent-bom-metrics.prom", (".prom", ".txt")),
     "graph": ("agent-bom-graph.json", (".json",)),
-    "mermaid": ("agent-bom-diagram.mmd", (".mmd", ".md")),
+    "mermaid": ("agent-bom-diagram.mmd", (".mmd", ".mermaid", ".md")),
     "svg": ("agent-bom-supply-chain.svg", (".svg",)),
     "graph-html": ("agent-bom-graph.html", (".html", ".htm")),
     "badge": ("agent-bom-badge.json", (".json",)),
@@ -366,6 +366,8 @@ def render_output(
     elif output:
         if output.endswith(".cdx.json"):
             export_cyclonedx(report, output)
+        elif output.endswith(".json"):
+            export_json(report, output)
         elif output.endswith(".sarif"):
             export_sarif(report, output, exclude_unfixable=exclude_unfixable)
         elif output.endswith(".spdx.json"):

@@ -138,19 +138,19 @@ For the explicit capability matrix and supported Snowflake deployment modes, see
 
 ```mermaid
 flowchart LR
-    EP[Endpoints / CI / Repos] --> CLI[CLI / Action / Docker]
-    EP --> API[agent-bom API / serve]
+    EP["Endpoints / CI / Repos"] --> CLI["CLI / Action / Docker"]
+    EP --> API["agent-bom API / serve"]
     CLI --> API
-    API --> AUTH[API key auth / OIDC]
-    AUTH --> MW[Middleware\nRBAC + rate limit + trace context]
-    MW --> PG[(PostgreSQL / Supabase\ntransactional control plane)]
-    MW --> CH[(ClickHouse\nanalytics)]
-    MW --> SF[(Snowflake\npartial parity)]
-    MW --> AUDIT[HMAC audit log]
-    MW --> OBS[/health + /metrics + OTLP]
+    API --> AUTH["API key auth / OIDC"]
+    AUTH --> MW["Middleware<br/>RBAC + rate limit + trace context"]
+    MW --> PG[("PostgreSQL / Supabase<br/>transactional control plane")]
+    MW --> CH[("ClickHouse<br/>analytics")]
+    MW --> SF[("Snowflake<br/>partial parity")]
+    MW --> AUDIT["HMAC audit log"]
+    MW --> OBS["/health + /metrics + OTLP"]
 
-    PG --> RLS[RLS via app.tenant_id]
-    API --> UI[Dashboard / JSON / MCP / reports]
+    PG --> RLS["RLS via app.tenant_id"]
+    API --> UI["Dashboard / JSON / MCP / reports"]
 ```
 
 ## Related Docs

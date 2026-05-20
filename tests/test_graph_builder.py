@@ -851,6 +851,146 @@ class TestSkillAuditNodes:
         assert not g.has_edge("misconfig:skill_audit:unverified_server:3", "server:cursor:mcp-git")
 
 
+class TestAgenticIdentityGraphProjection:
+    def test_audit_projection_enters_unified_graph(self):
+        report = _minimal_report()
+        report["audit_events"] = [
+            {
+                "event_id": "evt-1",
+                "details": {
+                    "agentic_identity_graph": {
+                        "schema_version": "agentic_identity_graph.v1",
+                        "source": "proxy_tool_call",
+                        "nodes": [
+                            {
+                                "id": "agent:agent_id:agent:caller:agent-alpha",
+                                "entity_type": "agent",
+                                "label": "agent-alpha",
+                                "source_ref": {
+                                    "type": "agent",
+                                    "id": "agent-alpha",
+                                    "role": "caller",
+                                    "source_field": "agent_id",
+                                },
+                            },
+                            {
+                                "id": "tool_call:proxy_tool_call_evt-1",
+                                "entity_type": "tool_call",
+                                "label": "Tool call",
+                                "attributes": {"source": "proxy_tool_call", "event_id": "evt-1"},
+                            },
+                            {
+                                "id": "tool:tool:tool:invoked_tool:query_database",
+                                "entity_type": "tool",
+                                "label": "query_database",
+                                "source_ref": {
+                                    "type": "tool",
+                                    "id": "query_database",
+                                    "role": "invoked_tool",
+                                    "source_field": "tool",
+                                },
+                            },
+                            {
+                                "id": "credential_ref:credential_ref:credential_ref:credential_reference:redacted",
+                                "entity_type": "credential_ref",
+                                "label": "<reference>",
+                                "source_ref": {
+                                    "type": "credential_ref",
+                                    "id": "***REDACTED***",
+                                    "role": "credential_reference",
+                                    "source_field": "credential_ref",
+                                },
+                            },
+                            {
+                                "id": "resource:resource_id:resource:referenced_input:warehouse-prod",
+                                "entity_type": "resource",
+                                "label": "warehouse-prod",
+                                "source_ref": {
+                                    "type": "resource",
+                                    "id": "warehouse-prod",
+                                    "role": "referenced_input",
+                                    "source_field": "resource_id",
+                                },
+                            },
+                        ],
+                        "edges": [
+                            {
+                                "source": "agent:agent_id:agent:caller:agent-alpha",
+                                "target": "tool_call:proxy_tool_call_evt-1",
+                                "relationship": "invoked",
+                                "evidence": {"source": "proxy_tool_call", "event_id": "evt-1"},
+                            },
+                            {
+                                "source": "tool_call:proxy_tool_call_evt-1",
+                                "target": "tool:tool:tool:invoked_tool:query_database",
+                                "relationship": "called",
+                                "evidence": {"source": "proxy_tool_call", "event_id": "evt-1"},
+                            },
+                            {
+                                "source": "tool_call:proxy_tool_call_evt-1",
+                                "target": "credential_ref:credential_ref:credential_ref:credential_reference:redacted",
+                                "relationship": "used_credential",
+                                "evidence": {"source": "proxy_tool_call", "event_id": "evt-1"},
+                            },
+                            {
+                                "source": "tool_call:proxy_tool_call_evt-1",
+                                "target": "resource:resource_id:resource:referenced_input:warehouse-prod",
+                                "relationship": "accessed",
+                                "evidence": {"source": "proxy_tool_call", "event_id": "evt-1"},
+                            },
+                        ],
+                    }
+                },
+            }
+        ]
+
+        g = build_unified_graph_from_report(report, tenant_id="tenant-alpha")
+
+        assert "tool_call:proxy_tool_call_evt-1" in g.nodes
+        assert "credential_ref:credential_ref:credential_ref:credential_reference:redacted" in g.nodes
+        assert "resource:resource_id:resource:referenced_input:warehouse-prod" in g.nodes
+        assert g.nodes["tool_call:proxy_tool_call_evt-1"].entity_type == EntityType.TOOL_CALL
+        assert g.nodes["tool_call:proxy_tool_call_evt-1"].attributes["agentic_identity_graph_schema"] == "agentic_identity_graph.v1"
+        assert g.nodes["tool_call:proxy_tool_call_evt-1"].dimensions.surface == "runtime"
+        assert g.has_edge("agent:agent_id:agent:caller:agent-alpha", "tool_call:proxy_tool_call_evt-1")
+        assert g.has_edge("tool_call:proxy_tool_call_evt-1", "tool:tool:tool:invoked_tool:query_database")
+        assert g.has_edge(
+            "tool_call:proxy_tool_call_evt-1",
+            "credential_ref:credential_ref:credential_ref:credential_reference:redacted",
+        )
+        assert g.has_edge("tool_call:proxy_tool_call_evt-1", "resource:resource_id:resource:referenced_input:warehouse-prod")
+        accessed = next(
+            edge
+            for edge in g.edges
+            if edge.source == "tool_call:proxy_tool_call_evt-1"
+            and edge.target == "resource:resource_id:resource:referenced_input:warehouse-prod"
+        )
+        assert accessed.relationship == RelationshipType.ACCESSED
+        assert accessed.evidence["data_source"] == "runtime-identity"
+        assert accessed.evidence["tenant_id"] == "tenant-alpha"
+
+    def test_projection_unknown_nodes_and_edges_are_ignored(self):
+        report = _minimal_report()
+        report["agentic_identity_graph"] = {
+            "schema_version": "agentic_identity_graph.v1",
+            "source": "proxy_tool_call",
+            "nodes": [
+                {"id": "tool_call:known", "entity_type": "tool_call", "label": "known"},
+                {"id": "mystery:1", "entity_type": "mystery", "label": "skip"},
+            ],
+            "edges": [
+                {"source": "tool_call:known", "target": "mystery:1", "relationship": "called"},
+                {"source": "tool_call:known", "target": "tool_call:known", "relationship": "mystery"},
+            ],
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        assert "tool_call:known" in g.nodes
+        assert "mystery:1" not in g.nodes
+        assert not any(edge.source == "tool_call:known" and edge.target == "mystery:1" for edge in g.edges)
+
+
 class TestModelProvenance:
     def test_model_nodes_created(self):
         report = _minimal_report()

@@ -8,11 +8,13 @@ scan their own repo first, but it still looks like a real AI workspace:
 - one Cursor-style agent and one Claude Code-style agent
 - two MCP servers, including a shared server
 - credential environment variable names with placeholder values only
-- Python and npm manifests pinned to known-vulnerable demo versions
+- advisory-backed package versions declared in the inventory
 - a prompt file so instruction scanning has something concrete to inspect
 
 The sample is for product orientation, screenshots, demos, and local smoke
-tests. It does not contain real credentials.
+tests. It does not contain real credentials or installable vulnerable
+dependency manifests. The generated `agent-bom samples first-run` project writes
+the full Python and npm manifests for local demo scans.
 
 ## CLI Walkthrough
 
@@ -56,8 +58,10 @@ agent-bom agents \
   `lodash@4.17.20`) so the first scan has advisory-backed evidence.
 - **Credentials:** only environment variable names are modeled. Placeholder
   values such as `${OPENAI_API_KEY}` are not secrets.
-- **Evidence:** project manifests and lockfiles provide package provenance
-  separate from the hand-authored inventory.
+- **Evidence:** the checked-in fixture keeps package evidence in
+  `inventory.json` so repository security gates do not treat demo dependencies
+  as installable project dependencies. The generated first-run sample includes
+  concrete manifests for local scanning.
 
 ## Dashboard Flow
 

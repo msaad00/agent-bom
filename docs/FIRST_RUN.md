@@ -96,15 +96,18 @@ agent-bom agents \
   --enrich
 ```
 
-This path shows how real inputs fit together with intentionally vulnerable
-first-run fixture dependencies:
+This path shows how real inputs fit together with advisory-backed first-run
+fixture dependencies:
 
 - `inventory.json` models agents, MCP servers, credential env var names, and
-  tools.
-- `services/research-mcp/requirements.txt` contributes Python package
-  evidence.
-- `services/browser-helper/package-lock.json` contributes npm lockfile
-  evidence for `axios@0.21.1` and `lodash@4.17.20`.
+  tools, including package evidence for vulnerable demo versions.
+- The checked-in fixture intentionally avoids installable vulnerable
+  `requirements.txt`, `package.json`, and lockfile manifests so repository
+  dependency-review gates do not treat demo dependencies as application
+  dependencies.
+- `agent-bom samples first-run` writes the full generated sample, including
+  Python and npm manifests, when a local walkthrough needs project-manifest
+  scanning.
 - `prompts/agent-system-prompt.md` is available for instruction and prompt
   scanning workflows.
 

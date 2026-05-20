@@ -28,9 +28,12 @@ def test_first_run_inventory_matches_schema() -> None:
     assert server_names == {"research-filesystem", "browser-helper"}
 
 
-def test_first_run_project_manifests_are_scannable() -> None:
-    result = scan_project_directory(SAMPLE)
-    summary = summarize_project_inventory(SAMPLE, result)
+def test_generated_first_run_project_manifests_are_scannable(tmp_path: Path) -> None:
+    target = tmp_path / "agent-bom-first-run"
+    write_first_run_sample(target)
+
+    result = scan_project_directory(target)
+    summary = summarize_project_inventory(target, result)
 
     assert summary["manifest_directories"] == 2
     assert summary["package_count"] >= 5
@@ -41,15 +44,8 @@ def test_first_run_project_manifests_are_scannable() -> None:
 
 
 def test_first_run_sample_uses_known_vulnerable_versions() -> None:
-    requirements = (SAMPLE / "services" / "research-mcp" / "requirements.txt").read_text(encoding="utf-8")
-    package_json = json.loads((SAMPLE / "services" / "browser-helper" / "package.json").read_text(encoding="utf-8"))
     inventory = load_inventory(str(SAMPLE / "inventory.json"))
 
-    assert "flask==2.2.0" in requirements
-    assert "werkzeug==2.2.2" in requirements
-    assert "requests==2.28.0" in requirements
-    assert package_json["dependencies"]["axios"] == "0.21.1"
-    assert package_json["dependencies"]["lodash"] == "4.17.20"
     package_versions = {
         (package["ecosystem"], package["name"], package["version"])
         for agent in inventory["agents"]
@@ -58,6 +54,20 @@ def test_first_run_sample_uses_known_vulnerable_versions() -> None:
     }
     assert ("pypi", "flask", "2.2.0") in package_versions
     assert ("npm", "axios", "0.21.1") in package_versions
+
+
+def test_generated_first_run_manifests_use_known_vulnerable_versions(tmp_path: Path) -> None:
+    target = tmp_path / "agent-bom-first-run"
+    write_first_run_sample(target)
+
+    requirements = (target / "services" / "research-mcp" / "requirements.txt").read_text(encoding="utf-8")
+    package_json = json.loads((target / "services" / "browser-helper" / "package.json").read_text(encoding="utf-8"))
+
+    assert "flask==2.2.0" in requirements
+    assert "werkzeug==2.2.2" in requirements
+    assert "requests==2.28.0" in requirements
+    assert package_json["dependencies"]["axios"] == "0.21.1"
+    assert package_json["dependencies"]["lodash"] == "4.17.20"
 
 
 def test_first_run_prompt_is_recognized_by_skills_scan() -> None:

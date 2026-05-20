@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
+import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import main
 from agent_bom.inventory import load_inventory
+from agent_bom.models import Package
 from agent_bom.parsers import scan_project_directory, summarize_project_inventory
 from agent_bom.samples import write_first_run_sample
+from agent_bom.scanners import ScanOptions, scan_packages
 from agent_bom.skills_service import scan_skill_targets
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +72,66 @@ def test_generated_first_run_manifests_use_known_vulnerable_versions(tmp_path: P
     assert "requests==2.28.0" in requirements
     assert package_json["dependencies"]["axios"] == "0.21.1"
     assert package_json["dependencies"]["lodash"] == "4.17.20"
+
+
+@pytest.mark.asyncio
+async def test_generated_first_run_manifests_resolve_vulnerability_findings(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    target = tmp_path / "agent-bom-first-run"
+    write_first_run_sample(target)
+
+    result = scan_project_directory(target)
+    packages: list[Package] = [package for package_list in result.values() for package in package_list]
+    package_versions = {(package.ecosystem, package.name, package.version) for package in packages}
+
+    assert ("pypi", "flask", "2.2.0") in package_versions
+    assert ("npm", "axios", "0.21.1") in package_versions
+
+    async def fake_osv_batch(_packages: list[Package]) -> dict[str, list[dict[str, object]]]:
+        return {
+            "pypi:flask@2.2.0": [
+                {
+                    "id": "GHSA-first-run-flask",
+                    "aliases": ["CVE-2023-0001"],
+                    "summary": "first-run Flask advisory fixture",
+                    "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+                    "affected": [
+                        {
+                            "package": {"ecosystem": "PyPI", "name": "flask"},
+                            "versions": ["2.2.0"],
+                        }
+                    ],
+                    "database_specific": {"cwe_ids": ["CWE-79"]},
+                    "references": [{"type": "ADVISORY", "url": "https://example.test/flask"}],
+                }
+            ],
+            "npm:axios@0.21.1": [
+                {
+                    "id": "GHSA-first-run-axios",
+                    "summary": "first-run Axios advisory fixture",
+                    "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N"}],
+                    "affected": [
+                        {
+                            "package": {"ecosystem": "npm", "name": "axios"},
+                            "versions": ["0.21.1"],
+                        }
+                    ],
+                    "references": [{"type": "ADVISORY", "url": "https://example.test/axios"}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("agent_bom.scanners._scan_packages_local_db", lambda _packages: (0, set()))
+    monkeypatch.setattr("agent_bom.scanners.query_osv_batch", fake_osv_batch)
+
+    total = await scan_packages(packages, options=ScanOptions(offline=False))
+
+    assert total == 2
+    vulnerable_packages = {(package.ecosystem, package.name, package.version) for package in packages if package.vulnerabilities}
+    assert ("pypi", "flask", "2.2.0") in vulnerable_packages
+    assert ("npm", "axios", "0.21.1") in vulnerable_packages
 
 
 def test_first_run_prompt_is_recognized_by_skills_scan() -> None:

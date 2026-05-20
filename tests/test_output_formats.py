@@ -782,7 +782,7 @@ def test_svg_paginates_dense_node_columns() -> None:
     packages = [_make_pkg(f"pkg-{idx:02d}", "1.0.0", "npm") for idx in range(55)]
     report = _make_report(agents=[_make_agent(servers=[_make_server("dense-server", packages=packages)])])
 
-    svg = to_svg(report, [])
+    svg = to_svg(report, [], max_rows_per_column=None)
 
     assert 'id="page-1"' in svg
     assert 'id="page-2"' in svg

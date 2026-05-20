@@ -447,9 +447,11 @@ def build_graph_elements(
                                     "data": {
                                         "id": cve_id,
                                         "label": f"{vuln_info['id']}\n{sev.upper()}",
-                                        "type": f"cve_{sev}",
+                                        "type": "cve",
+                                        "kind": "cve",
                                         "tip": (f"{vuln_info['id']}\nSeverity: {sev}\n{vuln_info['summary']}"),
                                         "severity": sev,
+                                        "severityClass": f"cve_{sev}",
                                         "severityWeight": severity_weight,
                                         "cvssScore": vuln_info.get("cvss_score", 0),
                                         "summary": vuln_info.get("summary", ""),
@@ -516,7 +518,7 @@ def build_attack_flow_elements(
     propagation from vulnerability to impacted assets.
 
     Node types:
-      - ``cve_*``      — CVE/advisory (severity-colored diamond)
+      - ``cve``        — CVE/advisory with separate severity metadata
       - ``pkg_vuln``   — vulnerable package
       - ``server``     — MCP server affected
       - ``credential`` — exposed credential (key icon)
@@ -558,7 +560,13 @@ def build_attack_flow_elements(
         score_text = f"\nCVSS: {v.cvss_score:.1f}" if v.cvss_score else ""
         fix_text = f"\nFix: {v.fixed_version}" if v.fixed_version else "\nNo fix available"
         _add_node(
-            cve_id, label=v.id, type=f"cve_{sev}", tip=f"{v.id}\nSeverity: {sev}{score_text}\nBlast score: {br.risk_score:.1f}{fix_text}"
+            cve_id,
+            label=v.id,
+            type="cve",
+            kind="cve",
+            severity=sev,
+            severityClass=f"cve_{sev}",
+            tip=f"{v.id}\nSeverity: {sev}{score_text}\nBlast score: {br.risk_score:.1f}{fix_text}",
         )
 
         # Package node
@@ -896,15 +904,15 @@ const cy=cytoscape({{
       'background-color':'#3b1a1a','border-color':'#da3633',
       'width':'mapData(vulnCount, 1, 15, 180, 280)','height':58,'text-max-width':220
     }}}},
-    {{selector:'node[type^="cve_critical"]',style:{{'background-color':'#ff3b30','color':'#fff',
+    {{selector:'node[type="cve"][severity="critical"], node[type^="cve_critical"]',style:{{'background-color':'#ff3b30','color':'#fff',
       'shape':'diamond','width':160,'height':70}}}},
-    {{selector:'node[type^="cve_high"]',style:{{'background-color':'#ff8a24','color':'#fff',
+    {{selector:'node[type="cve"][severity="high"], node[type^="cve_high"]',style:{{'background-color':'#ff8a24','color':'#fff',
       'shape':'diamond','width':140,'height':60}}}},
-    {{selector:'node[type^="cve_medium"]',style:{{'background-color':'#ffd33d','color':'#000',
+    {{selector:'node[type="cve"][severity="medium"], node[type^="cve_medium"]',style:{{'background-color':'#ffd33d','color':'#000',
       'shape':'diamond','width':120,'height':52}}}},
-    {{selector:'node[type^="cve_low"]',style:{{'background-color':'#6e7681','color':'#fff',
+    {{selector:'node[type="cve"][severity="low"], node[type^="cve_low"]',style:{{'background-color':'#6e7681','color':'#fff',
       'shape':'diamond','width':100,'height':44}}}},
-    {{selector:'node[type^="cve_unknown"]',style:{{'background-color':'#4b5563','color':'#d1d5db',
+    {{selector:'node[type="cve"][severity="unknown"], node[type^="cve_unknown"]',style:{{'background-color':'#4b5563','color':'#d1d5db',
       'shape':'roundrectangle','width':90,'height':40,'opacity':0.66}}}},
     {{selector:'edge',style:{{'width':1.5,'line-color':'#444','target-arrow-color':'#444',
       'target-arrow-shape':'triangle','curve-style':'bezier','arrow-scale':0.8,'opacity':0.7}}}},
@@ -1130,8 +1138,10 @@ function packageExpansionElements(node){{
         data: {{
           id: cveId,
           label: `${{vulnId}}\\n${{severity.toUpperCase()}}`,
-          type: `cve_${{severity}}`,
+          type: 'cve',
+          kind: 'cve',
           severity,
+          severityClass: `cve_${{severity}}`,
           severityWeight: 1,
           summary: vulnInfo.summary || '',
           fixVersion: vulnInfo.fix_version || '',

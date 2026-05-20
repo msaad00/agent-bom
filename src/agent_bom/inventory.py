@@ -30,6 +30,7 @@ Usage::
 from __future__ import annotations
 
 import csv
+import difflib
 import io
 import json
 import logging
@@ -56,6 +57,10 @@ _ECOSYSTEM_ALIASES = {
     "crates": "cargo",
     "dotnet": "nuget",
 }
+
+
+class InventoryValidationError(ValueError):
+    """Raised when inventory schema validation fails with operator guidance."""
 
 
 def _inventory_schema_path(version: str = _DEFAULT_INVENTORY_SCHEMA_VERSION) -> Path | None:
@@ -141,8 +146,46 @@ def _validate_inventory_payload(data: Any) -> dict[str, Any]:
     if errors:
         first = errors[0]
         path = " -> ".join(str(part) for part in first.path) or "(root)"
-        raise ValueError(f"Inventory schema validation failed at {path}: {first.message}")
+        suggestion = _inventory_error_suggestion(first)
+        details = f"{first.message}{suggestion}"
+        raise InventoryValidationError(f"Inventory schema validation failed at {path}: {details}")
     return data
+
+
+def _inventory_error_suggestion(error: Any) -> str:
+    """Return a short "did you mean" hint for common schema mistakes."""
+    if error.validator == "additionalProperties" and isinstance(error.instance, dict):
+        allowed = set((error.schema or {}).get("properties", {}).keys())
+        unexpected = sorted(set(error.instance.keys()) - allowed)
+        hint = _closest_name_hint(unexpected, allowed)
+        if hint:
+            return hint
+
+    if error.validator == "required" and isinstance(error.instance, dict):
+        required = set(error.validator_value or [])
+        missing = sorted(required - set(error.instance.keys()))
+        hint = _closest_name_hint(missing, error.instance.keys(), reverse=True)
+        if hint:
+            return hint
+
+    if error.validator == "enum" and isinstance(error.instance, str):
+        allowed_values = [str(value) for value in error.validator_value or []]
+        match = difflib.get_close_matches(error.instance, allowed_values, n=1, cutoff=0.72)
+        if match:
+            return f" Did you mean {match[0]!r}?"
+
+    return ""
+
+
+def _closest_name_hint(candidates: list[str], choices: Any, *, reverse: bool = False) -> str:
+    choice_list = [str(choice) for choice in choices]
+    for candidate in candidates:
+        match = difflib.get_close_matches(str(candidate), choice_list, n=1, cutoff=0.72)
+        if match:
+            if reverse:
+                return f" Did you mean {candidate!r} instead of {match[0]!r}?"
+            return f" Did you mean {match[0]!r} instead of {candidate!r}?"
+    return ""
 
 
 def _normalize_inventory_ecosystem(ecosystem: str) -> str:

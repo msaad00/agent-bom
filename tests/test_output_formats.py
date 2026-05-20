@@ -774,3 +774,16 @@ def test_cytoscape_package_nodes_include_version_provenance():
     assert package["versionSource"] == "lockfile"
     assert package["versionConfidence"] == "exact"
     assert '"version_source": "lockfile"' in package["versionProvenance"]
+
+
+def test_svg_paginates_dense_node_columns() -> None:
+    from agent_bom.output.svg import to_svg
+
+    packages = [_make_pkg(f"pkg-{idx:02d}", "1.0.0", "npm") for idx in range(55)]
+    report = _make_report(agents=[_make_agent(servers=[_make_server("dense-server", packages=packages)])])
+
+    svg = to_svg(report, [])
+
+    assert 'id="page-1"' in svg
+    assert 'id="page-2"' in svg
+    assert "55 packages" in svg

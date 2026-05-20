@@ -1911,7 +1911,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
           }},
         }},
         {{
-          selector: 'node[type^="cve_critical"]',
+          selector: 'node[type="cve"][severity="critical"], node[type^="cve_critical"]',
           style: {{
             'background-color': '#991b1b',
             'border-color': '#f87171',
@@ -1931,7 +1931,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
           }},
         }},
         {{
-          selector: 'node[type^="cve_high"]',
+          selector: 'node[type="cve"][severity="high"], node[type^="cve_high"]',
           style: {{
             'background-color': '#9a3412',
             'border-color': '#fb923c',
@@ -1951,7 +1951,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
           }},
         }},
         {{
-          selector: 'node[type^="cve_medium"], node[type^="cve_low"], node[type^="cve_none"]',
+          selector: 'node[type="cve"][severity="medium"], node[type="cve"][severity="low"], node[type="cve"][severity="none"], node[type^="cve_medium"], node[type^="cve_low"], node[type^="cve_none"]',
           style: {{
             'background-color': '#854d0e',
             'border-color': '#fbbf24',
@@ -2054,10 +2054,11 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     function showSidebar(node) {{
       var d = node.data();
       var t = d.type || '';
-      var typeLabels = {{'provider':'Provider','agent':'Agent','server_clean':'MCP Server','server_cred':'MCP Server','server_vuln':'MCP Server','pkg_vuln':'Package'}};
-      var typeLabel = typeLabels[t] || (t.indexOf('cve_')===0 ? 'Vulnerability' : t);
+      var isCveNode = t === 'cve' || t.indexOf('cve_')===0;
+      var typeLabels = {{'provider':'Provider','agent':'Agent','server_clean':'MCP Server','server_cred':'MCP Server','server_vuln':'MCP Server','pkg_vuln':'Package','cve':'Vulnerability'}};
+      var typeLabel = typeLabels[t] || (isCveNode ? 'Vulnerability' : t);
       var typeColors = {{'provider':'#818cf8','agent':'#3b82f6','server_clean':'#10b981','server_cred':'#f59e0b','server_vuln':'#ef4444','pkg_vuln':'#dc2626'}};
-      var badgeColor = typeColors[t] || (t.indexOf('cve_')===0 ? '#f87171' : '#64748b');
+      var badgeColor = typeColors[t] || (isCveNode ? '#f87171' : '#64748b');
 
       document.getElementById('sidebarNodeType').textContent = typeLabel;
       document.getElementById('sidebarNodeType').style.borderColor = badgeColor;
@@ -2074,7 +2075,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         var h = '<div class="sidebar-label">Connected (' + neighbors.length + ')</div><ul class="sidebar-list">';
         neighbors.forEach(function(n) {{
           var nt = n.data('type') || '';
-          var icon = nt === 'agent' ? '&#x1f916;' : nt.indexOf('server')===0 ? '&#x2699;' : nt === 'pkg_vuln' ? '&#x1f4e6;' : nt.indexOf('cve_')===0 ? '&#x1f41b;' : '&#x25cf;';
+          var icon = nt === 'agent' ? '&#x1f916;' : nt.indexOf('server')===0 ? '&#x2699;' : nt === 'pkg_vuln' ? '&#x1f4e6;' : (nt === 'cve' || nt.indexOf('cve_')===0) ? '&#x1f41b;' : '&#x25cf;';
           h += '<li>' + icon + ' ' + escHtml((n.data('label') || n.data('id')).replace('\\n',' ')) + '</li>';
         }});
         h += '</ul>';
@@ -2135,8 +2136,8 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       }}
 
       // CVE
-      if (t.indexOf('cve_')===0) {{
-        var sev = t.replace('cve_', '');
+      if (isCveNode) {{
+        var sev = d.severity || t.replace('cve_', '');
         var mp = [];
         if (sev) mp.push('Severity: ' + sev.toUpperCase());
         if (d.cvssScore) mp.push('CVSS: ' + d.cvssScore);
@@ -2213,8 +2214,8 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         var checked = Array.from(document.querySelectorAll('.graph-sev-filter:checked')).map(function(c) {{ return c.value; }});
         cy.nodes().forEach(function(n) {{
           var t = n.data('type') || '';
-          if (t.startsWith('cve_')) {{
-            var sev = t.replace('cve_', '');
+          if (t === 'cve' || t.startsWith('cve_')) {{
+            var sev = n.data('severity') || t.replace('cve_', '');
             if (checked.indexOf(sev) === -1) {{
               n.style('display', 'none');
               n.connectedEdges().style('display', 'none');
@@ -2294,7 +2295,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       }}}});
 
       // Vulnerability node: open in OSV
-      if (t.indexOf('cve_')===0) {{
+      if (t === 'cve' || t.indexOf('cve_')===0) {{
         var vid = d.label || '';
         items.push({{sep:true}});
         items.push({{icon:'&#x1f517;',label:'Open in OSV',action:function(){{
@@ -2363,10 +2364,10 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       cy.nodes().forEach(function(n) {{
         var pos = n.position(); var t = n.data('type') || '';
         var colors = {{'provider':'#818cf8','agent':'#3b82f6','server_clean':'#10b981','server_cred':'#f59e0b','server_vuln':'#ef4444','pkg_vuln':'#dc2626'}};
-        ctx2d.fillStyle = colors[t] || (t.indexOf('cve_')===0 ? '#f87171' : '#64748b');
+        ctx2d.fillStyle = colors[t] || (t === 'cve' || t.indexOf('cve_')===0 ? '#f87171' : '#64748b');
         var nx = pos.x * sc + offX, ny = pos.y * sc + offY;
         ctx2d.beginPath();
-        if (t.indexOf('cve_')===0) {{
+        if (t === 'cve' || t.indexOf('cve_')===0) {{
           // Diamond
           ctx2d.moveTo(nx, ny - 4); ctx2d.lineTo(nx + 5, ny); ctx2d.lineTo(nx, ny + 4); ctx2d.lineTo(nx - 5, ny);
         }} else {{
@@ -2404,7 +2405,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     var nodeCounts = {{}};
     cy.nodes().forEach(function(n) {{
       var t = n.data('type') || 'other';
-      if (t.indexOf('cve_')===0) t = 'cve';
+      if (t === 'cve' || t.indexOf('cve_')===0) t = 'cve';
       else if (t.indexOf('server_')===0) t = 'server';
       nodeCounts[t] = (nodeCounts[t] || 0) + 1;
     }});
@@ -2496,7 +2497,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
       elements: ATTACK_FLOW,
       style: [
         {{
-          selector: 'node[type^="cve_"]',
+          selector: 'node[type="cve"], node[type^="cve_"]',
           style: {{
             'shape': 'diamond',
             'width': 120,
@@ -2513,7 +2514,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
           }},
         }},
         {{
-          selector: 'node[type="cve_critical"]',
+          selector: 'node[type="cve"][severity="critical"], node[type="cve_critical"]',
           style: {{
             'background-color': '#7f1d1d',
             'border-color': '#ef4444',
@@ -2527,7 +2528,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
           }},
         }},
         {{
-          selector: 'node[type="cve_high"]',
+          selector: 'node[type="cve"][severity="high"], node[type="cve_high"]',
           style: {{
             'background-color': '#9a3412',
             'border-color': '#fb923c',
@@ -2539,7 +2540,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
           }},
         }},
         {{
-          selector: 'node[type="cve_medium"], node[type="cve_low"], node[type="cve_none"]',
+          selector: 'node[type="cve"][severity="medium"], node[type="cve"][severity="low"], node[type="cve"][severity="none"], node[type="cve_medium"], node[type="cve_low"], node[type="cve_none"]',
           style: {{
             'background-color': '#854d0e',
             'border-color': '#fbbf24',
@@ -2794,7 +2795,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     var afCounts = {{}};
     cyAtk.nodes().forEach(function(n) {{
       var t = n.data('type') || 'other';
-      if (t.indexOf('cve_')===0) t = 'cve';
+      if (t === 'cve' || t.indexOf('cve_')===0) t = 'cve';
       afCounts[t] = (afCounts[t] || 0) + 1;
     }});
     var afParts = [];

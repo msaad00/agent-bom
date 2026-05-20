@@ -119,10 +119,22 @@ def _sync_runtime_consoles(console: Console) -> None:
             setattr(module, "console", console)
 
 
+def _coerce_agent_type_for_inventory(raw_value: object, *, agent_name: str):
+    """Map unknown pushed-inventory agent types to custom without aborting scans."""
+    from agent_bom.models import AgentType
+
+    value = str(raw_value or "custom").strip() or "custom"
+    try:
+        return AgentType(value)
+    except ValueError:
+        logger.warning("Unknown inventory agent_type %r for %s; treating as custom", value, agent_name)
+        return AgentType.CUSTOM
+
+
 def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list:
     """Build Agent objects from parsed inventory dict (JSON or CSV)."""
     from agent_bom.asset_provenance import sanitize_discovery_provenance
-    from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+    from agent_bom.models import Agent, MCPServer, MCPTool, Package, TransportType
 
     agents = []
     inventory_provenance = sanitize_discovery_provenance(
@@ -223,7 +235,10 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
 
         agent = Agent(
             name=agent_data.get("name", "unknown"),
-            agent_type=AgentType(agent_data.get("agent_type", agent_data.get("type", "custom"))),
+            agent_type=_coerce_agent_type_for_inventory(
+                agent_data.get("agent_type", agent_data.get("type", "custom")),
+                agent_name=agent_data.get("name", "unknown"),
+            ),
             config_path=agent_data.get("config_path", source_path),
             mcp_servers=mcp_servers,
             version=agent_data.get("version"),

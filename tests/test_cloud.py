@@ -665,6 +665,8 @@ def test_graph_cve_nodes():
     cve_nodes = [e for e in elements if "cve:" in e.get("data", {}).get("id", "")]
     assert len(cve_nodes) >= 1
     assert cve_nodes[0]["data"]["label"] == "CVE-2024-1234\nHIGH"
+    assert cve_nodes[0]["data"]["type"] == "cve"
+    assert cve_nodes[0]["data"]["kind"] == "cve"
     assert cve_nodes[0]["data"]["severity"] == "high"
     affects_edges = [e for e in elements if e.get("data", {}).get("type") == "affects"]
     assert len(affects_edges) >= 1
@@ -786,7 +788,7 @@ def test_attack_flow_elements_structure():
 
     # Should have CVE, package, and server/agent nodes
     node_types = {n["data"].get("type", "") for n in nodes}
-    assert any(t.startswith("cve_") for t in node_types), "Missing CVE nodes"
+    assert "cve" in node_types, "Missing CVE nodes"
     assert "pkg_vuln" in node_types, "Missing package nodes"
 
     # Should have exploits and runs_on edge types

@@ -33,6 +33,9 @@ _NODE_H = 44
 _NODE_RX = 8
 _ROW_GAP = 14
 _HEADER_H = 80
+_ROWS_PER_PAGE = 50
+_PAGE_HEADER_H = 34
+_PAGE_GAP = 28
 
 # ── Color palette ─────────────────────────────────────────────────────────────
 
@@ -174,16 +177,21 @@ def to_svg(
     # ── Assign Y positions ────────────────────────────────────────────────
     columns = [providers, agents, servers, packages, cves]
     max_rows = max(len(col) for col in columns) if columns else 1
-    total_h = _HEADER_H + max_rows * (_NODE_H + _ROW_GAP) + 40
+    page_count = max(1, (max_rows + _ROWS_PER_PAGE - 1) // _ROWS_PER_PAGE)
+    page_h = _PAGE_HEADER_H + min(max_rows, _ROWS_PER_PAGE) * (_NODE_H + _ROW_GAP) + _PAGE_GAP
+    total_h = _HEADER_H + page_count * page_h + 40
 
     col_positions = [_COL_PROVIDER, _COL_AGENT, _COL_SERVER, _COL_PACKAGE, _COL_CVE]
     node_y_map: dict[str, float] = {}
+    node_page_map: dict[str, int] = {}
 
     for col_items, _x in zip(columns, col_positions):
-        col_h = len(col_items) * (_NODE_H + _ROW_GAP)
-        start_y = _HEADER_H + (total_h - _HEADER_H - col_h) / 2
         for i, item in enumerate(col_items):
-            node_y_map[item["id"]] = start_y + i * (_NODE_H + _ROW_GAP)
+            page_idx = i // _ROWS_PER_PAGE
+            row_idx = i % _ROWS_PER_PAGE
+            page_top = _HEADER_H + page_idx * page_h
+            node_y_map[item["id"]] = page_top + _PAGE_HEADER_H + row_idx * (_NODE_H + _ROW_GAP)
+            node_page_map[item["id"]] = page_idx
 
     total_w = _COL_CVE + _NODE_W + 60 if cves else _COL_PACKAGE + _NODE_W + 60
 
@@ -236,6 +244,17 @@ def to_svg(
             f"{label}</text>"
         )
 
+    if page_count > 1:
+        for page_idx in range(page_count):
+            page_top = _HEADER_H + page_idx * page_h
+            parts.append(
+                f'<g id="page-{page_idx + 1}">'
+                f'<rect x="20" y="{page_top + 2}" width="{total_w - 40}" height="{page_h - _PAGE_GAP / 2}" '
+                f'fill="none" stroke="#d7dde3" stroke-width="1" stroke-dasharray="6 6"/>'
+                f'<text x="34" y="{page_top + 23}" font-size="12" font-weight="600" fill="#59636e">'
+                f"Page {page_idx + 1} of {page_count}</text></g>"
+            )
+
     # Edges (draw first so nodes appear on top)
     all_edges = provider_to_agents + agent_to_servers + server_to_packages + package_to_cves
     col_x_map = {}
@@ -251,11 +270,15 @@ def to_svg(
         col_x_map[item["id"]] = _COL_CVE
 
     seen_edges: set[tuple[str, str]] = set()
+    skipped_cross_page_edges = 0
     for src, tgt in all_edges:
         if (src, tgt) in seen_edges:
             continue
         seen_edges.add((src, tgt))
         if src not in node_y_map or tgt not in node_y_map:
+            continue
+        if node_page_map.get(src, 0) != node_page_map.get(tgt, 0):
+            skipped_cross_page_edges += 1
             continue
         sx = col_x_map.get(src, 0) + _NODE_W
         sy = node_y_map[src] + _NODE_H / 2
@@ -265,6 +288,12 @@ def to_svg(
         parts.append(
             f'<path d="M {sx} {sy} C {mid} {sy}, {mid} {ty}, {tx} {ty}" '
             f'fill="none" stroke="#ccc" stroke-width="1.5" marker-end="url(#arrow)"/>'
+        )
+
+    if skipped_cross_page_edges:
+        parts.append(
+            f'<text x="{total_w / 2}" y="{total_h - 18}" text-anchor="middle" font-size="12" fill="#6b7280">'
+            f"{skipped_cross_page_edges} cross-page relationships summarized to keep dense SVG pages readable</text>"
         )
 
     # Nodes

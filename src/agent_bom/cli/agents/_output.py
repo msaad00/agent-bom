@@ -366,6 +366,8 @@ def render_output(
     elif output:
         if output.endswith(".cdx.json"):
             export_cyclonedx(report, output)
+        elif output.endswith(".json"):
+            export_json(report, output)
         elif output.endswith(".sarif"):
             export_sarif(report, output, exclude_unfixable=exclude_unfixable)
         elif output.endswith(".spdx.json"):

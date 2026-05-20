@@ -25,6 +25,8 @@ DOCKER-017  RUN pip install without --no-cache-dir
 DOCKER-018  WORKDIR uses relative path
 DOCKER-019  SHELL instruction overrides default shell
 DOCKER-020  RUN with net=host (container shares host network during build)
+DOCKER-021  COPY --chmod grants world-writable permissions
+DOCKER-022  ADD fetches remote URL
 """
 
 from __future__ import annotations
@@ -35,7 +37,9 @@ from pathlib import Path
 from agent_bom.iac.models import IaCFinding
 
 # New rule patterns
-_CHMOD_777_RE = re.compile(r"chmod\s+777\b", re.IGNORECASE)
+_CHMOD_777_RE = re.compile(r"chmod\s+(?:-[A-Za-z]+\s+)*0?777\b", re.IGNORECASE)
+_COPY_CHMOD_777_RE = re.compile(r"--chmod\s*=\s*0?777\b", re.IGNORECASE)
+_REMOTE_ADD_RE = re.compile(r"\bhttps?://", re.IGNORECASE)
 _SUDO_RE = re.compile(r"\bsudo\b", re.IGNORECASE)
 _PIP_NO_CACHE_RE = re.compile(r"pip3?\s+install(?!.*--no-cache-dir)", re.IGNORECASE)
 _NET_HOST_RE = re.compile(r"--network\s*=\s*host", re.IGNORECASE)
@@ -151,8 +155,9 @@ def scan_dockerfile(file_path: str | Path) -> list[IaCFinding]:
         # DOCKER-002: USER root
         if upper.startswith("USER "):
             user_val = stripped.split(maxsplit=1)[1].strip() if len(stripped.split()) > 1 else ""
+            user_identity = user_val.split(":", 1)[0].strip()
             has_user = True
-            if user_val in ("root", "0"):
+            if user_identity in ("root", "0"):
                 findings.append(
                     IaCFinding(
                         rule_id="DOCKER-002",
@@ -214,6 +219,22 @@ def scan_dockerfile(file_path: str | Path) -> list[IaCFinding]:
                     compliance=["CIS-Docker-4.9", "NIST-CM-7"],
                 )
             )
+            if _REMOTE_ADD_RE.search(stripped):
+                findings.append(
+                    IaCFinding(
+                        rule_id="DOCKER-022",
+                        severity="high",
+                        title="ADD fetches a remote URL",
+                        message=(
+                            "ADD downloads remote content during the image build. "
+                            "Fetch artifacts in a verified step and pin checksums before COPY."
+                        ),
+                        file_path=rel_path,
+                        line_number=i,
+                        category="dockerfile",
+                        compliance=["CIS-Docker-4.9", "NIST-SI-7", "NIST-CM-7"],
+                    )
+                )
 
         # DOCKER-005: Pipe install (curl | sh)
         if upper.startswith("RUN "):
@@ -313,6 +334,23 @@ def scan_dockerfile(file_path: str | Path) -> list[IaCFinding]:
                     line_number=i,
                     category="dockerfile",
                     compliance=["CIS-Docker-4.1", "NIST-AC-6"],
+                )
+            )
+
+        # DOCKER-021: COPY --chmod=777
+        if upper.startswith("COPY ") and _COPY_CHMOD_777_RE.search(stripped):
+            findings.append(
+                IaCFinding(
+                    rule_id="DOCKER-021",
+                    severity="high",
+                    title="COPY --chmod grants world-writable permissions",
+                    message=(
+                        "COPY --chmod=777 makes copied files world-writable. Use the least-permissive mode required by the runtime user."
+                    ),
+                    file_path=rel_path,
+                    line_number=i,
+                    category="dockerfile",
+                    compliance=["CIS-Docker-4.8", "NIST-AC-3", "NIST-CM-6"],
                 )
             )
 

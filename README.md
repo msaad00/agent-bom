@@ -79,6 +79,50 @@ to the dashboard.
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo" width="820" />
 </p>
 
+## Product Proof
+
+The dashboard screenshots below are captured from the packaged UI with bundled
+demo data, not mockups. The README keeps the first screen focused; expand the
+gallery when you want to inspect the control-plane surfaces.
+
+<details open>
+<summary><b>Evidence cockpit and agent mesh</b></summary>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="agent-bom risk overview dashboard with posture score, findings, and attack path summary" width="900" />
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="agent-bom agent mesh graph showing agent, MCP server, package, tool, credential reference, and finding path" width="900" />
+</p>
+
+</details>
+
+<details>
+<summary><b>Graph investigation and remediation views</b></summary>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="agent-bom security graph with attack-path queue, graph evidence export, and remediation handoff" width="900" />
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="agent-bom lineage graph centered on an agent with bounded paths, filters, and graph evidence export" width="900" />
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="agent-bom dependency map with scan pipeline counts and package risk distribution" width="900" />
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="agent-bom remediation dashboard with prioritized package fixes and compliance context" width="900" />
+</p>
+
+</details>
+
+Screenshot capture rules and the full manifest live in
+[docs/CAPTURE.md](docs/CAPTURE.md) and
+[docs/images/product-screenshots.json](docs/images/product-screenshots.json).
+
 ## Start Here
 
 | Goal | Command | Artifact |
@@ -159,7 +203,8 @@ Security and release references:
 
 ## Product Views
 
-The docs site carries the full screenshot gallery and capture protocol:
+The docs site carries the deployment-oriented walkthroughs behind those
+screenshots:
 
 - [Dashboard and graph capture protocol](docs/CAPTURE.md)
 - [Documentation site](https://msaad00.github.io/agent-bom/)

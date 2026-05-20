@@ -45,7 +45,7 @@ def iac():
 
     \b
     Scans IaC files for security misconfigurations:
-    · Dockerfile (20 rules)       · Kubernetes YAML
+    · Dockerfile (22 rules)       · Kubernetes YAML
     · Terraform (50 rules)        · CloudFormation
     · Helm charts (7 rules)
 

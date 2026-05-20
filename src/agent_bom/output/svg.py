@@ -36,6 +36,7 @@ _HEADER_H = 80
 _ROWS_PER_PAGE = 50
 _PAGE_HEADER_H = 34
 _PAGE_GAP = 28
+_DEFAULT_MAX_ROWS_PER_COLUMN = _ROWS_PER_PAGE
 
 # ── Color palette ─────────────────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ _COLORS = {
     "cve_high": ("#e65100", "#ffe0b2", "#ff9800"),
     "cve_medium": ("#f9a825", "#fff9c4", "#ffee58"),
     "cve_low": ("#2e7d32", "#c8e6c9", "#66bb6a"),
+    "omitted": ("#92400e", "#fffbeb", "#f59e0b"),
 }
 
 _FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif"
@@ -59,6 +61,8 @@ _FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 def to_svg(
     report: AIBOMReport,
     blast_radii: list[BlastRadius],
+    *,
+    max_rows_per_column: int | None = _DEFAULT_MAX_ROWS_PER_COLUMN,
 ) -> str:
     """Generate a self-contained SVG supply chain diagram.
 
@@ -68,10 +72,17 @@ def to_svg(
     Args:
         report: The AI-BOM report.
         blast_radii: List of BlastRadius objects for CVE indicators.
+        max_rows_per_column: Maximum rendered rows per SVG column. ``None``
+            renders the full graph. The default keeps static SVG exports
+            readable in browsers and reports by adding an explicit omission
+            marker for oversized columns.
 
     Returns:
         Complete SVG document as a string.
     """
+    if max_rows_per_column is not None and max_rows_per_column < 2:
+        raise ValueError("max_rows_per_column must be at least 2 or None")
+
     vuln_pkg_keys: set[tuple[str, str]] = {(br.package.name, br.package.ecosystem) for br in blast_radii}
     pkg_cve_map: dict[tuple[str, str], list[dict]] = {}
     for br in blast_radii:
@@ -173,6 +184,20 @@ def to_svg(
     # Deduplicate packages/servers (same ID can appear under multiple parents)
     packages = _dedup_by_id(packages)
     servers = _dedup_by_id(servers)
+    graph_counts = {
+        "agents": len(agents),
+        "servers": len(servers),
+        "packages": len(packages),
+        "cves": len(cves),
+    }
+
+    omitted_counts: dict[str, int] = {}
+    providers, omitted_counts["sources"] = _bound_column(providers, "sources", max_rows_per_column)
+    agents, omitted_counts["agents"] = _bound_column(agents, "agents", max_rows_per_column)
+    servers, omitted_counts["servers"] = _bound_column(servers, "servers", max_rows_per_column)
+    packages, omitted_counts["packages"] = _bound_column(packages, "packages", max_rows_per_column)
+    cves, omitted_counts["CVEs"] = _bound_column(cves, "CVEs", max_rows_per_column)
+    omitted_nodes = sum(omitted_counts.values())
 
     # ── Assign Y positions ────────────────────────────────────────────────
     columns = [providers, agents, servers, packages, cves]
@@ -195,13 +220,28 @@ def to_svg(
 
     total_w = _COL_CVE + _NODE_W + 60 if cves else _COL_PACKAGE + _NODE_W + 60
 
+    visible_node_ids = {item["id"] for column in columns for item in column}
+    all_edges = provider_to_agents + agent_to_servers + server_to_packages + package_to_cves
+    unique_edges = set(all_edges)
+    rendered_edges = {edge for edge in unique_edges if edge[0] in visible_node_ids and edge[1] in visible_node_ids}
+    omitted_edges = len(unique_edges) - len(rendered_edges)
+
     # ── Build SVG ─────────────────────────────────────────────────────────
     parts: list[str] = []
     parts.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {total_w} {total_h}" '
         f'width="{total_w}" height="{total_h}" '
+        f'preserveAspectRatio="xMinYMin meet" '
         f'style="font-family: {_FONT}; font-size: 12px; background: #fafafa;">'
     )
+    if omitted_nodes or omitted_edges:
+        omitted_label = ", ".join(f"{count} {kind}" for kind, count in omitted_counts.items() if count)
+        parts.append(
+            "<metadata>"
+            f"Bounded SVG export: omitted {html.escape(omitted_label or '0 nodes')} "
+            f"and {omitted_edges} edges. Export JSON, DOT, GraphML, or Cypher for the full graph."
+            "</metadata>"
+        )
 
     # Defs: arrowhead
     parts.append("""<defs>
@@ -212,10 +252,6 @@ def to_svg(
 </defs>""")
 
     # Title bar
-    agent_count = len(agents)
-    server_count = len(servers)
-    pkg_count = len(packages)
-    vuln_count = len(cves)
     parts.append(
         f'<text x="{total_w / 2}" y="30" text-anchor="middle" '
         f'font-size="18" font-weight="bold" fill="#1a1a1a">'
@@ -224,9 +260,15 @@ def to_svg(
     parts.append(
         f'<text x="{total_w / 2}" y="52" text-anchor="middle" '
         f'font-size="13" fill="#666">'
-        f"{agent_count} agents | {server_count} servers | "
-        f"{pkg_count} packages | {vuln_count} CVEs</text>"
+        f"{graph_counts['agents']} agents | {graph_counts['servers']} servers | "
+        f"{graph_counts['packages']} packages | {graph_counts['cves']} CVEs</text>"
     )
+    if omitted_nodes or omitted_edges:
+        parts.append(
+            f'<text x="{total_w / 2}" y="70" text-anchor="middle" '
+            f'font-size="11" fill="#92400e">'
+            f"Bounded view: {omitted_nodes} nodes and {omitted_edges} edges omitted; export JSON/DOT/GraphML/Cypher for full graph</text>"
+        )
 
     # Column headers
     headers = [
@@ -256,7 +298,6 @@ def to_svg(
             )
 
     # Edges (draw first so nodes appear on top)
-    all_edges = provider_to_agents + agent_to_servers + server_to_packages + package_to_cves
     col_x_map = {}
     for item in providers:
         col_x_map[item["id"]] = _COL_PROVIDER
@@ -361,6 +402,23 @@ def _dedup_by_id(items: list[dict]) -> list[dict]:
             seen.add(item["id"])
             result.append(item)
     return result
+
+
+def _bound_column(items: list[dict], label: str, max_rows: int | None) -> tuple[list[dict], int]:
+    """Bound a rendered SVG column and append a visible omission marker."""
+    if max_rows is None or len(items) <= max_rows:
+        return items, 0
+
+    visible = items[: max_rows - 1]
+    omitted = len(items) - len(visible)
+    return [
+        *visible,
+        {
+            "id": f"omitted:{label}",
+            "label": f"{omitted} more {label} omitted",
+            "type": "omitted",
+        },
+    ], omitted
 
 
 def _provider_label(source: str) -> str:

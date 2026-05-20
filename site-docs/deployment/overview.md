@@ -105,135 +105,115 @@ provider-style admin operations remain a separate product track.
 
 ## Enterprise Self-Hosted Diagrams
 
-Use three single-concern diagrams instead of one overloaded graph:
+Use two readable views. The first explains where each service runs. The second
+explains how inventory, runtime evidence, and exports move. Each diagram keeps
+agent-bom in the center and leaves customer-owned systems at the edges.
 
-- **Topology** answers who runs what, where.
-- **Auth + Ingress Flow** answers how operators get in.
-- **Inventory & Runtime Evidence Flow** answers how data and policy move.
+Every box prefixed with `agent-bom` is code from this project running in the
+customer's environment. Identity, cloud APIs, MCP servers, secret stores, and
+analytics destinations stay customer-owned.
 
-In the diagrams below, every box prefixed with `agent-bom` is code from this
-project running in the customer's environment. The browser, IdP, cloud APIs,
-remote MCPs, and storage systems are customer-owned dependencies or optional
-destinations; they are not an agent-bom hosted control plane.
-
-### Topology — Who Runs What, Where
-
-```mermaid
-flowchart TB
-    classDef ab fill:#0f172a,stroke:#6366f1,color:#e0e7ff
-    classDef cust fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
-
-    subgraph Customer["Customer VPC / EKS / self-hosted cluster"]
-      direction TB
-      Platform["agent-bom platform<br/>UI + API + scan workers"]:::ab
-      Runtime["agent-bom runtime<br/>proxy + gateway"]:::ab
-      Postgres[("Postgres<br/>system of record")]:::ab
-      Sinks[("Optional sinks<br/>ClickHouse · Snowflake · S3 · OTEL")]:::cust
-    end
-
-    subgraph External["Customer-owned external"]
-      direction TB
-      IdP["Corporate IdP"]:::cust
-      Cloud["Cloud APIs"]:::cust
-      Remote["Remote MCPs"]:::cust
-      Endpoints["Endpoints / browser"]:::cust
-    end
-
-    Platform --> Postgres
-    Platform -. optional export .-> Sinks
-    Runtime --> Platform
-    Endpoints --> Platform
-    IdP -. OIDC / SAML .-> Platform
-    Platform -. inventory reads .-> Cloud
-    Runtime -. MCP relay .-> Remote
-```
-
-Truth block:
-- `agent-bom` is the UI, API, scan workers, proxy, gateway, and optional endpoint
-  CLI/collector. It is not a hidden SaaS dependency in this topology.
-- Postgres is the required system of record; ClickHouse, Snowflake, S3, and OTEL
-  remain optional sinks.
-- IdP, cloud APIs, remote MCPs, and operator endpoints stay customer-owned.
-  agent-bom integrates with them; it does not host them.
-
-### Auth + Ingress Flow
+### Deployment Topology
 
 ```mermaid
 flowchart LR
+    classDef cust fill:#0b1220,stroke:#64748b,color:#e2e8f0,stroke-dasharray:3 3
     classDef ab fill:#0f172a,stroke:#6366f1,color:#e0e7ff
-    classDef cust fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
+    classDef data fill:#111827,stroke:#f59e0b,color:#fef3c7
 
-    Browser["Operator browser"]:::cust
-    IdP["Corporate IdP"]:::cust
-    Ingress["Ingress / TLS"]:::ab
-    UI["agent-bom UI"]:::ab
-    API["agent-bom API<br/>auth · RBAC · tenant scope"]:::ab
-    Secrets["Secrets / Vault / IRSA"]:::cust
+    subgraph CustomerOwned["Customer-owned systems"]
+      direction TB
+      Operators["Operators<br/>browser · CLI"]:::cust
+      Identity["IdP + secrets<br/>OIDC · SAML · Vault"]:::cust
+      Workloads["AI clients + MCP<br/>local · CI · fleet"]:::cust
+      Cloud["Cloud + SaaS APIs<br/>inventory sources"]:::cust
+    end
 
-    Browser --> Ingress
-    IdP -. OIDC / SAML .-> Ingress
-    Ingress --> UI
-    UI --> API
-    Secrets --> API
+    subgraph AgentBom["agent-bom in customer infrastructure"]
+      direction TB
+      Ingress["Ingress + TLS"]:::ab
+      Control["agent-bom control plane<br/>UI · API · RBAC · workers"]:::ab
+      Runtime["agent-bom runtime<br/>proxy · gateway · Shield"]:::ab
+    end
+
+    subgraph Storage["Customer data boundary"]
+      direction TB
+      Postgres[("Postgres<br/>system of record")]:::data
+      Exports[("Optional exports<br/>OTEL · SIEM · ClickHouse · Snowflake · S3")]:::data
+    end
+
+    Operators --> Ingress --> Control
+    Identity -. auth + credentials .-> Control
+    Workloads --> Runtime --> Control
+    Cloud -. inventory reads .-> Control
+    Control --> Postgres
+    Control -. analytics / evidence .-> Exports
 ```
 
 Truth block:
-- Operators enter through the customer's ingress and TLS; the UI never short-circuits the API.
-- The API remains the single control-plane authority for auth, RBAC, and tenant scope.
-- Corporate IdP and secret stores stay customer-owned; agent-bom reads from them, it does not replace them.
+- Operators enter through customer ingress and TLS; the API remains the auth,
+  RBAC, tenant, and audit authority.
+- Postgres is the required system of record. ClickHouse, Snowflake, S3, SIEM,
+  and OTEL are optional export paths.
+- agent-bom integrates with customer-owned IdP, secrets, cloud APIs, MCP
+  servers, and endpoints; it does not replace or host them.
 
-### Inventory & Runtime Evidence Flow
+### Evidence Workflow
 
 ```mermaid
 flowchart LR
-    classDef src fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
-    classDef proc fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef input fill:#0b1220,stroke:#64748b,color:#e2e8f0,stroke-dasharray:3 3
+    classDef ab fill:#0f172a,stroke:#6366f1,color:#e0e7ff
     classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
-    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
+    classDef out fill:#111827,stroke:#f59e0b,color:#fef3c7
 
-    subgraph Inventory["Inventory and scan data"]
+    subgraph Inputs["1. Collect"]
       direction TB
-      Direct["Direct scan<br/>CLI / worker"]:::src
-      Pushed["Pushed inventory<br/>adapter / CI / skill"]:::src
-      Fleet["Fleet sync<br/>endpoint CLI / collector"]:::src
-      Normalize["validate · redact · normalize"]:::proc
-      Direct --> Normalize
-      Pushed --> Normalize
-      Fleet --> Normalize
+      Scan["Local / CI scans"]:::input
+      Fleet["Fleet inventory"]:::input
+      RuntimeEvents["Runtime tool calls"]:::input
+      Intel["Advisories + intel"]:::input
     end
 
-    subgraph RuntimeFlow["Runtime evidence"]
+    subgraph Core["2. Normalize and decide"]
       direction TB
-      LocalMCP["Selected local MCP traffic"]:::src
-      RemoteMCP["Shared remote MCP traffic"]:::src
-      Proxy["agent-bom proxy<br/>local enforcement"]:::run
-      Gateway["agent-bom gateway<br/>remote enforcement"]:::run
-      RuntimeEvents["policy decisions + audit events"]:::proc
-      LocalMCP --> Proxy
-      RemoteMCP --> Gateway
-      Proxy --> RuntimeEvents
-      Gateway --> RuntimeEvents
+      Normalize["validate · redact · normalize"]:::ab
+      API["agent-bom API<br/>policy · RBAC · tenant scope"]:::ab
+      Evidence["canonical evidence<br/>inventory · findings · graph · manifest"]:::ab
     end
 
-    API["agent-bom API<br/>auth · RBAC · tenant scope"]:::proc
-    Evidence["Canonical evidence<br/>inventory · findings · graph · remediation"]:::proc
-    Postgres[("Postgres<br/>system of record")]:::data
-    Export["Optional exports<br/>OTEL · SIEM · Snowflake · ClickHouse · S3"]:::data
+    subgraph RuntimeControl["3. Enforce when enabled"]
+      direction TB
+      Proxy["proxy / gateway"]:::run
+      Decisions["allow · block · audit"]:::run
+    end
 
-    Normalize --> API
-    RuntimeEvents --> API
-    API --> Evidence
-    Evidence --> Postgres
-    API -. export / analytics .-> Export
+    subgraph Outputs["4. Act"]
+      direction TB
+      UI["dashboard cockpit"]:::out
+      MCP["MCP tools + API"]:::out
+      CI["SARIF · SBOM · CI gates"]:::out
+      Analytics["optional exports<br/>OTEL · SIEM · ClickHouse · Snowflake"]:::out
+    end
+
+    Scan --> Normalize
+    Fleet --> Normalize
+    Intel --> Normalize
+    RuntimeEvents --> Proxy --> Decisions --> API
+    Normalize --> API --> Evidence
+    Evidence --> UI
+    Evidence --> MCP
+    Evidence --> CI
+    Evidence -. export .-> Analytics
 ```
 
 Truth block:
-- Inventory sources converge through validation, redaction, and normalization
-  before they become graph or finding evidence.
-- Proxy and gateway are optional runtime surfaces. They add policy decisions and
-  audit events; they are not required to get inventory, findings, or graph state.
-- The API is the authority for auth, RBAC, tenant scope, policy distribution,
-  audit intake, and export decisions.
+- Inventory works without runtime enforcement. Proxy and gateway add policy
+  decisions and audit events when teams choose to enforce MCP/tool traffic.
+- All evidence passes through validation and redaction before it becomes
+  inventory, findings, graph, manifest, or compliance output.
+- The same evidence model feeds humans through the dashboard and agents through
+  the API/MCP surface.
 
 ## Best Self-Hosted Path
 

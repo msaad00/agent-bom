@@ -845,14 +845,23 @@ ENTITY_LEGEND: list[LegendEntry] = [
     LegendEntry(key="server", label="MCP Server", color="#3b82f6", shape="circle", layer=GraphSemanticLayer.MCP_SERVER.value),
     LegendEntry(key="package", label="Package", color="#52525b", shape="square", layer=GraphSemanticLayer.PACKAGE.value),
     LegendEntry(key="tool", label="Tool", color="#a855f7", shape="diamond", layer=GraphSemanticLayer.TOOL.value),
+    LegendEntry(key="tool_call", label="Tool Call", color="#c084fc", shape="diamond", layer=GraphSemanticLayer.RUNTIME_EVIDENCE.value),
     LegendEntry(key="vulnerability", label="Vulnerability", color="#ef4444", shape="triangle", layer=GraphSemanticLayer.FINDING.value),
     LegendEntry(key="credential", label="Credential", color="#f59e0b", shape="diamond", layer=GraphSemanticLayer.IDENTITY.value),
+    LegendEntry(
+        key="credential_ref",
+        label="Credential Reference",
+        color="#fbbf24",
+        shape="diamond",
+        layer=GraphSemanticLayer.IDENTITY.value,
+    ),
     LegendEntry(
         key="misconfiguration", label="Misconfiguration", color="#f97316", shape="triangle", layer=GraphSemanticLayer.FINDING.value
     ),
     LegendEntry(key="model", label="Model", color="#8b5cf6", shape="square", layer=GraphSemanticLayer.ASSET.value),
     LegendEntry(key="container", label="Container", color="#6366f1", shape="square", layer=GraphSemanticLayer.INFRA.value),
     LegendEntry(key="cloud_resource", label="Cloud Resource", color="#0ea5e9", shape="square", layer=GraphSemanticLayer.INFRA.value),
+    LegendEntry(key="resource", label="Resource", color="#38bdf8", shape="square", layer=GraphSemanticLayer.ASSET.value),
     LegendEntry(key="org", label="Organization", color="#115e59", shape="square", layer=GraphSemanticLayer.IDENTITY.value),
     LegendEntry(key="account", label="Account", color="#0f766e", shape="square", layer=GraphSemanticLayer.IDENTITY.value),
     LegendEntry(key="user", label="User", color="#14b8a6", shape="circle", layer=GraphSemanticLayer.USER.value),
@@ -909,7 +918,10 @@ RELATIONSHIP_LEGEND: list[LegendEntry] = [
     LegendEntry(key="can_access", label="Can Access", color="#dc2626"),
     LegendEntry(key="cross_account_trust", label="Cross-Account Trust", color="#be123c"),
     # Runtime
+    LegendEntry(key="acted_as", label="Acted As (runtime)", color="#14b8a6"),
     LegendEntry(key="invoked", label="Invoked (runtime)", color="#10b981"),
+    LegendEntry(key="called", label="Called (runtime)", color="#c084fc"),
+    LegendEntry(key="used_credential", label="Used Credential (runtime)", color="#fbbf24"),
     LegendEntry(key="accessed", label="Accessed (runtime)", color="#3b82f6"),
     LegendEntry(key="delegated_to", label="Delegated To (runtime)", color="#a855f7"),
     # Cross-environment correlation (#1892)

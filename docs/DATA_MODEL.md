@@ -264,6 +264,7 @@ tenant boundary, persistence behavior, and redaction behavior here.
 | Envelope | Producers | Consumers | Key fields | Persistence / tenant boundary |
 |---|---|---|---|---|
 | `agent-bom.manifest/v1` | `agent-bom manifest`, `GET /v1/agent-bom/manifest`, `/manifest` dashboard | local users, fleet control planes, graph previews, downstream governance jobs | `summary`, `agents`, `mcp_servers`, `visibility`, `blueprint_drift`, `graph` | Local mode reads discovered config; control-plane mode reads tenant-scoped fleet and MCP observation stores. Credential values are never emitted; only credential reference names are allowed. |
+| `agentic_identity_graph.v1` | MCP proxy audit records from normalized `event_relationships` | runtime graph, audit export, ExposurePath enrichment, SIEM/export hooks | `nodes` and `edges` for actor, `tool_call`, tool, credential reference, and resource refs | Derived only from redacted runtime relationship refs. Raw prompts, argument values, and credential material are not graph inputs. |
 | `runtime.production_index.v1` | `GET /v1/runtime/production-index`, `runtime_production_index` MCP tool | runtime cockpit, deploy/runbooks, drift evaluator, SIEM/export hooks | `traffic`, `policy_decisions`, `authorization_trace`, `alerts`, `active_sources`, `active_sessions`, `freshness`, `retention_posture` | Derived from tenant-scoped proxy/gateway metrics and alerts. Raw prompts and tool arguments are `no_persist`; the endpoint is metadata/redaction-first. |
 | `runtime.blueprints.v1` | `GET /v1/runtime/blueprints`, `runtime_blueprints` MCP tool | admins, runtime policy authors, drift evaluator, docs | role/profile blueprint list with `allowed_tool_categories`, `restricted_tool_categories`, `approval_required_for`, `retention_mode`, `evidence_required` | Static canonical catalog in `runtime_blueprints.py`; custom blueprint persistence is not shipped yet. |
 | `runtime.blueprint_drift.v1` | `GET /v1/runtime/blueprints/{blueprint_id}/drift`, `runtime_blueprint_drift` MCP tool | runtime operators, agents, alerting, release evidence | `status`, `drift_score`, `observed.categories`, `violations`, `warnings`, selected `blueprint`, `retention` | Compares the selected blueprint against the tenant-scoped production index. Current behavior is report-only and fail-closed to metadata retention. |
@@ -295,6 +296,24 @@ values.
 `untracked_runtime_server_ids`, and `risky_credential_refs`. The embedded
 `blueprint_drift` block is intentionally observation-only; enforcement happens
 in runtime proxy/gateway policy and the runtime blueprint drift endpoint.
+
+### `agentic_identity_graph.v1`
+
+The runtime proxy projects normalized event relationships into a graph-ready
+identity path:
+
+```text
+agent/user -> tool_call -> tool
+                      \-> credential_ref
+                      \-> resource
+```
+
+The projection starts from `event_relationships`, not raw MCP payloads. That
+means persisted graph nodes are stable references such as tool names,
+credential-reference names, and sanitized resource labels; prompts, argument
+values, and credential values are not graph inputs. The graph schema exposes
+`tool_call`, `credential_ref`, and `resource` node types plus runtime edges
+`acted_as`, `invoked`, `called`, `used_credential`, and `accessed`.
 
 ### Runtime blueprint drift
 

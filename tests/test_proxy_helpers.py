@@ -185,6 +185,11 @@ def test_log_tool_call_basic():
     assert record["event_relationships"]["source"] == "proxy_tool_call"
     assert record["event_relationships"]["targets"][0]["id"] == "read_file"
     assert record["event_relationships"]["resources"][0]["id"] == "<path:tmp>"
+    assert record["agentic_identity_graph"]["schema_version"] == "agentic_identity_graph.v1"
+    graph_node_types = {node["entity_type"] for node in record["agentic_identity_graph"]["nodes"]}
+    graph_edge_types = {edge["relationship"] for edge in record["agentic_identity_graph"]["edges"]}
+    assert {"tool_call", "tool", "resource"} <= graph_node_types
+    assert {"called", "accessed"} <= graph_edge_types
 
 
 def test_log_tool_call_blocked():
@@ -209,6 +214,36 @@ def test_log_tool_call_no_optional_fields():
     assert "message_id" not in record
     assert record["event_relationships"]["targets"][0]["id"] == "test_tool"
     assert "resources" not in record["event_relationships"]
+
+
+def test_log_tool_call_projects_actor_credential_and_resource_graph_refs():
+    buf = io.StringIO()
+    raw_secret = "sk-live-" + "abcdefghijklmnopqrstuvwxyz"
+    log_tool_call(
+        buf,
+        "query_database",
+        {
+            "resource_id": "warehouse-prod",
+            "credential_ref": "SNOWFLAKE_SERVICE_TOKEN",
+            "prompt": raw_secret,
+        },
+        agent_id="agent-eve",
+        tenant_id="tenant-alpha",
+        payload_sha256="event-123",
+    )
+
+    buf.seek(0)
+    record = json.loads(buf.readline())
+    encoded = json.dumps(record)
+    assert raw_secret not in encoded
+    assert record["event_relationships"]["resources"][-1]["type"] == "credential_ref"
+
+    graph = record["agentic_identity_graph"]
+    node_types = {node["entity_type"] for node in graph["nodes"]}
+    edge_types = {edge["relationship"] for edge in graph["edges"]}
+    assert {"agent", "tool_call", "tool", "resource", "credential_ref"} <= node_types
+    assert {"invoked", "called", "accessed", "used_credential"} <= edge_types
+    assert all(edge["evidence"]["tenant_id"] == "tenant-alpha" for edge in graph["edges"])
 
 
 def test_log_tool_call_records_explicit_tenant():

@@ -1124,6 +1124,8 @@ class TestGraphSchemaEndpoint:
         assert body["edge_types"] == sorted(relationship.value for relationship in RelationshipType)
         assert len(body["node_types"]) == len(EntityType)
         assert len(body["edge_types"]) == len(RelationshipType)
+        assert {"tool_call", "credential_ref", "resource"} <= set(body["node_types"])
+        assert {"acted_as", "called", "used_credential"} <= set(body["edge_types"])
 
     def test_schema_entries_carry_label_color_shape_icon(self):
         client = self._client()

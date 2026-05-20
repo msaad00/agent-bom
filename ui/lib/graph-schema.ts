@@ -47,15 +47,18 @@ export enum EntityType {
   SERVER = "server",
   PACKAGE = "package",
   TOOL = "tool",
+  TOOL_CALL = "tool_call",
   MODEL = "model",
   DATASET = "dataset",
   CONTAINER = "container",
+  RESOURCE = "resource",
   CLOUD_RESOURCE = "cloud_resource",
   // Finding entities (OCSF Category 2)
   VULNERABILITY = "vulnerability",
   MISCONFIGURATION = "misconfiguration",
   // Inventory but security-relevant (OCSF Category 5)
   CREDENTIAL = "credential",
+  CREDENTIAL_REF = "credential_ref",
   // Identity & governance (OCSF Category 3)
   ORG = "org",
   ACCOUNT = "account",
@@ -105,8 +108,11 @@ export enum RelationshipType {
   CAN_ACCESS = "can_access",
   CROSS_ACCOUNT_TRUST = "cross_account_trust",
   // Runtime
+  ACTED_AS = "acted_as",
   INVOKED = "invoked",
+  CALLED = "called",
   ACCESSED = "accessed",
+  USED_CREDENTIAL = "used_credential",
   DELEGATED_TO = "delegated_to",
   // Cross-environment correlation (#1892)
   CORRELATES_WITH = "correlates_with",
@@ -218,13 +224,16 @@ export const ENTITY_OCSF_MAP: Record<
   [EntityType.SERVER]: { category_uid: 5, class_uid: 4001 },
   [EntityType.PACKAGE]: { category_uid: 5, class_uid: 4001 },
   [EntityType.TOOL]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.TOOL_CALL]: { category_uid: 5, class_uid: 4001 },
   [EntityType.MODEL]: { category_uid: 5, class_uid: 4001 },
   [EntityType.DATASET]: { category_uid: 5, class_uid: 4001 },
   [EntityType.CONTAINER]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.RESOURCE]: { category_uid: 5, class_uid: 4001 },
   [EntityType.CLOUD_RESOURCE]: { category_uid: 5, class_uid: 4001 },
   [EntityType.VULNERABILITY]: { category_uid: 2, class_uid: 2001 },
   // Credentials are INVENTORY — presence of env var is not a finding
   [EntityType.CREDENTIAL]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.CREDENTIAL_REF]: { category_uid: 5, class_uid: 4001 },
   [EntityType.MISCONFIGURATION]: { category_uid: 2, class_uid: 2003 },
   // Identity (Category 3)
   [EntityType.ORG]: { category_uid: 3, class_uid: 3001 },
@@ -360,7 +369,10 @@ export const NODE_KIND_TO_ENTITY: Record<string, EntityType> = {
   agent: EntityType.AGENT,
   server: EntityType.SERVER,
   credential: EntityType.CREDENTIAL,
+  credential_ref: EntityType.CREDENTIAL_REF,
   tool: EntityType.TOOL,
+  tool_call: EntityType.TOOL_CALL,
+  resource: EntityType.RESOURCE,
   vulnerability: EntityType.VULNERABILITY,
 };
 
@@ -384,12 +396,15 @@ export const ENTITY_COLOR_MAP: Record<string, string> = {
   [EntityType.SERVER]: "#3b82f6",          // blue
   [EntityType.PACKAGE]: "#52525b",         // zinc
   [EntityType.TOOL]: "#a855f7",            // purple
+  [EntityType.TOOL_CALL]: "#9333ea",       // purple
   [EntityType.MODEL]: "#8b5cf6",           // violet
   [EntityType.DATASET]: "#06b6d4",         // cyan
   [EntityType.CONTAINER]: "#6366f1",       // indigo
+  [EntityType.RESOURCE]: "#3b82f6",        // blue
   [EntityType.CLOUD_RESOURCE]: "#0ea5e9",  // sky
   [EntityType.VULNERABILITY]: "#ef4444",   // red
   [EntityType.CREDENTIAL]: "#f59e0b",      // amber
+  [EntityType.CREDENTIAL_REF]: "#facc15",  // yellow
   [EntityType.MISCONFIGURATION]: "#f97316", // orange
   [EntityType.ORG]: "#115e59",             // teal
   [EntityType.ACCOUNT]: "#0f766e",         // teal
@@ -420,8 +435,11 @@ export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.SHARES_SERVER]: "#22d3ee",
   [RelationshipType.SHARES_CRED]: "#f97316",
   [RelationshipType.LATERAL_PATH]: "#ea580c",
+  [RelationshipType.ACTED_AS]: "#14b8a6",
   [RelationshipType.INVOKED]: "#10b981",
+  [RelationshipType.CALLED]: "#a855f7",
   [RelationshipType.ACCESSED]: "#3b82f6",
+  [RelationshipType.USED_CREDENTIAL]: "#facc15",
   [RelationshipType.DELEGATED_TO]: "#a855f7",
   [RelationshipType.CORRELATES_WITH]: "#0ea5e9",
   [RelationshipType.POSSIBLY_CORRELATES_WITH]: "#7dd3fc",
@@ -580,9 +598,12 @@ export const ENTITY_LEGEND: LegendEntry[] = [
   { key: "server", label: "MCP Server", color: "#3b82f6", shape: "circle" },
   { key: "package", label: "Package", color: "#52525b", shape: "square" },
   { key: "tool", label: "Tool", color: "#a855f7", shape: "diamond" },
+  { key: "tool_call", label: "Tool Call", color: "#9333ea", shape: "diamond" },
   { key: "vulnerability", label: "Vulnerability", color: "#ef4444", shape: "triangle" },
   { key: "credential", label: "Credential", color: "#f59e0b", shape: "diamond" },
+  { key: "credential_ref", label: "Credential Ref", color: "#facc15", shape: "diamond" },
   { key: "misconfiguration", label: "Misconfiguration", color: "#f97316", shape: "triangle" },
+  { key: "resource", label: "Resource", color: "#3b82f6", shape: "square" },
   { key: "model", label: "Model", color: "#8b5cf6", shape: "square" },
   { key: "container", label: "Container", color: "#6366f1", shape: "square" },
   { key: "cloud_resource", label: "Cloud Resource", color: "#0ea5e9", shape: "square" },
@@ -607,8 +628,11 @@ export const RELATIONSHIP_LEGEND: LegendEntry[] = [
   { key: "shares_server", label: "Shares Server", color: "#22d3ee", shape: "circle" },
   { key: "shares_cred", label: "Shares Credential", color: "#f97316", shape: "circle" },
   { key: "lateral_path", label: "Lateral Path", color: "#ea580c", shape: "circle" },
+  { key: "acted_as", label: "Acted As", color: "#14b8a6", shape: "circle" },
   { key: "invoked", label: "Invoked (runtime)", color: "#10b981", shape: "circle" },
+  { key: "called", label: "Called", color: "#a855f7", shape: "circle" },
   { key: "accessed", label: "Accessed (runtime)", color: "#3b82f6", shape: "circle" },
+  { key: "used_credential", label: "Used Credential", color: "#facc15", shape: "circle" },
   { key: "assumes", label: "Assumes", color: "#ea580c", shape: "circle" },
   { key: "trusts", label: "Trusts", color: "#0891b2", shape: "circle" },
   { key: "attached", label: "Attached", color: "#d97706", shape: "circle" },

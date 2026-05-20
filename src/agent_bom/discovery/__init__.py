@@ -311,6 +311,33 @@ def expand_path(path_str: str) -> Path:
     return Path(os.path.expanduser(path_str)).resolve()
 
 
+def _project_scope_path(project_dir: Optional[str]) -> Path:
+    """Return the configured project scope path, preserving file inputs."""
+    return Path(project_dir).expanduser().resolve() if project_dir else Path.cwd()
+
+
+def _project_search_dir(project_dir: Optional[str]) -> Path:
+    """Return the directory used for project-adjacent discovery."""
+    path = _project_scope_path(project_dir)
+    return path.parent if path.is_file() else path
+
+
+def _project_config_candidates(project_dir: Optional[str]) -> list[Path]:
+    """Return explicit project config files to parse."""
+    path = _project_scope_path(project_dir)
+    if path.is_file():
+        return [path]
+    return [path / config_name for config_name in PROJECT_CONFIG_FILES]
+
+
+def _parse_project_config_file(config_path: Path) -> list[MCPServer]:
+    """Parse one project-level MCP config file."""
+    if config_path.suffix == ".toml":
+        return parse_codex_config(str(config_path))
+    config_data = _read_json_config_no_symlink(config_path)
+    return parse_mcp_config(config_data, str(config_path))
+
+
 def get_all_discovery_paths(plat: Optional[str] = None) -> list[tuple[str, str]]:
     """Return all config paths that would be checked during discovery.
 
@@ -481,20 +508,12 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None, *, qu
 def discover_project_configs(project_dir: Optional[str] = None) -> list[Agent]:
     """Discover project-level MCP configurations."""
     agents = []
-    search_dir = Path(project_dir) if project_dir else Path.cwd()
+    search_dir = _project_search_dir(project_dir)
 
-    for config_name in PROJECT_CONFIG_FILES:
-        config_path = search_dir / config_name
+    for config_path in _project_config_candidates(project_dir):
         if config_path.exists():
             try:
-                servers: list[MCPServer] = []
-
-                if config_name.endswith(".toml"):
-                    # Codex project config
-                    servers = parse_codex_config(str(config_path))
-                else:
-                    config_data = _read_json_config_no_symlink(config_path)
-                    servers = parse_mcp_config(config_data, str(config_path))
+                servers = _parse_project_config_file(config_path)
 
                 if servers:
                     agent = Agent(
@@ -1211,6 +1230,7 @@ def discover_all(
         k8s_context: kubectl context to use (uses current context if None).
     """
     console.print("\n[bold blue]🔍 Discovering MCP configurations...[/bold blue]\n")
+    project_search_dir = str(_project_search_dir(project_dir)) if project_dir else None
 
     if project_dir:
         agents = discover_project_configs(project_dir)
@@ -1219,7 +1239,7 @@ def discover_all(
         agents.extend(discover_project_configs())
 
     # Docker Compose MCP server discovery
-    compose_agent = discover_compose_mcp_servers(project_dir)
+    compose_agent = discover_compose_mcp_servers(project_search_dir)
     if compose_agent:
         console.print(
             f"  [green]✓[/green] Found {len(compose_agent.mcp_servers)} MCP server(s) "
@@ -1294,7 +1314,7 @@ def discover_all(
         console.print("\n  [bold cyan]🔎 Running dynamic discovery...[/bold cyan]")
         known_paths = {a.config_path for a in agents if a.config_path}
         dyn_result = discover_dynamic(
-            root=_DynPath(project_dir) if project_dir else _DynPath.cwd(),
+            root=_DynPath(project_search_dir) if project_search_dir else _DynPath.cwd(),
             max_depth=dynamic_max_depth,
             exclude_paths=known_paths,
         )

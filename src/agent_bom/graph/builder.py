@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Mapping
 from pathlib import PurePath
 from typing import Any
 
@@ -23,7 +24,7 @@ from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.package_utils import canonical_package_key, normalize_package_name
 from agent_bom.risk_analyzer import ToolCapability, classify_tool
-from agent_bom.security import sanitize_security_warnings, sanitize_text, sanitize_url
+from agent_bom.security import sanitize_security_warnings, sanitize_sensitive_payload, sanitize_text, sanitize_url
 
 try:
     from agent_bom.constants import is_credential_key as _is_credential_key
@@ -818,6 +819,9 @@ def build_unified_graph_from_report(
                     )
                 )
 
+    # ── Agentic identity graph projections (runtime audit slices) ─────
+    _add_agentic_identity_graph_projections(graph, report_json, data_source_tag, tenant_id)
+
     # ── Toxic combinations as TRIGGERS edges ─────────────────────────
     toxic_data = report_json.get("toxic_combinations")
     if toxic_data:
@@ -896,6 +900,170 @@ def build_unified_graph_from_report(
         span.set_attribute("agent_bom.graph.edge_count", len(graph.edges))
         span.end()
     return graph
+
+
+def _iter_agentic_identity_graph_projections(report_json: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return runtime identity graph projections embedded in report JSON."""
+    candidates: list[Any] = [
+        report_json.get("agentic_identity_graph"),
+        report_json.get("agentic_identity_graphs"),
+    ]
+    runtime_graph = report_json.get("runtime_session_graph")
+    if isinstance(runtime_graph, Mapping):
+        candidates.extend(
+            [
+                runtime_graph.get("agentic_identity_graph"),
+                runtime_graph.get("agentic_identity_graphs"),
+            ]
+        )
+
+    for event in _mapping_list(report_json.get("audit_events")):
+        candidates.append(event.get("agentic_identity_graph"))
+        details = event.get("details")
+        if isinstance(details, Mapping):
+            candidates.extend(
+                [
+                    details.get("agentic_identity_graph"),
+                    details.get("agentic_identity_graphs"),
+                ]
+            )
+
+    projections: list[Mapping[str, Any]] = []
+    seen: set[int] = set()
+    for candidate in candidates:
+        for projection in _mapping_list(candidate):
+            if projection.get("schema_version") != "agentic_identity_graph.v1":
+                continue
+            marker = id(projection)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            projections.append(projection)
+    return projections
+
+
+def _add_agentic_identity_graph_projections(
+    graph: UnifiedGraph,
+    report_json: Mapping[str, Any],
+    data_source_tag: str,
+    tenant_id: str,
+) -> None:
+    """Ingest sanitized runtime identity projections into the canonical graph."""
+    for projection in _iter_agentic_identity_graph_projections(report_json):
+        schema_version = sanitize_text(projection.get("schema_version", "agentic_identity_graph.v1"), max_len=80)
+        projection_source = sanitize_text(projection.get("source", "runtime-identity"), max_len=160)
+        node_ids: set[str] = set()
+        for node_dict in _mapping_list(projection.get("nodes")):
+            node_id = sanitize_text(node_dict.get("id", ""), max_len=260)
+            if not node_id:
+                continue
+            entity_type = _runtime_identity_entity_type(node_dict.get("entity_type"))
+            if entity_type is None:
+                continue
+            node_ids.add(node_id)
+            graph.add_node(
+                UnifiedNode(
+                    id=node_id,
+                    entity_type=entity_type,
+                    label=sanitize_text(node_dict.get("label", node_id), max_len=180) or node_id,
+                    attributes=_runtime_identity_node_attributes(node_dict, schema_version, projection_source),
+                    data_sources=[data_source_tag, "runtime-identity"],
+                    dimensions=NodeDimensions(surface="runtime"),
+                )
+            )
+
+        for edge_dict in _mapping_list(projection.get("edges")):
+            source = sanitize_text(edge_dict.get("source", ""), max_len=260)
+            target = sanitize_text(edge_dict.get("target", ""), max_len=260)
+            if not source or not target:
+                continue
+            if source not in node_ids and not graph.has_node(source):
+                continue
+            if target not in node_ids and not graph.has_node(target):
+                continue
+            relationship = _runtime_identity_relationship(edge_dict.get("relationship"))
+            if relationship is None:
+                continue
+            evidence = _runtime_identity_evidence(
+                edge_dict.get("evidence"),
+                schema_version=schema_version,
+                projection_source=projection_source,
+                tenant_id=tenant_id,
+            )
+            graph.add_edge(
+                UnifiedEdge(
+                    source=source,
+                    target=target,
+                    relationship=relationship,
+                    confidence=0.9,
+                    evidence=evidence,
+                    provenance={
+                        "source": projection_source,
+                        "schema_version": schema_version,
+                    },
+                )
+            )
+
+
+def _mapping_list(value: Any) -> list[Mapping[str, Any]]:
+    if isinstance(value, Mapping):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, Mapping)]
+    return []
+
+
+def _runtime_identity_entity_type(value: Any) -> EntityType | None:
+    try:
+        return EntityType(str(value))
+    except ValueError:
+        return None
+
+
+def _runtime_identity_relationship(value: Any) -> RelationshipType | None:
+    try:
+        return RelationshipType(str(value))
+    except ValueError:
+        return None
+
+
+def _runtime_identity_node_attributes(
+    node_dict: Mapping[str, Any],
+    schema_version: str,
+    projection_source: str,
+) -> dict[str, Any]:
+    attributes: dict[str, Any] = {
+        "agentic_identity_graph_schema": schema_version,
+        "runtime_graph_source": projection_source,
+    }
+    raw_attrs = node_dict.get("attributes")
+    if isinstance(raw_attrs, Mapping):
+        sanitized_attrs = sanitize_sensitive_payload(dict(raw_attrs))
+        if isinstance(sanitized_attrs, dict):
+            attributes.update(sanitized_attrs)
+    source_ref = node_dict.get("source_ref")
+    if isinstance(source_ref, Mapping):
+        sanitized_ref = sanitize_sensitive_payload(dict(source_ref))
+        if isinstance(sanitized_ref, dict):
+            attributes["source_ref"] = sanitized_ref
+    return attributes
+
+
+def _runtime_identity_evidence(
+    evidence: Any,
+    *,
+    schema_version: str,
+    projection_source: str,
+    tenant_id: str,
+) -> dict[str, Any]:
+    sanitized = sanitize_sensitive_payload(dict(evidence)) if isinstance(evidence, Mapping) else {}
+    safe_evidence = sanitized if isinstance(sanitized, dict) else {}
+    safe_evidence.setdefault("source", projection_source)
+    safe_evidence["schema_version"] = schema_version
+    safe_evidence["data_source"] = "runtime-identity"
+    if tenant_id:
+        safe_evidence.setdefault("tenant_id", sanitize_text(tenant_id, max_len=200))
+    return safe_evidence
 
 
 def _tool_capabilities(tool_dict: dict[str, Any]) -> tuple[list[str], str]:

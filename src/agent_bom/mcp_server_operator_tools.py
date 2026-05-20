@@ -176,6 +176,14 @@ def register_operator_tools(
             str,
             Field(description="Export format: graphml, cypher, dot, mermaid, or json (default)."),
         ] = "json",
+        mermaid_limit: Annotated[
+            int,
+            Field(
+                ge=0,
+                le=5000,
+                description="Maximum nodes rendered for Mermaid output; 0 renders the full graph.",
+            ),
+        ] = 80,
     ) -> str:
         """Export the agent dependency graph in graph-native formats.
 
@@ -224,7 +232,9 @@ def register_operator_tools(
             if _fmt == "dot":
                 return truncate_response(_to_dot(graph))
             if _fmt == "mermaid":
-                return truncate_response(_to_mermaid(graph))
+                if mermaid_limit == 0:
+                    return truncate_response(_to_mermaid(graph, max_nodes=None, max_edges=None))
+                return truncate_response(_to_mermaid(graph, max_nodes=mermaid_limit))
             return truncate_response(json.dumps(_graph_to_json(graph), indent=2))
 
         return await execute_tool_async("graph_export", _impl)

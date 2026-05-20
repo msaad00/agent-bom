@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from starlette.testclient import TestClient
@@ -764,6 +765,36 @@ def test_openapi_runtime_routes_do_not_404(monkeypatch):
     for method, path in checks:
         response = client.request(method, path)
         assert response.status_code != 404, (method, path, response.text)
+
+
+def test_graph_export_mermaid_limit_zero_renders_full_graph():
+    """The API graph export should pass the full-render sentinel to Mermaid output."""
+    client, store = _fresh_client()
+    job = ScanJob(
+        job_id="job-graph-mermaid",
+        status=JobStatus.DONE,
+        created_at="2026-05-20T00:00:00Z",
+        completed_at="2026-05-20T00:00:01Z",
+        request=ScanRequest(),
+        result={
+            "agents": [
+                {
+                    "name": "claude-desktop",
+                    "agent_type": "claude-desktop",
+                    "mcp_servers": [{"name": "filesystem", "packages": []}],
+                }
+            ],
+        },
+    )
+    store.put(job)
+
+    with patch("agent_bom.output.graph_export.to_mermaid", return_value="flowchart LR") as mermaid_mock:
+        response = client.get("/v1/scan/job-graph-mermaid/graph-export?format=mermaid&mermaid_limit=0")
+
+    assert response.status_code == 200
+    assert response.text == "flowchart LR"
+    mermaid_mock.assert_called_once()
+    assert mermaid_mock.call_args.kwargs == {"max_nodes": None, "max_edges": None}
 
 
 def test_baseline_compare_requires_job_ids_without_404():

@@ -967,6 +967,38 @@ def test_graph_export_uses_scan_pipeline_tuple_contract(mock_pipeline):
 
 
 @patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_graph_export_mermaid_limit_zero_renders_full_graph(mock_pipeline):
+    """graph_export should pass the full-render sentinel through for Mermaid output."""
+    from agent_bom.mcp_server import create_mcp_server
+    from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
+
+    pkg = Package(name="requests", version="2.0.0", ecosystem="pypi", vulnerabilities=[])
+    server_obj = MCPServer(
+        name="filesystem",
+        command="npx",
+        args=[],
+        env={},
+        transport=TransportType.STDIO,
+        packages=[pkg],
+    )
+    agent = Agent(
+        name="claude",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test",
+        mcp_servers=[server_obj],
+    )
+    mock_pipeline.return_value = ([agent], [], [], ["agent_discovery"])
+
+    server = create_mcp_server()
+    with patch("agent_bom.output.graph_export.to_mermaid", return_value="graph LR") as mermaid_mock:
+        content_blocks, _meta = _run(server.call_tool("graph_export", {"format": "mermaid", "mermaid_limit": 0}))
+
+    assert content_blocks[0].text == "graph LR"
+    mermaid_mock.assert_called_once()
+    assert mermaid_mock.call_args.kwargs == {"max_nodes": None, "max_edges": None}
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_graph_export_passes_through_pipeline_error_payload(mock_pipeline):
     """graph_export should return a pipeline error payload instead of crashing on string results."""
     from agent_bom.mcp_server import create_mcp_server

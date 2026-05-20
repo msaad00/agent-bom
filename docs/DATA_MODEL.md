@@ -81,22 +81,24 @@ Used for unified findings outside the SCA / blast-radius path
 The unified graph projects the canonical model into a node/edge form
 used for blast-radius traversal, dashboards, and OCSF export.
 
-### Entity types (18)
+### Entity types (27)
 
-`AGENT`, `SERVER`, `PACKAGE`, `TOOL`, `MODEL`, `DATASET`, `CONTAINER`,
-`CLOUD_RESOURCE`, `VULNERABILITY`, `MISCONFIGURATION`, `CREDENTIAL`,
-`USER`, `GROUP`, `SERVICE_ACCOUNT`, `PROVIDER`, `ENVIRONMENT`, `FLEET`,
-`CLUSTER`.
+`AGENT`, `SERVER`, `PACKAGE`, `TOOL`, `TOOL_CALL`, `MODEL`, `DATASET`,
+`CONTAINER`, `CLOUD_RESOURCE`, `RESOURCE`, `VULNERABILITY`,
+`MISCONFIGURATION`, `CREDENTIAL`, `CREDENTIAL_REF`, `ORG`, `ACCOUNT`, `USER`,
+`GROUP`, `ROLE`, `POLICY`, `SERVICE_ACCOUNT`, `SERVICE_PRINCIPAL`,
+`FEDERATED_IDENTITY`, `PROVIDER`, `ENVIRONMENT`, `FLEET`, `CLUSTER`.
 
-### Relationship types (24)
+### Relationship types (34)
 
 | Group | Relationships | Direction |
 |---|---|---|
-| Composition | `HOSTS`, `USES`, `DEPENDS_ON`, `PROVIDES_TOOL`, `EXPOSES_CRED`, `SERVES_MODEL`, `CONTAINS` | source → target |
+| Composition | `HOSTS`, `USES`, `DEPENDS_ON`, `PROVIDES_TOOL`, `EXPOSES_CRED`, `REACHES_TOOL`, `SERVES_MODEL`, `CONTAINS` | source → target |
 | Risk | `AFFECTS`, `VULNERABLE_TO`, `EXPLOITABLE_VIA`, `REMEDIATES`, `TRIGGERS` | mostly bidirectional |
 | Lateral movement | `SHARES_SERVER`, `SHARES_CRED`, `LATERAL_PATH` | symmetric |
-| Ownership | `MANAGES`, `OWNS`, `PART_OF`, `MEMBER_OF` | hierarchical |
-| Runtime | `INVOKED`, `ACCESSED`, `DELEGATED_TO` | source → target, time-stamped |
+| Ownership and identity | `MANAGES`, `OWNS`, `PART_OF`, `MEMBER_OF`, `ASSUMES`, `TRUSTS`, `ATTACHED`, `INHERITS`, `CAN_ACCESS`, `CROSS_ACCOUNT_TRUST` | hierarchical / access path |
+| Runtime | `ACTED_AS`, `INVOKED`, `CALLED`, `USED_CREDENTIAL`, `ACCESSED`, `DELEGATED_TO` | source → target, time-stamped |
+| Cross-environment correlation | `CORRELATES_WITH`, `POSSIBLY_CORRELATES_WITH` | local ↔ cloud agent correlation |
 
 `EXPLOITABLE_VIA` is a capability-impact edge from a vulnerability to a
 tool when the affected package is connected to the MCP server that provides
@@ -120,6 +122,12 @@ server-scope mappings must not be presented as exact function-level proof.
 The mapping lives in `src/agent_bom/graph/builder.py`. If a new
 entity type is added to the enum, the builder must learn to emit it
 or the dashboard will silently miss it.
+
+`src/agent_bom/context_graph.py` still exposes `NodeKind` and `EdgeKind` for
+backward-compatible reachability scoring and the legacy `context_graph` MCP
+tool. Those enums are a strict subset of the canonical taxonomy above and are
+bridged through `src/agent_bom/graph/compat.py` before data reaches the richer
+API/UI graph. They must not be documented as the complete graph schema.
 
 ---
 

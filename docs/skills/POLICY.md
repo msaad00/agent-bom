@@ -88,11 +88,14 @@ Run skills scanning as its own CI lane:
   with:
     scan-type: skills
     scan-ref: .
-    format: json
-    output: agent-bom-skills.json
+    format: sarif
+    output: agent-bom-skills.sarif
+    upload-sarif: true
     policy: skills-policy.yaml
     warn-on-review-verdict: review
     fail-on-review-verdict: blocked
 ```
 
-Keep IaC/SBOM/package gates in separate jobs when the desired policies differ.
+Skills SARIF includes finding source locations, trust metadata, and policy
+results for GitHub code scanning. Keep IaC/SBOM/package gates in separate jobs
+when the desired policies or review owners differ.

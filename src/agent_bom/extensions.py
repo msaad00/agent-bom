@@ -76,6 +76,7 @@ def iter_entry_point_registrations(
     group: str,
     coerce: Callable[[Any, str], T],
     warnings: list[str],
+    max_entry_points: int | None = None,
 ) -> list[T]:
     """Load extension registrations from a Python entry-point group.
 
@@ -91,6 +92,12 @@ def iter_entry_point_registrations(
     except Exception as exc:  # noqa: BLE001
         warnings.append(sanitize_registry_warning(f"Could not enumerate entry points for {group}: {exc}"))
         return []
+
+    if max_entry_points is not None and len(entry_points) > max_entry_points:
+        warnings.append(
+            sanitize_registry_warning(f"Entry point group {group} declared {len(entry_points)} entries; loading first {max_entry_points}")
+        )
+        entry_points = entry_points[:max_entry_points]
 
     registrations: list[T] = []
     for entry_point in entry_points:

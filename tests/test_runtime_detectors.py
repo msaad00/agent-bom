@@ -332,6 +332,30 @@ def test_rate_limit_different_tools_independent():
     assert len(alerts2) == 1  # tool2 hit 3
 
 
+def test_rate_limit_different_source_agents_independent():
+    r = RateLimitTracker(threshold=2, window_seconds=60.0)
+    assert r.record("tool1", source_agent="agent-a") == []
+    assert r.record("tool1", source_agent="agent-b") == []
+
+    alerts_a = r.record("tool1", source_agent="agent-a")
+    assert len(alerts_a) == 1
+    assert alerts_a[0].details["source_agent"] == "agent-a"
+    assert alerts_a[0].details["bucket"] == "agent-a:tool1"
+
+    alerts_b = r.record("tool1", source_agent="agent-b")
+    assert len(alerts_b) == 1
+    assert alerts_b[0].details["source_agent"] == "agent-b"
+
+
+def test_rate_limit_missing_source_agent_uses_anonymous_bucket():
+    r = RateLimitTracker(threshold=2, window_seconds=60.0)
+    assert r.record("tool1") == []
+    alerts = r.record("tool1")
+    assert len(alerts) == 1
+    assert alerts[0].details["source_agent"] == "anonymous"
+    assert alerts[0].details["bucket"] == "anonymous:tool1"
+
+
 def test_rate_limit_properties():
     r = RateLimitTracker(threshold=10, window_seconds=30.0)
     assert r.threshold == 10

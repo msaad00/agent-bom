@@ -1739,7 +1739,11 @@ async def run_proxy(
                     if rate_limit_threshold > 0:
                         effective_rule_rate_limit = rate_limit_threshold
                     if rate_tracker and effective_rule_rate_limit > 0:
-                        rate_alerts = rate_tracker.record(tool_name, threshold=effective_rule_rate_limit)
+                        rate_alerts = rate_tracker.record(
+                            tool_name,
+                            threshold=effective_rule_rate_limit,
+                            source_agent=agent_id or "anonymous",
+                        )
                         await _handle_alerts(rate_alerts, log_file)
                         if rate_alerts and not log_only:
                             rl_reason = rate_alerts[0].message

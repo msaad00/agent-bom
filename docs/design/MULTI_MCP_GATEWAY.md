@@ -23,7 +23,7 @@ One FastAPI service that:
 2. Routes each client connection to one of N configured upstream MCP servers (local or remote), keyed by server name.
 3. Applies gateway policy (from the existing `/v1/gateway/policies` store) inline, on every `tools/call`, `tools/list`, `resources/read`, `prompts/get`.
 4. Pushes every call into the existing HMAC-chained audit log via the existing `/v1/proxy/audit` contract.
-5. Exposes per-upstream and per-tenant metrics on the existing `/metrics` endpoint.
+5. Exposes per-upstream, per-tenant, and source-agent rate-limit metrics on the existing `/metrics` endpoint.
 
 Non-goals (explicitly):
 
@@ -142,7 +142,7 @@ Net new code:
 
 ## Security guarantees
 
-- **Tenant isolation** — every upstream request carries the authenticated tenant's context; per-tenant rate limits + audit scoping (same path as the main API).
+- **Tenant isolation** — every upstream request carries the authenticated tenant's context; runtime rate limits are tenant-scoped and split by source-agent identity, with tenant-local `anonymous` buckets for calls that do not present `_meta.agent_identity`.
 - **mTLS-ready** — gateway accepts a client cert at ingress for zero-trust environments; upstream TLS verification is mandatory (not optional like current proxy dev-mode).
 - **No credential forwarding** — per-upstream credentials are injected by the gateway, never read from the client request. This is the whole point of putting a gateway in front: the laptop doesn't hold the Jira token.
 - **Audit non-repudiation** — gateway calls are signed with the same Ed25519 key path the compliance bundle uses ([`docs/COMPLIANCE_SIGNING.md`](../COMPLIANCE_SIGNING.md)).

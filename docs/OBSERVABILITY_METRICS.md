@@ -45,7 +45,7 @@ is a credential-spray signal. Page on sustained > 10/min.
 
 | Metric | Type | Labels | Description |
 |---|---|---|---|
-| `agent_bom_rate_limit_hits_total` | counter | `bucket` ∈ {global, tenant, ingress, fleet_sync} | Requests rejected by a rate limiter |
+| `agent_bom_rate_limit_hits_total` | counter | `bucket` ∈ {global, tenant, gateway_source_agent, ingress, fleet_sync} | Requests rejected by a rate limiter |
 
 **SLO sketch:** `rate(agent_bom_rate_limit_hits_total{bucket="tenant"}[5m]) > 1`
 for a single tenant for > 10 min means the tenant is mis-configured or

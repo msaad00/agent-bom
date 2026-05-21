@@ -43,6 +43,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
+from agent_bom.agent_identity import ANONYMOUS, check_identity
 from agent_bom.api.auth import Role, get_key_store
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
@@ -285,15 +286,20 @@ def _gateway_rate_limit_runtime_status(settings: GatewaySettings) -> dict[str, o
             "Gateway runtime rate limiting disabled."
             if not enabled
             else (
-                "Gateway runtime rate limiting uses Postgres-backed shared state across replicas."
+                "Gateway runtime rate limiting uses Postgres-backed per-source-agent state across replicas."
                 if postgres_configured
                 else (
-                    "Gateway runtime rate limiting is process-local because the gateway is configured "
-                    "for a single replica. Multi-replica deployments must configure AGENT_BOM_POSTGRES_URL."
+                    "Gateway runtime rate limiting is per-source-agent and process-local because the gateway "
+                    "is configured for a single replica. Multi-replica deployments must configure AGENT_BOM_POSTGRES_URL."
                 )
             )
         ),
     }
+
+
+def _rate_limit_bucket_component(value: str) -> str:
+    component = _sanitize_for_log(value).strip() or ANONYMOUS
+    return component.replace(":", "_")[:160]
 
 
 def _request_has_expected_token(request: Request, expected_token: str) -> bool:
@@ -862,10 +868,47 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
         # Inline policy check — reuse the exact evaluator the per-MCP proxy uses.
         tenant_id = getattr(request.state, "tenant_id", None) or "default"
+        async with policy_lock:
+            current_policy = dict(policy_state["policy"])
+
+        source_agent, identity_block_reason = check_identity(message, current_policy)
+        source_agent = source_agent or ANONYMOUS
+        if identity_block_reason is not None:
+            record_gateway_relay(upstream.name, "blocked")
+            logger.info(
+                "Gateway identity policy blocked request for upstream=%s tenant_id=%s source_agent=%s reason=%s",
+                upstream.name,
+                tenant_id,
+                source_agent,
+                _sanitize_for_log(identity_block_reason),
+            )
+            if settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.identity_blocked",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "source_agent": source_agent,
+                        "reason": identity_block_reason,
+                    }
+                )
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32001,
+                        "message": "Blocked by agent-bom gateway identity policy",
+                        "data": {"reason": "Identity validation failed"},
+                    },
+                },
+                status_code=200,
+            )
+
         rate_limit_headers: dict[str, str] = {}
         if rate_limit_store is not None:
             now = time.time()
-            bucket = f"gateway:tenant:{tenant_id}"
+            bucket = f"gateway:tenant:{_rate_limit_bucket_component(tenant_id)}:source_agent:{_rate_limit_bucket_component(source_agent)}"
             hit_count, reset_at = await asyncio.to_thread(rate_limit_store.hit, bucket, now)
             limit = settings.runtime_rate_limit_per_tenant_per_minute
             remaining = max(0, limit - hit_count)
@@ -877,21 +920,22 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             if hit_count > limit:
                 retry_after = max(int(reset_at - now), 1)
                 record_gateway_relay(upstream.name, "rate_limited")
-                record_rate_limit_hit("gateway_tenant")
+                record_rate_limit_hit("gateway_source_agent")
                 if settings.audit_sink is not None:
                     await settings.audit_sink(
                         {
                             "action": "gateway.rate_limited",
                             "upstream": upstream.name,
                             "tenant_id": tenant_id,
+                            "source_agent": source_agent,
                             "limit": limit,
                             "bucket": bucket,
-                            "reason": "tenant_runtime_rate_limit",
+                            "reason": "source_agent_runtime_rate_limit",
                         }
                     )
                 return JSONResponse(
                     status_code=429,
-                    content={"detail": "Gateway tenant rate limit exceeded"},
+                    content={"detail": "Gateway source-agent rate limit exceeded"},
                     headers={
                         **rate_limit_headers,
                         "Retry-After": str(retry_after),
@@ -901,8 +945,6 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         policy_subject = policy_subject_from_message(message)
         if policy_subject:
             tool_name, arguments = policy_subject
-            async with policy_lock:
-                current_policy = dict(policy_state["policy"])
             allowed, reason = check_policy(current_policy, tool_name, arguments)
             if not allowed:
                 record_gateway_relay(upstream.name, "blocked")

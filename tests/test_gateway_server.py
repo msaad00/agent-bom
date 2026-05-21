@@ -639,7 +639,7 @@ def test_gateway_rate_limit_is_tenant_scoped(monkeypatch) -> None:
         json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
     )
     assert second.status_code == 429
-    assert second.json()["detail"] == "Gateway tenant rate limit exceeded"
+    assert second.json()["detail"] == "Gateway source-agent rate limit exceeded"
 
     other_tenant = client.post(
         "/mcp/filesystem",
@@ -709,7 +709,87 @@ def test_gateway_rate_limit_shared_store_holds_under_concurrency(monkeypatch) ->
             statuses = list(executor.map(lambda _idx: _post(), range(2)))
 
     assert sorted(statuses) == [200, 429]
-    assert shared_store.counts == {"gateway:tenant:tenant-alpha": 2}
+    assert shared_store.counts == {"gateway:tenant:tenant-alpha:source_agent:anonymous": 2}
+
+
+def test_gateway_rate_limit_is_source_agent_scoped_within_tenant(monkeypatch) -> None:
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key == "tenant-alpha-key":
+                return _gateway_api_key("tenant-alpha")
+            return None
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={"agent_tokens": {"token-a": "agent-a", "token-b": "agent-b"}},
+        upstream_caller=fake_caller,
+        runtime_rate_limit_per_tenant_per_minute=1,
+    )
+    client = TestClient(create_gateway_app(settings))
+
+    agent_a = _json_rpc(
+        "tools/call",
+        name="read_file",
+        arguments={"path": "/etc/hosts"},
+        _meta={"agent_identity": "token-a"},
+    )
+    agent_b = _json_rpc(
+        "tools/call",
+        name="read_file",
+        arguments={"path": "/etc/hosts"},
+        _meta={"agent_identity": "token-b"},
+    )
+
+    first_a = client.post("/mcp/filesystem", headers={"X-API-Key": "tenant-alpha-key"}, json=agent_a)
+    assert first_a.status_code == 200
+    first_b = client.post("/mcp/filesystem", headers={"X-API-Key": "tenant-alpha-key"}, json=agent_b)
+    assert first_b.status_code == 200
+
+    second_a = client.post("/mcp/filesystem", headers={"X-API-Key": "tenant-alpha-key"}, json=agent_a)
+    assert second_a.status_code == 429
+    assert second_a.json()["detail"] == "Gateway source-agent rate limit exceeded"
+
+
+def test_gateway_rate_limit_identity_required_blocks_before_relay(monkeypatch) -> None:
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key == "tenant-alpha-key":
+                return _gateway_api_key("tenant-alpha")
+            return None
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+
+    async def fake_caller(upstream, message, extra_headers):
+        raise AssertionError("identity-blocked calls must not relay upstream")
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={"require_agent_identity": True},
+        upstream_caller=fake_caller,
+        runtime_rate_limit_per_tenant_per_minute=1,
+    )
+    client = TestClient(create_gateway_app(settings))
+
+    response = client.post(
+        "/mcp/filesystem",
+        headers={"X-API-Key": "tenant-alpha-key"},
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["message"] == "Blocked by agent-bom gateway identity policy"
+    assert payload["error"]["data"]["reason"] == "Identity validation failed"
 
 
 def test_gateway_rate_limit_can_require_shared_backend(monkeypatch) -> None:

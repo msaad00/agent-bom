@@ -90,10 +90,10 @@ docker run --rm \
 ## Runtime proxy against a remote MCP endpoint
 
 ```bash
-docker pull agentbom/agent-bom:0.87.1
+docker pull agentbom/agent-bom:0.88.0
 docker run --rm -i \
   -v ./audit-logs:/var/log/agent-bom \
-  agentbom/agent-bom:0.87.1 \
+  agentbom/agent-bom:0.88.0 \
   proxy \
   --log /var/log/agent-bom/audit.jsonl \
   --block-undeclared \

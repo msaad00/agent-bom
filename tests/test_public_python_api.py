@@ -17,6 +17,8 @@ def test_public_api_exports_expected_functions():
     assert agent_bom.scan is sdk.scan
     assert agent_bom.check is sdk.check
     assert agent_bom.diff is sdk.diff
+    assert agent_bom.AgentBomClient.__name__ == "AgentBomClient"
+    assert agent_bom.AgentBomApiError.__name__ == "AgentBomApiError"
     assert sdk.inventory.__name__ == "inventory"
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Dispatch required workflows for a PR whose current head is missing required
-# status contexts, without closing/reopening the PR.
+# status contexts, without empty commits or close/reopen churn.
 #
 # This is the safe fallback for repositories where AUTOMATION_GITHUB_TOKEN is
 # not configured. It can only help when the PR branch already contains current
@@ -119,6 +119,7 @@ reason="$(IFS='; '; echo "${reason_parts[*]}")"
 
 echo "PR #${PR}: dispatching required workflows for head ${head_sha} (${reason})."
 gh workflow run ci.yml --repo "${REPO}" --ref "${head_ref}"
+gh workflow run pr-security-gate.yml --repo "${REPO}" --ref "${head_ref}"
 
 codeql_needed=false
 if [ "${#missing[@]}" -gt 0 ] && printf '%s\n' "${missing[@]}" | grep -qx "CodeQL"; then

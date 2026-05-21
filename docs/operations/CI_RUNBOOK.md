@@ -46,7 +46,8 @@ lower-privilege fallback:
 scripts/dispatch_required_ci.sh <PR_NUMBER>
 ```
 
-That fallback dispatches `ci.yml` and, when needed, `codeql.yml` through
+That fallback dispatches the required PR workflows (`ci.yml`,
+`pr-security-gate.yml`, and, when needed, `codeql.yml`) through
 `workflow_dispatch` for same-repo PR heads that already contain current `main`.
 It cannot update stale branches, but it prevents the common "all visible checks
 passed, required contexts are still expected" state from wasting a merge cycle.

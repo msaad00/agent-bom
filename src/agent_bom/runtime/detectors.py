@@ -373,9 +373,9 @@ class CredentialLeakDetector:
 class RateLimitTracker:
     """Track tool call rates and block on excessive usage.
 
-    Uses a sliding window to track calls per tool. When any tool exceeds
-    the threshold, returns a CRITICAL alert with ``blocked=True`` so the
-    caller can enforce the rate limit (zero trust — deny by default).
+    Uses a sliding window to track calls per source-agent and tool. When any
+    bucket exceeds the threshold, returns a CRITICAL alert with
+    ``blocked=True`` so the caller can enforce the rate limit.
     """
 
     def __init__(self, threshold: int = 50, window_seconds: float = 60.0) -> None:
@@ -383,7 +383,7 @@ class RateLimitTracker:
         self._window = window_seconds
         self._calls: dict[str, deque[float]] = {}
 
-    def record(self, tool_name: str, threshold: int | None = None) -> list[Alert]:
+    def record(self, tool_name: str, threshold: int | None = None, source_agent: str | None = None) -> list[Alert]:
         """Record a tool call and check rate limits.
 
         Returns a CRITICAL alert with ``details.blocked = True`` when the
@@ -393,10 +393,12 @@ class RateLimitTracker:
         if effective_threshold <= 0:
             return []
         now = time.monotonic()
-        if tool_name not in self._calls:
-            self._calls[tool_name] = deque()
+        agent_bucket = (source_agent or "anonymous").strip() or "anonymous"
+        bucket = f"{agent_bucket}:{tool_name}"
+        if bucket not in self._calls:
+            self._calls[bucket] = deque()
 
-        q = self._calls[tool_name]
+        q = self._calls[bucket]
         q.append(now)
 
         # Prune old entries
@@ -415,6 +417,8 @@ class RateLimitTracker:
                     message=f"Rate limit exceeded: {tool_name} called {len(q)} times in {self._window}s (threshold: {effective_threshold})",
                     details={
                         "tool": tool_name,
+                        "source_agent": agent_bucket,
+                        "bucket": bucket,
                         "count": len(q),
                         "threshold": effective_threshold,
                         "window_seconds": self._window,

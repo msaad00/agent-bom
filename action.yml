@@ -346,15 +346,8 @@ runs:
             ;;
         esac
 
-        if [ "$INPUT_SCAN_TYPE" = "skills" ] && { [ -z "$INPUT_FORMAT" ] || [ "$INPUT_FORMAT" = "sarif" ]; }; then
-          INPUT_FORMAT="json"
-          if [ -z "$INPUT_OUTPUT" ]; then
-            RESULT_FILE="agent-bom-results.json"
-          fi
-        fi
-
-        if [ "$INPUT_SCAN_TYPE" = "skills" ] && [ -n "$INPUT_FORMAT" ] && [ "$INPUT_FORMAT" != "json" ] && [ "$INPUT_FORMAT" != "console" ]; then
-          echo "::error::scan-type=skills only supports format=json or format=console"
+        if [ "$INPUT_SCAN_TYPE" = "skills" ] && [ -n "$INPUT_FORMAT" ] && [ "$INPUT_FORMAT" != "json" ] && [ "$INPUT_FORMAT" != "console" ] && [ "$INPUT_FORMAT" != "sarif" ]; then
+          echo "::error::scan-type=skills only supports format=json, format=console, or format=sarif"
           exit 1
         fi
 

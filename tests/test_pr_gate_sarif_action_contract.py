@@ -70,6 +70,19 @@ def test_action_exposes_policy_aware_skills_gates() -> None:
     assert 'add_skill_arg_or_warn "--warn-on-review-verdict" "$INPUT_WARN_ON_REVIEW_VERDICT"' in run_script
 
 
+def test_action_allows_skills_sarif_upload_contract() -> None:
+    action_text = (ROOT / "action.yml").read_text(encoding="utf-8")
+    action = yaml.safe_load(action_text)
+    scan_step = next(step for step in action["runs"]["steps"] if step.get("id") == "scan")
+    run_script = scan_step["run"]
+
+    assert "scan-type=skills only supports format=json, format=console, or format=sarif" in run_script
+    assert 'INPUT_FORMAT="json"' not in run_script
+    assert "agent-bom-results.json" not in run_script
+    assert 'if [ "$INPUT_FORMAT" = "sarif" ]; then' in run_script
+    assert "github/codeql-action/upload-sarif" in action_text
+
+
 def test_focused_secrets_and_code_reject_sarif_format(tmp_path: Path) -> None:
     runner = CliRunner()
 

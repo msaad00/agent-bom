@@ -21,15 +21,17 @@ agent-bom proxy  ←── policy.json
 MCP Server (filesystem, postgres, etc.)
 ```
 
-## Five detectors
+## 7 inline proxy detectors
 
 | Detector | What it catches |
 |----------|----------------|
-| **Tool Drift** | Tools invoked at runtime not declared in `tools/list` (rug pull detection) |
-| **Argument Analyzer** | Shell injection, path traversal, credential values in arguments |
-| **Credential Leak** | API keys/tokens in tool call arguments or responses |
-| **Rate Limiter** | Excessive calls per tool within a time window |
-| **Sequence Analyzer** | Multi-step attack patterns (bulk exfiltration, recon + lateral movement) |
+| **ToolDriftDetector** | New, removed, or changed tools after the initial `tools/list` baseline |
+| **ArgumentAnalyzer** | Shell injection, path traversal, SSRF targets, prompt injection, and credential values in arguments |
+| **CredentialLeakDetector** | API keys, tokens, passwords, and PII in tool call arguments or responses |
+| **RateLimitTracker** | Excessive calls per tool within a sliding time window |
+| **SequenceAnalyzer** | Multi-step attack patterns such as bulk exfiltration and recon followed by lateral movement |
+| **ResponseInspector** | Cloaking, SVG payloads, invisible characters, and response-side prompt injection |
+| **VectorDBInjectionDetector** | Prompt injection from retrieved RAG or vector database chunks |
 
 ## Usage
 

@@ -1,10 +1,10 @@
 {
-  "generated_on": "2026-05-19",
+  "generated_on": "2026-05-20",
   "version": "0.87.1",
   "metrics": [
     {
       "name": "MCP tools",
-      "value": 48,
+      "value": 51,
       "source": "src/agent_bom/mcp_server_metadata.py",
       "notes": "Counted from the advertised server-card tools."
     },
@@ -28,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 478,
+      "value": 483,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },

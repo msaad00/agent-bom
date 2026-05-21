@@ -155,7 +155,7 @@ integration docs instead of this front door.
 | Runtime proxy/gateway | runtime operators | scoped MCP traffic inspection, policy decisions, redacted audit evidence |
 | TypeScript client | services and agent runtimes | typed helper for stable REST endpoints |
 
-MCP server mode advertises 48 read-only security tools, 6 resources, and 6 workflow prompts.
+MCP server mode advertises 51 read-only security tools, 6 resources, and 6 workflow prompts.
 
 CLI scan commands run local scan pipelines today. They share lower scanner and
 discovery libraries with the API, but they are not API wrappers yet.

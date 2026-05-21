@@ -102,6 +102,31 @@ async def proxy_status_impl(
         return json.dumps({"error": sanitize_error(exc)})
 
 
+async def proxy_alerts_impl(
+    *,
+    tenant_id: str = "default",
+    severity: str = "",
+    detector: str = "",
+    limit: int = 100,
+    _truncate_response,
+) -> str:
+    """Implementation of the proxy_alerts tool."""
+    try:
+        from agent_bom.api.routes.proxy import proxy_alerts
+
+        bounded_limit = max(1, min(int(limit), 1000))
+        payload = await proxy_alerts(
+            cast(Any, _request_for_tenant(tenant_id)),
+            severity=severity.strip() or None,
+            detector=detector.strip() or None,
+            limit=bounded_limit,
+        )
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP proxy alerts error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
 async def shield_status_impl(
     *,
     session_id: str = "default",
@@ -131,6 +156,59 @@ async def gateway_status_impl(
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP gateway status error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+async def audit_query_impl(
+    *,
+    tenant_id: str = "default",
+    action: str = "",
+    resource: str = "",
+    since: str = "",
+    limit: int = 100,
+    offset: int = 0,
+    _truncate_response,
+) -> str:
+    """Implementation of the audit_query tool."""
+    try:
+        from agent_bom.api.routes.enterprise import list_audit_entries
+
+        bounded_limit = max(1, min(int(limit), 1000))
+        bounded_offset = max(0, int(offset))
+        payload = await list_audit_entries(
+            cast(Any, _request_for_tenant(tenant_id)),
+            action=action.strip() or None,
+            resource=resource.strip() or None,
+            since=since.strip() or None,
+            limit=bounded_limit,
+            offset=bounded_offset,
+        )
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP audit query error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+async def audit_integrity_impl(
+    *,
+    tenant_id: str = "default",
+    limit: int = 1000,
+    include_runtime: bool = True,
+    _truncate_response,
+) -> str:
+    """Implementation of the audit_integrity tool."""
+    try:
+        from agent_bom.api.routes.enterprise import audit_integrity
+
+        bounded_limit = max(1, min(int(limit), 10_000))
+        payload = await audit_integrity(
+            cast(Any, _request_for_tenant(tenant_id)),
+            limit=bounded_limit,
+            include_runtime=include_runtime,
+        )
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP audit integrity error")
         return json.dumps({"error": sanitize_error(exc)})
 
 

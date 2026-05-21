@@ -1,6 +1,6 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
-agent-bom exposes 48 security tools as an MCP server. Any MCP-compatible client
+agent-bom exposes 51 security tools as an MCP server. Any MCP-compatible client
 can connect and get vulnerability scanning, blast radius analysis, compliance
 checks, and supply chain verification through natural conversation.
 
@@ -56,7 +56,7 @@ Add to `~/.snowflake/cortex/mcp.json`:
 }
 ```
 
-CoCo can then call the same 48 `agent-bom` tools over MCP.
+CoCo can then call the same 51 `agent-bom` tools over MCP.
 
 agent-bom also discovers Cortex auxiliary security files alongside `mcp.json`:
 
@@ -155,7 +155,7 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (48 tools)
+## Tool Categories (51 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|
@@ -168,7 +168,7 @@ agent-bom proxy-bootstrap \
 | **Inventory** | `inventory` | List agents/servers without CVE scanning |
 | **Trust** | `marketplace_check`, `runtime_correlate`, `tool_risk_assessment` | Score package trust, correlate runtime usage, and assess live tool capability risk |
 | **Skills** | `skill_scan`, `skill_verify`, `skill_trust` | Instruction-file trust, provenance, and tool-poisoning detection |
-| **Graph / Runtime** | `exposure_paths`, `should_i_deploy`, `context_graph`, `graph_export`, `runtime_correlate`, `runtime_production_index`, `runtime_blueprints`, `runtime_blueprint_drift`, `proxy_status`, `gateway_status`, `shield_status`, `firewall_check`, `tool_risk_assessment` | Return ranked investigation paths, deploy decisions, graph exports, runtime posture, blueprints, drift checks, and read-only firewall decisions |
+| **Graph / Runtime** | `exposure_paths`, `should_i_deploy`, `context_graph`, `graph_export`, `runtime_correlate`, `runtime_production_index`, `runtime_blueprints`, `runtime_blueprint_drift`, `proxy_status`, `proxy_alerts`, `gateway_status`, `shield_status`, `firewall_check`, `audit_query`, `audit_integrity`, `tool_risk_assessment` | Return ranked investigation paths, deploy decisions, graph exports, runtime posture, blueprints, drift checks, proxy alerts, audit-chain evidence, and read-only firewall decisions |
 | **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan` | Scan AI artifacts, prompts, model files, browser extensions, and external scanner results |
 
 ## Agent-facing decision tools

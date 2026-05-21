@@ -258,6 +258,16 @@
     ]
   },
   {
+    "name": "proxy_alerts",
+    "description": "Return recent tenant-scoped runtime proxy alerts with severity and detector filters.",
+    "arguments": [
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope to read"},
+      {"name": "severity", "type": "string", "desc": "Optional severity filter"},
+      {"name": "detector", "type": "string", "desc": "Optional detector name filter"},
+      {"name": "limit", "type": "integer", "desc": "Maximum alerts to return"}
+    ]
+  },
+  {
     "name": "gateway_status",
     "description": "Return gateway policy and inter-agent firewall runtime statistics.",
     "arguments": [
@@ -279,6 +289,27 @@
       {"name": "target_agent", "type": "string", "desc": "Target agent or service identity"},
       {"name": "source_roles", "type": "string", "desc": "Optional comma-separated source roles"},
       {"name": "target_roles", "type": "string", "desc": "Optional comma-separated target roles"}
+    ]
+  },
+  {
+    "name": "audit_query",
+    "description": "Read tenant-scoped control-plane audit records with filters.",
+    "arguments": [
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope to read"},
+      {"name": "action", "type": "string", "desc": "Optional audit action filter"},
+      {"name": "resource", "type": "string", "desc": "Optional audit resource filter"},
+      {"name": "since", "type": "string", "desc": "Optional ISO timestamp lower bound"},
+      {"name": "limit", "type": "integer", "desc": "Maximum audit records to return"},
+      {"name": "offset", "type": "integer", "desc": "Pagination offset"}
+    ]
+  },
+  {
+    "name": "audit_integrity",
+    "description": "Verify control-plane and runtime audit-chain integrity.",
+    "arguments": [
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope to verify"},
+      {"name": "limit", "type": "integer", "desc": "Maximum audit records to verify"},
+      {"name": "include_runtime", "type": "boolean", "desc": "Include configured runtime proxy audit log"}
     ]
   },
   {

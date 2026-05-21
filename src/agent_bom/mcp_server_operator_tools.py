@@ -31,8 +31,11 @@ def register_operator_tools(
     from agent_bom.mcp_tools.compliance import cis_benchmark_impl
     from agent_bom.mcp_tools.registry import fleet_scan_impl, marketplace_check_impl
     from agent_bom.mcp_tools.runtime import (
+        audit_integrity_impl,
+        audit_query_impl,
         firewall_check_impl,
         gateway_status_impl,
+        proxy_alerts_impl,
         proxy_status_impl,
         runtime_blueprint_drift_impl,
         runtime_blueprints_impl,
@@ -483,6 +486,36 @@ def register_operator_tools(
             _truncate_response=truncate_response,
         )
 
+    @mcp.tool(annotations=read_only, title="Proxy Alerts")
+    async def proxy_alerts(
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to read. Defaults to the control-plane default tenant."),
+        ] = "default",
+        severity: Annotated[
+            str,
+            Field(description="Optional severity filter: critical, high, medium, low, or info."),
+        ] = "",
+        detector: Annotated[
+            str,
+            Field(description="Optional detector name filter, for example credential_leak."),
+        ] = "",
+        limit: Annotated[
+            int,
+            Field(ge=1, le=1000, description="Maximum alerts to return."),
+        ] = 100,
+    ) -> str:
+        """Return recent runtime proxy alerts without prompts, arguments, or responses."""
+        return await execute_tool_async(
+            "proxy_alerts",
+            proxy_alerts_impl,
+            tenant_id=tenant_id,
+            severity=severity,
+            detector=detector,
+            limit=limit,
+            _truncate_response=truncate_response,
+        )
+
     @mcp.tool(annotations=read_only, title="Gateway Status")
     async def gateway_status(
         tenant_id: Annotated[
@@ -534,5 +567,70 @@ def register_operator_tools(
             target_agent=target_agent,
             source_roles=source_roles,
             target_roles=target_roles,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Audit Query")
+    async def audit_query(
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to read. Defaults to the control-plane default tenant."),
+        ] = "default",
+        action: Annotated[
+            str,
+            Field(description="Optional audit action filter."),
+        ] = "",
+        resource: Annotated[
+            str,
+            Field(description="Optional audit resource filter."),
+        ] = "",
+        since: Annotated[
+            str,
+            Field(description="Optional ISO timestamp lower bound."),
+        ] = "",
+        limit: Annotated[
+            int,
+            Field(ge=1, le=1000, description="Maximum audit records to return."),
+        ] = 100,
+        offset: Annotated[
+            int,
+            Field(ge=0, description="Pagination offset."),
+        ] = 0,
+    ) -> str:
+        """Read tenant-scoped control-plane audit records."""
+        return await execute_tool_async(
+            "audit_query",
+            audit_query_impl,
+            tenant_id=tenant_id,
+            action=action,
+            resource=resource,
+            since=since,
+            limit=limit,
+            offset=offset,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Audit Integrity")
+    async def audit_integrity(
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to verify. Defaults to the control-plane default tenant."),
+        ] = "default",
+        limit: Annotated[
+            int,
+            Field(ge=1, le=10000, description="Maximum audit records to verify."),
+        ] = 1000,
+        include_runtime: Annotated[
+            bool,
+            Field(description="Also verify the configured runtime proxy audit log when AGENT_BOM_LOG is set."),
+        ] = True,
+    ) -> str:
+        """Verify control-plane and runtime audit chain integrity."""
+        return await execute_tool_async(
+            "audit_integrity",
+            audit_integrity_impl,
+            tenant_id=tenant_id,
+            limit=limit,
+            include_runtime=include_runtime,
             _truncate_response=truncate_response,
         )

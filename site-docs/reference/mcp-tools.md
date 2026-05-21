@@ -213,6 +213,12 @@ Return current MCP proxy metrics and runtime alert posture.
 proxy_status(tenant_id="default")
 ```
 
+### proxy_alerts
+Return recent tenant-scoped runtime proxy alerts with optional severity and detector filters.
+```
+proxy_alerts(tenant_id="default", severity="critical", detector="", limit=50)
+```
+
 ### gateway_status
 Return gateway policy and inter-agent firewall runtime statistics.
 ```
@@ -229,6 +235,18 @@ shield_status(session_id="default")
 Dry-run an inter-agent firewall decision without recording control-plane state.
 ```
 firewall_check(source_agent="developer-agent", target_agent="ticketing-agent")
+```
+
+### audit_query
+Read tenant-scoped control-plane audit records with action, resource, time, and pagination filters.
+```
+audit_query(tenant_id="default", action="", resource="", since="", limit=100, offset=0)
+```
+
+### audit_integrity
+Verify control-plane and runtime audit-chain integrity without mutating enforcement state.
+```
+audit_integrity(tenant_id="default", limit=1000, include_runtime=true)
 ```
 
 ### vector_db_scan

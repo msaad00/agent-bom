@@ -949,6 +949,59 @@ async def test_proxy_gateway_and_shield_status_impls_empty_state():
     assert shield_data["active"] is False
 
 
+@pytest.mark.asyncio
+async def test_proxy_alerts_impl_filters_metadata_only_alerts():
+    import agent_bom.api.routes.proxy as proxy_mod
+    from agent_bom.api.routes.proxy import push_proxy_alert
+    from agent_bom.mcp_tools.runtime import proxy_alerts_impl
+
+    proxy_mod._proxy_alerts.clear()
+    push_proxy_alert(
+        {
+            "tenant_id": "default",
+            "severity": "critical",
+            "detector": "credential_leak",
+            "message": "blocked secret",
+            "raw_arguments": {"token": "sk-test"},
+        }
+    )
+
+    result = await proxy_alerts_impl(
+        tenant_id="default",
+        severity="critical",
+        detector="credential_leak",
+        limit=10,
+        _truncate_response=_trunc,
+    )
+    data = json.loads(result)
+    assert data["count"] == 1
+    assert data["alerts"][0]["detector"] == "credential_leak"
+    assert "raw_arguments" not in data["alerts"][0]
+
+    proxy_mod._proxy_alerts.clear()
+
+
+@pytest.mark.asyncio
+async def test_audit_query_and_integrity_impls_are_tenant_scoped():
+    from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog, set_audit_log
+    from agent_bom.mcp_tools.runtime import audit_integrity_impl, audit_query_impl
+
+    store = InMemoryAuditLog()
+    store.append(AuditEntry(action="scan", actor="alice", resource="job/alpha", details={"tenant_id": "tenant-alpha"}))
+    store.append(AuditEntry(action="scan", actor="bob", resource="job/beta", details={"tenant_id": "tenant-beta"}))
+    set_audit_log(store)
+
+    query_result = await audit_query_impl(tenant_id="tenant-alpha", action="scan", limit=10, _truncate_response=_trunc)
+    query_data = json.loads(query_result)
+    assert query_data["total"] == 1
+    assert query_data["entries"][0]["resource"] == "job/alpha"
+
+    integrity_result = await audit_integrity_impl(tenant_id="tenant-alpha", include_runtime=False, _truncate_response=_trunc)
+    integrity_data = json.loads(integrity_result)
+    assert integrity_data["checked"] == 1
+    assert integrity_data["chains"][0]["tenant_scoped"] is True
+
+
 def test_firewall_check_impl_is_read_only_default_allow():
     from agent_bom.mcp_tools.runtime import firewall_check_impl
 

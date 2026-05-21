@@ -142,6 +142,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "proxy_alerts",
+        "description": "Return recent tenant-scoped runtime proxy alerts with severity and detector filters",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "gateway_status",
         "description": "Return gateway policy and inter-agent firewall runtime statistics",
         "annotations": {"readOnlyHint": True},
@@ -154,6 +159,16 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "firewall_check",
         "description": "Dry-run an inter-agent firewall decision without recording control-plane state",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "audit_query",
+        "description": "Read tenant-scoped control-plane audit records with action, resource, time, and pagination filters",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "audit_integrity",
+        "description": "Verify control-plane and runtime audit-chain integrity without mutating enforcement state",
         "annotations": {"readOnlyHint": True},
     },
     {
@@ -255,9 +270,12 @@ _TOOL_CAPABILITY_CLASSES = {
     "runtime_blueprints": ["READ", "RUNTIME", "POLICY"],
     "runtime_blueprint_drift": ["READ", "RUNTIME", "POLICY", "ANALYZE"],
     "proxy_status": ["READ", "RUNTIME", "OBSERVABILITY"],
+    "proxy_alerts": ["READ", "RUNTIME", "OBSERVABILITY"],
     "gateway_status": ["READ", "RUNTIME", "POLICY"],
     "shield_status": ["READ", "RUNTIME", "SECURITY"],
     "firewall_check": ["READ", "RUNTIME", "POLICY"],
+    "audit_query": ["READ", "AUDIT"],
+    "audit_integrity": ["READ", "AUDIT", "PROVENANCE"],
     "vector_db_scan": ["READ", "NETWORK", "RUNTIME"],
     "aisvs_benchmark": ["READ", "COMPLIANCE"],
     "gpu_infra_scan": ["READ", "NETWORK", "INFRA"],

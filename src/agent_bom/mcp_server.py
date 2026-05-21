@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (48):
+Tools (51):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -30,6 +30,16 @@ Tools (48):
     cis_benchmark       — Run CIS benchmark checks against cloud accounts
     fleet_scan          — Batch registry lookup for fleet inventories
     runtime_correlate   — Cross-reference runtime audit logs with CVE findings
+    runtime_production_index — Runtime production posture summary
+    runtime_blueprints  — Role/profile blueprints for runtime policy design
+    runtime_blueprint_drift — Evaluate runtime posture against a blueprint
+    proxy_status        — Current MCP proxy metrics and alert posture
+    proxy_alerts        — Recent tenant-scoped runtime proxy alerts
+    gateway_status      — Gateway policy and firewall runtime statistics
+    shield_status       — Shield session status without changing enforcement
+    firewall_check      — Read-only inter-agent firewall decision dry run
+    audit_query         — Tenant-scoped control-plane audit records
+    audit_integrity     — Control-plane and runtime audit-chain verification
     vector_db_scan      — Scan vector databases for embedding poisoning and access risks
     aisvs_benchmark     — OWASP AI Security Verification Standard benchmark
     gpu_infra_scan      — Scan GPU infrastructure for CVEs and misconfigurations

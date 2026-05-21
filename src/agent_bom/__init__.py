@@ -3,6 +3,7 @@
 import re
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 try:
     __version__ = version("agent-bom")
@@ -31,8 +32,13 @@ from agent_bom.sdk import (  # noqa: E402
     scan,
 )
 
+if TYPE_CHECKING:
+    from agent_bom.client import AgentBomApiError, AgentBomClient
+
 __all__ = [
     "__version__",
+    "AgentBomApiError",
+    "AgentBomClient",
     "AgentBomSDKError",
     "DiffResult",
     "InventoryResult",
@@ -42,3 +48,15 @@ __all__ = [
     "diff",
     "scan",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name in {"AgentBomApiError", "AgentBomClient"}:
+        from agent_bom.client import AgentBomApiError, AgentBomClient
+
+        exports = {
+            "AgentBomApiError": AgentBomApiError,
+            "AgentBomClient": AgentBomClient,
+        }
+        return exports[name]
+    raise AttributeError(f"module 'agent_bom' has no attribute {name!r}")

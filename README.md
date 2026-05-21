@@ -153,6 +153,7 @@ integration docs instead of this front door.
 | MCP tools | agents and assistants | strict arguments, read-only security queries, exposure paths, deploy decisions |
 | Dashboard | security teams and operators | inventory, findings, graph cockpit, compliance, evidence, runtime posture |
 | Runtime proxy/gateway | runtime operators | scoped MCP traffic inspection, policy decisions, redacted audit evidence |
+| Python client | services, notebooks, and automation | typed helper for stable REST endpoints in the packaged wheel |
 | TypeScript client | services and agent runtimes | typed helper for stable REST endpoints |
 
 MCP server mode advertises 51 read-only security tools, 6 resources, and 6 workflow prompts.

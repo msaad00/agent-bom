@@ -879,7 +879,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "Gateway identity policy blocked request for upstream=%s tenant_id=%s source_agent=%s reason=%s",
                 upstream.name,
                 tenant_id,
-                source_agent,
+                _sanitize_for_log(source_agent),
                 _sanitize_for_log(identity_block_reason),
             )
             if settings.audit_sink is not None:

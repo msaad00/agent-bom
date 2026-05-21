@@ -487,10 +487,11 @@ def test_mcp_server_help_shows_skill_tools():
     from click.testing import CliRunner
 
     from agent_bom.cli import main
+    from agent_bom.mcp_server import _SERVER_CARD_TOOLS
 
     runner = CliRunner()
     result = runner.invoke(main, ["mcp", "server", "--help"])
-    assert "48 security tools" in result.output
+    assert f"{len(_SERVER_CARD_TOOLS)} security tools" in result.output
     assert "skill_scan" in result.output
     assert "skill_verify" in result.output
     assert "compliance" in result.output

@@ -66,16 +66,18 @@ so future agent and SIEM push workflows share one event envelope.
   with:
     scan-type: skills
     scan-ref: .
-    format: json
-    output: agent-bom-skills.json
+    format: sarif
+    output: agent-bom-skills.sarif
+    upload-sarif: true
     policy: skills-policy.yaml
     warn-on-review-verdict: review
     fail-on-review-verdict: blocked
 ```
 
-Produces JSON skills evidence and a policy result. Use this lane for
-instruction files and skills; keep package/SARIF gates in a separate job until
-the skills finding schema is exported as SARIF.
+Produces skills SARIF with source locations, trust metadata, and policy
+results for GitHub code scanning. Use this lane for instruction files and
+skills; keep package, IaC, and SBOM gates in separate jobs when their policies
+or review owners differ.
 
 ### Hosted Gateway Or Proxy Review
 

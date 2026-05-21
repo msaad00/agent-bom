@@ -9,18 +9,58 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.88.0] - 2026-05-21
+
 ### Added
+- Python control-plane client with typed helpers for health, findings, bulk
+  ingest, graph schema, runtime production index, Agent BOM manifest, threat
+  intel sources, advisory lookup, and package matching.
+- Plugin entry-point registries for `agent_bom.mcp_tools`,
+  `agent_bom.advisory_sources`, and `agent_bom.runtime_emitters`, plus
+  documentation for third-party extension authors.
 - Runtime blueprints now include a drift evaluation endpoint and MCP tool so
   operators and agents can compare live runtime posture with an approved role
   profile without exposing raw prompts, arguments, responses, or credentials.
 - MCP server mode now exposes read-only runtime posture tools for production
   index summaries, runtime blueprints, proxy/gateway status, Shield session
   status, and inter-agent firewall decision dry-runs.
+- Runtime audit read tools now expose audit query, audit integrity, and proxy
+  alert summaries through MCP for agent-native investigations.
+- Agentic identity graph edges and runtime identity projections now flow into
+  canonical graph exports and API/UI graph surfaces.
+- AI visibility manifest signals and dashboard filters now summarize agent,
+  MCP server, tool, owner, risk, freshness, and runtime posture.
 
 ### Fixed
+- Gateway and proxy rate limiting now scope buckets by source agent where
+  identity is available, with tenant-local anonymous fallback and explicit
+  metric labeling.
+- Scanner accuracy now catches additional Dockerfile risk patterns, training
+  metadata PII, prompt-injection sentinels, and image `--output` JSON file
+  writes.
+- Graph exports now bound large Mermaid and SVG output by default, preserve
+  full graph counts, include omitted-node summaries, and support full output
+  opt-in.
+- Agent inventory validation now mirrors the full discovery profile catalog and
+  returns clearer did-you-mean errors for common schema mistakes.
+- SARIF output now exposes the compliance taxonomy catalog for consumers that
+  read `tool.extensions`, while retaining per-finding taxa.
 - Product metrics now count the root dashboard page and refreshed MCP tool
   counts across generated metrics, MCP docs, Docker MCP metadata, and release
   consistency checks.
+- Runtime detector documentation and TypeScript SDK detector counts are aligned
+  with the exported runtime package.
+
+### Changed
+- README, Docker Hub, data-model, deployment, enterprise, and runtime security
+  docs now reflect the v0.88 control-plane story: Python SDK, plugin slots,
+  runtime posture, graph readability, identity projections, and first-run proof.
+- First-run samples now use intentionally vulnerable package versions that
+  produce real findings, with regression coverage for the expected signal.
+- The data-model atlas is generated from code and live schema sources so graph
+  entity and relationship counts stay aligned with API/UI/runtime surfaces.
 
 ---
 
@@ -1350,7 +1390,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.87.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.0...HEAD
+[0.88.0]: https://github.com/msaad00/agent-bom/compare/v0.87.1...v0.88.0
 [0.87.1]: https://github.com/msaad00/agent-bom/compare/v0.87.0...v0.87.1
 [0.87.0]: https://github.com/msaad00/agent-bom/compare/v0.86.5...v0.87.0
 [0.86.5]: https://github.com/msaad00/agent-bom/compare/v0.86.4...v0.86.5

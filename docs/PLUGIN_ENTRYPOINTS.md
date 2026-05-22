@@ -71,6 +71,22 @@ Group-specific optional fields:
 - `agent_bom.runtime_emitters`: `emit_attr`, default `emit`; `flush_attr`,
   default `flush`.
 
+## Runnable Examples
+
+Concrete examples live in [`examples/plugin_entrypoints/`](../examples/plugin_entrypoints/):
+
+- `example_mcp_tools.py` advertises a read-only MCP posture tool and a
+  `register_tools(mcp)` function.
+- `example_advisory_source.py` advertises a license-aware advisory lookup/sync
+  source that returns summaries and source URLs instead of redistributing full
+  advisory bodies.
+- `example_runtime_emitter.py` advertises a runtime event emitter that keeps
+  only redacted metadata envelopes and avoids raw prompts, arguments, and
+  credential values.
+
+These examples are covered by `tests/test_plugin_entrypoint_examples.py` so the
+documented plugin contract stays importable.
+
 ## First Verification
 
 For plugin package tests, monkeypatch `importlib.metadata.entry_points`, set

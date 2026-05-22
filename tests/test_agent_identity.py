@@ -5,8 +5,10 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 import time
 
+import agent_bom.agent_identity as identity_mod
 from agent_bom.agent_identity import (
     ANONYMOUS,
     check_identity,
@@ -234,6 +236,30 @@ def test_check_identity_unknown_token_required_blocks():
     policy = {"require_agent_identity": True}
     agent_id, block = check_identity(msg, policy)
     assert block is not None
+
+
+def test_check_identity_sanitizes_error_before_logging(caplog, monkeypatch):
+    token = _make_jwt({"sub": "agent-x"}, header={"alg": "RS256", "kid": "line1\nline2"})
+    msg = _msg_with_identity(token)
+    policy = {"require_agent_identity": True, "jwks_uri": "https://idp.example.invalid/jwks"}
+    monkeypatch.setattr(identity_mod, "_fetch_jwks", lambda _uri: {"keys": []})
+
+    caplog.set_level(logging.DEBUG, logger="agent_bom.agent_identity")
+    _agent_id, block = check_identity(msg, policy)
+
+    assert block is not None
+    assert "line1 line2" in block
+    assert "\n" not in block
+    assert "\r" not in block
+    assert "\\n" not in block
+    assert "\\r" not in block
+    assert all(
+        "\n" not in record.getMessage()
+        and "\r" not in record.getMessage()
+        and "\\n" not in record.getMessage()
+        and "\\r" not in record.getMessage()
+        for record in caplog.records
+    )
 
 
 # ─── log_tool_call carries agent_id ──────────────────────────────────────────

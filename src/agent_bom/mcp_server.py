@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (51):
+Tools (54):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -37,6 +37,9 @@ Tools (51):
     proxy_alerts        — Recent tenant-scoped runtime proxy alerts
     gateway_status      — Gateway policy and firewall runtime statistics
     shield_status       — Shield session status without changing enforcement
+    shield_start        — Start Shield enforcement with admin/audit gating
+    shield_unblock      — Unblock Shield enforcement with admin/audit gating
+    shield_break_glass  — Emergency Shield override with admin/audit gating
     firewall_check      — Read-only inter-agent firewall decision dry run
     audit_query         — Tenant-scoped control-plane audit records
     audit_integrity     — Control-plane and runtime audit-chain verification
@@ -61,7 +64,9 @@ Resources (6):
     bestpractices://mcp-hardening — MCP deployment hardening checklist
     compliance://framework-controls — Framework coverage and evidence mapping
 
-Security: Read-only. Never executes MCP servers or reads credential values.
+Security: read-mostly. Scanner, graph, audit, and runtime posture tools are
+read-only. Shield write tools require explicit admin role + audit reason and
+never read credential values.
 """
 
 from __future__ import annotations
@@ -319,8 +324,11 @@ _recent_tool_requests: deque[dict[str, Any]] = deque(maxlen=_MCP_MAX_REQUEST_TRA
 _MAX_CACHED_TOOL_LOOPS = 8
 
 
-# All agent-bom tools are read-only scanners
+# Most agent-bom MCP tools are read-only scanners. Shield write tools are
+# explicitly annotated as mutating and fail closed unless an admin role and
+# audit reason are supplied.
 _READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
+_WRITE_ACTION = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
 
 
 def _check_mcp_sdk() -> None:
@@ -869,6 +877,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     register_operator_tools(
         mcp,
         read_only=_READ_ONLY,
+        write_action=_WRITE_ACTION,
         execute_tool_async=_execute_tool_async,
         safe_path=_safe_path,
         run_scan_pipeline=_run_scan_pipeline,

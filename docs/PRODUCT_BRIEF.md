@@ -86,10 +86,10 @@ every API/UI workflow.
 Integrations should be described as distribution and workflow fit, not as a
 miscellaneous compatibility list. The strongest story is:
 
-- **coding agents and MCP clients**: Claude, Cursor, Windsurf, VS Code, Cortex
-  Code, OpenAI Codex CLI, and similar clients can invoke agent-bom as a
-  read-only security tool surface, including `exposure_paths` and
-  `should_i_deploy` for headless investigation and deploy guidance.
+- **coding agents and MCP clients**: supported clients can invoke agent-bom as
+  a read-mostly security tool surface, including `exposure_paths` and
+  `should_i_deploy` for headless investigation and deploy guidance. Shield
+  write actions require admin role and audit reason.
 - **skills and registries**: OpenClaw skills, Cortex Code skill packaging, MCP
   Registry, Smithery, Glama, and Docker MCP registry make repeatable
   agent-bom workflows available where agent users already discover tools.
@@ -127,7 +127,7 @@ notes discuss agent-native product direction.
 | Area | Shipped today | Not yet shipped |
 |---|---|---|
 | Human cockpit | Next.js dashboard, graph cockpit, reports, compliance and audit views | every UI action backed by a source registry and persisted workflow state |
-| Agent interface | 51 read-only MCP tools, strict arguments, `exposure_paths`, `should_i_deploy`, threat-intel lookup, runtime posture | long-lived posture subscription tool, autonomous remediation actions |
+| Agent interface | 54 MCP tools, strict arguments, `exposure_paths`, `should_i_deploy`, threat-intel lookup, runtime posture, admin-gated Shield actions | long-lived posture subscription tool, autonomous remediation actions |
 | Scanner/data plane | CLI, Docker, GitHub Action, REST API, imports, graph exports, TypeScript control-plane client, TypeScript runtime detector package | Python/Go control-plane SDKs and full scanner SDKs |
 | Runtime | MCP proxy, gateway, Shield SDK, runtime audit and policy decisions | webhook outbox, Kafka connectors, cloud-log ingestion connectors, Kinesis/Firehose adapter, and MCP posture subscriptions |
 | Graph scale | SQLite/Postgres default path, WebGL overview, optional Neptune adapter work | production Neptune SLOs, public openCypher endpoint, mandatory graph-database backend |

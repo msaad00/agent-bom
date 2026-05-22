@@ -150,13 +150,15 @@ integration docs instead of this front door.
 |---|---|---|
 | CLI / CI | developers and release gates | local scans, SARIF/SBOM/HTML/JSON, deterministic exit codes |
 | REST API | control-plane integrations | scans, bulk findings, dataset versions, graph evidence, audit, runtime summaries |
-| MCP tools | agents and assistants | strict arguments, read-only security queries, exposure paths, deploy decisions |
+| MCP tools | agents and assistants | strict arguments, read-mostly security queries, exposure paths, deploy decisions, audited Shield actions |
 | Dashboard | security teams and operators | inventory, findings, graph cockpit, compliance, evidence, runtime posture |
 | Runtime proxy/gateway | runtime operators | scoped MCP traffic inspection, policy decisions, redacted audit evidence |
 | Python client | services, notebooks, and automation | typed helper for stable REST endpoints in the packaged wheel |
 | TypeScript client | services and agent runtimes | typed helper for stable REST endpoints |
 
-MCP server mode advertises 51 read-only security tools, 6 resources, and 6 workflow prompts.
+MCP server mode advertises 54 MCP tools, 6 resources, and 6 workflow prompts.
+Most tools are read-only. The three Shield write actions fail closed unless
+the caller supplies `operator_role=admin` and an audit reason.
 
 CLI scan commands run local scan pipelines today. They share lower scanner and
 discovery libraries with the API, but they are not API wrappers yet.

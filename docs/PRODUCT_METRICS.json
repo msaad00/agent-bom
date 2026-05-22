@@ -1,10 +1,10 @@
 {
-  "generated_on": "2026-05-21",
+  "generated_on": "2026-05-22",
   "version": "0.88.1",
   "metrics": [
     {
       "name": "MCP tools",
-      "value": 51,
+      "value": 54,
       "source": "src/agent_bom/mcp_server_metadata.py",
       "notes": "Counted from the advertised server-card tools."
     },

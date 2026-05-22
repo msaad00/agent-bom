@@ -398,7 +398,7 @@ def main() -> int:
     tools = len(tool_names)
     resources = len(resource_uris)
     prompts = len(prompt_names)
-    if (tools, resources, prompts) != (51, 6, 6):
+    if (tools, resources, prompts) != (54, 6, 6):
         _fail(f"MCP server card count changed unexpectedly: tools={tools}, resources={resources}, prompts={prompts}")
     docker_mcp_tool_names = [str(tool["name"]) for tool in json.loads(DOCKER_MCP_TOOLS.read_text())]
     if docker_mcp_tool_names != tool_names:
@@ -407,7 +407,7 @@ def main() -> int:
         _fail(f"integrations/docker-mcp-registry/tools.json is out of sync with MCP server-card tools: missing={missing}, extra={extra}")
     for path in MCP_COUNT_DOCS:
         text = path.read_text()
-        readme_count_phrase = f"{tools} read-only security tools, {resources} resources, and {prompts} workflow prompts"
+        readme_count_phrase = f"{tools} MCP tools, {resources} resources, and {prompts} workflow prompts"
         if path.name == "README.md" and readme_count_phrase not in text:
             _fail("README.md must advertise current MCP tool/resource/prompt counts")
         if path.name == "MCP_SERVER.md" and f"Tool Categories ({tools} tools)" not in text:

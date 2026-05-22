@@ -20,7 +20,7 @@ command = "agent-bom"
 args = ["mcp", "server"]
 ```
 
-That makes the same 51 read-only `agent-bom` MCP tools available to Codex.
+That makes the same 54 `agent-bom` MCP tools available to Codex.
 
 ## What agent-bom discovers for Codex
 
@@ -75,7 +75,7 @@ That gives you:
 
 Important boundary:
 
-- `agent-bom mcp server` is read-only
+- `agent-bom mcp server` is read-mostly; Shield write actions require admin role and audit reason
 - `agent-bom agents` is read-only
 - `agent-bom proxy` intentionally runs the wrapped stdio server so it can enforce policy on live traffic
 
@@ -83,7 +83,7 @@ For deeper protection workflows beyond the lighter proxy path, use the broader r
 
 ## Notes
 
-- `agent-bom mcp server` is read-only.
+- `agent-bom mcp server` is read-mostly.
 - `agent-bom proxy` is the runtime enforcement path.
 - Codex TOML configs support both local stdio and remote URL-based MCP servers, but only stdio targets can be wrapped with the local proxy command pattern.
 - See [MCP_CLIENT_GUIDES.md](MCP_CLIENT_GUIDES.md) for the broader client matrix.

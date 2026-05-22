@@ -14,12 +14,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from agent_bom.event_normalization import build_event_ref, build_event_relationships
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType
+from agent_bom.posture_streaming import PostureEvent, WebhookDestination, WebhookOutbox, default_webhook_outbox
+from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 
@@ -265,54 +268,148 @@ def _graph_delta_webhook_url() -> str:
     return os.environ.get("AGENT_BOM_GRAPH_DELTA_WEBHOOK", "").strip() or os.environ.get("AGENT_BOM_ALERT_WEBHOOK", "").strip()
 
 
+def _graph_delta_webhook_signing_secret() -> str:
+    return (
+        os.environ.get("AGENT_BOM_GRAPH_DELTA_WEBHOOK_SIGNING_SECRET", "").strip()
+        or os.environ.get("AGENT_BOM_POSTURE_WEBHOOK_SIGNING_SECRET", "").strip()
+    )
+
+
+def _graph_delta_destination_id() -> str:
+    return os.environ.get("AGENT_BOM_GRAPH_DELTA_WEBHOOK_DESTINATION_ID", "").strip() or "graph-delta-webhook"
+
+
 def _graph_delta_slack_webhook_url() -> str:
     return os.environ.get("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", "").strip() or os.environ.get("SLACK_WEBHOOK_URL", "").strip()
+
+
+def _graph_delta_webhook_destination(*, tenant_id: str) -> tuple[WebhookDestination | None, str]:
+    webhook_url = _graph_delta_webhook_url()
+    if not webhook_url:
+        return None, ""
+    signing_secret = _graph_delta_webhook_signing_secret()
+    if not signing_secret:
+        return None, "AGENT_BOM_GRAPH_DELTA_WEBHOOK_SIGNING_SECRET is required for durable graph delta webhook delivery"
+    try:
+        return (
+            WebhookDestination(
+                destination_id=_graph_delta_destination_id(),
+                tenant_id=tenant_id,
+                url=webhook_url,
+                signing_secret=signing_secret,
+                allow_private_networks=os.environ.get("AGENT_BOM_GRAPH_DELTA_WEBHOOK_ALLOW_PRIVATE_NETWORKS", "").strip().lower()
+                in {"1", "true", "yes", "on"},
+            ),
+            "",
+        )
+    except ValueError as exc:
+        return None, sanitize_error(exc)
+
+
+def _posture_event_for_graph_delta(alert: dict[str, Any], *, tenant_id: str, product_version: str) -> PostureEvent:
+    raw_details = alert.get("details")
+    details: Mapping[str, Any] = raw_details if isinstance(raw_details, Mapping) else {}
+    subject_id = str(alert.get("scan_id") or details.get("scan_id") or "")
+    alert_type = str(alert.get("type") or "graph_delta")
+    primary_node = ""
+    node_ids = alert.get("node_ids")
+    if isinstance(node_ids, list) and node_ids:
+        primary_node = str(node_ids[0])
+    if primary_node:
+        subject_id = f"{subject_id}:{alert_type}:{primary_node}" if subject_id else f"{alert_type}:{primary_node}"
+    return PostureEvent(
+        event_type="graph.delta",
+        tenant_id=tenant_id,
+        source="graph_delta",
+        subject_id=subject_id,
+        payload={
+            "alert": alert,
+            "product_version": product_version,
+        },
+    )
+
+
+def enqueue_delta_alerts(
+    alerts: list[dict[str, Any]],
+    *,
+    destination: WebhookDestination,
+    product_version: str = "0.0.0",
+    outbox: WebhookOutbox | None = None,
+) -> dict[str, Any]:
+    """Queue graph delta alerts into the signed posture webhook outbox."""
+
+    target_outbox = outbox or default_webhook_outbox()
+    queued = 0
+    row_ids: list[int] = []
+    for alert in alerts:
+        event = _posture_event_for_graph_delta(alert, tenant_id=destination.tenant_id, product_version=product_version)
+        row_id = target_outbox.enqueue(event, destination)
+        row_ids.append(row_id)
+        queued += 1
+    return {"queued": queued, "outbox_row_ids": row_ids, "destination_id": destination.destination_id}
 
 
 def dispatch_delta_alerts(
     alerts: list[dict[str, Any]],
     *,
     product_version: str = "0.0.0",
+    tenant_id: str = "default",
+    outbox: WebhookOutbox | None = None,
 ) -> dict[str, Any]:
     """Dispatch graph delta alerts to configured outbound channels.
 
-    Uses dedicated graph delta webhook/slack env vars when present and falls
-    back to the generic scan/runtime webhook env vars. Returns delivery
-    metadata plus OCSF-ready events for downstream export.
+    Generic graph-delta webhooks are queued through the durable posture outbox
+    when a signing secret is configured. Slack delivery remains an explicit
+    best-effort notification channel. Returns delivery metadata plus OCSF-ready
+    events for downstream export.
     """
     from agent_bom.alerts.dispatcher import AlertDispatcher
 
-    webhook_url = _graph_delta_webhook_url()
+    webhook_destination, webhook_config_error = _graph_delta_webhook_destination(tenant_id=tenant_id)
     slack_webhook_url = _graph_delta_slack_webhook_url()
-    outbound_channels = int(bool(webhook_url)) + int(bool(slack_webhook_url))
+    outbound_channels = int(bool(webhook_destination)) + int(bool(slack_webhook_url))
     ocsf_events = format_alerts_for_siem(alerts, product_version)
     result = {
         "configured": outbound_channels > 0,
         "attempted": len(alerts),
         "delivered": 0,
         "queued": 0,
+        "dead_lettered": 0,
         "outbound_channels": outbound_channels,
+        "outbox_row_ids": [],
+        "webhook_config_error": webhook_config_error,
         "ocsf_event_count": len(ocsf_events),
         "ocsf_events": ocsf_events,
     }
     if not alerts or outbound_channels == 0:
         return result
 
+    if webhook_destination:
+        queued = enqueue_delta_alerts(
+            alerts,
+            destination=webhook_destination,
+            product_version=product_version,
+            outbox=outbox,
+        )
+        result["queued"] = queued["queued"]
+        result["outbox_row_ids"] = queued["outbox_row_ids"]
+
+    if not slack_webhook_url:
+        return result
+
     dispatcher = AlertDispatcher()
-    if webhook_url:
-        dispatcher.add_webhook(webhook_url)
-    if slack_webhook_url:
-        dispatcher.add_slack(slack_webhook_url)
+    dispatcher.add_slack(slack_webhook_url)
 
     delivered = 0
-    queued = 0
+    scheduled = 0
     for alert in alerts:
-        dispatched, scheduled = _dispatch_outbound_alert(dispatcher, alert, outbound_channels)
+        dispatched, alert_scheduled = _dispatch_outbound_alert(dispatcher, alert, 1)
         delivered += dispatched
-        queued += scheduled
+        scheduled += alert_scheduled
 
     result["delivered"] = delivered
-    result["queued"] = queued
+    queued_count = result.get("queued", 0)
+    result["queued"] = (queued_count if isinstance(queued_count, int) else 0) + scheduled
     return result
 
 

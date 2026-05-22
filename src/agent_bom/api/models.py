@@ -604,7 +604,7 @@ class FalsePositiveRequest(BaseModel):
     marked_by: str = ""
 
 
-FindingFeedbackState = Literal["false_positive", "accepted_risk", "not_applicable", "fixed_verified"]
+FindingFeedbackState = Literal["false_positive", "accepted_risk", "not_affected", "not_applicable", "fixed_verified", "needs_review"]
 
 
 class FindingFeedbackRequest(BaseModel):

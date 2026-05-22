@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.audit_log import log_action
-from agent_bom.posture_streaming import WebhookOutbox
+from agent_bom.posture_streaming import WebhookOutbox, default_webhook_outbox_path
 
 router = APIRouter()
 
@@ -25,19 +23,9 @@ def _actor(request: Request) -> str:
     return getattr(request.state, "api_key_name", "") or getattr(request.state, "auth_method", "") or "api"
 
 
-def _outbox_path() -> Path:
-    configured = os.environ.get("AGENT_BOM_POSTURE_WEBHOOK_OUTBOX_DB", "").strip()
-    if configured:
-        return Path(configured).expanduser()
-    shared_db = os.environ.get("AGENT_BOM_DB", "").strip()
-    if shared_db:
-        return Path(shared_db).expanduser()
-    return Path.home() / ".agent-bom" / "db" / "posture-webhooks.db"
-
-
 def get_posture_webhook_outbox() -> WebhookOutbox:
     global _OUTBOX
-    path = _outbox_path()
+    path = default_webhook_outbox_path()
     if _OUTBOX_OVERRIDE and _OUTBOX is not None:
         return _OUTBOX
     if _OUTBOX is None or _OUTBOX.path != path:

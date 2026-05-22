@@ -92,6 +92,12 @@ AGENT_BOM_GATEWAY_REQUIRE_SHARED_RATE_LIMIT
 AGENT_BOM_GRAPH_DB
 AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK
 AGENT_BOM_GRAPH_DELTA_WEBHOOK
+# Graph delta generic webhook destination identity; read only when graph delta dispatch runs.
+AGENT_BOM_GRAPH_DELTA_WEBHOOK_DESTINATION_ID
+# Graph delta generic webhook signing key; required before durable delivery is queued.
+AGENT_BOM_GRAPH_DELTA_WEBHOOK_SIGNING_SECRET
+# Graph delta generic webhook private-network opt-in; deploy-time egress boundary.
+AGENT_BOM_GRAPH_DELTA_WEBHOOK_ALLOW_PRIVATE_NETWORKS
 AGENT_BOM_GRAPH_WRITE_BATCH_SIZE
 AGENT_BOM_HSTS_MAX_AGE_SECONDS
 AGENT_BOM_HSTS_PRELOAD
@@ -141,6 +147,8 @@ AGENT_BOM_OTEL_TRACES_HEADERS
 AGENT_BOM_POSTGRES_URL
 # API posture webhook outbox SQLite path override; deploy-time operator setting.
 AGENT_BOM_POSTURE_WEBHOOK_OUTBOX_DB
+# Posture webhook signing key fallback for graph delta delivery.
+AGENT_BOM_POSTURE_WEBHOOK_SIGNING_SECRET
 # CLI profile selector; also exposed as the root --profile option.
 AGENT_BOM_PROFILE
 AGENT_BOM_PROTECTION_API_KEY

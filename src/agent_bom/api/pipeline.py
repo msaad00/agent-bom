@@ -254,7 +254,7 @@ def _persist_graph_snapshot(
         reset_current_tenant(tenant_token)
 
     alerts = compute_delta_alerts(previous_graph, graph)
-    delivery = dispatch_delta_alerts(alerts, product_version=__version__) if alerts else None
+    delivery = dispatch_delta_alerts(alerts, product_version=__version__, tenant_id=tenant_id) if alerts else None
     _logger.info(
         "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d delta_delivered=%d",
         scan_id,

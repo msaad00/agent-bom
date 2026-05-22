@@ -60,6 +60,8 @@ def build_accuracy_baseline() -> dict[str, Any]:
             "vex_suppressed": "Tracked separately when VEX marks a vulnerability as fixed or not_affected.",
             "fixed_verified": "Tracked separately through tenant finding feedback controls.",
             "accepted_risk": "Tracked separately through tenant finding feedback controls.",
+            "not_affected": "Tracked separately through tenant finding feedback controls.",
+            "needs_review": "Tracked as a non-suppressing review state for low-confidence findings.",
             "false_positive": (
                 "Tracked separately through tenant finding feedback controls and excluded from low-FP claims unless evidence exists."
             ),

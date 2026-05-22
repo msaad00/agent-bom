@@ -33,4 +33,8 @@ uv run python scripts/generate_accuracy_baseline.py --check
 
 `active_unresolved` findings count toward posture and policy gates.
 
-`vex_suppressed`, `fixed_verified`, `accepted_risk`, and `false_positive` are evidence states. They must remain visible in audit trails and release evidence, but they should not inflate active-risk counts.
+`fixed_verified`, `accepted_risk`, `not_affected`, and `false_positive` are
+suppression evidence states. `needs_review` is a non-suppressing triage state
+for low-confidence or declaration-only findings. These states must remain
+visible in audit trails and release evidence, but suppressing states should not
+inflate active-risk counts.

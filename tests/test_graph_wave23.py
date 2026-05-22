@@ -246,6 +246,8 @@ class TestDeltaAlerts:
 
         monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", raising=False)
         monkeypatch.delenv("AGENT_BOM_ALERT_WEBHOOK", raising=False)
+        monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK_SIGNING_SECRET", raising=False)
+        monkeypatch.delenv("AGENT_BOM_POSTURE_WEBHOOK_SIGNING_SECRET", raising=False)
         monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", raising=False)
         monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
 
@@ -260,7 +262,57 @@ class TestDeltaAlerts:
         assert result["queued"] == 0
         assert result["ocsf_event_count"] == len(alerts)
 
-    def test_dispatch_delta_alerts_to_configured_channels(self, monkeypatch):
+    def test_dispatch_delta_alerts_queues_configured_webhook_outbox(self, monkeypatch, tmp_path):
+        from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts
+        from agent_bom.posture_streaming import WebhookOutbox
+
+        monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", "https://hooks.example.test/graph")
+        monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK_SIGNING_SECRET", "secret")
+        monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", raising=False)
+        monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+
+        new = UnifiedGraph(scan_id="s1")
+        new.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical"))
+
+        alerts = compute_delta_alerts(None, new)
+        outbox = WebhookOutbox(tmp_path / "graph-outbox.db")
+        result = dispatch_delta_alerts(alerts, product_version="0.76.0", tenant_id="tenant-a", outbox=outbox)
+
+        assert result["configured"] is True
+        assert result["outbound_channels"] == 1
+        assert result["delivered"] == 0
+        assert result["queued"] == len(alerts)
+        assert result["webhook_config_error"] == ""
+        records = outbox.records(tenant_id="tenant-a")
+        assert len(records) == 1
+        assert records[0].destination_id == "graph-delta-webhook"
+        due = outbox.due(tenant_id="tenant-a", now=10**12)
+        assert due[0].payload["event_type"] == "graph.delta"
+        assert due[0].payload["payload"]["alert"]["type"] == "new_vulnerability"
+
+    def test_dispatch_delta_alerts_requires_signing_secret_for_webhook(self, monkeypatch, tmp_path):
+        from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts
+        from agent_bom.posture_streaming import WebhookOutbox
+
+        monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", "https://hooks.example.test/graph")
+        monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK_SIGNING_SECRET", raising=False)
+        monkeypatch.delenv("AGENT_BOM_POSTURE_WEBHOOK_SIGNING_SECRET", raising=False)
+        monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", raising=False)
+        monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+
+        new = UnifiedGraph(scan_id="s1")
+        new.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical"))
+
+        alerts = compute_delta_alerts(None, new)
+        outbox = WebhookOutbox(tmp_path / "graph-outbox.db")
+        result = dispatch_delta_alerts(alerts, product_version="0.76.0", tenant_id="tenant-a", outbox=outbox)
+
+        assert result["configured"] is False
+        assert result["queued"] == 0
+        assert "SIGNING_SECRET" in result["webhook_config_error"]
+        assert outbox.records(tenant_id="tenant-a") == []
+
+    def test_dispatch_delta_alerts_to_configured_slack_channel(self, monkeypatch):
         import agent_bom.alerts.dispatcher as dispatcher_mod
         from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts
 
@@ -284,7 +336,8 @@ class TestDeltaAlerts:
                 return 1 + len(self.webhooks) + len(self.slacks)
 
         monkeypatch.setattr(dispatcher_mod, "AlertDispatcher", FakeDispatcher)
-        monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", "https://hooks.example.test/graph")
+        monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", raising=False)
+        monkeypatch.delenv("AGENT_BOM_ALERT_WEBHOOK", raising=False)
         monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", "https://hooks.slack.test/services/example")
 
         new = UnifiedGraph(scan_id="s1")
@@ -294,10 +347,10 @@ class TestDeltaAlerts:
         result = dispatch_delta_alerts(alerts, product_version="0.76.0")
 
         assert result["configured"] is True
-        assert result["outbound_channels"] == 2
-        assert result["delivered"] == len(alerts) * 2
+        assert result["outbound_channels"] == 1
+        assert result["delivered"] == len(alerts)
         assert FakeDispatcher.last is not None
-        assert FakeDispatcher.last.webhooks == [("https://hooks.example.test/graph", None)]
+        assert FakeDispatcher.last.webhooks == []
         assert FakeDispatcher.last.slacks == ["https://hooks.slack.test/services/example"]
         assert FakeDispatcher.last.dispatched
         assert FakeDispatcher.last.dispatched[0]["type"] == "new_vulnerability"
@@ -329,7 +382,8 @@ class TestDeltaAlerts:
                 asyncio.get_running_loop().create_task(self.dispatch(alert))
 
         monkeypatch.setattr(dispatcher_mod, "AlertDispatcher", FakeDispatcher)
-        monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", "https://hooks.example.test/graph")
+        monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", raising=False)
+        monkeypatch.delenv("AGENT_BOM_ALERT_WEBHOOK", raising=False)
         monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", "https://hooks.slack.test/services/example")
 
         new = UnifiedGraph(scan_id="s1")
@@ -347,7 +401,7 @@ class TestDeltaAlerts:
 
         assert result["configured"] is True
         assert result["delivered"] == 0
-        assert result["queued"] == len(alerts) * 2
+        assert result["queued"] == len(alerts)
         assert FakeDispatcher.last is not None
         assert FakeDispatcher.last.dispatched
         assert not any("was never awaited" in str(w.message) for w in caught)

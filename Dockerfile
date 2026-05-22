@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake]"
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.14.5-alpine3.23@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
 
-ARG VERSION=0.88.0
+ARG VERSION=0.88.1
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY

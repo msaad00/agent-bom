@@ -261,9 +261,13 @@ def render_output(
     elif output_format in ("text", "plain") and not output:
         _print_text(report, blast_radii)
     elif output_format == "json":
-        out_path = _resolve_output_path(output, output_format)
-        export_json(report, out_path)
-        con.print(f"\n  [green]✓[/green] JSON report: {out_path}")
+        if output in (None, "", "-"):
+            sys.stdout.write(json.dumps(to_json(report), indent=2))
+            sys.stdout.write("\n")
+        else:
+            out_path = _resolve_output_path(output, output_format)
+            export_json(report, out_path)
+            con.print(f"\n  [green]✓[/green] JSON report: {out_path}")
     elif output_format == "cyclonedx":
         out_path = _resolve_output_path(output, output_format)
         export_cyclonedx(report, out_path)

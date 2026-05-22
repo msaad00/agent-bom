@@ -132,7 +132,7 @@ Screenshot capture rules and the full manifest live in
 | Pre-install guard | `agent-bom check flask@2.0.0 --ecosystem pypi` | deterministic allow/warn/block result |
 | Container image scan | `agent-bom image nginx:latest` | image findings and remediation |
 | IaC scan | `agent-bom iac Dockerfile k8s/ infra/main.tf` | IaC findings and policy context |
-| CI gate | `uses: msaad00/agent-bom@v0.88.0` | SARIF, PR summary, optional code-scanning upload |
+| CI gate | `uses: msaad00/agent-bom@v0.88.1` | SARIF, PR summary, optional code-scanning upload |
 | MCP tools | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict-args security tools for MCP clients |
 | Local API/UI | `pip install 'agent-bom[ui]' && agent-bom serve` | API plus bundled dashboard |
 | Self-hosted pilot | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your environment |

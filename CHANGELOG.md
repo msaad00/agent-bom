@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.88.1] - 2026-05-22
+
+### Fixed
+- Refreshed the bundled MCP registry catalog before release so registry
+  lookup, marketplace checks, and the release freshness gate use the current
+  server catalog metadata.
+
+---
+
 ## [0.88.0] - 2026-05-21
 
 ### Added
@@ -1390,7 +1399,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.1...HEAD
+[0.88.1]: https://github.com/msaad00/agent-bom/compare/v0.88.0...v0.88.1
 [0.88.0]: https://github.com/msaad00/agent-bom/compare/v0.87.1...v0.88.0
 [0.87.1]: https://github.com/msaad00/agent-bom/compare/v0.87.0...v0.87.1
 [0.87.0]: https://github.com/msaad00/agent-bom/compare/v0.86.5...v0.87.0

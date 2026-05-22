@@ -42,6 +42,16 @@
     "arguments": []
   },
   {
+    "name": "intel_daily_brief",
+    "description": "Return a local analyst threat brief from governed intel sources.",
+    "arguments": [
+      {"name": "packages", "type": "array", "desc": "Optional package coordinates with purl or ecosystem/name/version fields"},
+      {"name": "epss_threshold", "type": "number", "desc": "Minimum EPSS probability for high-EPSS inventory matches"},
+      {"name": "kev_window_hours", "type": "integer", "desc": "Lookback window for recent KEV additions"},
+      {"name": "limit", "type": "integer", "desc": "Maximum advisories to return per section"}
+    ]
+  },
+  {
     "name": "blast_radius",
     "description": "Look up the blast radius of a specific CVE — shows which agents, credentials, and tools are affected.",
     "arguments": [

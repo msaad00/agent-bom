@@ -236,7 +236,11 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     )
     card = build_server_card()
     assert "35 security tools" not in docs
-    assert f"{len(card['tools'])} read-only security tools" in docs
+    assert f"{len(card['tools'])} MCP tools" in docs
+    assert "Most tools are read-only" in docs
+    assert "Shield write actions require `operator_role=admin`" in docs
+    write_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
+    assert sorted(write_tools) == ["shield_break_glass", "shield_start", "shield_unblock"]
     for resource in card["resources"]:
         assert resource["uri"] in docs
     for prompt in card["prompts"]:

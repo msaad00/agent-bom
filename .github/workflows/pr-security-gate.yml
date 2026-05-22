@@ -86,7 +86,7 @@ jobs:
       - name: Install runtime deps (not dev) — scan the shipping dep set
         run: uv sync --frozen --extra api --extra postgres --extra mcp-server --extra oidc
 
-      - name: Run pip-audit with JSON gate
+      - name: Run pip-audit on current checkout
         run: |
           set +e
           uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
@@ -95,44 +95,45 @@ jobs:
             --output audit.json
           set -e
 
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
+      - name: Run pip-audit on PR base for delta comparison
+        if: github.event_name == 'pull_request'
+        run: |
+          current_dir="$PWD"
+          base_dir="$RUNNER_TEMP/agent-bom-base"
+          git fetch --depth=1 origin "+${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+          git worktree add "$base_dir" "origin/${{ github.base_ref }}"
+          (
+            cd "$base_dir"
+            uv sync --frozen --extra api --extra postgres --extra mcp-server --extra oidc
+            set +e
+            uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
+              -s osv \
+              --format json \
+              --output "$current_dir/base-audit.json"
+            set -e
+          )
 
-          path = Path("audit.json")
-          if not path.is_file():
-              raise SystemExit("pip-audit did not produce audit.json")
-          data = json.loads(path.read_text(encoding="utf-8"))
-          fixable = []
-          severe = []
-          for dependency in data.get("dependencies", []):
-              dep_name = dependency.get("name", "<unknown>")
-              dep_version = dependency.get("version", "<unknown>")
-              for vuln in dependency.get("vulns", []):
-                  vuln_id = vuln.get("id", "<unknown>")
-                  severity = str(vuln.get("severity") or vuln.get("severity_level") or "").upper()
-                  fix_versions = vuln.get("fix_versions") or []
-                  if severity in {"HIGH", "CRITICAL"}:
-                      severe.append(f"{dep_name} {dep_version} {vuln_id} severity={severity}")
-                  if fix_versions:
-                      fixable.append(f"{dep_name} {dep_version} {vuln_id} fixes={','.join(fix_versions)}")
-          if severe:
-              print("::error::pip-audit found HIGH/CRITICAL vulnerabilities:")
-              print("\n".join(severe[:20]))
-              raise SystemExit(1)
-          if fixable:
-              print("::error::pip-audit found vulnerabilities with available fixes:")
-              print("\n".join(fixable[:20]))
-              raise SystemExit(1)
-          print("pip-audit JSON gate passed: no HIGH/CRITICAL or fixable findings")
-          PY
+      - name: Evaluate pip-audit gate
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python scripts/pip_audit_delta_gate.py \
+              --mode delta \
+              --current audit.json \
+              --base base-audit.json
+          else
+            python scripts/pip_audit_delta_gate.py \
+              --mode strict \
+              --current audit.json
+          fi
 
       - name: Upload pip-audit report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pip-audit-report
-          path: audit.json
+          path: |
+            audit.json
+            base-audit.json
 
   self-scan-pr:
     name: agent-bom self-scan on PR

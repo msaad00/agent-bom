@@ -23,6 +23,11 @@ _SERVER_CARD_TOOLS = [
         "description": "Return canonical intel sources and local feed-run freshness",
         "annotations": {"readOnlyHint": True},
     },
+    {
+        "name": "intel_daily_brief",
+        "description": "Return a local analyst threat brief from governed intel sources",
+        "annotations": {"readOnlyHint": True},
+    },
     {"name": "blast_radius", "description": "Look up blast radius for a specific CVE", "annotations": {"readOnlyHint": True}},
     {
         "name": "exposure_paths",
@@ -257,6 +262,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "intel_lookup": ["READ", "THREAT_INTEL"],
     "intel_match": ["READ", "THREAT_INTEL", "INVENTORY"],
     "intel_sources": ["READ", "THREAT_INTEL"],
+    "intel_daily_brief": ["READ", "THREAT_INTEL", "INVENTORY"],
     "blast_radius": ["READ", "ANALYZE"],
     "exposure_paths": ["READ", "GRAPH", "ANALYZE"],
     "should_i_deploy": ["READ", "GRAPH", "POLICY"],

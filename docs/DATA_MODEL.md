@@ -322,9 +322,10 @@ tenant boundary, persistence behavior, and redaction behavior here.
 | `runtime.production_index.v1` | `GET /v1/runtime/production-index`, `runtime_production_index` MCP tool | runtime cockpit, deploy/runbooks, drift evaluator, SIEM/export hooks | `traffic`, `policy_decisions`, `authorization_trace`, `alerts`, `active_sources`, `active_sessions`, `freshness`, `retention_posture` | Derived from tenant-scoped proxy/gateway metrics and alerts. Raw prompts and tool arguments are `no_persist`; the endpoint is metadata/redaction-first. |
 | `runtime.blueprints.v1` | `GET /v1/runtime/blueprints`, `runtime_blueprints` MCP tool | admins, runtime policy authors, drift evaluator, docs | role/profile blueprint list with `allowed_tool_categories`, `restricted_tool_categories`, `approval_required_for`, `retention_mode`, `evidence_required` | Static canonical catalog in `runtime_blueprints.py`; custom blueprint persistence is not shipped yet. |
 | `runtime.blueprint_drift.v1` | `GET /v1/runtime/blueprints/{blueprint_id}/drift`, `runtime_blueprint_drift` MCP tool | runtime operators, agents, alerting, release evidence | `status`, `drift_score`, `observed.categories`, `violations`, `warnings`, selected `blueprint`, `retention` | Compares the selected blueprint against the tenant-scoped production index. Current behavior is report-only and fail-closed to metadata retention. |
-| `intel.sources.v1` | `GET /v1/intel/sources`, `intel_sources` MCP tool | analysts, agents, freshness monitors, docs | canonical source catalog with `source_id`, tier, kind, URL, license, redistribution policy, `feed_run` | Reads local vuln DB `sync_meta`; source metadata is shared catalog data, feed-run freshness is local deployment state. |
-| `intel.lookup.v1` | `GET /v1/intel/advisories/{advisory_id}`, `intel_lookup` MCP tool | finding enrichment, analyst lookup, agent investigation | `found`, `query`, `advisory.canonical_ids`, severity, CVSS, EPSS, KEV, CWE, affected packages, `evidence_links` | Read-only local vuln DB lookup. It can resolve CVE, GHSA, and OSV aliases and returns source links without implying every link was fetched. |
-| `intel.match.v1` | `POST /v1/intel/match`, `intel_match` MCP tool | inventory enrichment, CI gates, agent posture checks | submitted packages, matched package count, advisory matches, evidence links | Read-only package-coordinate matching. Inputs use purl when present; otherwise `ecosystem` + `name` + optional `version`. |
+| `intel.sources.v1` | `GET /v1/intel/sources`, `intel_sources` MCP tool | analysts, agents, freshness monitors, docs | canonical source catalog with `source_id`, tier, kind, source/homepage/license URLs, robots policy, connector type, enabled state, owner, parser version, validation status, redistribution policy, `feed_run` | Reads local vuln DB `sync_meta`; source metadata is shared catalog data, feed-run freshness is local deployment state. It does not imply open-ended scraping. |
+| `intel.lookup.v1` | `GET /v1/intel/advisories/{advisory_id}`, `intel_lookup` MCP tool | finding enrichment, analyst lookup, agent investigation | `found`, `query`, `advisory.canonical_ids`, severity, CVSS, EPSS, KEV, CWE, affected packages, `match_method`, `match_confidence`, source policy, `evidence_links` | Read-only local vuln DB lookup. It can resolve CVE, GHSA, and OSV aliases and returns source links without implying every link was fetched. |
+| `intel.match.v1` | `POST /v1/intel/match`, `intel_match` MCP tool | inventory enrichment, CI gates, agent posture checks | submitted packages, matched package count, advisory matches, `match_method`, `match_confidence`, match reason, evidence links | Read-only package-coordinate matching. Inputs use purl when present; otherwise `ecosystem` + `name` + optional `version`. |
+| `intel.daily_brief.v1` | `POST /v1/intel/daily-brief`, `intel_daily_brief` MCP tool | analysts, agents, daily governance jobs | local KEV lookback, high-EPSS inventory matches, vendor advisory matches, source registry freshness, limitations | Read-only summary over local DB and submitted inventory. IoC telemetry, campaign, and sector/geo sections remain empty unless those inputs are configured by a future connector. |
 
 ### `agent-bom.manifest/v1`
 
@@ -391,7 +392,8 @@ fail-open/fail-closed notes in the same PR.
 
 The threat-intel envelopes are local, source-attributed lookup surfaces over
 the existing vulnerability database. They are not yet the full pluggable
-IntelItem corpus proposed for future connector work.
+IntelItem corpus proposed for future connector work, and they do not ship
+open-ended web scraping.
 
 | Join key | Preferred use |
 |---|---|
@@ -403,6 +405,12 @@ IntelItem corpus proposed for future connector work.
 When full IntelItem provenance lands, it must preserve this read-only lookup
 shape while adding raw-artifact provenance, signatures, corroboration, citation
 spans, and connector health as additional fields or linked resources.
+
+Vendor advisory feed policy is explicit in `intel.sources.v1`: structured CSAF
+matching is supported where a structured feed exists; curated vendor seeds are
+marked experimental and source-linked until a governed connector with validated
+license/robots handling is shipped. Current daily briefs use these decisions
+to distinguish supported source records from experimental seed matches.
 
 ### `inventory_snapshot.packages`
 

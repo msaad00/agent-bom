@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 
 import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.server import app, configure_api
 from agent_bom.db.schema import init_db
-from agent_bom.intel_lookup import list_intel_sources, lookup_advisory, match_packages
-from agent_bom.mcp_tools.intel import intel_lookup_impl, intel_match_impl, intel_sources_impl
+from agent_bom.intel_lookup import build_daily_brief, list_intel_sources, lookup_advisory, match_packages
+from agent_bom.mcp_tools.intel import intel_daily_brief_impl, intel_lookup_impl, intel_match_impl, intel_sources_impl
 from tests.auth_helpers import PROXY_SECRET
 
 VIEWER_HEADERS = {
@@ -72,6 +73,34 @@ def _seed_intel(conn: sqlite3.Connection) -> None:
         ("GHSA-abcd-1234-wxyz", "pypi", "requests", "0", "2.32.0", ""),
     )
     conn.execute(
+        """
+        INSERT INTO vulns (
+            id, summary, severity, cvss_score, cvss_vector, fixed_version,
+            cwe_ids, aliases, published, modified, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "CVE-2026-55555",
+            "vendor GPU advisory",
+            "high",
+            7.8,
+            "",
+            "6.2",
+            "CWE-119",
+            "",
+            "2026-05-04T00:00:00+00:00",
+            "2026-05-05T00:00:00+00:00",
+            "amd_psirt",
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO affected(vuln_id, ecosystem, package_name, introduced, fixed, last_affected)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        ("CVE-2026-55555", "pypi", "rocm-smi-lib", "0", "6.2", ""),
+    )
+    conn.execute(
         "INSERT INTO epss_scores(cve_id, probability, percentile, updated_at) VALUES (?, ?, ?, ?)",
         ("CVE-2026-12345", 0.91, 99.1, "2026-05-03T00:00:00+00:00"),
     )
@@ -80,12 +109,25 @@ def _seed_intel(conn: sqlite3.Connection) -> None:
         ("CVE-2026-12345", "2026-05-04", "2026-06-04", "requests", "python"),
     )
     conn.execute(
+        "INSERT INTO kev_entries(cve_id, date_added, due_date, product, vendor_project) VALUES (?, ?, ?, ?, ?)",
+        ("CVE-2026-55555", "2026-05-21", "2026-06-21", "rocm-smi-lib", "gpu"),
+    )
+    conn.execute(
         "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, ?, ?)",
         ("ghsa", "2026-05-05T00:00:00+00:00", 1),
     )
     conn.execute(
         "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, ?, ?)",
         ("epss", "2026-05-05T00:00:00+00:00", 1),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count, metadata_json) VALUES (?, ?, ?, ?)",
+        (
+            "amd_psirt",
+            "2026-05-05T00:00:00+00:00",
+            1,
+            '{"validation_status":"experimental_seed_plus_guarded_refresh","content_hash":"sha256:test"}',
+        ),
     )
     conn.commit()
 
@@ -96,8 +138,17 @@ def test_list_intel_sources_includes_feed_run_metadata(intel_db) -> None:  # noq
     assert body["schema_version"] == "intel.sources.v1"
     ghsa = next(source for source in body["sources"] if source["source_id"] == "ghsa")
     assert ghsa["tier"] == 1
+    assert ghsa["source_url"]
+    assert ghsa["license_or_terms_url"]
+    assert ghsa["robots_policy"] == "api_or_osv_mirror"
+    assert ghsa["support_status"] == "supported"
     assert ghsa["feed_run"]["last_synced"] == "2026-05-05T00:00:00+00:00"
     assert ghsa["feed_run"]["record_count"] == 1
+
+    amd = next(source for source in body["sources"] if source["source_id"] == "amd_psirt")
+    assert amd["support_status"] == "experimental"
+    assert amd["validation_status"] == "experimental_seed_plus_guarded_refresh"
+    assert amd["feed_run"]["content_hash"] == "sha256:test"
 
 
 def test_lookup_advisory_by_alias_returns_evidence_links(intel_db) -> None:  # noqa: ANN001
@@ -110,6 +161,9 @@ def test_lookup_advisory_by_alias_returns_evidence_links(intel_db) -> None:  # n
     assert advisory["canonical_ids"]["cwes"] == ["CWE-352", "CWE-79"]
     assert advisory["epss_probability"] == pytest.approx(0.91)
     assert advisory["is_kev"] is True
+    assert advisory["match_method"] == "id_or_alias"
+    assert advisory["match_confidence"] == "high"
+    assert advisory["source_policy"]["support_status"] == "supported"
     assert any(link["kind"] == "cve" for link in advisory["evidence_links"])
     assert advisory["affected"][0]["package_name"] == "requests"
 
@@ -128,7 +182,28 @@ def test_match_packages_returns_inventory_linked_advisories(intel_db) -> None:  
     advisory = match["advisories"][0]
     assert advisory["epss_probability"] == pytest.approx(0.91)
     assert advisory["is_kev"] is True
+    assert advisory["match_method"] == "inventory_native_package"
+    assert advisory["match_confidence"] == "high"
     assert any(link["kind"] == "cwe" for link in match["evidence_links"])
+
+
+def test_daily_brief_summarizes_local_sources_without_scraping_claims(intel_db) -> None:  # noqa: ANN001
+    body = build_daily_brief(
+        [
+            {"purl": "pkg:pypi/requests@2.31.0", "inventory_ref": "pkg-1"},
+            {"ecosystem": "pypi", "name": "rocm-smi-lib", "version": "6.1", "inventory_ref": "gpu-1"},
+        ],
+        db_path=intel_db,
+        now=datetime(2026, 5, 22, tzinfo=UTC),
+    )
+
+    assert body["schema_version"] == "intel.daily_brief.v1"
+    assert body["inputs"]["epss_threshold"] == 0.7
+    assert any(item["id"] == "CVE-2026-55555" for item in body["sections"]["kev_last_24h"])
+    assert body["sections"]["high_epss_inventory"][0]["advisory"]["id"] == "GHSA-abcd-1234-wxyz"
+    assert body["sections"]["vendor_advisories"][0]["advisory"]["source"] == "amd_psirt"
+    assert body["source_registry"]["feed_runs"]["amd_psirt"]["support_status"] == "experimental"
+    assert "Vendor webpage scraping is not shipped" in body["limitations"][1]
 
 
 def test_intel_api_routes_are_read_only_and_tenant_scoped(intel_client: TestClient) -> None:
@@ -147,6 +222,14 @@ def test_intel_api_routes_are_read_only_and_tenant_scoped(intel_client: TestClie
     )
     assert match.status_code == 200
     assert match.json()["matched_packages"] == 1
+
+    brief = intel_client.post(
+        "/v1/intel/daily-brief",
+        headers=VIEWER_HEADERS,
+        json={"packages": [{"ecosystem": "pypi", "name": "requests", "version": "2.31.0"}]},
+    )
+    assert brief.status_code == 200
+    assert brief.json()["schema_version"] == "intel.daily_brief.v1"
 
 
 def test_intel_api_match_validates_package_shape(intel_client: TestClient) -> None:
@@ -178,3 +261,6 @@ async def test_mcp_intel_tools_return_agent_native_json(intel_db) -> None:  # no
 
     sources = json.loads(await intel_sources_impl())
     assert sources["schema_version"] == "intel.sources.v1"
+
+    brief = json.loads(await intel_daily_brief_impl(packages=[{"purl": "pkg:pypi/requests@2.31.0"}]))
+    assert brief["schema_version"] == "intel.daily_brief.v1"

@@ -200,6 +200,7 @@ Security and release references:
 
 - [Threat model](docs/THREAT_MODEL.md)
 - [Pentest readiness](docs/PENTEST_READINESS.md)
+- [Python API and control-plane client](docs/PYTHON_API.md)
 - [Product metrics](docs/PRODUCT_METRICS.md)
 - [Release verification](docs/RELEASE_VERIFICATION.md)
 - [GitHub Action](https://github.com/marketplace/actions/agent-bom)

@@ -4,7 +4,7 @@
   "metrics": [
     {
       "name": "MCP tools",
-      "value": 54,
+      "value": 55,
       "source": "src/agent_bom/mcp_server_metadata.py",
       "notes": "Counted from the advertised server-card tools."
     },

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from agent_bom.models import Package, Vulnerability
 
-PRIMARY_ADVISORY_SOURCES: tuple[str, ...] = ("osv", "ghsa", "nvidia_csaf", "amd_psirt")
+PRIMARY_ADVISORY_SOURCES: tuple[str, ...] = ("osv", "ghsa", "nvidia_csaf", "amd_psirt", "intel_psirt")
 ENRICHMENT_ADVISORY_SOURCES: tuple[str, ...] = ("nvd", "epss", "cisa_kev")
 _PREFERRED_SOURCE_ORDER: tuple[str, ...] = PRIMARY_ADVISORY_SOURCES + ENRICHMENT_ADVISORY_SOURCES
 
@@ -31,6 +31,9 @@ def normalize_advisory_source(source: str | None) -> str | None:
         "amd": "amd_psirt",
         "amd_advisory": "amd_psirt",
         "amd_psirt_advisory": "amd_psirt",
+        "intel": "intel_psirt",
+        "intel_advisory": "intel_psirt",
+        "intel_psirt_advisory": "intel_psirt",
     }
     return aliases.get(value, value)
 

@@ -30,9 +30,17 @@ intel_match(purl="pkg:pypi/requests@2.31.0")
 ```
 
 ### intel_sources
-List configured threat-intel sources and local feed freshness metadata.
+List governed threat-intel sources, source policy, and local feed freshness metadata.
 ```
 intel_sources()
+```
+
+### intel_daily_brief
+Return a local analyst brief with KEV lookback, high-EPSS inventory matches,
+vendor advisory matches, and source-registry freshness. It summarizes local DB
+evidence and submitted inventory only; it does not scrape vendor pages.
+```
+intel_daily_brief(packages=[{"purl": "pkg:pypi/requests@2.31.0"}])
 ```
 
 ### blast_radius

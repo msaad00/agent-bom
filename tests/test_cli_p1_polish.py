@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
 
@@ -37,9 +38,26 @@ def test_scan_inventory_stdin_sentinel_loads_json_payload() -> None:
             input=payload,
         )
         assert result.exit_code == 0, result.output
-        with open("agent-bom-report.json", encoding="utf-8") as report_file:
-            body = json.load(report_file)
+        body = json.loads(result.stdout)
         assert body["agents"][0]["name"] == "stdin-agent"
+        assert not (Path("agent-bom-report.json")).exists()
+
+
+def test_agents_json_output_path_is_honored() -> None:
+    payload = '{"agents":[{"name":"file-agent","agent_type":"custom","mcp_servers":[]}]}'
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            main,
+            ["agents", "--inventory", "-", "--no-scan", "-f", "json", "-o", "requested.json"],
+            input=payload,
+        )
+        assert result.exit_code == 0, result.output
+        assert result.stdout == ""
+        assert Path("requested.json").exists()
+        assert not Path("agent-bom-report.json").exists()
+        body = json.loads(Path("requested.json").read_text())
+        assert body["agents"][0]["name"] == "file-agent"
 
 
 def test_discovery_banner_deferred_until_after_inventory_validation() -> None:

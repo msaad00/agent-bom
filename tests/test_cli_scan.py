@@ -983,6 +983,25 @@ output = "{profile_output}"
     assert not profile_output.exists()
 
 
+def test_scan_incomplete_offline_scan_honors_explicit_output(monkeypatch, tmp_path):
+    output = tmp_path / "partial-report.json"
+    monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [])
+
+    def _scan_agents_sync(*args, **kwargs):
+        raise IncompleteScanError("Offline mode requires a populated local vulnerability DB.")
+
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", _scan_agents_sync)
+
+    result = _run(["scan", "--demo", "--no-auto-update-db", "--format", "json", "--output", str(output)])
+
+    assert result.exit_code == 2
+    assert "populated local vulnerability DB" in result.output
+    assert output.exists()
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["scan_performance"]["coverage_state"] == "incomplete"
+    assert payload["scan_performance"]["coverage_reason"] == "Offline mode requires a populated local vulnerability DB."
+
+
 def test_scan_expands_local_docker_mcp_image():
     from agent_bom.cli.agents import _expand_docker_mcp_packages
     from agent_bom.models import MCPServer, Package, TransportType

@@ -20,7 +20,7 @@ We aim to respond within 48 hours and provide a fix within 7 days for critical i
 agent-bom has three distinct security postures:
 
 - **Scanner mode** (`agent-bom agents`, `agent-bom fs`, `agent-bom check`) is read-only. It reads config files and queries public APIs (OSV.dev, NVD, EPSS, CISA KEV).
-- **MCP server mode** (`agent-bom mcp server`) is read-only. It exposes scan/governance tools and does not execute third-party MCP servers.
+- **MCP server mode** (`agent-bom mcp server`) is read-mostly. Scanner, posture, graph, and audit tools are read-only; Shield write actions require admin role and an audit reason.
 - **Proxy mode** (`agent-bom proxy`) is an execution and enforcement surface. It intentionally launches or connects to the target MCP server so it can inspect, block, and audit tool traffic in real time.
 
 Across all modes, agent-bom never stores credential values — only their names appear in output as `***REDACTED***`.

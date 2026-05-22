@@ -59,7 +59,7 @@ claude mcp add agent-bom -- uvx agent-bom mcp server
 
 ## What users get inside Claude
 
-`agent-bom mcp server` exposes 51 read-only tools for:
+`agent-bom mcp server` exposes 54 MCP tools for:
 
 - agent and MCP discovery
 - package and registry checks
@@ -68,6 +68,7 @@ claude mcp add agent-bom -- uvx agent-bom mcp server
 - skills scanning and trust
 - SBOM generation
 - runtime and tool-risk queries
+- admin-gated Shield actions with an audit reason
 
 ## Scan Claude environments directly
 

@@ -111,6 +111,6 @@ For cross-agent correlation across sessions, use the broader runtime protection 
 ## Notes
 
 - `agent-bom` does not need write access to the target MCP server to scan it.
-- MCP server mode is read-only.
+- MCP server mode is read-mostly; Shield write actions require admin role and an audit reason.
 - Proxy mode is opt-in and is the path for runtime enforcement.
 - See [MCP_CLIENT_GUIDES.md](MCP_CLIENT_GUIDES.md) for the broader client matrix, [MCP_SERVER.md](MCP_SERVER.md) for the MCP tool catalog, and [RUNTIME_MONITORING.md](RUNTIME_MONITORING.md) for deployment details.

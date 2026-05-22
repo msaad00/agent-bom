@@ -18,6 +18,7 @@ def register_operator_tools(
     mcp,
     *,
     read_only,
+    write_action,
     execute_tool_async,
     safe_path,
     run_scan_pipeline,
@@ -41,7 +42,10 @@ def register_operator_tools(
         runtime_blueprints_impl,
         runtime_correlate_impl,
         runtime_production_index_impl,
+        shield_break_glass_impl,
+        shield_start_impl,
         shield_status_impl,
+        shield_unblock_impl,
     )
     from agent_bom.mcp_tools.sbom import diff_impl
     from agent_bom.mcp_tools.scanning import code_scan_impl
@@ -543,6 +547,101 @@ def register_operator_tools(
             "shield_status",
             shield_status_impl,
             session_id=session_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Shield Start")
+    async def shield_start(
+        session_id: Annotated[
+            str,
+            Field(description="Shield session id to start."),
+        ] = "default",
+        correlation_window: Annotated[
+            float,
+            Field(ge=1.0, le=3600.0, description="Alert correlation window in seconds."),
+        ] = 30.0,
+        operator_role: Annotated[
+            str,
+            Field(description="Operator role for this write action. Must be admin."),
+        ] = "viewer",
+        reason: Annotated[
+            str,
+            Field(description="Human audit reason for starting Shield enforcement."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope for audit logging."),
+        ] = "default",
+    ) -> str:
+        """Start Shield enforcement for a session. Requires admin role and audit reason."""
+        return await execute_tool_async(
+            "shield_start",
+            shield_start_impl,
+            session_id=session_id,
+            correlation_window=correlation_window,
+            operator_role=operator_role,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Shield Unblock")
+    async def shield_unblock(
+        session_id: Annotated[
+            str,
+            Field(description="Shield session id to unblock."),
+        ] = "default",
+        operator_role: Annotated[
+            str,
+            Field(description="Operator role for this write action. Must be admin."),
+        ] = "viewer",
+        reason: Annotated[
+            str,
+            Field(description="Human audit reason for unblocking Shield enforcement."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope for audit logging."),
+        ] = "default",
+    ) -> str:
+        """Unblock Shield enforcement for a session. Requires admin role and audit reason."""
+        return await execute_tool_async(
+            "shield_unblock",
+            shield_unblock_impl,
+            session_id=session_id,
+            operator_role=operator_role,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Shield Break Glass")
+    async def shield_break_glass(
+        session_id: Annotated[
+            str,
+            Field(description="Shield session id to override."),
+        ] = "default",
+        operator_role: Annotated[
+            str,
+            Field(description="Operator role for this write action. Must be admin."),
+        ] = "viewer",
+        reason: Annotated[
+            str,
+            Field(description="Human audit reason for emergency Shield override."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope for audit logging."),
+        ] = "default",
+    ) -> str:
+        """Run Shield break-glass override. Requires admin role and audit reason."""
+        return await execute_tool_async(
+            "shield_break_glass",
+            shield_break_glass_impl,
+            session_id=session_id,
+            operator_role=operator_role,
+            reason=reason,
+            tenant_id=tenant_id,
             _truncate_response=truncate_response,
         )
 

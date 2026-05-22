@@ -22,6 +22,65 @@ def _csv_set(value: str) -> set[str]:
     return {part.strip() for part in value.split(",") if part.strip()}
 
 
+def _authorize_shield_write(
+    *,
+    action: str,
+    operator_role: str,
+    reason: str,
+    tenant_id: str,
+    session_id: str,
+) -> tuple[bool, dict[str, Any]]:
+    normalized_role = (operator_role or "").strip().lower()
+    clean_reason = (reason or "").strip()
+    if normalized_role != "admin":
+        return (
+            False,
+            {
+                "error": "shield write action requires admin role",
+                "action": action,
+                "required_role": "admin",
+                "provided_role": normalized_role or "unset",
+                "status": "blocked",
+            },
+        )
+    if len(clean_reason) < 8:
+        return (
+            False,
+            {
+                "error": "shield write action requires an audit reason of at least 8 characters",
+                "action": action,
+                "required_role": "admin",
+                "status": "blocked",
+            },
+        )
+    return (
+        True,
+        {
+            "action": action,
+            "actor": normalized_role,
+            "tenant_id": tenant_id or "default",
+            "resource": f"shield/{session_id or 'default'}",
+            "reason": clean_reason,
+        },
+    )
+
+
+def _record_shield_write_audit(context: dict[str, Any], *, result: dict[str, Any]) -> None:
+    try:
+        from agent_bom.api.audit_log import log_action
+
+        log_action(
+            context["action"],
+            actor=context["actor"],
+            resource=context["resource"],
+            tenant_id=context["tenant_id"],
+            reason=context["reason"],
+            result_status=result.get("status", "unknown"),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("MCP shield write audit logging failed")
+
+
 async def runtime_production_index_impl(
     *,
     tenant_id: str = "default",
@@ -140,6 +199,114 @@ async def shield_status_impl(
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP shield status error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+async def shield_start_impl(
+    *,
+    session_id: str = "default",
+    correlation_window: float = 30.0,
+    operator_role: str = "viewer",
+    reason: str = "",
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the shield_start write tool."""
+    authorized, context = _authorize_shield_write(
+        action="shield_start",
+        operator_role=operator_role,
+        reason=reason,
+        tenant_id=tenant_id,
+        session_id=session_id,
+    )
+    if not authorized:
+        return json.dumps(context)
+    try:
+        from agent_bom.api.routes.proxy import shield_start
+
+        bounded_window = max(1.0, min(float(correlation_window), 3600.0))
+        payload = await shield_start(session_id=session_id or "default", correlation_window=bounded_window)
+        payload["mcp_write_policy"] = {
+            "required_role": "admin",
+            "actor_role": context["actor"],
+            "audit_logged": True,
+            "tenant_id": context["tenant_id"],
+        }
+        _record_shield_write_audit(context, result=payload)
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP shield start error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+async def shield_unblock_impl(
+    *,
+    session_id: str = "default",
+    operator_role: str = "viewer",
+    reason: str = "",
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the shield_unblock write tool."""
+    authorized, context = _authorize_shield_write(
+        action="shield_unblock",
+        operator_role=operator_role,
+        reason=reason,
+        tenant_id=tenant_id,
+        session_id=session_id,
+    )
+    if not authorized:
+        return json.dumps(context)
+    try:
+        from agent_bom.api.routes.proxy import shield_unblock
+
+        payload = await shield_unblock(session_id=session_id or "default")
+        payload["mcp_write_policy"] = {
+            "required_role": "admin",
+            "actor_role": context["actor"],
+            "audit_logged": True,
+            "tenant_id": context["tenant_id"],
+        }
+        _record_shield_write_audit(context, result=payload)
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP shield unblock error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
+async def shield_break_glass_impl(
+    *,
+    session_id: str = "default",
+    operator_role: str = "viewer",
+    reason: str = "",
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the shield_break_glass write tool."""
+    authorized, context = _authorize_shield_write(
+        action="shield_break_glass",
+        operator_role=operator_role,
+        reason=reason,
+        tenant_id=tenant_id,
+        session_id=session_id,
+    )
+    if not authorized:
+        return json.dumps(context)
+    try:
+        from agent_bom.api.routes.proxy import break_glass
+
+        request = _request_for_tenant(context["tenant_id"])
+        request.state.api_key_role = context["actor"]
+        payload = await break_glass(cast(Any, request), session_id=session_id or "default", reason=context["reason"])
+        payload["mcp_write_policy"] = {
+            "required_role": "admin",
+            "actor_role": context["actor"],
+            "audit_logged": True,
+            "tenant_id": context["tenant_id"],
+        }
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP shield break-glass error")
         return json.dumps({"error": sanitize_error(exc)})
 
 

@@ -64,7 +64,7 @@ Everything else in the deployment section is reference material.
 | **API + UI** | self-hosted pilots and production | auth, RBAC, tenant scope, graph, remediation, audit, policy |
 | **Proxy** | selected local or sidecar MCPs | inline local MCP inspection, policy decisions, signed audit events |
 | **Gateway** | shared remote MCP traffic | central remote MCP relay, policy distribution, audit events |
-| **MCP server mode** | agent-invoked scanning | exposes `agent-bom` as read-only MCP tools, resources, and prompts |
+| **MCP server mode** | agent-invoked scanning | exposes `agent-bom` as read-mostly MCP tools, resources, and prompts |
 
 Default rollout: deploy API + UI with Postgres, add scans and fleet sync, then
 add proxy or gateway only where runtime enforcement is worth the extra operating

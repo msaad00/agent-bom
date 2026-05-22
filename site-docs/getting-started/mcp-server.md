@@ -1,8 +1,10 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 51 read-only security tools to any MCP client.
+agent-bom runs as an MCP server, exposing 54 MCP tools to any MCP client.
 The server card also advertises 6 resources and 6 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
+Most tools are read-only. Shield write actions require `operator_role=admin`
+and an audit reason.
 
 ## Local (stdio)
 
@@ -135,6 +137,9 @@ Connect with:
 | `proxy_alerts` | Recent tenant-scoped runtime proxy alerts |
 | `gateway_status` | Gateway policy and inter-agent firewall runtime statistics |
 | `shield_status` | Shield session status without changing enforcement |
+| `shield_start` | Start Shield enforcement with admin role and audit reason |
+| `shield_unblock` | Unblock Shield enforcement with admin role and audit reason |
+| `shield_break_glass` | Emergency Shield override with admin role and audit reason |
 | `firewall_check` | Read-only inter-agent firewall decision dry run |
 | `audit_query` | Tenant-scoped control-plane audit records |
 | `audit_integrity` | Control-plane and runtime audit-chain verification |

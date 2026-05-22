@@ -235,7 +235,7 @@ Mode matters.
 | Mode | Execution posture |
 |---|---|
 | Scanner mode | read-only discovery and analysis |
-| MCP server mode | read-only tool surface |
+| MCP server mode | read-mostly tool surface; Shield write actions require admin role and audit reason |
 | Proxy mode | live execution and enforcement boundary |
 
 Guardrails include:

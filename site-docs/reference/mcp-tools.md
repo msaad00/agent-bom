@@ -2,8 +2,9 @@
 
 agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
-can request evidence and deploy guidance, but the MCP server does not mutate
-repos, cloud resources, or runtime targets.
+can request evidence and deploy guidance without mutating repos, cloud
+resources, or runtime targets. Shield write actions are the exception: they
+fail closed unless the caller supplies an admin role and audit reason.
 
 ## Tools
 
@@ -229,6 +230,27 @@ gateway_status(tenant_id="default")
 Return Shield session status without starting, stopping, or unblocking a session.
 ```
 shield_status(session_id="default")
+```
+
+### shield_start
+Start Shield enforcement for a session. Requires `operator_role="admin"` and an
+audit reason of at least eight characters.
+```
+shield_start(session_id="default", operator_role="admin", reason="incident response")
+```
+
+### shield_unblock
+Unblock Shield enforcement for a session. Requires `operator_role="admin"` and
+an audit reason of at least eight characters.
+```
+shield_unblock(session_id="default", operator_role="admin", reason="validated unblock")
+```
+
+### shield_break_glass
+Activate the Shield emergency override. Requires `operator_role="admin"` and an
+audit reason of at least eight characters. The action is audit logged.
+```
+shield_break_glass(session_id="default", operator_role="admin", reason="approved emergency override")
 ```
 
 ### firewall_check

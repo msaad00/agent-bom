@@ -950,6 +950,105 @@ async def test_proxy_gateway_and_shield_status_impls_empty_state():
 
 
 @pytest.mark.asyncio
+async def test_shield_write_tools_require_admin_and_audit_reason():
+    from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+    from agent_bom.api.routes import proxy as proxy_routes
+    from agent_bom.mcp_tools.runtime import shield_start_impl, shield_unblock_impl
+
+    store = InMemoryAuditLog()
+    set_audit_log(store)
+    proxy_routes._shield_engines.clear()
+
+    blocked = json.loads(
+        await shield_start_impl(
+            session_id="incident-1",
+            operator_role="viewer",
+            reason="start incident shield",
+            tenant_id="tenant-alpha",
+            _truncate_response=_trunc,
+        )
+    )
+    assert blocked["status"] == "blocked"
+    assert blocked["required_role"] == "admin"
+
+    missing_reason = json.loads(
+        await shield_start_impl(
+            session_id="incident-1",
+            operator_role="admin",
+            reason="short",
+            tenant_id="tenant-alpha",
+            _truncate_response=_trunc,
+        )
+    )
+    assert missing_reason["status"] == "blocked"
+    assert "audit reason" in missing_reason["error"]
+
+    started = json.loads(
+        await shield_start_impl(
+            session_id="incident-1",
+            operator_role="admin",
+            reason="incident response validation",
+            tenant_id="tenant-alpha",
+            _truncate_response=_trunc,
+        )
+    )
+    assert started["status"] == "started"
+    assert started["mcp_write_policy"]["required_role"] == "admin"
+    assert started["mcp_write_policy"]["audit_logged"] is True
+
+    unblocked = json.loads(
+        await shield_unblock_impl(
+            session_id="incident-1",
+            operator_role="admin",
+            reason="incident response validation",
+            tenant_id="tenant-alpha",
+            _truncate_response=_trunc,
+        )
+    )
+    assert unblocked["status"] in {"not_blocked", "unblocked"}
+
+    entries = store.list_entries(tenant_id="tenant-alpha", limit=10)
+    assert [entry.action for entry in entries] == ["shield_unblock", "shield_start"]
+
+    proxy_routes._shield_engines.clear()
+
+
+@pytest.mark.asyncio
+async def test_shield_break_glass_tool_uses_admin_role_context():
+    from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+    from agent_bom.api.routes import proxy as proxy_routes
+    from agent_bom.mcp_tools.runtime import shield_break_glass_impl, shield_start_impl
+
+    store = InMemoryAuditLog()
+    set_audit_log(store)
+    proxy_routes._shield_engines.clear()
+
+    await shield_start_impl(
+        session_id="incident-2",
+        operator_role="admin",
+        reason="incident response validation",
+        tenant_id="tenant-alpha",
+        _truncate_response=_trunc,
+    )
+    result = json.loads(
+        await shield_break_glass_impl(
+            session_id="incident-2",
+            operator_role="admin",
+            reason="emergency operator override",
+            tenant_id="tenant-alpha",
+            _truncate_response=_trunc,
+        )
+    )
+    assert result["status"] == "break_glass_activated"
+    assert result["mcp_write_policy"]["actor_role"] == "admin"
+
+    entries = store.list_entries(tenant_id="tenant-alpha", limit=10)
+    assert [entry.action for entry in entries][:2] == ["break_glass", "shield_start"]
+
+    proxy_routes._shield_engines.clear()
+
+
+@pytest.mark.asyncio
 async def test_proxy_alerts_impl_filters_metadata_only_alerts():
     import agent_bom.api.routes.proxy as proxy_mod
     from agent_bom.api.routes.proxy import push_proxy_alert

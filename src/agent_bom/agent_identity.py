@@ -35,6 +35,8 @@ import threading
 import time
 from typing import Any
 
+from agent_bom.security import sanitize_log_label
+
 logger = logging.getLogger(__name__)
 
 # Sentinel used when no identity token is provided
@@ -47,6 +49,14 @@ _ACCEPTED_ALGORITHMS = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
 _jwks_cache: dict[str, tuple[dict, float]] = {}
 _jwks_lock = threading.Lock()
 _JWKS_CACHE_TTL = 3600.0  # 1 hour
+
+
+def _sanitize_identity_error(error: str) -> str:
+    """Return a bounded single-line identity validation reason."""
+
+    sanitized = sanitize_log_label(error, max_len=240)
+    sanitized = sanitized.replace("\\r", " ").replace("\\n", " ").replace("\\t", " ")
+    return sanitize_log_label(sanitized, max_len=240) or "identity validation failed"
 
 
 # ─── JWKS helpers ────────────────────────────────────────────────────────────
@@ -293,9 +303,10 @@ def check_identity(
     agent_id, error = resolve_agent_id(token, policy)
 
     if error is not None:
-        logger.debug("Identity token error: %s", error)
+        safe_error = _sanitize_identity_error(error)
+        logger.debug("Identity token error: %s", safe_error)
         if policy.get("require_agent_identity"):
-            return agent_id, f"Identity required: {error}"
+            return agent_id, f"Identity required: {safe_error}"
         return ANONYMOUS, None
 
     return agent_id, None

@@ -4,6 +4,7 @@ import json
 import os
 from urllib.parse import urlparse
 
+import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import main
@@ -186,6 +187,48 @@ def test_check_fail_on_severity_exits_one_when_threshold_matches(monkeypatch):
     payload = json.loads(result.output)
     assert payload["fail_on_severity"] == "high"
     assert payload["fail_on_severity_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("severities", "threshold", "expected_exit", "expected_count"),
+    [
+        ([Severity.HIGH], "high", 1, 1),
+        ([Severity.HIGH], "critical", 0, 0),
+        ([Severity.HIGH, Severity.LOW], "medium", 1, 1),
+        ([Severity.HIGH, Severity.LOW], "low", 1, 2),
+        ([Severity.MEDIUM], "medium", 1, 1),
+        ([Severity.MEDIUM], "low", 1, 1),
+    ],
+)
+def test_check_fail_on_severity_uses_at_or_above_threshold(
+    monkeypatch,
+    severities,
+    threshold,
+    expected_exit,
+    expected_count,
+):
+    _patch_check_scan(
+        monkeypatch,
+        [
+            Vulnerability(
+                id=f"CVE-2026-{idx:04d}",
+                summary=f"{severity.value.title()} issue",
+                severity=severity,
+                fixed_version="2.0.0",
+            )
+            for idx, severity in enumerate(severities, start=10)
+        ],
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["check", "demo@1.0.0", "--ecosystem", "pypi", "--fail-on-severity", threshold, "--format", "json", "--quiet"],
+    )
+
+    assert result.exit_code == expected_exit
+    payload = json.loads(result.output)
+    assert payload["fail_on_severity"] == threshold
+    assert payload["fail_on_severity_count"] == expected_count
 
 
 def test_check_incomplete_offline_scan_exits_two(monkeypatch):

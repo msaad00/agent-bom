@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent_bom.intel_lookup import list_intel_sources, lookup_advisory, match_packages
+from agent_bom.intel_lookup import build_daily_brief, list_intel_sources, lookup_advisory, match_packages
 
 router = APIRouter()
 
@@ -16,6 +16,15 @@ class IntelPackageMatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     packages: list[dict[str, Any]] = Field(min_length=1, max_length=500)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class IntelDailyBriefRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    packages: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+    epss_threshold: float = Field(default=0.7, ge=0, le=1)
+    kev_window_hours: int = Field(default=24, ge=1, le=168)
     limit: int = Field(default=100, ge=1, le=500)
 
 
@@ -50,3 +59,18 @@ async def post_intel_match(
     if not include_unmatched:
         result["matches"] = [item for item in result["matches"] if item["match_count"] > 0]
     return result
+
+
+@router.post("/v1/intel/daily-brief", tags=["intel"])
+async def post_intel_daily_brief(body: IntelDailyBriefRequest) -> dict[str, Any]:
+    """Return a local analyst threat brief from governed intel sources."""
+
+    try:
+        return build_daily_brief(
+            body.packages,
+            epss_threshold=body.epss_threshold,
+            kev_window_hours=body.kev_window_hours,
+            limit=body.limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

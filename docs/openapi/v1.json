@@ -1249,6 +1249,43 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "IntelDailyBriefRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "epss_threshold": {
+            "default": 0.7,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Epss Threshold",
+            "type": "number"
+          },
+          "kev_window_hours": {
+            "default": 24,
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Kev Window Hours",
+            "type": "integer"
+          },
+          "limit": {
+            "default": 100,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "packages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 500,
+            "title": "Packages",
+            "type": "array"
+          }
+        },
+        "title": "IntelDailyBriefRequest",
+        "type": "object"
+      },
       "IntelPackageMatchRequest": {
         "additionalProperties": false,
         "properties": {
@@ -10953,6 +10990,50 @@
           }
         },
         "summary": "Get Intel Advisory",
+        "tags": [
+          "intel"
+        ]
+      }
+    },
+    "/v1/intel/daily-brief": {
+      "post": {
+        "description": "Return a local analyst threat brief from governed intel sources.",
+        "operationId": "post_intel_daily_brief_v1_intel_daily_brief_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntelDailyBriefRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Intel Daily Brief V1 Intel Daily Brief Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Intel Daily Brief",
         "tags": [
           "intel"
         ]

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from agent_bom.scanners.nvidia_advisory import (
     _csaf_affects_product,
     _word_boundary_match,
+    default_nvidia_advisory_years,
     get_nvidia_products_for_package,
 )
 
@@ -143,6 +146,12 @@ def test_get_nvidia_products_for_package(pkg_name: str, expected_products: list[
         assert expected in result, f"{pkg_name!r} should map to {expected!r}, got {result}"
     if not expected_products:
         assert result == [], f"{pkg_name!r} should have no NVIDIA product mapping, got {result}"
+
+
+def test_default_nvidia_advisory_years_follow_current_year():
+    """The CSAF index window follows the current year instead of a hard-coded release window."""
+
+    assert default_nvidia_advisory_years(datetime(2027, 1, 15, tzinfo=UTC)) == ["2027", "2026"]
 
 
 def test_torch_cuda_advisory_wiring():

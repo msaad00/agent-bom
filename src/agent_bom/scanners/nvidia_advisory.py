@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import UTC, datetime
 
 import httpx
 
@@ -147,6 +148,13 @@ def get_nvidia_products_for_package(pkg_name: str) -> list[str]:
     return _PYPI_TO_NVIDIA.get(_normalise(pkg_name), [])
 
 
+def default_nvidia_advisory_years(now: datetime | None = None) -> list[str]:
+    """Return recent advisory years without pinning the scanner to a release year."""
+
+    current_year = (now or datetime.now(UTC)).year
+    return [str(current_year), str(current_year - 1)]
+
+
 def _parse_csaf_severity(scores: list[dict]) -> tuple[Severity, float | None]:
     """Extract severity and CVSS score from CSAF scores array."""
     for score_entry in scores:
@@ -187,7 +195,7 @@ async def fetch_nvidia_advisory_index(
     Only fetches recent years by default.
     """
     if years is None:
-        years = ["2025", "2026"]
+        years = default_nvidia_advisory_years()
 
     close_client = False
     if client is None:

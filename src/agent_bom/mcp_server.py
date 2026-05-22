@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (54):
+Tools (55):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -395,7 +395,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         policy_check_impl,
     )
     from agent_bom.mcp_tools.graph import deploy_decision_impl, exposure_paths_impl
-    from agent_bom.mcp_tools.intel import intel_lookup_impl, intel_match_impl, intel_sources_impl
+    from agent_bom.mcp_tools.intel import intel_daily_brief_impl, intel_lookup_impl, intel_match_impl, intel_sources_impl
     from agent_bom.mcp_tools.registry import registry_lookup_impl
     from agent_bom.mcp_tools.runtime import verify_impl
     from agent_bom.mcp_tools.sbom import generate_sbom_impl, remediate_impl
@@ -587,6 +587,28 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         return await _execute_tool_async(
             "intel_sources",
             intel_sources_impl,
+            _truncate_response=_truncate_response,
+        )
+
+    @mcp.tool(annotations=_READ_ONLY, title="Threat Intel Daily Brief")
+    async def intel_daily_brief(
+        packages: Annotated[
+            list[dict] | None,
+            Field(description="Optional inventory packages with purl or ecosystem/name/version objects for local matching."),
+        ] = None,
+        epss_threshold: Annotated[float, Field(description="Minimum EPSS probability for inventory-prioritized CVEs, 0-1.")] = 0.7,
+        kev_window_hours: Annotated[int, Field(description="KEV date_added lookback window, 1-168 hours.")] = 24,
+        limit: Annotated[int, Field(description="Maximum packages/advisories to inspect, 1-500.")] = 100,
+    ) -> str:
+        """Return a local analyst threat brief from governed intel sources."""
+
+        return await _execute_tool_async(
+            "intel_daily_brief",
+            intel_daily_brief_impl,
+            packages=packages,
+            epss_threshold=epss_threshold,
+            kev_window_hours=kev_window_hours,
+            limit=limit,
             _truncate_response=_truncate_response,
         )
 

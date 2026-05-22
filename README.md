@@ -156,7 +156,7 @@ integration docs instead of this front door.
 | Python client | services, notebooks, and automation | typed helper for stable REST endpoints in the packaged wheel |
 | TypeScript client | services and agent runtimes | typed helper for stable REST endpoints |
 
-MCP server mode advertises 54 MCP tools, 6 resources, and 6 workflow prompts.
+MCP server mode advertises 55 MCP tools, 6 resources, and 6 workflow prompts.
 Most tools are read-only. The three Shield write actions fail closed unless
 the caller supplies `operator_role=admin` and an audit reason.
 

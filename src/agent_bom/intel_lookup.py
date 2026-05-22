@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
@@ -23,10 +25,20 @@ _CWE_RE = re.compile(r"^CWE-\d+$", re.IGNORECASE)
 class IntelSource:
     source_id: str
     display_name: str
-    tier: int
+    source_tier: int
     kind: str
-    url: str
+    source_url: str
+    homepage_url: str
+    license_or_terms_url: str
     license: str
+    robots_policy: str
+    crawl_delay_seconds: int | None
+    connector_type: str
+    enabled: bool
+    owner: str
+    parser_version: str
+    validation_status: str
+    support_status: str
     redistribution: str
     sync_meta_source: str
     description: str
@@ -36,10 +48,20 @@ CANONICAL_INTEL_SOURCES: tuple[IntelSource, ...] = (
     IntelSource(
         source_id="osv",
         display_name="OSV",
-        tier=1,
+        source_tier=1,
         kind="vulnerability",
-        url="https://osv.dev/list",
+        source_url="https://osv.dev/list",
+        homepage_url="https://osv.dev/",
+        license_or_terms_url="https://github.com/google/osv.dev/blob/master/LICENSE",
         license="CC-BY-4.0",
+        robots_policy="structured_api",
+        crawl_delay_seconds=None,
+        connector_type="structured_api",
+        enabled=True,
+        owner="agent-bom",
+        parser_version="osv-db-sync.v1",
+        validation_status="structured_feed",
+        support_status="supported",
         redistribution="structured_records",
         sync_meta_source="osv",
         description="Ecosystem-native vulnerability advisories keyed by purl-like package coordinates.",
@@ -47,10 +69,20 @@ CANONICAL_INTEL_SOURCES: tuple[IntelSource, ...] = (
     IntelSource(
         source_id="ghsa",
         display_name="GitHub Security Advisories",
-        tier=1,
+        source_tier=1,
         kind="vulnerability",
-        url="https://github.com/advisories",
+        source_url="https://github.com/advisories",
+        homepage_url="https://github.com/advisories",
+        license_or_terms_url="https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
         license="GitHub advisory database terms",
+        robots_policy="api_or_osv_mirror",
+        crawl_delay_seconds=None,
+        connector_type="structured_api",
+        enabled=True,
+        owner="agent-bom",
+        parser_version="ghsa-sync.v1",
+        validation_status="structured_feed",
+        support_status="supported",
         redistribution="structured_records",
         sync_meta_source="ghsa",
         description="GitHub Security Advisory records for package ecosystems supported by the local DB syncer.",
@@ -58,10 +90,20 @@ CANONICAL_INTEL_SOURCES: tuple[IntelSource, ...] = (
     IntelSource(
         source_id="nvd",
         display_name="NVD",
-        tier=1,
+        source_tier=1,
         kind="enrichment",
-        url="https://services.nvd.nist.gov/rest/json/cves/2.0",
+        source_url="https://services.nvd.nist.gov/rest/json/cves/2.0",
+        homepage_url="https://nvd.nist.gov/",
+        license_or_terms_url="https://nvd.nist.gov/general/terms-of-use",
         license="public_domain_us_government",
+        robots_policy="structured_api",
+        crawl_delay_seconds=None,
+        connector_type="structured_api",
+        enabled=True,
+        owner="agent-bom",
+        parser_version="nvd-enrichment.v1",
+        validation_status="structured_feed",
+        support_status="supported",
         redistribution="structured_enrichment",
         sync_meta_source="nvd",
         description="CVSS, CWE, and CVE enrichment used to explain impact and remediation priority.",
@@ -69,10 +111,20 @@ CANONICAL_INTEL_SOURCES: tuple[IntelSource, ...] = (
     IntelSource(
         source_id="epss",
         display_name="FIRST EPSS",
-        tier=1,
+        source_tier=1,
         kind="exploitability",
-        url="https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+        source_url="https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+        homepage_url="https://www.first.org/epss/",
+        license_or_terms_url="https://www.first.org/epss/",
         license="FIRST EPSS terms",
+        robots_policy="published_bulk_feed",
+        crawl_delay_seconds=None,
+        connector_type="bulk_file",
+        enabled=True,
+        owner="agent-bom",
+        parser_version="epss-sync.v1",
+        validation_status="structured_feed",
+        support_status="supported",
         redistribution="structured_enrichment",
         sync_meta_source="epss",
         description="Exploit Prediction Scoring System probability and percentile enrichment.",
@@ -80,10 +132,20 @@ CANONICAL_INTEL_SOURCES: tuple[IntelSource, ...] = (
     IntelSource(
         source_id="cisa_kev",
         display_name="CISA KEV",
-        tier=1,
+        source_tier=1,
         kind="exploitation",
-        url="https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+        source_url="https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+        homepage_url="https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+        license_or_terms_url="https://www.cisa.gov/about/website-policies",
         license="public_domain_us_government",
+        robots_policy="published_bulk_feed",
+        crawl_delay_seconds=None,
+        connector_type="bulk_json",
+        enabled=True,
+        owner="agent-bom",
+        parser_version="kev-sync.v1",
+        validation_status="structured_feed",
+        support_status="supported",
         redistribution="structured_enrichment",
         sync_meta_source="kev",
         description="Known-exploited vulnerability signal for prioritizing active exploitation risk.",
@@ -91,15 +153,90 @@ CANONICAL_INTEL_SOURCES: tuple[IntelSource, ...] = (
     IntelSource(
         source_id="alpine_secdb",
         display_name="Alpine SecDB",
-        tier=1,
+        source_tier=1,
         kind="os_package",
-        url="https://secdb.alpinelinux.org",
+        source_url="https://secdb.alpinelinux.org",
+        homepage_url="https://secdb.alpinelinux.org",
+        license_or_terms_url="https://gitlab.alpinelinux.org/alpine/security/secdb",
         license="Alpine Linux SecDB terms",
+        robots_policy="published_bulk_feed",
+        crawl_delay_seconds=None,
+        connector_type="bulk_json",
+        enabled=True,
+        owner="agent-bom",
+        parser_version="alpine-secdb-sync.v1",
+        validation_status="structured_feed",
+        support_status="supported",
         redistribution="structured_records",
         sync_meta_source="alpine",
         description="Alpine package security database records for container and OS image matching.",
     ),
+    IntelSource(
+        source_id="nvidia_csaf",
+        display_name="NVIDIA CSAF",
+        source_tier=2,
+        kind="vendor_psirt",
+        source_url="https://api.github.com/repos/NVIDIA/product-security/contents",
+        homepage_url="https://www.nvidia.com/en-us/security/",
+        license_or_terms_url="https://github.com/NVIDIA/product-security",
+        license="vendor product-security repository terms",
+        robots_policy="structured_repository_api",
+        crawl_delay_seconds=None,
+        connector_type="csaf_json",
+        enabled=True,
+        owner="agent-bom",
+        parser_version="nvidia-csaf.v1",
+        validation_status="supported_structured_vendor_feed",
+        support_status="supported",
+        redistribution="source_links_and_structured_findings",
+        sync_meta_source="nvidia_csaf",
+        description="Structured CSAF advisory matching for known AI infrastructure package mappings.",
+    ),
+    IntelSource(
+        source_id="amd_psirt",
+        display_name="AMD PSIRT",
+        source_tier=3,
+        kind="vendor_psirt",
+        source_url="https://www.amd.com/en/resources/product-security.html",
+        homepage_url="https://www.amd.com/en/resources/product-security.html",
+        license_or_terms_url="https://www.amd.com/en/legal/copyright.html",
+        license="vendor website terms",
+        robots_policy="manual_seed_with_guarded_refresh",
+        crawl_delay_seconds=None,
+        connector_type="vendor_json_seed",
+        enabled=True,
+        owner="agent-bom",
+        parser_version="amd-psirt-seed.v1",
+        validation_status="experimental_seed_plus_guarded_refresh",
+        support_status="experimental",
+        redistribution="source_links_and_structured_findings",
+        sync_meta_source="amd_psirt",
+        description="ROCm and AMD GPU advisory matching from a curated seed with guarded refresh fallback.",
+    ),
+    IntelSource(
+        source_id="intel_psirt",
+        display_name="Intel PSIRT",
+        source_tier=3,
+        kind="vendor_psirt",
+        source_url="https://www.intel.com/content/www/us/en/security-center/default.html",
+        homepage_url="https://www.intel.com/content/www/us/en/security-center/default.html",
+        license_or_terms_url="https://www.intel.com/content/www/us/en/legal/terms-of-use.html",
+        license="vendor website terms",
+        robots_policy="manual_seed_only",
+        crawl_delay_seconds=None,
+        connector_type="curated_seed",
+        enabled=True,
+        owner="agent-bom",
+        parser_version="intel-psirt-seed.v1",
+        validation_status="experimental_seed_only",
+        support_status="experimental",
+        redistribution="source_links_and_structured_findings",
+        sync_meta_source="intel_psirt",
+        description="GPU and oneAPI advisory matching from curated seed data; no automated webpage scraping is shipped.",
+    ),
 )
+
+VENDOR_ADVISORY_SOURCE_IDS = {"nvidia_csaf", "amd_psirt", "intel_psirt"}
 
 
 def resolve_intel_db_path() -> Path:
@@ -112,8 +249,23 @@ def resolve_intel_db_path() -> Path:
 
 
 def _sync_meta(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
-    rows = conn.execute("SELECT source, last_synced, record_count FROM sync_meta").fetchall()
-    return {row["source"]: {"last_synced": row["last_synced"], "record_count": row["record_count"]} for row in rows}
+    rows = conn.execute("SELECT source, last_synced, record_count, metadata_json FROM sync_meta").fetchall()
+    meta: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        metadata: dict[str, Any] = {}
+        if row["metadata_json"]:
+            try:
+                parsed = json.loads(row["metadata_json"])
+                if isinstance(parsed, dict):
+                    metadata = parsed
+            except json.JSONDecodeError:
+                metadata = {"validation_status": "metadata_parse_error"}
+        meta[row["source"]] = {
+            "last_synced": row["last_synced"],
+            "record_count": row["record_count"],
+            "metadata": metadata,
+        }
+    return meta
 
 
 def list_intel_sources(*, db_path: Path | None = None) -> dict[str, Any]:
@@ -128,14 +280,27 @@ def list_intel_sources(*, db_path: Path | None = None) -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
     for source in CANONICAL_INTEL_SOURCES:
         run = meta.get(source.sync_meta_source, {})
+        metadata = run.get("metadata") or {}
+        validation_status = str(metadata.get("validation_status") or source.validation_status)
         sources.append(
             {
                 "source_id": source.source_id,
                 "display_name": source.display_name,
-                "tier": source.tier,
+                "tier": source.source_tier,
+                "source_tier": source.source_tier,
                 "kind": source.kind,
-                "url": source.url,
+                "source_url": source.source_url,
+                "homepage_url": source.homepage_url,
+                "license_or_terms_url": source.license_or_terms_url,
                 "license": source.license,
+                "robots_policy": source.robots_policy,
+                "crawl_delay_seconds": source.crawl_delay_seconds,
+                "connector_type": source.connector_type,
+                "enabled": source.enabled,
+                "owner": source.owner,
+                "parser_version": str(metadata.get("parser_version") or source.parser_version),
+                "validation_status": validation_status,
+                "support_status": source.support_status,
                 "redistribution": source.redistribution,
                 "description": source.description,
                 "feed_run": {
@@ -143,6 +308,15 @@ def list_intel_sources(*, db_path: Path | None = None) -> dict[str, Any]:
                     "last_synced": run.get("last_synced"),
                     "record_count": run.get("record_count", 0),
                     "status": "freshness_unknown" if not run.get("last_synced") else "synced",
+                    "last_validated_at": metadata.get("last_validated_at"),
+                    "fetched_at": metadata.get("fetched_at") or run.get("last_synced"),
+                    "content_hash": metadata.get("content_hash"),
+                    "etag": metadata.get("etag"),
+                    "last_modified": metadata.get("last_modified"),
+                    "parse_errors": int(metadata.get("parse_errors") or 0),
+                    "validation_failures": int(metadata.get("validation_failures") or 0),
+                    "cap_hit": bool(metadata.get("cap_hit") or False),
+                    "validation_status": validation_status,
                 },
             }
         )
@@ -179,6 +353,8 @@ def evidence_links(vuln_id: str, aliases: list[str], cwe_ids: list[str], source:
 
 def _local_vuln_to_advisory(vuln: LocalVuln, *, matched_by: str) -> dict[str, Any]:
     ids = _canonical_ids(vuln.id, vuln.aliases, vuln.cwe_ids)
+    match_method = "inventory_native_package" if matched_by == "package" else matched_by
+    confidence = "high" if match_method in {"inventory_native_package", "id_or_alias"} else "medium"
     return {
         "id": vuln.id,
         "canonical_ids": ids,
@@ -203,6 +379,9 @@ def _local_vuln_to_advisory(vuln: LocalVuln, *, matched_by: str) -> dict[str, An
             }
         ],
         "matched_by": matched_by,
+        "match_method": match_method,
+        "match_confidence": confidence,
+        "match_reason": "Matched by normalized package ecosystem/name/version from tenant inventory.",
         "evidence_links": evidence_links(vuln.id, vuln.aliases, vuln.cwe_ids, vuln.source),
     }
 
@@ -239,6 +418,82 @@ def _lookup_cve_enrichment(conn: sqlite3.Connection, cve_ids: list[str]) -> tupl
     epss_percentile = epss_row["percentile"] if epss_row else None
     kev_date_added = kev_row["date_added"] if kev_row else None
     return epss_probability, epss_percentile, kev_date_added
+
+
+def _source_registry_by_id() -> dict[str, IntelSource]:
+    return {source.source_id: source for source in CANONICAL_INTEL_SOURCES}
+
+
+def _source_policy(source_id: str | None) -> dict[str, Any]:
+    source = _source_registry_by_id().get(source_id or "")
+    if not source:
+        return {
+            "source_id": source_id or "unknown",
+            "support_status": "unknown",
+            "redistribution": "unknown",
+            "license_or_terms_url": None,
+            "validation_status": "unknown",
+        }
+    return {
+        "source_id": source.source_id,
+        "support_status": source.support_status,
+        "redistribution": source.redistribution,
+        "license_or_terms_url": source.license_or_terms_url,
+        "validation_status": source.validation_status,
+    }
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _parse_date_or_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        try:
+            parsed = datetime.strptime(normalized, "%Y-%m-%d").replace(tzinfo=UTC)
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _row_aliases(row: sqlite3.Row) -> list[str]:
+    return [alias for alias in (row["aliases"] or "").split(",") if alias]
+
+
+def _row_cwes(row: sqlite3.Row) -> list[str]:
+    return [cwe for cwe in (row["cwe_ids"] or "").split(",") if cwe]
+
+
+def _brief_advisory(row: sqlite3.Row, *, section: str, match_reason: str) -> dict[str, Any]:
+    aliases = _row_aliases(row)
+    cwes = _row_cwes(row)
+    source = row["source"]
+    return {
+        "id": row["id"],
+        "canonical_ids": _canonical_ids(row["id"], aliases, cwes),
+        "summary": row["summary"],
+        "severity": row["severity"],
+        "cvss_score": row["cvss_score"],
+        "source": source,
+        "source_policy": _source_policy(source),
+        "published_at": row["published"],
+        "modified_at": row["modified"],
+        "epss_probability": row["epss_prob"],
+        "epss_percentile": row["epss_pct"],
+        "is_kev": row["kev_date"] is not None,
+        "kev_date_added": row["kev_date"],
+        "match_method": "inventory_native_package" if section != "kev_last_24h" else "source_signal",
+        "match_confidence": "high",
+        "match_reason": match_reason,
+        "evidence_links": evidence_links(row["id"], aliases, cwes, source),
+    }
 
 
 def lookup_advisory(advisory_id: str, *, db_path: Path | None = None) -> dict[str, Any]:
@@ -304,6 +559,10 @@ def lookup_advisory(advisory_id: str, *, db_path: Path | None = None) -> dict[st
             "kev_date_added": kev_date_added,
             "affected": affected,
             "matched_by": "id_or_alias",
+            "match_method": "id_or_alias",
+            "match_confidence": "high",
+            "match_reason": "Matched advisory identifier or alias exactly.",
+            "source_policy": _source_policy(first["source"]),
             "evidence_links": evidence_links(first["id"], aliases, cwes, first["source"]),
         }
         return {"schema_version": "intel.lookup.v1", "found": True, "query": raw_id, "advisory": advisory}
@@ -377,4 +636,114 @@ def match_packages(packages: list[dict[str, Any]], *, db_path: Path | None = Non
         "matched_packages": sum(1 for item in matches if item["match_count"] > 0),
         "match_count": sum(item["match_count"] for item in matches),
         "matches": matches,
+    }
+
+
+def build_daily_brief(
+    packages: list[dict[str, Any]] | None = None,
+    *,
+    db_path: Path | None = None,
+    epss_threshold: float = 0.7,
+    kev_window_hours: int = 24,
+    limit: int = 100,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Build a local analyst brief from currently shipped intel sources.
+
+    This summarizes local DB evidence only. It does not scrape research sites,
+    redistribute vendor pages, or infer telemetry/campaign matches without
+    configured input data.
+    """
+
+    if epss_threshold < 0 or epss_threshold > 1:
+        raise ValueError("epss_threshold must be between 0 and 1")
+    if kev_window_hours < 1 or kev_window_hours > 168:
+        raise ValueError("kev_window_hours must be between 1 and 168")
+    generated_at = now.astimezone(UTC) if now else _utc_now()
+    kev_cutoff = generated_at - timedelta(hours=kev_window_hours)
+    conn = init_db(db_path or resolve_intel_db_path())
+    try:
+        source_meta = _sync_meta(conn)
+        rows = conn.execute(
+            """
+            SELECT
+                v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids,
+                COALESCE(v.aliases, '') AS aliases, v.source, v.published, v.modified,
+                e.probability AS epss_prob, e.percentile AS epss_pct,
+                k.date_added AS kev_date
+            FROM vulns v
+            LEFT JOIN epss_scores e ON e.cve_id = v.id
+            LEFT JOIN kev_entries k
+                ON k.cve_id = v.id
+                OR instr(',' || UPPER(COALESCE(v.aliases, '')) || ',', ',' || UPPER(k.cve_id) || ',') > 0
+            WHERE k.date_added IS NOT NULL
+            ORDER BY k.date_added DESC, v.id
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    kev_last_24h = [
+        _brief_advisory(row, section="kev_last_24h", match_reason=f"CISA KEV date_added is within the last {kev_window_hours} hours.")
+        for row in rows
+        if (parsed := _parse_date_or_datetime(row["kev_date"])) and parsed >= kev_cutoff
+    ]
+
+    package_inputs = packages or []
+    inventory_match = match_packages(package_inputs, db_path=db_path, limit=limit) if package_inputs else None
+    high_epss_inventory: list[dict[str, Any]] = []
+    vendor_advisories: list[dict[str, Any]] = []
+    if inventory_match:
+        for package_match in inventory_match["matches"]:
+            for advisory in package_match["advisories"]:
+                item = {
+                    "package": package_match["package"],
+                    "advisory": advisory,
+                    "match_reason": advisory.get("match_reason", "Matched by tenant inventory package coordinates."),
+                }
+                if advisory.get("epss_probability") is not None and advisory["epss_probability"] >= epss_threshold:
+                    high_epss_inventory.append(item)
+                if advisory.get("source") in VENDOR_ADVISORY_SOURCE_IDS:
+                    vendor_advisories.append(item)
+
+    feed_runs = {
+        source.source_id: {
+            "last_synced": (source_meta.get(source.sync_meta_source) or {}).get("last_synced"),
+            "record_count": (source_meta.get(source.sync_meta_source) or {}).get("record_count", 0),
+            "support_status": source.support_status,
+            "validation_status": ((source_meta.get(source.sync_meta_source) or {}).get("metadata") or {}).get(
+                "validation_status", source.validation_status
+            ),
+        }
+        for source in CANONICAL_INTEL_SOURCES
+    }
+    return {
+        "schema_version": "intel.daily_brief.v1",
+        "generated_at": generated_at.isoformat(),
+        "inputs": {
+            "package_count": len(package_inputs),
+            "epss_threshold": epss_threshold,
+            "kev_window_hours": kev_window_hours,
+            "telemetry_configured": False,
+            "sector_geo_configured": False,
+        },
+        "sections": {
+            "kev_last_24h": kev_last_24h,
+            "high_epss_inventory": high_epss_inventory,
+            "vendor_advisories": vendor_advisories,
+            "ioc_telemetry_hits": [],
+            "campaign_matches": [],
+            "ransomware_sector_matches": [],
+        },
+        "inventory_match": inventory_match,
+        "source_registry": {
+            "schema_version": "intel.sources.v1",
+            "feed_runs": feed_runs,
+        },
+        "limitations": [
+            "IoC telemetry, campaign, and sector matching require configured telemetry or tenant profile inputs.",
+            "Vendor webpage scraping is not shipped; vendor entries use structured feeds or curated source-linked seeds only.",
+        ],
     }

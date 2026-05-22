@@ -1,8 +1,8 @@
 {
   "_comment": "agent-bom MCP Server Registry — security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-05-04",
-  "_total_servers": 658,
+  "_updated": "2026-05-21",
+  "_total_servers": 738,
   "_differentiator": "Security metadata database — not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
   "_sources": [
@@ -12750,7 +12750,1379 @@
       "glama_id": "ir7wgxu3aa",
       "glama_url": "https://glama.ai/mcp/servers/ir7wgxu3aa",
       "auto_enriched": true
+    },
+    "ai.adeu/adeu": {
+      "package": "ai.adeu/adeu",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.7.1",
+      "description": "Automated DOCX Redlining Engine",
+      "name": "ai.adeu/adeu",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.adeu/adeu",
+        "adeu"
+      ],
+      "source_url": "https://github.com/dealfluence/adeu",
+      "auto_enriched": true
+    },
+    "ai.agenticshelf/graffeo": {
+      "package": "ai.agenticshelf/graffeo",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.2",
+      "description": "Live MCP catalog for Graffeo Coffee Roasting - Simply the World's Finest Coffee since 1935.",
+      "name": "ai.agenticshelf/graffeo",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agenticshelf/graffeo",
+        "graffeo"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.agenticshelf/mcp": {
+      "package": "ai.agenticshelf/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Hosted MCP for e-commerce: live product catalog, stock, and pricing for AI agents.",
+      "name": "ai.agenticshelf/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agenticshelf/mcp"
+      ],
+      "source_url": "https://github.com/vboykoCTO/agentic-shelf",
+      "auto_enriched": true
+    },
+    "ai.agenticterminal/directory": {
+      "package": "ai.agenticterminal/directory",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Verified merchants accepting agentic payments on Lightning/L402/BOLT12/USDT — search, verify, pay.",
+      "name": "ai.agenticterminal/directory",
+      "category": "filesystem",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agenticterminal/directory",
+        "directory"
+      ],
+      "source_url": "https://github.com/observer-protocol/at-directory",
+      "auto_enriched": true
+    },
+    "ai.arclan/registry": {
+      "package": "ai.arclan/registry",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "MCP server registry — validated by live handshake, scored on reliability, monitored continuously.",
+      "name": "ai.arclan/registry",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.arclan/registry",
+        "registry"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.autonomad/computeback": {
+      "package": "ai.autonomad/computeback",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.1.3",
+      "description": "Agent Rewards Marketplace: earn $NOMD on B2B work, spend on agent capabilities.",
+      "name": "ai.autonomad/computeback",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.autonomad/computeback",
+        "computeback"
+      ],
+      "source_url": "https://github.com/Autonomad1/computeback-mcp",
+      "auto_enriched": true
+    },
+    "ai.autonomad/travel": {
+      "package": "ai.autonomad/travel",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.4.0",
+      "description": "AI travel agent — book flights, hotels, activities, and events worldwide via autonomad.ai.",
+      "name": "ai.autonomad/travel",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.autonomad/travel",
+        "travel"
+      ],
+      "source_url": "https://github.com/Autonomad1/autonomad1",
+      "auto_enriched": true
+    },
+    "ai.autorfp/mcp": {
+      "package": "ai.autorfp/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Search AutoRFP.ai projects, requirements, content library, and tags for Q&A and analytics.",
+      "name": "ai.autorfp/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.autorfp/mcp"
+      ],
+      "source_url": "https://github.com/AutoRFP/mcp",
+      "auto_enriched": true
+    },
+    "ai.auxen/auxen": {
+      "package": "ai.auxen/auxen",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.2",
+      "description": "Provision private AI model endpoints on dedicated GPUs (Llama, Qwen, Mistral). Pay per minute.",
+      "name": "ai.auxen/auxen",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.auxen/auxen",
+        "auxen"
+      ],
+      "source_url": "https://github.com/auxen-ai/auxen-mcp",
+      "auto_enriched": true
+    },
+    "ai.boolsai/directory": {
+      "package": "ai.boolsai/directory",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Indexed ecommerce site directory — vendor lookups, brands by city/market/founder. 10 tools.",
+      "name": "ai.boolsai/directory",
+      "category": "filesystem",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.boolsai/directory",
+        "directory"
+      ],
+      "source_url": "https://github.com/Boolsai-ai/mcp",
+      "auto_enriched": true
+    },
+    "ai.boolsai/grep": {
+      "package": "ai.boolsai/grep",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Parallel regex across all Boolsai scans — discover new vendor patterns, niche signals. 4 tools.",
+      "name": "ai.boolsai/grep",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.boolsai/grep",
+        "grep"
+      ],
+      "source_url": "https://github.com/Boolsai-ai/mcp",
+      "auto_enriched": true
+    },
+    "ai.boolsai/scan": {
+      "package": "ai.boolsai/scan",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Live tech-stack scan of any public site — vendors, account IDs, scripts, JSON-LD. 2 tools.",
+      "name": "ai.boolsai/scan",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.boolsai/scan",
+        "scan"
+      ],
+      "source_url": "https://github.com/Boolsai-ai/mcp",
+      "auto_enriched": true
+    },
+    "ai.boolsai/signals": {
+      "package": "ai.boolsai/signals",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Quant-research MCP — tradeable signals from public-company website stack changes. 7 tools.",
+      "name": "ai.boolsai/signals",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.boolsai/signals",
+        "signals"
+      ],
+      "source_url": "https://github.com/Boolsai-ai/mcp",
+      "auto_enriched": true
+    },
+    "ai.buyersense/buyersense": {
+      "package": "ai.buyersense/buyersense",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "MCP server for the BuyerSense API. Get buyer signals from any MCP client.",
+      "name": "ai.buyersense/buyersense",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.buyersense/buyersense",
+        "buyersense"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.buywhere/catalog-api": {
+      "package": "ai.buywhere/catalog-api",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Search 1.5M+ products across 20+ platforms. Compare prices, find deals, browse categories.",
+      "name": "ai.buywhere/catalog-api",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.buywhere/catalog-api",
+        "catalog-api"
+      ],
+      "source_url": "https://github.com/BuyWhere/buywhere",
+      "auto_enriched": true
+    },
+    "ai.calendarmcp/server": {
+      "package": "ai.calendarmcp/server",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Hosted Google Calendar MCP server for AI agents. No self-hosting or Google Cloud setup.",
+      "name": "ai.calendarmcp/server",
+      "category": "cloud",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.calendarmcp/server"
+      ],
+      "source_url": "https://github.com/Full-Vibe/calendarmcp-public",
+      "auto_enriched": true
+    },
+    "ai.compeller/compel": {
+      "package": "ai.compeller/compel",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.5.1",
+      "description": "Create and track AI music videos and audio-reactive visuals from songs.",
+      "name": "ai.compeller/compel",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.compeller/compel",
+        "compel"
+      ],
+      "source_url": "https://github.com/Compellerai/compeller-mcp",
+      "auto_enriched": true
+    },
+    "ai.conveo/conveo": {
+      "package": "ai.conveo/conveo",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.1",
+      "description": "Qualitative research platform. Design studies, analyze interviews, and generate insights.",
+      "name": "ai.conveo/conveo",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.conveo/conveo",
+        "conveo"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.cosmonote/notes": {
+      "package": "ai.cosmonote/notes",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Access your Cosmonote audio notes, transcriptions, summaries, and action items.",
+      "name": "ai.cosmonote/notes",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.cosmonote/notes",
+        "notes"
+      ],
+      "source_url": "https://github.com/cosmonote/pocketbase",
+      "auto_enriched": true
+    },
+    "ai.dataforb2b/dataforb2b": {
+      "package": "ai.dataforb2b/dataforb2b",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.1",
+      "description": "Search and enrich B2B people & companies — 70+ filters (funding, linkedin, industry, country, ...).",
+      "name": "ai.dataforb2b/dataforb2b",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.dataforb2b/dataforb2b",
+        "dataforb2b"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.demanddiscovery/mcp": {
+      "package": "ai.demanddiscovery/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.1.9",
+      "description": "Sales-agent MCP for Demand Discovery AI. Validate startup ideas with behavioral signals.",
+      "name": "ai.demanddiscovery/mcp",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.demanddiscovery/mcp"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.dragoneye/mcp": {
+      "package": "ai.dragoneye/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Build zero-shot video models for object detection, and category and attribute classification.",
+      "name": "ai.dragoneye/mcp",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.dragoneye/mcp"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.dreamlit/mcp": {
+      "package": "ai.dreamlit/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Create, test, publish, and manage Dreamlit notification workflows from AI clients.",
+      "name": "ai.dreamlit/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.dreamlit/mcp"
+      ],
+      "source_url": "https://github.com/dreamlit-ai/dreamlit-mcp",
+      "auto_enriched": true
+    },
+    "ai.drillr/drillr": {
+      "package": "ai.drillr/drillr",
+      "ecosystem": "mcp-registry",
+      "latest_version": "2.0.0",
+      "description": "The financial MCP for AI agents - 90+ financial tables, SEC filings, signals, alt-data.",
+      "name": "ai.drillr/drillr",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.drillr/drillr",
+        "drillr"
+      ],
+      "source_url": "https://github.com/Little-Grebe-Inc/drillr-mcp-server",
+      "auto_enriched": true
+    },
+    "ai.gethal/mcp": {
+      "package": "ai.gethal/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Public MCP for gethal.ai — autonomous AI sales agent. Pricing, features, book a demo.",
+      "name": "ai.gethal/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.gethal/mcp"
+      ],
+      "source_url": "https://gitlab.com/acf5914932/gethal.ai-lp",
+      "auto_enriched": true
+    },
+    "ai.hostprofit/mcp": {
+      "package": "ai.hostprofit/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Revenue intelligence platform for short-term rental operators.",
+      "name": "ai.hostprofit/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.hostprofit/mcp"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.law/lawyer-search": {
+      "package": "ai.law/lawyer-search",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.2",
+      "description": "Verified lawyer and attorney search, discovery, and matching for AI — 991K+ US profiles.",
+      "name": "ai.law/lawyer-search",
+      "category": "filesystem",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.law/lawyer-search",
+        "lawyer-search"
+      ],
+      "source_url": "https://github.com/risk-ai/lawai-mcp-server",
+      "auto_enriched": true
+    },
+    "ai.modulos/demo-booking": {
+      "package": "ai.modulos/demo-booking",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Book a Modulos demo. AI Governance Platform for EU AI Act, ISO 42001, NIST AI RMF.",
+      "name": "ai.modulos/demo-booking",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.modulos/demo-booking",
+        "demo-booking"
+      ],
+      "source_url": "https://github.com/Modulos/modulos_website_sa",
+      "auto_enriched": true
+    },
+    "ai.moxt/mcp-workspace": {
+      "package": "ai.moxt/mcp-workspace",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Browse and manage files in your Moxt AI workspace from any MCP client.",
+      "name": "ai.moxt/mcp-workspace",
+      "category": "filesystem",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.moxt/mcp-workspace",
+        "mcp-workspace"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.myriade/myriade": {
+      "package": "ai.myriade/myriade",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.187.1",
+      "description": "Explore and query your data warehouse through Myriade's AI data analyst agent.",
+      "name": "ai.myriade/myriade",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.myriade/myriade",
+        "myriade"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.nudg3/brand-intelligence": {
+      "package": "ai.nudg3/brand-intelligence",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Query your Nudg3 brand visibility across ChatGPT, Claude, Gemini, AI Overviews, and Perplexity.",
+      "name": "ai.nudg3/brand-intelligence",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.nudg3/brand-intelligence",
+        "brand-intelligence"
+      ],
+      "source_url": "https://github.com/NUDG3-AI/nudg3-mcp",
+      "auto_enriched": true
+    },
+    "ai.openarx/openarx": {
+      "package": "ai.openarx/openarx",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0-alpha",
+      "description": "Open scientific knowledge MCP for AI agents. Three profiles: search, publish, govern.",
+      "name": "ai.openarx/openarx",
+      "category": "filesystem",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.openarx/openarx",
+        "openarx"
+      ],
+      "source_url": "https://github.com/OpenArx-AI/openarx-core",
+      "auto_enriched": true
+    },
+    "ai.orggen/orggen": {
+      "package": "ai.orggen/orggen",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Generate org charts, MCD/ERD data models, and C4 architecture diagrams — pilot OrgGen AI via MCP.",
+      "name": "ai.orggen/orggen",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.orggen/orggen",
+        "orggen"
+      ],
+      "source_url": "https://github.com/ms-spown/orgschema-ai",
+      "auto_enriched": true
+    },
+    "ai.presentations/presentations-ai": {
+      "package": "ai.presentations/presentations-ai",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Presentations.AI MCP server — create designed slide decks from a topic, text, or document.",
+      "name": "ai.presentations/presentations-ai",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.presentations/presentations-ai",
+        "presentations-ai"
+      ],
+      "source_url": "https://github.com/slidecraft-in/presentations-ai-mcp-server",
+      "auto_enriched": true
+    },
+    "ai.pyrimid/pyrimid": {
+      "package": "ai.pyrimid/pyrimid",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Agent-commerce MCP server for x402/USDC payments and affiliate splits on Base.",
+      "name": "ai.pyrimid/pyrimid",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.pyrimid/pyrimid",
+        "pyrimid"
+      ],
+      "source_url": "https://github.com/pyrimid-ai/pyrimid",
+      "auto_enriched": true
+    },
+    "ai.quantifyme/quantifyme": {
+      "package": "ai.quantifyme/quantifyme",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Describe a trading strategy in plain English and deploy a live signal model in one call. No signup.",
+      "name": "ai.quantifyme/quantifyme",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.quantifyme/quantifyme",
+        "quantifyme"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.ravenmcp/raven-mcp": {
+      "package": "ai.ravenmcp/raven-mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.3.3",
+      "description": "Design intelligence for AI-generated UI — principles, patterns, content, brand, design tokens.",
+      "name": "ai.ravenmcp/raven-mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.ravenmcp/raven-mcp",
+        "raven-mcp"
+      ],
+      "source_url": "https://github.com/rhinocap/raven-mcp",
+      "auto_enriched": true
+    },
+    "ai.roc/mcp": {
+      "package": "ai.roc/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "ROC biometrics & computer vision: face, LPR, OCR, pedestrian, vehicle, gun detection.",
+      "name": "ai.roc/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.roc/mcp"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.taskforcehq/taskforce": {
+      "package": "ai.taskforcehq/taskforce",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.3.321",
+      "description": "Task and planning workspace for humans collaborating with AI agents",
+      "name": "ai.taskforcehq/taskforce",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.taskforcehq/taskforce",
+        "taskforce"
+      ],
+      "source_url": "https://github.com/taskforcehq/taskforce",
+      "auto_enriched": true
+    },
+    "ai.tensorfeed/x402-base-mcp": {
+      "package": "ai.tensorfeed/x402-base-mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.0",
+      "description": "Read-only Base mainnet reader. Verifies x402 payment settlements + AFTA federation status.",
+      "name": "ai.tensorfeed/x402-base-mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.tensorfeed/x402-base-mcp",
+        "x402-base-mcp"
+      ],
+      "source_url": "https://github.com/RipperMercs/tensorfeed-x402-base-mcp",
+      "auto_enriched": true
+    },
+    "ai.tokenarcade/tokenarcade": {
+      "package": "ai.tokenarcade/tokenarcade",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Games for AI agents. Each game runs inside a single context window.",
+      "name": "ai.tokenarcade/tokenarcade",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.tokenarcade/tokenarcade",
+        "tokenarcade"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ai.tunnelmind/scry": {
+      "package": "ai.tunnelmind/scry",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.4.0",
+      "description": "Free IPv4 lookups against a distributed attacker-observation corpus.",
+      "name": "ai.tunnelmind/scry",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.tunnelmind/scry",
+        "scry"
+      ],
+      "source_url": "https://github.com/TunnelMind/scry-mcp",
+      "auto_enriched": true
+    },
+    "app.3dstreet/3dstreet": {
+      "package": "app.3dstreet/3dstreet",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.2",
+      "description": "Drive an open 3DStreet scene tab from Claude Desktop or Claude Code via MCP tool calls.",
+      "name": "app.3dstreet/3dstreet",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "app.3dstreet/3dstreet",
+        "3dstreet"
+      ],
+      "source_url": "https://github.com/3DStreet/3dstreet-mcp",
+      "auto_enriched": true
+    },
+    "app.cannonstudio/cannon-studio": {
+      "package": "app.cannonstudio/cannon-studio",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Public Cannon Studio MCP for product, pricing, workflow, model, and API answers.",
+      "name": "app.cannonstudio/cannon-studio",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "app.cannonstudio/cannon-studio",
+        "cannon-studio"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "app.eurocomply/compliance": {
+      "package": "app.eurocomply/compliance",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.3.0",
+      "description": "EU regulatory compliance data: 17 regulations, deadlines, enforcement actions. EU-hosted.",
+      "name": "app.eurocomply/compliance",
+      "category": "data",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "app.eurocomply/compliance",
+        "compliance"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "app.locize.mcp/server": {
+      "package": "app.locize.mcp/server",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Locize MCP server: read/write translations, publish versions, manage branches from AI assistants.",
+      "name": "app.locize.mcp/server",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "app.locize.mcp/server"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "app.nausika/mcp": {
+      "package": "app.nausika/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.3",
+      "description": "Mediterranean marine, nautical, sailing: forecasts, tides, sea routes, anchorages, POIs for AI.",
+      "name": "app.nausika/mcp",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "app.nausika/mcp"
+      ],
+      "source_url": "https://github.com/nausika-app/nausika-feedback",
+      "auto_enriched": true
+    },
+    "app.newsmind/mcp": {
+      "package": "app.newsmind/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.8.0",
+      "description": "Connect your RSS feeds to ChatGPT and Claude. Search, dedupe, OPML import. Hosted MCP.",
+      "name": "app.newsmind/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "app.newsmind/mcp"
+      ],
+      "source_url": "https://github.com/rdowty/newsmind",
+      "auto_enriched": true
+    },
+    "app.readwithleaf/leaf": {
+      "package": "app.readwithleaf/leaf",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "AI assistant integration for Leaf — track books, log reading sessions, and manage your library.",
+      "name": "app.readwithleaf/leaf",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "app.readwithleaf/leaf",
+        "leaf"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "app.sentinelx/sentinelx": {
+      "package": "app.sentinelx/sentinelx",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Operate your own Linux servers from your LLM. Requires the SentinelX agent installed per host.",
+      "name": "app.sentinelx/sentinelx",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "app.sentinelx/sentinelx",
+        "sentinelx"
+      ],
+      "source_url": "https://github.com/pensados/sentinelx-cloud-core",
+      "auto_enriched": true
+    },
+    "app.toofi/dental-planning": {
+      "package": "app.toofi/dental-planning",
+      "ecosystem": "mcp-registry",
+      "latest_version": "2026.5.12",
+      "description": "Agent-native dental planning MCP for plan drafts, presentations, and price estimates.",
+      "name": "app.toofi/dental-planning",
+      "category": "general",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "app.toofi/dental-planning",
+        "dental-planning"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "art.travel/mcp": {
+      "package": "art.travel/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.3.0",
+      "description": "Art-tourism data for AI agents: biennales, art fairs, museums with 2026 prices + dates.",
+      "name": "art.travel/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "art.travel/mcp"
+      ],
+      "source_url": "https://github.com/alexzavialov/travel-art-mcp",
+      "auto_enriched": true
+    },
+    "bid.scope/aec": {
+      "package": "bid.scope/aec",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.2",
+      "description": "AEC subcontractor vendor procurement. Preview, V3 2027.",
+      "name": "bid.scope/aec",
+      "category": "general",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "bid.scope/aec"
+      ],
+      "source_url": "https://github.com/scope-bid/scope-mcp",
+      "auto_enriched": true
+    },
+    "bid.scope/claims": {
+      "package": "bid.scope/claims",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.2",
+      "description": "Insurance claims vendor procurement (IMEs, IA, surveillance). Preview, V2 Q3 2026.",
+      "name": "bid.scope/claims",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "bid.scope/claims",
+        "claims"
+      ],
+      "source_url": "https://github.com/scope-bid/scope-mcp",
+      "auto_enriched": true
+    },
+    "bid.scope/healthcare": {
+      "package": "bid.scope/healthcare",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.0.0",
+      "description": "Healthcare vendor-services MCP. Preview. Available after legal, claims, and AEC are live.",
+      "name": "bid.scope/healthcare",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "bid.scope/healthcare",
+        "healthcare"
+      ],
+      "source_url": "https://github.com/scope-bid/scope-mcp",
+      "auto_enriched": true
+    },
+    "bid.scope/legal": {
+      "package": "bid.scope/legal",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.2",
+      "description": "Legal-services vendor procurement: court reporting, records, experts, e-discovery. Live.",
+      "name": "bid.scope/legal",
+      "category": "general",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "bid.scope/legal",
+        "legal"
+      ],
+      "source_url": "https://github.com/scope-bid/scope-mcp",
+      "auto_enriched": true
+    },
+    "bid.scope/pharma": {
+      "package": "bid.scope/pharma",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.0.0",
+      "description": "Pharma vendor-services MCP. Preview. Available after legal, claims, and AEC are live.",
+      "name": "bid.scope/pharma",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "bid.scope/pharma",
+        "pharma"
+      ],
+      "source_url": "https://github.com/scope-bid/scope-mcp",
+      "auto_enriched": true
+    },
+    "bio.lnk/lnkbio": {
+      "package": "bio.lnk/lnkbio",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.1",
+      "description": "Manage your Lnk.Bio page through AI: links, pages, themes, social icons, and more.",
+      "name": "bio.lnk/lnkbio",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "bio.lnk/lnkbio",
+        "lnkbio"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "bot.mailbox/mailbox": {
+      "package": "bot.mailbox/mailbox",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Physical mail API for AI agents. Send letters, certified mail, postcards from code via MCP.",
+      "name": "bot.mailbox/mailbox",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "bot.mailbox/mailbox",
+        "mailbox"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "bot.ttrpg/grimoire": {
+      "package": "bot.ttrpg/grimoire",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.4.0",
+      "description": "Manage TTRPG campaigns: NPCs, locations, factions, quests, sessions, lore, and knowledge graphs.",
+      "name": "bot.ttrpg/grimoire",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "bot.ttrpg/grimoire",
+        "grimoire"
+      ],
+      "source_url": "https://github.com/zafety-vibin/grimoire-mcp",
+      "auto_enriched": true
+    },
+    "br.com.escoladeradio.www/public": {
+      "package": "br.com.escoladeradio.www/public",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Cursos, turmas, vagas, professores, podcasts e blog da Escola de Rádio (ER+) — read-only.",
+      "name": "br.com.escoladeradio.www/public",
+      "category": "security",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "br.com.escoladeradio.www/public",
+        "public"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "br.com.nvoip/mcp-server": {
+      "package": "br.com.nvoip/mcp-server",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.3",
+      "description": "Secure Nvoip MCP server for reports, call analytics, service quality, and business insights.",
+      "name": "br.com.nvoip/mcp-server",
+      "category": "data",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "br.com.nvoip/mcp-server",
+        "mcp-server"
+      ],
+      "source_url": "https://github.com/Nvoip/nvoip-mcp",
+      "auto_enriched": true
+    },
+    "cc.wealthos/mcp": {
+      "package": "cc.wealthos/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Plan your financial future with AI: track net worth, manage budgets, and forecast scenarios.",
+      "name": "cc.wealthos/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "cc.wealthos/mcp"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "ch.entscheidsuche/mcp": {
+      "package": "ch.entscheidsuche/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Suche in Schweizer Gerichtsentscheiden aller Instanzen (Bund, Kantone) in DE/FR/IT.",
+      "name": "ch.entscheidsuche/mcp",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ch.entscheidsuche/mcp"
+      ],
+      "source_url": "https://github.com/entscheidsuche/entscheidsuche-mcp",
+      "auto_enriched": true
+    },
+    "ch.jassverband/jasswiki": {
+      "package": "ch.jassverband/jasswiki",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.2",
+      "description": "First production Authority-MCP. W3C VC attested by Jassverband Schweiz.",
+      "name": "ch.jassverband/jasswiki",
+      "category": "security",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ch.jassverband/jasswiki",
+        "jasswiki"
+      ],
+      "source_url": "https://github.com/remoprinz/jasswiki-mcp",
+      "auto_enriched": true
+    },
+    "cloud.nordicdata/nordic-data": {
+      "package": "cloud.nordicdata/nordic-data",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Nordic business data API: 1.4M Norwegian companies, sanctions, procurement, contacts. 28 tools.",
+      "name": "cloud.nordicdata/nordic-data",
+      "category": "cloud",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "cloud.nordicdata/nordic-data",
+        "nordic-data"
+      ],
+      "source_url": "https://github.com/sofiajameson20-star/Nordicdata",
+      "auto_enriched": true
+    },
+    "co.bizverify/mcp": {
+      "package": "co.bizverify/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "KYB for AI agents: verify business registrations from MCP clients.",
+      "name": "co.bizverify/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "co.bizverify/mcp"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "co.callendar/mcp": {
+      "package": "co.callendar/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "WhatsApp® reminders and rescheduling for Calendly. Public read-only MCP endpoint.",
+      "name": "co.callendar/mcp",
+      "category": "general",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "co.callendar/mcp"
+      ],
+      "source_url": "",
+      "auto_enriched": true
+    },
+    "co.curie/commerce": {
+      "package": "co.curie/commerce",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Search, compare in 3D, and buy products from 5.6M+ Shopify stores. Free tier; Pro adds checkout.",
+      "name": "co.curie/commerce",
+      "category": "general",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "co.curie/commerce",
+        "commerce"
+      ],
+      "source_url": "https://github.com/curievision/curie-shopify-app",
+      "auto_enriched": true
+    },
+    "co.flow2/flow2": {
+      "package": "co.flow2/flow2",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Design mobile-first presentations — create, edit, preview, and publish from your AI.",
+      "name": "co.flow2/flow2",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "co.flow2/flow2",
+        "flow2"
+      ],
+      "source_url": "https://github.com/flowboard/flow2-mcp",
+      "auto_enriched": true
+    },
+    "mnemexa/mcp": {
+      "ecosystem": "npm",
+      "package": "mnemexa/mcp",
+      "description": "Provides persistent, self-optimizing memory for AI agents, enabling them to remember preferences an…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/mnemexa/mcp",
+      "license": "ISC License",
+      "source": "glama",
+      "glama_id": "uix0grw1sm",
+      "glama_url": "https://glama.ai/mcp/servers/uix0grw1sm",
+      "auto_enriched": true
+    },
+    "alfredoizdev/contextforge-mcp": {
+      "ecosystem": "npm",
+      "package": "alfredoizdev/contextforge-mcp",
+      "description": "Persistent memory MCP server for Claude Code, Cursor, and GitHub Copilot. Semantic search, Git sync…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/alfredoizdev/contextforge-mcp",
+      "license": "MIT License",
+      "source": "glama",
+      "glama_id": "hlg7zyih0p",
+      "glama_url": "https://glama.ai/mcp/servers/hlg7zyih0p",
+      "auto_enriched": true
+    },
+    "svgicons-com/mcp": {
+      "ecosystem": "npm",
+      "package": "svgicons-com/mcp",
+      "description": "Enables AI coding tools to search, inspect, recommend, and export SVG icons from svgicons.com for u…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/svgicons-com/mcp",
+      "license": "MIT License",
+      "source": "glama",
+      "glama_id": "f450y8aev9",
+      "glama_url": "https://glama.ai/mcp/servers/f450y8aev9",
+      "auto_enriched": true
+    },
+    "openaccountants/openaccountants": {
+      "ecosystem": "npm",
+      "package": "openaccountants/openaccountants",
+      "description": "Open-source, accountant-verified tax computation skills for AI agents. 261+ skills across 172+ juri…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/openaccountants/openaccountants",
+      "license": "",
+      "source": "glama",
+      "glama_id": "do7jqh56go",
+      "glama_url": "https://glama.ai/mcp/servers/do7jqh56go",
+      "auto_enriched": true
+    },
+    "prmbr42-bot/smartsheet-mcp-server": {
+      "ecosystem": "npm",
+      "package": "prmbr42-bot/smartsheet-mcp-server",
+      "description": "Enables AI agents to read and write Smartsheet data, with support for remote HTTP deployment to Mic…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/prmbr42-bot/smartsheet-mcp-server",
+      "license": "",
+      "source": "glama",
+      "glama_id": "rv080r4h3y",
+      "glama_url": "https://glama.ai/mcp/servers/rv080r4h3y",
+      "auto_enriched": true
+    },
+    "AutomateLab-tech/content-distribution-mcp": {
+      "ecosystem": "npm",
+      "package": "AutomateLab-tech/content-distribution-mcp",
+      "description": "This server that distributes a single piece of content across 8+ channels (DEV.to, Hashnode, GitHub…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/AutomateLab-tech/content-distribution-mcp",
+      "license": "MIT License",
+      "source": "glama",
+      "glama_id": "wn06l0lh62",
+      "glama_url": "https://glama.ai/mcp/servers/wn06l0lh62",
+      "auto_enriched": true
+    },
+    "aliasunder/vault-cortex": {
+      "ecosystem": "npm",
+      "package": "aliasunder/vault-cortex",
+      "description": "MCP server for Obsidian vaults — search, memory, link graph, 23 tools, OAuth-protected. Runs locall…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/aliasunder/vault-cortex",
+      "license": "MIT License",
+      "source": "glama",
+      "glama_id": "pg0lghi886",
+      "glama_url": "https://glama.ai/mcp/servers/pg0lghi886",
+      "auto_enriched": true
+    },
+    "tushariitr-19/patents-mcp": {
+      "ecosystem": "npm",
+      "package": "tushariitr-19/patents-mcp",
+      "description": "MCP server for patent search and prior art discovery powered by Google Patents public dataset on Bi…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/tushariitr-19/patents-mcp",
+      "license": "MIT License",
+      "source": "glama",
+      "glama_id": "o9vywh50j8",
+      "glama_url": "https://glama.ai/mcp/servers/o9vywh50j8",
+      "auto_enriched": true
+    },
+    "kioie/tiny-go-mcp-server": {
+      "ecosystem": "npm",
+      "package": "kioie/tiny-go-mcp-server",
+      "description": "Minimal Go library for building stdio MCP servers on the official go-sdk — struct-derived JSON Sche…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/kioie/tiny-go-mcp-server",
+      "license": "MIT License",
+      "source": "glama",
+      "glama_id": "rkxbzqzi8j",
+      "glama_url": "https://glama.ai/mcp/servers/rkxbzqzi8j",
+      "auto_enriched": true
+    },
+    "ericm1018/skillfm-mcp": {
+      "ecosystem": "npm",
+      "package": "ericm1018/skillfm-mcp",
+      "description": "AI health checkups, token usage, LLM cost optimization, BYOK vault guidance, provider usage visibil…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/ericm1018/skillfm-mcp",
+      "license": "MIT License",
+      "source": "glama",
+      "glama_id": "cfmwav3lve",
+      "glama_url": "https://glama.ai/mcp/servers/cfmwav3lve",
+      "auto_enriched": true
     }
   },
-  "_mcp_registry_sync": "2026-05-01T16:24:37Z"
+  "_mcp_registry_sync": "2026-05-21T14:32:15Z"
 }

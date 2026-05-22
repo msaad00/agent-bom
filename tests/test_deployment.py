@@ -186,13 +186,19 @@ def test_server_card_tools_expose_capability_classes():
     """Server card should classify tool capabilities for agents and marketplaces."""
     from agent_bom.mcp_server import build_server_card
 
+    write_tools = {"shield_start", "shield_unblock", "shield_break_glass"}
     card = build_server_card()
     for tool in card["tools"]:
         classes = tool.get("capability_classes")
         assert isinstance(classes, list), tool["name"]
         assert classes, tool["name"]
-        assert "READ" in classes, tool["name"]
-        assert tool["annotations"]["readOnlyHint"] is True
+        if tool["name"] in write_tools:
+            assert "WRITE" in classes, tool["name"]
+            assert tool["annotations"]["readOnlyHint"] is False
+            assert tool["annotations"]["destructiveHint"] is True
+        else:
+            assert "READ" in classes, tool["name"]
+            assert tool["annotations"]["readOnlyHint"] is True
 
 
 def test_server_card_exposes_resources_and_workflow_prompts():

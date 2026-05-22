@@ -157,10 +157,31 @@ def _exit_incomplete_scan_with_partial_summary(
             "coverage_reason": str(exc),
         },
     )
-    ctx.con.print(f"  [yellow]⚠[/yellow] {exc}")
-    profile_defaulted_output = not _scan_output_target_was_explicit()
-    should_render_console_summary = (output_format == "console" and not output) or profile_defaulted_output
-    if should_render_console_summary and not quiet:
+    explicit_output_target = _scan_output_target_was_explicit()
+    machine_stdout = explicit_output_target and output_format != "console" and output in (None, "", "-")
+    if not machine_stdout:
+        ctx.con.print(f"  [yellow]⚠[/yellow] {exc}")
+    profile_defaulted_output = not explicit_output_target
+    if explicit_output_target:
+        render_output(
+            ctx,
+            output=output,
+            output_format=output_format,
+            no_tree=no_tree,
+            quiet=quiet,
+            no_color=no_color,
+            open_report=open_report,
+            compliance_export=compliance_export,
+            mermaid_mode=mermaid_mode,
+            push_gateway=push_gateway,
+            otel_endpoint=otel_endpoint,
+            baseline=baseline,
+            delta_mode=delta_mode,
+            verbose=verbose,
+            exclude_unfixable=exclude_unfixable,
+            fixable_only=fixable_only,
+        )
+    elif ((output_format == "console" and not output) or profile_defaulted_output) and not quiet:
         render_output(
             ctx,
             output=None,

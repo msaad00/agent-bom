@@ -1,8 +1,23 @@
 # Python API
 
 `agent-bom` exposes a small public Python API for tools that want typed scan
-results without shelling out to the CLI. The API is a wrapper over shipped
-scanner, inventory, and diff primitives; it is not a separate scanner.
+results without shelling out to the CLI, plus a typed control-plane client for
+stable REST endpoints. These surfaces are wrappers over shipped scanner,
+inventory, diff, and API primitives; they are not parallel implementations.
+
+## Install
+
+```bash
+pip install agent-bom
+```
+
+Use the API extra when the same environment also starts a local control plane:
+
+```bash
+pip install 'agent-bom[api]'
+```
+
+## Local Scan Helpers
 
 ```python
 from agent_bom import check, diff, scan
@@ -22,6 +37,37 @@ delta = diff("baseline.json", "current.json")
 print(delta.summary)
 ```
 
+## Control-Plane Client
+
+Use `AgentBomClient` from services, notebooks, and automation that already have
+an agent-bom API URL and token. The client keeps auth and tenant headers in one
+place and exposes stable evidence endpoints without requiring callers to build
+URLs manually.
+
+```python
+from agent_bom import AgentBomClient
+
+with AgentBomClient(
+    base_url="https://agent-bom.internal",
+    api_key="agent-bom-api-key",
+    tenant_id="tenant-a",
+) as client:
+    print(client.health()["status"])
+    manifest = client.agent_manifest()
+    runtime = client.runtime_production_index()
+    intel = client.intel_sources()
+
+print(manifest["schema_version"], runtime["schema_version"], len(intel.get("sources", [])))
+```
+
+For a smoke test against a running API:
+
+```bash
+AGENT_BOM_BASE_URL=http://127.0.0.1:8422 \
+AGENT_BOM_API_KEY=dev-key \
+python examples/python_sdk/control_plane_smoke.py
+```
+
 ## Functions
 
 | Function | Returns | Boundary |
@@ -32,6 +78,22 @@ print(delta.summary)
 | `agent_bom.sdk.inventory(...)` | `InventoryResult` | Parses JSON, CSV, or NDJSON inventory using the canonical inventory loader. Kept under `agent_bom.sdk` to avoid shadowing the existing `agent_bom.inventory` module. |
 | `diff(...)` | `DiffResult` | Diffs two agent-bom reports or SBOM documents using the history diff engine. |
 
+## Client Methods
+
+| Method | Endpoint | Use |
+|---|---|---|
+| `health()` | `GET /health` | API liveness and configured subsystem health. |
+| `agent_manifest()` | `GET /v1/agent-bom/manifest` | Tenant-scoped agent, MCP server, tool, and credential-reference posture. |
+| `runtime_production_index()` | `GET /v1/runtime/production-index` | Runtime traffic, policy, freshness, alert, and retention posture. |
+| `exposure_paths()` | `GET /v1/graph/exposure-paths` | Graph-backed reachability and blast-radius paths. |
+| `should_i_deploy(...)` | `POST /v1/graph/should-i-deploy` | Allow/warn/block deployment guidance from graph risk. |
+| `list_findings(...)` | `GET /v1/findings` | Normalized findings with severity and pagination filters. |
+| `ingest_findings(...)` | `POST /v1/findings/bulk` | Bulk finding ingest from external scanners or jobs. |
+| `register_dataset_version(...)` | `POST /v1/datasets/{dataset_id}/versions` | Dataset artifact evidence registration. |
+| `intel_lookup(...)` | `GET /v1/intel/advisories/{advisory_id}` | Advisory lookup by CVE, GHSA, or OSV ID. |
+| `intel_match(...)` | `POST /v1/intel/match` | Match package coordinates against local advisory intelligence. |
+| `intel_sources()` | `GET /v1/intel/sources` | Source registry and freshness metadata. |
+
 ## Notes
 
 - `check()` cannot be called from an already running event loop; use
@@ -40,3 +102,6 @@ print(delta.summary)
   scope. Passing both is allowed only when they refer to the same path.
 - The returned `AIBOMReport` uses the same typed dataclasses as the rest of the
   package, including `Finding`, `Asset`, `Package`, and `BlastRadius`.
+- The control-plane client accepts either `api_key` or `bearer_token`, not both.
+  `tenant_id` is sent as `X-Agent-Bom-Tenant-ID` and is also used as the
+  default tenant query/body value for tenant-scoped methods.

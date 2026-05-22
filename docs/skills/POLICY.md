@@ -84,7 +84,7 @@ Actions are `warn`, `fail`, or `block`; `block` is treated as a failing gate.
 Run skills scanning as its own CI lane:
 
 ```yaml
-- uses: msaad00/agent-bom@v0.87.1
+- uses: msaad00/agent-bom@v0.88.1
   with:
     scan-type: skills
     scan-ref: .

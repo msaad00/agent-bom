@@ -5,12 +5,12 @@
 This appendix is the canonical home for volatile product counts.
 Keep counts out of public positioning copy and update this file from the repo instead of hand-editing numbers.
 
-- Generated on: `2026-05-21`
+- Generated on: `2026-05-22`
 - Version: `0.88.1`
 
 | Metric | Value | Source | Notes |
 | --- | ---: | --- | --- |
-| MCP tools | 51 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card tools. |
+| MCP tools | 54 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card tools. |
 | MCP resources | 6 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card resources. |
 | MCP prompts | 6 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card workflow prompts. |
 | GitHub workflow files | 35 | `.github/workflows` | Counts .yml and .yaml workflow definitions. |

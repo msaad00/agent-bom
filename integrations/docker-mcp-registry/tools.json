@@ -282,6 +282,37 @@
     ]
   },
   {
+    "name": "shield_start",
+    "description": "Start Shield enforcement for a session; requires admin role and an audit reason.",
+    "arguments": [
+      {"name": "session_id", "type": "string", "desc": "Shield session id to enforce"},
+      {"name": "correlation_window", "type": "number", "desc": "Correlation window in seconds"},
+      {"name": "operator_role", "type": "string", "desc": "Caller role; must be admin"},
+      {"name": "reason", "type": "string", "desc": "Audit reason for the write action"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope for audit logging"}
+    ]
+  },
+  {
+    "name": "shield_unblock",
+    "description": "Unblock Shield enforcement for a session; requires admin role and an audit reason.",
+    "arguments": [
+      {"name": "session_id", "type": "string", "desc": "Shield session id to unblock"},
+      {"name": "operator_role", "type": "string", "desc": "Caller role; must be admin"},
+      {"name": "reason", "type": "string", "desc": "Audit reason for the write action"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope for audit logging"}
+    ]
+  },
+  {
+    "name": "shield_break_glass",
+    "description": "Emergency Shield override; requires admin role and an audit reason.",
+    "arguments": [
+      {"name": "session_id", "type": "string", "desc": "Shield session id to override"},
+      {"name": "operator_role", "type": "string", "desc": "Caller role; must be admin"},
+      {"name": "reason", "type": "string", "desc": "Audit reason for the emergency override"},
+      {"name": "tenant_id", "type": "string", "desc": "Tenant scope for audit logging"}
+    ]
+  },
+  {
     "name": "firewall_check",
     "description": "Dry-run an inter-agent firewall decision without recording control-plane state.",
     "arguments": [

@@ -5,7 +5,7 @@ The `agent-bom proxy` command sits between MCP clients and servers, intercepting
 Important boundary:
 
 - scanner mode is read-only
-- MCP server mode is read-only
+- MCP server mode is read-mostly; Shield write actions require admin role and an audit reason
 - proxy mode intentionally executes the wrapped stdio server or connects to the remote SSE/HTTP server so it can enforce policy on live traffic
 
 ## Architecture

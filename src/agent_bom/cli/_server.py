@@ -692,7 +692,7 @@ def mcp_server_cmd(
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 51 security tools via MCP protocol:
+    Exposes 54 security tools via MCP protocol:
       scan                   Full scan — CVEs, config security, blast radius, compliance
       check                  Check a specific package for CVEs before installing
       blast_radius           Look up blast radius for a specific CVE
@@ -725,6 +725,9 @@ def mcp_server_cmd(
       proxy_alerts           Recent tenant-scoped runtime proxy alerts
       gateway_status         Gateway policy and firewall runtime statistics
       shield_status          Shield session status without changing enforcement
+      shield_start           Start Shield enforcement with admin/audit gating
+      shield_unblock         Unblock Shield enforcement with admin/audit gating
+      shield_break_glass     Emergency Shield override with admin/audit gating
       firewall_check         Read-only inter-agent firewall decision dry run
       audit_query            Tenant-scoped control-plane audit records
       audit_integrity        Control-plane and runtime audit-chain verification

@@ -157,6 +157,21 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "shield_start",
+        "description": "Start Shield enforcement for a session; requires admin role and an audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
+    {
+        "name": "shield_unblock",
+        "description": "Unblock Shield enforcement for a session; requires admin role and an audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
+    {
+        "name": "shield_break_glass",
+        "description": "Emergency Shield override; requires admin role and an audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
+    {
         "name": "firewall_check",
         "description": "Dry-run an inter-agent firewall decision without recording control-plane state",
         "annotations": {"readOnlyHint": True},
@@ -273,6 +288,9 @@ _TOOL_CAPABILITY_CLASSES = {
     "proxy_alerts": ["READ", "RUNTIME", "OBSERVABILITY"],
     "gateway_status": ["READ", "RUNTIME", "POLICY"],
     "shield_status": ["READ", "RUNTIME", "SECURITY"],
+    "shield_start": ["WRITE", "RUNTIME", "SECURITY", "AUDIT"],
+    "shield_unblock": ["WRITE", "RUNTIME", "SECURITY", "AUDIT"],
+    "shield_break_glass": ["WRITE", "RUNTIME", "SECURITY", "AUDIT"],
     "firewall_check": ["READ", "RUNTIME", "POLICY"],
     "audit_query": ["READ", "AUDIT"],
     "audit_integrity": ["READ", "AUDIT", "PROVENANCE"],

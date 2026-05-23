@@ -186,6 +186,21 @@ Snowflake) or via per-tenant SQLite paths.
 For the operator-facing logical entity → store/table contract, see
 [`site-docs/deployment/control-plane-data-model.md`](../site-docs/deployment/control-plane-data-model.md).
 
+### Database and warehouse evidence connector lanes
+
+Database posture connectors are evidence sources, not event streams. Native
+connectors are preferred for security-sensitive posture because they expose
+richer identity, grants, governance, and lineage APIs. ODBC/JDBC are optional
+fallback lanes for SQL Server, Oracle, Teradata, and customer-managed DSN/JVM
+environments where a generic SQL path is the only viable evidence source.
+
+The contract in `src/agent_bom/database_evidence.py` keeps ODBC/JDBC out of
+the default wheel, marks them non-preferred, and defines the read-only evidence
+kinds they may collect: schemas, tables, views, grants, roles, users,
+classification tags, governance metadata, external shares/stages, and lineage.
+See [`docs/DATABASE_EVIDENCE.md`](DATABASE_EVIDENCE.md) for the operator-facing
+lane and credential-boundary guidance.
+
 ### SQLite — `src/agent_bom/db/schema.py`
 
 Single-file local store. Used for the offline vuln DB and the

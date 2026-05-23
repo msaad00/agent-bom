@@ -53,6 +53,11 @@ export enum EntityType {
   CONTAINER = "container",
   RESOURCE = "resource",
   CLOUD_RESOURCE = "cloud_resource",
+  SOURCE_FILE = "source_file",
+  CODE_MODULE = "code_module",
+  CONFIG_FILE = "config_file",
+  EXTERNAL_IMPORT = "external_import",
+  CI_JOB = "ci_job",
   // Finding entities (OCSF Category 2)
   VULNERABILITY = "vulnerability",
   MISCONFIGURATION = "misconfiguration",
@@ -86,6 +91,10 @@ export enum RelationshipType {
   REACHES_TOOL = "reaches_tool",
   SERVES_MODEL = "serves_model",
   CONTAINS = "contains",
+  IMPORTS = "imports",
+  DEFINES = "defines",
+  RUNS = "runs",
+  CONFIGURES = "configures",
   // Vulnerability
   AFFECTS = "affects",
   VULNERABLE_TO = "vulnerable_to",
@@ -230,6 +239,11 @@ export const ENTITY_OCSF_MAP: Record<
   [EntityType.CONTAINER]: { category_uid: 5, class_uid: 4001 },
   [EntityType.RESOURCE]: { category_uid: 5, class_uid: 4001 },
   [EntityType.CLOUD_RESOURCE]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.SOURCE_FILE]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.CODE_MODULE]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.CONFIG_FILE]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.EXTERNAL_IMPORT]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.CI_JOB]: { category_uid: 5, class_uid: 4001 },
   [EntityType.VULNERABILITY]: { category_uid: 2, class_uid: 2001 },
   // Credentials are INVENTORY — presence of env var is not a finding
   [EntityType.CREDENTIAL]: { category_uid: 5, class_uid: 4001 },
@@ -402,6 +416,11 @@ export const ENTITY_COLOR_MAP: Record<string, string> = {
   [EntityType.CONTAINER]: "#6366f1",       // indigo
   [EntityType.RESOURCE]: "#3b82f6",        // blue
   [EntityType.CLOUD_RESOURCE]: "#0ea5e9",  // sky
+  [EntityType.SOURCE_FILE]: "#22d3ee",      // cyan
+  [EntityType.CODE_MODULE]: "#06b6d4",      // cyan
+  [EntityType.CONFIG_FILE]: "#f97316",      // orange
+  [EntityType.EXTERNAL_IMPORT]: "#f59e0b",  // amber
+  [EntityType.CI_JOB]: "#a855f7",           // purple
   [EntityType.VULNERABILITY]: "#ef4444",   // red
   [EntityType.CREDENTIAL]: "#f59e0b",      // amber
   [EntityType.CREDENTIAL_REF]: "#facc15",  // yellow
@@ -429,6 +448,10 @@ export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.REACHES_TOOL]: "#fbbf24",
   [RelationshipType.SERVES_MODEL]: "#8b5cf6",
   [RelationshipType.CONTAINS]: "#6366f1",
+  [RelationshipType.IMPORTS]: "#22d3ee",
+  [RelationshipType.DEFINES]: "#06b6d4",
+  [RelationshipType.RUNS]: "#a855f7",
+  [RelationshipType.CONFIGURES]: "#f97316",
   [RelationshipType.AFFECTS]: "#ef4444",
   [RelationshipType.VULNERABLE_TO]: "#ef4444",
   [RelationshipType.EXPLOITABLE_VIA]: "#dc2626",

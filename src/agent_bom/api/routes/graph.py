@@ -71,6 +71,8 @@ _SEMANTIC_LAYER_LABELS = {
     GraphSemanticLayer.ASSET.value: "Asset",
     GraphSemanticLayer.INFRA.value: "Infrastructure",
     GraphSemanticLayer.FINDING.value: "Finding",
+    GraphSemanticLayer.CODE.value: "Code",
+    GraphSemanticLayer.CI.value: "CI/CD",
 }
 
 _EXPOSURE_PATH_OPENAPI_SCHEMA: dict[str, Any] = {
@@ -1815,6 +1817,34 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
         "direction": "directed",
         "source_types": [EntityType.CONTAINER.value, EntityType.CLUSTER.value, EntityType.FLEET.value],
         "target_types": [EntityType.PACKAGE.value, EntityType.SERVER.value, EntityType.CONTAINER.value],
+        "traversable": True,
+    },
+    RelationshipType.IMPORTS.value: {
+        "category": "code_topology",
+        "direction": "directed",
+        "source_types": [EntityType.SOURCE_FILE.value, EntityType.CODE_MODULE.value],
+        "target_types": [EntityType.EXTERNAL_IMPORT.value, EntityType.CODE_MODULE.value, EntityType.PACKAGE.value],
+        "traversable": True,
+    },
+    RelationshipType.DEFINES.value: {
+        "category": "code_topology",
+        "direction": "directed",
+        "source_types": [EntityType.SOURCE_FILE.value],
+        "target_types": [EntityType.CODE_MODULE.value, EntityType.TOOL.value, EntityType.CI_JOB.value],
+        "traversable": True,
+    },
+    RelationshipType.RUNS.value: {
+        "category": "code_topology",
+        "direction": "directed",
+        "source_types": [EntityType.CI_JOB.value],
+        "target_types": [EntityType.TOOL.value, EntityType.SERVER.value, EntityType.AGENT.value],
+        "traversable": True,
+    },
+    RelationshipType.CONFIGURES.value: {
+        "category": "code_topology",
+        "direction": "directed",
+        "source_types": [EntityType.CONFIG_FILE.value],
+        "target_types": [EntityType.AGENT.value, EntityType.SERVER.value, EntityType.CI_JOB.value, EntityType.TOOL.value],
         "traversable": True,
     },
     RelationshipType.AFFECTS.value: {

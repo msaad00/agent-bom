@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import os
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -23,6 +24,21 @@ from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 POSTURE_EVENT_SCHEMA_VERSION = "1"
 WebhookSender = Callable[[str, dict[str, str], dict[str, Any]], Awaitable[int]]
+POSTURE_EVENT_TYPES = frozenset(
+    {
+        "audit.delta",
+        "deploy.decision",
+        "exposure_path.changed",
+        "finding.created",
+        "graph.delta",
+        "intel.exploitation_changed",
+        "intel.matched_inventory",
+        "intel.published",
+        "runtime.alert",
+        "runtime.policy_decision",
+        "skill.verdict",
+    }
+)
 
 
 class PostureStreamingError(RuntimeError):
@@ -396,6 +412,20 @@ class WebhookOutbox:
             return bool(cur.rowcount)
 
 
+def default_webhook_outbox_path() -> Path:
+    configured = os.environ.get("AGENT_BOM_POSTURE_WEBHOOK_OUTBOX_DB", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    shared_db = os.environ.get("AGENT_BOM_DB", "").strip()
+    if shared_db:
+        return Path(shared_db).expanduser()
+    return Path.home() / ".agent-bom" / "db" / "posture-webhooks.db"
+
+
+def default_webhook_outbox() -> WebhookOutbox:
+    return WebhookOutbox(default_webhook_outbox_path())
+
+
 def _outbox_record_from_row(row: sqlite3.Row) -> OutboxRecord:
     delivered = row["delivered_at"]
     return OutboxRecord(
@@ -478,12 +508,15 @@ async def deliver_due_webhooks(
 
 __all__ = [
     "POSTURE_EVENT_SCHEMA_VERSION",
+    "POSTURE_EVENT_TYPES",
     "OutboxRecord",
     "PostureEvent",
     "PostureStreamingError",
     "QueuedDelivery",
     "WebhookDestination",
     "WebhookOutbox",
+    "default_webhook_outbox",
+    "default_webhook_outbox_path",
     "deliver_due_webhooks",
     "signed_webhook_headers",
 ]

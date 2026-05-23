@@ -935,8 +935,10 @@
             "enum": [
               "false_positive",
               "accepted_risk",
+              "not_affected",
               "not_applicable",
-              "fixed_verified"
+              "fixed_verified",
+              "needs_review"
             ],
             "title": "State",
             "type": "string"

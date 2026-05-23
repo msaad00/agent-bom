@@ -163,6 +163,8 @@ def _request_actor(request: Request) -> str:
 
 def _feedback_reason(state: str, reason: str) -> str:
     clean_state = state.strip().lower().replace("-", "_")
+    if clean_state == "not_applicable":
+        clean_state = "not_affected"
     clean_reason = reason.strip()
     return f"{_FEEDBACK_PREFIX}{clean_state}] {clean_reason}".strip()
 
@@ -172,6 +174,8 @@ def _parse_feedback_reason(reason: str) -> tuple[str, str] | None:
         close = reason.find("]")
         if close > len(_FEEDBACK_PREFIX):
             state = reason[len(_FEEDBACK_PREFIX) : close].strip().lower()
+            if state == "not_applicable":
+                state = "not_affected"
             return state, reason[close + 1 :].strip()
     if reason.startswith(_LEGACY_FALSE_POSITIVE_PREFIX):
         return "false_positive", reason.removeprefix(_LEGACY_FALSE_POSITIVE_PREFIX).strip()
@@ -189,7 +193,7 @@ def _feedback_response(exc: Any) -> dict[str, Any]:
         "state": state,
         "reason": reason,
         "marked_by": exc.requested_by,
-        "status": "suppressed" if state in {"false_positive", "accepted_risk", "not_applicable"} else state,
+        "status": "suppressed" if state in {"false_positive", "accepted_risk", "not_affected", "fixed_verified"} else state,
         "created_at": exc.created_at,
         "expires_at": exc.expires_at,
         "tenant_id": exc.tenant_id,

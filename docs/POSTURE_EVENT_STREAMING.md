@@ -14,6 +14,9 @@ push-delivery primitive:
 - `agent_bom.posture_streaming.WebhookOutbox`, a tenant-scoped SQLite outbox
   for signed webhook delivery with idempotency, retry metadata,
   private-network destination opt-in, and dead-letter state
+- graph delta webhook routing through the same outbox when
+  `AGENT_BOM_GRAPH_DELTA_WEBHOOK` and
+  `AGENT_BOM_GRAPH_DELTA_WEBHOOK_SIGNING_SECRET` are configured
 - REST outbox observability at `GET /v1/posture/webhooks/outbox`,
   `GET /v1/posture/webhooks/outbox/stats`, and
   `POST /v1/posture/webhooks/outbox/{row_id}/retry`
@@ -42,6 +45,24 @@ Posture push connectors should emit:
 | `ocsf` | OCSF projection when available in higher-level adapters |
 | `audit_ref` | audit-chain pointer or verification metadata when available |
 | `schema_version` | connector schema version |
+
+Current reserved event types include `graph.delta`, `runtime.alert`,
+`runtime.policy_decision`, `intel.published`, `intel.matched_inventory`, and
+`intel.exploitation_changed`. The intel event names are reserved for future
+adapters; they are not a shipped intel API or feed registry.
+
+## Graph Delta Webhooks
+
+Graph delta alerts no longer use immediate generic webhook POST dispatch from
+environment-only configuration. When a graph delta webhook is configured, the
+runtime queues one signed `graph.delta` posture event per alert into the
+webhook outbox. Delivery workers then use the existing signed headers,
+idempotency key, retry, and dead-letter behavior. If a webhook URL is set
+without a signing secret, no webhook event is queued and the dispatch metadata
+includes a configuration error. OCSF export metadata is still returned.
+
+Slack delta notifications remain an explicit best-effort notification channel;
+they are separate from the durable generic webhook path.
 
 ## Delivery Order
 

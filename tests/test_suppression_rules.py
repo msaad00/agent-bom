@@ -80,7 +80,7 @@ def test_suppression_metadata_is_exported_in_json_report():
             vuln_id="CVE-2026-12345",
             package_name="requests",
             server_name="github",
-            reason="[finding_feedback:not_applicable] not deployed",
+            reason="[finding_feedback:not_affected] not deployed",
             status=ExceptionStatus.ACTIVE,
             tenant_id="tenant-a",
         )
@@ -92,6 +92,27 @@ def test_suppression_metadata_is_exported_in_json_report():
 
     finding = payload["blast_radius"][0]
     assert finding["suppressed"] is True
-    assert finding["suppression_state"] == "not_applicable"
+    assert finding["suppression_state"] == "not_affected"
     assert finding["suppression_reason"] == "not deployed"
     assert finding["unsuppressed_risk_score"] == 8.4
+
+
+def test_needs_review_feedback_does_not_suppress_actionability():
+    store = InMemoryExceptionStore()
+    store.put(
+        VulnException(
+            vuln_id="CVE-2026-12345",
+            package_name="requests",
+            server_name="github",
+            reason="[finding_feedback:needs_review] low confidence runtime-only match",
+            status=ExceptionStatus.ACTIVE,
+            tenant_id="tenant-a",
+        )
+    )
+    blast_radii = [_blast_radius()]
+
+    summary = apply_tenant_suppression_rules(blast_radii, store, tenant_id="tenant-a")
+
+    assert summary == {"evaluated": 1, "suppressed": 0}
+    assert blast_radii[0].suppressed is False
+    assert blast_radii[0].risk_score == 8.4

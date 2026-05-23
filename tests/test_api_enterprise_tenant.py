@@ -385,6 +385,36 @@ async def test_finding_feedback_uses_authenticated_actor_and_tenant(isolated_exc
 
 
 @pytest.mark.asyncio
+async def test_finding_feedback_accepts_not_affected_and_needs_review(isolated_exception_store):
+    not_affected = await enterprise.create_finding_feedback(
+        _request("tenant-alpha", "alice-admin"),
+        FindingFeedbackRequest(
+            vulnerability_id="CVE-2026-0001",
+            package="requests",
+            state="not_affected",
+            reason="not deployed",
+        ),
+    )
+    needs_review = await enterprise.create_finding_feedback(
+        _request("tenant-alpha", "alice-admin"),
+        FindingFeedbackRequest(
+            vulnerability_id="CVE-2026-0002",
+            package="urllib3",
+            state="needs_review",
+            reason="runtime declaration gap only",
+        ),
+    )
+
+    assert not_affected["state"] == "not_affected"
+    assert not_affected["status"] == "suppressed"
+    assert needs_review["state"] == "needs_review"
+    assert needs_review["status"] == "needs_review"
+    stored = isolated_exception_store.get(not_affected["id"], tenant_id="tenant-alpha")
+    assert stored is not None
+    assert stored.reason.startswith("[finding_feedback:not_affected]")
+
+
+@pytest.mark.asyncio
 async def test_finding_feedback_list_is_tenant_scoped(isolated_exception_store):
     alpha = VulnException(
         vuln_id="CVE-2026-0001",

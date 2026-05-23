@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 _SUPPRESSING_FEEDBACK_STATES = {
     "false_positive",
     "accepted_risk",
+    "not_affected",
     "not_applicable",
     "fixed_verified",
 }
@@ -31,6 +32,8 @@ def feedback_state_from_reason(reason: str) -> tuple[str | None, str]:
     if closing <= len(marker):
         return None, reason
     state = reason[len(marker) : closing].strip()
+    if state == "not_applicable":
+        state = "not_affected"
     clean_reason = reason[closing + 1 :].strip()
     return state or None, clean_reason
 

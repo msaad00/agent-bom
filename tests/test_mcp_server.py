@@ -970,6 +970,25 @@ def test_resources_include_trust_and_hardening_contracts():
     assert "compliance://framework-controls" in uris
 
 
+def test_mcp_hardening_resource_includes_nsa_control_mapping():
+    """MCP hardening resource should expose the NSA-informed operator controls."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    content = _run(server.read_resource("bestpractices://mcp-hardening"))
+    payload = json.loads(content[0].content)
+
+    assert payload["schema_version"] == "mcp.hardening.v1"
+    assert "NSA CSI" in payload["source"]["name"]
+    assert payload["control_count"] >= 9
+
+    control_ids = {control["id"] for control in payload["controls"]}
+    assert "strict_parameter_validation" in control_ids
+    assert "message_integrity_and_replay" in control_ids
+    assert "audit_logging_and_detection" in control_ids
+    assert "not a certification" in payload["claim_boundary"]
+
+
 def test_prompts_include_agentic_workflow_recipes():
     """MCP prompts should expose multi-step recipes, not only raw tools."""
     from agent_bom.mcp_server import create_mcp_server

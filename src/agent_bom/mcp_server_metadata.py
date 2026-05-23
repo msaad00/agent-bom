@@ -331,7 +331,7 @@ _SERVER_CARD_RESOURCES = [
     {"uri": "policy://template", "description": "Default security policy-as-code template"},
     {"uri": "metrics://tools", "description": "Bounded MCP tool execution metrics"},
     {"uri": "schema://inventory-v1", "description": "Canonical pushed-inventory schema contract"},
-    {"uri": "bestpractices://mcp-hardening", "description": "MCP deployment hardening checklist"},
+    {"uri": "bestpractices://mcp-hardening", "description": "NSA-informed MCP hardening control mapping"},
     {"uri": "compliance://framework-controls", "description": "Framework coverage and evidence mapping"},
 ]
 

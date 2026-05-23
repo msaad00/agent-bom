@@ -7,7 +7,8 @@ Enterprise pilot notes:
   Kubernetes Secret shape and `site-docs/deployment/postgres-provisioning.md`
   for the ownership contract.
 - Set `AGENT_BOM_AUDIT_HMAC_KEY` in the control-plane secret.
-- Set `AGENT_BOM_REQUIRE_AUDIT_HMAC=1` to fail closed if the key is missing.
+- Production and multi-replica control planes fail closed when `AGENT_BOM_AUDIT_HMAC_KEY` is missing.
+  Keep `AGENT_BOM_REQUIRE_AUDIT_HMAC=1` set for explicit policy evidence.
 - Use Postgres for the pilot control plane; SQLite is not the multi-replica path.
 - Prefer internal ingress / VPN-only exposure for the API and UI.
 - Run Alembic before first multi-replica rollout: `alembic -c deploy/supabase/postgres/alembic.ini upgrade head`.

@@ -16,25 +16,12 @@ import tempfile
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
+from agent_bom.scan_contract import ScanConfig
+
 if TYPE_CHECKING:
     from rich.console import Console
 
     from agent_bom.models import Agent, AIBOMReport, BlastRadius
-
-
-@dataclass
-class ScanConfig:
-    """Inputs for a default scan invocation."""
-
-    project: Optional[str] = None
-    demo: bool = False
-    offline: bool = False
-    enrich: bool = False
-    compliance: bool = False
-    resolve_transitive: bool = False
-    max_depth: int = 3
-    blast_radius_depth: int = 2
-    quiet: bool = False
 
 
 @dataclass

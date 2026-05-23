@@ -17,6 +17,7 @@ async def scan_impl(
     config_path: str | None = None,
     image: str | None = None,
     sbom_path: str | None = None,
+    package: str | None = None,
     enrich: bool = False,
     offline: bool = True,
     scorecard: bool = False,
@@ -46,6 +47,12 @@ async def scan_impl(
         if offline and verify_integrity:
             verify_integrity = False
             pre_warnings.append("Package integrity verification skipped because offline mode was requested")
+        if package is not None:
+            package = package.strip()
+            if not package:
+                raise ToolError("package must not be empty")
+            if len(package) > 256:
+                raise ToolError("package must be 256 characters or fewer")
 
         # Auto-refresh stale DB before scanning only when explicitly requested.
         if auto_update_db and not offline:
@@ -67,6 +74,7 @@ async def scan_impl(
             config_path,
             image,
             sbom_path,
+            package,
             enrich,
             transitive=transitive,
             offline=offline,

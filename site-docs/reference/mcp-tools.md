@@ -9,7 +9,12 @@ fail closed unless the caller supplies an admin role and audit reason.
 ## Tools
 
 ### scan
-Full discovery + vulnerability scan pipeline. Auto-discovers MCP clients, extracts servers and packages, scans for CVEs, computes blast radius.
+Full discovery + vulnerability scan pipeline. Auto-discovers MCP clients,
+extracts servers and packages, scans for CVEs, computes blast radius, or scans
+a direct MCP launch package when no local config is available.
+```
+scan(package="npx @modelcontextprotocol/server-filesystem@2025.1.14")
+```
 
 ### check
 Check a single package for vulnerabilities.

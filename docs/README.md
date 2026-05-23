@@ -6,6 +6,7 @@ Canonical docs here:
 
 - `ARCHITECTURE.md`
 - `CONTROL_MAPPING.md`
+- `DATABASE_EVIDENCE.md`
 - `DEPLOYMENT.md`
 - `ENTERPRISE.md`
 - `ENTERPRISE_DEPLOYMENT.md`

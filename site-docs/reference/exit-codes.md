@@ -81,18 +81,21 @@ esac
 
 ## GitHub Action `action.yml` outputs
 
-The composite action surfaces both the CLI exit code and a parsed-status output so
-downstream steps can branch without re-parsing logs. When agent-bom finds findings
-above the configured severity floor the step still exits `0` — the action sets
-`outputs.findings` for the caller to gate on. Hard failures (`rc != 0` and not an
-empty/usage outcome) bubble up so the workflow turns red.
+The composite action surfaces the CLI exit code, parsed scan status, artifact
+paths, and AI-specific posture counts so downstream workflow steps can gate
+without re-parsing logs.
 
-| Output         | Type   | Source                               | Notes                                                                                  |
-| -------------- | ------ | ------------------------------------ | -------------------------------------------------------------------------------------- |
-| `findings`     | string | parsed from JSON / SARIF             | `"true"` when at least one finding crosses the configured severity floor.              |
-| `report-path`  | string | computed                             | Absolute path to the JSON / SARIF / HTML report inside the runner workspace.           |
-| `sarif-path`   | string | computed                             | Absolute path to the SARIF report when `--output sarif` was selected.                  |
-| `exit-code`    | string | propagated CLI exit code             | Same value documented in [CLI exit-code contract](#cli-exit-code-contract).            |
+| Output | Type | Source | Notes |
+|---|---|---|---|
+| `sarif-file` | string | computed | Path to the SARIF report when `format: sarif` was selected. |
+| `exit-code` | string | propagated CLI exit code | Same value documented in [CLI exit-code contract](#cli-exit-code-contract). |
+| `scan-status` | string | parsed from exit code + findings | `clean`, `violations`, or `error`. |
+| `vulnerability-count` | string | parsed from SARIF or skills JSON | Number of vulnerability findings, or skill findings for `scan-type: skills`. |
+| `badge-file` | string | computed | Path to generated shields.io badge JSON when `badge` is set. |
+| `graph-export-path` | string | computed | Path to generated `mermaid`, `svg`, `graph`, or `graph-html` artifact. |
+| `exposure-paths-count` | string | parsed from graph-capable JSON | Number of exposure, lateral, or attack paths in the result artifact. |
+| `blast-radius-critical-count` | string | parsed from SARIF/JSON | Number of critical blast-radius or SARIF findings. |
+| `posture-grade` | string | derived from parsed counts | Coarse grade: `A`, `C`, `D`, `F`, or `unknown`. |
 
 ## Stability guarantees
 

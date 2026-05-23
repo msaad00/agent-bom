@@ -345,6 +345,7 @@ async def _run_scan_pipeline(
     config_path: Optional[str] = None,
     image: Optional[str] = None,
     sbom_path: Optional[str] = None,
+    package: Optional[str] = None,
     enrich: bool = False,
     transitive: bool = False,
     offline: bool = False,
@@ -355,6 +356,7 @@ async def _run_scan_pipeline(
         config_path=config_path,
         image=image,
         sbom_path=sbom_path,
+        package=package,
         enrich=enrich,
         transitive=transitive,
         offline=offline,
@@ -408,6 +410,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
         image: Annotated[str | None, Field(description="Docker image to scan (e.g. 'nginx:1.25', 'ghcr.io/org/app:v1').")] = None,
         sbom_path: Annotated[str | None, Field(description="Path to existing CycloneDX or SPDX JSON SBOM file to ingest.")] = None,
+        package: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Direct package or MCP launch command to scan, e.g. "
+                    "'npx @modelcontextprotocol/server-filesystem@2025.1.14' or '@modelcontextprotocol/server-filesystem'."
+                )
+            ),
+        ] = None,
         enrich: Annotated[bool, Field(description="Enable NVD CVSS, EPSS probability, and CISA KEV enrichment.")] = False,
         offline: Annotated[
             bool,
@@ -471,6 +482,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             config_path=config_path,
             image=image,
             sbom_path=sbom_path,
+            package=package,
             enrich=enrich,
             offline=offline,
             scorecard=scorecard,

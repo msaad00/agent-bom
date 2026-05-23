@@ -7,6 +7,7 @@ while moving the discovery + scan pipeline out of the monolith.
 from __future__ import annotations
 
 import logging
+import shlex
 from pathlib import Path
 from typing import Optional
 
@@ -21,12 +22,49 @@ from agent_bom.security import sanitize_error  # noqa: F401 — kept for downstr
 logger = logging.getLogger(__name__)
 
 
+def _package_spec_agent(package_spec: str):
+    """Build a synthetic MCP inventory entry from a direct package command."""
+    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+
+    tokens = shlex.split(package_spec)
+    if not tokens:
+        raise ValueError("package must not be empty")
+
+    command = tokens[0]
+    args = tokens[1:]
+    if command not in {"npx", "npm", "pnpm", "yarn", "bunx", "uvx", "uv"}:
+        command = "npx"
+        args = tokens
+    elif command in {"npm", "pnpm", "yarn"} and args and args[0] in {"dlx", "exec"}:
+        command = "npx"
+        args = args[1:]
+    elif command == "bunx":
+        command = "npx"
+
+    server = MCPServer(
+        name=f"package:{' '.join([command, *args]).strip()}",
+        command=command,
+        args=args,
+        env={},
+        transport=TransportType.STDIO,
+        config_path="mcp-scan-package",
+        discovery_sources=["mcp_scan_package"],
+    )
+    return Agent(
+        name=f"package:{package_spec}",
+        agent_type=AgentType.CUSTOM,
+        config_path="mcp-scan-package",
+        mcp_servers=[server],
+    )
+
+
 async def run_scan_pipeline(
     *,
     safe_path,
     config_path: Optional[str] = None,
     image: Optional[str] = None,
     sbom_path: Optional[str] = None,
+    package: Optional[str] = None,
     enrich: bool = False,
     transitive: bool = False,
     offline: bool = False,
@@ -63,6 +101,13 @@ async def run_scan_pipeline(
     agents = discover_all(project_dir=config_path)
     if agents:
         scan_sources.append("agent_discovery")
+
+    if package:
+        try:
+            agents.append(_package_spec_agent(package))
+            scan_sources.append("mcp_package")
+        except ValueError as exc:
+            return mcp_error_json(CODE_VALIDATION_INVALID_PATH, exc, details={"argument": "package"})
 
     if image:
         try:
@@ -136,6 +181,13 @@ async def run_scan_pipeline(
         for server in agent.mcp_servers:
             if not server.packages:
                 server.packages = extract_packages(server)
+            if offline:
+                for pkg in server.packages:
+                    if pkg.floating_reference and pkg.declared_version in {"latest", "*"}:
+                        warnings.append(
+                            f"{pkg.name} uses a floating package reference; pass {pkg.name}@version "
+                            "or set offline=false for registry-backed resolution."
+                        )
 
     if enrich and not offline:
         blast_radii = await scan_agents_with_enrichment(agents, options=ScanOptions(offline=offline))

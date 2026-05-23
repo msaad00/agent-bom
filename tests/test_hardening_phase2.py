@@ -244,6 +244,56 @@ class TestAuditHMAC:
             os.environ.pop("AGENT_BOM_REQUIRE_AUDIT_HMAC", None)
             importlib.reload(audit_log)
 
+    def test_production_env_requires_audit_hmac_by_default(self):
+        """Production environments should not silently fall back to ephemeral audit HMAC."""
+        import importlib
+
+        from agent_bom.api import audit_log
+
+        with patch.dict(os.environ, {"AGENT_BOM_ENV": "production"}, clear=False):
+            os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            os.environ.pop("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC", None)
+            with pytest.raises(RuntimeError, match="AGENT_BOM_AUDIT_HMAC_KEY is required"):
+                importlib.reload(audit_log)
+
+        with patch.dict(
+            os.environ,
+            {"AGENT_BOM_ENV": "production", "AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC": "1"},
+            clear=False,
+        ):
+            os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            importlib.reload(audit_log)
+            status = audit_log.describe_audit_hmac_status()
+            assert status["status"] == "ephemeral"
+            assert status["required"] is False
+            assert status["required_reason"] == "not_required"
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            os.environ.pop("AGENT_BOM_REQUIRE_AUDIT_HMAC", None)
+            os.environ.pop("AGENT_BOM_ENV", None)
+            os.environ.pop("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC", None)
+            importlib.reload(audit_log)
+
+    def test_clustered_control_plane_requires_audit_hmac_by_default(self):
+        """Clustered API replicas require a persistent audit HMAC key."""
+        import importlib
+
+        from agent_bom.api import audit_log
+
+        with patch.dict(os.environ, {"AGENT_BOM_CONTROL_PLANE_REPLICAS": "2"}, clear=False):
+            os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            os.environ.pop("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC", None)
+            with pytest.raises(RuntimeError, match="AGENT_BOM_AUDIT_HMAC_KEY is required"):
+                importlib.reload(audit_log)
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            os.environ.pop("AGENT_BOM_REQUIRE_AUDIT_HMAC", None)
+            os.environ.pop("AGENT_BOM_CONTROL_PLANE_REPLICAS", None)
+            os.environ.pop("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC", None)
+            importlib.reload(audit_log)
+
 
 # ── Exception Narrowing ────────────────────────────────────────────────────
 

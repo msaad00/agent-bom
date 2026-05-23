@@ -107,7 +107,7 @@ Best-of-both-worlds onboarding: works without configuration, accepts your overri
 | Tenant ID | `default` (system fallback bucket) | Any non-reserved string at ingress |
 | Default role | `viewer` (least privilege) | `AGENT_BOM_DEFAULT_ROLE` |
 | Database backend | In-memory (ephemeral) | `AGENT_BOM_DB` (SQLite) or `AGENT_BOM_POSTGRES_URL` (Postgres) |
-| Audit HMAC key | Ephemeral random (not durable across restarts) | `AGENT_BOM_AUDIT_HMAC_KEY` for production |
+| Audit HMAC key | Ephemeral random for local single-process use only | `AGENT_BOM_AUDIT_HMAC_KEY` for production; production or multi-replica control planes fail closed without it unless `AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC=1` is explicitly set |
 
 ---
 

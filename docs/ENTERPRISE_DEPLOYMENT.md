@@ -374,6 +374,7 @@ For secret lifecycle posture, production deployments should declare the external
 secret authority and rotation metadata without exposing secret values:
 
 ```bash
+export AGENT_BOM_AUDIT_HMAC_KEY="mount-from-secret-manager"
 export AGENT_BOM_SECRET_PROVIDER="aws_secrets_manager" # or hashicorp_vault, external_secrets, csi
 export AGENT_BOM_EXTERNAL_SECRETS_ENABLED=1
 export AGENT_BOM_AUDIT_HMAC_LAST_ROTATED="2026-04-24T00:00:00+00:00"
@@ -388,6 +389,11 @@ or inside `GET /v1/auth/policy`. For change windows, use
 that names the affected env vars, customer secret-manager action, rollout
 commands, verification curl, and `*_LAST_ROTATED` timestamp to record. The plan
 never returns secret values and is safe to attach to an internal change ticket.
+
+Production and multi-replica control planes require `AGENT_BOM_AUDIT_HMAC_KEY`
+at startup. The local ephemeral fallback remains available for workstation
+pilots only; using it in a production-shaped environment requires the explicit
+`AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC=1` escape hatch.
 
 **Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, graph state, and trend history.
 

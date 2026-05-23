@@ -57,6 +57,31 @@ def _env_int(name: str) -> int | None:
     return parsed if parsed >= 0 else None
 
 
+def _configured_control_plane_replicas() -> int:
+    raw = (os.environ.get("AGENT_BOM_CONTROL_PLANE_REPLICAS") or "").strip()
+    if not raw:
+        return 1
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 1
+
+
+def _production_audit_hmac_required() -> bool:
+    deployment = (
+        (os.environ.get("AGENT_BOM_ENV") or os.environ.get("AGENT_BOM_DEPLOYMENT_ENV") or os.environ.get("ENVIRONMENT") or "")
+        .strip()
+        .lower()
+    )
+    production_env = deployment in {"prod", "production"}
+    clustered = _configured_control_plane_replicas() > 1
+    return (production_env or clustered) and not _env_enabled("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC")
+
+
+def _audit_hmac_required() -> bool:
+    return _env_enabled("AGENT_BOM_REQUIRE_AUDIT_HMAC") or _production_audit_hmac_required()
+
+
 def _describe_rotation_posture(
     *,
     configured: bool,
@@ -158,8 +183,12 @@ _HMAC_ENV_KEY = (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
 if _HMAC_ENV_KEY:
     _HMAC_KEY = _HMAC_ENV_KEY.encode()
 else:
-    if _env_enabled("AGENT_BOM_REQUIRE_AUDIT_HMAC"):
-        raise RuntimeError("AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled but AGENT_BOM_AUDIT_HMAC_KEY is not set")
+    if _audit_hmac_required():
+        raise RuntimeError(
+            "AGENT_BOM_AUDIT_HMAC_KEY is required when AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled, "
+            "AGENT_BOM_ENV/AGENT_BOM_DEPLOYMENT_ENV/ENVIRONMENT is production, or "
+            "AGENT_BOM_CONTROL_PLANE_REPLICAS is greater than 1"
+        )
     import secrets as _secrets
 
     _HMAC_KEY = _secrets.token_bytes(32)
@@ -239,7 +268,9 @@ def verify_export_payload(payload: bytes, signature: str) -> bool:
 
 def describe_audit_hmac_status() -> dict[str, object]:
     """Return operator-facing audit HMAC posture for auth/policy surfaces."""
-    required = _env_enabled("AGENT_BOM_REQUIRE_AUDIT_HMAC")
+    explicit_required = _env_enabled("AGENT_BOM_REQUIRE_AUDIT_HMAC")
+    production_required = _production_audit_hmac_required()
+    required = explicit_required or production_required
     configured = bool(_HMAC_ENV_KEY)
     key_id = (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY_ID") or "").strip()
     rotation = _describe_rotation_posture(
@@ -258,6 +289,9 @@ def describe_audit_hmac_status() -> dict[str, object]:
             "status": "configured",
             "configured": True,
             "required": required,
+            "required_reason": (
+                "explicit" if explicit_required else "production_or_clustered_control_plane" if production_required else "not_required"
+            ),
             "source": "AGENT_BOM_AUDIT_HMAC_KEY",
             "persists_across_restart": True,
             "key_id_configured": bool(key_id),
@@ -272,6 +306,9 @@ def describe_audit_hmac_status() -> dict[str, object]:
         "status": "ephemeral",
         "configured": False,
         "required": required,
+        "required_reason": (
+            "explicit" if explicit_required else "production_or_clustered_control_plane" if production_required else "not_required"
+        ),
         "source": "process_ephemeral",
         "persists_across_restart": False,
         "key_id_configured": False,

@@ -34,6 +34,8 @@ AGENT_BOM_API_FIREWALL_POLICY
 AGENT_BOM_API_TOKEN
 AGENT_BOM_API_URL
 AGENT_BOM_AUDIT_DB
+# explicit workstation-only escape hatch for production-shaped audit HMAC fail-closed behavior
+AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC
 # tier-B (replay-only) capture toggle — issue #2261
 AGENT_BOM_CAPTURE_REPLAY
 AGENT_BOM_AUDIT_HMAC_KEY

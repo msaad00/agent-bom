@@ -669,6 +669,10 @@ def test_action_yml_has_outputs():
     assert "exit-code" in outputs
     assert "scan-status" in outputs
     assert "vulnerability-count" in outputs
+    assert "graph-export-path" in outputs
+    assert "exposure-paths-count" in outputs
+    assert "blast-radius-critical-count" in outputs
+    assert "posture-grade" in outputs
 
 
 def test_action_yml_composite():

@@ -160,6 +160,18 @@ outputs:
   badge-file:
     description: 'Path to generated badge JSON (if badge input is set).'
     value: ${{ steps.scan.outputs.badge_file }}
+  graph-export-path:
+    description: 'Path to generated graph export when format is mermaid, svg, graph, or graph-html.'
+    value: ${{ steps.scan.outputs.graph_export_path }}
+  exposure-paths-count:
+    description: 'Number of exposure, lateral, or attack paths parsed from JSON graph-capable outputs.'
+    value: ${{ steps.scan.outputs.exposure_paths_count }}
+  blast-radius-critical-count:
+    description: 'Number of critical blast-radius or SARIF findings parsed from the result artifact.'
+    value: ${{ steps.scan.outputs.blast_radius_critical_count }}
+  posture-grade:
+    description: 'Coarse CI posture grade derived from parsed critical/high/finding counts: A, C, D, F, or unknown.'
+    value: ${{ steps.scan.outputs.posture_grade }}
 
 runs:
   using: 'composite'
@@ -561,11 +573,90 @@ runs:
 
         SARIF_FILE=""
         VULN_COUNT=0
+        GRAPH_EXPORT_PATH=""
+        EXPOSURE_PATHS_COUNT=0
+        BLAST_RADIUS_CRITICAL_COUNT=0
+        POSTURE_GRADE="unknown"
         if [ "$INPUT_FORMAT" = "sarif" ] && [ -f "$RESULT_FILE" ]; then
           SARIF_FILE="$RESULT_FILE"
           VULN_COUNT=$(python3 -c "import json; d=json.load(open('$RESULT_FILE')); print(len(d.get('runs',[{}])[0].get('results',[])))" 2>/dev/null || echo 0)
         elif [ "$INPUT_SCAN_TYPE" = "skills" ] && [ -f "$RESULT_FILE" ]; then
           VULN_COUNT=$(python3 -c "import json; d=json.load(open('$RESULT_FILE')); print(d.get('summary',{}).get('findings',0))" 2>/dev/null || echo 0)
+        fi
+
+        case "$INPUT_FORMAT" in
+          mermaid|svg|graph|graph-html)
+            if [ -f "$RESULT_FILE" ]; then
+              GRAPH_EXPORT_PATH="$RESULT_FILE"
+            fi
+            ;;
+        esac
+
+        if [ -f "$RESULT_FILE" ]; then
+          while IFS='=' read -r key value; do
+            case "$key" in
+              exposure_paths_count) EXPOSURE_PATHS_COUNT="$value" ;;
+              blast_radius_critical_count) BLAST_RADIUS_CRITICAL_COUNT="$value" ;;
+              posture_grade) POSTURE_GRADE="$value" ;;
+            esac
+          done < <(RESULT_FILE="$RESULT_FILE" VULN_COUNT="$VULN_COUNT" python3 - <<'PY'
+        import json
+        import os
+
+        path = os.environ.get("RESULT_FILE", "")
+        vuln_count = int(os.environ.get("VULN_COUNT") or "0")
+        exposure_paths = 0
+        critical = 0
+        high = 0
+
+        def _walk(value):
+            if isinstance(value, dict):
+                yield value
+                for child in value.values():
+                    yield from _walk(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from _walk(child)
+
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+            if isinstance(data, dict) and "runs" in data:
+                run = data.get("runs", [{}])[0]
+                rules = {rule.get("id"): rule for rule in run.get("tool", {}).get("driver", {}).get("rules", [])}
+                for result in run.get("results", []):
+                    rule = rules.get(result.get("ruleId"), {})
+                    score = float(rule.get("properties", {}).get("security-severity", "0") or "0")
+                    if score > 9.0:
+                        critical += 1
+                    elif score >= 7.0:
+                        high += 1
+            else:
+                for item in _walk(data):
+                    for key in ("exposure_paths", "lateral_paths", "attack_paths"):
+                        paths = item.get(key)
+                        if isinstance(paths, list):
+                            exposure_paths += len(paths)
+                    severity = str(item.get("severity") or item.get("level") or "").lower()
+                    if severity == "critical":
+                        critical += 1
+                    elif severity == "high":
+                        high += 1
+            if critical > 0:
+                grade = "F"
+            elif high > 0:
+                grade = "D"
+            elif vuln_count > 0:
+                grade = "C"
+            else:
+                grade = "A"
+        except Exception:
+            grade = "unknown"
+
+        print(f"exposure_paths_count={exposure_paths}")
+        print(f"blast_radius_critical_count={critical}")
+        print(f"posture_grade={grade}")
+        PY
+          )
         fi
 
         SCAN_STATUS="error"
@@ -617,6 +708,10 @@ runs:
         echo "scan_status=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
         echo "vuln_count=$VULN_COUNT" >> "$GITHUB_OUTPUT"
         echo "badge_file=$BADGE_FILE" >> "$GITHUB_OUTPUT"
+        echo "graph_export_path=$GRAPH_EXPORT_PATH" >> "$GITHUB_OUTPUT"
+        echo "exposure_paths_count=$EXPOSURE_PATHS_COUNT" >> "$GITHUB_OUTPUT"
+        echo "blast_radius_critical_count=$BLAST_RADIUS_CRITICAL_COUNT" >> "$GITHUB_OUTPUT"
+        echo "posture_grade=$POSTURE_GRADE" >> "$GITHUB_OUTPUT"
 
         if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
           {
@@ -629,9 +724,15 @@ runs:
             echo "| Status | \`${SCAN_STATUS}\` |"
             echo "| Exit code | \`${EXIT_CODE}\` |"
             echo "| Finding count | \`${VULN_COUNT}\` |"
+            echo "| Exposure paths | \`${EXPOSURE_PATHS_COUNT}\` |"
+            echo "| Critical blast-radius findings | \`${BLAST_RADIUS_CRITICAL_COUNT}\` |"
+            echo "| Posture grade | \`${POSTURE_GRADE}\` |"
             echo "| Proxy/CA env passthrough | \`HTTP_PROXY, HTTPS_PROXY, NO_PROXY, SSL_CERT_FILE, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE, PIP_CERT\` |"
             if [ -n "$RESULT_FILE" ] && [ -f "$RESULT_FILE" ]; then
               echo "| Result file | \`${RESULT_FILE}\` |"
+            fi
+            if [ -n "$GRAPH_EXPORT_PATH" ]; then
+              echo "| Graph export | \`${GRAPH_EXPORT_PATH}\` |"
             fi
             if [ -n "$SARIF_FILE" ]; then
               echo "| SARIF file | \`${SARIF_FILE}\` |"

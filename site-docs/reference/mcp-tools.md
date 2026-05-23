@@ -369,7 +369,7 @@ ingest_external_scan(path="scan.json")
 | `policy://template` | Default security policy template |
 | `metrics://tools` | Bounded MCP tool execution metrics |
 | `schema://inventory-v1` | Canonical pushed-inventory schema contract |
-| `bestpractices://mcp-hardening` | MCP deployment hardening checklist |
+| `bestpractices://mcp-hardening` | NSA-informed MCP hardening control mapping |
 | `compliance://framework-controls` | Framework coverage and evidence mapping |
 
 ## Prompts

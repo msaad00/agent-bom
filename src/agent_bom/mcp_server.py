@@ -61,7 +61,7 @@ Resources (6):
     policy://template   — Default security policy template
     metrics://tools     — MCP tool execution metrics and limits
     schema://inventory-v1 — Canonical pushed-inventory schema contract
-    bestpractices://mcp-hardening — MCP deployment hardening checklist
+    bestpractices://mcp-hardening — NSA-informed MCP hardening control mapping
     compliance://framework-controls — Framework coverage and evidence mapping
 
 Security: read-mostly. Scanner, graph, audit, and runtime posture tools are

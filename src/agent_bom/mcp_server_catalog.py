@@ -112,27 +112,10 @@ def attach_resources_and_prompts(
 
     @mcp.resource("bestpractices://mcp-hardening")
     def mcp_hardening_resource() -> str:
-        """Return an MCP hardening checklist tuned for agent-bom scans and proxy/gateway deployments."""
-        checklist = {
-            "title": "MCP hardening checklist",
-            "principles": [
-                "pin package and image versions; avoid latest/main floating references",
-                "route remote MCP traffic through a policy gateway or proxy where possible",
-                "gate tools/call, prompts/get, resources/read, and sampling/createMessage",
-                "run suspicious or untrusted MCP servers in a sandboxed runtime",
-                "preserve discovery_provenance and permissions_used on all pushed inventory",
-                "fail CI on high or critical package, policy, and MCP intelligence findings",
-                "keep credential values out of agent configs; retain only env var names",
-            ],
-            "recommended_outputs": {
-                "ci": "SARIF with --fail-on-severity high",
-                "automation": "JSON",
-                "human_review": "HTML or Markdown",
-                "sbom": "CycloneDX or SPDX",
-            },
-            "runtime_controls": ["proxy", "gateway", "audit chain", "rate limit", "policy gate", "sandbox warning"],
-        }
-        return json.dumps(checklist, indent=2)
+        """Return MCP hardening controls tuned for scans and proxy/gateway deployments."""
+        from agent_bom.mcp_hardening import build_mcp_hardening_catalog
+
+        return json.dumps(build_mcp_hardening_catalog(), indent=2)
 
     @mcp.resource("compliance://framework-controls")
     def framework_controls_resource() -> str:

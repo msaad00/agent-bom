@@ -1,4 +1,4 @@
-"""Self-contained HTML report generator for AI-BOM scans.
+"""HTML report generator for AI-BOM scans.
 
 Produces a single ``report.html`` file with:
 - Enterprise dashboard: stat cards, severity donut, blast radius bar chart
@@ -11,8 +11,10 @@ Produces a single ``report.html`` file with:
 - Skill audit findings section (when skill scan data is present)
 - Print-friendly stylesheet for PDF export
 
-No server required — open the file in any browser.
-Chart.js + Cytoscape.js + dagre loaded from CDN; everything else is inline.
+No server required — open the file in any browser. By default, Chart.js,
+Cytoscape.js, and dagre load from pinned public CDNs. Pass
+``offline_assets=True`` to emit a static airgap-safe report with no external
+script dependencies.
 """
 
 from __future__ import annotations
@@ -42,6 +44,14 @@ _SEV_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "unkno
 
 # Max packages shown per server before collapsing
 _PKG_PREVIEW = 15
+
+_EXTERNAL_SCRIPT_TAGS = (
+    '  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>\n',
+    '  <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>\n',
+    '  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>\n',
+    '  <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>\n',
+    '  <script src="https://unpkg.com/cytoscape-popper@2.0.0/cytoscape-popper.js"></script>\n',
+)
 
 
 def _sev_badge(sev: str) -> str:
@@ -1208,7 +1218,58 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
 # ─── Main assembler ───────────────────────────────────────────────────────────
 
 
-def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = None) -> str:
+def _offline_assets_notice() -> str:
+    return """
+  <div class="offline-assets-banner" style="margin-bottom:16px;padding:12px 14px;border:1px solid #334155;border-radius:10px;background:#111827;color:#cbd5e1">
+    <strong style="color:#f8fafc">Offline HTML mode</strong>
+    <span style="color:#94a3b8"> — external JavaScript assets were omitted. Static tables, findings, remediation, compliance, inventory, and evidence sections remain available.</span>
+  </div>
+"""
+
+
+def _offline_assets_script() -> str:
+    return """<script>
+(function() {
+  function replace(id, title) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var box = document.createElement('div');
+    box.style.cssText = 'min-height:180px;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;border:1px dashed #334155;border-radius:10px;color:#94a3b8;background:#0f172a';
+    box.innerHTML = '<div><strong style="color:#cbd5e1">' + title + '</strong><br>Interactive rendering is disabled in offline HTML mode.</div>';
+    el.parentNode.replaceChild(box, el);
+  }
+  replace('sevChart', 'Severity chart');
+  replace('blastChart', 'Blast-radius chart');
+  replace('cy', 'Supply-chain graph');
+  replace('attackCy', 'Attack-flow graph');
+  document.querySelectorAll('.graph-filter-bar,.graph-controls').forEach(function(el) {
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('details').forEach(function(el) {
+    el.open = el.open || false;
+  });
+})();
+</script>"""
+
+
+def _apply_offline_assets_mode(html: str) -> str:
+    for tag in _EXTERNAL_SCRIPT_TAGS:
+        html = html.replace(tag, "")
+    marker = '<div class="container">\n'
+    html = html.replace(marker, marker + _offline_assets_notice(), 1)
+    script_start = html.find("\n<script>\n(function() {")
+    script_end = html.rfind("</script>\n\n</body>")
+    if script_start != -1 and script_end != -1:
+        html = html[:script_start] + "\n" + _offline_assets_script() + html[script_end + len("</script>") :]
+    return html
+
+
+def to_html(
+    report: "AIBOMReport",
+    blast_radii: list["BlastRadius"] | None = None,
+    *,
+    offline_assets: bool = False,
+) -> str:
     blast_radii = blast_radii or []
     policy_findings = _non_cve_findings(report)
     generated = report.generated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -1284,7 +1345,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         else "agents + servers + packages"
     )
 
-    return f"""<!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -2893,12 +2954,17 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 
 </body>
 </html>"""
+    if offline_assets:
+        return _apply_offline_assets_mode(html)
+    return html
 
 
 def export_html(
     report: "AIBOMReport",
     output_path: str,
     blast_radii: list["BlastRadius"] | None = None,
+    *,
+    offline_assets: bool = False,
 ) -> None:
     """Write the HTML report to a file."""
-    Path(output_path).write_text(to_html(report, blast_radii or []), encoding="utf-8")
+    Path(output_path).write_text(to_html(report, blast_radii or [], offline_assets=offline_assets), encoding="utf-8")

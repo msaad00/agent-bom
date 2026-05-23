@@ -68,18 +68,24 @@ from agent_bom.output.spdx_fmt import (  # noqa: E402
 # ─── HTML Output (delegated to html.py) ──────────────────────────────────────
 
 
-def to_html(report: AIBOMReport, blast_radii: list | None = None) -> str:
+def to_html(report: AIBOMReport, blast_radii: list | None = None, *, offline_assets: bool = False) -> str:
     """Generate a self-contained HTML report string."""
     from agent_bom.output.html import to_html as _to_html
 
-    return _to_html(report, blast_radii or [])
+    return _to_html(report, blast_radii or [], offline_assets=offline_assets)
 
 
-def export_html(report: AIBOMReport, output_path: str, blast_radii: list | None = None) -> None:
+def export_html(
+    report: AIBOMReport,
+    output_path: str,
+    blast_radii: list | None = None,
+    *,
+    offline_assets: bool = False,
+) -> None:
     """Export report as a self-contained HTML file."""
     from agent_bom.output.html import export_html as _export_html
 
-    _export_html(report, output_path, blast_radii or [])
+    _export_html(report, output_path, blast_radii or [], offline_assets=offline_assets)
 
 
 def to_pdf(report: AIBOMReport, blast_radii: list | None = None) -> bytes:

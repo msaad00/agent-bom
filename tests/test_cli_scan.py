@@ -1406,6 +1406,21 @@ def test_scan_format_graph_html_writes_file(tmp_path):
     assert "<html" in out.read_text().lower()
 
 
+def test_scan_format_graph_html_offline_omits_cdn_scripts(tmp_path):
+    """--offline-html writes an airgap-safe static graph HTML file."""
+    out = tmp_path / "graph.html"
+    with (
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "graph-html", "--offline-html", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 0
+    content = out.read_text(encoding="utf-8")
+    assert "Offline HTML mode" in content
+    assert "https://cdnjs.cloudflare.com" not in content
+    assert "https://cdn.jsdelivr.net" not in content
+
+
 def test_format_choices_include_plain():
     """--format help text must list 'plain' as a valid choice."""
     result = _run(["scan", "--help"])

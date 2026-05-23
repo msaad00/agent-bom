@@ -608,6 +608,26 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             list[dict] | None,
             Field(description="Optional inventory packages with purl or ecosystem/name/version objects for local matching."),
         ] = None,
+        telemetry_indicators: Annotated[
+            list[dict] | None,
+            Field(
+                description=(
+                    "Optional governed IoC observations with indicator, hit_count, source_url, license, fetched_at, and content_hash."
+                )
+            ),
+        ] = None,
+        campaign_activity: Annotated[
+            list[dict] | None,
+            Field(description="Optional governed campaign activity items with sectors/geos and provenance for tenant-profile matching."),
+        ] = None,
+        ransomware_claims: Annotated[
+            list[dict] | None,
+            Field(description="Optional governed ransomware claim items with sectors/geos and provenance for tenant-profile matching."),
+        ] = None,
+        tenant_profile: Annotated[
+            dict | None,
+            Field(description="Optional tenant profile with sectors and geos used to match campaign/ransomware inputs."),
+        ] = None,
         epss_threshold: Annotated[float, Field(description="Minimum EPSS probability for inventory-prioritized CVEs, 0-1.")] = 0.7,
         kev_window_hours: Annotated[int, Field(description="KEV date_added lookback window, 1-168 hours.")] = 24,
         limit: Annotated[int, Field(description="Maximum packages/advisories to inspect, 1-500.")] = 100,
@@ -618,6 +638,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             "intel_daily_brief",
             intel_daily_brief_impl,
             packages=packages,
+            telemetry_indicators=telemetry_indicators,
+            campaign_activity=campaign_activity,
+            ransomware_claims=ransomware_claims,
+            tenant_profile=tenant_profile,
             epss_threshold=epss_threshold,
             kev_window_hours=kev_window_hours,
             limit=limit,

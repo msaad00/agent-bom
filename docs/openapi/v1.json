@@ -1254,6 +1254,15 @@
       "IntelDailyBriefRequest": {
         "additionalProperties": false,
         "properties": {
+          "campaign_activity": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 500,
+            "title": "Campaign Activity",
+            "type": "array"
+          },
           "epss_threshold": {
             "default": 0.7,
             "maximum": 1.0,
@@ -1283,6 +1292,29 @@
             "maxItems": 500,
             "title": "Packages",
             "type": "array"
+          },
+          "ransomware_claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 500,
+            "title": "Ransomware Claims",
+            "type": "array"
+          },
+          "telemetry_indicators": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 500,
+            "title": "Telemetry Indicators",
+            "type": "array"
+          },
+          "tenant_profile": {
+            "additionalProperties": true,
+            "title": "Tenant Profile",
+            "type": "object"
           }
         },
         "title": "IntelDailyBriefRequest",

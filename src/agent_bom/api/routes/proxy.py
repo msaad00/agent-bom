@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 from collections import Counter, OrderedDict, deque
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path as _Path
 from threading import Lock
@@ -703,7 +704,118 @@ def _ws_header_token(websocket: WebSocket) -> str:
     return ""
 
 
-async def _ws_accept_and_check_auth(websocket: WebSocket) -> bool:
+@dataclass(frozen=True)
+class _WebSocketAuthContext:
+    tenant_id: str = "default"
+    role: str = "admin"
+    auth_method: str = "no_auth"
+
+
+def _role_allows(actual: str, required: str = "viewer") -> bool:
+    from agent_bom.api.auth import _ROLE_HIERARCHY, Role
+
+    try:
+        actual_role = Role(str(actual).strip().lower())
+        required_role = Role(required)
+    except ValueError:
+        return False
+    return _ROLE_HIERARCHY.get(actual_role, 0) >= _ROLE_HIERARCHY.get(required_role, 0)
+
+
+def _ws_auth_required() -> bool:
+    import os as _os
+
+    configured = any(
+        (
+            _os.environ.get("AGENT_BOM_API_KEY"),
+            _os.environ.get("AGENT_BOM_API_KEYS", "").strip(),
+            _os.environ.get("AGENT_BOM_OIDC_ISSUER"),
+            _os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN"),
+            _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"},
+        )
+    )
+    if configured:
+        return True
+    try:
+        from agent_bom.api.auth import get_key_store
+
+        return get_key_store().has_keys()
+    except Exception:
+        return False
+
+
+def _ws_auth_from_trusted_proxy(websocket: WebSocket) -> _WebSocketAuthContext | None:
+    import hmac as _hmac
+    import os as _os
+
+    if _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return None
+
+    secret = _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
+    presented_secret = websocket.headers.get("x-agent-bom-proxy-secret", "").strip()
+    if not secret or not presented_secret or not _hmac.compare_digest(presented_secret, secret):
+        return None
+    expected_issuer = _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "").strip()
+    presented_issuer = websocket.headers.get("x-agent-bom-auth-issuer", "").strip()
+    if expected_issuer and not _hmac.compare_digest(presented_issuer, expected_issuer):
+        return None
+    role = websocket.headers.get("x-agent-bom-role", "").strip().lower()
+    if not _role_allows(role, "viewer"):
+        return None
+    tenant_id = websocket.headers.get("x-agent-bom-tenant-id", "").strip()
+    if not tenant_id:
+        return None
+    from agent_bom.platform_invariants import ReservedTenantIdError, validate_customer_tenant_id
+
+    try:
+        tenant_id = validate_customer_tenant_id(tenant_id)
+    except ReservedTenantIdError:
+        return None
+    return _WebSocketAuthContext(tenant_id=tenant_id, role=role, auth_method="proxy_header")
+
+
+def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthContext | None:
+    import hmac as _hmac
+    import os as _os
+
+    token = str(token or "").strip()
+    if not token:
+        return None
+
+    static_key = _os.environ.get("AGENT_BOM_API_KEY")
+    if static_key and _hmac.compare_digest(token, static_key):
+        return _WebSocketAuthContext(tenant_id="default", role="admin", auth_method="static_api_key")
+
+    from agent_bom.api.auth import get_key_store
+
+    store = get_key_store()
+    api_key = store.verify(token)
+    if api_key is not None and _role_allows(api_key.role.value, "viewer"):
+        return _WebSocketAuthContext(tenant_id=api_key.tenant_id, role=api_key.role.value, auth_method="api_key")
+
+    # Direct ASGI imports may configure AGENT_BOM_API_KEYS after module import.
+    # Mirror the env key fallback so WebSockets do not bypass RBAC-key auth
+    # when the HTTP middleware is protected.
+    for item in _os.environ.get("AGENT_BOM_API_KEYS", "").split(","):
+        raw_key, sep, role_value = item.strip().partition(":")
+        if sep and raw_key and _hmac.compare_digest(token, raw_key.strip()) and _role_allows(role_value, "viewer"):
+            return _WebSocketAuthContext(tenant_id="default", role=role_value.strip().lower(), auth_method="api_key")
+
+    if bearer and _os.environ.get("AGENT_BOM_OIDC_ISSUER"):
+        from agent_bom.api.oidc import OIDCConfig, OIDCError
+
+        oidc_cfg = OIDCConfig.from_env()
+        if oidc_cfg is not None and getattr(oidc_cfg, "enabled", False):
+            try:
+                claims, oidc_role = oidc_cfg.verify(token)
+            except OIDCError:
+                return None
+            if _role_allows(oidc_role, "viewer"):
+                return _WebSocketAuthContext(tenant_id=oidc_cfg.resolve_tenant(claims), role=oidc_role, auth_method="oidc")
+    return None
+
+
+async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthContext | None:
     """Accept the WebSocket only into an authenticated streaming state.
 
     API keys in query strings are intentionally rejected because URLs are
@@ -713,38 +825,43 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> bool:
     Bearer`` or ``Sec-WebSocket-Protocol: agent-bom-token.<token>``.
     """
     import asyncio as _asyncio
-    import hmac as _hmac
-    import os as _os
 
-    api_key = _os.environ.get("AGENT_BOM_API_KEY")
-    if not api_key:
+    auth_required = _ws_auth_required()
+    if not auth_required:
         await websocket.accept()
-        return True  # no auth configured — local dev / single-user mode
+        return _WebSocketAuthContext()  # local dev / single-user mode
 
     if websocket.query_params.get("token"):
         await websocket.close(code=4001)
-        return False
+        return None
+
+    proxy_context = _ws_auth_from_trusted_proxy(websocket)
+    if proxy_context is not None:
+        await websocket.accept()
+        return proxy_context
 
     token = _ws_header_token(websocket)
-    if token and _hmac.compare_digest(token, api_key):
+    header_context = _ws_auth_from_token(token, bearer=True)
+    if header_context is not None:
         await websocket.accept()
-        return True
+        return header_context
 
     await websocket.accept()
     try:
         payload = await _asyncio.wait_for(websocket.receive_json(), timeout=5.0)
     except Exception:  # noqa: BLE001 - auth handshake failures all close the stream
         await websocket.close(code=4001)
-        return False
+        return None
 
     if isinstance(payload, dict) and payload.get("type") == "auth":
         token = str(payload.get("token", ""))
-        if token and _hmac.compare_digest(token, api_key):
+        message_context = _ws_auth_from_token(token, bearer=False)
+        if message_context is not None:
             await websocket.send_json({"type": "auth", "status": "ok"})
-            return True
+            return message_context
 
     await websocket.close(code=4001)
-    return False
+    return None
 
 
 @router.websocket("/ws/proxy/metrics")
@@ -755,9 +872,10 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
     stream of proxy metrics as JSON objects.  Useful for building real-time
     dashboards without polling.
 
-    Authentication: send ``{"type":"auth","token":"..."}`` as the first
-    message when ``AGENT_BOM_API_KEY`` is set. API keys in query strings are
-    rejected to keep credentials out of URL logs.
+    Authentication: when API auth is configured, send
+    ``{"type":"auth","token":"..."}`` as the first message or use an
+    Authorization bearer token. API keys in query strings are rejected to keep
+    credentials out of URL logs.
 
     Message format (sent every second):
     ::
@@ -780,26 +898,20 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
     except ImportError:
         from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
 
-    if not await _ws_accept_and_check_auth(websocket):
+    auth_context = await _ws_accept_and_check_auth(websocket)
+    if auth_context is None:
         return
+    tenant_id = auth_context.tenant_id
 
     try:
         while True:
             now = _time.time()
             # Build snapshot from in-process metrics buffer
-            metrics_snapshot: dict = {}
-            if _proxy_metrics is not None:
-                metrics_snapshot = dict(_proxy_metrics)
-            else:
-                log_path = _get_configured_log_path()
-                if log_path:
-                    m = _read_metrics_from_log(log_path)
-                    if m:
-                        metrics_snapshot = m
+            metrics_snapshot = _runtime_metrics_for_tenant(tenant_id) or {}
 
             # Count alerts in last 60 seconds
             cutoff = now - 60
-            recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff and _alert_visible_to_tenant(a, "default")]
+            recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff and _alert_visible_to_tenant(a, tenant_id)]
 
             await websocket.send_json(
                 {
@@ -828,9 +940,10 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
     Streams new alerts in real time.  Each message is a single alert object.
     Useful for live security dashboards that need immediate notification.
 
-    Authentication: send ``{"type":"auth","token":"..."}`` as the first
-    message when ``AGENT_BOM_API_KEY`` is set. API keys in query strings are
-    rejected to keep credentials out of URL logs.
+    Authentication: when API auth is configured, send
+    ``{"type":"auth","token":"..."}`` as the first message or use an
+    Authorization bearer token. API keys in query strings are rejected to keep
+    credentials out of URL logs.
 
     Uses a monotonic total counter (not deque length) to detect new alerts
     correctly even when old entries are evicted from the 1000-entry ring buffer.
@@ -842,8 +955,10 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
     except ImportError:
         from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
 
-    if not await _ws_accept_and_check_auth(websocket):
+    auth_context = await _ws_accept_and_check_auth(websocket)
+    if auth_context is None:
         return
+    tenant_id = auth_context.tenant_id
 
     seen = _proxy_alerts_total  # monotonic — tracks absolute count, not deque position
     try:
@@ -852,7 +967,7 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
             if current > seen:
                 new_count = min(current - seen, len(_proxy_alerts))
                 for alert in list(_proxy_alerts)[-new_count:]:
-                    if not _alert_visible_to_tenant(alert, "default"):
+                    if not _alert_visible_to_tenant(alert, tenant_id):
                         continue
                     await websocket.send_json(alert)
                 seen = current

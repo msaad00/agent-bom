@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -93,6 +94,95 @@ def test_proxy_metrics_websocket_first_message_auth(monkeypatch):
         assert data["total_blocked"] == 1
 
     proxy_mod._proxy_metrics = None
+
+
+def test_proxy_metrics_websocket_rejects_unauthenticated_rbac_key_store(monkeypatch):
+    """WebSocket auth must enforce RBAC key-store auth, not only AGENT_BOM_API_KEY."""
+    from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
+
+    monkeypatch.delenv("AGENT_BOM_API_KEY", raising=False)
+    original_store = get_key_store()
+    store = KeyStore()
+    _raw_key, viewer = create_api_key("viewer", Role.VIEWER, tenant_id="tenant-alpha")
+    store.add(viewer)
+    set_key_store(store)
+    client = TestClient(app)
+
+    try:
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/ws/proxy/metrics") as websocket:
+                websocket.receive_json()
+    finally:
+        set_key_store(original_store)
+
+    assert exc.value.code == 4001
+
+
+def test_proxy_metrics_websocket_uses_rbac_key_tenant(monkeypatch):
+    """WebSocket metrics are scoped to the authenticated API key tenant."""
+    import agent_bom.api.routes.proxy as proxy_mod
+    from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
+
+    monkeypatch.delenv("AGENT_BOM_API_KEY", raising=False)
+    proxy_mod._proxy_metrics = None
+    proxy_mod._proxy_metrics_by_tenant.clear()
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_key, viewer = create_api_key("viewer", Role.VIEWER, tenant_id="tenant-beta")
+    store.add(viewer)
+    set_key_store(store)
+    push_proxy_metrics({"type": "proxy_summary", "tenant_id": "tenant-alpha", "total_tool_calls": 41, "total_blocked": 9})
+    push_proxy_metrics({"type": "proxy_summary", "tenant_id": "tenant-beta", "total_tool_calls": 3, "total_blocked": 1})
+    client = TestClient(app)
+
+    try:
+        with client.websocket_connect("/ws/proxy/metrics") as websocket:
+            websocket.send_json({"type": "auth", "token": raw_key})
+            assert websocket.receive_json() == {"type": "auth", "status": "ok"}
+            data = websocket.receive_json()
+    finally:
+        set_key_store(original_store)
+        proxy_mod._proxy_metrics = None
+        proxy_mod._proxy_metrics_by_tenant.clear()
+
+    assert data["total_tool_calls"] == 3
+    assert data["total_blocked"] == 1
+
+
+def test_proxy_alerts_websocket_uses_rbac_key_tenant(monkeypatch):
+    """WebSocket alerts must not stream another tenant's proxy alerts."""
+    import agent_bom.api.routes.proxy as proxy_mod
+    from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
+
+    monkeypatch.delenv("AGENT_BOM_API_KEY", raising=False)
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_alerts_total = 0
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_key, viewer = create_api_key("viewer", Role.VIEWER, tenant_id="tenant-beta")
+    store.add(viewer)
+    set_key_store(store)
+    client = TestClient(app)
+
+    try:
+        with client.websocket_connect("/ws/proxy/alerts") as websocket:
+            websocket.send_json({"type": "auth", "token": raw_key})
+            assert websocket.receive_json() == {"type": "auth", "status": "ok"}
+            push_proxy_alert(
+                {"tenant_id": "tenant-alpha", "message": "alpha-only", "detector": "alpha-detector", "severity": "low", "ts": time.time()}
+            )
+            push_proxy_alert(
+                {"tenant_id": "tenant-beta", "message": "beta-only", "detector": "beta-detector", "severity": "high", "ts": time.time()}
+            )
+            alert = websocket.receive_json()
+    finally:
+        set_key_store(original_store)
+        proxy_mod._proxy_alerts.clear()
+        proxy_mod._proxy_alerts_total = 0
+
+    assert alert["tenant_id"] == "tenant-beta"
+    assert alert["detector"] == "beta-detector"
+    assert alert["severity"] == "high"
 
 
 def test_proxy_status_from_log():

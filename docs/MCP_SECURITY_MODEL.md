@@ -138,7 +138,34 @@ An agent operating autonomously can be steered into a multi-step exfiltration se
 
 ---
 
-## 4. The three roles agent-bom plays
+## 4. NSA MCP security design considerations mapping
+
+The NSA Cybersecurity Information Sheet,
+[Model Context Protocol (MCP): Security Design Considerations for AI-Driven Automation](https://www.nsa.gov/Portals/75/documents/Cybersecurity/CSI_MCP_SECURITY.pdf),
+calls out implementation and operational risks around access control, trust
+boundaries, serialization, approval workflows, session handling, audit logs,
+resource exhaustion, dynamic tool discovery, and chained execution. agent-bom
+maps those design considerations to operator controls and evidence surfaces.
+This is an implementation mapping, not an NSA certification or endorsement.
+
+The same machine-readable mapping is exposed to assistants through
+`bestpractices://mcp-hardening`.
+
+| NSA theme | agent-bom surface | Operator evidence |
+|-----------|-------------------|-------------------|
+| Choose supported MCP projects | `registry_lookup`, `marketplace_check`, `fleet_scan`, MCP registry freshness gate | Registry metadata, package provenance, source freshness, advisory matches |
+| Design for boundaries | `context_graph`, `exposure_paths`, `runtime_blueprints`, gateway policy | Graph edges, allowed tool categories, drift decisions, gateway metrics |
+| Validate parameters | 55 strict-args MCP tools, API validation errors, `policy_check` | `tools/list` schemas, `additionalProperties:false`, correlation IDs |
+| Constrain and sandbox execution | `tool_risk_assessment`, proxy, gateway, deployment profiles | Capability classes, block decisions, sandbox posture, Helm/Docker settings |
+| Sign and verify sensitive actions | `audit_integrity`, signed posture outbox, Shield admin-gated tools | HMAC chain status, source-agent labels, audit reasons, posture events |
+| Filter chained outputs | prompt-injection sentinels, `runtime_correlate`, proxy response inspection | Runtime alerts, detector findings, redaction mode, policy decisions |
+| Instrument logs and detection | `runtime_production_index`, `audit_query`, `proxy_alerts`, OCSF/OTLP exports | Production index, OCSF events, OTLP traces, audit chain verification |
+| Track and patch MCP vulnerabilities | `scan`, `check`, `intel_lookup`, `intel_match`, `intel_daily_brief`, SBOM exports | SARIF, CycloneDX, SPDX, KEV/EPSS enrichment, daily brief matches |
+| Scan for unauthorized MCP services | `where`, `inventory`, `fleet_scan`, discovery provenance | Inventory snapshots, differential reports, approved-vs-discovered MCP configs |
+
+---
+
+## 5. The three roles agent-bom plays
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -150,12 +177,12 @@ An agent operating autonomously can be steered into a multi-step exfiltration se
 │  2. PROXY         Sits between client and server, intercepts     │
 │     (agent-bom proxy) every JSON-RPC message, enforces policy    │
 │                                                                  │
-│  3. MCP SERVER    Exposes 54 scan/governance tools to any agent  │
+│  3. MCP SERVER    Exposes 55 scan/governance tools to any agent  │
 │     (agent-bom mcp server)  — scan, check, registry, compliance  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.1 Scanner mode
+### 5.1 Scanner mode
 
 ```bash
 agent-bom agents              # auto-discover + full scan
@@ -166,7 +193,7 @@ agent-bom agents --gpu-scan   # + GPU containers, CUDA versions, DCGM exposure
 
 Outputs: blast radius tree, compliance mapping (curated tag-mapped frameworks plus AISVS benchmark evidence — see [ARCHITECTURE.md § Coverage per framework](./ARCHITECTURE.md#coverage-per-framework)), posture score, SARIF/CycloneDX/SPDX/HTML.
 
-### 4.2 Proxy mode
+### 5.2 Proxy mode
 
 The proxy wraps any MCP server without modifying it. The client connects to `agent-bom proxy` instead of the server directly; the proxy relays traffic and enforces policy:
 
@@ -204,7 +231,7 @@ max_response_size_kb: 512
 
 For cross-agent correlation, use the broader runtime protection engine (`agent-bom runtime protect --shield`), which adds `CrossAgentCorrelator` on top of the inline proxy detector set.
 
-### 4.3 MCP server mode
+### 5.3 MCP server mode
 
 ```bash
 agent-bom mcp server
@@ -227,7 +254,7 @@ should_i_deploy     — allow/warn/block guidance from ExposurePath risk
 
 ---
 
-## 5. What agent-bom does NOT do
+## 6. What agent-bom does NOT do
 
 - **Does not run MCP servers.** Read-only. Never starts or restarts a server.
 - **Does not store credentials.** Only env var *names* (not values) appear in reports.
@@ -241,7 +268,7 @@ should_i_deploy     — allow/warn/block guidance from ExposurePath risk
 
 ---
 
-## 6. Deployment patterns
+## 7. Deployment patterns
 
 ### CI/CD (GitHub Action)
 
@@ -288,7 +315,7 @@ agent-bom proxy "uvx mcp-server-filesystem /" \
 
 ---
 
-## 7. Further reading
+## 8. Further reading
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — component diagram, data flow, module boundaries
 - [RUNTIME_MONITORING.md](RUNTIME_MONITORING.md) — proxy internals, detector configuration

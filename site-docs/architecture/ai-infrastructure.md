@@ -17,6 +17,19 @@ For the seven-layer AI-BOM evidence map, see
 | **AI observability** | LangSmith, Langfuse, Braintrust, Arize/Phoenix, Trubrics, Helicone SDK inventory |
 | **Code** | SAST via Semgrep with CWE mapping |
 
+## Vendor advisory feeds
+
+Vendor advisory matches are surfaced through the same local intel APIs as OSV,
+GHSA, NVD, EPSS, and KEV data. `intel_sources` reports source policy and
+freshness so operators can distinguish structured feed coverage from
+experimental seed coverage.
+
+| Source | Support status | Connector | Boundary |
+|---|---|---|---|
+| NVIDIA CSAF | supported | `csaf_json` | Structured CSAF matching for mapped GPU, CUDA, NIM, NeMo, inference, and container package signals. |
+| AMD PSIRT | experimental | `vendor_json_seed` | ROCm and AMD GPU matches from curated seeds; no open-ended web scraping is shipped. |
+| Intel PSIRT | experimental | `curated_seed` | GPU and oneAPI matches from curated seeds; no automated webpage scraping is shipped. |
+
 ## Coverage Matrix
 
 Use this matrix when deciding which AI infrastructure path to run first. The

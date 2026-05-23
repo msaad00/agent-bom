@@ -65,6 +65,24 @@ A vulnerability in `nvidia-cudnn-cu12` or `hip-python` doesn't just affect one m
 | `trubrics` | Trubrics feedback and evaluation telemetry |
 | `@helicone/helicone` | Helicone request and LLM observability instrumentation |
 
+## Vendor advisory feed support
+
+agent-bom separates structured vendor feeds from curated seed data so operators
+can tell which advisory matches are feed-backed and which are best-effort
+coverage. The source catalog is exposed through `GET /v1/intel/sources` and
+the `intel_sources` MCP tool; the daily brief uses the same metadata when it
+reports vendor advisory matches.
+
+| Source | Status | Connector | Matching scope | Boundary |
+|---|---|---|---|---|
+| NVIDIA CSAF | supported | `csaf_json` | CUDA, cuDNN, NCCL, TensorRT, Triton, NIM, NeMo, PyTorch/vLLM mappings, and related GPU container/package signals | Structured CSAF records are matched and source-linked; year windows follow current and previous year feeds. |
+| AMD PSIRT | experimental | `vendor_json_seed` | ROCm and AMD GPU package/image signals from curated advisory seeds | No open-ended website scraping is shipped; matches remain source-linked and marked experimental. |
+| Intel PSIRT | experimental | `curated_seed` | GPU and oneAPI advisory seeds | No automated webpage scraping is shipped; matches remain source-linked and marked experimental. |
+
+Daily threat briefs summarize local database evidence and submitted inventory.
+They do not claim IoC telemetry, campaign attribution, ransomware tracking, or
+sector/geo targeting unless a future connector supplies those inputs.
+
 ## Scanning GPU container images
 
 ### NVIDIA CUDA images

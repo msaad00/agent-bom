@@ -79,9 +79,14 @@ reports vendor advisory matches.
 | AMD PSIRT | experimental | `vendor_json_seed` | ROCm and AMD GPU package/image signals from curated advisory seeds | No open-ended website scraping is shipped; matches remain source-linked and marked experimental. |
 | Intel PSIRT | experimental | `curated_seed` | GPU and oneAPI advisory seeds | No automated webpage scraping is shipped; matches remain source-linked and marked experimental. |
 
-Daily threat briefs summarize local database evidence and submitted inventory.
-They do not claim IoC telemetry, campaign attribution, ransomware tracking, or
-sector/geo targeting unless a future connector supplies those inputs.
+Daily threat briefs summarize local database evidence, submitted inventory, and
+governed caller-supplied threat inputs. When a caller supplies IoC telemetry,
+campaign activity, ransomware claims, and a tenant sector/geo profile, the brief
+adds exact telemetry-hit matches and profile-overlap matches with source URL,
+license/terms, fetched time, content hash, validation status, and match reason.
+They still do not claim open-ended vendor webpage scraping; vendor pages remain
+structured feed or curated source-linked seed coverage unless a governed
+connector policy explicitly allows more.
 
 ## Scanning GPU container images
 

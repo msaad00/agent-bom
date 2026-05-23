@@ -70,6 +70,10 @@ async def intel_sources_impl(*, _truncate_response=lambda value: value) -> str:
 async def intel_daily_brief_impl(
     *,
     packages: list[dict] | None = None,
+    telemetry_indicators: list[dict] | None = None,
+    campaign_activity: list[dict] | None = None,
+    ransomware_claims: list[dict] | None = None,
+    tenant_profile: dict | None = None,
     epss_threshold: float = 0.7,
     kev_window_hours: int = 24,
     limit: int = 100,
@@ -82,6 +86,10 @@ async def intel_daily_brief_impl(
             json.dumps(
                 build_daily_brief(
                     packages or [],
+                    telemetry_indicators=telemetry_indicators or [],
+                    campaign_activity=campaign_activity or [],
+                    ransomware_claims=ransomware_claims or [],
+                    tenant_profile=tenant_profile or {},
                     epss_threshold=epss_threshold,
                     kev_window_hours=kev_window_hours,
                     limit=limit,

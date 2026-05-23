@@ -23,6 +23,10 @@ class IntelDailyBriefRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     packages: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+    telemetry_indicators: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+    campaign_activity: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+    ransomware_claims: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+    tenant_profile: dict[str, Any] = Field(default_factory=dict)
     epss_threshold: float = Field(default=0.7, ge=0, le=1)
     kev_window_hours: int = Field(default=24, ge=1, le=168)
     limit: int = Field(default=100, ge=1, le=500)
@@ -68,6 +72,10 @@ async def post_intel_daily_brief(body: IntelDailyBriefRequest) -> dict[str, Any]
     try:
         return build_daily_brief(
             body.packages,
+            telemetry_indicators=body.telemetry_indicators,
+            campaign_activity=body.campaign_activity,
+            ransomware_claims=body.ransomware_claims,
+            tenant_profile=body.tenant_profile,
             epss_threshold=body.epss_threshold,
             kev_window_hours=body.kev_window_hours,
             limit=body.limit,

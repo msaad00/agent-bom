@@ -42,10 +42,15 @@ intel_sources()
 
 ### intel_daily_brief
 Return a local analyst brief with KEV lookback, high-EPSS inventory matches,
-vendor advisory matches, and source-registry freshness. It summarizes local DB
-evidence and submitted inventory only; it does not scrape vendor pages.
+vendor advisory matches, caller-supplied IoC telemetry hits, sector/geo campaign
+matches, ransomware claim matches, and source-registry freshness. It summarizes
+local DB evidence plus governed caller inputs; it does not scrape vendor pages.
 ```
-intel_daily_brief(packages=[{"purl": "pkg:pypi/requests@2.31.0"}])
+intel_daily_brief(
+  packages=[{"purl": "pkg:pypi/requests@2.31.0"}],
+  telemetry_indicators=[{"indicator": "198.51.100.42", "hit_count": 2}],
+  tenant_profile={"sectors": ["ai infrastructure"], "geos": ["us"]}
+)
 ```
 
 ### blast_radius

@@ -3,12 +3,18 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.server import app, configure_api
 from agent_bom.db.schema import init_db
+from agent_bom.intel_fetch import (
+    GovernedIntelFetchError,
+    fetch_governed_raw_artifact,
+    store_raw_artifact,
+)
 from agent_bom.intel_lookup import build_daily_brief, list_intel_sources, lookup_advisory, match_packages
 from agent_bom.mcp_tools.intel import intel_daily_brief_impl, intel_lookup_impl, intel_match_impl, intel_sources_impl
 from tests.auth_helpers import PROXY_SECRET
@@ -206,6 +212,52 @@ def test_daily_brief_summarizes_local_sources_without_scraping_claims(intel_db) 
     assert "Vendor webpage scraping is not shipped" in body["limitations"][1]
 
 
+def test_daily_brief_matches_governed_telemetry_and_tenant_profile(intel_db) -> None:  # noqa: ANN001
+    body = build_daily_brief(
+        [{"purl": "pkg:pypi/requests@2.31.0", "inventory_ref": "pkg-1"}],
+        telemetry_indicators=[
+            {
+                "indicator": "198.51.100.42",
+                "type": "ipv4",
+                "hit_count": 3,
+                "telemetry_hits": ["runtime-session-1"],
+                "source_url": "https://example.invalid/ioc-feed",
+                "license": "internal-use",
+                "fetched_at": "2026-05-22T00:00:00+00:00",
+                "content_hash": "sha256:ioc",
+            }
+        ],
+        campaign_activity=[
+            {
+                "name": "gpu-targeting-campaign",
+                "sectors": ["ai infrastructure"],
+                "geos": ["us"],
+                "source_url": "https://example.invalid/campaign",
+                "license": "link-only",
+            }
+        ],
+        ransomware_claims=[
+            {
+                "group": "example-extortion",
+                "victim_sectors": ["ai infrastructure"],
+                "victim_geos": ["us"],
+                "source_url": "https://example.invalid/ransomware",
+                "license": "link-only",
+            }
+        ],
+        tenant_profile={"sectors": ["AI Infrastructure"], "geos": ["US"], "tenant_ref": "tenant-alpha"},
+        db_path=intel_db,
+        now=datetime(2026, 5, 22, tzinfo=UTC),
+    )
+
+    assert body["inputs"]["telemetry_configured"] is True
+    assert body["inputs"]["sector_geo_configured"] is True
+    assert body["sections"]["ioc_telemetry_hits"][0]["match_method"] == "telemetry_indicator_exact"
+    assert body["sections"]["ioc_telemetry_hits"][0]["evidence"]["content_hash"] == "sha256:ioc"
+    assert body["sections"]["campaign_matches"][0]["matched_on"] == ["sector", "geo"]
+    assert body["sections"]["ransomware_sector_matches"][0]["group"] == "example-extortion"
+
+
 def test_intel_api_routes_are_read_only_and_tenant_scoped(intel_client: TestClient) -> None:
     sources = intel_client.get("/v1/intel/sources", headers=VIEWER_HEADERS)
     assert sources.status_code == 200
@@ -226,10 +278,15 @@ def test_intel_api_routes_are_read_only_and_tenant_scoped(intel_client: TestClie
     brief = intel_client.post(
         "/v1/intel/daily-brief",
         headers=VIEWER_HEADERS,
-        json={"packages": [{"ecosystem": "pypi", "name": "requests", "version": "2.31.0"}]},
+        json={
+            "packages": [{"ecosystem": "pypi", "name": "requests", "version": "2.31.0"}],
+            "telemetry_indicators": [{"indicator": "198.51.100.42", "hit_count": 1}],
+            "tenant_profile": {"sectors": ["AI Infrastructure"]},
+        },
     )
     assert brief.status_code == 200
     assert brief.json()["schema_version"] == "intel.daily_brief.v1"
+    assert brief.json()["sections"]["ioc_telemetry_hits"][0]["indicator"] == "198.51.100.42"
 
 
 def test_intel_api_match_validates_package_shape(intel_client: TestClient) -> None:
@@ -264,3 +321,46 @@ async def test_mcp_intel_tools_return_agent_native_json(intel_db) -> None:  # no
 
     brief = json.loads(await intel_daily_brief_impl(packages=[{"purl": "pkg:pypi/requests@2.31.0"}]))
     assert brief["schema_version"] == "intel.daily_brief.v1"
+
+
+@pytest.mark.asyncio
+async def test_governed_raw_artifact_fetch_records_metadata(monkeypatch, tmp_path) -> None:  # noqa: ANN001
+    source = next(source for source in list_intel_sources()["sources"] if source["source_id"] == "cisa_kev")
+    from agent_bom.intel_lookup import CANONICAL_INTEL_SOURCES
+
+    canonical = next(item for item in CANONICAL_INTEL_SOURCES if item.source_id == source["source_id"])
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def _fake_request(_client, _method, _url, **_kwargs):
+        return SimpleNamespace(
+            status_code=200,
+            headers={"content-type": "application/json", "etag": "abc", "last-modified": "Fri, 22 May 2026 00:00:00 GMT"},
+            content=b'{"knownExploitedVulnerabilities":[]}',
+        )
+
+    monkeypatch.setattr("agent_bom.intel_fetch.create_client", lambda timeout=15.0: _Client())
+    monkeypatch.setattr("agent_bom.intel_fetch.request_with_retry", _fake_request)
+
+    artifact = await fetch_governed_raw_artifact(canonical)
+    stored = store_raw_artifact(artifact, tmp_path)
+
+    assert artifact.source_id == "cisa_kev"
+    assert artifact.content_hash.startswith("sha256:")
+    assert stored["etag"] == "abc"
+    assert (tmp_path / "cisa_kev").exists()
+
+
+def test_governed_raw_artifact_fetch_rejects_manual_only_sources() -> None:
+    from agent_bom.intel_fetch import ensure_source_fetch_allowed
+    from agent_bom.intel_lookup import CANONICAL_INTEL_SOURCES
+
+    intel = next(source for source in CANONICAL_INTEL_SOURCES if source.source_id == "intel_psirt")
+
+    with pytest.raises(GovernedIntelFetchError):
+        ensure_source_fetch_allowed(intel)

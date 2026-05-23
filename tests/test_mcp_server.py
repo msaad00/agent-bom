@@ -262,6 +262,57 @@ def test_scan_no_agents(mock_pipeline):
 
 
 @patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_scan_accepts_direct_npx_package(mock_pipeline):
+    """Scan can target a direct npx package spec without local config discovery."""
+    mock_pipeline.return_value = ([], [], [], [])
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    result = _call_tool(
+        server,
+        "scan",
+        {"package": "npx -y @modelcontextprotocol/server-filesystem", "auto_update_db": False},
+    )
+
+    assert result["status"] == "no_agents_found"
+    args, kwargs = mock_pipeline.call_args
+    assert args[:4] == (None, None, None, "npx -y @modelcontextprotocol/server-filesystem")
+    assert kwargs["offline"] is True
+
+
+def test_scan_pipeline_builds_inventory_from_npx_package(monkeypatch):
+    """The scan pipeline converts npx specs into a synthetic MCP server inventory."""
+    from agent_bom.mcp_server_scan import run_scan_pipeline
+
+    captured_agents = []
+
+    async def _fake_scan_agents(agents, *, options):
+        captured_agents.extend(agents)
+        return []
+
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda project_dir=None: [])
+    monkeypatch.setattr("agent_bom.scanners.scan_agents", _fake_scan_agents)
+
+    agents, _blast_radii, warnings, scan_sources = _run(
+        run_scan_pipeline(
+            safe_path=lambda value: Path(value),
+            package="npx -y @modelcontextprotocol/server-filesystem",
+            offline=True,
+        )
+    )
+
+    assert agents == captured_agents
+    assert scan_sources == ["mcp_package"]
+    server = agents[0].mcp_servers[0]
+    assert server.command == "npx"
+    assert server.args == ["-y", "@modelcontextprotocol/server-filesystem"]
+    assert server.packages[0].name == "@modelcontextprotocol/server-filesystem"
+    assert server.packages[0].declared_version == "latest"
+    assert server.packages[0].floating_reference is True
+    assert any("pass @modelcontextprotocol/server-filesystem@version" in warning for warning in warnings)
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_scan_default_read_only_contract_does_not_refresh_db_and_uses_offline_scan(mock_pipeline):
     """Default read-only scan must avoid DB refresh and online vulnerability scans."""
     mock_pipeline.return_value = ([], [], [], [])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -237,6 +238,7 @@ CANONICAL_INTEL_SOURCES: tuple[IntelSource, ...] = (
 )
 
 VENDOR_ADVISORY_SOURCE_IDS = {"nvidia_csaf", "amd_psirt", "intel_psirt"}
+_MAX_BRIEF_INPUTS = 500
 
 
 def resolve_intel_db_path() -> Path:
@@ -266,6 +268,150 @@ def _sync_meta(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
             "metadata": metadata,
         }
     return meta
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip().lower() for item in value if str(item or "").strip()]
+
+
+def _tenant_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
+    profile = profile or {}
+    return {
+        "sectors": _string_list(profile.get("sectors")),
+        "geos": _string_list(profile.get("geos")),
+        "tenant_ref": str(profile.get("tenant_ref") or "").strip() or None,
+    }
+
+
+def _governed_evidence(item: dict[str, Any]) -> dict[str, Any]:
+    """Return provenance fields expected on caller-supplied intel items."""
+
+    content_hash = str(item.get("content_hash") or "").strip()
+    if not content_hash:
+        seed = json.dumps(
+            {
+                "source_url": item.get("source_url"),
+                "indicator": item.get("indicator"),
+                "name": item.get("name"),
+                "group": item.get("group"),
+                "first_seen_at": item.get("first_seen_at"),
+            },
+            sort_keys=True,
+            default=str,
+        )
+        content_hash = "sha256:" + hashlib.sha256(seed.encode("utf-8")).hexdigest()
+    return {
+        "source": str(item.get("source") or item.get("source_id") or "caller_supplied").strip(),
+        "source_url": str(item.get("source_url") or "").strip(),
+        "license": str(item.get("license") or item.get("terms") or "caller_supplied").strip(),
+        "fetched_at": str(item.get("fetched_at") or item.get("updated_at") or "").strip(),
+        "first_seen_at": str(item.get("first_seen_at") or item.get("discovered_at") or "").strip(),
+        "updated_at": str(item.get("updated_at") or "").strip(),
+        "content_hash": content_hash,
+        "validation_status": str(item.get("validation_status") or "caller_supplied").strip(),
+    }
+
+
+def _match_ioc_telemetry(
+    telemetry_indicators: list[dict[str, Any]] | None,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Return governed IoC hits when callers provide telemetry observations."""
+
+    matches: list[dict[str, Any]] = []
+    for item in (telemetry_indicators or [])[:_MAX_BRIEF_INPUTS]:
+        indicator = str(item.get("indicator") or item.get("value") or "").strip()
+        if not indicator:
+            continue
+        telemetry_hits = item.get("hits") or item.get("telemetry_hits") or []
+        hit_count = int(item.get("hit_count") or (len(telemetry_hits) if isinstance(telemetry_hits, list) else 0) or 0)
+        if hit_count <= 0:
+            continue
+        matches.append(
+            {
+                "indicator": indicator,
+                "indicator_type": str(item.get("type") or item.get("indicator_type") or "unknown").strip(),
+                "hit_count": hit_count,
+                "telemetry_refs": telemetry_hits if isinstance(telemetry_hits, list) else [],
+                "match_method": "telemetry_indicator_exact",
+                "match_confidence": str(item.get("confidence") or "high").strip(),
+                "match_reason": "Caller-supplied telemetry contains an exact indicator hit.",
+                "evidence": _governed_evidence(item),
+            }
+        )
+        if len(matches) >= limit:
+            break
+    return matches
+
+
+def _profile_matches(item: dict[str, Any], profile: dict[str, Any]) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    item_sectors = _string_list(item.get("sectors") or item.get("target_sectors") or item.get("victim_sectors"))
+    item_geos = _string_list(item.get("geos") or item.get("target_geos") or item.get("victim_geos"))
+    sectors = set(profile.get("sectors") or [])
+    geos = set(profile.get("geos") or [])
+    if sectors and item_sectors and sectors.intersection(item_sectors):
+        reasons.append("sector")
+    if geos and item_geos and geos.intersection(item_geos):
+        reasons.append("geo")
+    return bool(reasons), reasons
+
+
+def _match_campaign_activity(
+    campaign_activity: list[dict[str, Any]] | None,
+    *,
+    tenant_profile: dict[str, Any],
+    limit: int,
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for item in (campaign_activity or [])[:_MAX_BRIEF_INPUTS]:
+        matched, reasons = _profile_matches(item, tenant_profile)
+        if not matched:
+            continue
+        matches.append(
+            {
+                "name": str(item.get("name") or item.get("campaign") or "unnamed_campaign").strip(),
+                "activity_type": str(item.get("activity_type") or "campaign").strip(),
+                "matched_on": reasons,
+                "match_method": "tenant_profile_sector_geo",
+                "match_confidence": str(item.get("confidence") or "medium").strip(),
+                "match_reason": "Caller-supplied campaign activity overlaps configured tenant sector or geography.",
+                "evidence": _governed_evidence(item),
+            }
+        )
+        if len(matches) >= limit:
+            break
+    return matches
+
+
+def _match_ransomware_claims(
+    ransomware_claims: list[dict[str, Any]] | None,
+    *,
+    tenant_profile: dict[str, Any],
+    limit: int,
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for item in (ransomware_claims or [])[:_MAX_BRIEF_INPUTS]:
+        matched, reasons = _profile_matches(item, tenant_profile)
+        if not matched:
+            continue
+        matches.append(
+            {
+                "group": str(item.get("group") or item.get("actor") or "unknown_group").strip(),
+                "claim": str(item.get("claim") or item.get("victim") or "").strip(),
+                "matched_on": reasons,
+                "match_method": "tenant_profile_sector_geo",
+                "match_confidence": str(item.get("confidence") or "medium").strip(),
+                "match_reason": "Caller-supplied ransomware claim overlaps configured tenant sector or geography.",
+                "evidence": _governed_evidence(item),
+            }
+        )
+        if len(matches) >= limit:
+            break
+    return matches
 
 
 def list_intel_sources(*, db_path: Path | None = None) -> dict[str, Any]:
@@ -642,6 +788,10 @@ def match_packages(packages: list[dict[str, Any]], *, db_path: Path | None = Non
 def build_daily_brief(
     packages: list[dict[str, Any]] | None = None,
     *,
+    telemetry_indicators: list[dict[str, Any]] | None = None,
+    campaign_activity: list[dict[str, Any]] | None = None,
+    ransomware_claims: list[dict[str, Any]] | None = None,
+    tenant_profile: dict[str, Any] | None = None,
     db_path: Path | None = None,
     epss_threshold: float = 0.7,
     kev_window_hours: int = 24,
@@ -661,6 +811,7 @@ def build_daily_brief(
         raise ValueError("kev_window_hours must be between 1 and 168")
     generated_at = now.astimezone(UTC) if now else _utc_now()
     kev_cutoff = generated_at - timedelta(hours=kev_window_hours)
+    profile = _tenant_profile(tenant_profile)
     conn = init_db(db_path or resolve_intel_db_path())
     try:
         source_meta = _sync_meta(conn)
@@ -707,6 +858,9 @@ def build_daily_brief(
                     high_epss_inventory.append(item)
                 if advisory.get("source") in VENDOR_ADVISORY_SOURCE_IDS:
                     vendor_advisories.append(item)
+    ioc_hits = _match_ioc_telemetry(telemetry_indicators, limit=limit)
+    campaign_matches = _match_campaign_activity(campaign_activity, tenant_profile=profile, limit=limit)
+    ransomware_sector_matches = _match_ransomware_claims(ransomware_claims, tenant_profile=profile, limit=limit)
 
     feed_runs = {
         source.source_id: {
@@ -724,18 +878,22 @@ def build_daily_brief(
         "generated_at": generated_at.isoformat(),
         "inputs": {
             "package_count": len(package_inputs),
+            "telemetry_indicator_count": len(telemetry_indicators or []),
+            "campaign_activity_count": len(campaign_activity or []),
+            "ransomware_claim_count": len(ransomware_claims or []),
             "epss_threshold": epss_threshold,
             "kev_window_hours": kev_window_hours,
-            "telemetry_configured": False,
-            "sector_geo_configured": False,
+            "telemetry_configured": bool(telemetry_indicators),
+            "sector_geo_configured": bool(profile["sectors"] or profile["geos"]),
+            "tenant_profile": profile,
         },
         "sections": {
             "kev_last_24h": kev_last_24h,
             "high_epss_inventory": high_epss_inventory,
             "vendor_advisories": vendor_advisories,
-            "ioc_telemetry_hits": [],
-            "campaign_matches": [],
-            "ransomware_sector_matches": [],
+            "ioc_telemetry_hits": ioc_hits,
+            "campaign_matches": campaign_matches,
+            "ransomware_sector_matches": ransomware_sector_matches,
         },
         "inventory_match": inventory_match,
         "source_registry": {
@@ -743,7 +901,10 @@ def build_daily_brief(
             "feed_runs": feed_runs,
         },
         "limitations": [
-            "IoC telemetry, campaign, and sector matching require configured telemetry or tenant profile inputs.",
+            (
+                "IoC telemetry, campaign, and sector matching run only when the caller supplies governed telemetry, "
+                "campaign, ransomware, or tenant-profile inputs."
+            ),
             "Vendor webpage scraping is not shipped; vendor entries use structured feeds or curated source-linked seeds only.",
         ],
     }

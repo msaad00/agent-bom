@@ -325,7 +325,7 @@ tenant boundary, persistence behavior, and redaction behavior here.
 | `intel.sources.v1` | `GET /v1/intel/sources`, `intel_sources` MCP tool | analysts, agents, freshness monitors, docs | canonical source catalog with `source_id`, tier, kind, source/homepage/license URLs, robots policy, connector type, enabled state, owner, parser version, validation status, redistribution policy, `feed_run` | Reads local vuln DB `sync_meta`; source metadata is shared catalog data, feed-run freshness is local deployment state. It does not imply open-ended scraping. |
 | `intel.lookup.v1` | `GET /v1/intel/advisories/{advisory_id}`, `intel_lookup` MCP tool | finding enrichment, analyst lookup, agent investigation | `found`, `query`, `advisory.canonical_ids`, severity, CVSS, EPSS, KEV, CWE, affected packages, `match_method`, `match_confidence`, source policy, `evidence_links` | Read-only local vuln DB lookup. It can resolve CVE, GHSA, and OSV aliases and returns source links without implying every link was fetched. |
 | `intel.match.v1` | `POST /v1/intel/match`, `intel_match` MCP tool | inventory enrichment, CI gates, agent posture checks | submitted packages, matched package count, advisory matches, `match_method`, `match_confidence`, match reason, evidence links | Read-only package-coordinate matching. Inputs use purl when present; otherwise `ecosystem` + `name` + optional `version`. |
-| `intel.daily_brief.v1` | `POST /v1/intel/daily-brief`, `intel_daily_brief` MCP tool | analysts, agents, daily governance jobs | local KEV lookback, high-EPSS inventory matches, vendor advisory matches, source registry freshness, limitations | Read-only summary over local DB and submitted inventory. IoC telemetry, campaign, and sector/geo sections remain empty unless those inputs are configured by a future connector. |
+| `intel.daily_brief.v1` | `POST /v1/intel/daily-brief`, `intel_daily_brief` MCP tool | analysts, agents, daily governance jobs | local KEV lookback, high-EPSS inventory matches, vendor advisory matches, caller-supplied IoC telemetry hits, campaign matches, ransomware sector matches, source registry freshness, limitations | Read-only summary over local DB, submitted inventory, and governed caller inputs. IoC/campaign/ransomware entries carry source URL, license/terms, fetched time, content hash, validation status, match method, confidence, and match reason. |
 
 ### `agent-bom.manifest/v1`
 
@@ -409,8 +409,12 @@ spans, and connector health as additional fields or linked resources.
 Vendor advisory feed policy is explicit in `intel.sources.v1`: structured CSAF
 matching is supported where a structured feed exists; curated vendor seeds are
 marked experimental and source-linked until a governed connector with validated
-license/robots handling is shipped. Current daily briefs use these decisions
-to distinguish supported source records from experimental seed matches.
+license/robots handling is shipped. `intel_fetch.py` is the governed raw
+artifact lane for fetchable structured sources: it rejects manual-only sources,
+uses the shared SSRF-safe HTTP client, caps content type and response size,
+computes a SHA-256 content hash, and stores raw bytes separately from derived
+records. Current daily briefs use these decisions to distinguish supported
+source records from experimental seed matches.
 
 ### `inventory_snapshot.packages`
 

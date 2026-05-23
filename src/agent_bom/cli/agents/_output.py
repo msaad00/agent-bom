@@ -117,6 +117,7 @@ def render_output(
     fixable_only: bool = False,
     agent_mode: bool = False,
     agent_token_budget: int = 0,
+    offline_html: bool = False,
     **kwargs: Any,
 ) -> None:
     """Step 5: render report to console/file. Also Steps 5b, 5c, 5d."""
@@ -136,7 +137,7 @@ def render_output(
         elif output_format == "html":
             from agent_bom.output import to_html
 
-            sys.stdout.write(to_html(report, blast_radii))
+            sys.stdout.write(to_html(report, blast_radii, offline_assets=offline_html))
         elif output_format == "pdf":
             click.echo("Error: --format pdf requires --output/-o (cannot write PDF to stdout)", err=True)
             sys.exit(2)
@@ -296,7 +297,7 @@ def render_output(
         con.print(f"\n  [green]✓[/green] Markdown report: {out_path}")
     elif output_format == "html":
         out_path = _resolve_output_path(output, output_format)
-        export_html(report, out_path, blast_radii)
+        export_html(report, out_path, blast_radii, offline_assets=offline_html)
         con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
         if open_report:
             import webbrowser
@@ -349,7 +350,7 @@ def render_output(
         from agent_bom.output.graph import export_graph_html
 
         out_path = _resolve_output_path(output, output_format)
-        export_graph_html(report, blast_radii, out_path)
+        export_graph_html(report, blast_radii, out_path, offline_assets=offline_html)
         con.print(f"\n  [green]✓[/green] Interactive graph: {out_path}")
         if open_report:
             import webbrowser
@@ -377,7 +378,7 @@ def render_output(
         elif output.endswith(".spdx.json"):
             export_spdx(report, output)
         elif output.endswith(".html"):
-            export_html(report, output, blast_radii)
+            export_html(report, output, blast_radii, offline_assets=offline_html)
         elif output.endswith(".pdf"):
             export_pdf(report, output, blast_radii)
         elif output.endswith(".xml"):

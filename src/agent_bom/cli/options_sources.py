@@ -119,6 +119,13 @@ def output_options(fn):
                 help="Auto-open HTML/graph-html report in default browser after generation",
             ),
             click.option(
+                "--offline-html",
+                "offline_html",
+                is_flag=True,
+                default=False,
+                help="Emit HTML/graph-html reports without external CDN JavaScript assets for air-gapped review.",
+            ),
+            click.option(
                 "--format",
                 "-f",
                 "output_format",

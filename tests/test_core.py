@@ -1597,6 +1597,19 @@ def test_html_export_writes_file(tmp_path):
     assert len(content) > 5000  # sanity check — should be a real file
 
 
+def test_html_export_offline_assets_omits_cdn_scripts(tmp_path):
+    from agent_bom.output.html import export_html
+
+    report, blast_radii = _make_report_with_vuln()
+    out = tmp_path / "report.html"
+    export_html(report, str(out), blast_radii, offline_assets=True)
+    content = out.read_text(encoding="utf-8")
+    assert "Offline HTML mode" in content
+    assert "https://cdn.jsdelivr.net" not in content
+    assert "https://unpkg.com" not in content
+    assert "cytoscape-popper" not in content
+
+
 def test_cli_scan_has_html_format():
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])

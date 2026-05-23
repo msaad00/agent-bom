@@ -9,7 +9,7 @@ Produces Cytoscape.js-compatible element lists consumable by:
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from agent_bom.asset_provenance import package_version_provenance
 from agent_bom.graph import SEVERITY_BADGE as _SEVERITY_BADGE
@@ -689,10 +689,14 @@ def export_graph_html(
     report: "AIBOMReport",
     blast_radii: list["BlastRadius"],
     output_path: str,
+    *,
+    offline_assets: bool = False,
 ) -> None:
     """Export an interactive standalone HTML file with Cytoscape.js supply chain graph.
 
-    Self-contained: loads Cytoscape + dagre from CDN, embeds data inline.
+    By default, loads Cytoscape + dagre from pinned CDNs and embeds data inline.
+    ``offline_assets=True`` emits a static airgap-safe graph summary with no
+    external script dependencies.
     Supports zoom, pan, click-to-inspect, legend, and PNG export.
     """
     from pathlib import Path
@@ -716,7 +720,93 @@ def export_graph_html(
         total_pkgs=total_pkgs,
         total_vulns=total_vulns,
     )
+    if offline_assets:
+        html_content = _to_offline_graph_html(
+            total_agents=total_agents,
+            total_servers=total_servers,
+            total_pkgs=total_pkgs,
+            total_vulns=total_vulns,
+            top_risks=_graph_priority_summary(blast_radii, collapse_cves=True),
+            overview=_graph_overview(blast_radii),
+        )
     Path(output_path).write_text(html_content, encoding="utf-8")
+
+
+def _html_escape(value: object) -> str:
+    return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _to_offline_graph_html(
+    *,
+    total_agents: int,
+    total_servers: int,
+    total_pkgs: int,
+    total_vulns: int,
+    top_risks: list[dict[str, Any]],
+    overview: dict[str, Any],
+) -> str:
+    risk_items = []
+    for item in top_risks[:12]:
+        risk_items.append(
+            "<li>"
+            f"<strong>{_html_escape(item.get('title', 'Risk path'))}</strong>"
+            f"<span>risk {_html_escape(item.get('riskScore', 0))}</span>"
+            f"<p>{_html_escape(item.get('summary', ''))}</p>"
+            "</li>"
+        )
+    risk_html = "\n".join(risk_items) or "<li>No vulnerable paths were present in this graph export.</li>"
+    sev = overview.get("severityCounts") if isinstance(overview, dict) else {}
+    sev_rows = ""
+    if isinstance(sev, dict):
+        sev_rows = "\n".join(f"<tr><th>{_html_escape(k)}</th><td>{_html_escape(v)}</td></tr>" for k, v in sorted(sev.items()))
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-bom Supply Chain Graph — Offline</title>
+<style>
+  body{{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#0f1419;color:#e7e9ea;margin:0;padding:32px;line-height:1.55}}
+  main{{max-width:1040px;margin:0 auto}}
+  h1{{font-size:28px;margin-bottom:8px}}
+  .muted{{color:#9ba1a6}}
+  .banner{{border:1px solid #2f3336;background:#11161c;border-radius:12px;padding:14px 16px;margin:18px 0}}
+  .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:20px 0}}
+  .card{{border:1px solid #2f3336;background:#151b22;border-radius:12px;padding:14px}}
+  .card strong{{display:block;font-size:28px;color:#d9ecff}}
+  ol{{padding-left:24px}}
+  li{{margin-bottom:12px;border-bottom:1px solid #242b33;padding-bottom:12px}}
+  li span{{float:right;color:#ffd33d;font-weight:700}}
+  li p{{margin:6px 0 0;color:#c6ccd3}}
+  table{{border-collapse:collapse;width:100%;max-width:440px}}
+  th,td{{border:1px solid #2f3336;padding:8px;text-align:left}}
+  th{{color:#9ba1a6;font-weight:600}}
+</style>
+</head>
+<body>
+<main>
+  <h1>agent-bom Supply Chain Graph</h1>
+  <p class="muted">
+    Static offline export for air-gapped review. Interactive Cytoscape rendering is disabled
+    because external JavaScript assets were omitted.
+  </p>
+  <div class="banner">
+    <strong>Offline HTML mode</strong> keeps the graph evidence readable without network access.
+    Use the default graph-html export when interactive zoom, filtering, and PNG export are required.
+  </div>
+  <div class="cards">
+    <div class="card"><strong>{total_agents}</strong>agents</div>
+    <div class="card"><strong>{total_servers}</strong>servers</div>
+    <div class="card"><strong>{total_pkgs}</strong>packages</div>
+    <div class="card"><strong>{total_vulns}</strong>CVEs</div>
+  </div>
+  <h2>Top Risk Paths</h2>
+  <ol>{risk_html}</ol>
+  <h2>Severity Counts</h2>
+  <table>{sev_rows}</table>
+</main>
+</body>
+</html>"""
 
 
 _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>

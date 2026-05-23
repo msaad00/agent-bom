@@ -161,6 +161,7 @@ nav:
       - Smithery: integrations/smithery.md
   - API Reference:
       - Python API: api/python-sdk.md
+      - Go SDK: api/go-sdk.md
       - Models: api/models.md
       - Output: api/output.md
       - Scanners: api/scanners.md

@@ -15,5 +15,6 @@ Check for drift in CI:
 python scripts/export_openapi.py --check
 ```
 
-The TypeScript, Python, and future Go clients should treat these artifacts as
-the source contract rather than hand-maintaining route paths independently.
+The TypeScript, Python, and Go control-plane clients should treat these
+artifacts as the source contract rather than hand-maintaining route paths
+independently.

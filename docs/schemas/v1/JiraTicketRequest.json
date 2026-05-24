@@ -17,6 +17,18 @@
     "project_key": {
       "title": "Project Key",
       "type": "string"
+    },
+    "target_id": {
+      "default": "",
+      "maxLength": 256,
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_kind": {
+      "default": "finding",
+      "pattern": "^(finding|exposure_path)$",
+      "title": "Target Kind",
+      "type": "string"
     }
   },
   "required": [

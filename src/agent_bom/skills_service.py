@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -18,6 +19,8 @@ from agent_bom.security import sanitize_command_args
 from agent_bom.skill_bundles import SkillBundle, build_skill_bundle
 from agent_bom.skill_intel import ThreatIntelResult, ThreatIntelStatus, lookup_bundle_threat_intel
 from agent_bom.skills_catalog import catalog_scan_timestamp, load_skills_catalog, save_skills_catalog
+
+logger = logging.getLogger(__name__)
 
 _SKILL_DISCOVERY_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__"}
 _SKILLS_SCAN_CONCURRENCY = max(1, int(os.environ.get("AGENT_BOM_SKILLS_SCAN_CONCURRENCY", "8")))
@@ -358,6 +361,31 @@ def _persist_catalog(reports: list[SkillFileReport], catalog_path: str | Path | 
     return str(save_skills_catalog(catalog, catalog_path))
 
 
+def _record_skills_scan_audit(action: str, *, resource: str, summary: dict[str, object], catalog_path: str | None) -> None:
+    """Append summary-only skill scan evidence to the signed audit chain."""
+    count_key = "catalog_entries" if action == "skills.rescan_completed" else "files_scanned"
+    safe_details: dict[str, object] = {
+        "event_type": action,
+        "source_type": "skills",
+        "count": summary.get(count_key, 0),
+        "finding_count": summary.get("findings", 0),
+        "status": "completed",
+        "catalog_path": catalog_path,
+    }
+    try:
+        from agent_bom.api.audit_log import log_action
+
+        log_action(
+            action,
+            actor="skills_service",
+            resource=resource,
+            tenant_id="default",
+            **safe_details,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Skill scan audit logging failed")
+
+
 def _run_async_sync(awaitable):
     """Run async work from sync callers, even when already inside an event loop."""
     try:
@@ -388,8 +416,12 @@ async def _scan_skill_targets_async(
         async with sem:
             return await _build_skill_report_async(path, intel_source=intel_source)
 
-    reports = await asyncio.gather(*[_scan_one(path) for path in targets])
-    return SkillsScanReport(files=list(reports), catalog_path=_persist_catalog(list(reports), catalog_path))
+    reports = list(await asyncio.gather(*[_scan_one(path) for path in targets]))
+    report = SkillsScanReport(files=reports, catalog_path=_persist_catalog(reports, catalog_path))
+    summary = report.to_dict()["summary"]
+    assert isinstance(summary, dict)
+    _record_skills_scan_audit("skills.scan_completed", resource="skills/scan", summary=summary, catalog_path=report.catalog_path)
+    return report
 
 
 def scan_skill_targets(
@@ -482,7 +514,11 @@ async def _rescan_skill_catalog_async(
 
     catalog["entries"] = updated_entries
     persisted = str(save_skills_catalog(catalog, catalog_path))
-    return SkillsRescanReport(catalog_path=persisted, entries=serialized)
+    report = SkillsRescanReport(catalog_path=persisted, entries=serialized)
+    summary = report.to_dict()["summary"]
+    assert isinstance(summary, dict)
+    _record_skills_scan_audit("skills.rescan_completed", resource="skills/rescan", summary=summary, catalog_path=report.catalog_path)
+    return report
 
 
 def rescan_skill_catalog(

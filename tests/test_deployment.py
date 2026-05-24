@@ -382,6 +382,14 @@ def test_release_package_verifies_dashboard_csp_hash_manifest():
     assert "packaged UI would fall back to unsafe-inline" in workflow
 
 
+def test_security_scan_npm_installs_use_network_retries():
+    """Security audit npm installs should tolerate transient registry resets."""
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert workflow.count("npm config set fetch-retries 5") >= 3
+    assert workflow.count("npm config set fetch-retry-mintimeout 20000") >= 3
+    assert workflow.count("npm config set fetch-retry-maxtimeout 120000") >= 3
+
+
 def test_publish_registries_workflow_requires_public_smithery_surface_and_curated_clawhub_set():
     """Registry publishing should fail fast on auth-gated Smithery URLs and avoid omnibus ClawHub skills."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()

@@ -26,6 +26,11 @@ ENTITY_OCSF_MAP: dict[str, dict[str, int]] = {
     EntityType.CONTAINER: {"category_uid": 5, "class_uid": 4001},
     EntityType.CLOUD_RESOURCE: {"category_uid": 5, "class_uid": 4001},
     EntityType.RESOURCE: {"category_uid": 5, "class_uid": 4001},
+    EntityType.SOURCE_FILE: {"category_uid": 5, "class_uid": 4001},
+    EntityType.CODE_MODULE: {"category_uid": 5, "class_uid": 4001},
+    EntityType.CONFIG_FILE: {"category_uid": 5, "class_uid": 4001},
+    EntityType.EXTERNAL_IMPORT: {"category_uid": 5, "class_uid": 4001},
+    EntityType.CI_JOB: {"category_uid": 5, "class_uid": 4001},
     EntityType.CREDENTIAL: {"category_uid": 5, "class_uid": 4001},
     EntityType.CREDENTIAL_REF: {"category_uid": 5, "class_uid": 4001},
     # Identity & access (Category 3)

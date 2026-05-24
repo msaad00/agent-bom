@@ -42,8 +42,8 @@ is wired into the docs site so drift produces a visible regression.
 | `TransportType` | 4 | `stdio`, `sse`, `streamable-http`, `unknown` |
 | `ServerSurface` | 10 | `mcp-server`, `container-image`, `oci-tarball`, `filesystem`, `sbom`, `external-scan`, `os-packages`, `sast`, `ai-inventory`, `other` |
 | `AgentStatus` | 2 | `configured`, `installed-not-configured` |
-| `EntityType` | 27 | `agent`, `server`, `package`, `tool`, `tool_call`, `model`, `dataset`, `container`, `cloud_resource`, `resource`, `vulnerability`, `misconfiguration`, `credential`, `credential_ref`, `org`, `account`, `user`, `group`, `role`, `policy`, `service_account`, `service_principal`, `federated_identity`, `provider`, `environment`, `fleet`, `cluster` |
-| `RelationshipType` | 34 | `hosts`, `uses`, `depends_on`, `provides_tool`, `exposes_cred`, `reaches_tool`, `serves_model`, `contains`, `affects`, `vulnerable_to`, `exploitable_via`, `remediates`, `triggers`, `shares_server`, `shares_cred`, `lateral_path`, `manages`, `owns`, `part_of`, `member_of`, `assumes`, `trusts`, `attached`, `inherits`, `can_access`, `cross_account_trust`, `acted_as`, `invoked`, `called`, `used_credential`, `accessed`, `delegated_to`, `correlates_with`, `possibly_correlates_with` |
+| `EntityType` | 32 | `agent`, `server`, `package`, `tool`, `tool_call`, `model`, `dataset`, `container`, `cloud_resource`, `resource`, `source_file`, `code_module`, `config_file`, `external_import`, `ci_job`, `vulnerability`, `misconfiguration`, `credential`, `credential_ref`, `org`, `account`, `user`, `group`, `role`, `policy`, `service_account`, `service_principal`, `federated_identity`, `provider`, `environment`, `fleet`, `cluster` |
+| `RelationshipType` | 38 | `hosts`, `uses`, `depends_on`, `provides_tool`, `exposes_cred`, `reaches_tool`, `serves_model`, `contains`, `imports`, `defines`, `runs`, `configures`, `affects`, `vulnerable_to`, `exploitable_via`, `remediates`, `triggers`, `shares_server`, `shares_cred`, `lateral_path`, `manages`, `owns`, `part_of`, `member_of`, `assumes`, `trusts`, `attached`, `inherits`, `can_access`, `cross_account_trust`, `acted_as`, `invoked`, `called`, `used_credential`, `accessed`, `delegated_to`, `correlates_with`, `possibly_correlates_with` |
 
 ### Live Schema Cross-Checks
 
@@ -127,19 +127,21 @@ Used for unified findings outside the SCA / blast-radius path
 The unified graph projects the canonical model into a node/edge form
 used for blast-radius traversal, dashboards, and OCSF export.
 
-### Entity types (27)
+### Entity types (32)
 
 `AGENT`, `SERVER`, `PACKAGE`, `TOOL`, `TOOL_CALL`, `MODEL`, `DATASET`,
-`CONTAINER`, `CLOUD_RESOURCE`, `RESOURCE`, `VULNERABILITY`,
-`MISCONFIGURATION`, `CREDENTIAL`, `CREDENTIAL_REF`, `ORG`, `ACCOUNT`, `USER`,
-`GROUP`, `ROLE`, `POLICY`, `SERVICE_ACCOUNT`, `SERVICE_PRINCIPAL`,
+`CONTAINER`, `CLOUD_RESOURCE`, `RESOURCE`, `SOURCE_FILE`, `CODE_MODULE`,
+`CONFIG_FILE`, `EXTERNAL_IMPORT`, `CI_JOB`, `VULNERABILITY`,
+`MISCONFIGURATION`, `CREDENTIAL`, `CREDENTIAL_REF`, `ORG`, `ACCOUNT`,
+`USER`, `GROUP`, `ROLE`, `POLICY`, `SERVICE_ACCOUNT`, `SERVICE_PRINCIPAL`,
 `FEDERATED_IDENTITY`, `PROVIDER`, `ENVIRONMENT`, `FLEET`, `CLUSTER`.
 
-### Relationship types (34)
+### Relationship types (38)
 
 | Group | Relationships | Direction |
 |---|---|---|
 | Composition | `HOSTS`, `USES`, `DEPENDS_ON`, `PROVIDES_TOOL`, `EXPOSES_CRED`, `REACHES_TOOL`, `SERVES_MODEL`, `CONTAINS` | source → target |
+| Code topology | `IMPORTS`, `DEFINES`, `RUNS`, `CONFIGURES` | source → target |
 | Risk | `AFFECTS`, `VULNERABLE_TO`, `EXPLOITABLE_VIA`, `REMEDIATES`, `TRIGGERS` | mostly bidirectional |
 | Lateral movement | `SHARES_SERVER`, `SHARES_CRED`, `LATERAL_PATH` | symmetric |
 | Ownership and identity | `MANAGES`, `OWNS`, `PART_OF`, `MEMBER_OF`, `ASSUMES`, `TRUSTS`, `ATTACHED`, `INHERITS`, `CAN_ACCESS`, `CROSS_ACCOUNT_TRUST` | hierarchical / access path |

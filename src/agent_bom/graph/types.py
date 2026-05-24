@@ -19,6 +19,11 @@ class EntityType(str, Enum):
     CONTAINER = "container"
     CLOUD_RESOURCE = "cloud_resource"
     RESOURCE = "resource"
+    SOURCE_FILE = "source_file"
+    CODE_MODULE = "code_module"
+    CONFIG_FILE = "config_file"
+    EXTERNAL_IMPORT = "external_import"
+    CI_JOB = "ci_job"
 
     # Finding entities (OCSF Category 2)
     VULNERABILITY = "vulnerability"
@@ -61,6 +66,8 @@ class GraphSemanticLayer(str, Enum):
     ASSET = "asset"
     INFRA = "infra"
     FINDING = "finding"
+    CODE = "code"
+    CI = "ci"
 
 
 class RelationshipType(str, Enum):
@@ -75,6 +82,10 @@ class RelationshipType(str, Enum):
     REACHES_TOOL = "reaches_tool"  # credential → tool
     SERVES_MODEL = "serves_model"  # server → model
     CONTAINS = "contains"  # container → package
+    IMPORTS = "imports"  # source file/module → external import/module
+    DEFINES = "defines"  # source file → module/component/tool
+    RUNS = "runs"  # CI job → scanner/workflow/tool
+    CONFIGURES = "configures"  # config file → agent/server/CI job
 
     # ── Vulnerability ──
     AFFECTS = "affects"  # vulnerability → package (reverse)

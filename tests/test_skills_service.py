@@ -12,6 +12,55 @@ from agent_bom.skill_intel import ThreatIntelStatus
 from agent_bom.skills_service import _review_to_status, rescan_skill_catalog, scan_skill_targets
 
 
+def test_scan_skill_targets_records_summary_in_hmac_audit_chain(tmp_path):
+    """Skill scans should leave summary-only evidence in the signed audit chain."""
+    from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+
+    audit_log = InMemoryAuditLog()
+    set_audit_log(audit_log)
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# Instructions\n\nUse OPENAI_API_KEY.\n")
+
+    scan_skill_targets([skill_file])
+
+    entries = audit_log.list_entries(action="skills.scan_completed", tenant_id="default")
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.resource == "skills/scan"
+    assert entry.details["event_type"] == "skills.scan_completed"
+    assert entry.details["source_type"] == "skills"
+    assert entry.details["count"] == 1
+    assert "credential_env_vars" not in entry.details
+    verified, tampered = audit_log.verify_integrity(tenant_id="default")
+    assert verified == 1
+    assert tampered == 0
+
+
+def test_rescan_skill_catalog_records_summary_in_hmac_audit_chain(tmp_path):
+    """Skill rescans should be chained without storing raw skill content."""
+    from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+
+    audit_log = InMemoryAuditLog()
+    set_audit_log(audit_log)
+    skill_file = tmp_path / "SKILL.md"
+    skill_file.write_text("# Skill\nUse the filesystem server.\n")
+    catalog_path = tmp_path / "catalog.json"
+
+    scan_skill_targets([skill_file], catalog_path=catalog_path)
+    rescan_skill_catalog(catalog_path=catalog_path)
+
+    entries = audit_log.list_entries(tenant_id="default", limit=10)
+    assert [entry.action for entry in entries][:2] == ["skills.rescan_completed", "skills.scan_completed"]
+    rescan_entry = entries[0]
+    assert rescan_entry.resource == "skills/rescan"
+    assert rescan_entry.details["event_type"] == "skills.rescan_completed"
+    assert rescan_entry.details["source_type"] == "skills"
+    assert rescan_entry.details["count"] == 1
+    verified, tampered = audit_log.verify_integrity(tenant_id="default")
+    assert verified == 2
+    assert tampered == 0
+
+
 def test_scan_skill_targets_records_catalog_and_intel(tmp_path):
     """Scanning with a catalog and intel feed should persist both."""
     skill_file = tmp_path / "CLAUDE.md"

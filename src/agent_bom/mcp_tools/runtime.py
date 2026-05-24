@@ -22,10 +22,16 @@ def _csv_set(value: str) -> set[str]:
     return {part.strip() for part in value.split(",") if part.strip()}
 
 
+def _has_shield_write_scope(operator_scopes: str) -> bool:
+    scopes = _csv_set(operator_scopes)
+    return bool(scopes & {"*", "shield:*", "shield:write"})
+
+
 def _authorize_shield_write(
     *,
     action: str,
     operator_role: str,
+    operator_scopes: str,
     reason: str,
     tenant_id: str,
     session_id: str,
@@ -40,6 +46,17 @@ def _authorize_shield_write(
                 "action": action,
                 "required_role": "admin",
                 "provided_role": normalized_role or "unset",
+                "status": "blocked",
+            },
+        )
+    if not _has_shield_write_scope(operator_scopes):
+        return (
+            False,
+            {
+                "error": "shield write action requires shield:write scope",
+                "action": action,
+                "required_role": "admin",
+                "required_scope": "shield:write",
                 "status": "blocked",
             },
         )
@@ -207,6 +224,7 @@ async def shield_start_impl(
     session_id: str = "default",
     correlation_window: float = 30.0,
     operator_role: str = "viewer",
+    operator_scopes: str = "",
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
@@ -215,6 +233,7 @@ async def shield_start_impl(
     authorized, context = _authorize_shield_write(
         action="shield_start",
         operator_role=operator_role,
+        operator_scopes=operator_scopes,
         reason=reason,
         tenant_id=tenant_id,
         session_id=session_id,
@@ -228,6 +247,7 @@ async def shield_start_impl(
         payload = await shield_start(session_id=session_id or "default", correlation_window=bounded_window)
         payload["mcp_write_policy"] = {
             "required_role": "admin",
+            "required_scope": "shield:write",
             "actor_role": context["actor"],
             "audit_logged": True,
             "tenant_id": context["tenant_id"],
@@ -243,6 +263,7 @@ async def shield_unblock_impl(
     *,
     session_id: str = "default",
     operator_role: str = "viewer",
+    operator_scopes: str = "",
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
@@ -251,6 +272,7 @@ async def shield_unblock_impl(
     authorized, context = _authorize_shield_write(
         action="shield_unblock",
         operator_role=operator_role,
+        operator_scopes=operator_scopes,
         reason=reason,
         tenant_id=tenant_id,
         session_id=session_id,
@@ -263,6 +285,7 @@ async def shield_unblock_impl(
         payload = await shield_unblock(session_id=session_id or "default")
         payload["mcp_write_policy"] = {
             "required_role": "admin",
+            "required_scope": "shield:write",
             "actor_role": context["actor"],
             "audit_logged": True,
             "tenant_id": context["tenant_id"],
@@ -278,6 +301,7 @@ async def shield_break_glass_impl(
     *,
     session_id: str = "default",
     operator_role: str = "viewer",
+    operator_scopes: str = "",
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
@@ -286,6 +310,7 @@ async def shield_break_glass_impl(
     authorized, context = _authorize_shield_write(
         action="shield_break_glass",
         operator_role=operator_role,
+        operator_scopes=operator_scopes,
         reason=reason,
         tenant_id=tenant_id,
         session_id=session_id,
@@ -300,6 +325,7 @@ async def shield_break_glass_impl(
         payload = await break_glass(cast(Any, request), session_id=session_id or "default", reason=context["reason"])
         payload["mcp_write_policy"] = {
             "required_role": "admin",
+            "required_scope": "shield:write",
             "actor_role": context["actor"],
             "audit_logged": True,
             "tenant_id": context["tenant_id"],

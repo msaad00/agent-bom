@@ -51,6 +51,20 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
+        _Handler.seen_headers.append(dict(self.headers))
+        path = urlparse(self.path).path
+        if path != "/v1/graph/should-i-deploy":
+            self.send_response(404)
+            self.end_headers()
+            return
+        body = json.dumps({"decision": "allow"}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
 
 def test_python_sdk_control_plane_smoke_example_runs_against_local_http_server() -> None:
     _Handler.seen_headers = []
@@ -73,6 +87,7 @@ def test_python_sdk_control_plane_smoke_example_runs_against_local_http_server()
     assert result == {
         "health_status": "ok",
         "intel_sources": 1,
+        "deploy_decision": "allow",
         "manifest_schema": "agent-bom.manifest/v1",
         "runtime_schema": "runtime.production_index.v1",
         "status": "ok",

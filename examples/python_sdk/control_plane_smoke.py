@@ -35,6 +35,7 @@ def run_smoke(*, base_url: str, api_key: str | None, bearer_token: str | None, t
         manifest = client.agent_manifest()
         runtime = client.runtime_production_index()
         intel_sources = client.intel_sources()
+        deploy_decision = client.should_i_deploy("flask@2.0.0", block_risk=80)
 
     sources = intel_sources.get("sources", [])
     return {
@@ -43,6 +44,7 @@ def run_smoke(*, base_url: str, api_key: str | None, bearer_token: str | None, t
         "manifest_schema": manifest.get("schema_version"),
         "runtime_schema": runtime.get("schema_version"),
         "intel_sources": len(sources) if isinstance(sources, list) else 0,
+        "deploy_decision": deploy_decision.get("decision"),
     }
 
 

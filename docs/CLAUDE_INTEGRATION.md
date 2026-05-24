@@ -68,7 +68,7 @@ claude mcp add agent-bom -- uvx agent-bom mcp server
 - skills scanning and trust
 - SBOM generation
 - runtime and tool-risk queries
-- admin-gated Shield actions with an audit reason
+- admin-gated Shield actions with `shield:write` scope and an audit reason
 
 ## Scan Claude environments directly
 

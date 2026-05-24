@@ -158,7 +158,8 @@ integration docs instead of this front door.
 
 MCP server mode advertises 55 MCP tools, 6 resources, and 6 workflow prompts.
 Most tools are read-only. The three Shield write actions fail closed unless
-the caller supplies `operator_role=admin` and an audit reason.
+the caller supplies `operator_role=admin`, `operator_scopes=shield:write`, and
+an audit reason.
 
 CLI scan commands run local scan pipelines today. They share lower scanner and
 discovery libraries with the API, but they are not API wrappers yet.

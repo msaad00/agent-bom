@@ -206,7 +206,8 @@ live runtime traffic rather than static reachability.
 ## Security Model
 
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
-  Shield write tools require `operator_role=admin` plus a reason and are
+  Shield write tools require `operator_role=admin`, `operator_scopes=shield:write`,
+  plus a reason and are
   audit-logged.
 - **No credential storage**: Never stores, logs, or transmits your credentials.
 - **No network exfiltration**: Scans local configs, queries public CVE databases.

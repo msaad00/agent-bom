@@ -74,3 +74,21 @@ def test_public_docs_do_not_overclaim_smithery_catalog_liveness() -> None:
     assert "agent-bom is published in the [Smithery]" not in smithery_doc
     assert "Also on [Glama]" not in readme
     assert "Smithery manifest" in readme
+
+
+def test_permissions_doc_keeps_network_boundary_scoped() -> None:
+    permissions = (ROOT / "docs" / "PERMISSIONS.md").read_text(encoding="utf-8")
+
+    assert "External API Calls (exhaustive list)" not in permissions
+    assert "exhaustive list of all outbound URLs" not in permissions
+    assert "Zero network calls unless scanning for vulnerabilities" not in permissions
+    assert "No hidden telemetry, analytics, or tracking." in permissions
+    assert "Explicit Push, Export, and Integration Destinations" in permissions
+
+
+def test_mcp_server_instructions_do_not_overclaim_read_only_surface() -> None:
+    factory = (ROOT / "src" / "agent_bom" / "mcp_server_factory.py").read_text(encoding="utf-8")
+
+    assert "Read-only, agentless, no credentials required." not in factory
+    assert "Scanner and posture tools are read-only" in factory
+    assert "Shield write actions require admin role and an audit reason" in factory

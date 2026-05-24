@@ -12,10 +12,10 @@ def _server_instructions(version: str) -> str:
         f"agent-bom v{version} — AI infrastructure security scanner with MCP security tools. "
         "Scans packages and images for CVEs (OSV, NVD, EPSS, CISA KEV), maps blast radius "
         "from vulnerabilities to credentials and tools, generates SBOMs (CycloneDX, SPDX), "
-        "enforces security policies, and maps to 14 compliance frameworks"
+        "checks security policies, and maps to 14 compliance frameworks"
         "(OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST AI RMF/CSF/800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2). "
         "Discovers 29 first-class MCP client types plus dynamic/project surfaces. "
-        "Read-only, agentless, no credentials required."
+        "Scanner and posture tools are read-only; Shield write actions require admin role and an audit reason."
     )
 
 

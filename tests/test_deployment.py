@@ -374,6 +374,22 @@ def test_release_verifies_pypi_provenance_for_each_published_file():
     assert "Missing PyPI provenance attestations" in workflow
 
 
+def test_release_package_verifies_dashboard_csp_hash_manifest():
+    """Release wheels should not ship packaged dashboard fallback CSP accidentally."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    assert "agent_bom/ui_dist/csp-hashes.json" in workflow
+    assert 'csp_manifest.get("script_hashes")' in workflow
+    assert "packaged UI would fall back to unsafe-inline" in workflow
+
+
+def test_security_scan_npm_installs_use_network_retries():
+    """Security audit npm installs should tolerate transient registry resets."""
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert workflow.count("npm config set fetch-retries 5") >= 3
+    assert workflow.count("npm config set fetch-retry-mintimeout 20000") >= 3
+    assert workflow.count("npm config set fetch-retry-maxtimeout 120000") >= 3
+
+
 def test_publish_registries_workflow_requires_public_smithery_surface_and_curated_clawhub_set():
     """Registry publishing should fail fast on auth-gated Smithery URLs and avoid omnibus ClawHub skills."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()

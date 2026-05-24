@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 _JWKS_CACHE_TTL = 3600  # seconds — re-fetch public keys every hour
 _OIDC_TIMEOUT = 5  # seconds for HTTP requests to OIDC provider
+OIDC_ALLOWED_ALGORITHMS = ("RS256", "ES256", "RS384", "ES384", "RS512", "ES512", "EdDSA")
 _oidc_failure_lock = threading.Lock()
 _oidc_decode_failures = 0
 
@@ -254,7 +255,7 @@ def verify_oidc_token(
         raise OIDCError(f"Failed to resolve signing key: {exc}") from exc
 
     decode_kwargs: dict = {
-        "algorithms": ["RS256", "ES256", "RS384", "ES384", "RS512"],
+        "algorithms": list(OIDC_ALLOWED_ALGORITHMS),
         "issuer": issuer,
         "options": {"require": ["exp", "iat", "iss"]},
     }

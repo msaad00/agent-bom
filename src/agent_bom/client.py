@@ -91,8 +91,8 @@ class AgentBomClient:
 
     def should_i_deploy(
         self,
-        *,
         candidate: str | Mapping[str, JsonValue],
+        *,
         block_risk: int | None = None,
         context: Mapping[str, JsonValue] | None = None,
         tenant_id: str | None = None,
@@ -137,8 +137,8 @@ class AgentBomClient:
 
     def ingest_findings(
         self,
-        *,
         findings: Sequence[Mapping[str, JsonValue]],
+        *,
         source: str | None = None,
         schema_version: str | None = None,
         metadata: Mapping[str, JsonValue] | None = None,

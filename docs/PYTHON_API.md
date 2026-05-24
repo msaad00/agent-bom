@@ -56,8 +56,9 @@ with AgentBomClient(
     manifest = client.agent_manifest()
     runtime = client.runtime_production_index()
     intel = client.intel_sources()
+    decision = client.should_i_deploy("flask@2.0.0", block_risk=80)
 
-print(manifest["schema_version"], runtime["schema_version"], len(intel.get("sources", [])))
+print(manifest["schema_version"], runtime["schema_version"], len(intel.get("sources", [])), decision["decision"])
 ```
 
 For a smoke test against a running API:
@@ -93,6 +94,18 @@ python examples/python_sdk/control_plane_smoke.py
 | `intel_lookup(...)` | `GET /v1/intel/advisories/{advisory_id}` | Advisory lookup by CVE, GHSA, or OSV ID. |
 | `intel_match(...)` | `POST /v1/intel/match` | Match package coordinates against local advisory intelligence. |
 | `intel_sources()` | `GET /v1/intel/sources` | Source registry and freshness metadata. |
+
+Common write and governance calls keep the payload in the first positional
+argument:
+
+```python
+client.ingest_findings(
+    [{"id": "finding-1", "severity": "high", "title": "External scanner finding"}],
+    source="external-scanner",
+)
+client.register_dataset_version("training-set", version_id="2026-05-24")
+client.should_i_deploy("flask@2.0.0", block_risk=80)
+```
 
 ## Notes
 

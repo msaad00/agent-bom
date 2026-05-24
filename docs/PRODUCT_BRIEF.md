@@ -87,7 +87,7 @@ miscellaneous compatibility list. The strongest story is:
 - **coding agents and MCP clients**: supported clients can invoke agent-bom as
   a read-mostly security tool surface, including `exposure_paths` and
   `should_i_deploy` for headless investigation and deploy guidance. Shield
-  write actions require admin role and audit reason.
+  write actions require admin role, `shield:write` scope, and audit reason.
 - **skills and registries**: OpenClaw skills, Cortex Code skill packaging, MCP
   Registry, Smithery, Glama, and Docker MCP registry make repeatable
   agent-bom workflows available where agent users already discover tools.

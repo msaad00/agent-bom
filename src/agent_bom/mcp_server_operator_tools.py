@@ -564,6 +564,10 @@ def register_operator_tools(
             str,
             Field(description="Operator role for this write action. Must be admin."),
         ] = "viewer",
+        operator_scopes: Annotated[
+            str,
+            Field(description="Comma-separated operator scopes. Must include shield:write."),
+        ] = "",
         reason: Annotated[
             str,
             Field(description="Human audit reason for starting Shield enforcement."),
@@ -573,13 +577,14 @@ def register_operator_tools(
             Field(description="Tenant scope for audit logging."),
         ] = "default",
     ) -> str:
-        """Start Shield enforcement for a session. Requires admin role and audit reason."""
+        """Start Shield enforcement for a session. Requires admin role, shield:write scope, and audit reason."""
         return await execute_tool_async(
             "shield_start",
             shield_start_impl,
             session_id=session_id,
             correlation_window=correlation_window,
             operator_role=operator_role,
+            operator_scopes=operator_scopes,
             reason=reason,
             tenant_id=tenant_id,
             _truncate_response=truncate_response,
@@ -595,6 +600,10 @@ def register_operator_tools(
             str,
             Field(description="Operator role for this write action. Must be admin."),
         ] = "viewer",
+        operator_scopes: Annotated[
+            str,
+            Field(description="Comma-separated operator scopes. Must include shield:write."),
+        ] = "",
         reason: Annotated[
             str,
             Field(description="Human audit reason for unblocking Shield enforcement."),
@@ -604,12 +613,13 @@ def register_operator_tools(
             Field(description="Tenant scope for audit logging."),
         ] = "default",
     ) -> str:
-        """Unblock Shield enforcement for a session. Requires admin role and audit reason."""
+        """Unblock Shield enforcement for a session. Requires admin role, shield:write scope, and audit reason."""
         return await execute_tool_async(
             "shield_unblock",
             shield_unblock_impl,
             session_id=session_id,
             operator_role=operator_role,
+            operator_scopes=operator_scopes,
             reason=reason,
             tenant_id=tenant_id,
             _truncate_response=truncate_response,
@@ -625,6 +635,10 @@ def register_operator_tools(
             str,
             Field(description="Operator role for this write action. Must be admin."),
         ] = "viewer",
+        operator_scopes: Annotated[
+            str,
+            Field(description="Comma-separated operator scopes. Must include shield:write."),
+        ] = "",
         reason: Annotated[
             str,
             Field(description="Human audit reason for emergency Shield override."),
@@ -634,12 +648,13 @@ def register_operator_tools(
             Field(description="Tenant scope for audit logging."),
         ] = "default",
     ) -> str:
-        """Run Shield break-glass override. Requires admin role and audit reason."""
+        """Run Shield break-glass override. Requires admin role, shield:write scope, and audit reason."""
         return await execute_tool_async(
             "shield_break_glass",
             shield_break_glass_impl,
             session_id=session_id,
             operator_role=operator_role,
+            operator_scopes=operator_scopes,
             reason=reason,
             tenant_id=tenant_id,
             _truncate_response=truncate_response,

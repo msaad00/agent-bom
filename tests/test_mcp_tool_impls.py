@@ -975,6 +975,7 @@ async def test_shield_write_tools_require_admin_and_audit_reason():
         await shield_start_impl(
             session_id="incident-1",
             operator_role="admin",
+            operator_scopes="shield:write",
             reason="short",
             tenant_id="tenant-alpha",
             _truncate_response=_trunc,
@@ -983,10 +984,24 @@ async def test_shield_write_tools_require_admin_and_audit_reason():
     assert missing_reason["status"] == "blocked"
     assert "audit reason" in missing_reason["error"]
 
+    missing_scope = json.loads(
+        await shield_start_impl(
+            session_id="incident-1",
+            operator_role="admin",
+            operator_scopes="scan:write",
+            reason="incident response validation",
+            tenant_id="tenant-alpha",
+            _truncate_response=_trunc,
+        )
+    )
+    assert missing_scope["status"] == "blocked"
+    assert missing_scope["required_scope"] == "shield:write"
+
     started = json.loads(
         await shield_start_impl(
             session_id="incident-1",
             operator_role="admin",
+            operator_scopes="shield:write",
             reason="incident response validation",
             tenant_id="tenant-alpha",
             _truncate_response=_trunc,
@@ -994,12 +1009,14 @@ async def test_shield_write_tools_require_admin_and_audit_reason():
     )
     assert started["status"] == "started"
     assert started["mcp_write_policy"]["required_role"] == "admin"
+    assert started["mcp_write_policy"]["required_scope"] == "shield:write"
     assert started["mcp_write_policy"]["audit_logged"] is True
 
     unblocked = json.loads(
         await shield_unblock_impl(
             session_id="incident-1",
             operator_role="admin",
+            operator_scopes="shield:write",
             reason="incident response validation",
             tenant_id="tenant-alpha",
             _truncate_response=_trunc,
@@ -1026,6 +1043,7 @@ async def test_shield_break_glass_tool_uses_admin_role_context():
     await shield_start_impl(
         session_id="incident-2",
         operator_role="admin",
+        operator_scopes="shield:write",
         reason="incident response validation",
         tenant_id="tenant-alpha",
         _truncate_response=_trunc,
@@ -1034,6 +1052,7 @@ async def test_shield_break_glass_tool_uses_admin_role_context():
         await shield_break_glass_impl(
             session_id="incident-2",
             operator_role="admin",
+            operator_scopes="shield:write",
             reason="emergency operator override",
             tenant_id="tenant-alpha",
             _truncate_response=_trunc,

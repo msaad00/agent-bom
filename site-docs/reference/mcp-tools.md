@@ -4,7 +4,8 @@ agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
 resources, or runtime targets. Shield write actions are the exception: they
-fail closed unless the caller supplies an admin role and audit reason.
+fail closed unless the caller supplies an admin role, `shield:write` scope, and
+audit reason.
 
 ## Tools
 
@@ -251,24 +252,27 @@ shield_status(session_id="default")
 ```
 
 ### shield_start
-Start Shield enforcement for a session. Requires `operator_role="admin"` and an
-audit reason of at least eight characters.
+Start Shield enforcement for a session. Requires `operator_role="admin"`,
+`operator_scopes="shield:write"`, and an audit reason of at least eight
+characters.
 ```
-shield_start(session_id="default", operator_role="admin", reason="incident response")
+shield_start(session_id="default", operator_role="admin", operator_scopes="shield:write", reason="incident response")
 ```
 
 ### shield_unblock
-Unblock Shield enforcement for a session. Requires `operator_role="admin"` and
-an audit reason of at least eight characters.
+Unblock Shield enforcement for a session. Requires `operator_role="admin"`,
+`operator_scopes="shield:write"`, and an audit reason of at least eight
+characters.
 ```
-shield_unblock(session_id="default", operator_role="admin", reason="validated unblock")
+shield_unblock(session_id="default", operator_role="admin", operator_scopes="shield:write", reason="validated unblock")
 ```
 
 ### shield_break_glass
-Activate the Shield emergency override. Requires `operator_role="admin"` and an
-audit reason of at least eight characters. The action is audit logged.
+Activate the Shield emergency override. Requires `operator_role="admin"`,
+`operator_scopes="shield:write"`, and an audit reason of at least eight
+characters. The action is audit logged.
 ```
-shield_break_glass(session_id="default", operator_role="admin", reason="approved emergency override")
+shield_break_glass(session_id="default", operator_role="admin", operator_scopes="shield:write", reason="approved emergency override")
 ```
 
 ### firewall_check

@@ -301,6 +301,10 @@ from agent_bom.cli._profiles import profiles_group  # noqa: E402
 
 main.add_command(profiles_group)
 
+from agent_bom.cli._plugins import plugins_group  # noqa: E402
+
+main.add_command(plugins_group)
+
 from agent_bom.cli._interactive import interactive_cmd  # noqa: E402
 
 main.add_command(interactive_cmd)

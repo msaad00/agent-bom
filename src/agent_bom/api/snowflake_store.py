@@ -36,6 +36,58 @@ def _sf_connect(**kwargs):  # type: ignore[no-untyped-def]
 
 
 _JOB_TTL_SECONDS = 3600
+_SNOWFLAKE_TENANT_ACCESS_TABLE = "agent_bom_tenant_access"
+_SNOWFLAKE_TENANT_ROW_ACCESS_POLICY = "agent_bom_tenant_isolation"
+_SNOWFLAKE_TENANT_TABLES = (
+    "scan_jobs",
+    "fleet_agents",
+    "scan_schedules",
+    "exceptions",
+    "gateway_policies",
+    "policy_audit_log",
+)
+
+
+def _execute_row_access_policy_ddl(cur, sql: str) -> None:  # type: ignore[no-untyped-def]
+    try:
+        cur.execute(sql)
+    except Exception as exc:
+        message = str(exc).lower()
+        if "row access policy" in message and ("already" in message or "exists" in message):
+            return
+        raise
+
+
+def _ensure_tenant_row_access_policy(cur, table_names: tuple[str, ...]) -> None:  # type: ignore[no-untyped-def]
+    """Install Snowflake row access policy hooks for tenant-scoped tables."""
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS agent_bom_tenant_access (
+            tenant_id VARCHAR NOT NULL,
+            snowflake_role VARCHAR NOT NULL,
+            created_at TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
+            PRIMARY KEY (tenant_id, snowflake_role)
+        )
+    """)
+    cur.execute("""
+        CREATE ROW ACCESS POLICY IF NOT EXISTS agent_bom_tenant_isolation
+        AS (row_tenant_id VARCHAR) RETURNS BOOLEAN ->
+            row_tenant_id IS NULL
+            OR IS_ROLE_IN_SESSION('AGENT_BOM_RLS_ADMIN')
+            OR NOT EXISTS (
+                SELECT 1 FROM agent_bom_tenant_access
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM agent_bom_tenant_access
+                WHERE tenant_id = row_tenant_id
+                  AND snowflake_role = CURRENT_ROLE()
+            )
+    """)
+    for table_name in table_names:
+        _execute_row_access_policy_ddl(
+            cur,
+            f"ALTER TABLE {table_name} ADD ROW ACCESS POLICY {_SNOWFLAKE_TENANT_ROW_ACCESS_POLICY} ON (tenant_id)",
+        )
 
 
 def build_connection_params() -> dict:
@@ -93,6 +145,7 @@ class SnowflakeJobStore:
                 )
             """)
             conn.cursor().execute("ALTER TABLE scan_jobs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
+            _ensure_tenant_row_access_policy(conn.cursor(), ("scan_jobs",))
 
     def put(self, job: ScanJob) -> None:
         with self._connect() as conn:
@@ -225,6 +278,7 @@ class SnowflakeFleetStore:
             """)
             cur.execute("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS canonical_id VARCHAR NOT NULL DEFAULT ''")
             cur.execute("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
+            _ensure_tenant_row_access_policy(cur, ("fleet_agents",))
 
     def put(self, agent: FleetAgent) -> None:
         with self._connect() as conn:
@@ -429,6 +483,7 @@ class SnowflakeScheduleStore:
             """)
             cur.execute("ALTER TABLE scan_schedules ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_sched_tenant_due ON scan_schedules(tenant_id, enabled, next_run)")
+            _ensure_tenant_row_access_policy(cur, ("scan_schedules",))
 
     def put(self, schedule) -> None:
         with self._connect() as conn:
@@ -532,6 +587,7 @@ class SnowflakeExceptionStore:
                 )
             """)
             cur.execute("ALTER TABLE exceptions ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
+            _ensure_tenant_row_access_policy(cur, ("exceptions",))
 
     def put(self, exc: VulnException) -> None:
         with self._connect() as conn:
@@ -658,6 +714,7 @@ class SnowflakePolicyStore:
             """)
             cur.execute("ALTER TABLE gateway_policies ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
             cur.execute("ALTER TABLE policy_audit_log ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
+            _ensure_tenant_row_access_policy(cur, ("gateway_policies", "policy_audit_log"))
 
     # ── policies ──
 

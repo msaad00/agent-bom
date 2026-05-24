@@ -14,9 +14,11 @@ from __future__ import annotations
 import pytest
 
 from agent_bom.scanners.firmware_advisory import (
+    CpeCandidate,
     FirmwareFinding,
     _products_for_model,
     check_firmware_advisories,
+    cpe_candidates_for_product,
     extract_gpu_model_from_labels,
 )
 
@@ -93,6 +95,12 @@ def test_products_for_model_case_insensitive():
 
 
 def test_firmware_finding_to_dict():
+    cpe = CpeCandidate(
+        cpe23="cpe:2.3:h:nvidia:dgx_h100:*:*:*:*:*:*:*:*",
+        confidence=0.85,
+        source="bundled_firmware_product_map",
+        matched_product="DGX H100",
+    )
     f = FirmwareFinding(
         node_name="gpu-node-1",
         gpu_vendor="nvidia",
@@ -104,6 +112,7 @@ def test_firmware_finding_to_dict():
         affected_product="DGX H100",
         fixed_version="1.05.0",
         reference_url="https://nvidia.custhelp.com/app/answers/detail/a_id/5481",
+        cpe_candidates=[cpe],
     )
     d = f.to_dict()
     assert d["node"] == "gpu-node-1"
@@ -115,6 +124,14 @@ def test_firmware_finding_to_dict():
     assert d["affected_product"] == "DGX H100"
     assert d["fixed_version"] == "1.05.0"
     assert d["reference_url"].startswith("https://")
+    assert d["cpe_candidates"] == [
+        {
+            "cpe23": "cpe:2.3:h:nvidia:dgx_h100:*:*:*:*:*:*:*:*",
+            "confidence": 0.85,
+            "source": "bundled_firmware_product_map",
+            "matched_product": "DGX H100",
+        }
+    ]
 
 
 def test_firmware_finding_no_fixed_version():
@@ -132,6 +149,20 @@ def test_firmware_finding_no_fixed_version():
     )
     d = f.to_dict()
     assert d["fixed_version"] is None
+
+
+def test_cpe_candidates_for_product_are_enrichment_evidence():
+    candidates = cpe_candidates_for_product("DGX H100")
+
+    assert candidates
+    assert candidates[0].cpe23.startswith("cpe:2.3:h:nvidia:dgx_h100:")
+    assert candidates[0].confidence == 0.85
+    assert candidates[0].source == "bundled_firmware_product_map"
+    assert candidates[0].matched_product == "DGX H100"
+
+
+def test_cpe_candidates_for_unknown_product_empty():
+    assert cpe_candidates_for_product("Unknown Accelerator") == []
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -166,6 +197,8 @@ def test_check_firmware_advisories_h100_node():
     for f in findings:
         assert f.node_name == "h100-node"
         assert f.gpu_model == "H100"
+        assert f.cpe_candidates
+        assert f.cpe_candidates[0].cpe23.startswith("cpe:2.3:h:nvidia:")
 
 
 def test_check_firmware_advisories_a100_node():
@@ -252,3 +285,4 @@ def test_check_firmware_advisories_finding_fields():
         assert isinstance(f.cvss_score, float)
         assert f.affected_product
         assert f.reference_url.startswith("https://")
+        assert all(candidate.source == "bundled_firmware_product_map" for candidate in f.cpe_candidates)

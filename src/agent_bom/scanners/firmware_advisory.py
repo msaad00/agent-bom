@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,20 @@ _GPU_KEYWORD_TO_PRODUCTS: dict[str, set[str]] = {}
 for _prod, _keywords in _FIRMWARE_PRODUCT_GPU_KEYWORDS.items():
     for _kw in _keywords:
         _GPU_KEYWORD_TO_PRODUCTS.setdefault(_kw, set()).add(_prod)
+
+
+_FIRMWARE_PRODUCT_CPE_CANDIDATES: dict[str, list[str]] = {
+    "DGX H100": ["cpe:2.3:h:nvidia:dgx_h100:*:*:*:*:*:*:*:*"],
+    "HGX H100": ["cpe:2.3:h:nvidia:hgx_h100:*:*:*:*:*:*:*:*"],
+    "DGX A100": ["cpe:2.3:h:nvidia:dgx_a100:*:*:*:*:*:*:*:*"],
+    "HGX A100": ["cpe:2.3:h:nvidia:hgx_a100:*:*:*:*:*:*:*:*"],
+    "DGX Station A100": ["cpe:2.3:h:nvidia:dgx_station_a100:*:*:*:*:*:*:*:*"],
+    "DGX A800": ["cpe:2.3:h:nvidia:dgx_a800:*:*:*:*:*:*:*:*"],
+    "DGX H200": ["cpe:2.3:h:nvidia:dgx_h200:*:*:*:*:*:*:*:*"],
+    "HGX H200": ["cpe:2.3:h:nvidia:hgx_h200:*:*:*:*:*:*:*:*"],
+    "ConnectX-6": ["cpe:2.3:h:nvidia:connectx-6:*:*:*:*:*:*:*:*"],
+    "ConnectX-7": ["cpe:2.3:h:nvidia:connectx-7:*:*:*:*:*:*:*:*"],
+}
 
 
 # ─── Firmware advisory seed ───────────────────────────────────────────────────
@@ -115,6 +129,24 @@ _FIRMWARE_ADVISORY_SEED: list[FirmwareSeed] = [
 
 
 @dataclass
+class CpeCandidate:
+    """Optional CPE evidence for firmware/appliance correlation."""
+
+    cpe23: str
+    confidence: float
+    source: str
+    matched_product: str
+
+    def to_dict(self) -> dict:
+        return {
+            "cpe23": self.cpe23,
+            "confidence": self.confidence,
+            "source": self.source,
+            "matched_product": self.matched_product,
+        }
+
+
+@dataclass
 class FirmwareFinding:
     """A single firmware/BMC CVE finding for a GPU node."""
 
@@ -128,6 +160,7 @@ class FirmwareFinding:
     affected_product: str  # which firmware product matched
     fixed_version: str | None
     reference_url: str
+    cpe_candidates: list[CpeCandidate] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -141,6 +174,7 @@ class FirmwareFinding:
             "affected_product": self.affected_product,
             "fixed_version": self.fixed_version,
             "reference_url": self.reference_url,
+            "cpe_candidates": [candidate.to_dict() for candidate in self.cpe_candidates],
         }
 
 
@@ -185,6 +219,23 @@ def _products_for_model(gpu_model: str) -> set[str]:
         if keyword in model_lower:
             matched |= products
     return matched
+
+
+def cpe_candidates_for_product(product: str) -> list[CpeCandidate]:
+    """Return optional CPE 2.3 candidates for a firmware product.
+
+    CPE is enrichment evidence for firmware/appliance inventory only. It does
+    not replace purl/OSV/GHSA ecosystem-native matching for package scans.
+    """
+    return [
+        CpeCandidate(
+            cpe23=cpe23,
+            confidence=0.85,
+            source="bundled_firmware_product_map",
+            matched_product=product,
+        )
+        for cpe23 in _FIRMWARE_PRODUCT_CPE_CANDIDATES.get(product, [])
+    ]
 
 
 # ─── Main check ──────────────────────────────────────────────────────────────
@@ -238,6 +289,7 @@ def check_firmware_advisories(nodes: list) -> list[FirmwareFinding]:
                             affected_product=product,
                             fixed_version=fixed_version,
                             reference_url=ref_url,
+                            cpe_candidates=cpe_candidates_for_product(product),
                         )
                     )
                     break

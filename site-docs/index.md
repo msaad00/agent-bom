@@ -65,9 +65,9 @@ The dashboard is not the only door into the product. It is the human cockpit
 over the same evidence that agents can request through MCP and platforms can
 consume through API, CLI, reports, and exports.
 
-This is Langfuse-like in shape only: humans get a cockpit and agents get
-callable primitives, but `agent-bom` works on security evidence and
-`ExposurePath` graphs rather than LLM traces or evals.
+The product shape is cockpit plus callable primitives: humans get a review
+surface and agents get strict-argument tools over the same security evidence
+and `ExposurePath` graphs.
 
 ## Current graph and agent surfaces
 
@@ -106,7 +106,7 @@ SLO or openCypher endpoint.
 | **Discovery** | Auto-detect 29 first-class MCP client types plus dynamic/project surfaces |
 | **CVE scanning** | OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA |
 | **Blast radius** | Map CVE impact: package → vulnerability finding → MCP server (tools + credential env names) → connected agents |
-| **Registry** | 427+ MCP server security metadata entries |
+| **Registry** | 738 MCP server security metadata entries |
 | **Compliance** | OWASP LLM/Agentic/MCP Top 10, MITRE ATLAS, EU AI Act, NIST AI RMF, CIS |
 | **Runtime proxy** | Policy enforcement, credential leak detection, audit logging |
 | **SBOM** | CycloneDX 1.6, SPDX 3.0 output |

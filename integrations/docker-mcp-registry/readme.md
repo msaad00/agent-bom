@@ -1,8 +1,8 @@
 # agent-bom
 
-Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.
+Open security scanner and self-hosted control plane for agentic infrastructure — discover agents and MCP, map blast radius, and inspect selected runtime paths.
 
-Discovers AI agents and MCP servers, scans packages, images, filesystems, IaC, and cloud AI infrastructure, maps blast radius showing which credentials and tools each CVE reaches, enforces policy in real time, and generates compliance evidence.
+Discovers AI agents and MCP servers, scans packages, images, filesystems, IaC, and cloud AI infrastructure, maps blast radius showing which credential names and tools each CVE reaches, applies optional proxy/gateway policy to selected MCP traffic, and generates compliance evidence.
 
 Package risk is only the start. agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context.
 
@@ -21,7 +21,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom agents -p /workspace -
 
 ## What it scans
 
-- **30 MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, and more
+- **29 first-class MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, and more
 - **Packages** — npm, pip, cargo, go modules, OS packages via OSV, NVD, EPSS, CISA KEV
 - **Containers** — Docker images with native OCI package discovery
 - **IaC** — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm (89 rules)

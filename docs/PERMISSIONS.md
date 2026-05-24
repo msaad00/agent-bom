@@ -1,7 +1,10 @@
 # Permissions & Trust Contract
 
-agent-bom is a **read-only security scanner**. This document is an explicit,
-auditable contract of what the tool accesses — and what it never touches.
+agent-bom's scanner lane is **read-only by default**. This document is an
+explicit, auditable contract of what the local scan path accesses — and what it
+never touches. Control-plane, connector, export, proxy/gateway, and Shield
+surfaces have separate operator-approved destinations or write actions called
+out below.
 
 ---
 
@@ -113,10 +116,12 @@ Credential values are **never** read, stored, logged, or transmitted. Only names
 
 ---
 
-## External API Calls (exhaustive list)
+## Scanner and Enrichment API Calls
 
-All network calls are read-only GET/POST to public vulnerability databases.
-Only package names and versions are sent. No user data is included in requests.
+Scanner and enrichment network calls are read-only GET/POST requests to public
+vulnerability and package metadata databases. Only package names, versions,
+CVE IDs, or repository coordinates needed for that lookup are sent. No config
+contents or credential values are included in those requests.
 
 | Service | URL | What we send | What we receive | Auth |
 |---------|-----|-------------|----------------|------|
@@ -127,10 +132,24 @@ Only package names and versions are sent. No user data is included in requests.
 | npm registry | `https://registry.npmjs.org/{pkg}/{version}` | Package name + version | Package metadata | None |
 | PyPI | `https://pypi.org/pypi/{pkg}/{version}/json` | Package name + version | Package metadata | None |
 | OpenSSF Scorecard | `https://api.securityscorecards.dev/projects/github.com/{owner}/{repo}` | GitHub owner/repo | Scorecard scores | None |
-| Jira (optional) | `https://{instance}.atlassian.net/rest/api/3/issue` | Finding summaries | Ticket confirmation | API token (`--jira-token`) |
-| Slack (optional) | User-provided webhook URL | Finding summaries | Delivery status | Webhook URL (`--slack-webhook`) |
-| Vanta (optional) | `https://api.vanta.com/v1/` | Compliance evidence | Upload confirmation | API token (`--vanta-token`) |
-| Drata (optional) | `https://public-api.drata.com/` | Compliance evidence | Upload confirmation | API token (`--drata-token`) |
+## Explicit Push, Export, and Integration Destinations
+
+The destinations below are not hidden telemetry. They are only used when an
+operator configures the corresponding flag, URL, token, connector, or control
+plane setting.
+
+| Destination | Example URL | What we send | Auth |
+|-------------|-------------|--------------|------|
+| Push API / control plane | User-provided `--push-url` or API base URL | Sanitized findings, inventory, graph, or audit payloads | API key or bearer token |
+| Webhook outbox | User-provided webhook URL | Signed posture events and delivery metadata | Operator-provided secret/token |
+| SIEM / audit export | User-provided export destination or `/v1/audit/export` consumer | OCSF-shaped audit events | Deployment-specific |
+| OTLP / Prometheus Pushgateway | User-provided collector endpoint | Metrics/traces, no credential values | Deployment-specific |
+| Jira (optional) | `https://{instance}.atlassian.net/rest/api/3/issue` | Finding summaries | API token (`--jira-token`) |
+| Slack (optional) | User-provided webhook URL | Finding summaries | Webhook URL (`--slack-webhook`) |
+| Vanta (optional) | `https://api.vanta.com/v1/` | Compliance evidence | API token (`--vanta-token`) |
+| Drata (optional) | `https://public-api.drata.com/` | Compliance evidence | API token (`--drata-token`) |
+| SaaS connectors | Connector-specific API URL | Connector evidence requested by the operator | Connector-specific token |
+| AI enrichment | Operator-provided LLM endpoint | Redacted finding context for enrichment | Operator-provided key |
 
 ### Data flow
 
@@ -139,18 +158,21 @@ Only package names and versions are sent. No user data is included in requests.
                           ↓
 [Package names+versions]  →  sent to OSV.dev, NVD, EPSS, KEV, npm, PyPI, OpenSSF Scorecard
                           ↓
-[Findings (optional)]     →  sent to Jira, Slack, Vanta, Drata (only if flags provided)
+[Findings (optional)]     →  sent to configured push/export/integration destinations
                           ↓
 [CVE results]  →  returned to local process, written to stdout or --output file
 ```
 
-- **Sent to APIs**: package name + version only (e.g., `express@4.17.1`)
+- **Sent to scanner/enrichment APIs**: package name + version, CVE ID, or repository coordinate only
 - **Returned from APIs**: CVE IDs, severity scores, advisory URLs
-- **Never sent**: file paths, config contents, env var values, scan results, hostnames, IP addresses
+- **Never sent to public scanner/enrichment APIs**: file paths, config contents, env var values, scan results, hostnames, IP addresses
+- **Sent to configured destinations**: only the sanitized payload for the explicit push, export, connector, or webhook action the operator enabled
 
 All external calls can be completely disabled with `--no-scan` (inventory-only mode).
 
-**No telemetry, analytics, or tracking.** Zero network calls unless scanning for vulnerabilities.
+**No hidden telemetry, analytics, or tracking.** Network calls occur only for
+requested scanner/enrichment lookups or explicitly configured push, export,
+connector, webhook, metrics, trace, or AI-enrichment destinations.
 
 ---
 
@@ -206,7 +228,7 @@ This is an open-source tool — you can verify every claim above:
 | Verification | How |
 |---|---|
 | Read source code | `src/agent_bom/` — all scanning logic is in plain Python |
-| Audit network calls | `grep -rn "osv.dev\|nvd.nist\|first.org\|cisa.gov\|npmjs.org\|pypi.org" src/agent_bom/` — exhaustive list of all outbound URLs |
+| Audit scanner/enrichment calls | `grep -rn "osv.dev\|nvd.nist\|first.org\|cisa.gov\|npmjs.org\|pypi.org" src/agent_bom/` — public vulnerability and package metadata lookups used by scanner/enrichment paths |
 | Audit file access | `grep -rn "open(\|Path(" src/agent_bom/discovery/` — all file reads in the discovery module |
 | Audit credential handling | `src/agent_bom/models.py` — `MCPServer.credential_names` property + `SENSITIVE_PATTERNS` in `security.py` |
 | Inspect boundary contract | `agent-bom trust --format json` — code-generated data, network, storage, auth, and SCIM boundaries surfaced through CLI/API/UI |

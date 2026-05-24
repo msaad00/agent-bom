@@ -376,6 +376,16 @@ def test_verify_oidc_token_allows_modern_asymmetric_algorithms():
     assert "EdDSA" in algorithms
 
 
+def test_oidc_algorithm_allowlist_rejects_none_and_symmetric_algorithms():
+    from agent_bom.api.oidc import OIDC_ALLOWED_ALGORITHMS
+
+    algorithms = {algorithm.lower() for algorithm in OIDC_ALLOWED_ALGORITHMS}
+    assert "none" not in algorithms
+    assert "hs256" not in algorithms
+    assert "hs384" not in algorithms
+    assert "hs512" not in algorithms
+
+
 def test_oidc_config_verify_returns_claims_and_role():
     """verify() on OIDCConfig returns (claims, role) on success."""
     cfg = OIDCConfig(issuer="https://example.com", audience="agent-bom")

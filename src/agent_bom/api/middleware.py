@@ -80,7 +80,7 @@ _TRUSTED_PROXY_SECRET_MIN_BYTES = 32
 
 def _content_security_policy(path: str, content_type: str) -> str:
     """Return a route-aware CSP that keeps the API strict and the dashboard usable."""
-    if path.startswith(("/docs", "/redoc")) and "text/html" in content_type:
+    if path in {"/docs", "/redoc"} and "text/html" in content_type:
         return _DOCS_CSP
     if "text/html" in content_type and not path.startswith(("/v1/", "/docs", "/redoc", "/openapi.json")):
         return dashboard_csp_header()

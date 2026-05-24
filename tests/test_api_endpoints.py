@@ -328,6 +328,18 @@ def test_health_keeps_strict_api_csp():
     assert resp.headers.get("content-security-policy") == "default-src 'self'"
 
 
+def test_docs_csp_relaxation_is_exact_route_scoped():
+    """Only the real Swagger/ReDoc HTML routes should get CDN CSP relaxations."""
+    client, _ = _fresh_client()
+
+    docs_resp = client.get("/docs")
+    near_miss_resp = client.get("/docs-anything")
+
+    assert docs_resp.status_code == 200
+    assert "cdn.jsdelivr.net" in docs_resp.headers.get("content-security-policy", "")
+    assert near_miss_resp.headers.get("content-security-policy") == "default-src 'self'"
+
+
 # ---------------------------------------------------------------------------
 # 4. Create scan — 202
 # ---------------------------------------------------------------------------

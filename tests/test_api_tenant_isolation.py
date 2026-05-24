@@ -346,6 +346,7 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
             return None
 
     monkeypatch.setattr(scan_routes.asyncio, "get_running_loop", lambda: _Loop())
+    monkeypatch.setattr(scan_routes, "submit_scan_job", lambda _job: None)
 
     created = await scan_routes.create_scan(req, ScanRequest())
     assert created.tenant_id == "tenant-alpha"

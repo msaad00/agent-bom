@@ -11,7 +11,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from agent_bom.extensions import ExtensionCapabilities, RegistryEntry, iter_entry_point_registrations
+from agent_bom.extensions import (
+    ExtensionCapabilities,
+    RegistryEntry,
+    _entry_points_for_group,
+    entrypoint_extensions_enabled,
+    iter_entry_point_registrations,
+    sanitize_registry_warning,
+)
+from agent_bom.security import sanitize_text
 
 MCP_TOOLS_ENTRY_POINT_GROUP = "agent_bom.mcp_tools"
 ADVISORY_SOURCES_ENTRY_POINT_GROUP = "agent_bom.advisory_sources"
@@ -21,6 +29,41 @@ PLUGIN_ENTRY_POINT_GROUPS: tuple[str, ...] = (
     MCP_TOOLS_ENTRY_POINT_GROUP,
     ADVISORY_SOURCES_ENTRY_POINT_GROUP,
     RUNTIME_EMITTERS_ENTRY_POINT_GROUP,
+)
+
+PLUGIN_REGISTRY_STATUS_SCHEMA_VERSION = "agent-bom.plugin_registry_status.v1"
+
+PLUGIN_REGISTRY_GROUPS: tuple[dict[str, str], ...] = (
+    {
+        "group": "agent_bom.cloud_providers",
+        "label": "Cloud providers",
+        "description": "Agentless cloud and AI-platform inventory discovery providers.",
+    },
+    {
+        "group": "agent_bom.connectors",
+        "label": "Connectors",
+        "description": "SaaS and workflow connectors used for inventory and evidence exchange.",
+    },
+    {
+        "group": "agent_bom.inventory_parsers",
+        "label": "Inventory parsers",
+        "description": "Local manifest and package inventory parser plugins.",
+    },
+    {
+        "group": MCP_TOOLS_ENTRY_POINT_GROUP,
+        "label": "MCP tools",
+        "description": "Third-party MCP tool registration plugins.",
+    },
+    {
+        "group": ADVISORY_SOURCES_ENTRY_POINT_GROUP,
+        "label": "Advisory sources",
+        "description": "Threat-intel and advisory lookup source plugins.",
+    },
+    {
+        "group": RUNTIME_EMITTERS_ENTRY_POINT_GROUP,
+        "label": "Runtime emitters",
+        "description": "Runtime event emitter plugins for operator-enabled sinks.",
+    },
 )
 
 MAX_PLUGIN_ENTRY_POINTS_PER_GROUP = 32
@@ -211,6 +254,87 @@ def plugin_entrypoint_warnings() -> list[str]:
     return list(_PLUGIN_ENTRYPOINT_WARNINGS)
 
 
+def _safe_entrypoint_metadata(group: str, warnings: list[str]) -> list[dict[str, str]]:
+    try:
+        entry_points = list(_entry_points_for_group(group))
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(sanitize_registry_warning(f"Could not enumerate entry points for {group}: {exc}"))
+        return []
+
+    entries: list[dict[str, str]] = []
+    for entry_point in entry_points:
+        distribution = ""
+        dist = getattr(entry_point, "dist", None)
+        if dist is not None:
+            metadata = getattr(dist, "metadata", {}) or {}
+            distribution = str(metadata.get("Name", "") or getattr(dist, "name", "") or "")
+        entries.append(
+            {
+                "name": sanitize_text(str(getattr(entry_point, "name", "unknown")), max_len=120),
+                "value": sanitize_text(str(getattr(entry_point, "value", "")), max_len=300),
+                "distribution": sanitize_text(distribution, max_len=120),
+            }
+        )
+    return sorted(entries, key=lambda item: (item["name"], item["value"]))
+
+
+def _builtin_registry_counts() -> dict[str, int]:
+    from agent_bom.cloud import builtin_provider_registrations
+    from agent_bom.connectors import builtin_connector_registrations
+    from agent_bom.parsers import builtin_inventory_parser_registrations
+
+    return {
+        "agent_bom.cloud_providers": len(builtin_provider_registrations()),
+        "agent_bom.connectors": len(builtin_connector_registrations()),
+        "agent_bom.inventory_parsers": len(builtin_inventory_parser_registrations()),
+        MCP_TOOLS_ENTRY_POINT_GROUP: 0,
+        ADVISORY_SOURCES_ENTRY_POINT_GROUP: 0,
+        RUNTIME_EMITTERS_ENTRY_POINT_GROUP: 0,
+    }
+
+
+def plugin_registry_status() -> dict[str, Any]:
+    """Return metadata-only plugin registry status for CLI and API callers.
+
+    This intentionally enumerates installed entry-point declarations without
+    calling ``EntryPoint.load()``. Runtime activation remains opt-in via
+    ``AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS``.
+    """
+
+    warnings: list[str] = []
+    builtin_counts = _builtin_registry_counts()
+    groups: list[dict[str, Any]] = []
+    total_builtin = 0
+    total_declared = 0
+    for group_info in PLUGIN_REGISTRY_GROUPS:
+        group_name = group_info["group"]
+        entry_points = _safe_entrypoint_metadata(group_name, warnings)
+        builtin_count = builtin_counts.get(group_name, 0)
+        total_builtin += builtin_count
+        total_declared += len(entry_points)
+        groups.append(
+            {
+                **group_info,
+                "builtin_count": builtin_count,
+                "declared_entrypoint_count": len(entry_points),
+                "declared_entrypoints": entry_points,
+            }
+        )
+    return {
+        "schema_version": PLUGIN_REGISTRY_STATUS_SCHEMA_VERSION,
+        "entrypoints_enabled": entrypoint_extensions_enabled(),
+        "metadata_only": True,
+        "activation_env": "AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS",
+        "totals": {
+            "groups": len(groups),
+            "builtin_registrations": total_builtin,
+            "declared_entrypoints": total_declared,
+        },
+        "groups": groups,
+        "warnings": warnings,
+    }
+
+
 def _reset_plugin_entrypoint_registry_for_tests() -> None:
     _MCP_TOOL_PLUGINS.clear()
     _ADVISORY_SOURCE_PLUGINS.clear()
@@ -233,4 +357,5 @@ __all__ = [
     "list_mcp_tool_plugins",
     "list_runtime_emitter_plugins",
     "plugin_entrypoint_warnings",
+    "plugin_registry_status",
 ]

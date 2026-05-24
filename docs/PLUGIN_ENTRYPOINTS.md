@@ -11,6 +11,17 @@ Third-party entry-point loading is opt-in:
 AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS=true agent-bom agents --demo --offline
 ```
 
+Operators can inspect the registry without loading third-party plugin code:
+
+```bash
+agent-bom plugins status --format json
+curl -H "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  http://localhost:8422/v1/plugins/status
+```
+
+The status contract is metadata-only. It reports built-in registration counts,
+installed entry-point declarations, and whether opt-in loading is enabled.
+
 ## Supported Groups
 
 | Group | Purpose | Default runtime behavior |
@@ -18,6 +29,10 @@ AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS=true agent-bom agents --demo --offline
 | `agent_bom.mcp_tools` | Advertise an MCP tool registration module and function. | Not registered on the live MCP server. |
 | `agent_bom.advisory_sources` | Advertise a private advisory lookup or sync source. | Not queried during scans. |
 | `agent_bom.runtime_emitters` | Advertise a runtime event emitter. | Not added to proxy, gateway, or alert dispatch. |
+
+The registry status view also includes existing built-in extension groups:
+`agent_bom.cloud_providers`, `agent_bom.connectors`, and
+`agent_bom.inventory_parsers`.
 
 Each group is capped at 32 loaded entry points per process. Import, validation,
 and coercion failures are non-fatal; built-in behavior remains available and

@@ -896,6 +896,54 @@ def test_api_key_middleware_enforces_scopes_when_present():
         set_key_store(original_store)
 
 
+def test_api_key_middleware_requires_shield_write_scope_for_shield_writes():
+    """Scoped admin keys should need shield:write for Shield write routes."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_missing_scope, missing_scope = create_api_key(
+        "admin-with-scan-scope",
+        Role.ADMIN,
+        tenant_id="tenant-alpha",
+        scopes=["scan:write"],
+    )
+    raw_allowed, allowed = create_api_key(
+        "admin-with-shield-scope",
+        Role.ADMIN,
+        tenant_id="tenant-alpha",
+        scopes=["shield:write"],
+    )
+    store.add(missing_scope)
+    store.add(allowed)
+    set_key_store(store)
+    try:
+        test_app = Starlette(
+            routes=[
+                Route("/v1/shield/start", dummy, methods=["POST"]),
+                Route("/v1/shield/unblock", dummy, methods=["POST"]),
+                Route("/v1/shield/break-glass", dummy, methods=["POST"]),
+            ]
+        )
+        test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+        client = TestClient(test_app)
+
+        for path in ("/v1/shield/start", "/v1/shield/unblock", "/v1/shield/break-glass"):
+            denied = client.post(path, headers={"Authorization": f"Bearer {raw_missing_scope}"})
+            assert denied.status_code == 403
+            assert "requires scope shield:write" in denied.json()["detail"]
+
+            allowed_resp = client.post(path, headers={"Authorization": f"Bearer {raw_allowed}"})
+            assert allowed_resp.status_code == 200
+    finally:
+        set_key_store(original_store)
+
+
 def test_api_key_middleware_empty_scopes_keep_legacy_access():
     """Keys without scopes should preserve the legacy unrestricted behavior."""
     from starlette.applications import Starlette

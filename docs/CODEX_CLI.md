@@ -75,7 +75,7 @@ That gives you:
 
 Important boundary:
 
-- `agent-bom mcp server` is read-mostly; Shield write actions require admin role and audit reason
+- `agent-bom mcp server` is read-mostly; Shield write actions require admin role, `shield:write` scope, and audit reason
 - `agent-bom agents` is read-only
 - `agent-bom proxy` intentionally runs the wrapped stdio server so it can enforce policy on live traffic
 

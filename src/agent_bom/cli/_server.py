@@ -725,9 +725,9 @@ def mcp_server_cmd(
       proxy_alerts           Recent tenant-scoped runtime proxy alerts
       gateway_status         Gateway policy and firewall runtime statistics
       shield_status          Shield session status without changing enforcement
-      shield_start           Start Shield enforcement with admin/audit gating
-      shield_unblock         Unblock Shield enforcement with admin/audit gating
-      shield_break_glass     Emergency Shield override with admin/audit gating
+      shield_start           Start Shield enforcement with admin/scope/audit gating
+      shield_unblock         Unblock Shield enforcement with admin/scope/audit gating
+      shield_break_glass     Emergency Shield override with admin/scope/audit gating
       firewall_check         Read-only inter-agent firewall decision dry run
       audit_query            Tenant-scoped control-plane audit records
       audit_integrity        Control-plane and runtime audit-chain verification

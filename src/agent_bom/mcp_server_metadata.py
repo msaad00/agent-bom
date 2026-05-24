@@ -163,17 +163,17 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "shield_start",
-        "description": "Start Shield enforcement for a session; requires admin role and an audit reason",
+        "description": "Start Shield enforcement for a session; requires admin role, shield:write scope, and an audit reason",
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
     {
         "name": "shield_unblock",
-        "description": "Unblock Shield enforcement for a session; requires admin role and an audit reason",
+        "description": "Unblock Shield enforcement for a session; requires admin role, shield:write scope, and an audit reason",
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
     {
         "name": "shield_break_glass",
-        "description": "Emergency Shield override; requires admin role and an audit reason",
+        "description": "Emergency Shield override; requires admin role, shield:write scope, and an audit reason",
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
     },
     {

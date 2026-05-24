@@ -37,9 +37,9 @@ Tools (55):
     proxy_alerts        — Recent tenant-scoped runtime proxy alerts
     gateway_status      — Gateway policy and firewall runtime statistics
     shield_status       — Shield session status without changing enforcement
-    shield_start        — Start Shield enforcement with admin/audit gating
-    shield_unblock      — Unblock Shield enforcement with admin/audit gating
-    shield_break_glass  — Emergency Shield override with admin/audit gating
+    shield_start        — Start Shield enforcement with admin/scope/audit gating
+    shield_unblock      — Unblock Shield enforcement with admin/scope/audit gating
+    shield_break_glass  — Emergency Shield override with admin/scope/audit gating
     firewall_check      — Read-only inter-agent firewall decision dry run
     audit_query         — Tenant-scoped control-plane audit records
     audit_integrity     — Control-plane and runtime audit-chain verification
@@ -65,8 +65,8 @@ Resources (6):
     compliance://framework-controls — Framework coverage and evidence mapping
 
 Security: read-mostly. Scanner, graph, audit, and runtime posture tools are
-read-only. Shield write tools require explicit admin role + audit reason and
-never read credential values.
+read-only. Shield write tools require explicit admin role, shield:write scope,
+and audit reason, and never read credential values.
 """
 
 from __future__ import annotations
@@ -325,8 +325,8 @@ _MAX_CACHED_TOOL_LOOPS = 8
 
 
 # Most agent-bom MCP tools are read-only scanners. Shield write tools are
-# explicitly annotated as mutating and fail closed unless an admin role and
-# audit reason are supplied.
+# explicitly annotated as mutating and fail closed unless an admin role,
+# shield:write scope, and audit reason are supplied.
 _READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 _WRITE_ACTION = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
 

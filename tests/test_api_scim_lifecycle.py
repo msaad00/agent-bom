@@ -41,6 +41,7 @@ def test_scim_discovery_endpoints(scim_client: TestClient) -> None:
     service_provider = scim_client.get("/scim/v2/ServiceProviderConfig", headers=_headers())
     assert service_provider.status_code == 200
     assert service_provider.json()["patch"]["supported"] is True
+    assert service_provider.json()["bulk"] == {"supported": True, "maxOperations": 100, "maxPayloadSize": 1048576}
 
     schemas = scim_client.get("/scim/v2/Schemas", headers=_headers())
     assert schemas.status_code == 200
@@ -332,6 +333,93 @@ def test_scim_group_lifecycle_accepts_common_idp_members(scim_client: TestClient
     )
     assert patched.status_code == 200
     assert patched.json()["members"] == []
+
+
+def test_scim_bulk_create_patch_and_delete_users_and_groups(scim_client: TestClient) -> None:
+    bulk_create = scim_client.post(
+        "/scim/v2/Bulk",
+        headers=_headers(),
+        json={
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:BulkRequest"],
+            "failOnErrors": 1,
+            "Operations": [
+                {
+                    "method": "POST",
+                    "path": "/Users",
+                    "bulkId": "user-1",
+                    "data": {"userName": "bulk.user@example.com", "externalId": "bulk-user-1", "displayName": "Bulk User"},
+                },
+                {
+                    "method": "POST",
+                    "path": "/Groups",
+                    "bulkId": "group-1",
+                    "data": {"displayName": "Bulk Operators", "externalId": "bulk-group-1"},
+                },
+            ],
+        },
+    )
+    assert bulk_create.status_code == 200
+    create_ops = bulk_create.json()["Operations"]
+    assert [op["status"] for op in create_ops] == ["201", "201"]
+    user_id = create_ops[0]["response"]["id"]
+    group_id = create_ops[1]["response"]["id"]
+    assert create_ops[0]["bulkId"] == "user-1"
+    assert create_ops[0]["response"][AGENT_BOM_USER_EXTENSION]["tenantId"] == "tenant-alpha"
+
+    bulk_update = scim_client.post(
+        "/scim/v2/Bulk",
+        headers=_headers(),
+        json={
+            "Operations": [
+                {
+                    "method": "PATCH",
+                    "path": f"/Users/{user_id}",
+                    "data": {"Operations": [{"op": "replace", "path": "active", "value": False}]},
+                },
+                {
+                    "method": "PATCH",
+                    "path": f"/Groups/{group_id}",
+                    "data": {
+                        "Operations": [
+                            {
+                                "op": "replace",
+                                "path": "members",
+                                "value": [{"value": user_id, "display": "bulk.user@example.com"}],
+                            }
+                        ]
+                    },
+                },
+                {"method": "DELETE", "path": f"/Groups/{group_id}"},
+            ]
+        },
+    )
+    assert bulk_update.status_code == 200
+    update_ops = bulk_update.json()["Operations"]
+    assert [op["status"] for op in update_ops] == ["200", "200", "204"]
+    assert update_ops[0]["response"]["active"] is False
+    assert update_ops[1]["response"]["members"] == [{"value": user_id, "display": "bulk.user@example.com"}]
+    assert scim_client.get(f"/scim/v2/Groups/{group_id}", headers=_headers()).status_code == 404
+
+
+def test_scim_bulk_returns_per_operation_errors_and_honors_fail_on_errors(scim_client: TestClient) -> None:
+    response = scim_client.post(
+        "/scim/v2/Bulk",
+        headers=_headers(),
+        json={
+            "failOnErrors": 1,
+            "Operations": [
+                {"method": "POST", "path": "/Users", "bulkId": "bad-user", "data": {"displayName": "Missing userName"}},
+                {"method": "POST", "path": "/Users", "bulkId": "skipped", "data": {"userName": "skipped@example.com"}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    operations = response.json()["Operations"]
+    assert len(operations) == 1
+    assert operations[0]["bulkId"] == "bad-user"
+    assert operations[0]["status"] == "400"
+    assert operations[0]["response"]["detail"] == "userName is required"
 
 
 def test_scim_store_fails_closed_without_postgres_for_multi_replica(monkeypatch: pytest.MonkeyPatch) -> None:

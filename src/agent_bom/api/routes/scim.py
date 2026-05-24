@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
@@ -20,6 +20,8 @@ SCIM_LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 SCIM_SERVICE_PROVIDER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"
 SCIM_SCHEMA_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Schema"
 SCIM_RESOURCE_TYPE_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
+SCIM_BULK_REQUEST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:BulkRequest"
+SCIM_BULK_RESPONSE_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:BulkResponse"
 SCIM_AGENT_BOM_USER_EXTENSION = "urn:agent-bom:params:scim:schemas:extension:identity:1.0:User"
 router = APIRouter(prefix=scim_base_path(), tags=["scim"])
 _FILTER_RE = re.compile(r'^\s*(userName|displayName|externalId|id)\s+eq\s+"([^"]{1,512})"\s*$')
@@ -62,6 +64,11 @@ def _paginate(items: list[Any], start_index: int, count: int) -> list[Any]:
 
 def _location(request: Request, kind: str, resource_id: str) -> str:
     return str(request.url_for(f"scim_get_{kind}", **{f"{kind}_id": resource_id}))
+
+
+def _bulk_location(request: Request, resource_type: str, resource_id: str) -> str:
+    kind = "user" if resource_type == "User" else "group"
+    return _location(request, kind, resource_id)
 
 
 def _optional_str(value: object) -> str | None:
@@ -249,13 +256,167 @@ def _apply_group_patch(group: SCIMGroup, body: dict[str, Any]) -> SCIMGroup:
     return group
 
 
+def _scim_error_response(exc: HTTPException) -> dict[str, Any]:
+    return {
+        "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
+        "status": str(exc.status_code),
+        "detail": str(exc.detail),
+    }
+
+
+def _bulk_status(
+    status_code: int,
+    *,
+    location: str | None = None,
+    response: dict[str, Any] | None = None,
+    bulk_id: str | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {"status": str(status_code)}
+    if location:
+        result["location"] = location
+    if response is not None:
+        result["response"] = response
+    if bulk_id:
+        result["bulkId"] = bulk_id
+    return result
+
+
+def _resource_id_from_path(path: str, prefix: str) -> str | None:
+    normalized = "/" + path.strip("/")
+    prefix = "/" + prefix.strip("/")
+    if normalized == prefix:
+        return None
+    resource_prefix = f"{prefix}/"
+    if normalized.startswith(resource_prefix):
+        resource_id = normalized.removeprefix(resource_prefix).strip()
+        return resource_id or None
+    raise HTTPException(status_code=404, detail="Unsupported SCIM bulk path")
+
+
+def _bulk_create_user(request: Request, body: dict[str, Any], bulk_id: str | None) -> dict[str, Any]:
+    tenant_id = _tenant_id(request)
+    store = _get_scim_store()
+    user = _user_from_payload(tenant_id, body)
+    if store.list_users(tenant_id, filter_attr="userName", filter_value=user.user_name, include_inactive=True):
+        raise HTTPException(status_code=409, detail="User already exists")
+    if user.external_id and store.list_users(tenant_id, filter_attr="externalId", filter_value=user.external_id, include_inactive=True):
+        raise HTTPException(status_code=409, detail="User already exists")
+    saved = store.put_user(user)
+    log_action(
+        "scim.user_created",
+        actor=_actor(request),
+        resource=f"scim/user/{saved.user_id}",
+        tenant_id=tenant_id,
+        user_name=saved.user_name,
+    )
+    response = _user_to_scim(saved, request)
+    return _bulk_status(201, location=response["meta"]["location"], response=response, bulk_id=bulk_id)
+
+
+def _bulk_create_group(request: Request, body: dict[str, Any], bulk_id: str | None) -> dict[str, Any]:
+    tenant_id = _tenant_id(request)
+    store = _get_scim_store()
+    group = _group_from_payload(tenant_id, body)
+    if store.list_groups(tenant_id, filter_attr="displayName", filter_value=group.display_name):
+        raise HTTPException(status_code=409, detail="Group already exists")
+    if group.external_id and store.list_groups(tenant_id, filter_attr="externalId", filter_value=group.external_id):
+        raise HTTPException(status_code=409, detail="Group already exists")
+    saved = store.put_group(group)
+    log_action(
+        "scim.group_created",
+        actor=_actor(request),
+        resource=f"scim/group/{saved.group_id}",
+        tenant_id=tenant_id,
+        display_name=saved.display_name,
+    )
+    response = _group_to_scim(saved, request)
+    return _bulk_status(201, location=response["meta"]["location"], response=response, bulk_id=bulk_id)
+
+
+def _bulk_modify_user(request: Request, method: str, user_id: str | None, body: dict[str, Any], bulk_id: str | None) -> dict[str, Any]:
+    if user_id is None:
+        return _bulk_create_user(request, body, bulk_id)
+    tenant_id = _tenant_id(request)
+    store = _get_scim_store()
+    user = store.get_user(tenant_id, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if method == "PATCH":
+        saved = store.put_user(_apply_user_patch(user, body))
+        action = "scim.user_patched"
+    elif method == "PUT":
+        saved = store.put_user(_user_from_payload(tenant_id, body, existing=user))
+        action = "scim.user_replaced"
+    elif method == "DELETE":
+        deactivated = store.deactivate_user(tenant_id, user_id)
+        if deactivated is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        saved = deactivated
+        action = "scim.user_deactivated"
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported SCIM bulk method")
+    log_action(action, actor=_actor(request), resource=f"scim/user/{saved.user_id}", tenant_id=tenant_id, user_name=saved.user_name)
+    if method == "DELETE":
+        return _bulk_status(204, location=_bulk_location(request, "User", saved.user_id), bulk_id=bulk_id)
+    response = _user_to_scim(saved, request)
+    return _bulk_status(200, location=response["meta"]["location"], response=response, bulk_id=bulk_id)
+
+
+def _bulk_modify_group(request: Request, method: str, group_id: str | None, body: dict[str, Any], bulk_id: str | None) -> dict[str, Any]:
+    if group_id is None:
+        return _bulk_create_group(request, body, bulk_id)
+    tenant_id = _tenant_id(request)
+    store = _get_scim_store()
+    group = store.get_group(tenant_id, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if method == "PATCH":
+        saved = store.put_group(_apply_group_patch(group, body))
+        action = "scim.group_patched"
+    elif method == "PUT":
+        saved = store.put_group(_group_from_payload(tenant_id, body, existing=group))
+        action = "scim.group_replaced"
+    elif method == "DELETE":
+        deleted = store.delete_group(tenant_id, group_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Group not found")
+        log_action("scim.group_deleted", actor=_actor(request), resource=f"scim/group/{group_id}", tenant_id=tenant_id)
+        return _bulk_status(204, location=_bulk_location(request, "Group", group_id), bulk_id=bulk_id)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported SCIM bulk method")
+    log_action(action, actor=_actor(request), resource=f"scim/group/{saved.group_id}", tenant_id=tenant_id, display_name=saved.display_name)
+    response = _group_to_scim(saved, request)
+    return _bulk_status(200, location=response["meta"]["location"], response=response, bulk_id=bulk_id)
+
+
+def _execute_bulk_operation(request: Request, operation: dict[str, Any]) -> dict[str, Any]:
+    method = str(operation.get("method") or "").strip().upper()
+    path = str(operation.get("path") or "").strip()
+    bulk_id = _optional_str(operation.get("bulkId"))
+    data = operation.get("data")
+    body = cast("dict[str, Any]", data if isinstance(data, dict) else {})
+    if method not in {"POST", "PATCH", "PUT", "DELETE"}:
+        raise HTTPException(status_code=400, detail="Unsupported SCIM bulk method")
+    if not path:
+        raise HTTPException(status_code=400, detail="Bulk operation path is required")
+    if method == "POST" and path.strip("/") == "Users":
+        return _bulk_create_user(request, body, bulk_id)
+    if method == "POST" and path.strip("/") == "Groups":
+        return _bulk_create_group(request, body, bulk_id)
+    if path.strip("/").startswith("Users"):
+        return _bulk_modify_user(request, method, _resource_id_from_path(path, "Users"), body, bulk_id)
+    if path.strip("/").startswith("Groups"):
+        return _bulk_modify_group(request, method, _resource_id_from_path(path, "Groups"), body, bulk_id)
+    raise HTTPException(status_code=404, detail="Unsupported SCIM bulk path")
+
+
 @router.get("/ServiceProviderConfig", name="scim_service_provider_config")
 async def service_provider_config(request: Request) -> dict[str, Any]:
     _require_scim(request)
     return {
         "schemas": [SCIM_SERVICE_PROVIDER_SCHEMA],
         "patch": {"supported": True},
-        "bulk": {"supported": False, "maxOperations": 0, "maxPayloadSize": 0},
+        "bulk": {"supported": True, "maxOperations": 100, "maxPayloadSize": 1048576},
         "filter": {"supported": True, "maxResults": 500},
         "changePassword": {"supported": False},
         "sort": {"supported": False},
@@ -341,6 +502,41 @@ async def resource_types(request: Request) -> dict[str, Any]:
         "itemsPerPage": len(resources),
         "Resources": resources,
     }
+
+
+@router.post("/Bulk", name="scim_bulk")
+async def bulk(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+    _require_scim(request)
+    operations = body.get("Operations", [])
+    if not isinstance(operations, list):
+        raise HTTPException(status_code=400, detail="Operations must be a list")
+    if len(operations) > 100:
+        raise HTTPException(status_code=413, detail="SCIM bulk Operations exceeds maxOperations=100")
+    fail_on_errors = body.get("failOnErrors")
+    if fail_on_errors is None:
+        fail_on_errors = len(operations)
+    try:
+        fail_on_errors_int = max(0, int(fail_on_errors))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="failOnErrors must be an integer") from exc
+
+    responses: list[dict[str, Any]] = []
+    errors = 0
+    for operation in operations:
+        if not isinstance(operation, dict):
+            responses.append(_bulk_status(400, response={"detail": "Bulk operation must be an object"}))
+            errors += 1
+        else:
+            try:
+                responses.append(_execute_bulk_operation(request, operation))
+            except HTTPException as exc:
+                bulk_id = _optional_str(operation.get("bulkId"))
+                responses.append(_bulk_status(exc.status_code, response=_scim_error_response(exc), bulk_id=bulk_id))
+                errors += 1
+        if fail_on_errors_int and errors >= fail_on_errors_int:
+            break
+
+    return {"schemas": [SCIM_BULK_RESPONSE_SCHEMA], "Operations": responses}
 
 
 @router.get("/Users", name="scim_list_users")

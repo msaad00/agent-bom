@@ -171,6 +171,24 @@ class TestDeltaAlerts:
         assert len(removed) == 1
         assert "agent:b" in removed[0]["node_ids"]
 
+    def test_delta_alerts_handle_large_stable_snapshots_without_noise(self):
+        from agent_bom.graph.webhooks import compute_delta_alerts
+
+        old = UnifiedGraph(scan_id="s1")
+        new = UnifiedGraph(scan_id="s2")
+        for idx in range(5000):
+            old.add_node(UnifiedNode(id=f"package:p{idx}", entity_type=EntityType.PACKAGE, label=f"p{idx}"))
+            new.add_node(UnifiedNode(id=f"package:p{idx}", entity_type=EntityType.PACKAGE, label=f"p{idx}"))
+
+        old.add_node(UnifiedNode(id="agent:removed", entity_type=EntityType.AGENT, label="removed"))
+        new.add_node(UnifiedNode(id="vuln:CVE-new", entity_type=EntityType.VULNERABILITY, label="CVE-new", severity="high"))
+
+        alerts = compute_delta_alerts(old, new)
+
+        assert [alert["type"] for alert in alerts] == ["new_vulnerability", "agent_removed"]
+        assert alerts[0]["node_ids"] == ["vuln:CVE-new"]
+        assert alerts[1]["node_ids"] == ["agent:removed"]
+
     def test_first_scan_no_old_graph(self):
         from agent_bom.graph.webhooks import compute_delta_alerts
 

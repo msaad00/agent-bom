@@ -18,7 +18,7 @@ import sys
 import threading
 import uuid
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -54,22 +54,34 @@ _executor_lock = threading.RLock()
 _executor = ThreadPoolExecutor(max_workers=max(1, API_SCAN_WORKERS))
 _executor_active_jobs = 0
 _executor_completed_jobs = 0
+_executor_draining = False
 
 
 def get_executor() -> ThreadPoolExecutor:
     """Return the shared scan executor, recreating it if a prior lifespan shut it down."""
     global _executor
     with _executor_lock:
-        if _executor._shutdown:
+        if _executor._shutdown and not _executor_draining:
             _executor = ThreadPoolExecutor(max_workers=max(1, API_SCAN_WORKERS))
         return _executor
+
+
+def _executor_for_submission_locked() -> ThreadPoolExecutor:
+    """Return an executor that can accept work while ``_executor_lock`` is held."""
+
+    global _executor  # noqa: PLW0603
+    if _executor_draining:
+        raise RuntimeError("scan executor is draining during API shutdown")
+    if _executor._shutdown:
+        _executor = ThreadPoolExecutor(max_workers=max(1, API_SCAN_WORKERS))
+    return _executor
 
 
 def _recycle_executor_if_idle() -> None:
     global _executor  # noqa: PLW0603
     if API_SCAN_WORKER_RECYCLE_JOBS <= 0:
         return
-    if _executor_active_jobs != 0 or _executor_completed_jobs % API_SCAN_WORKER_RECYCLE_JOBS != 0:
+    if _executor_draining or _executor_active_jobs != 0 or _executor_completed_jobs % API_SCAN_WORKER_RECYCLE_JOBS != 0:
         return
     old_executor = _executor
     _executor = ThreadPoolExecutor(max_workers=max(1, API_SCAN_WORKERS))
@@ -77,30 +89,73 @@ def _recycle_executor_if_idle() -> None:
     _release_scan_memory()
 
 
+def _observe_scan_future(done_future: Future | Any) -> None:
+    global _executor_active_jobs, _executor_completed_jobs  # noqa: PLW0603
+    try:
+        exc = done_future.exception()
+        if exc is not None:
+            _logger.error("Unhandled API scan worker failure", exc_info=(type(exc), exc, exc.__traceback__))
+    except Exception:  # noqa: BLE001
+        _logger.exception("Failed to observe API scan worker completion")
+    finally:
+        with _executor_lock:
+            _executor_active_jobs = max(0, _executor_active_jobs - 1)
+            _executor_completed_jobs += 1
+            _recycle_executor_if_idle()
+
+
 def submit_scan_job(job: ScanJob) -> None:
     """Submit a scan job to the bounded worker pool and observe completion."""
-    global _executor_active_jobs, _executor_completed_jobs  # noqa: PLW0603
+    global _executor_active_jobs  # noqa: PLW0603
 
     with _executor_lock:
-        executor = get_executor()
+        executor = _executor_for_submission_locked()
         _executor_active_jobs += 1
-        future = executor.submit(_run_scan_sync, job)
-
-    def _done(done_future) -> None:
-        global _executor_active_jobs, _executor_completed_jobs  # noqa: PLW0603
         try:
-            exc = done_future.exception()
-            if exc is not None:
-                _logger.error("Unhandled API scan worker failure", exc_info=(type(exc), exc, exc.__traceback__))
-        except Exception:  # noqa: BLE001
-            _logger.exception("Failed to observe API scan worker completion")
-        finally:
-            with _executor_lock:
-                _executor_active_jobs = max(0, _executor_active_jobs - 1)
-                _executor_completed_jobs += 1
-                _recycle_executor_if_idle()
+            future = executor.submit(_run_scan_sync, job)
+        except Exception:
+            _executor_active_jobs = max(0, _executor_active_jobs - 1)
+            raise
 
-    future.add_done_callback(_done)
+    future.add_done_callback(_observe_scan_future)
+
+
+def submit_scheduled_scan_job(loop: Any, job: ScanJob) -> None:
+    """Submit a scheduler-owned scan on the shared worker pool.
+
+    ``asyncio`` callers must not call ``get_executor()`` and then
+    ``loop.run_in_executor()`` separately, because API shutdown can close the
+    pool between those operations. This helper keeps the lookup and submission
+    under the same lifecycle lock used by HTTP-triggered scans.
+    """
+
+    global _executor_active_jobs  # noqa: PLW0603
+
+    with _executor_lock:
+        executor = _executor_for_submission_locked()
+        _executor_active_jobs += 1
+        try:
+            future = loop.run_in_executor(executor, _run_scan_sync, job)
+        except Exception:
+            _executor_active_jobs = max(0, _executor_active_jobs - 1)
+            raise
+
+    future.add_done_callback(_observe_scan_future)
+
+
+def shutdown_scan_executor(*, wait: bool, cancel_futures: bool) -> None:
+    """Drain or cancel the shared scan executor without racing submissions."""
+
+    global _executor_draining  # noqa: PLW0603
+    with _executor_lock:
+        _executor_draining = True
+        executor = _executor
+    try:
+        executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+    finally:
+        with _executor_lock:
+            if _executor is executor:
+                _executor_draining = False
 
 
 def _release_scan_memory() -> None:

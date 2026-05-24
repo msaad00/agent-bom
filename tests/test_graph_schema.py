@@ -886,6 +886,38 @@ class TestBackwardCompat:
         assert EntityType.VULNERABILITY in FINDING_ENTITY_TYPES
         assert EntityType.CREDENTIAL not in FINDING_ENTITY_TYPES
 
+    def test_code_topology_types_are_canonical(self):
+        from agent_bom.graph_schema import (
+            ENTITY_LEGEND,
+            RELATIONSHIP_LEGEND,
+            EntityType,
+            GraphSemanticLayer,
+            RelationshipType,
+            ocsf_type_uid,
+        )
+
+        assert EntityType.SOURCE_FILE.value == "source_file"
+        assert EntityType.CODE_MODULE.value == "code_module"
+        assert EntityType.CONFIG_FILE.value == "config_file"
+        assert EntityType.EXTERNAL_IMPORT.value == "external_import"
+        assert EntityType.CI_JOB.value == "ci_job"
+
+        assert RelationshipType.IMPORTS.value == "imports"
+        assert RelationshipType.DEFINES.value == "defines"
+        assert RelationshipType.RUNS.value == "runs"
+        assert RelationshipType.CONFIGURES.value == "configures"
+
+        entity_legend = {entry.key: entry for entry in ENTITY_LEGEND}
+        assert entity_legend["source_file"].layer == GraphSemanticLayer.CODE.value
+        assert entity_legend["code_module"].layer == GraphSemanticLayer.CODE.value
+        assert entity_legend["config_file"].layer == GraphSemanticLayer.CODE.value
+        assert entity_legend["external_import"].layer == GraphSemanticLayer.CODE.value
+        assert entity_legend["ci_job"].layer == GraphSemanticLayer.CI.value
+
+        relationship_keys = {entry.key for entry in RELATIONSHIP_LEGEND}
+        assert {"imports", "defines", "runs", "configures"}.issubset(relationship_keys)
+        assert ocsf_type_uid(EntityType.SOURCE_FILE) == 400101
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Regression tests for bug fixes

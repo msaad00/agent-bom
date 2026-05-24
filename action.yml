@@ -95,6 +95,10 @@ inputs:
     description: 'Post a findings summary comment on the pull request (requires GITHUB_TOKEN with pull-requests: write).'
     required: false
     default: 'false'
+  annotations:
+    description: 'Emit GitHub Actions line-level annotations for SARIF and skills findings.'
+    required: false
+    default: 'true'
   ignore-file:
     description: 'Path to ignore/allowlist file (default: .agent-bom-ignore.yaml). Suppress known false positives by CVE ID, package, or finding type.'
     required: false
@@ -744,6 +748,18 @@ runs:
         fi
 
         exit $EXIT_CODE
+
+    - name: Emit finding annotations
+      if: inputs.annotations == 'true' && always()
+      shell: bash
+      run: |
+        RESULT_FILE="${{ inputs.output }}"
+        if [ -z "$RESULT_FILE" ]; then
+          RESULT_FILE="agent-bom-results.sarif"
+        fi
+        if [ -f "$RESULT_FILE" ]; then
+          python3 "$GITHUB_ACTION_PATH/scripts/emit_github_annotations.py" "$RESULT_FILE"
+        fi
 
     - name: Post PR comment with findings summary
       if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'

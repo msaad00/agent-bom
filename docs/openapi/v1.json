@@ -11522,6 +11522,30 @@
         ]
       }
     },
+    "/v1/plugins/status": {
+      "get": {
+        "description": "Return metadata-only plugin registry status for operator dashboards.",
+        "operationId": "get_plugin_registry_status_v1_plugins_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Plugin Registry Status V1 Plugins Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Plugin Registry Status",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
     "/v1/posture": {
       "get": {
         "description": "Compute enterprise posture scorecard from the latest completed scan.\n\nReturns a letter grade (A-F), numeric score (0-100), and per-dimension\nbreakdown covering vulnerability posture, credential hygiene, supply\nchain quality, compliance coverage, active exploitation, and configuration.",

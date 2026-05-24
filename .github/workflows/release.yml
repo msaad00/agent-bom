@@ -220,6 +220,7 @@ jobs:
         run: |
           uvx twine==6.2.0 check dist/*
           python - <<'PY'
+          import json
           from pathlib import Path
           from zipfile import ZipFile
 
@@ -227,12 +228,16 @@ jobs:
           required = {
               "agent_bom/data/inventory.schema.json",
               "agent_bom/data/mcp-intelligence.schema.json",
+              "agent_bom/ui_dist/csp-hashes.json",
           }
           with ZipFile(wheel) as archive:
               names = set(archive.namelist())
+              csp_manifest = json.loads(archive.read("agent_bom/ui_dist/csp-hashes.json").decode("utf-8"))
           missing = sorted(required - names)
           if missing:
               raise SystemExit(f"wheel is missing required package data: {', '.join(missing)}")
+          if not csp_manifest.get("script_hashes"):
+              raise SystemExit("wheel dashboard CSP hash manifest has no script hashes; packaged UI would fall back to unsafe-inline")
           PY
 
       - name: Upload dist artifacts

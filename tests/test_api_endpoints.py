@@ -336,7 +336,11 @@ def test_docs_csp_relaxation_is_exact_route_scoped():
     near_miss_resp = client.get("/docs-anything")
 
     assert docs_resp.status_code == 200
-    assert "cdn.jsdelivr.net" in docs_resp.headers.get("content-security-policy", "")
+    csp = docs_resp.headers.get("content-security-policy", "")
+    directives = [directive.strip() for directive in csp.split(";") if directive.strip()]
+    script_src = next((directive for directive in directives if directive.startswith("script-src ")), "")
+    script_src_sources = script_src.split()[1:] if script_src else []
+    assert "https://cdn.jsdelivr.net" in script_src_sources
     assert near_miss_resp.headers.get("content-security-policy") == "default-src 'self'"
 
 

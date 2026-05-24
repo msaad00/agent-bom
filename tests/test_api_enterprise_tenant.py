@@ -11,10 +11,19 @@ from fastapi import HTTPException
 from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog, get_audit_log, set_audit_log
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
 from agent_bom.api.exception_store import ExceptionStatus, InMemoryExceptionStore, VulnException
-from agent_bom.api.models import CreateKeyRequest, FindingFeedbackRequest, JobStatus, RotateKeyRequest, ScanJob, ScanRequest
+from agent_bom.api.issue_mapping_store import InMemoryIssueMappingStore
+from agent_bom.api.models import (
+    CreateKeyRequest,
+    FindingFeedbackRequest,
+    IssueStatusUpdateRequest,
+    JobStatus,
+    RotateKeyRequest,
+    ScanJob,
+    ScanRequest,
+)
 from agent_bom.api.routes import enterprise
 from agent_bom.api.store import InMemoryJobStore
-from agent_bom.api.stores import _get_store, _get_trend_store, set_job_store, set_trend_store
+from agent_bom.api.stores import _get_store, _get_trend_store, set_issue_mapping_store, set_job_store, set_trend_store
 from agent_bom.audit_integrity import compute_audit_record_mac
 from agent_bom.baseline import InMemoryTrendStore, TrendPoint
 
@@ -72,6 +81,16 @@ def isolated_audit_log():
         yield store
     finally:
         set_audit_log(original)
+
+
+@pytest.fixture
+def isolated_issue_mapping_store():
+    store = InMemoryIssueMappingStore()
+    set_issue_mapping_store(store)
+    try:
+        yield store
+    finally:
+        set_issue_mapping_store(None)
 
 
 @pytest.mark.asyncio
@@ -286,7 +305,7 @@ async def test_create_jira_ticket_requires_header_token(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_create_jira_ticket_uses_header_token(monkeypatch):
+async def test_create_jira_ticket_uses_header_token(monkeypatch, isolated_issue_mapping_store):
     req = enterprise.JiraTicketRequest(
         jira_url="https://example.atlassian.net",
         email="user@example.com",
@@ -311,9 +330,73 @@ async def test_create_jira_ticket_uses_header_token(monkeypatch):
 
     result = await enterprise.create_jira_ticket_route(_request("tenant-alpha"), req, jira_api_token="token-abc")
 
-    assert result == {"ticket_key": "SEC-42", "status": "created"}
+    assert result["ticket_key"] == "SEC-42"
+    assert result["status"] == "created"
+    assert result["mapping"]["tenant_id"] == "tenant-alpha"
+    assert result["mapping"]["target_kind"] == "finding"
+    assert result["mapping"]["provider"] == "jira"
+    assert result["mapping"]["external_id"] == "SEC-42"
     assert captured["api_token"] == "token-abc"
     assert captured["project_key"] == "SEC"
+
+
+@pytest.mark.asyncio
+async def test_create_jira_ticket_is_idempotent_by_tenant_target_provider(monkeypatch, isolated_issue_mapping_store):
+    req = enterprise.JiraTicketRequest(
+        jira_url="https://example.atlassian.net",
+        email="user@example.com",
+        project_key="SEC",
+        finding={"vulnerability_id": "CVE-1", "package": "pkg"},
+    )
+    calls = 0
+
+    async def fake_create_jira_ticket(*, jira_url: str, email: str, api_token: str, project_key: str, finding: dict):
+        nonlocal calls
+        calls += 1
+        return "SEC-42"
+
+    monkeypatch.setattr("agent_bom.integrations.jira.create_jira_ticket", fake_create_jira_ticket)
+
+    first = await enterprise.create_jira_ticket_route(_request("tenant-alpha"), req, jira_api_token="token-abc")
+    second = await enterprise.create_jira_ticket_route(_request("tenant-alpha"), req, jira_api_token="token-abc")
+
+    assert calls == 1
+    assert first["status"] == "created"
+    assert second["status"] == "existing"
+    assert second["mapping"]["id"] == first["mapping"]["id"]
+
+
+@pytest.mark.asyncio
+async def test_issue_mapping_status_update_is_tenant_scoped(isolated_issue_mapping_store):
+    alpha = isolated_issue_mapping_store.put(
+        tenant_id="tenant-alpha",
+        target_kind="finding",
+        target_id="CVE-1|pkg",
+        provider="jira",
+        external_id="SEC-42",
+        external_url="https://example.atlassian.net/browse/SEC-42",
+    )
+    beta = isolated_issue_mapping_store.put(
+        tenant_id="tenant-beta",
+        target_kind="finding",
+        target_id="CVE-1|pkg",
+        provider="jira",
+        external_id="SEC-43",
+        external_url="https://example.atlassian.net/browse/SEC-43",
+    )
+
+    result = await enterprise.update_issue_mapping_status(
+        _request("tenant-alpha"),
+        alpha.mapping_id,
+        IssueStatusUpdateRequest(status="done"),
+    )
+
+    assert result["mapping"]["status"] == "done"
+    assert isolated_issue_mapping_store.get(alpha.mapping_id, tenant_id="tenant-alpha").status == "done"
+    assert isolated_issue_mapping_store.get(beta.mapping_id, tenant_id="tenant-beta").status == "open"
+    with pytest.raises(HTTPException) as error:
+        await enterprise.update_issue_mapping_status(_request("tenant-beta"), alpha.mapping_id, IssueStatusUpdateRequest(status="done"))
+    assert error.value.status_code == 404
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,7 @@ from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 if TYPE_CHECKING:
     from agent_bom.api.credential_store import CredentialRefStore
     from agent_bom.api.graph_store import GraphStoreProtocol
+    from agent_bom.api.issue_mapping_store import IssueMappingStore
     from agent_bom.api.mcp_observation_store import MCPObservationStore
     from agent_bom.api.models import ScanJob
     from agent_bom.api.schedule_store import ScheduleStore
@@ -328,6 +329,7 @@ def set_scim_store(store: SCIMStore | None) -> None:
 _source_store: SourceStore | None = None
 _credential_ref_store: CredentialRefStore | None = None
 _mcp_observation_store: MCPObservationStore | None = None
+_issue_mapping_store: IssueMappingStore | None = None
 
 
 def _get_source_store() -> SourceStore:
@@ -377,6 +379,29 @@ def set_mcp_observation_store(store: Any) -> None:
     """Switch the MCP observation store backend."""
     global _mcp_observation_store
     _mcp_observation_store = store
+
+
+def _get_issue_mapping_store() -> IssueMappingStore:
+    """Get the tenant-scoped external issue mapping store."""
+    global _issue_mapping_store
+    if _issue_mapping_store is None:
+        with _store_lock:
+            if _issue_mapping_store is None:
+                if os.environ.get("AGENT_BOM_DB"):
+                    from agent_bom.api.issue_mapping_store import SQLiteIssueMappingStore
+
+                    _issue_mapping_store = SQLiteIssueMappingStore(os.environ["AGENT_BOM_DB"])
+                else:
+                    from agent_bom.api.issue_mapping_store import InMemoryIssueMappingStore
+
+                    _issue_mapping_store = InMemoryIssueMappingStore()
+    return _issue_mapping_store
+
+
+def set_issue_mapping_store(store: IssueMappingStore | None) -> None:
+    """Switch the issue mapping store backend."""
+    global _issue_mapping_store
+    _issue_mapping_store = store
 
 
 # ─── Exception store (enterprise) ───────────────────────────────────────────

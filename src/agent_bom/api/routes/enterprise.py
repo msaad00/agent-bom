@@ -49,12 +49,13 @@ from agent_bom.api.models import (
     ExceptionRequest,
     FalsePositiveRequest,
     FindingFeedbackRequest,
+    IssueStatusUpdateRequest,
     JiraTicketRequest,
     RotateKeyRequest,
     SAMLLoginRequest,
     TenantQuotaUpdateRequest,
 )
-from agent_bom.api.stores import _get_exception_store, _get_store, _get_trend_store
+from agent_bom.api.stores import _get_exception_store, _get_issue_mapping_store, _get_store, _get_trend_store
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -198,6 +199,25 @@ def _feedback_response(exc: Any) -> dict[str, Any]:
         "expires_at": exc.expires_at,
         "tenant_id": exc.tenant_id,
     }
+
+
+def _jira_mapping_target(req: JiraTicketRequest) -> tuple[str, str]:
+    target_kind = req.target_kind or "finding"
+    if req.target_id:
+        return target_kind, req.target_id
+    finding = req.finding or {}
+    if target_kind == "exposure_path":
+        target_id = str(finding.get("exposure_path_id") or finding.get("path_id") or finding.get("id") or "")
+    else:
+        vuln_id = str(finding.get("vulnerability_id") or finding.get("cve_id") or finding.get("id") or "unknown")
+        package = str(finding.get("package") or finding.get("package_name") or "*")
+        server = str(finding.get("server_name") or finding.get("server") or "")
+        target_id = "|".join(part for part in (vuln_id, package, server) if part)
+    return target_kind, target_id[:256] or "unknown"
+
+
+def _jira_issue_url(jira_url: str, ticket_key: str) -> str:
+    return f"{jira_url.rstrip('/')}/browse/{ticket_key}"
 
 
 def _auth_session_state(request: Request) -> dict:
@@ -1318,6 +1338,17 @@ async def create_jira_ticket_route(
 
     if not jira_api_token:
         raise HTTPException(status_code=400, detail="Missing X-Jira-Api-Token header")
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or req.email or "system"
+    target_kind, target_id = _jira_mapping_target(req)
+    mapping_store = _get_issue_mapping_store()
+    existing = mapping_store.find(tenant_id=tenant_id, target_kind=target_kind, target_id=target_id, provider="jira")
+    if existing:
+        return {
+            "ticket_key": existing.external_id,
+            "status": "existing",
+            "mapping": existing.to_dict(),
+        }
 
     # Validate Jira URL to prevent SSRF
     try:
@@ -1340,8 +1371,15 @@ async def create_jira_ticket_route(
     if not ticket_key:
         raise HTTPException(status_code=502, detail="Jira API returned no ticket key")
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
-    actor = getattr(request.state, "api_key_name", "") or req.email or "system"
+    mapping = mapping_store.put(
+        tenant_id=tenant_id,
+        target_kind=target_kind,
+        target_id=target_id,
+        provider="jira",
+        external_id=ticket_key,
+        external_url=_jira_issue_url(req.jira_url, ticket_key),
+        status="open",
+    )
     log_action(
         "findings.jira_ticket_created",
         actor=actor,
@@ -1349,9 +1387,33 @@ async def create_jira_ticket_route(
         tenant_id=tenant_id,
         vuln_id=req.finding.get("vulnerability_id", ""),
         package=req.finding.get("package", ""),
+        issue_mapping_id=mapping.mapping_id,
+        target_kind=target_kind,
+        target_id=target_id,
     )
 
-    return {"ticket_key": ticket_key, "status": "created"}
+    return {"ticket_key": ticket_key, "status": "created", "mapping": mapping.to_dict()}
+
+
+@router.put("/v1/integrations/issues/{mapping_id}/status", tags=["enterprise"])
+async def update_issue_mapping_status(request: Request, mapping_id: str, req: IssueStatusUpdateRequest) -> dict:
+    """Update tenant-scoped external issue mapping status after provider sync."""
+    from agent_bom.api.audit_log import log_action
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
+    mapping = _get_issue_mapping_store().update_status(mapping_id, tenant_id=tenant_id, status=req.status)
+    if not mapping:
+        raise HTTPException(status_code=404, detail="Issue mapping not found")
+    log_action(
+        "integrations.issue_status_updated",
+        actor=actor,
+        resource=f"{mapping.provider}/{mapping.external_id}",
+        tenant_id=tenant_id,
+        issue_mapping_id=mapping.mapping_id,
+        status=mapping.status,
+    )
+    return {"mapping": mapping.to_dict()}
 
 
 # ── False Positive Management ────────────────────────────────────────────────

@@ -78,6 +78,18 @@ def test_list_empty():
     assert data["count"] == 0
 
 
+def test_list_agents_alias_does_not_hit_agent_detail_route():
+    client, store = _fresh_client()
+    store.put(_make(agent_id="a-1", name="one"))
+
+    resp = client.get("/v1/fleet/agents")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["count"] == 1
+    assert data["agents"][0]["agent_id"] == "a-1"
+
+
 def test_list_with_agents():
     client, store = _fresh_client()
     store.put(_make(agent_id="a-1", name="one"))

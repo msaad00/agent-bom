@@ -86,12 +86,16 @@ def compute_delta_alerts(
     """
     alerts: list[dict[str, Any]] = []
 
-    old_node_ids = set(old_graph.nodes) if old_graph else set()
-    new_node_ids = set(new_graph.nodes)
+    old_nodes = old_graph.nodes if old_graph else {}
 
-    # ── New critical/high vulnerabilities ────────────────────────────
-    for nid in new_node_ids - old_node_ids:
-        node = new_graph.nodes[nid]
+    # ── New critical/high findings ───────────────────────────────────
+    # Large control-plane snapshots are usually dominated by unchanged
+    # inventory nodes. Walk the new node mapping once and use O(1) membership
+    # against the prior snapshot instead of materializing full node-id
+    # difference sets or scanning the same delta twice.
+    for nid, node in new_graph.nodes.items():
+        if nid in old_nodes:
+            continue
         if node.entity_type == EntityType.VULNERABILITY and SEVERITY_RANK.get(node.severity, 0) >= 4:
             details = {
                 "node_ids": [nid],
@@ -124,11 +128,7 @@ def compute_delta_alerts(
                     },
                 }
             )
-
-    # ── New misconfigurations ────────────────────────────────────────
-    for nid in new_node_ids - old_node_ids:
-        node = new_graph.nodes[nid]
-        if node.entity_type == EntityType.MISCONFIGURATION and SEVERITY_RANK.get(node.severity, 0) >= 4:
+        elif node.entity_type == EntityType.MISCONFIGURATION and SEVERITY_RANK.get(node.severity, 0) >= 4:
             details = {
                 "node_ids": [nid],
                 "scan_id": new_graph.scan_id,
@@ -234,9 +234,8 @@ def compute_delta_alerts(
             )
 
     # ── Nodes removed (potential drift) ──────────────────────────────
-    removed = old_node_ids - new_node_ids
-    if removed and old_graph:
-        agent_removed = [nid for nid in removed if old_graph.nodes[nid].entity_type == EntityType.AGENT]
+    if old_graph:
+        agent_removed = [nid for nid, node in old_nodes.items() if nid not in new_graph.nodes and node.entity_type == EntityType.AGENT]
         if agent_removed:
             details = {
                 "node_ids": agent_removed,

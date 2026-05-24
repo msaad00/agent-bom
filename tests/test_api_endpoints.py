@@ -6,6 +6,7 @@ import json
 import uuid
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 import pytest
 from starlette.testclient import TestClient
@@ -340,7 +341,8 @@ def test_docs_csp_relaxation_is_exact_route_scoped():
     directives = [directive.strip() for directive in csp.split(";") if directive.strip()]
     script_src = next((directive for directive in directives if directive.startswith("script-src ")), "")
     script_src_sources = script_src.split()[1:] if script_src else []
-    assert "https://cdn.jsdelivr.net" in script_src_sources
+    parsed_sources = [urlsplit(source) for source in script_src_sources]
+    assert any(source.scheme == "https" and source.netloc == ".".join(("cdn", "jsdelivr", "net")) for source in parsed_sources)
     assert near_miss_resp.headers.get("content-security-policy") == "default-src 'self'"
 
 

@@ -348,6 +348,34 @@ def test_verify_raises_oidc_error_on_bad_jwt():
                     verify_oidc_token("not.a.real.jwt", "https://example.com", jwks_uri="https://example.com/.well-known/jwks.json")
 
 
+def test_verify_oidc_token_allows_modern_asymmetric_algorithms():
+    from agent_bom.api.oidc import OIDC_ALLOWED_ALGORITHMS, verify_oidc_token
+
+    mock_jwks_client = MagicMock()
+    mock_signing_key = MagicMock()
+    mock_signing_key.key = "public-key"
+    mock_jwks_client.get_signing_key_from_jwt.return_value = mock_signing_key
+
+    mock_jwt_module = MagicMock()
+    mock_jwt_module.PyJWKClient.return_value = mock_jwks_client
+    mock_jwt_module.PyJWTError = Exception
+    mock_jwt_module.decode.return_value = {
+        "sub": "user-1",
+        "iss": "https://example.com",
+        "exp": 1,
+        "iat": 1,
+    }
+
+    with patch("agent_bom.api.oidc._check_pyjwt"):
+        with patch.dict("sys.modules", {"jwt": mock_jwt_module}):
+            verify_oidc_token("header.payload.signature", "https://example.com", jwks_uri="https://example.com/.well-known/jwks.json")
+
+    algorithms = mock_jwt_module.decode.call_args.kwargs["algorithms"]
+    assert algorithms == list(OIDC_ALLOWED_ALGORITHMS)
+    assert "ES512" in algorithms
+    assert "EdDSA" in algorithms
+
+
 def test_oidc_config_verify_returns_claims_and_role():
     """verify() on OIDCConfig returns (claims, role) on success."""
     cfg = OIDCConfig(issuer="https://example.com", audience="agent-bom")

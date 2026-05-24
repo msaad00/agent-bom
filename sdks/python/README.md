@@ -16,6 +16,7 @@ client = AgentBomClient(
 print(client.health())
 print(client.exposure_paths(limit=5, min_risk=70))
 print(client.runtime_production_index())
+print(client.should_i_deploy("flask@2.0.0", block_risk=80))
 ```
 
 ## Covered Surfaces
@@ -36,3 +37,22 @@ print(client.runtime_production_index())
 Configure either `api_key` or `bearer_token`, not both. Tenant scope is sent as
 `X-Agent-Bom-Tenant-ID` and, where the API accepts it, as the request
 `tenant_id`.
+
+## Workflow Examples
+
+```python
+client.ingest_findings(
+    [{"id": "finding-1", "severity": "high", "title": "Demo finding"}],
+    source="external-scanner",
+)
+
+client.register_dataset_version(
+    "training-set",
+    version_id="2026-05-24",
+    artifact_uri="s3://customer-owned-bucket/training-set.jsonl",
+    digest="sha256:...",
+)
+
+versions = client.dataset_versions("training-set")
+decision = client.should_i_deploy("flask@2.0.0", block_risk=80)
+```

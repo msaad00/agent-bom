@@ -38,6 +38,21 @@ def test_client_sets_auth_headers_and_strips_none_body_fields() -> None:
     assert captured["body"] == {"candidate": "flask@2.0.0", "tenant_id": "tenant-a", "block_risk": 80}
 
 
+def test_client_accepts_positional_deploy_candidate() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(200, json={"decision": "warn"})
+
+    client = _client(handler)
+
+    result = client.should_i_deploy("flask@2.0.0", block_risk=60)
+
+    assert result["decision"] == "warn"
+    assert captured["body"] == {"candidate": "flask@2.0.0", "tenant_id": "tenant-a", "block_risk": 60}
+
+
 def test_client_builds_query_params() -> None:
     urls: list[str] = []
 
@@ -98,6 +113,25 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
         ("GET", "/v1/datasets/dataset-a/versions"),
         ("GET", "/v1/datasets/dataset-a/versions/v1"),
     ]
+
+
+def test_client_accepts_positional_findings_payload() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(201, json={"ingested": 1})
+
+    client = _client(handler)
+
+    result = client.ingest_findings([{"id": "finding-1", "severity": "high"}], source="sdk-test")
+
+    assert result["ingested"] == 1
+    assert captured["body"] == {
+        "findings": [{"id": "finding-1", "severity": "high"}],
+        "source": "sdk-test",
+        "tenant_id": "tenant-a",
+    }
 
 
 def test_client_rejects_ambiguous_auth() -> None:

@@ -38,6 +38,39 @@ SF_PARAMS = {
 }
 
 
+# ─── tenant row access policy ────────────────────────────────────────────────
+
+
+def test_tenant_row_access_policy_applies_to_all_tenant_tables():
+    from agent_bom.api.snowflake_store import (
+        _SNOWFLAKE_TENANT_ROW_ACCESS_POLICY,
+        _SNOWFLAKE_TENANT_TABLES,
+        _ensure_tenant_row_access_policy,
+    )
+
+    cur = _mock_cursor()
+
+    _ensure_tenant_row_access_policy(cur, _SNOWFLAKE_TENANT_TABLES)
+
+    sql_calls = [call.args[0] for call in cur.execute.call_args_list]
+    rendered_sql = "\n".join(sql_calls)
+    assert "CREATE TABLE IF NOT EXISTS agent_bom_tenant_access" in rendered_sql
+    assert f"CREATE ROW ACCESS POLICY IF NOT EXISTS {_SNOWFLAKE_TENANT_ROW_ACCESS_POLICY}" in rendered_sql
+    assert "IS_ROLE_IN_SESSION('AGENT_BOM_RLS_ADMIN')" in rendered_sql
+    assert "snowflake_role = CURRENT_ROLE()" in rendered_sql
+    for table_name in _SNOWFLAKE_TENANT_TABLES:
+        assert f"ALTER TABLE {table_name} ADD ROW ACCESS POLICY {_SNOWFLAKE_TENANT_ROW_ACCESS_POLICY} ON (tenant_id)" in sql_calls
+
+
+def test_row_access_policy_duplicate_attachment_is_idempotent():
+    from agent_bom.api.snowflake_store import _execute_row_access_policy_ddl
+
+    cur = _mock_cursor()
+    cur.execute.side_effect = Exception("Row access policy already exists on table")
+
+    _execute_row_access_policy_ddl(cur, "ALTER TABLE scan_jobs ADD ROW ACCESS POLICY agent_bom_tenant_isolation ON (tenant_id)")
+
+
 # ─── build_connection_params ──────────────────────────────────────────────────
 
 

@@ -1866,6 +1866,35 @@ paths:
       summary: Readiness
       tags:
       - meta
+  /scim/v2/Bulk:
+    post:
+      operationId: scim_bulk_scim_v2_Bulk_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              title: Body
+              type: object
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Scim Bulk Scim V2 Bulk Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Scim Bulk
+      tags:
+      - scim
   /scim/v2/Groups:
     get:
       operationId: scim_list_groups_scim_v2_Groups_get

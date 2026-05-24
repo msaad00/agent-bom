@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -163,6 +164,19 @@ def _assert_mcp_registry_serialization_stable() -> None:
     normalized = dumps_registry_json(json.loads(current))
     if normalized != current:
         _fail("src/agent_bom/mcp_registry.json is not in canonical registry serialization. Run the registry formatter before tagging.")
+
+
+def _assert_data_model_atlas_current() -> None:
+    result = subprocess.run(
+        [sys.executable, "scripts/regenerate_data_model_atlas.py", "--check"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        _fail(detail or "docs/DATA_MODEL.md generated atlas is stale")
 
 
 def _server_card_list(variable_name: str) -> list[dict[str, object]]:
@@ -337,6 +351,7 @@ def main() -> int:
             _fail(f"pyproject.toml description contains stale storefront phrase: {marker}")
 
     _assert_mcp_registry_serialization_stable()
+    _assert_data_model_atlas_current()
 
     if f"## [{version}]" not in changelog:
         _fail(f"CHANGELOG.md must include a {version} release entry before tagging")

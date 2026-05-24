@@ -593,6 +593,12 @@ class JiraTicketRequest(BaseModel):
     email: str
     project_key: str
     finding: dict[str, Any]
+    target_kind: str = Field("finding", pattern="^(finding|exposure_path)$")
+    target_id: str = Field("", max_length=256)
+
+
+class IssueStatusUpdateRequest(BaseModel):
+    status: str = Field(..., min_length=1, max_length=64)
 
 
 class FalsePositiveRequest(BaseModel):

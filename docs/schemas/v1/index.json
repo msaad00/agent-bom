@@ -107,6 +107,11 @@
       "schema": "HealthResponse.json"
     },
     {
+      "doc": "",
+      "name": "IssueStatusUpdateRequest",
+      "schema": "IssueStatusUpdateRequest.json"
+    },
+    {
       "doc": "Request body for POST /v1/findings/jira.",
       "name": "JiraTicketRequest",
       "schema": "JiraTicketRequest.json"

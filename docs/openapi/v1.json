@@ -1347,6 +1347,21 @@
         "title": "IntelPackageMatchRequest",
         "type": "object"
       },
+      "IssueStatusUpdateRequest": {
+        "properties": {
+          "status": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "IssueStatusUpdateRequest",
+        "type": "object"
+      },
       "JiraTicketRequest": {
         "description": "Request body for POST /v1/findings/jira.",
         "properties": {
@@ -1365,6 +1380,18 @@
           },
           "project_key": {
             "title": "Project Key",
+            "type": "string"
+          },
+          "target_id": {
+            "default": "",
+            "maxLength": 256,
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_kind": {
+            "default": "finding",
+            "pattern": "^(finding|exposure_path)$",
+            "title": "Target Kind",
             "type": "string"
           }
         },
@@ -10981,6 +11008,61 @@
         "summary": "Get Fix First Graph View",
         "tags": [
           "graph"
+        ]
+      }
+    },
+    "/v1/integrations/issues/{mapping_id}/status": {
+      "put": {
+        "description": "Update tenant-scoped external issue mapping status after provider sync.",
+        "operationId": "update_issue_mapping_status_v1_integrations_issues__mapping_id__status_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mapping_id",
+            "required": true,
+            "schema": {
+              "title": "Mapping Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueStatusUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Issue Mapping Status V1 Integrations Issues  Mapping Id  Status Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Issue Mapping Status",
+        "tags": [
+          "enterprise"
         ]
       }
     },

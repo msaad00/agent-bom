@@ -354,6 +354,14 @@ def test_release_registry_gate_is_deterministic_without_live_sync():
     assert "agent-bom registry sync-all" not in workflow
 
 
+def test_release_consistency_checks_generated_data_model_atlas():
+    """The fast release gate should catch stale DATA_MODEL atlas counts before matrix tests."""
+    release_check = (ROOT / "scripts" / "check_release_consistency.py").read_text()
+    assert "_assert_data_model_atlas_current" in release_check
+    assert "scripts/regenerate_data_model_atlas.py" in release_check
+    assert "--check" in release_check
+
+
 def test_release_verifies_pypi_provenance_for_each_published_file():
     """The release workflow should fail if any uploaded PyPI file lacks provenance."""
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()

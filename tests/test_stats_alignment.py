@@ -92,6 +92,12 @@ def _count_test_files() -> int:
     return len(list((ROOT / "tests").glob("test_*.py")))
 
 
+def _count_mcp_registry_servers() -> int:
+    """Count bundled MCP registry server records."""
+    data = json.loads((SRC / "mcp_registry.json").read_text())
+    return int(data.get("_total_servers") or len(data.get("servers", [])))
+
+
 def _graph_taxonomy_counts() -> tuple[int, int]:
     """Count canonical graph entities and relationships from code."""
     from agent_bom.graph import EntityType, RelationshipType
@@ -111,6 +117,7 @@ ACTUAL_DETECTORS = _count_detector_classes()
 ACTUAL_CLOUD_PROVIDERS = _count_cloud_providers()
 ACTUAL_MODULES = _count_python_modules()
 ACTUAL_TEST_FILES = _count_test_files()
+ACTUAL_MCP_REGISTRY_SERVERS = _count_mcp_registry_servers()
 ACTUAL_GRAPH_ENTITY_TYPES, ACTUAL_GRAPH_RELATIONSHIP_TYPES = _graph_taxonomy_counts()
 
 
@@ -249,6 +256,10 @@ class TestMarkdownStats:
         assert not missing_entities, f"DATA_MODEL.md missing graph entities: {missing_entities}"
         assert not missing_relationships, f"DATA_MODEL.md missing graph relationships: {missing_relationships}"
 
+    def test_site_index_registry_count_matches_bundled_registry(self):
+        text = (ROOT / "site-docs" / "index.md").read_text()
+        assert f"{ACTUAL_MCP_REGISTRY_SERVERS} MCP server security metadata entries" in text
+
 
 # ---------------------------------------------------------------------------
 # Integration files alignment
@@ -257,6 +268,31 @@ class TestMarkdownStats:
 
 class TestIntegrationStats:
     """Verify integration metadata reflects actual counts."""
+
+    def test_docker_mcp_tools_json_matches_tool_count(self):
+        path = ROOT / "integrations" / "docker-mcp-registry" / "tools.json"
+        if not path.exists():
+            pytest.skip("Docker MCP tools.json not found")
+        data = json.loads(path.read_text())
+        assert len(data) == ACTUAL_MCP_TOOLS
+
+    def test_docker_mcp_submission_tool_count_matches_code(self):
+        path = ROOT / "integrations" / "docker-mcp-registry" / "SUBMISSION.md"
+        if not path.exists():
+            pytest.skip("Docker MCP submission docs not found")
+        text = path.read_text()
+        assert f"all {ACTUAL_MCP_TOOLS} MCP tools" in text
+        assert "all 41 MCP tools" not in text
+
+    def test_docker_mcp_readme_client_count_matches_code(self):
+        from agent_bom.discovery.coverage import supported_clients
+
+        path = ROOT / "integrations" / "docker-mcp-registry" / "readme.md"
+        if not path.exists():
+            pytest.skip("Docker MCP readme not found")
+        text = path.read_text()
+        assert f"{len(supported_clients())} first-class MCP client types" in text
+        assert "30 MCP client types" not in text
 
     def test_mcp_registry_version_matches(self):
         from agent_bom import __version__
@@ -317,3 +353,4 @@ def test_print_actual_counts(capsys):
     print(f"Cloud providers:          {ACTUAL_CLOUD_PROVIDERS}")
     print(f"Python modules:           {ACTUAL_MODULES}")
     print(f"Test files:               {ACTUAL_TEST_FILES}")
+    print(f"MCP registry servers:     {ACTUAL_MCP_REGISTRY_SERVERS}")

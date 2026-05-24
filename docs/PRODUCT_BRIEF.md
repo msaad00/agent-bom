@@ -64,14 +64,12 @@ the CLI, reports, and browser cockpit. AI agents use the MCP/API/CLI surfaces
 to request the same `ExposurePath` evidence, skill verdicts, and deploy
 decisions under the same auth, tenant, and audit boundary.
 
-That is the useful lesson from developer-observability products: the cockpit is
-valuable, but the product primitive must be callable. `agent-bom` is
-Langfuse-like in shape only: humans get a cockpit and agents get callable
-primitives, but the primitive is not a trace. It is graph-backed security
-evidence: `ExposurePath`, findings, skill verdicts, compliance tags, runtime
-audit, and deploy decisions. Public copy should describe this as an open
-security data plane only when paired with exact shipped surfaces and roadmap
-boundaries.
+The useful lesson from developer-observability products is that the cockpit is
+valuable, but the product primitive must be callable. `agent-bom` gives humans
+a cockpit and agents strict-argument tools over graph-backed security evidence:
+`ExposurePath`, findings, skill verdicts, compliance tags, runtime audit, and
+deploy decisions. Public copy should describe this as an open security data
+plane only when paired with exact shipped surfaces and roadmap boundaries.
 
 This framing does not narrow the deployment story. It makes "deploy in your
 own cloud / infrastructure" the production form of lane 2, with runtime

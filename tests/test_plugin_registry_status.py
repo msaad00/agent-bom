@@ -62,6 +62,21 @@ def test_plugin_registry_status_is_metadata_only_and_counts_builtins(monkeypatch
     ]
 
 
+def test_plugin_registry_status_does_not_expose_entrypoint_enumeration_errors(monkeypatch):
+    def fail_entry_points() -> object:
+        raise RuntimeError("boom token=secret from /Users/alice/plugin.py")
+
+    monkeypatch.setattr("agent_bom.extensions.metadata.entry_points", fail_entry_points)
+
+    status = plugin_registry_status()
+    warning_text = " ".join(status["warnings"])
+
+    assert "Could not enumerate entry points for agent_bom.cloud_providers" in warning_text
+    assert "secret" not in warning_text
+    assert "/Users/alice" not in warning_text
+    assert "boom" not in warning_text
+
+
 def test_plugins_status_cli_emits_json(monkeypatch):
     _patch_entry_points(
         monkeypatch,

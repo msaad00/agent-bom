@@ -257,8 +257,8 @@ def plugin_entrypoint_warnings() -> list[str]:
 def _safe_entrypoint_metadata(group: str, warnings: list[str]) -> list[dict[str, str]]:
     try:
         entry_points = list(_entry_points_for_group(group))
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(sanitize_registry_warning(f"Could not enumerate entry points for {group}: {exc}"))
+    except Exception:  # noqa: BLE001
+        warnings.append(sanitize_registry_warning(f"Could not enumerate entry points for {group}"))
         return []
 
     entries: list[dict[str, str]] = []

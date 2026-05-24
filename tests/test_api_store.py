@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
@@ -120,6 +123,50 @@ def test_scan_memory_release_is_best_effort(monkeypatch):
     monkeypatch.setattr(pipeline.ctypes, "CDLL", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("missing libc")))
 
     pipeline._release_scan_memory()
+
+
+def test_scan_executor_recreates_after_shutdown() -> None:
+    from agent_bom.api import pipeline
+
+    pipeline.shutdown_scan_executor(wait=True, cancel_futures=False)
+
+    executor = pipeline.get_executor()
+
+    assert executor._max_workers >= 1
+    assert not executor._shutdown
+
+
+def test_scan_executor_rejects_submissions_while_draining() -> None:
+    from agent_bom.api import pipeline
+
+    with pipeline._executor_lock:
+        pipeline._executor_draining = True
+    try:
+        with pytest.raises(RuntimeError, match="scan executor is draining"):
+            pipeline.submit_scan_job(_make_job("during-drain"))
+    finally:
+        with pipeline._executor_lock:
+            pipeline._executor_draining = False
+
+
+def test_scheduled_scan_submission_uses_shared_lifecycle(monkeypatch) -> None:
+    from agent_bom.api import pipeline
+
+    completed: list[str] = []
+    monkeypatch.setattr(pipeline, "_run_scan_sync", lambda job: completed.append(job.job_id))
+
+    async def _run() -> None:
+        pipeline.shutdown_scan_executor(wait=True, cancel_futures=False)
+        loop = asyncio.get_running_loop()
+        pipeline.submit_scheduled_scan_job(loop, _make_job("scheduled-after-shutdown"))
+        for _ in range(20):
+            if completed:
+                return
+            await asyncio.sleep(0.01)
+
+    asyncio.run(_run())
+
+    assert completed == ["scheduled-after-shutdown"]
 
 
 def test_compacted_hot_cache_job_hydrates_full_scan_response(monkeypatch):

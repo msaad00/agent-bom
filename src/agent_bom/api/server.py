@@ -416,7 +416,6 @@ async def _lifespan(app_instance: FastAPI):
     # Start scheduler background loop
     global _scheduler_task
     from agent_bom.api.pipeline import _now
-    from agent_bom.api.pipeline import _run_scan_sync as _run_scan  # local alias avoids F811 with re-export
     from agent_bom.api.scheduler import scheduler_loop
     from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 
@@ -450,7 +449,7 @@ async def _lifespan(app_instance: FastAPI):
             except Exception:  # noqa: BLE001
                 pass
         loop = asyncio.get_running_loop()
-        loop.run_in_executor(get_executor(), _run_scan, job)
+        submit_scheduled_scan_job(loop, job)
         return job.job_id
 
     _scheduler_task = asyncio.create_task(scheduler_loop(_get_schedule_store(), _schedule_scan))
@@ -473,7 +472,7 @@ async def _lifespan(app_instance: FastAPI):
     _drain_seconds = float(os.environ.get("AGENT_BOM_SHUTDOWN_DRAIN_SECONDS", "25"))
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(lambda: get_executor().shutdown(wait=True, cancel_futures=False)),
+            asyncio.to_thread(lambda: shutdown_scan_executor(wait=True, cancel_futures=False)),
             timeout=_drain_seconds,
         )
     except asyncio.TimeoutError:
@@ -481,7 +480,7 @@ async def _lifespan(app_instance: FastAPI):
             "shutdown drain timeout after %.1fs; force-cancelling in-flight scans",
             _drain_seconds,
         )
-        get_executor().shutdown(wait=False, cancel_futures=True)
+        shutdown_scan_executor(wait=False, cancel_futures=True)
     # Close Postgres connection pool if active
     try:
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
@@ -709,6 +708,8 @@ from agent_bom.api.pipeline import (  # noqa: E402
     get_executor,  # noqa: F401 — re-exported for tests
     iter_pipeline_dag_event_records,  # noqa: F401 — re-exported for tests/artifact consumers
     pipeline_dag_events_jsonl,  # noqa: F401 — re-exported for tests/artifact consumers
+    shutdown_scan_executor,
+    submit_scheduled_scan_job,
 )
 from agent_bom.api.routes.agent_manifest import router as _agent_manifest_router  # noqa: E402
 

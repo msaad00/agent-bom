@@ -2,6 +2,7 @@
 
 Endpoints:
     GET   /v1/fleet                   list fleet agents (filterable)
+    GET   /v1/fleet/agents            alias for list fleet agents
     GET   /v1/fleet/stats             fleet-wide statistics
     GET   /v1/fleet/{agent_id}        single agent with trust breakdown
     POST  /v1/fleet/sync              discovery + sync to fleet registry
@@ -78,6 +79,7 @@ def _request_header(request: Request, key: str) -> str:
 
 
 @router.get("/v1/fleet", tags=["fleet"])
+@router.get("/v1/fleet/agents", tags=["fleet"], include_in_schema=False)
 async def list_fleet(
     request: Request,
     state: str | None = None,

@@ -23,6 +23,9 @@ const client = new AgentBomClient({
 });
 
 const health = await client.health();
+const manifest = await client.agentManifest();
+const runtime = await client.runtimeProductionIndex();
+const findings = await client.listFindings({ severity: "high" });
 const paths = await client.exposurePaths({ limit: 5, minRisk: 70 });
 const decision = await client.shouldIDeploy({
   candidate: "flask@2.0.0",
@@ -37,8 +40,27 @@ const dataset = await client.registerDatasetVersion({
   versionId: "2026-05-17",
   source: "ci",
 });
+const versions = await client.datasetVersions("hf-corpus");
+const version = await client.datasetVersion("hf-corpus", "2026-05-17");
+const advisory = await client.intelLookup("CVE-2026-0001");
+const intel = await client.intelMatch({ ecosystem: "npm", name: "demo", version: "1.0.0" });
+const sources = await client.intelSources();
 
-console.log(health.status, paths.paths.length, decision.decision, ingest.ingested, dataset.dataset.version_id);
+console.log(
+  health.status,
+  manifest.schema_version,
+  runtime.schema_version,
+  findings.count,
+  paths.paths.length,
+  decision.decision,
+  ingest.ingested,
+  dataset.dataset.version_id,
+  versions.count,
+  version.dataset.version_id,
+  advisory.schema_version,
+  intel.schema_version,
+  sources.schema_version,
+);
 ```
 
 ## Boundary

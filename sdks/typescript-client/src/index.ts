@@ -33,6 +33,13 @@ export interface ExposurePathQuery {
   minRisk?: number;
 }
 
+export interface FindingsQuery {
+  severity?: string;
+  sort?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface ExposurePathEnvelope {
   paths: JsonValue[];
   nodes?: JsonValue[];
@@ -114,6 +121,15 @@ export interface DatasetVersionsResponse {
   count: number;
 }
 
+export interface IntelMatchRequest {
+  packages?: Record<string, JsonValue>[];
+  purl?: string;
+  ecosystem?: string;
+  name?: string;
+  version?: string;
+  limit?: number;
+}
+
 export class AgentBomApiError extends Error {
   readonly status: number;
   readonly body: string;
@@ -177,6 +193,20 @@ export class AgentBomClient {
     );
   }
 
+  listFindings(query: FindingsQuery = {}): Promise<Record<string, JsonValue>> {
+    const search = new URLSearchParams();
+    search.set("sort", query.sort ?? "effective_reach");
+    search.set("limit", String(query.limit ?? 500));
+    search.set("offset", String(query.offset ?? 0));
+    if (query.severity) {
+      search.set("severity", query.severity);
+    }
+    return this.request<Record<string, JsonValue>>(
+      "GET",
+      `/v1/findings${formatSearch(search)}`,
+    );
+  }
+
   shouldIDeploy(request: DeployDecisionRequest): Promise<DeployDecision> {
     return this.request<DeployDecision>("POST", "/v1/graph/should-i-deploy", {
       candidate: request.candidate,
@@ -221,6 +251,60 @@ export class AgentBomClient {
       "GET",
       `/v1/datasets/${encodeURIComponent(datasetId)}/versions`,
     );
+  }
+
+  datasetVersion(
+    datasetId: string,
+    versionId: string,
+  ): Promise<DatasetVersionResponse> {
+    return this.request<DatasetVersionResponse>(
+      "GET",
+      `/v1/datasets/${encodeURIComponent(datasetId)}/versions/${encodeURIComponent(versionId)}`,
+    );
+  }
+
+  agentManifest(): Promise<Record<string, JsonValue>> {
+    const search = new URLSearchParams();
+    if (this.tenantId) {
+      search.set("tenant_id", this.tenantId);
+    }
+    return this.request<Record<string, JsonValue>>(
+      "GET",
+      `/v1/agent-bom/manifest${formatSearch(search)}`,
+    );
+  }
+
+  runtimeProductionIndex(): Promise<Record<string, JsonValue>> {
+    const search = new URLSearchParams();
+    if (this.tenantId) {
+      search.set("tenant_id", this.tenantId);
+    }
+    return this.request<Record<string, JsonValue>>(
+      "GET",
+      `/v1/runtime/production-index${formatSearch(search)}`,
+    );
+  }
+
+  intelLookup(advisoryId: string): Promise<Record<string, JsonValue>> {
+    return this.request<Record<string, JsonValue>>(
+      "GET",
+      `/v1/intel/advisories/${encodeURIComponent(advisoryId)}`,
+    );
+  }
+
+  intelMatch(request: IntelMatchRequest): Promise<Record<string, JsonValue>> {
+    return this.request<Record<string, JsonValue>>("POST", "/v1/intel/match", {
+      packages: request.packages,
+      purl: request.purl,
+      ecosystem: request.ecosystem,
+      name: request.name,
+      version: request.version,
+      limit: request.limit,
+    });
+  }
+
+  intelSources(): Promise<Record<string, JsonValue>> {
+    return this.request<Record<string, JsonValue>>("GET", "/v1/intel/sources");
   }
 
   async request<T>(

@@ -7,6 +7,7 @@ import logging
 from fastapi import APIRouter, Request
 
 from agent_bom.api.audit_log import AuditEntry, get_audit_log
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.entitlements import load_entitlement_state
 
 router = APIRouter()
@@ -14,7 +15,7 @@ _logger = logging.getLogger(__name__)
 
 
 def _audit_entitlement_read(request: Request, *, resource: str, details: dict[str, object]) -> None:
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", None) or getattr(request.state, "api_key_role", None) or "system"
     try:
         get_audit_log().append(

@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.graph.severity import ocsf_to_severity
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
@@ -46,7 +47,7 @@ def _now() -> str:
 
 
 def _tenant_id(request: Request) -> str:
-    return getattr(request.state, "tenant_id", "default")
+    return require_request_tenant_id(request)
 
 
 def _triggered_by(request: Request) -> str:

@@ -21,6 +21,7 @@ from agent_bom.api.models import (
 )
 from agent_bom.api.routes.scan import enqueue_scan_job
 from agent_bom.api.stores import _get_credential_ref_store, _get_source_store, _get_store
+from agent_bom.api.tenancy import require_request_tenant_id
 
 router = APIRouter()
 
@@ -30,7 +31,7 @@ def _now() -> str:
 
 
 def _tenant_id(request: Request) -> str:
-    return getattr(request.state, "tenant_id", "default")
+    return require_request_tenant_id(request)
 
 
 def _actor(request: Request) -> str:

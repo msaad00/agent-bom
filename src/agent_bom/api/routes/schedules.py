@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import ScheduleCreate
 from agent_bom.api.stores import _get_schedule_store
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_schedule_quota, tenant_quota_guard
 
 router = APIRouter()
@@ -29,7 +30,7 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
     from agent_bom.api.schedule_store import ScanSchedule
     from agent_bom.api.scheduler import parse_cron_next, validate_cron_expression
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     if body.tenant_id not in ("default", tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden — tenant_id must match the authenticated tenant")
@@ -67,14 +68,14 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
 @router.get("/v1/schedules", tags=["schedules"])
 async def list_schedules(request: Request) -> list[dict]:
     """List all scan schedules."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     return [s.model_dump() for s in _get_schedule_store().list_all(tenant_id=tenant_id)]
 
 
 @router.get("/v1/schedules/{schedule_id}", tags=["schedules"])
 async def get_schedule(request: Request, schedule_id: str) -> dict:
     """Get a specific schedule."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
     if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
@@ -86,7 +87,7 @@ async def delete_schedule(request: Request, schedule_id: str):
     """Delete a schedule."""
     from agent_bom.api.audit_log import log_action
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
     if s is None:
@@ -100,7 +101,7 @@ async def toggle_schedule(request: Request, schedule_id: str) -> dict:
     """Enable or disable a schedule."""
     from agent_bom.api.audit_log import log_action
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
     if s is None:

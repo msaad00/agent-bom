@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.runtime_blueprints import evaluate_runtime_blueprint_drift, runtime_role_blueprint, runtime_role_blueprints
 
 router = APIRouter(tags=["runtime"])
 
 
 def _request_tenant_id(request: Request) -> str:
-    return str(getattr(request.state, "tenant_id", "default") or "default")
+    return require_request_tenant_id(request)
 
 
 @router.get("/v1/runtime/blueprints")

@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.audit_log import log_action
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.posture_streaming import WebhookOutbox, default_webhook_outbox_path
 
 router = APIRouter()
@@ -16,7 +17,7 @@ _OUTBOX_OVERRIDE = False
 
 
 def _tenant_id(request: Request) -> str:
-    return getattr(request.state, "tenant_id", "default")
+    return require_request_tenant_id(request)
 
 
 def _actor(request: Request) -> str:

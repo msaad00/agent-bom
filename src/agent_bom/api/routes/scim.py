@@ -12,6 +12,7 @@ from agent_bom.api.audit_log import log_action
 from agent_bom.api.scim import extract_scim_roles, scim_base_path, scim_enabled_from_env, scim_role_attribute
 from agent_bom.api.scim_store import SCIMGroup, SCIMUser
 from agent_bom.api.stores import _get_scim_store
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.platform_invariants import now_utc_iso
 
 SCIM_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"
@@ -33,7 +34,7 @@ _ACTIVE_FILTER_RE = re.compile(r'^\s*active\s+eq\s+"?(true|false)"?\s*$', re.IGN
 
 
 def _tenant_id(request: Request) -> str:
-    return str(getattr(request.state, "tenant_id", "") or "default")
+    return require_request_tenant_id(request)
 
 
 def _actor(request: Request) -> str:

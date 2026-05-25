@@ -163,6 +163,103 @@ test("lists dataset versions", async () => {
   assert.equal(response.count, 0);
 });
 
+test("lists findings with default query params", async () => {
+  let seenUrl = "";
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    fetch: async (url) => {
+      seenUrl = String(url);
+      return jsonResponse({ findings: [], count: 0 });
+    },
+  });
+
+  const response = await client.listFindings({ severity: "high" });
+
+  assert.equal(
+    seenUrl,
+    "https://agent-bom.example.com/v1/findings?sort=effective_reach&limit=500&offset=0&severity=high",
+  );
+  assert.equal(response.count, 0);
+});
+
+test("gets a single dataset version", async () => {
+  let seenUrl = "";
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    fetch: async (url) => {
+      seenUrl = String(url);
+      return jsonResponse({
+        schema_version: "v1",
+        dataset: {
+          tenant_id: "tenant-d",
+          dataset_id: "hf/corpus",
+          version_id: "2026/05/25",
+          created_at: "2026-05-25T00:00:00Z",
+          source: "ci",
+        },
+      });
+    },
+  });
+
+  const response = await client.datasetVersion("hf/corpus", "2026/05/25");
+
+  assert.equal(
+    seenUrl,
+    "https://agent-bom.example.com/v1/datasets/hf%2Fcorpus/versions/2026%2F05%2F25",
+  );
+  assert.equal(response.dataset.version_id, "2026/05/25");
+});
+
+test("reads manifest and runtime index with tenant query", async () => {
+  const seenUrls = [];
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    tenantId: "tenant-e",
+    fetch: async (url) => {
+      seenUrls.push(String(url));
+      return jsonResponse({ schema_version: "v1" });
+    },
+  });
+
+  await client.agentManifest();
+  await client.runtimeProductionIndex();
+
+  assert.deepEqual(seenUrls, [
+    "https://agent-bom.example.com/v1/agent-bom/manifest?tenant_id=tenant-e",
+    "https://agent-bom.example.com/v1/runtime/production-index?tenant_id=tenant-e",
+  ]);
+});
+
+test("wraps intel lookup match and sources", async () => {
+  const seen = [];
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    fetch: async (url, init = {}) => {
+      seen.push({ url: String(url), body: init.body ? JSON.parse(init.body) : undefined });
+      return jsonResponse({ schema_version: "intel.lookup.v1", matches: [] });
+    },
+  });
+
+  await client.intelLookup("CVE-2026-0001");
+  await client.intelMatch({ ecosystem: "npm", name: "demo", version: "1.0.0", limit: 3 });
+  await client.intelSources();
+
+  assert.deepEqual(seen, [
+    {
+      url: "https://agent-bom.example.com/v1/intel/advisories/CVE-2026-0001",
+      body: undefined,
+    },
+    {
+      url: "https://agent-bom.example.com/v1/intel/match",
+      body: { ecosystem: "npm", name: "demo", version: "1.0.0", limit: 3 },
+    },
+    {
+      url: "https://agent-bom.example.com/v1/intel/sources",
+      body: undefined,
+    },
+  ]);
+});
+
 test("throws typed errors for non-2xx responses", async () => {
   const client = new AgentBomClient({
     baseUrl: "https://agent-bom.example.com",

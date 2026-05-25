@@ -45,6 +45,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 |---|---|---|
 | **Local AI BOM** | `agent-bom agents --demo --offline` | terminal findings and graph-ready inventory |
 | **Repository scan** | `agent-bom agents -p . -f html -o agent-bom-report.html` | local HTML review plus exportable evidence |
+| **Cloud posture gate** | `agent-bom iac infra/ && agent-bom cis-benchmark --provider aws` | pre-cloud IaC findings plus live posture evidence |
 | **CI evidence** | `uses: msaad00/agent-bom@v0.88.3` | SARIF, pull-request summary, optional code scanning |
 | **Assistant tools** | `agent-bom mcp server` | read-mostly security tools for MCP clients |
 | **Self-hosted control plane** | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your infrastructure |
@@ -68,6 +69,11 @@ consume through API, CLI, reports, and exports.
 The product shape is cockpit plus callable primitives: humans get a review
 surface and agents get strict-argument tools over the same security evidence
 and `ExposurePath` graphs.
+
+Cloud posture follows the same model: use `agent-bom iac` to block unsafe
+Terraform, CloudFormation, Kubernetes, or Docker changes before deployment,
+then use `agent-bom cis-benchmark` to verify the runtime account or service
+state after drift and inherited provider settings exist.
 
 ## Current graph and agent surfaces
 

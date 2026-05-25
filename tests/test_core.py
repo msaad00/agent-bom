@@ -3,6 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
+from typing import get_type_hints
 
 import pytest
 from click.testing import CliRunner
@@ -26,6 +27,11 @@ from agent_bom.parsers import parse_npm_packages, parse_pip_packages
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 # ─── Model Tests ────────────────────────────────────────────────────────────
+
+
+def test_agent_metadata_uses_typed_mapping_annotation():
+    hints = get_type_hints(Agent)
+    assert hints["metadata"] == dict[str, object]
 
 
 def test_package_no_vulns():

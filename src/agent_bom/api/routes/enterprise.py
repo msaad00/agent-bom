@@ -661,6 +661,20 @@ async def auth_policy(request: Request) -> dict:
     }
 
 
+@router.get("/v1/auth/scopes", tags=["enterprise"])
+async def auth_scopes() -> dict:
+    """Return the enforced RBAC scope catalog for operator tooling."""
+    from agent_bom.api.middleware import APIKeyMiddleware
+
+    scopes = APIKeyMiddleware.scope_catalog()
+    return {
+        "schema_version": "v1",
+        "count": len(scopes),
+        "wildcard_examples": ["*", "auth.*", "auth.keys:*"],
+        "scopes": scopes,
+    }
+
+
 @router.get("/v1/auth/secrets/lifecycle", tags=["enterprise"])
 async def auth_secret_lifecycle() -> dict:
     """Return non-secret lifecycle posture for configured control-plane secrets."""

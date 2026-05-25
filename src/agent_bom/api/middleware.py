@@ -768,6 +768,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("GET", "/v1/auth/debug", "viewer"),
         ("GET", "/v1/auth/me", "viewer"),
         ("GET", "/v1/auth/policy", "admin"),
+        ("GET", "/v1/auth/scopes", "admin"),
         ("GET", "/v1/auth/secrets/lifecycle", "admin"),
         ("GET", "/v1/auth/secrets/rotation-plan", "admin"),
         ("GET", "/v1/auth/scim/config", "admin"),
@@ -875,6 +876,32 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("PUT", "/v1/exceptions/", "exception:write"),
         ("DELETE", "/v1/exceptions/", "exception:write"),
     )
+
+    @classmethod
+    def scope_catalog(cls) -> list[dict[str, str]]:
+        """Return the enforced API scope catalog for operator discovery."""
+        catalog: list[dict[str, str]] = []
+        for method, path_prefix, scope in cls._SCOPE_RULES:
+            required_role = "viewer"
+            for role_method, role_path_prefix, role in cls._ROLE_RULES:
+                if method == role_method and path_prefix.startswith(role_path_prefix):
+                    required_role = role
+                    break
+            if ":" in scope:
+                family, action = scope.rsplit(":", 1)
+            else:
+                family, action = scope, "access"
+            catalog.append(
+                {
+                    "scope": scope,
+                    "family": family,
+                    "action": action,
+                    "method": method,
+                    "path_prefix": path_prefix,
+                    "required_role": required_role,
+                }
+            )
+        return sorted(catalog, key=lambda item: (item["scope"], item["method"], item["path_prefix"]))
 
     def __init__(self, app: ASGIApp, api_key: str) -> None:
         super().__init__(app)

@@ -131,6 +131,16 @@ def _decision_for_risk(risk: float, *, warn_risk: float, block_risk: float) -> s
     return "allow"
 
 
+def _empty_exposure_paths_message(*, total: int, min_risk: float) -> str | None:
+    if total == 0:
+        return (
+            "0 paths means no agent-to-vulnerability ExposurePath currently reaches a credential exposure or reachable tool in this scan."
+        )
+    if min_risk > 0:
+        return f"0 paths matched min_risk={min_risk}; lower min_risk to inspect lower-risk ExposurePaths."
+    return "0 paths matched the current filters."
+
+
 async def exposure_paths_impl(
     *,
     tenant_id: str = "default",
@@ -191,6 +201,8 @@ async def exposure_paths_impl(
             "edges": [edge.to_dict() for edge in edges],
             "stats": stats,
         }
+        if not ranked_paths:
+            payload["message"] = _empty_exposure_paths_message(total=total, min_risk=min_risk)
         encoded = json.dumps(payload, indent=2, default=str)
         return _truncate_response(encoded) if _truncate_response is not None else encoded
     except Exception:

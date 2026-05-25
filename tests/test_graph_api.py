@@ -1750,6 +1750,23 @@ class TestGraphStoreBackendSelection:
         assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:cve"}
         assert {edge["source_id"] for edge in body["edges"]} == {"agent:a", "server:s"}
 
+    def test_exposure_paths_rest_route_explains_empty_queue(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/exposure-paths")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["count"] == 0
+        assert body["total"] == 0
+        assert body["message"] == (
+            "0 paths means no agent-to-vulnerability ExposurePath currently reaches a credential exposure or reachable tool in this scan."
+        )
+        assert body["stats"]["total_edges"] == 1
+
     def test_should_i_deploy_rest_route_returns_agent_native_decision(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
         recording_graph_store.graph.add_node(

@@ -524,13 +524,18 @@ def _extract_trust_principals(policy_document: Any, *, account_id: str | None) -
 
 def _enrich_agents_with_iam(session: Any, agents: list[Agent], *, account_id: str | None, warnings: list[str]) -> None:
     """Attach live IAM role policy/trust metadata to discovered principals."""
+
+    def _cloud_principal_metadata(agent: Agent) -> dict[str, object] | None:
+        value = agent.metadata.get("cloud_principal")
+        return value if isinstance(value, dict) else None
+
     role_arns = sorted(
         {
-            str(agent.metadata.get("cloud_principal", {}).get("principal_id") or "").strip()
+            str(principal.get("principal_id") or "").strip()
             for agent in agents
-            if isinstance(agent.metadata.get("cloud_principal"), dict)
-            and str(agent.metadata["cloud_principal"].get("principal_type") or "").lower() in {"iam-role", "role"}
-            and str(agent.metadata["cloud_principal"].get("principal_id") or "").strip()
+            if (principal := _cloud_principal_metadata(agent))
+            and str(principal.get("principal_type") or "").lower() in {"iam-role", "role"}
+            and str(principal.get("principal_id") or "").strip()
         }
     )
     if not role_arns:
@@ -566,9 +571,10 @@ def _enrich_agents_with_iam(session: Any, agents: list[Agent], *, account_id: st
         }
 
     for agent in agents:
-        principal = agent.metadata.get("cloud_principal")
-        if not isinstance(principal, dict):
+        principal_value = agent.metadata.get("cloud_principal")
+        if not isinstance(principal_value, dict):
             continue
+        principal = principal_value
         role_arn = str(principal.get("principal_id") or "").strip()
         payload = enriched.get(role_arn)
         if not payload:

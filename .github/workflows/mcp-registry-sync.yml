@@ -32,58 +32,27 @@ jobs:
         id: fetch
         run: |
           uv run python - <<'EOF'
-          import json
-          import urllib.request
-          import sys
           from pathlib import Path
 
-          # Candidate upstream URLs — try in order (upstream may reorganize)
-          REGISTRY_URLS = [
-              "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/scripts/servers.json",
-              "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/servers.json",
-          ]
-          REGISTRY_PATH = Path("src/agent_bom/mcp_registry.json")
+          from agent_bom.mcp_official_registry import (
+              sync_from_legacy_github_registry_sync,
+              sync_from_official_registry_sync,
+          )
 
-          # Load existing registry
-          existing = json.loads(REGISTRY_PATH.read_text())
-          known_packages = set(existing["servers"].keys())
+          result = sync_from_official_registry_sync(max_pages=10, page_size=100)
+          if result.total_fetched == 0:
+              result = sync_from_legacy_github_registry_sync()
+              if result.total_fetched == 0:
+                  print("Official MCP Registry unavailable and legacy fallback returned no entries — skipping new-server sync")
 
-          # Fetch upstream — try each URL, skip silently if none work
-          upstream = None
-          for url in REGISTRY_URLS:
-              try:
-                  with urllib.request.urlopen(url, timeout=30) as resp:
-                      upstream = json.loads(resp.read())
-                  break
-              except Exception:
-                  continue
-          if upstream is None:
-              print("Upstream MCP server list unavailable — skipping new-server sync", file=sys.stderr)
-              Path("/tmp/new_count").write_text("0")
-              sys.exit(0)
-
-          new_servers = {}
-          for entry in upstream if isinstance(upstream, list) else upstream.get("servers", []):
-              if isinstance(entry, dict):
-                  name = entry.get("package") or entry.get("name", "")
-                  ecosystem = "npm" if name.startswith("@") or "-" in name else "pypi"
-                  if name and name not in known_packages:
-                      new_servers[name] = {
-                          "ecosystem": ecosystem,
-                          "package": name,
-                          "description": entry.get("description", ""),
-                          "command_patterns": [name.split("/")[-1]],
-                          "category": entry.get("category", "uncategorized"),
-                      }
-
-          if new_servers:
-              existing["servers"].update(new_servers)
-              from datetime import datetime, timezone
-              existing["_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-              REGISTRY_PATH.write_text(json.dumps(existing, indent=2) + "\n")
-              print(f"Added {len(new_servers)} new server(s): {', '.join(new_servers.keys())}")
-
-          Path("/tmp/new_count").write_text(str(len(new_servers)))
+          print(
+              f"MCP registry source={result.source} "
+              f"source_url={result.source_url} fetched={result.total_fetched} "
+              f"added={result.added} skipped={result.skipped} fallback={result.fallback_used}"
+          )
+          Path("/tmp/new_count").write_text(str(result.added))
+          Path("/tmp/sync_source").write_text(result.source)
+          Path("/tmp/sync_source_url").write_text(result.source_url)
           EOF
 
       - name: Refresh registry versions from npm/PyPI
@@ -122,6 +91,7 @@ jobs:
                       v = await fetch_version(client, entry["package"], entry["ecosystem"])
                       if v and v != entry.get("latest_version"):
                           entry["latest_version"] = v
+                          entry["version_source"] = entry["ecosystem"]
                           updated += 1
 
               async with httpx.AsyncClient() as client:
@@ -167,6 +137,8 @@ jobs:
           echo "new_count=$(cat /tmp/new_count)" >> "$GITHUB_OUTPUT"
           echo "version_count=$(cat /tmp/version_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
           echo "cve_count=$(cat /tmp/cve_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
+          echo "sync_source=$(cat /tmp/sync_source 2>/dev/null || echo unknown)" >> "$GITHUB_OUTPUT"
+          echo "sync_source_url=$(cat /tmp/sync_source_url 2>/dev/null || echo unknown)" >> "$GITHUB_OUTPUT"
 
       - name: Configure signed automation commits
         id: signing
@@ -204,6 +176,8 @@ jobs:
           NEW_COUNT: ${{ steps.count.outputs.new_count }}
           VERSION_COUNT: ${{ steps.count.outputs.version_count }}
           CVE_COUNT: ${{ steps.count.outputs.cve_count }}
+          SOURCE: ${{ steps.count.outputs.sync_source }}
+          SOURCE_URL: ${{ steps.count.outputs.sync_source_url }}
         run: |
           BRANCH="chore/mcp-registry-$(date +%Y%m%d)"
           git switch -C "$BRANCH" origin/main
@@ -212,7 +186,8 @@ jobs:
           git push --force-with-lease origin "$BRANCH"
           BODY="Automated weekly sync from the official MCP server registry.
 
-          **New servers added (MCP official):** ${NEW_COUNT}
+          **New-server source:** ${SOURCE} (${SOURCE_URL})
+          **New servers added:** ${NEW_COUNT}
           **Versions refreshed:** ${VERSION_COUNT}
           **Servers with CVE data:** ${CVE_COUNT}
 

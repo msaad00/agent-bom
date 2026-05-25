@@ -10,6 +10,7 @@ from agent_bom.mcp_official_registry import (
     OfficialRegistryServer,
     official_registry_lookup_sync,
     search_official_registry_sync,
+    sync_from_legacy_github_registry_sync,
     sync_from_official_registry_sync,
 )
 from agent_bom.models import MCPServer, TransportType
@@ -223,6 +224,12 @@ def test_sync_adds_new(mock_client_factory, mock_request, tmp_path):
 
         data = json.loads(reg_file.read_text())
         assert "new/server" in data["servers"]
+        entry = data["servers"]["new/server"]
+        assert entry["source"] == "mcp-official"
+        assert entry["registry_source_url"] == "https://registry.modelcontextprotocol.io/v0/servers"
+        assert entry["source_fetched_at"].endswith("Z")
+        assert entry["version_source"] == "official-registry"
+        assert data["_mcp_registry_sync_source"] == "mcp-official"
 
 
 @patch("agent_bom.mcp_official_registry.request_with_retry")
@@ -252,6 +259,58 @@ def test_sync_skips_existing(mock_client_factory, mock_request, tmp_path):
         result = sync_from_official_registry_sync(max_pages=1, dry_run=False)
         assert result.added == 1
         assert result.skipped == 1
+
+
+@patch("agent_bom.mcp_official_registry.request_with_retry")
+@patch("agent_bom.mcp_official_registry.create_client")
+def test_legacy_github_fallback_labels_provenance(mock_client_factory, mock_request, tmp_path):
+    """Legacy raw GitHub fallback entries must not claim official API provenance."""
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client_factory.return_value = mock_client
+
+    mock_request.return_value = _make_response(
+        {
+            "servers": [
+                {
+                    "name": "legacy/server",
+                    "description": "Legacy registry entry",
+                    "category": "developer-tools",
+                }
+            ]
+        }
+    )
+
+    reg_file = tmp_path / "mcp_registry.json"
+    reg_file.write_text(json.dumps({"servers": {}}), encoding="utf-8")
+    fallback_url = "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/servers.json"
+
+    with patch("agent_bom.mcp_official_registry._REGISTRY_PATH", reg_file):
+        result = sync_from_legacy_github_registry_sync(urls=(fallback_url,), dry_run=False)
+        assert result.added == 1
+        assert result.source == "mcp-official-github-fallback"
+        assert result.fallback_used is True
+
+        data = json.loads(reg_file.read_text(encoding="utf-8"))
+        entry = data["servers"]["legacy/server"]
+        assert entry["source"] == "mcp-official-github-fallback"
+        assert entry["source_url"] == fallback_url
+        assert entry["source_fetched_at"].endswith("Z")
+        assert entry["version_source"] == "legacy-github-fallback"
+        assert data["_mcp_registry_sync_source"] == "mcp-official-github-fallback"
+
+
+def test_mcp_registry_sync_workflow_prefers_official_api_and_labels_fallback():
+    """Scheduled sync should use the Official MCP Registry API before fallback."""
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/mcp-registry-sync.yml").read_text(encoding="utf-8")
+    assert "sync_from_official_registry_sync" in workflow
+    assert "sync_from_legacy_github_registry_sync" in workflow
+    assert "result.total_fetched == 0" in workflow
+    assert "sync_source" in workflow
+    assert "version_source" in workflow
 
 
 # ---------------------------------------------------------------------------

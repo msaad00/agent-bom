@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 from agent_bom.http_client import create_client, request_with_retry
@@ -21,6 +22,11 @@ from agent_bom.models import MCPServer, Package
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://registry.modelcontextprotocol.io"
+_API_SERVERS_URL = f"{_API_BASE}/v0/servers"
+_LEGACY_GITHUB_REGISTRY_URLS = (
+    "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/scripts/servers.json",
+    "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/servers.json",
+)
 _REGISTRY_PATH = Path(__file__).parent / "mcp_registry.json"
 
 
@@ -53,6 +59,9 @@ class OfficialRegistrySyncResult:
     added: int = 0
     skipped: int = 0
     total_fetched: int = 0
+    source: str = "mcp-official"
+    source_url: str = _API_SERVERS_URL
+    fallback_used: bool = False
     details: list[dict] = field(default_factory=list)
 
 
@@ -194,6 +203,41 @@ def _build_command_patterns(qualified_name: str) -> list[str]:
     return patterns
 
 
+def _utc_date() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _load_local_registry() -> dict:
+    try:
+        return json.loads(_REGISTRY_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load local MCP registry %s: %s — defaulting to empty", _REGISTRY_PATH, exc)
+        return {"servers": {}}
+
+
+def _infer_raw_github_ecosystem(name: str) -> str:
+    if name.startswith("@"):
+        return "npm"
+    if "/" in name and not name.startswith("io."):
+        return "mcp-registry"
+    if "-" in name:
+        return "npm"
+    return "pypi"
+
+
+def _raw_registry_entries(upstream: object) -> list[dict]:
+    if isinstance(upstream, list):
+        return [entry for entry in upstream if isinstance(entry, dict)]
+    if isinstance(upstream, dict):
+        servers = upstream.get("servers", [])
+        return [entry for entry in servers if isinstance(entry, dict)]
+    return []
+
+
 async def sync_from_official_registry(
     max_pages: int = 10,
     page_size: int = 100,
@@ -204,17 +248,14 @@ async def sync_from_official_registry(
     Fetches servers and adds entries that don't already exist in the local
     mcp_registry.json. Does not overwrite existing entries.
     """
-    try:
-        local_data = json.loads(_REGISTRY_PATH.read_text())
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not load local MCP registry %s: %s — defaulting to empty", _REGISTRY_PATH, exc)
-        local_data = {"servers": {}}
+    local_data = _load_local_registry()
 
     local_servers = local_data.get("servers", {})
     local_names = {v.get("package", k).lower() for k, v in local_servers.items()}
 
-    result = OfficialRegistrySyncResult()
+    result = OfficialRegistrySyncResult(source="mcp-official", source_url=_API_SERVERS_URL, fallback_used=False)
     cursor = None
+    fetched_at = _utc_timestamp()
 
     async with create_client(timeout=30.0) as client:
         for _page in range(max_pages):
@@ -225,7 +266,7 @@ async def sync_from_official_registry(
             resp = await request_with_retry(
                 client,
                 "GET",
-                f"{_API_BASE}/v0/servers",
+                _API_SERVERS_URL,
                 params=params,
             )
 
@@ -273,6 +314,10 @@ async def sync_from_official_registry(
                     "credential_env_vars": cred_vars,
                     "command_patterns": _build_command_patterns(qn),
                     "source_url": s.get("repository", {}).get("url", "") if isinstance(s.get("repository"), dict) else "",
+                    "source": "mcp-official",
+                    "source_fetched_at": fetched_at,
+                    "registry_source_url": _API_SERVERS_URL,
+                    "version_source": "official-registry",
                     "auto_enriched": True,
                 }
 
@@ -294,11 +339,75 @@ async def sync_from_official_registry(
                 break
 
     if not dry_run and result.added > 0:
-        from datetime import datetime, timezone
-
         local_data["servers"] = local_servers
-        local_data["_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        local_data["_mcp_registry_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        local_data["_updated"] = _utc_date()
+        local_data["_mcp_registry_sync"] = _utc_timestamp()
+        local_data["_mcp_registry_sync_source"] = result.source
+        _REGISTRY_PATH.write_text(dumps_registry_json(local_data), encoding="utf-8")
+
+    return result
+
+
+async def sync_from_legacy_github_registry(
+    *,
+    urls: tuple[str, ...] = _LEGACY_GITHUB_REGISTRY_URLS,
+    dry_run: bool = False,
+) -> OfficialRegistrySyncResult:
+    """Fallback import from legacy raw GitHub MCP server lists.
+
+    This path exists only for continuity when the Official MCP Registry API is
+    unavailable. Entries are explicitly labeled as fallback-sourced so the
+    bundled registry does not overclaim official API provenance.
+    """
+    local_data = _load_local_registry()
+    local_servers = local_data.get("servers", {})
+    local_names = {v.get("package", k).lower() for k, v in local_servers.items()}
+    fetched_at = _utc_timestamp()
+    result = OfficialRegistrySyncResult(
+        source="mcp-official-github-fallback",
+        source_url="",
+        fallback_used=True,
+    )
+
+    async with create_client(timeout=30.0) as client:
+        for url in urls:
+            resp = await request_with_retry(client, "GET", url)
+            if resp is None or resp.status_code != 200:
+                continue
+
+            result.source_url = url
+            for entry in _raw_registry_entries(resp.json()):
+                name = entry.get("package") or entry.get("name", "")
+                if not name:
+                    continue
+                result.total_fetched += 1
+                if name.lower() in local_names:
+                    result.skipped += 1
+                    continue
+
+                reg_entry = {
+                    "ecosystem": _infer_raw_github_ecosystem(name),
+                    "package": name,
+                    "description": normalize_registry_description(entry.get("description", "")),
+                    "command_patterns": _build_command_patterns(name),
+                    "category": entry.get("category", "uncategorized"),
+                    "source": result.source,
+                    "source_url": url,
+                    "source_fetched_at": fetched_at,
+                    "version_source": "legacy-github-fallback",
+                }
+                if not dry_run:
+                    local_servers[name] = reg_entry
+                result.added += 1
+                result.details.append({"server": name, "status": "added", "source": result.source})
+
+            break
+
+    if not dry_run and result.added > 0:
+        local_data["servers"] = local_servers
+        local_data["_updated"] = _utc_date()
+        local_data["_mcp_registry_sync"] = _utc_timestamp()
+        local_data["_mcp_registry_sync_source"] = result.source
         _REGISTRY_PATH.write_text(dumps_registry_json(local_data), encoding="utf-8")
 
     return result
@@ -311,3 +420,12 @@ def sync_from_official_registry_sync(
 ) -> OfficialRegistrySyncResult:
     """Sync wrapper for sync_from_official_registry."""
     return asyncio.run(sync_from_official_registry(max_pages, page_size, dry_run))
+
+
+def sync_from_legacy_github_registry_sync(
+    *,
+    urls: tuple[str, ...] = _LEGACY_GITHUB_REGISTRY_URLS,
+    dry_run: bool = False,
+) -> OfficialRegistrySyncResult:
+    """Sync wrapper for sync_from_legacy_github_registry."""
+    return asyncio.run(sync_from_legacy_github_registry(urls=urls, dry_run=dry_run))

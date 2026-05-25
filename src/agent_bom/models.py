@@ -718,7 +718,7 @@ class Agent:
     discovered_at: str = field(default_factory=_utc_now_iso)
     last_seen: Optional[str] = None
     parent_agent: Optional[str] = None  # Parent agent name (for spawn tree / delegation)
-    metadata: dict = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
+    metadata: dict[str, object] = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
     automation_settings: list = field(default_factory=list)  # Risky automation settings (scheduled tasks, etc.)
     discovery_provenance: Optional[dict] = None  # Sanitized discovery provenance contract for this agent asset
     # Per-run discovery envelope (#2083): trust contract for THIS scan run

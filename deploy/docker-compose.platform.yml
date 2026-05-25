@@ -22,9 +22,12 @@ version: "3.8"
 #     /run/secrets/...), not raw env. Operators provide:
 #         deploy/secrets/postgres_password
 #         deploy/secrets/postgres_app_password   (optional, for DML-only role)
-#     A starter pair lives at deploy/secrets/.gitkeep with file-permission
-#     guidance. The api service still consumes POSTGRES_APP_PASSWORD via
-#     env to construct AGENT_BOM_POSTGRES_URL (URL-form requirement);
+#     A non-secret placeholder lives at deploy/secrets/postgres_password.example
+#     so `docker compose config --env-file .env.example` can render for
+#     first-run inspection. Replace it with deploy/secrets/postgres_password
+#     before starting any shared or long-lived stack. The api service still
+#     consumes POSTGRES_APP_PASSWORD via env to construct AGENT_BOM_POSTGRES_URL
+#     (URL-form requirement);
 #     wrapper-based file-only injection is tracked as a #1962 follow-up.
 #
 # Usage:
@@ -139,7 +142,7 @@ secrets:
   # Mount-provisioned credentials. Populate the files before `docker compose up`.
   # See the header comment for permissions guidance (chmod 0400).
   postgres_password:
-    file: ./secrets/postgres_password
+    file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password.example}
 
 networks:
   backend:

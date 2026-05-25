@@ -23,6 +23,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_DIR = ROOT / "deploy"
+ENV_EXAMPLE = ROOT / ".env.example"
 
 # Services that intentionally have no healthcheck — keep this list short and
 # explain each. Anything else missing a healthcheck fails the test.
@@ -64,8 +65,14 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     assert "postgres_password" in secrets_block, (
         "docker-compose.platform.yml must declare a top-level secrets: block with a postgres_password entry sourced from a file mount."
     )
-    assert "file" in secrets_block["postgres_password"], (
+    secret_file = secrets_block["postgres_password"].get("file")
+    assert secret_file, (
         "postgres_password secret must be file-sourced (file: ./secrets/postgres_password) so docker-compose binds it read-only."
+    )
+    assert str(secret_file).endswith("postgres_password.example}"), (
+        "platform compose must retain a non-secret example fallback so "
+        "`docker compose config --env-file .env.example` renders before operators "
+        "replace it with deploy/secrets/postgres_password."
     )
 
     postgres = (data.get("services") or {}).get("postgres") or {}
@@ -86,6 +93,24 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     assert "postgres_password" in (postgres.get("secrets") or []), (
         "platform postgres service must list postgres_password under its secrets: block so the file mount is created."
     )
+
+
+def test_env_example_unblocks_compose_first_run_without_real_secrets() -> None:
+    env_values: dict[str, str] = {}
+    for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        env_values[key] = value
+
+    for key in ("POSTGRES_PASSWORD", "POSTGRES_APP_PASSWORD"):
+        assert env_values.get(key), f".env.example must set a non-empty {key} placeholder for compose first-run rendering"
+        assert "change-me" in env_values[key], f".env.example {key} should be an obvious placeholder, not a real-looking secret"
+
+    placeholder = COMPOSE_DIR / "secrets" / "postgres_password.example"
+    assert placeholder.exists(), "platform compose default secret placeholder must exist for config rendering"
+    assert placeholder.read_text(encoding="utf-8").strip() == env_values["POSTGRES_PASSWORD"]
 
 
 def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:

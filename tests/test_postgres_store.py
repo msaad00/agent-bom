@@ -1069,6 +1069,34 @@ def test_apply_tenant_session_sets_explicit_bypass_only_inside_context(monkeypat
     assert ("SELECT set_config('app.bypass_rls', %s, true)", ("0",)) in conn_after.executed
 
 
+def test_tenant_rls_bypass_activation_writes_signed_audit_event(monkeypatch):
+    """Trusted RLS bypass activation should be visible in the HMAC audit chain."""
+    from agent_bom.api import postgres_common
+    from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+
+    audit_log = InMemoryAuditLog()
+    set_audit_log(audit_log)
+    token = postgres_common.set_current_tenant("tenant-alpha")
+    try:
+        with postgres_common.bypass_tenant_rls():
+            assert postgres_common.is_tenant_rls_bypassed() is True
+    finally:
+        postgres_common.reset_current_tenant(token)
+        set_audit_log(InMemoryAuditLog())
+
+    entries = audit_log.list_entries(action="postgres.rls_bypass_activated", tenant_id="tenant-alpha")
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.actor == "system"
+    assert entry.resource == "postgres/tenant-rls"
+    assert entry.details["tenant_id"] == "tenant-alpha"
+    assert entry.details["policy"] == "tenant_rls_bypass"
+    assert entry.details["outcome"] == "activated"
+    assert entry.details["method"] == "context_manager"
+    assert "test_postgres_store.py:" in entry.details["source_field"]
+    assert audit_log.verify_integrity() == (1, 0)
+
+
 def test_ensure_tenant_rls_forces_policy_through_session_helpers():
     """Tenant RLS policies should be enforced by Postgres session state, not app filters alone."""
     from agent_bom.api import postgres_common

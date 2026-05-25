@@ -38,13 +38,33 @@ def reset_current_tenant(token: Token[str]) -> None:
     _current_tenant.reset(token)
 
 
+def _audit_rls_bypass_activation(*, caller: str) -> None:
+    """Best-effort signed audit entry for trusted RLS bypass activation."""
+    try:
+        from agent_bom.api.audit_log import log_action
+
+        log_action(
+            "postgres.rls_bypass_activated",
+            actor="system",
+            resource="postgres/tenant-rls",
+            tenant_id=_current_tenant.get(),
+            policy="tenant_rls_bypass",
+            outcome="activated",
+            method="context_manager",
+            source_field=caller,
+        )
+    except Exception:
+        logger.debug("Postgres tenant RLS bypass audit log write failed", exc_info=True)
+
+
 @contextmanager
 def bypass_tenant_rls():
     """Temporarily disable Postgres tenant RLS for trusted internal tasks."""
     stack = inspect.stack(context=0)
-    frame = stack[1] if len(stack) > 1 else None
-    caller = f"{frame.filename}:{frame.lineno}" if frame else "unknown"
+    frame = next((candidate for candidate in stack[1:] if os.path.basename(candidate.filename) != "contextlib.py"), None)
+    caller = f"{os.path.basename(frame.filename)}:{frame.lineno}" if frame else "unknown"
     logger.warning("Postgres tenant RLS bypass activated caller=%s", caller)
+    _audit_rls_bypass_activation(caller=caller)
     token = _bypass_tenant_rls.set(True)
     try:
         yield

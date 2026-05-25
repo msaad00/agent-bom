@@ -56,3 +56,14 @@ agent-bom image python:3.12-slim
 ```
 
 Uses agent-bom's native image scanning pipeline to enumerate OS and language packages within container images.
+
+## IaC and cloud posture
+
+Use `agent-bom iac` as the pre-cloud gate for Terraform, CloudFormation,
+Kubernetes, Helm-rendered manifests, and Dockerfiles. Use `agent-bom
+cis-benchmark` as the runtime posture check for deployed cloud state. The
+combined workflow catches proposed misconfiguration before apply and drift
+after deployment.
+
+See [Cloud Posture and IaC Gates](cloud-posture.md) for the recommended lane
+split and CI example.

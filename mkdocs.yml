@@ -82,6 +82,7 @@ nav:
       - MCP Server Setup: getting-started/mcp-server.md
   - Features:
       - Scanning & Discovery: features/scanning.md
+      - Cloud Posture and IaC Gates: features/cloud-posture.md
       - Blast Radius: features/blast-radius.md
       - Cloud Normalization: features/cloud-normalization.md
       - Compliance: features/compliance.md

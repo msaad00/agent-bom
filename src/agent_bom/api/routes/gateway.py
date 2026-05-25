@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse, Response
 
 from agent_bom.api.models import EvaluateRequest, JobStatus, PolicyCreate, PolicyUpdate
 from agent_bom.api.stores import _get_firewall_decision_store, _get_policy_store, _get_store
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.gateway_upstreams import is_gateway_compatible_upstream_transport
 from agent_bom.rbac import require_authenticated_permission
 
@@ -166,7 +167,7 @@ def _firewall_string_list(value: Any, field_name: str) -> set[str]:
 @router.get("/v1/gateway/policies", tags=["gateway"], dependencies=[_dep("policy_read")])
 async def list_gateway_policies(request: Request, enabled: bool | None = None, mode: str | None = None):
     """List all gateway policies."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     policies = _get_policy_store().list_policies(tenant_id=tenant_id)
     if enabled is not None:
         policies = [p for p in policies if p.enabled == enabled]
@@ -196,7 +197,7 @@ async def create_gateway_policy(body: PolicyCreate, request: Request):
         )
     now = datetime.now(timezone.utc).isoformat()
     rules = [GatewayRule(**r) for r in body.rules]
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     policy = GatewayPolicy(
         policy_id=str(uuid.uuid4()),
         name=body.name,
@@ -229,7 +230,7 @@ async def create_gateway_policy(body: PolicyCreate, request: Request):
 @router.get("/v1/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_read")])
 async def get_gateway_policy(policy_id: str, request: Request):
     """Get a gateway policy by ID."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     policy = _get_policy_store().get_policy(policy_id, tenant_id=tenant_id)
     if policy is None:
         raise HTTPException(status_code=404, detail="Policy not found")
@@ -243,7 +244,7 @@ async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Req
     from agent_bom.api.policy_store import GatewayRule, PolicyMode
 
     store = _get_policy_store()
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     policy = store.get_policy(policy_id, tenant_id=tenant_id)
     if policy is None:
         raise HTTPException(status_code=404, detail="Policy not found")
@@ -288,7 +289,7 @@ async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Req
 @router.delete("/v1/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[_dep("policy_write")])
 async def delete_gateway_policy(policy_id: str, request: Request):
     """Delete a gateway policy."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     store = _get_policy_store()
     policy = store.get_policy(policy_id, tenant_id=tenant_id)
     if policy is None:
@@ -329,7 +330,7 @@ async def evaluate_gateway(body: EvaluateRequest, request: Request):
     from agent_bom.api.policy_store import PolicyAuditEntry
     from agent_bom.gateway import evaluate_gateway_policies_detail
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     store = _get_policy_store()
     policies = store.list_policies(tenant_id=tenant_id)
     active = [p for p in policies if p.enabled]
@@ -408,7 +409,7 @@ async def list_gateway_audit(
     limit: int = Query(100, ge=1, le=1000),
 ):
     """Query the gateway policy audit log."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     entries = _get_policy_store().list_audit_entries(
         policy_id=policy_id,
         agent_name=agent_name,
@@ -458,7 +459,7 @@ async def discovered_upstreams(request: Request) -> dict:
     upstream whether to switch it to ``bearer`` + ``token_env`` when
     merging with their authored overrides.
     """
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     jobs = _get_store().list_all(tenant_id=tenant_id)
 
     # Key by (name, url) so two laptops reporting the same MCP name pointed
@@ -539,7 +540,7 @@ async def gateway_stats(request: Request):
     """Gateway-wide statistics."""
     from agent_bom.gateway import summarize_gateway_policies
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     policies = _get_policy_store().list_policies(tenant_id=tenant_id)
     audit = _get_policy_store().list_audit_entries(limit=10000, tenant_id=tenant_id)
     active_policies = [p for p in policies if p.enabled]
@@ -606,7 +607,7 @@ async def firewall_check(request: Request):
         source_roles=source_roles,
         target_roles=target_roles,
     )
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     now = datetime.now(timezone.utc).timestamp()
     matched_rule = _firewall_rule_payload(result.matched_rule)
     event = {
@@ -648,5 +649,5 @@ async def firewall_stats(request: Request):
     """
     from agent_bom.api.stores import _get_firewall_decision_store
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     return _get_firewall_decision_store().stats(tenant_id=tenant_id, recent_limit=200, top_pairs=25)

@@ -37,6 +37,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api.stores import _get_graph_store
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.graph import SEVERITY_RANK, AttackPath, EntityType, GraphFilterOptions, GraphSemanticLayer, RelationshipType, UnifiedGraph
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
@@ -174,7 +175,7 @@ def _get_graph_store_or_503():
 
 def _tenant(request: Request) -> str:
     """Extract tenant_id from request (set by auth middleware)."""
-    return getattr(request.state, "tenant_id", "default")
+    return require_request_tenant_id(request)
 
 
 def _paginate(items: list, offset: int, limit: int) -> tuple[list, dict]:

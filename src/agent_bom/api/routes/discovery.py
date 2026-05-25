@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, package_version_provenance
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import (
@@ -42,7 +43,7 @@ def _clear_agents_response_cache_for_tests() -> None:
 
 
 def _tenant_id(request: Request) -> str:
-    return getattr(request.state, "tenant_id", "default")
+    return require_request_tenant_id(request)
 
 
 def _merge_strings(*values: list[str]) -> list[str]:

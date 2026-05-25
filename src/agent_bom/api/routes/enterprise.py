@@ -56,6 +56,7 @@ from agent_bom.api.models import (
     TenantQuotaUpdateRequest,
 )
 from agent_bom.api.stores import _get_exception_store, _get_issue_mapping_store, _get_store, _get_trend_store
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -423,7 +424,7 @@ async def delete_browser_session(request: Request, response: Response) -> None:
     """Clear the same-origin browser session cookie."""
     from agent_bom.api.audit_log import log_action
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "browser-session"
     _clear_browser_session_cookie(response, request)
     log_action("auth.browser_session_cleared", actor=actor, resource="auth/session", tenant_id=tenant_id)
@@ -436,7 +437,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import Role, create_api_key, get_key_store
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or req.name
 
     try:
@@ -497,7 +498,7 @@ async def rotate_key(
     if req is None:
         req = RotateKeyRequest()
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     store = get_key_store()
     current_key = store.get(key_id)
@@ -557,7 +558,7 @@ async def list_keys(request: Request) -> dict:
     """List all API keys (without hashes or raw values)."""
     from agent_bom.api.auth import get_key_store
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     keys = get_key_store().list_keys(tenant_id=tenant_id)
     # P1-16 v0.86.5 audit: schema_version on terminal list response.
     return {"schema_version": "v1", "keys": [k.to_dict() for k in keys]}
@@ -600,7 +601,7 @@ async def auth_policy(request: Request) -> dict:
     rl_status = get_rate_limit_key_status()
     rl_runtime = get_rate_limit_runtime_status()
     auth_runtime = get_auth_runtime_status()
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     defaults = default_tenant_quotas()
     return {
         "api_key": {
@@ -704,7 +705,7 @@ async def auth_quota(request: Request) -> dict:
     """Return the effective tenant quota runtime surface for the current tenant."""
     from agent_bom.api.tenant_quota import get_tenant_quota_runtime
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     return get_tenant_quota_runtime(tenant_id)
 
 
@@ -719,7 +720,7 @@ async def update_auth_quota(request: Request, req: TenantQuotaUpdateRequest) -> 
         set_tenant_quota_overrides,
     )
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     updates = {name: getattr(req, name) for name in QUOTA_NAMES if name in req.model_fields_set}
     if not updates:
@@ -745,7 +746,7 @@ async def reset_auth_quota(request: Request) -> None:
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.tenant_quota import clear_tenant_quota_overrides, get_tenant_quota_overrides
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     previous = get_tenant_quota_overrides(tenant_id)
     clear_tenant_quota_overrides(tenant_id)
@@ -830,7 +831,7 @@ async def delete_key(request: Request, key_id: str) -> None:
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import get_key_store
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "")
     store = get_key_store()
     key = store.get(key_id)
@@ -922,7 +923,7 @@ async def list_audit_entries(
     """List audit log entries with optional filters."""
     from agent_bom.api.audit_log import get_audit_log
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     store = get_audit_log()
     entries = store.list_entries(action=action, resource=resource, since=since, limit=limit, offset=offset, tenant_id=tenant_id)
     return {
@@ -956,7 +957,7 @@ async def audit_integrity(
     from agent_bom.api.audit_log import get_audit_log
     from agent_bom.audit_integrity import verify_audit_jsonl_chain
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     verified, tampered = get_audit_log().verify_integrity(limit=limit, tenant_id=tenant_id)
     chains: list[dict[str, Any]] = [
         {
@@ -1017,7 +1018,7 @@ async def export_audit_entries(
     if fmt not in {"json", "jsonl"}:
         raise HTTPException(status_code=400, detail="format must be one of: json, jsonl")
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     store = get_audit_log()
     entries = store.list_entries(action=action, resource=resource, since=since, limit=limit, offset=offset, tenant_id=tenant_id)
@@ -1084,7 +1085,7 @@ async def verify_audit_export(request: Request, body: AuditExportVerifyRequest) 
         payload = json.dumps(body.payload, sort_keys=True).encode("utf-8")
 
     valid = verify_export_payload(payload, body.signature)
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     log_action(
         "audit.export_verify",
@@ -1106,7 +1107,7 @@ async def create_exception(request: Request, req: ExceptionRequest) -> dict:
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import VulnException
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     exc = VulnException(
         vuln_id=req.vuln_id,
         package_name=req.package_name,
@@ -1137,7 +1138,7 @@ async def list_exceptions(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict:
     """List all vulnerability exceptions."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     all_exceptions = _get_exception_store().list_all(status=status, tenant_id=tenant_id)
     total = len(all_exceptions)
     page = all_exceptions[offset : offset + limit]
@@ -1154,7 +1155,7 @@ async def list_exceptions(
 @router.get("/v1/exceptions/{exception_id}", tags=["enterprise"])
 async def get_exception(request: Request, exception_id: str) -> dict:
     """Get a specific exception."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     exc = _get_exception_store().get(exception_id, tenant_id=tenant_id)
     if exc is None:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
@@ -1167,7 +1168,7 @@ async def approve_exception(request: Request, exception_id: str) -> dict:
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     store = _get_exception_store()
     exc = store.get(exception_id, tenant_id=tenant_id)
@@ -1189,7 +1190,7 @@ async def revoke_exception(request: Request, exception_id: str) -> dict:
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     store = _get_exception_store()
     exc = store.get(exception_id, tenant_id=tenant_id)
@@ -1207,7 +1208,7 @@ async def delete_exception(request: Request, exception_id: str) -> None:
     """Delete an exception."""
     from agent_bom.api.audit_log import log_action
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     store = _get_exception_store()
     exc = store.get(exception_id, tenant_id=tenant_id)
@@ -1233,7 +1234,7 @@ async def compare_baseline(
     from agent_bom.baseline import compare_reports
 
     store = _get_store()
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     prev_job = store.get(previous_job_id, tenant_id=tenant_id)
     curr_job = store.get(current_job_id, tenant_id=tenant_id)
@@ -1262,7 +1263,7 @@ async def get_trends(request: Request, limit: int = 30) -> dict:
     """Get historical trend data — posture score and vuln counts over time."""
     from agent_bom.api.audit_log import log_action
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     history = _get_trend_store().get_history(limit=limit, tenant_id=tenant_id)
     log_action("trends.view", actor=actor, resource="trends", tenant_id=tenant_id, limit=limit)
@@ -1290,7 +1291,7 @@ async def test_siem_connection(request: Request, siem_type: str = "", url: str =
     from agent_bom.security import validate_url
     from agent_bom.siem import SIEMConfig, create_connector
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
 
     # Validate URL to prevent SSRF
@@ -1352,7 +1353,7 @@ async def create_jira_ticket_route(
 
     if not jira_api_token:
         raise HTTPException(status_code=400, detail="Missing X-Jira-Api-Token header")
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or req.email or "system"
     target_kind, target_id = _jira_mapping_target(req)
     mapping_store = _get_issue_mapping_store()
@@ -1414,7 +1415,7 @@ async def update_issue_mapping_status(request: Request, mapping_id: str, req: Is
     """Update tenant-scoped external issue mapping status after provider sync."""
     from agent_bom.api.audit_log import log_action
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     mapping = _get_issue_mapping_store().update_status(mapping_id, tenant_id=tenant_id, status=req.status)
     if not mapping:
@@ -1464,7 +1465,7 @@ async def create_finding_feedback(request: Request, req: FindingFeedbackRequest)
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus, VulnException
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = _request_actor(request)
     exc = VulnException(
         vuln_id=req.vulnerability_id,
@@ -1493,7 +1494,7 @@ async def create_finding_feedback(request: Request, req: FindingFeedbackRequest)
 @router.get("/v1/findings/feedback", tags=["enterprise"])
 async def list_finding_feedback(request: Request, state: str | None = None) -> dict:
     """List tenant-scoped finding feedback entries."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     entries = []
     for exc in _get_exception_store().list_all(tenant_id=tenant_id):
         parsed = _parse_feedback_reason(exc.reason)
@@ -1509,7 +1510,7 @@ async def list_finding_feedback(request: Request, state: str | None = None) -> d
 @router.get("/v1/findings/false-positives", tags=["enterprise"])
 async def list_false_positives(request: Request) -> dict:
     """List all false positive entries."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     all_exceptions = _get_exception_store().list_all(tenant_id=tenant_id)
     fps = [e for e in all_exceptions if (_parse_feedback_reason(e.reason) or ("", ""))[0] == "false_positive"]
     return {
@@ -1534,7 +1535,7 @@ async def remove_false_positive(request: Request, fp_id: str) -> None:
     """Un-mark a false positive."""
     from agent_bom.api.audit_log import log_action
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = _request_actor(request)
     store = _get_exception_store()
     exc = store.get(fp_id, tenant_id=tenant_id)
@@ -1551,7 +1552,7 @@ async def remove_finding_feedback(request: Request, feedback_id: str) -> None:
     """Remove tenant-scoped finding feedback without deleting audit history."""
     from agent_bom.api.audit_log import log_action
 
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = _request_actor(request)
     store = _get_exception_store()
     exc = store.get(feedback_id, tenant_id=tenant_id)

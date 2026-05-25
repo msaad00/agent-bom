@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
 from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_fleet_agents_quota, tenant_quota_guard
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import sanitize_command_args, sanitize_security_warnings, sanitize_text, sanitize_url
@@ -98,7 +99,7 @@ async def list_fleet(
     """
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     min_trust_value = float(min_trust) if min_trust is not None else None
     search_value = (search or "").strip() or None
     store = _get_fleet_store()
@@ -141,7 +142,7 @@ async def list_fleet(
 @router.get("/v1/fleet/stats", tags=["fleet"])
 async def fleet_stats(request: Request):
     """Fleet-wide statistics."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     agents = _get_fleet_store().list_by_tenant(tenant_id)
     by_state: dict[str, int] = {}
     by_env: dict[str, int] = {}
@@ -164,7 +165,7 @@ async def fleet_stats(request: Request):
 @router.get("/v1/fleet/{agent_id}", tags=["fleet"])
 async def get_fleet_agent(request: Request, agent_id: str):
     """Get a single fleet agent with trust score breakdown."""
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     agent = _get_fleet_store().get(agent_id, tenant_id=tenant_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
@@ -265,7 +266,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
     from agent_bom.fleet.trust_scoring import compute_trust_score
 
     store = _get_fleet_store()
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     now = datetime.now(timezone.utc).isoformat()
     source_id = (body.source_id if body else "") or _request_header(request, "X-Agent-Bom-Source-Id") or "server-discovery"
@@ -450,7 +451,7 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
             detail=f"Invalid state: {body.state}. Valid: {[s.value for s in FleetLifecycleState]}",
         )
     store = _get_fleet_store()
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     agent = store.get(agent_id, tenant_id=tenant_id)
     if agent is None:
@@ -472,7 +473,7 @@ async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUp
     from agent_bom.api.audit_log import log_action
 
     store = _get_fleet_store()
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     agent = store.get(agent_id, tenant_id=tenant_id)
     if agent is None:

@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_policy_store, _get_store
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.rbac import require_authenticated_permission
 
@@ -64,7 +65,7 @@ _CLUSTER_ENVIRONMENTS = {"aks", "cluster", "eks", "gke", "k8s", "kubernetes"}
 
 
 def _tenant_id(request: Request) -> str:
-    return getattr(request.state, "tenant_id", "default")
+    return require_request_tenant_id(request)
 
 
 def _tenant_jobs(request: Request) -> list:

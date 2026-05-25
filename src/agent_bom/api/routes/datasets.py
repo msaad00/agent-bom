@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.dataset_version_store import DatasetVersionRecord, get_dataset_version_store
+from agent_bom.api.tenancy import require_request_tenant_id
 
 router = APIRouter()
 
@@ -49,7 +50,7 @@ class DatasetVersionCreate(BaseModel):
 
 
 def _tenant_id(request: Request) -> str:
-    return getattr(request.state, "tenant_id", "default")
+    return require_request_tenant_id(request)
 
 
 def _actor(request: Request) -> str:

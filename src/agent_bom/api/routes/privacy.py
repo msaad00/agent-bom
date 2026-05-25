@@ -19,6 +19,7 @@ from agent_bom.api.stores import (
     _get_store,
     _get_tenant_quota_store,
 )
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.platform_invariants import normalize_tenant_id
 from agent_bom.rbac import require_authenticated_permission
 
@@ -43,7 +44,7 @@ def _sanitize_log_value(value: object, max_len: int = 128) -> str:
 
 
 def _request_tenant(request: Request) -> str:
-    return normalize_tenant_id(str(getattr(request.state, "tenant_id", "") or "default"))
+    return require_request_tenant_id(request)
 
 
 def _require_same_tenant(request: Request, tenant_id: str) -> None:

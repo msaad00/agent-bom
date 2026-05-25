@@ -11,6 +11,8 @@ import logging
 
 from fastapi import APIRouter, Request
 
+from agent_bom.api.tenancy import require_request_tenant_id
+
 router = APIRouter()
 _logger = logging.getLogger(__name__)
 
@@ -32,7 +34,7 @@ async def list_assets(
     try:
         from agent_bom.asset_tracker import AssetTracker
 
-        with AssetTracker(tenant_id=getattr(request.state, "tenant_id", "default")) as tracker:
+        with AssetTracker(tenant_id=require_request_tenant_id(request)) as tracker:
             assets = tracker.list_assets(status=status, severity=severity, limit=limit)
             stats = tracker.stats()
             mttr = tracker.mttr_days()
@@ -59,7 +61,7 @@ async def get_asset_stats(request: Request) -> dict:
     try:
         from agent_bom.asset_tracker import AssetTracker
 
-        with AssetTracker(tenant_id=getattr(request.state, "tenant_id", "default")) as tracker:
+        with AssetTracker(tenant_id=require_request_tenant_id(request)) as tracker:
             stats = tracker.stats()
             mttr = tracker.mttr_days()
         return {"stats": stats, "mttr_days": mttr}

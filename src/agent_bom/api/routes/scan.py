@@ -59,6 +59,7 @@ from agent_bom.api.stores import (
     _jobs_pop,
     _jobs_put,
 )
+from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 
@@ -213,7 +214,7 @@ def _dataclass_to_dict(obj: object) -> object:
 
 
 def _tenant_id(request: Request) -> str:
-    return getattr(request.state, "tenant_id", "default")
+    return require_request_tenant_id(request)
 
 
 def _triggered_by(request: Request) -> str:

@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 
+from agent_bom.api.tenancy import require_request_tenant_id
+
 if TYPE_CHECKING:
     from agent_bom.runtime.protection import ProtectionEngine
 
@@ -111,7 +113,7 @@ def push_proxy_metrics(metrics: dict) -> None:
 
 def _request_tenant_id(request: Request) -> str:
     """Return the authenticated tenant for HTTP proxy endpoints."""
-    return str(getattr(request.state, "tenant_id", "default") or "default")
+    return require_request_tenant_id(request)
 
 
 def _alert_visible_to_tenant(alert: dict, tenant_id: str) -> bool:
@@ -132,7 +134,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
     from agent_bom.api.stores import _get_analytics_store
 
     actor = getattr(request.state, "api_key_name", "") or "proxy-client"
-    tenant_id = getattr(request.state, "tenant_id", "default")
+    tenant_id = require_request_tenant_id(request)
     request_id = getattr(request.state, "request_id", "") or ""
     trace_id = getattr(request.state, "trace_id", "") or ""
     source_id = body.source_id or "unknown"
@@ -1105,7 +1107,7 @@ async def break_glass(request: Request, session_id: str = "default", reason: str
     try:
         from agent_bom.api.audit_log import log_action
 
-        tenant_id = getattr(request.state, "tenant_id", "default")
+        tenant_id = require_request_tenant_id(request)
         log_action(
             "break_glass",
             actor=role,

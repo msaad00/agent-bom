@@ -354,6 +354,27 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "service_keys" in body["identity_provisioning"]["session_revocation"]
 
 
+def test_auth_scope_catalog_surface_shape() -> None:
+    client = TestClient(app)
+    resp = client.get("/v1/auth/scopes")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["schema_version"] == "v1"
+    assert body["count"] == len(body["scopes"])
+    assert body["wildcard_examples"] == ["*", "auth.*", "auth.keys:*"]
+
+    entries = {(item["scope"], item["method"], item["path_prefix"]): item for item in body["scopes"]}
+    assert entries[("auth.keys:write", "POST", "/v1/auth/keys")] == {
+        "scope": "auth.keys:write",
+        "family": "auth.keys",
+        "action": "write",
+        "method": "POST",
+        "path_prefix": "/v1/auth/keys",
+        "required_role": "admin",
+    }
+    assert entries[("scan:write", "POST", "/v1/scan")]["required_role"] == "analyst"
+
+
 def test_proxy_control_plane_mtls_posture_requires_delegated_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_rate_limit_env(monkeypatch)
     monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE", "delegated")
@@ -787,6 +808,7 @@ def test_apikey_middleware_rejects_exempt_paths_overlapping_role_rules(monkeypat
 def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     middleware = APIKeyMiddleware(app, api_key="static-secret")
     assert middleware._required_role("GET", "/v1/auth/policy") == "admin"
+    assert middleware._required_role("GET", "/v1/auth/scopes") == "admin"
     assert middleware._required_role("GET", "/v1/auth/secrets/lifecycle") == "admin"
     assert middleware._required_role("GET", "/v1/auth/secrets/rotation-plan") == "admin"
     assert middleware._required_scope("GET", "/v1/auth/secrets/lifecycle") == "auth.secrets:read"

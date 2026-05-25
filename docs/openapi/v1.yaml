@@ -3080,6 +3080,22 @@ paths:
       summary: Auth Scim Config
       tags:
       - enterprise
+  /v1/auth/scopes:
+    get:
+      description: Return the enforced RBAC scope catalog for operator tooling.
+      operationId: auth_scopes_v1_auth_scopes_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Auth Scopes V1 Auth Scopes Get
+                type: object
+          description: Successful Response
+      summary: Auth Scopes
+      tags:
+      - enterprise
   /v1/auth/secrets/lifecycle:
     get:
       description: Return non-secret lifecycle posture for configured control-plane

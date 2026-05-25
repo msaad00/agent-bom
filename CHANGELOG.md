@@ -11,6 +11,49 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.88.3] - 2026-05-24
+
+### Added
+- Go control-plane SDK, Python SDK ergonomics for positional client payloads,
+  route-parity checks, and richer SDK examples for headless integrations.
+- Governed threat-intel daily brief inputs, vendor advisory source metadata,
+  package/advisory matching, and documented source boundaries.
+- Plugin registry status inspection through CLI and API without loading
+  third-party plugin code.
+- GitHub Action posture outputs and per-finding annotations for downstream CI
+  gates and pull-request review workflows.
+- SCIM bulk lifecycle endpoint, database evidence fallback lanes, firmware CPE
+  candidate enrichment, persistent issue mappings, and code-topology graph
+  schema types.
+- Offline HTML export mode that omits external JavaScript assets while keeping
+  static report evidence available.
+
+### Changed
+- Product and security docs now align around the self-hosted, read-only,
+  pluggable, interoperable trust contract and scoped outbound boundaries.
+- Shared scan option contracts now prepare the CLI for API/control-plane
+  delegation without changing existing command behavior.
+
+### Fixed
+- Proxy WebSocket auth now uses the same key store, OIDC, tenant, trusted-proxy,
+  and RBAC enforcement as the REST surface.
+- Production audit HMAC now requires a persistent key unless ephemeral local
+  mode is explicitly enabled; skills scan and rescan events are chained into
+  the audit log.
+- Shield write actions now require both admin role and explicit write scope
+  across API and MCP tool paths.
+- Snowflake tables now define tenant row-access policies, and modern OIDC
+  signing algorithms are accepted.
+- CSP relaxation is scoped to API docs assets, and dashboard CSP manifests are
+  guarded.
+- Scan executor lifecycle shutdown is coordinated, graph delta alert scans are
+  optimized, direct MCP package specs scan correctly, and fleet agent list
+  aliases avoid misleading 404s.
+- Auth rejection, tenant isolation, SDK payload, SCIM bulk, plugin registry,
+  and release-consistency regressions now have targeted coverage.
+
+---
+
 ## [0.88.1] - 2026-05-22
 
 ### Fixed
@@ -1399,7 +1442,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.3...HEAD
+[0.88.3]: https://github.com/msaad00/agent-bom/compare/v0.88.1...v0.88.3
 [0.88.1]: https://github.com/msaad00/agent-bom/compare/v0.88.0...v0.88.1
 [0.88.0]: https://github.com/msaad00/agent-bom/compare/v0.87.1...v0.88.0
 [0.87.1]: https://github.com/msaad00/agent-bom/compare/v0.87.0...v0.87.1

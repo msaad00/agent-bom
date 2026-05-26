@@ -526,6 +526,11 @@ class TestAPIContextGraph:
         assert data["stats"]["agent_count"] == 2
         assert {node["entity_type"] for node in data["nodes"]} >= {"agent", "server"}
         assert {edge["relationship"] for edge in data["edges"]} >= {"uses", "shares_server"}
+        assert data["unified_graph"]["schema_version"] == "agent-bom.graph/v1"
+        assert data["unified_graph"]["scan_id"] == job_id
+        assert data["unified_graph"]["stats"]["node_types"]["agent"] == 2
+        assert {"provider", "agent", "server"} <= set(data["unified_graph"]["stats"]["node_types"])
+        assert {"hosts", "uses", "shares_server"} <= set(data["unified_graph"]["stats"]["relationship_types"])
 
     def test_api_agent_filter(self):
         """GET /v1/scan/{id}/context-graph?agent=a1 filters lateral paths."""

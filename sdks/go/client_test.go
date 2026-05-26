@@ -152,6 +152,15 @@ func TestClientExposesFindingsAndDatasetLoop(t *testing.T) {
 	if _, err := client.DatasetVersion(ctx, "dataset-a", "v1"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := client.RegisterEvaluationRun(ctx, EvaluationRunRequest{EvaluationID: "eval-a", DatasetID: "dataset-a", DatasetVersionID: "v1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.EvaluationRuns(ctx, EvaluationRunQuery{DatasetID: "dataset-a", Limit: &limit}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.EvaluationRun(ctx, "eval-a"); err != nil {
+		t.Fatal(err)
+	}
 
 	want := []string{
 		"GET /v1/findings",
@@ -159,6 +168,9 @@ func TestClientExposesFindingsAndDatasetLoop(t *testing.T) {
 		"POST /v1/datasets/dataset-a/versions",
 		"GET /v1/datasets/dataset-a/versions",
 		"GET /v1/datasets/dataset-a/versions/v1",
+		"POST /v1/evaluations",
+		"GET /v1/evaluations",
+		"GET /v1/evaluations/eval-a",
 	}
 	if len(seen) != len(want) {
 		t.Fatalf("seen = %#v", seen)

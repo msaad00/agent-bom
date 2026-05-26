@@ -201,6 +201,71 @@ func (c *Client) DatasetVersion(ctx context.Context, datasetID string, versionID
 	return c.request(ctx, http.MethodGet, path, nil, nil)
 }
 
+// EvaluationRunRequest registers one evaluation run artifact.
+type EvaluationRunRequest struct {
+	EvaluationID     string
+	Name             string
+	Status           string
+	DatasetID        string
+	DatasetVersionID string
+	TraceID          string
+	Model            string
+	PromptHash       string
+	Source           string
+	Scores           map[string]float64
+	Summary          JSON
+	Cases            []JSON
+	Metadata         JSON
+	TenantID         string
+}
+
+// RegisterEvaluationRun registers one evaluation run linked to datasets, traces, models, and prompt hashes.
+func (c *Client) RegisterEvaluationRun(ctx context.Context, req EvaluationRunRequest) (JSON, error) {
+	return c.request(ctx, http.MethodPost, "/v1/evaluations", nil, compact(JSON{
+		"evaluation_id":      req.EvaluationID,
+		"name":               req.Name,
+		"status":             req.Status,
+		"dataset_id":         req.DatasetID,
+		"dataset_version_id": req.DatasetVersionID,
+		"trace_id":           req.TraceID,
+		"model":              req.Model,
+		"prompt_hash":        req.PromptHash,
+		"source":             req.Source,
+		"scores":             req.Scores,
+		"summary":            req.Summary,
+		"cases":              req.Cases,
+		"metadata":           req.Metadata,
+		"tenant_id":          firstNonEmpty(req.TenantID, c.tenantID),
+	}))
+}
+
+// EvaluationRunQuery filters evaluation runs.
+type EvaluationRunQuery struct {
+	DatasetID string
+	Limit     *int
+	Offset    *int
+}
+
+// EvaluationRuns lists evaluation runs for the request tenant.
+func (c *Client) EvaluationRuns(ctx context.Context, query EvaluationRunQuery) (JSON, error) {
+	values := url.Values{}
+	if query.DatasetID != "" {
+		values.Set("dataset_id", query.DatasetID)
+	}
+	if query.Limit != nil {
+		values.Set("limit", fmt.Sprint(*query.Limit))
+	}
+	if query.Offset != nil {
+		values.Set("offset", fmt.Sprint(*query.Offset))
+	}
+	return c.request(ctx, http.MethodGet, "/v1/evaluations", values, nil)
+}
+
+// EvaluationRun returns one evaluation run record.
+func (c *Client) EvaluationRun(ctx context.Context, evaluationID string) (JSON, error) {
+	return c.request(ctx, http.MethodGet, "/v1/evaluations/"+url.PathEscape(evaluationID), nil, nil)
+}
+
 // AgentManifest returns the tenant-scoped Agent BOM manifest.
 func (c *Client) AgentManifest(ctx context.Context, tenantID string) (JSON, error) {
 	values := url.Values{}

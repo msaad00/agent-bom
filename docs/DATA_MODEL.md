@@ -53,8 +53,8 @@ is wired into the docs site so drift produces a visible regression.
 | `config/schemas/inventory.schema.json` | `Agent.agent_type` enum values | 30 |
 | `config/schemas/inventory.schema.json` | `Package.ecosystem` enum values | 9 |
 | `config/schemas/inventory.schema.json` | `MCPServer.transport` enum values | 3 |
-| `docs/openapi/v1.json` | paths | 185 |
-| `docs/openapi/v1.json` | component schemas | 57 |
+| `docs/openapi/v1.json` | paths | 187 |
+| `docs/openapi/v1.json` | component schemas | 59 |
 
 <!-- DATA_MODEL_ATLAS:END -->
 
@@ -343,6 +343,7 @@ tenant boundary, persistence behavior, and redaction behavior here.
 | `intel.lookup.v1` | `GET /v1/intel/advisories/{advisory_id}`, `intel_lookup` MCP tool | finding enrichment, analyst lookup, agent investigation | `found`, `query`, `advisory.canonical_ids`, severity, CVSS, EPSS, KEV, CWE, affected packages, `match_method`, `match_confidence`, source policy, `evidence_links` | Read-only local vuln DB lookup. It can resolve CVE, GHSA, and OSV aliases and returns source links without implying every link was fetched. |
 | `intel.match.v1` | `POST /v1/intel/match`, `intel_match` MCP tool | inventory enrichment, CI gates, agent posture checks | submitted packages, matched package count, advisory matches, `match_method`, `match_confidence`, match reason, evidence links | Read-only package-coordinate matching. Inputs use purl when present; otherwise `ecosystem` + `name` + optional `version`. |
 | `intel.daily_brief.v1` | `POST /v1/intel/daily-brief`, `intel_daily_brief` MCP tool | analysts, agents, daily governance jobs | local KEV lookback, high-EPSS inventory matches, vendor advisory matches, caller-supplied IoC telemetry hits, campaign matches, ransomware sector matches, source registry freshness, limitations | Read-only summary over local DB, submitted inventory, and governed caller inputs. IoC/campaign/ransomware entries carry source URL, license/terms, fetched time, content hash, validation status, match method, confidence, and match reason. |
+| `evals.runs.v1` | `POST /v1/evaluations`, `GET /v1/evaluations`, Python/Go/TypeScript control-plane clients | headless evaluators, CI jobs, notebooks, graph enrichment | `evaluation_id`, `dataset_id`, `dataset_version_id`, `trace_id`, `model`, `prompt_hash`, `scores`, `summary`, `cases`, `metadata` | Tenant-scoped control-plane state. The contract stores references, hashes, scores, and finding metadata; raw prompts and dataset rows stay in customer-owned artifact storage. |
 
 ### `agent-bom.manifest/v1`
 

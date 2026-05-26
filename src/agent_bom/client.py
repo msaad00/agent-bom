@@ -200,6 +200,69 @@ class AgentBomClient:
 
         return self._request("GET", f"/v1/datasets/{_quote_path(dataset_id)}/versions/{_quote_path(version_id)}")
 
+    def register_evaluation_run(
+        self,
+        *,
+        evaluation_id: str | None = None,
+        name: str | None = None,
+        status: str | None = None,
+        dataset_id: str | None = None,
+        dataset_version_id: str | None = None,
+        trace_id: str | None = None,
+        model: str | None = None,
+        prompt_hash: str | None = None,
+        source: str | None = None,
+        scores: Mapping[str, float] | None = None,
+        summary: Mapping[str, JsonValue] | None = None,
+        cases: Sequence[Mapping[str, JsonValue]] | None = None,
+        metadata: Mapping[str, JsonValue] | None = None,
+        tenant_id: str | None = None,
+    ) -> JsonObject:
+        """Register an evaluation run linked to datasets, traces, models, and prompt hashes."""
+
+        return self._request(
+            "POST",
+            "/v1/evaluations",
+            json=_strip_none(
+                {
+                    "evaluation_id": evaluation_id,
+                    "name": name,
+                    "status": status,
+                    "dataset_id": dataset_id,
+                    "dataset_version_id": dataset_version_id,
+                    "trace_id": trace_id,
+                    "model": model,
+                    "prompt_hash": prompt_hash,
+                    "source": source,
+                    "scores": dict(scores) if scores is not None else None,
+                    "summary": dict(summary) if summary is not None else None,
+                    "cases": [dict(case) for case in cases] if cases is not None else None,
+                    "metadata": dict(metadata) if metadata is not None else None,
+                    "tenant_id": tenant_id or self.tenant_id,
+                }
+            ),
+        )
+
+    def evaluation_runs(
+        self,
+        *,
+        dataset_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> JsonObject:
+        """List evaluation runs for the request tenant."""
+
+        return self._request(
+            "GET",
+            "/v1/evaluations",
+            params=_strip_query_none({"dataset_id": dataset_id, "limit": limit, "offset": offset}),
+        )
+
+    def evaluation_run(self, evaluation_id: str) -> JsonObject:
+        """Return one evaluation run record."""
+
+        return self._request("GET", f"/v1/evaluations/{_quote_path(evaluation_id)}")
+
     def agent_manifest(self, *, tenant_id: str | None = None) -> JsonObject:
         """Return the tenant-scoped Agent BOM manifest."""
 

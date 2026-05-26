@@ -405,6 +405,23 @@ def _effective_reach_lookup(job: ScanJob) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _attach_unified_graph_view(payload: dict[str, Any], result: dict[str, Any], *, scan_id: str, tenant_id: str) -> dict[str, Any]:
+    """Attach the canonical graph view without changing legacy context fields."""
+    try:
+        from agent_bom.graph.builder import build_unified_graph_from_report
+
+        unified = build_unified_graph_from_report(result, scan_id=scan_id, tenant_id=tenant_id)
+    except Exception:  # pragma: no cover - graph bridge must not break legacy response
+        payload.setdefault("warnings", []).append("Unified graph view unavailable for this scan result")
+        return payload
+
+    payload["unified_graph"] = {
+        "schema_version": "agent-bom.graph/v1",
+        **unified.to_dict(),
+    }
+    return payload
+
+
 def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     result = job.result or {}
     findings: list[dict[str, Any]] = []
@@ -706,7 +723,9 @@ async def get_context_graph(request: Request, job_id: str, agent: str | None = N
                 paths.extend(find_lateral_paths(graph, nid))
     risks = compute_interaction_risks(graph)
 
-    return to_serializable(graph, paths, risks)
+    payload = to_serializable(graph, paths, risks)
+    tenant_id = str(getattr(request.state, "tenant_id", "") or "")
+    return _attach_unified_graph_view(payload, job.result, scan_id=job.job_id, tenant_id=tenant_id)
 
 
 @router.get("/v1/scan/{job_id}/graph-export", tags=["scan"], response_model=None)

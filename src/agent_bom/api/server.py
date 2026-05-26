@@ -722,6 +722,7 @@ from agent_bom.api.routes.datasets import router as _datasets_router  # noqa: E4
 from agent_bom.api.routes.discovery import router as _discovery_router  # noqa: E402
 from agent_bom.api.routes.enterprise import router as _enterprise_router  # noqa: E402
 from agent_bom.api.routes.entitlements import router as _entitlements_router  # noqa: E402
+from agent_bom.api.routes.evaluations import router as _evaluations_router  # noqa: E402
 from agent_bom.api.routes.fleet import router as _fleet_router  # noqa: E402
 from agent_bom.api.routes.frameworks import router as _frameworks_router  # noqa: E402
 from agent_bom.api.routes.gateway import router as _gateway_router  # noqa: E402
@@ -749,6 +750,7 @@ app.include_router(_discovery_router)
 app.include_router(_entitlements_router)
 app.include_router(_enterprise_router)
 app.include_router(_fleet_router)
+app.include_router(_evaluations_router)
 app.include_router(_frameworks_router)
 app.include_router(_gateway_router)
 app.include_router(_governance_router)

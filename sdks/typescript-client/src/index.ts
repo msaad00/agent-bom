@@ -84,6 +84,23 @@ export interface DatasetVersionCreateRequest {
   tenantId?: string;
 }
 
+export interface EvaluationRunCreateRequest {
+  evaluationId?: string;
+  name?: string;
+  status?: string;
+  datasetId?: string;
+  datasetVersionId?: string;
+  traceId?: string;
+  model?: string;
+  promptHash?: string;
+  source?: string;
+  scores?: Record<string, number>;
+  summary?: Record<string, JsonValue>;
+  cases?: Record<string, JsonValue>[];
+  metadata?: Record<string, JsonValue>;
+  tenantId?: string;
+}
+
 export interface BulkFindingIngestResponse {
   schema_version: string;
   batch_id: string;
@@ -119,6 +136,46 @@ export interface DatasetVersionsResponse {
   dataset_id: string;
   versions: DatasetVersionRecord[];
   count: number;
+}
+
+export interface EvaluationRunRecord {
+  tenant_id: string;
+  evaluation_id: string;
+  created_at: string;
+  updated_at: string;
+  name?: string | null;
+  status: string;
+  dataset_id?: string | null;
+  dataset_version_id?: string | null;
+  trace_id?: string | null;
+  model?: string | null;
+  prompt_hash?: string | null;
+  source: string;
+  scores?: Record<string, number>;
+  summary?: Record<string, JsonValue>;
+  cases?: Record<string, JsonValue>[];
+  metadata?: Record<string, JsonValue>;
+}
+
+export interface EvaluationRunResponse {
+  schema_version: string;
+  evaluation: EvaluationRunRecord;
+  warnings?: string[];
+}
+
+export interface EvaluationRunsResponse {
+  schema_version: string;
+  tenant_id: string;
+  evaluations: EvaluationRunRecord[];
+  count: number;
+  limit: number;
+  offset: number;
+}
+
+export interface EvaluationRunsQuery {
+  datasetId?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export interface IntelMatchRequest {
@@ -260,6 +317,51 @@ export class AgentBomClient {
     return this.request<DatasetVersionResponse>(
       "GET",
       `/v1/datasets/${encodeURIComponent(datasetId)}/versions/${encodeURIComponent(versionId)}`,
+    );
+  }
+
+  registerEvaluationRun(
+    request: EvaluationRunCreateRequest,
+  ): Promise<EvaluationRunResponse> {
+    return this.request<EvaluationRunResponse>("POST", "/v1/evaluations", {
+      evaluation_id: request.evaluationId,
+      name: request.name,
+      status: request.status,
+      dataset_id: request.datasetId,
+      dataset_version_id: request.datasetVersionId,
+      trace_id: request.traceId,
+      model: request.model,
+      prompt_hash: request.promptHash,
+      source: request.source,
+      scores: request.scores,
+      summary: request.summary,
+      cases: request.cases,
+      metadata: request.metadata,
+      tenant_id: request.tenantId ?? this.tenantId,
+    });
+  }
+
+  evaluationRuns(query: EvaluationRunsQuery = {}): Promise<EvaluationRunsResponse> {
+    const search = new URLSearchParams();
+    if (query.datasetId) {
+      search.set("dataset_id", query.datasetId);
+    }
+    if (query.limit !== undefined) {
+      search.set("limit", String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      search.set("offset", String(query.offset));
+    }
+    return this.request<EvaluationRunsResponse>(
+      "GET",
+      `/v1/evaluations${formatSearch(search)}`,
+    );
+  }
+
+  evaluationRun(evaluationId: string): Promise<EvaluationRunResponse> {
+    return this.request<EvaluationRunResponse>(
+      "GET",
+      `/v1/evaluations/${encodeURIComponent(evaluationId)}`,
     );
   }
 

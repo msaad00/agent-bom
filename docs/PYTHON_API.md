@@ -91,6 +91,9 @@ python examples/python_sdk/control_plane_smoke.py
 | `list_findings(...)` | `GET /v1/findings` | Normalized findings with severity and pagination filters. |
 | `ingest_findings(...)` | `POST /v1/findings/bulk` | Bulk finding ingest from external scanners or jobs. |
 | `register_dataset_version(...)` | `POST /v1/datasets/{dataset_id}/versions` | Dataset artifact evidence registration. |
+| `register_evaluation_run(...)` | `POST /v1/evaluations` | Evaluation run evidence linked to dataset versions, traces, models, and prompt hashes. |
+| `evaluation_runs(...)` | `GET /v1/evaluations` | Tenant-scoped evaluation run listing with dataset filters. |
+| `evaluation_run(...)` | `GET /v1/evaluations/{evaluation_id}` | One evaluation run record. |
 | `intel_lookup(...)` | `GET /v1/intel/advisories/{advisory_id}` | Advisory lookup by CVE, GHSA, or OSV ID. |
 | `intel_match(...)` | `POST /v1/intel/match` | Match package coordinates against local advisory intelligence. |
 | `intel_sources()` | `GET /v1/intel/sources` | Source registry and freshness metadata. |
@@ -104,6 +107,14 @@ client.ingest_findings(
     source="external-scanner",
 )
 client.register_dataset_version("training-set", version_id="2026-05-24")
+client.register_evaluation_run(
+    evaluation_id="eval-2026-05-25",
+    dataset_id="training-set",
+    dataset_version_id="2026-05-24",
+    model="gpt-4.1-mini",
+    prompt_hash="sha256:...",
+    scores={"safety": 1.0},
+)
 client.should_i_deploy("flask@2.0.0", block_risk=80)
 ```
 

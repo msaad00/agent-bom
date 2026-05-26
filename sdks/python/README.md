@@ -28,6 +28,8 @@ print(client.should_i_deploy("flask@2.0.0", block_risk=80))
 - `POST /v1/graph/should-i-deploy`
 - `GET|POST /v1/datasets/{dataset_id}/versions`
 - `GET /v1/datasets/{dataset_id}/versions/{version_id}`
+- `GET|POST /v1/evaluations`
+- `GET /v1/evaluations/{evaluation_id}`
 - `GET /v1/agent-bom/manifest`
 - `GET /v1/runtime/production-index`
 - `GET /v1/intel/advisories/{advisory_id}`
@@ -54,5 +56,13 @@ client.register_dataset_version(
 )
 
 versions = client.dataset_versions("training-set")
+evaluation = client.register_evaluation_run(
+    evaluation_id="eval-2026-05-25",
+    dataset_id="training-set",
+    dataset_version_id="2026-05-24",
+    model="gpt-4.1-mini",
+    prompt_hash="sha256:...",
+    scores={"safety": 1.0, "faithfulness": 0.92},
+)
 decision = client.should_i_deploy("flask@2.0.0", block_risk=80)
 ```

@@ -42,6 +42,15 @@ const dataset = await client.registerDatasetVersion({
 });
 const versions = await client.datasetVersions("hf-corpus");
 const version = await client.datasetVersion("hf-corpus", "2026-05-17");
+const evaluation = await client.registerEvaluationRun({
+  evaluationId: "eval-2026-05-25",
+  datasetId: "hf-corpus",
+  datasetVersionId: "2026-05-17",
+  model: "gpt-4.1-mini",
+  promptHash: "sha256:...",
+  scores: { safety: 1, faithfulness: 0.92 },
+});
+const evaluations = await client.evaluationRuns({ datasetId: "hf-corpus" });
 const advisory = await client.intelLookup("CVE-2026-0001");
 const intel = await client.intelMatch({ ecosystem: "npm", name: "demo", version: "1.0.0" });
 const sources = await client.intelSources();
@@ -57,6 +66,8 @@ console.log(
   dataset.dataset.version_id,
   versions.count,
   version.dataset.version_id,
+  evaluation.evaluation.evaluation_id,
+  evaluations.count,
   advisory.schema_version,
   intel.schema_version,
   sources.schema_version,

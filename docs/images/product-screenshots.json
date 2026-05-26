@@ -1,49 +1,49 @@
 {
-  "release_version": "0.88.3",
+  "release_version": "0.88.4",
   "captured_at": "2026-05-18T06:21:02Z",
-  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main after the graph/ExposurePath/MCP enhancements, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README/Docker proof uses one focused graph capture that keeps the active exposure path visible instead of mixing bright path nodes with dimmed context nodes. Manifest metadata targets v0.88.3; recapture is only required if the release proof must show the new version string in the image pixels.",
+  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main after the graph/ExposurePath/MCP enhancements, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README/Docker proof uses one focused graph capture that keeps the active exposure path visible instead of mixing bright path nodes with dimmed context nodes. Manifest metadata targets v0.88.4; recapture is only required if the release proof must show the new version string in the image pixels.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
       "page": "/?capture=1",
       "scope": "Risk overview top frame with headline KPIs, posture grade, and start of attack paths",
-      "visible_version": "0.88.3"
+      "visible_version": "0.88.4"
     },
     {
       "path": "dashboard-paths-live.png",
       "page": "/?capture=1",
       "scope": "Risk overview mid-frame with attack paths and exposure KPIs",
-      "visible_version": "0.88.3"
+      "visible_version": "0.88.4"
     },
     {
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
       "scope": "Focused agent mesh graph across the active agent, MCP server, package, tool, and CVE path, cropped to the product graph surface",
-      "visible_version": "0.88.3"
+      "visible_version": "0.88.4"
     },
     {
       "path": "security-graph-live.png",
       "page": "/security-graph?capture=1",
       "scope": "Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff",
-      "visible_version": "0.88.3"
+      "visible_version": "0.88.4"
     },
     {
       "path": "lineage-graph-live.png",
       "page": "/graph?capture=1&investigate=1&root=agent:cursor&q=cursor",
       "scope": "Root-centered lineage investigation with reachable node counts, bounded paths, filters, and graph evidence export",
-      "visible_version": "0.88.3"
+      "visible_version": "0.88.4"
     },
     {
       "path": "dependency-map-live.png",
       "page": "/insights?capture=1",
       "scope": "Supply chain dependency map with scan pipeline counts and package risk distribution",
-      "visible_version": "0.88.3"
+      "visible_version": "0.88.4"
     },
     {
       "path": "remediation-live.png",
       "page": "/remediation",
       "scope": "Fix-first remediation table with prioritized packages and framework context",
-      "visible_version": "0.88.3"
+      "visible_version": "0.88.4"
     }
   ]
 }

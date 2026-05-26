@@ -130,7 +130,8 @@ async def scheduler_loop(
 
     consecutive_failures = 0
     leader_conn = None
-    needs_leader_lock = bool(os.environ.get("AGENT_BOM_POSTGRES_URL")) and _uses_postgres_schedule_store(schedule_store)
+    uses_postgres_store = _uses_postgres_schedule_store(schedule_store)
+    needs_leader_lock = bool(os.environ.get("AGENT_BOM_POSTGRES_URL")) and uses_postgres_store
 
     def _try_acquire_postgres_leader_lock():
         if not needs_leader_lock:
@@ -160,11 +161,11 @@ async def scheduler_loop(
 
                 now = datetime.now(timezone.utc)
                 now_iso = now.isoformat()
-                try:
-                    from agent_bom.api.postgres_store import bypass_tenant_rls
-                except Exception:  # pragma: no cover - optional postgres backend
+                if not uses_postgres_store:
                     due = schedule_store.list_due(now_iso)
                 else:
+                    from agent_bom.api.postgres_store import bypass_tenant_rls
+
                     with bypass_tenant_rls():
                         due = schedule_store.list_due(now_iso)
 
@@ -181,11 +182,11 @@ async def scheduler_loop(
                         next_run = parse_cron_next(schedule.cron_expression, now)
                         schedule.next_run = next_run.isoformat() if next_run else None
                         schedule.updated_at = now_iso
-                        try:
-                            from agent_bom.api.postgres_store import bypass_tenant_rls
-                        except Exception:  # pragma: no cover - optional postgres backend
+                        if not uses_postgres_store:
                             schedule_store.put(schedule)
                         else:
+                            from agent_bom.api.postgres_store import bypass_tenant_rls
+
                             with bypass_tenant_rls():
                                 schedule_store.put(schedule)
                     except Exception:

@@ -21,6 +21,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -441,6 +442,69 @@ def _redact(text: str) -> str:
     if len(text) <= 8:
         return text[:2] + "***"
     return text[:4] + "***" + text[-4:]
+
+
+def _risk_score(severity: str) -> float:
+    return {
+        "critical": 9.0,
+        "high": 7.5,
+        "medium": 5.0,
+        "low": 2.5,
+    }.get(severity.lower(), 1.0)
+
+
+def _finding_type_for_category(category: str):
+    from agent_bom.finding import FindingType
+
+    normalized = category.lower()
+    if "secret" in normalized or "sensitive" in normalized:
+        return FindingType.CREDENTIAL_EXPOSURE
+    if "exfil" in normalized:
+        return FindingType.EXFILTRATION
+    if "injection" in normalized or "jailbreak" in normalized:
+        return FindingType.INJECTION
+    return FindingType.PROMPT_SECURITY
+
+
+def prompt_scan_data_to_findings(prompt_scan: dict[str, Any]):
+    """Convert serialized prompt scan data into the unified Finding stream."""
+    from agent_bom.finding import Asset, Finding, FindingSource
+
+    unified = []
+    for item in prompt_scan.get("findings") or []:
+        if not isinstance(item, dict):
+            continue
+        source_file = str(item.get("source_file") or "")
+        category = str(item.get("category") or "prompt_security")
+        severity = str(item.get("severity") or "unknown").lower()
+        title = str(item.get("title") or "Prompt security finding")
+        asset_name = Path(source_file).name if source_file else "prompt"
+        unified.append(
+            Finding(
+                finding_type=_finding_type_for_category(category),
+                source=FindingSource.PROMPT_SCAN,
+                asset=Asset(
+                    name=asset_name,
+                    asset_type="prompt_template",
+                    identifier=source_file or None,
+                    location=source_file or None,
+                ),
+                severity=severity,
+                title=title,
+                description=str(item.get("detail") or title),
+                remediation_guidance=str(item.get("recommendation") or "") or None,
+                owasp_tags=["LLM01"] if "injection" in category else [],
+                nist_ai_rmf_tags=["MAP-4.1", "MEASURE-2.6"],
+                evidence={
+                    "category": category,
+                    "line_number": item.get("line_number"),
+                    "matched_text": item.get("matched_text"),
+                    "scanner": "prompt_scan",
+                },
+                risk_score=_risk_score(severity),
+            )
+        )
+    return unified
 
 
 # ── JSON prompt file parsing ────────────────────────────────────────────────

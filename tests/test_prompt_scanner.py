@@ -416,8 +416,9 @@ def test_prompt_scan_findings_are_normalized_into_top_level_findings(tmp_path):
     data = json.loads(out_file.read_text())
     prompt_findings = [finding for finding in data["findings"] if finding.get("source") == "PROMPT_SCAN"]
     assert len(prompt_findings) == 1
-    assert prompt_findings[0]["finding_type"] == "PROMPT_SECURITY"
+    assert prompt_findings[0]["finding_type"] == "INJECTION"
     assert prompt_findings[0]["asset"]["asset_type"] == "prompt_template"
+    assert prompt_findings[0]["evidence"]["scanner"] == "prompt_scan"
 
 
 def test_scan_prompts_reports_empty_acceptance_in_json(tmp_path):

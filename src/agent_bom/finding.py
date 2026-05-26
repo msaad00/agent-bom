@@ -38,6 +38,7 @@ class FindingType(str, Enum):
     CREDENTIAL_EXPOSURE = "CREDENTIAL_EXPOSURE"  # Credential found in environment/config
     TOOL_DRIFT = "TOOL_DRIFT"  # MCP tool description changed (rug pull)
     INJECTION = "INJECTION"  # Prompt/argument injection in MCP tool
+    PROMPT_SECURITY = "PROMPT_SECURITY"  # Prompt template or prompt content security finding
     EXFILTRATION = "EXFILTRATION"  # Data exfiltration pattern detected by proxy
     CLOAKING = "CLOAKING"  # Invisible chars / SVG cloaking in response
     SAST = "SAST"  # Static analysis finding (CWE-mapped)
@@ -61,6 +62,7 @@ class FindingSource(str, Enum):
     BROWSER_EXT = "BROWSER_EXT"  # browser extension scanner
     EXTERNAL = "EXTERNAL"  # ingested from external scanner (Trivy/Grype/Syft JSON)
     FILESYSTEM = "FILESYSTEM"  # filesystem mount scan
+    PROMPT_SCAN = "PROMPT_SCAN"  # prompt template/content scanner
 
 
 @dataclass(frozen=True)

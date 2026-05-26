@@ -1143,7 +1143,10 @@ def to_json(report: AIBOMReport) -> dict:
     if report.prompt_scan_data:
         result["prompt_scan"] = report.prompt_scan_data
         findings = result.get("findings")
-        if isinstance(findings, list):
+        has_unified_prompt_findings = isinstance(findings, list) and any(
+            isinstance(finding, dict) and finding.get("source") == "PROMPT_SCAN" for finding in findings
+        )
+        if isinstance(findings, list) and not has_unified_prompt_findings:
             findings.extend(_prompt_scan_findings(report.prompt_scan_data))
 
     if report.model_files:

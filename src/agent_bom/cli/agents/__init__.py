@@ -1696,6 +1696,9 @@ def scan(
         report.trust_assessment_data = ctx.trust_assessment_data
     if ctx.prompt_scan_data:
         report.prompt_scan_data = ctx.prompt_scan_data
+        from agent_bom.parsers.prompt_scanner import prompt_scan_data_to_findings
+
+        report.findings.extend(prompt_scan_data_to_findings(ctx.prompt_scan_data))
     if ctx.enforcement_data:
         report.enforcement_data = ctx.enforcement_data
     if ctx.sast_data:

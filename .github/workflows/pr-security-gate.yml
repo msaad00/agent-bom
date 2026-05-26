@@ -88,16 +88,77 @@ jobs:
 
       - name: Run pip-audit on current checkout
         run: |
-          set +e
-          uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
-            -s osv \
-            --format json \
-            --output audit.json
-          set -e
+          run_pip_audit() {
+            local output="$1"
+            local status=0
+
+            set +e
+            uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
+              -s osv \
+              --format json \
+              --output "$output"
+            status=$?
+            set -e
+
+            if [ -s "$output" ]; then
+              return 0
+            fi
+
+            echo "::warning::pip-audit OSV source did not produce $output (exit $status); retrying with PyPI advisory source"
+            set +e
+            uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
+              -s pypi \
+              --format json \
+              --output "$output"
+            status=$?
+            set -e
+
+            if [ ! -s "$output" ]; then
+              echo "::error::pip-audit did not produce $output after OSV and PyPI retries"
+              return "${status:-1}"
+            fi
+
+            return 0
+          }
+
+          run_pip_audit audit.json
 
       - name: Run pip-audit on PR base for delta comparison
         if: github.event_name == 'pull_request'
         run: |
+          run_pip_audit() {
+            local output="$1"
+            local status=0
+
+            set +e
+            uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
+              -s osv \
+              --format json \
+              --output "$output"
+            status=$?
+            set -e
+
+            if [ -s "$output" ]; then
+              return 0
+            fi
+
+            echo "::warning::pip-audit OSV source did not produce $output (exit $status); retrying with PyPI advisory source"
+            set +e
+            uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
+              -s pypi \
+              --format json \
+              --output "$output"
+            status=$?
+            set -e
+
+            if [ ! -s "$output" ]; then
+              echo "::error::pip-audit did not produce $output after OSV and PyPI retries"
+              return "${status:-1}"
+            fi
+
+            return 0
+          }
+
           current_dir="$PWD"
           base_dir="$RUNNER_TEMP/agent-bom-base"
           git fetch --depth=1 origin "+${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
@@ -105,12 +166,7 @@ jobs:
           (
             cd "$base_dir"
             uv sync --frozen --extra api --extra postgres --extra mcp-server --extra oidc
-            set +e
-            uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
-              -s osv \
-              --format json \
-              --output "$current_dir/base-audit.json"
-            set -e
+            run_pip_audit "$current_dir/base-audit.json"
           )
 
       - name: Evaluate pip-audit gate

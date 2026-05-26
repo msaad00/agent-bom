@@ -334,6 +334,10 @@ async def evaluate_gateway(body: EvaluateRequest, request: Request):
     store = _get_policy_store()
     policies = store.list_policies(tenant_id=tenant_id)
     active = [p for p in policies if p.enabled]
+    policy_status = "configured" if active else "not_configured"
+    warnings: list[str] = []
+    if not active:
+        warnings.append("No enabled gateway policies are configured; evaluation is observing and allowing by default.")
     (
         allowed,
         reason,
@@ -348,7 +352,7 @@ async def evaluate_gateway(body: EvaluateRequest, request: Request):
     # alert and every allow) must be replayable from the audit store.
     if allowed and reason == "":
         action_taken = "allowed"
-        log_reason = "no matching deny rule"
+        log_reason = "no enabled gateway policies configured" if not active else "no matching deny rule"
     elif allowed:
         # audit-mode match — call went through but a rule would have blocked
         action_taken = "alerted"
@@ -396,6 +400,8 @@ async def evaluate_gateway(body: EvaluateRequest, request: Request):
         "policy_mode": policy_mode,
         "action_taken": action_taken,
         "policies_evaluated": len(active),
+        "policy_status": policy_status,
+        "warnings": warnings,
         "request_id": request_id,
         "trace_id": trace_id,
     }

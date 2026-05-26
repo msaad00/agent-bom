@@ -250,7 +250,10 @@ def test_evaluate_allowed():
     store.put_policy(_make_policy())
     resp = client.post("/v1/gateway/evaluate", json={"tool_name": "safe_tool"})
     assert resp.status_code == 200
-    assert resp.json()["allowed"] is True
+    data = resp.json()
+    assert data["allowed"] is True
+    assert data["policy_status"] == "configured"
+    assert data["warnings"] == []
 
 
 def test_evaluate_blocked():
@@ -266,7 +269,13 @@ def test_evaluate_blocked():
 def test_evaluate_no_policies():
     client, _ = _fresh_client()
     resp = client.post("/v1/gateway/evaluate", json={"tool_name": "anything"})
-    assert resp.json()["allowed"] is True
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["allowed"] is True
+    assert data["action_taken"] == "allowed"
+    assert data["policies_evaluated"] == 0
+    assert data["policy_status"] == "not_configured"
+    assert data["warnings"] == ["No enabled gateway policies are configured; evaluation is observing and allowing by default."]
 
 
 # ── Audit ─────────────────────────────────────────────────────────────────────

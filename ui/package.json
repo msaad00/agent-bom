@@ -26,7 +26,7 @@
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
     "@tanstack/react-table": "^8.21.3",
-    "@tanstack/react-virtual": "^3.13.25",
+    "@tanstack/react-virtual": "^3.13.26",
     "@xyflow/react": "^12.10.2",
     "graphology": "^0.26.0",
     "lucide-react": "^1.16.0",

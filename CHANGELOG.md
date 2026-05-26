@@ -11,6 +11,36 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.88.4] - 2026-05-26
+
+### Added
+- Control-plane evaluation runs with dataset-version linkage, score summaries,
+  trace metadata, and SDK helpers for Python, Go, and TypeScript clients.
+- TypeScript control-plane client coverage for findings, graph exposure paths,
+  governance decisions, datasets, intel, runtime, and evaluation workflows.
+- Scope-catalog discovery for auth operators and clearer empty-state messages
+  for graph exposure-path queries.
+
+### Changed
+- Scan context graph responses now expose the unified graph envelope while
+  preserving the legacy context-graph fields for existing consumers.
+- Prompt scan results now emit normalized top-level findings with prompt-scan
+  provenance and evidence links instead of remaining only in prompt-specific
+  report data.
+- MCP registry sync now prefers the official MCP registry API and records
+  defensible source provenance before falling back to legacy sources.
+
+### Fixed
+- Tenant context handling now requires middleware-populated tenant state instead
+  of route-level default fallbacks, and Postgres RLS bypass events are chained
+  into audit evidence.
+- First-run Docker Compose profiles now render with the documented example
+  environment file, and release docs clarify cloud posture versus IaC scan lanes.
+- Weekly dependency and GitHub Actions updates keep the release automation,
+  Docker login, Docker Buildx, CodeQL, and lockfile surfaces current.
+
+---
+
 ## [0.88.3] - 2026-05-24
 
 ### Added
@@ -1442,7 +1472,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.3...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.4...HEAD
+[0.88.4]: https://github.com/msaad00/agent-bom/compare/v0.88.3...v0.88.4
 [0.88.3]: https://github.com/msaad00/agent-bom/compare/v0.88.1...v0.88.3
 [0.88.1]: https://github.com/msaad00/agent-bom/compare/v0.88.0...v0.88.1
 [0.88.0]: https://github.com/msaad00/agent-bom/compare/v0.87.1...v0.88.0

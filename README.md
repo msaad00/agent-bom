@@ -133,7 +133,7 @@ Screenshot capture rules and the full manifest live in
 | Container image scan | `agent-bom image nginx:latest` | image findings and remediation |
 | IaC scan | `agent-bom iac Dockerfile k8s/ infra/main.tf` | IaC findings and policy context |
 | Cloud posture check | `agent-bom cis-benchmark --provider aws` | runtime CIS posture evidence |
-| CI gate | `uses: msaad00/agent-bom@v0.88.3` | SARIF, PR summary, optional code-scanning upload |
+| CI gate | `uses: msaad00/agent-bom@v0.88.4` | SARIF, PR summary, optional code-scanning upload |
 | MCP tools | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict-args security tools for MCP clients |
 | Local API/UI | `pip install 'agent-bom[ui]' && agent-bom serve` | API plus bundled dashboard |
 | Self-hosted pilot | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your environment |

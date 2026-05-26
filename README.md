@@ -150,7 +150,7 @@ integration docs instead of this front door.
 | Surface | Primary user | Current boundary |
 |---|---|---|
 | CLI / CI | developers and release gates | local scans, SARIF/SBOM/HTML/JSON, deterministic exit codes |
-| REST API | control-plane integrations | scans, bulk findings, dataset versions, graph evidence, audit, runtime summaries |
+| REST API | control-plane integrations | scans, bulk findings, dataset versions, evaluation runs, graph evidence, audit, runtime summaries |
 | MCP tools | agents and assistants | strict arguments, read-mostly security queries, exposure paths, deploy decisions, audited Shield actions |
 | Dashboard | security teams and operators | inventory, findings, graph cockpit, compliance, evidence, runtime posture |
 | Runtime proxy/gateway | runtime operators | scoped MCP traffic inspection, policy decisions, redacted audit evidence |

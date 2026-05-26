@@ -105,6 +105,9 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
     client.register_dataset_version("dataset-a", version_id="v1")
     client.dataset_versions("dataset-a")
     client.dataset_version("dataset-a", "v1")
+    client.register_evaluation_run(evaluation_id="eval-a", dataset_id="dataset-a", dataset_version_id="v1")
+    client.evaluation_runs(dataset_id="dataset-a", limit=10)
+    client.evaluation_run("eval-a")
 
     assert seen == [
         ("GET", "/v1/findings"),
@@ -112,6 +115,9 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
         ("POST", "/v1/datasets/dataset-a/versions"),
         ("GET", "/v1/datasets/dataset-a/versions"),
         ("GET", "/v1/datasets/dataset-a/versions/v1"),
+        ("POST", "/v1/evaluations"),
+        ("GET", "/v1/evaluations"),
+        ("GET", "/v1/evaluations/eval-a"),
     ]
 
 

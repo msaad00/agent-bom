@@ -210,6 +210,64 @@ test("gets a single dataset version", async () => {
   assert.equal(response.dataset.version_id, "2026/05/25");
 });
 
+test("registers and reads evaluation runs", async () => {
+  const seen = [];
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    tenantId: "tenant-f",
+    fetch: async (url, init = {}) => {
+      seen.push({ url: String(url), body: init.body ? JSON.parse(init.body) : undefined });
+      return jsonResponse({
+        schema_version: "evals.runs.v1",
+        evaluation: {
+          tenant_id: "tenant-f",
+          evaluation_id: "eval-a",
+          created_at: "2026-05-25T00:00:00Z",
+          updated_at: "2026-05-25T00:00:00Z",
+          status: "completed",
+          source: "ci",
+        },
+        evaluations: [],
+        count: 0,
+        limit: 10,
+        offset: 0,
+      });
+    },
+  });
+
+  await client.registerEvaluationRun({
+    evaluationId: "eval-a",
+    datasetId: "dataset-a",
+    datasetVersionId: "v1",
+    scores: { safety: 1 },
+    source: "ci",
+  });
+  await client.evaluationRuns({ datasetId: "dataset-a", limit: 10 });
+  await client.evaluationRun("eval-a");
+
+  assert.deepEqual(seen, [
+    {
+      url: "https://agent-bom.example.com/v1/evaluations",
+      body: {
+        evaluation_id: "eval-a",
+        dataset_id: "dataset-a",
+        dataset_version_id: "v1",
+        source: "ci",
+        scores: { safety: 1 },
+        tenant_id: "tenant-f",
+      },
+    },
+    {
+      url: "https://agent-bom.example.com/v1/evaluations?dataset_id=dataset-a&limit=10",
+      body: undefined,
+    },
+    {
+      url: "https://agent-bom.example.com/v1/evaluations/eval-a",
+      body: undefined,
+    },
+  ]);
+});
+
 test("reads manifest and runtime index with tenant query", async () => {
   const seenUrls = [];
   const client = new AgentBomClient({

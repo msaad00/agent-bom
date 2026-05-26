@@ -41,6 +41,8 @@ func main() {
 - `POST /v1/graph/should-i-deploy`
 - `GET|POST /v1/datasets/{dataset_id}/versions`
 - `GET /v1/datasets/{dataset_id}/versions/{version_id}`
+- `GET|POST /v1/evaluations`
+- `GET /v1/evaluations/{evaluation_id}`
 - `GET /v1/agent-bom/manifest`
 - `GET /v1/runtime/production-index`
 - `GET /v1/intel/advisories/{advisory_id}`

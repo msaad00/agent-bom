@@ -51,6 +51,53 @@ dependencies = [
 ai-enrich = [
     { name = "litellm" },
 ]
+all = [
+    { name = "azure-identity" },
+    { name = "azure-mgmt-cognitiveservices" },
+    { name = "azure-mgmt-containerinstance" },
+    { name = "azure-mgmt-containerservice" },
+    { name = "azure-mgmt-machinelearningservices" },
+    { name = "azure-mgmt-resource" },
+    { name = "azure-mgmt-web" },
+    { name = "boto3" },
+    { name = "cryptography" },
+    { name = "databricks-sdk" },
+    { name = "fastapi" },
+    { name = "google-cloud-aiplatform" },
+    { name = "google-cloud-container" },
+    { name = "google-cloud-functions" },
+    { name = "google-cloud-resource-manager" },
+    { name = "google-cloud-run" },
+    { name = "huggingface-hub" },
+    { name = "litellm" },
+    { name = "mcp" },
+    { name = "networkx" },
+    { name = "numpy" },
+    { name = "openai" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
+    { name = "pandas" },
+    { name = "pillow" },
+    { name = "plotly" },
+    { name = "prompt-toolkit" },
+    { name = "protobuf" },
+    { name = "psutil" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "psycopg-pool" },
+    { name = "pyjwt" },
+    { name = "pytesseract" },
+    { name = "python3-saml" },
+    { name = "requests" },
+    { name = "scipy" },
+    { name = "smithery" },
+    { name = "snowflake-connector-python" },
+    { name = "sse-starlette" },
+    { name = "streamlit" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "wandb" },
+    { name = "watchdog" },
+]
 api = [
     { name = "fastapi" },
     { name = "sse-starlette" },
@@ -205,21 +252,35 @@ watch = [
 
 [package.metadata]
 requires-dist = [
+    { name = "agent-bom", extras = ["ai-enrich"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["api"], marker = "extra == 'ui'" },
     { name = "agent-bom", extras = ["aws"], marker = "extra == 'cloud'" },
     { name = "agent-bom", extras = ["azure"], marker = "extra == 'cloud'" },
+    { name = "agent-bom", extras = ["cloud"], marker = "extra == 'all'" },
+    { name = "agent-bom", extras = ["dashboard"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["databricks"], marker = "extra == 'cloud'" },
     { name = "agent-bom", extras = ["dev"], marker = "extra == 'dev-all'" },
     { name = "agent-bom", extras = ["gcp"], marker = "extra == 'cloud'" },
+    { name = "agent-bom", extras = ["graph"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["graph"], marker = "extra == 'dev-all'" },
     { name = "agent-bom", extras = ["huggingface"], marker = "extra == 'cloud'" },
+    { name = "agent-bom", extras = ["interactive"], marker = "extra == 'all'" },
+    { name = "agent-bom", extras = ["mcp-server"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["mcp-server"], marker = "extra == 'dev-all'" },
     { name = "agent-bom", extras = ["nebius"], marker = "extra == 'cloud'" },
+    { name = "agent-bom", extras = ["oidc"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["openai"], marker = "extra == 'cloud'" },
+    { name = "agent-bom", extras = ["otel"], marker = "extra == 'all'" },
+    { name = "agent-bom", extras = ["postgres"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["postgres"], marker = "extra == 'dev-all'" },
+    { name = "agent-bom", extras = ["runtime"], marker = "extra == 'all'" },
+    { name = "agent-bom", extras = ["saml"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["snowflake"], marker = "extra == 'cloud'" },
+    { name = "agent-bom", extras = ["ui"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["ui"], marker = "extra == 'dev-all'" },
+    { name = "agent-bom", extras = ["visual"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["wandb"], marker = "extra == 'cloud'" },
+    { name = "agent-bom", extras = ["watch"], marker = "extra == 'all'" },
     { name = "azure-identity", marker = "extra == 'azure'", specifier = ">=1.15" },
     { name = "azure-mgmt-cognitiveservices", marker = "extra == 'azure'", specifier = ">=13.5" },
     { name = "azure-mgmt-containerinstance", marker = "extra == 'azure'", specifier = ">=10.1" },
@@ -235,7 +296,7 @@ requires-dist = [
     { name = "cryptography", marker = "extra == 'runtime'", specifier = ">=46.0.7" },
     { name = "cyclonedx-python-lib", specifier = ">=11.6" },
     { name = "databricks-sdk", marker = "extra == 'databricks'", specifier = ">=0.20" },
-    { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115" },
+    { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115,!=0.136.3" },
     { name = "flask", specifier = ">=3.1.3" },
     { name = "google-cloud-aiplatform", marker = "extra == 'gcp'", specifier = ">=1.38" },
     { name = "google-cloud-container", marker = "extra == 'gcp'", specifier = ">=2.36" },
@@ -296,7 +357,7 @@ requires-dist = [
     { name = "watchdog", marker = "extra == 'watch'", specifier = ">=4.0" },
     { name = "werkzeug", specifier = ">=3.1.6" },
 ]
-provides-extras = ["api", "otel", "ui", "aws", "azure", "gcp", "coreweave", "databricks", "snowflake", "nebius", "huggingface", "wandb", "openai", "ai-enrich", "graph", "pdf", "postgres", "watch", "runtime", "visual", "mcp-server", "dashboard", "snyk", "interactive", "oidc", "saml", "cloud", "docs", "dev", "dev-all"]
+provides-extras = ["api", "otel", "ui", "aws", "azure", "gcp", "coreweave", "databricks", "snowflake", "nebius", "huggingface", "wandb", "openai", "ai-enrich", "graph", "pdf", "postgres", "watch", "runtime", "visual", "mcp-server", "dashboard", "snyk", "interactive", "oidc", "saml", "cloud", "all", "docs", "dev", "dev-all"]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -1173,7 +1234,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.136.3"
+version = "0.136.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -1182,9 +1243,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/2d/ff8d91d7b564d464629a0fd50a4489c97fcb836ac230bf3a7269232a9b1f/fastapi-0.136.3.tar.gz", hash = "sha256:e487fae93ad408e6f47641ee4dfe389864fd7bec92e547ea8498fc13f43e83ab", size = 396410, upload-time = "2026-05-23T18:53:15.192Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/45/c130091c2dfa061bbfe3150f2a5091ef1adf149f2a8d2ae769ecaf6e99a2/fastapi-0.136.1.tar.gz", hash = "sha256:7af665ad7acfa0a3baf8983d393b6b471b9da10ede59c60045f49fbc89a0fa7f", size = 397448, upload-time = "2026-04-23T16:49:44.046Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/82/45359b62a067409bd929ae8a56b8ed13e5a8c8a61194b3c236920999ab83/fastapi-0.136.3-py3-none-any.whl", hash = "sha256:3d2a69bdf04b7e9f3afa292c3bc7a98816bbfafa10bc9b45f3f3700d2f761620", size = 117481, upload-time = "2026-05-23T18:53:16.924Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/ff/2e4eca3ade2c22fe1dea7043b8ee9dabe47753349eb1b56a202de8af6349/fastapi-0.136.1-py3-none-any.whl", hash = "sha256:a6e9d7eeada96c93a4d69cb03836b44fa34e2854accb7244a1ece36cd4781c3f", size = 117683, upload-time = "2026-04-23T16:49:42.437Z" },
 ]
 
 [[package]]

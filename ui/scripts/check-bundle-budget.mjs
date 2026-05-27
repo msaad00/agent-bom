@@ -10,7 +10,8 @@ const BUDGETS = {
   // Includes the opt-in Sigma.js + graphology WebGL overview chunk for dense graphs.
   // Also includes the Agent BOM manifest cockpit filters used for AI visibility triage.
   // Includes the root exposure cockpit path card and operational action tiles.
-  totalClientJsBytes: 2_864_000,
+  // Includes the dashboard trust-mesh topology filters and offline-state workflow.
+  totalClientJsBytes: 2_876_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

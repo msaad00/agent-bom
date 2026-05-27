@@ -758,7 +758,6 @@ def _generate_recommendations(categories: list[TrustCategoryResult]) -> list[str
 _BLOCKED_FINDING_CATEGORIES = {
     "credential_file_access",
     "confirmation_bypass",
-    "prompt_coercion",
     "privilege_escalation",
 }
 

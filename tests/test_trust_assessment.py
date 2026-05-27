@@ -494,13 +494,15 @@ def test_verdict_two_fails_is_malicious_high():
     assert conf == Confidence.HIGH
 
 
-def test_review_verdict_blocked_for_prompt_coercion():
-    """Prompt coercion should map to a blocked handling verdict."""
+def test_prompt_coercion_is_suspicious_not_malicious():
+    """Instruction override language is content risk, but not proof of malicious content."""
     scan = _make_scan()
     audit = _make_audit(findings=[_finding("prompt_coercion", severity="high", title="Guardrail override")])
     result = assess_trust(scan, audit)
-    assert result.content_verdict == Verdict.MALICIOUS
-    assert result.review_verdict == ReviewVerdict.BLOCKED
+    assert result.verdict == Verdict.SUSPICIOUS
+    assert result.content_verdict == Verdict.SUSPICIOUS
+    assert result.review_verdict == ReviewVerdict.REVIEW
+    assert result.provenance_verdict == ProvenanceVerdict.VERIFIED
     assert any("guardrail" in reason.lower() or "prompt coercion" in reason.lower() for reason in result.review_reasons)
 
 

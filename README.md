@@ -54,7 +54,8 @@ the credential environment names in reach, and the agents that can call it.
 
 ```bash
 pip install agent-bom
-agent-bom quickstart --dry-run --offline
+agent-bom quickstart --dry-run --offline   # print the onboarding plan
+agent-bom quickstart --run --offline        # write sample, scan, seed gateway policy, populate the cockpit
 agent-bom agents --demo --offline
 ```
 
@@ -130,6 +131,7 @@ Screenshot capture rules and the full manifest live in
 |---|---|---|
 | Local agent and MCP inventory | `agent-bom agents` | findings, AI BOM, graph-ready JSON |
 | Guided local onboarding | `agent-bom quickstart --dry-run --offline` | scan, sample-data, and local API/UI next steps |
+| One-command onboarding | `agent-bom quickstart --run --offline` | writes sample, runs a graph-persisting scan, seeds a baseline gateway policy |
 | Repo and lockfile scan | `agent-bom agents -p .` | package findings, SARIF/SBOM/HTML when requested |
 | Pre-install guard | `agent-bom check flask@2.0.0 --ecosystem pypi` | deterministic allow/warn/block result |
 | Container image scan | `agent-bom image nginx:latest` | image findings and remediation |

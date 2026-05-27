@@ -8,6 +8,7 @@ RELEASE_NAME="agent-bom"
 BASE_URL=""
 API_KEY="${AGENT_BOM_API_KEY:-}"
 CHECK_GATEWAY=0
+EVIDENCE_DIR=""
 
 usage() {
   cat <<'EOF'
@@ -24,6 +25,7 @@ Options:
   --base-url URL        Reachable control-plane base URL (required)
   --api-key VALUE       Operator API key for /v1/auth/debug verification
   --check-gateway       Also verify the gateway Deployment rollout and /healthz
+  --evidence-dir DIR    Write verification log and response artifacts to DIR
   -h, --help            Show this help
 
 Examples:
@@ -50,12 +52,18 @@ while [ "$#" -gt 0 ]; do
     --base-url) BASE_URL="$2"; shift 2 ;;
     --api-key) API_KEY="$2"; shift 2 ;;
     --check-gateway) CHECK_GATEWAY=1; shift ;;
+    --evidence-dir) EVIDENCE_DIR="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) fail "unknown option: $1" ;;
   esac
 done
 
 [ -n "${BASE_URL}" ] || fail "--base-url is required"
+
+if [ -n "${EVIDENCE_DIR}" ]; then
+  mkdir -p "${EVIDENCE_DIR}"
+  exec > >(tee "${EVIDENCE_DIR}/verify-eks-reference.log") 2>&1
+fi
 
 need_cmd aws
 need_cmd kubectl
@@ -64,6 +72,7 @@ need_cmd curl
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
+started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 hdrs=()
 if [ -n "${API_KEY}" ]; then
@@ -120,6 +129,40 @@ PY
 ))"
 else
   ok "skipped (pass --api-key to verify /v1/auth/debug resolution)"
+fi
+
+if [ -n "${EVIDENCE_DIR}" ]; then
+  completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  cp "$tmp/health.json" "${EVIDENCE_DIR}/healthz.json"
+  cp "$tmp/ui.html" "${EVIDENCE_DIR}/ui-root.html"
+  if [ -f "$tmp/auth.json" ]; then
+    cp "$tmp/auth.json" "${EVIDENCE_DIR}/auth-debug.json"
+  fi
+  cat >"${EVIDENCE_DIR}/summary.md" <<EOF
+# agent-bom EKS reference verification
+
+status: passed
+started_at: ${started_at}
+completed_at: ${completed_at}
+
+## Target
+
+- cluster: ${CLUSTER_NAME}
+- region: ${REGION}
+- namespace: ${NAMESPACE}
+- release: ${RELEASE_NAME}
+- base_url: ${BASE_URL}
+- gateway_checked: ${CHECK_GATEWAY}
+- auth_debug_checked: $( [ -n "${API_KEY}" ] && printf yes || printf no )
+
+## Artifacts
+
+- verify-eks-reference.log
+- healthz.json
+- ui-root.html
+$( [ -f "$tmp/auth.json" ] && printf -- "- auth-debug.json\n" )
+EOF
+  ok "evidence written to ${EVIDENCE_DIR}"
 fi
 
 bold "reference verification passed"

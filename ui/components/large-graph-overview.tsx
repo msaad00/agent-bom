@@ -9,10 +9,8 @@ import { GraphLegend } from "@/components/graph-chrome";
 import type { LegendItem } from "@/lib/graph-utils";
 import {
   buildLargeGraphOverviewModel,
-  LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES,
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
-  LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
   summarizeLargeGraphOverview,
   type LargeGraphNode,
 } from "@/lib/large-graph-overview";
@@ -215,10 +213,6 @@ export function LargeGraphOverview({
         </div>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-500">
           <span>
-            Switches on at {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes or{" "}
-            {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges.
-          </span>
-          <span>
             Draw budget: {model.nodes.length.toLocaleString()}/{model.sourceNodeCount.toLocaleString()} nodes,{" "}
             {model.edges.length.toLocaleString()}/{model.sourceEdgeCount.toLocaleString()} edges.
           </span>
@@ -301,21 +295,11 @@ export function LargeGraphOverview({
             });
           }}
         />
-        <div className="pointer-events-auto absolute right-3 top-3 max-w-[min(30rem,calc(100vw-2rem))]">
-          <details className="rounded-xl border border-zinc-800 bg-zinc-950/85 p-2 backdrop-blur">
-            <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-zinc-400 [&::-webkit-details-marker]:hidden">
-              Legend
-            </summary>
-            <div className="mt-2">
-              <GraphLegend items={legendItems} embedded />
-            </div>
-          </details>
+        <div className="pointer-events-auto absolute right-3 top-3">
+          <GraphLegend items={legendItems} />
         </div>
-        <div className="pointer-events-none absolute bottom-3 left-3 max-w-[min(34rem,calc(100vw-2rem))] rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-400 backdrop-blur">
-          Large mode supports pan, zoom, node selection, server-side search, filters, selected-node detail, and reachability drill-in.
-          React Flow-only affordances such as node cards, minimap, and path highlighting return after narrowing the graph below{" "}
-          {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes / {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges
-          or entering a bounded drill-in.
+        <div className="pointer-events-none absolute bottom-3 left-3 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-400 backdrop-blur">
+          Pan, zoom, search, filter, and select nodes for evidence.
           <span className="sr-only">
             Maximum overview draw budget is {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES.toLocaleString()} nodes and{" "}
             {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES.toLocaleString()} edges.

@@ -10,7 +10,7 @@ import { PageEmptyState, PageLoadingState } from "@/components/states/page-state
 import type { LineageNodeData } from "./lineage-nodes";
 
 const FINDINGS_VIRTUALIZE_THRESHOLD = 80;
-const FINDING_ROW_HEIGHT = 260;
+const FINDING_ROW_HEIGHT = 92;
 const FINDING_OVERSCAN = 4;
 
 export function GraphControlGroup({
@@ -121,10 +121,12 @@ export function GraphFindingsFallback({
       {shouldVirtualize ? (
         <VirtualizedFindingList nodes={nodes} onSelect={onSelect} scanId={scanId} />
       ) : (
-        <div className="grid flex-1 gap-3 overflow-y-auto p-4 lg:grid-cols-2">
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
           {nodes.map(({ id, data }) => (
-            <FindingCard key={id} id={id} data={data} onSelect={onSelect} scanId={scanId} />
+            <FindingRow key={id} id={id} data={data} onSelect={onSelect} scanId={scanId} />
           ))}
+          </div>
         </div>
       )}
     </div>
@@ -185,8 +187,8 @@ function VirtualizedFindingList({
           style={{ position: "absolute", left: 0, right: 0, top: beforeHeight }}
         >
           {visibleNodes.map(({ id, data }) => (
-            <div key={id} style={{ minHeight: FINDING_ROW_HEIGHT - 12 }}>
-              <FindingCard id={id} data={data} onSelect={onSelect} scanId={scanId} />
+            <div key={id} style={{ minHeight: FINDING_ROW_HEIGHT }}>
+              <FindingRow id={id} data={data} onSelect={onSelect} scanId={scanId} />
             </div>
           ))}
         </div>
@@ -195,7 +197,7 @@ function VirtualizedFindingList({
   );
 }
 
-function FindingCard({
+function FindingRow({
   id,
   data,
   onSelect,
@@ -209,55 +211,51 @@ function FindingCard({
   const severity = data.severity?.toUpperCase() ?? "UNKNOWN";
   const cvss = typeof data.cvssScore === "number" ? data.cvssScore.toFixed(1) : "N/A";
   const epss = typeof data.epssScore === "number" ? `${(data.epssScore * 100).toFixed(1)}%` : "N/A";
+  const risk = typeof data.riskScore === "number" ? data.riskScore.toFixed(1) : "N/A";
   const osvUrl = getOsvVulnerabilityUrl(data.label);
-  const tone =
+  const severityClass =
     data.severity === "critical"
-      ? "border-red-800 bg-red-950/20"
+      ? "border-red-500/25 bg-red-500/10 text-red-200"
       : data.severity === "high"
-        ? "border-orange-800 bg-orange-950/20"
-        : "border-[color:var(--border-subtle)] bg-[color:var(--surface)]";
+        ? "border-orange-500/25 bg-orange-500/10 text-orange-200"
+        : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)]";
 
   return (
-    <div className={`rounded-2xl border p-4 ${tone}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium tracking-[0.16em] text-[color:var(--text-secondary)]">
-              {severity}
+    <div className="grid gap-3 border-b border-[color:var(--border-subtle)] px-4 py-3 last:border-b-0 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className={`rounded-lg border px-2 py-0.5 text-[10px] font-medium tracking-[0.14em] ${severityClass}`}>
+            {severity}
+          </span>
+          {data.isKev && (
+            <span className="rounded-lg border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[10px] font-medium tracking-[0.14em] text-red-200">
+              KEV
             </span>
-            {data.isKev && (
-              <span className="rounded-lg border border-red-800 bg-red-950/70 px-2 py-0.5 text-[10px] font-medium tracking-[0.16em] text-red-300">
-                KEV
-              </span>
-            )}
-          </div>
-          <h4 className="mt-2 font-mono text-sm font-semibold text-[color:var(--foreground)]">{data.label}</h4>
-          {data.description && (
-            <p className="mt-2 line-clamp-3 text-sm leading-6 text-[color:var(--text-secondary)]">{data.description}</p>
           )}
+          <h4 className="truncate font-mono text-sm font-semibold text-[color:var(--foreground)]">{data.label}</h4>
         </div>
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[color:var(--text-tertiary)]">
+          <span>CVSS {cvss}</span>
+          <span>EPSS {epss}</span>
+          <span>Risk {risk}</span>
+          {data.ecosystem && <span>{data.ecosystem}</span>}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => onSelect(id, data)}
-          className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
         >
           Open evidence
         </button>
-      </div>
-
-      <div className="mt-4 grid gap-2 sm:grid-cols-3">
-        <Stat label="CVSS" value={cvss} />
-        <Stat label="EPSS" value={epss} />
-        <Stat label="Risk" value={typeof data.riskScore === "number" ? data.riskScore.toFixed(1) : "N/A"} />
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
         <Link
           href={buildFindingsHref({ scanId, cve: data.label })}
           className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70"
         >
           <Route className="h-3 w-3" />
-          Open in findings
+          Findings
         </Link>
         {osvUrl && (
           <a
@@ -266,20 +264,11 @@ function FindingCard({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
           >
-            View on OSV
+            OSV
             <ExternalLink className="h-3 w-3" />
           </a>
         )}
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{label}</div>
-      <div className="mt-1 text-sm font-mono text-[color:var(--foreground)]">{value}</div>
     </div>
   );
 }

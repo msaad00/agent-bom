@@ -4,8 +4,8 @@ import type { LineageNodeData, LineageNodeType } from "@/components/lineage-node
 import { NODE_COLOR_MAP } from "@/lib/graph-utils";
 import { RELATIONSHIP_COLOR_MAP } from "@/lib/graph-schema";
 
-export const LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD = 500;
-export const LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD = 1200;
+export const LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD = 200;
+export const LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD = 500;
 export const LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES = 3000;
 export const LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES = 6000;
 
@@ -197,7 +197,6 @@ export function buildLargeGraphOverviewModel(
     const data = node.data;
     const x = numericPosition(node.position?.x) ?? fallback.x;
     const y = numericPosition(node.position?.y) ?? fallback.y;
-    const severity = severityRank(data.severity);
     return {
       id: node.id,
       x,
@@ -211,10 +210,11 @@ export function buildLargeGraphOverviewModel(
       hidden: data.dimmed === true,
       forceLabel:
         data.highlighted === true ||
-        severity >= 4 ||
         data.nodeType === "agent" ||
         data.nodeType === "server" ||
-        data.nodeType === "sharedServer",
+        data.nodeType === "sharedServer" ||
+        data.nodeType === "credential" ||
+        data.nodeType === "tool",
     };
   });
   const nodeById = new Map(overviewNodes.map((node) => [node.id, node]));

@@ -136,6 +136,7 @@ interface FilterPanelProps {
   validValues?: FilterValidValues;
   /** Click handler for the reset button at the panel header. */
   onReset?: () => void;
+  variant?: "rail" | "panel";
 }
 
 const DISABLED_TOOLTIP = "no nodes match this combination";
@@ -219,7 +220,7 @@ const AGENT_OPTION_HEIGHT = 32;
 const AGENT_VISIBLE_ROWS = 8;
 const AGENT_OVERSCAN_ROWS = 4;
 
-export function FilterPanel({ filters, onChange, agentNames, validValues, onReset }: FilterPanelProps) {
+export function FilterPanel({ filters, onChange, agentNames, validValues, onReset, variant = "rail" }: FilterPanelProps) {
   const [openSections, setOpenSections] = useState({
     layers: false,
     severity: true,
@@ -259,8 +260,14 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
   };
 
   return (
-    <div className="w-48 bg-[var(--surface)] backdrop-blur-sm border-r border-[var(--border-subtle)] p-3 space-y-4 overflow-y-auto text-xs text-[var(--text-secondary)]">
-      <div className="flex items-center justify-between -mt-1 -mx-1 mb-1">
+    <div
+      className={
+        variant === "panel"
+          ? "grid gap-3 text-xs text-[var(--text-secondary)] md:grid-cols-2 xl:grid-cols-4"
+          : "w-48 bg-[var(--surface)] backdrop-blur-sm border-r border-[var(--border-subtle)] p-3 space-y-4 overflow-y-auto text-xs text-[var(--text-secondary)]"
+      }
+    >
+      <div className={variant === "panel" ? "flex items-center justify-between md:col-span-2 xl:col-span-4" : "flex items-center justify-between -mt-1 -mx-1 mb-1"}>
         <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-tertiary)] px-1">Filters</span>
         {onReset && (
           <button

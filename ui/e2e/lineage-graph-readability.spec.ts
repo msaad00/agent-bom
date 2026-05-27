@@ -186,7 +186,7 @@ async function routeGraphPage(page: Page) {
       body: JSON.stringify({ critical: 4, high: 17, medium: 1, low: 0, total: 22, kev: 0, compound_issues: 1 }),
     });
   });
-  await page.route("**/v1/graph/snapshots?limit=40", async (route) => {
+  await page.route("**/v1/graph/snapshots?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify([
@@ -214,11 +214,18 @@ async function routeGraphPage(page: Page) {
 
 async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "dark" | "light") {
   await expect(page.getByRole("heading", { name: "Lineage Graph" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Relevant paths", exact: true })).toBeVisible();
-  await expect(page.getByText("Attack paths", { exact: true })).toBeVisible();
-  await expect(page.locator('[data-testid="cluster-pill"]').first()).toBeVisible();
+  await expect(page.getByText("Relevant paths", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("View controls", { exact: true })).toBeVisible();
   await expect(page.getByTestId("graph-compression-summary")).toContainText(/compressed|rendered/);
-  await expect(page.locator("summary").filter({ hasText: "Legend" })).toBeVisible();
+
+  const largeOverview = page.getByTestId("large-graph-overview");
+  if (await largeOverview.isVisible()) {
+    await expect(largeOverview).toBeVisible();
+    await expect(page.getByText("Pan, zoom, search, filter, and select nodes for evidence.")).toBeVisible();
+  } else {
+    await expect(page.locator('[data-testid="cluster-pill"]').first()).toBeVisible();
+    await expect(page.getByText("Legend").first()).toBeVisible();
+  }
   await page.screenshot({
     path: testInfo.outputPath(`lineage-graph-dense-${theme}.png`),
     fullPage: true,

@@ -80,10 +80,13 @@ function buildLargeGraph() {
 
   for (let index = 0; index < 620; index += 1) {
     const packageId = `pkg:${index}`;
+    const vulnerabilityId = `cve:${index}`;
     nodes.push(node(packageId, "package", `large-package-${index}`, "high", 7.2));
+    nodes.push(node(vulnerabilityId, "vulnerability", `CVE-2026-${String(index).padStart(4, "0")}`, "high", 8));
     if (index > 0) {
       edges.push(edge(`pkg:${index - 1}`, packageId, "depends_on"));
     }
+    edges.push(edge(packageId, vulnerabilityId, "vulnerable_to", 1.2));
   }
 
   for (let index = 0; index < 620; index += 1) {
@@ -101,9 +104,9 @@ function buildLargeGraph() {
     stats: {
       total_nodes: nodes.length,
       total_edges: edges.length,
-      node_types: { agent: 1, package: 620 },
-      severity_counts: { high: 621 },
-      relationship_types: { uses: 1, depends_on: 619, related_to: 620 },
+      node_types: { agent: 1, package: 620, vulnerability: 620 },
+      severity_counts: { high: nodes.length },
+      relationship_types: { uses: 1, depends_on: 619, vulnerable_to: 620, related_to: 620 },
       attack_path_count: 0,
       interaction_risk_count: 0,
       max_attack_path_risk: 0,
@@ -155,7 +158,7 @@ async function routeLargeGraphPage(page: Page) {
       body: JSON.stringify({ critical: 0, high: 621, medium: 0, low: 0, total: 621, kev: 0, compound_issues: 0 }),
     });
   });
-  await page.route("**/v1/graph/snapshots?limit=40", async (route) => {
+  await page.route("**/v1/graph/snapshots?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify([
@@ -232,7 +235,7 @@ async function expectCanvasHasPixels(page: Page) {
     const { width, height } = canvasElement;
     const pixels = context.getImageData(0, 0, width, height).data;
     let count = 0;
-    for (let index = 0; index < pixels.length; index += 400) {
+    for (let index = 0; index < pixels.length; index += 16) {
       const red = pixels[index] ?? 0;
       const green = pixels[index + 1] ?? 0;
       const blue = pixels[index + 2] ?? 0;
@@ -268,12 +271,11 @@ test("large graph overview renders above threshold and search drills back into R
 
   await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package");
   await page.waitForLoadState("networkidle");
-  await page.locator("select").nth(2).selectOption("");
-  await page.getByLabel("Vulnerable only").uncheck();
 
   await expect(page.getByTestId("large-graph-overview")).toBeVisible();
-  await expect(page.getByText("Switches on at 500 nodes or 1,200 edges.")).toBeVisible();
-  await expect(page.getByText("React Flow-only affordances")).toBeVisible();
+  await expect(page.getByText("Large graph overview")).toBeVisible();
+  await expect(page.getByText(/Draw budget:/)).toBeVisible();
+  await expect(page.getByText("Pan, zoom, search, filter, and select nodes for evidence.")).toBeVisible();
   await expectCanvasHasPixels(page);
   await page.screenshot({ path: testInfo.outputPath("large-graph-overview.png"), fullPage: true });
 
@@ -291,8 +293,6 @@ test("sigma webgl overview renders when explicitly requested", async ({ page }, 
 
   await page.goto("/graph?renderer=webgl&vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package");
   await page.waitForLoadState("networkidle");
-  await page.locator("select").nth(2).selectOption("");
-  await page.getByLabel("Vulnerable only").uncheck();
 
   await expect(page.getByTestId("sigma-graph-overview")).toBeVisible();
   await expect(page.getByText("WebGL graph overview")).toBeVisible();

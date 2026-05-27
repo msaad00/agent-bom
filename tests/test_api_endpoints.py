@@ -273,6 +273,34 @@ def test_dashboard_extensionless_route_serves_static_export_page(tmp_path: Path,
     assert "root dashboard" in root_resp.text
 
 
+def test_dashboard_client_routes_fall_back_to_app_shell(tmp_path: Path, monkeypatch):
+    """Client-only dashboard routes such as /dashboard and /settings serve the SPA shell."""
+    package_root = tmp_path / "agent_bom"
+    api_dir = package_root / "api"
+    api_dir.mkdir(parents=True)
+    server_file = api_dir / "server.py"
+    server_file.write_text("", encoding="utf-8")
+    ui_dist = package_root / "ui_dist"
+    ui_dist.mkdir(parents=True)
+    (ui_dist / "index.html").write_text("<html><body>root dashboard</body></html>", encoding="utf-8")
+
+    from fastapi import FastAPI
+
+    import agent_bom.api.server as server_module
+    from agent_bom.api.server import _mount_dashboard
+
+    monkeypatch.setattr(server_module, "__file__", str(server_file))
+    test_app = FastAPI()
+    _mount_dashboard(test_app)
+    client = TestClient(test_app, raise_server_exceptions=False)
+
+    for route in ("/dashboard", "/settings"):
+        resp = client.get(route)
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers.get("content-type", "")
+        assert "root dashboard" in resp.text
+
+
 def test_hsts_preload_is_operator_opt_in(monkeypatch):
     client, _ = _fresh_client()
     resp = client.get("/health")

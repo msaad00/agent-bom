@@ -360,7 +360,7 @@ export function Nav() {
       )}
 
       {/* Navigation Groups */}
-      <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-2 scrollbar-thin">
+      <nav className={`${collapsed ? "overflow-visible" : "overflow-y-auto scrollbar-thin"} flex-1 px-2 py-2 space-y-2`}>
         {navGroups.map((group) => {
           const isExpanded = captureMode || expandedGroups.has(group.label);
           const GroupIcon = group.icon;
@@ -369,7 +369,12 @@ export function Nav() {
           );
 
           return (
-            <div key={group.label} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
+            <div
+              key={group.label}
+              className={`rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] ${
+                collapsed ? "group/navlane relative" : ""
+              }`}
+            >
               {/* Group Header */}
               <button
                 onClick={() => {
@@ -383,15 +388,18 @@ export function Nav() {
                   }
                 }}
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium transition-colors border-l-2 ${
+                  collapsed ? "justify-center px-2 py-3" : ""
+                } ${
                   hasActiveChild
                     ? "text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
                     : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                 }`}
                 style={{ borderLeftColor: group.accent }}
                 title={collapsed ? group.label : undefined}
+                aria-label={collapsed ? `${group.label}: ${group.description}` : undefined}
               >
                 <GroupIcon
-                  className="w-4 h-4 shrink-0"
+                  className={`${collapsed ? "h-5 w-5" : "h-4 w-4"} shrink-0`}
                   style={{ color: hasActiveChild ? group.accent : group.accent + "99" }}
                 />
                 {!collapsed && (
@@ -412,6 +420,53 @@ export function Nav() {
                   </>
                 )}
               </button>
+
+              {collapsed && (
+                <div className="pointer-events-none fixed left-[68px] z-50 mt-[-44px] w-72 translate-x-1 opacity-0 transition-all duration-150 group-hover/navlane:pointer-events-auto group-hover/navlane:translate-x-0 group-hover/navlane:opacity-100 group-focus-within/navlane:pointer-events-auto group-focus-within/navlane:translate-x-0 group-focus-within/navlane:opacity-100">
+                  <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 shadow-2xl shadow-black/40">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border"
+                        style={{ borderColor: `${group.accent}55`, backgroundColor: `${group.accent}16`, color: group.accent }}
+                      >
+                        <GroupIcon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--foreground)]">
+                          {group.label}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+                          {group.description}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-1">
+                      {group.visibleLinks.map(({ href, label, icon: Icon }) => {
+                        const active =
+                          href === "/"
+                            ? path === "/"
+                            : href === "/findings"
+                            ? path.startsWith("/findings") || path.startsWith("/vulns")
+                            : path.startsWith(href);
+                        return (
+                          <Link
+                            key={href}
+                            href={href}
+                            className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors ${
+                              active
+                                ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                                : "text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--foreground)]"
+                            }`}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" style={active ? { color: group.accent } : undefined} />
+                            <span className="truncate">{label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Group Links */}
               {(isExpanded || collapsed) && !collapsed && (
@@ -488,28 +543,6 @@ export function Nav() {
                 </div>
               )}
 
-              {/* Collapsed: just show icons as tooltips */}
-              {collapsed && (
-                <div className="space-y-0.5 mt-0.5">
-                  {group.visibleLinks.map(({ href, label, icon: Icon }) => {
-                    const active = href === "/" ? path === "/" : path.startsWith(href);
-                    return (
-                      <Link
-                        key={href}
-                        href={href}
-                        className={`flex items-center justify-center p-2 rounded-lg transition-colors ${
-                          active
-                            ? "bg-emerald-500/10 text-emerald-400"
-                            : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
-                        }`}
-                        title={label}
-                      >
-                        <Icon className="w-4 h-4" />
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           );
         })}

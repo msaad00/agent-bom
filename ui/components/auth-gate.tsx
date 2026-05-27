@@ -13,6 +13,19 @@ function isAuthFailure(message: string): boolean {
   return normalized.includes("unauthorized") || normalized.includes("invalid api key") || normalized.includes("forbidden");
 }
 
+function isApiReachabilityFailure(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("network request failed") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("econnrefused") ||
+    normalized.includes("500 internal server error") ||
+    normalized.includes("502 bad gateway") ||
+    normalized.includes("503 service unavailable") ||
+    normalized.includes("504 gateway timeout")
+  );
+}
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading, error, refresh } = useAuthState();
   const [apiKey, setApiKey] = useState("");
@@ -27,6 +40,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (session && (!session.auth_required || session.authenticated)) {
+    return <>{children}</>;
+  }
+
+  if (error && isApiReachabilityFailure(error)) {
     return <>{children}</>;
   }
 

@@ -13,6 +13,7 @@ import {
 import { AttackPathCard } from "@/components/attack-path-card";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+import { useAuthState } from "@/components/auth-provider";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -337,6 +338,7 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const { session } = useAuthState();
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [detailJobs, setDetailJobs] = useState<ScanJob[]>([]);
   const [agentCount, setAgentCount] = useState<number>(0);
@@ -495,6 +497,35 @@ export default function Dashboard() {
   const credentialExposureCount = useMemo(() => allBlast.filter((b) => blastCredentials(b).length > 0).length, [allBlast]);
   const reachableToolCount = useMemo(() => new Set(allBlast.flatMap(blastTools)).size, [allBlast]);
   const impactedAgentCount = useMemo(() => new Set(allBlast.flatMap(blastAgents)).size, [allBlast]);
+  const estateSummary = useMemo(() => {
+    const environments = new Set<string>();
+    const servers = new Set<string>();
+    const credentialedServers = new Set<string>();
+    const tools = new Set<string>();
+    const configuredAgents = agentList.filter((agent) => agent.status !== "installed-not-configured").length;
+
+    for (const agent of agentList) {
+      environments.add(agent.environment || "local");
+      for (const server of agent.mcp_servers ?? []) {
+        const serverKey = `${agent.name}:${server.name}`;
+        servers.add(serverKey);
+        if (server.has_credentials || (server.credential_env_vars?.length ?? 0) > 0) {
+          credentialedServers.add(serverKey);
+        }
+        for (const tool of server.tools ?? []) {
+          tools.add(`${server.name}:${tool.name}`);
+        }
+      }
+    }
+
+    return {
+      configuredAgents,
+      environments: environments.size,
+      servers: servers.size,
+      credentialedServers: credentialedServers.size,
+      tools: tools.size,
+    };
+  }, [agentList]);
 
   // Unique CVE count
   const uniqueCVEs = useMemo(() => {
@@ -608,8 +639,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {topExposurePath && (
-          <div className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+          {topExposurePath ? (
             <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
@@ -624,27 +655,56 @@ export default function Dashboard() {
               </div>
               <AttackPathCard nodes={topExposurePath.nodes} riskScore={topExposurePath.riskScore} href={topExposurePath.href} captureMode />
             </div>
-            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-              <Link href="/findings?severity=critical" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 transition-colors hover:border-red-400/40">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Fix queue</p>
-                <p className="mt-2 font-mono text-2xl font-semibold text-red-100">{severity.critical}</p>
-                <p className="mt-1 text-xs text-red-100/60">critical findings</p>
-              </Link>
-              <Link href="/security-graph" className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 transition-colors hover:border-amber-400/40">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-amber-200/70">Identity paths</p>
-                <p className="mt-2 font-mono text-2xl font-semibold text-amber-100">{credentialExposureCount}</p>
-                <p className="mt-1 text-xs text-amber-100/60">credential-linked exposures</p>
-              </Link>
-              <Link href="/agents" className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 transition-colors hover:border-sky-400/40">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Active services</p>
-                <p className="mt-2 font-mono text-2xl font-semibold text-sky-100">{impactedAgentCount || (displayedAgentCount ?? 0)}</p>
-                <p className="mt-1 text-xs text-sky-100/60">agent-facing blast radius</p>
-              </Link>
+          ) : (
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300">Estate map</p>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-400">
+                No scored exposure path is available yet. The overview stays grounded in discovered environments, agent services, credential boundaries, and scan coverage until findings produce evidence.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Link href="/agents" className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 transition-colors hover:border-sky-400/40">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Agents</p>
+                  <p className="mt-2 font-mono text-2xl font-semibold text-sky-100">{agentsReady ? estateSummary.configuredAgents : "—"}</p>
+                  <p className="mt-1 text-xs text-sky-100/60">configured clients</p>
+                </Link>
+                <Link href="/agents" className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 transition-colors hover:border-emerald-400/40">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-emerald-200/70">Services</p>
+                  <p className="mt-2 font-mono text-2xl font-semibold text-emerald-100">{agentsReady ? estateSummary.servers : "—"}</p>
+                  <p className="mt-1 text-xs text-emerald-100/60">MCP servers</p>
+                </Link>
+                <Link href="/security-graph" className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 transition-colors hover:border-amber-400/40">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-amber-200/70">Identities</p>
+                  <p className="mt-2 font-mono text-2xl font-semibold text-amber-100">{agentsReady ? estateSummary.credentialedServers : "—"}</p>
+                  <p className="mt-1 text-xs text-amber-100/60">credentialed services</p>
+                </Link>
+                <Link href="/graph" className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4 transition-colors hover:border-fuchsia-400/40">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-fuchsia-200/70">Environments</p>
+                  <p className="mt-2 font-mono text-2xl font-semibold text-fuchsia-100">{agentsReady ? estateSummary.environments : "—"}</p>
+                  <p className="mt-1 text-xs text-fuchsia-100/60">observed scopes</p>
+                </Link>
+              </div>
             </div>
+          )}
+          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <Link href="/findings?severity=critical" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 transition-colors hover:border-red-400/40">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Fix queue</p>
+              <p className="mt-2 font-mono text-2xl font-semibold text-red-100">{severity.critical}</p>
+              <p className="mt-1 text-xs text-red-100/60">critical findings</p>
+            </Link>
+            <Link href="/security-graph" className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 transition-colors hover:border-amber-400/40">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-amber-200/70">Identity paths</p>
+              <p className="mt-2 font-mono text-2xl font-semibold text-amber-100">{credentialExposureCount || estateSummary.credentialedServers}</p>
+              <p className="mt-1 text-xs text-amber-100/60">credential-linked services</p>
+            </Link>
+            <Link href="/agents" className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 transition-colors hover:border-sky-400/40">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Active services</p>
+              <p className="mt-2 font-mono text-2xl font-semibold text-sky-100">{impactedAgentCount || estateSummary.servers || (displayedAgentCount ?? 0)}</p>
+              <p className="mt-1 text-xs text-sky-100/60">agent-facing services</p>
+            </Link>
           </div>
-        )}
+        </div>
 
-        {posture && (
+        {posture && doneJobs.length > 0 && (
           <div className="mt-6">
             <PostureGrade
               grade={posture.grade}
@@ -803,7 +863,7 @@ export default function Dashboard() {
               View all <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          <AgentTopology agents={agentList} />
+          <AgentTopology agents={agentList} session={session} />
         </section>
       )}
 

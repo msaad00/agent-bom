@@ -90,4 +90,25 @@ describe("AuthGate", () => {
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "abk_test" } });
     expect(unlock).toBeEnabled();
   });
+
+  it("lets pages render their own offline state when auth discovery gets a server error", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      json: () => Promise.resolve({ detail: "500 Internal Server Error" }),
+      headers: new Headers(),
+      url: "/v1/auth/me",
+    }) as typeof fetch;
+
+    render(
+      <AuthProvider>
+        <AuthGate>
+          <div>page-level offline state</div>
+        </AuthGate>
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText("page-level offline state")).toBeInTheDocument());
+  });
 });

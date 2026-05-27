@@ -9,6 +9,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `agent-bom quickstart --run` executes first-run onboarding end to end: writes the bundled sample stack, runs a graph-persisting scan that populates the local security-graph cockpit, and seeds the secure-by-default gateway baseline policy. The print-only guide remains the default.
+
 ---
 
 ## [0.88.4] - 2026-05-26

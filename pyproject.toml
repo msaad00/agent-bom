@@ -55,7 +55,7 @@ dependencies = [
 
 [project.optional-dependencies]
 api = [
-    "fastapi>=0.115",
+    "fastapi>=0.115,!=0.136.3",
     "uvicorn[standard]>=0.32",
     "sse-starlette>=2.1",
 ]

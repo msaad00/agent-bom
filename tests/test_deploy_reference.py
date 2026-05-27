@@ -114,6 +114,73 @@ def test_verify_wrapper_script_exists_and_parses():
     assert result.returncode == 0, result.stderr
 
 
+def test_verify_reference_writes_evidence_artifacts(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_command(fake_bin, "aws", "exit 0\n")
+    _write_fake_command(fake_bin, "helm", "exit 0\n")
+    _write_fake_command(fake_bin, "kubectl", "exit 0\n")
+    _write_fake_command(
+        fake_bin,
+        "curl",
+        r"""
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -w) shift 2 ;;
+    -sS) shift ;;
+    -H) shift 2 ;;
+    *) url="$1"; shift ;;
+  esac
+done
+case "$url" in
+  */healthz) printf '{"status":"ok"}' > "$out" ;;
+  */v1/auth/debug) printf '{"method":"api_key"}' > "$out" ;;
+  *) printf '<html>agent-bom dashboard</html>' > "$out" ;;
+esac
+printf "200"
+""",
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    evidence_dir = tmp_path / "evidence"
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(ROOT / "scripts" / "deploy" / "verify-eks-reference.sh"),
+            "--cluster-name",
+            "corp-ai",
+            "--region",
+            "us-east-1",
+            "--base-url",
+            "https://agent-bom.example.com",
+            "--api-key",
+            "test-key",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (evidence_dir / "verify-eks-reference.log").exists()
+    assert (evidence_dir / "healthz.json").read_text() == '{"status":"ok"}'
+    assert "agent-bom dashboard" in (evidence_dir / "ui-root.html").read_text()
+    assert (evidence_dir / "auth-debug.json").read_text() == '{"method":"api_key"}'
+    summary = (evidence_dir / "summary.md").read_text()
+    assert "status: passed" in summary
+    assert "base_url: https://agent-bom.example.com" in summary
+    assert "- auth-debug.json" in summary
+
+
 def test_install_reference_dry_run_gateway_summary_includes_gateway_verify(tmp_path: Path):
     result = subprocess.run(
         [

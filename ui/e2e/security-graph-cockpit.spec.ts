@@ -162,7 +162,7 @@ async function routeCockpit(page: Page) {
       body: JSON.stringify({ critical: 2, high: 1, medium: 0, low: 0, total: 3, kev: 1, compound_issues: 1 }),
     });
   });
-  await page.route("**/v1/graph/snapshots?limit=40", async (route) => {
+  await page.route("**/v1/graph/snapshots?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify([
@@ -175,6 +175,63 @@ async function routeCockpit(page: Page) {
         },
       ]),
     });
+  });
+  await page.route("**/v1/graph/views/fix-first?**", async (route) => {
+    const attackPath = graph.attack_paths[0]!;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        scan_id: scanId,
+        tenant_id: "default",
+        created_at: createdAt,
+        cards: [
+          {
+            id: "card-cockpit-fixture",
+            rank: 1,
+            title: "Critical package reachable from MCP server",
+            summary: attackPath.summary,
+            attack_path: attackPath,
+            nodes: graph.nodes,
+            sequence_labels: ["claude-desktop", "github", "form-data@4.0.0", "CVE-2025-7783"],
+            risk_reasons: [
+              {
+                kind: "critical_vulnerability",
+                label: "Critical reachable CVE",
+                detail: "A critical vulnerability is reachable from an agent-connected MCP server.",
+              },
+            ],
+            next_actions: [
+              {
+                title: "Upgrade vulnerable package",
+                detail: "Prioritize the package dependency before granting more tool access.",
+                href: "/findings?scan=scan-cockpit-fixture",
+              },
+            ],
+            affected: {
+              agents: ["claude-desktop"],
+              servers: ["github"],
+              packages: ["form-data@4.0.0"],
+              findings: ["CVE-2025-7783"],
+              credentials: ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+              tools: ["create_pull_request"],
+            },
+          },
+        ],
+        summary: {
+          total_paths: 1,
+          matched_paths: 1,
+          returned_paths: 1,
+          highest_risk: 9.8,
+          covered_findings: 1,
+          node_count: graph.nodes.length,
+          edge_count: graph.edges.length,
+        },
+        focus: { cve: "", package: "", agent: "" },
+      }),
+    });
+  });
+  await page.route("**/v1/graph/attack-paths?**", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
   });
   await page.route("**/v1/graph/diff?**", async (route) => {
     await route.fulfill({

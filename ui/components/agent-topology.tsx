@@ -321,6 +321,7 @@ export function AgentTopology({
     const credentialedServers = servers.filter(serverHasCredentials).length;
     const unlinkedAgents = agents.filter((agent) => (agent.mcp_servers?.length ?? 0) === 0).length;
     const environments = new Set(agents.map((agent) => agent.environment || "local")).size;
+    const owners = new Set(agents.map((agent) => agent.owner).filter(Boolean)).size;
     return {
       agents: agents.length,
       servers: servers.length,
@@ -330,6 +331,7 @@ export function AgentTopology({
       credentialedServers,
       unlinkedAgents,
       environments,
+      owners,
     };
   }, [agents]);
   const filteredAgents = useMemo(() => {
@@ -404,14 +406,11 @@ export function AgentTopology({
         <div>
           <p className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Topology</p>
           <h3 className="mt-1 text-sm font-semibold text-zinc-100">Agent to server trust mesh</h3>
+          <p className="mt-1 text-xs text-zinc-500">
+            Live Agent and MCPServer evidence, grouped by shared service identity with isolation context and unlinked agents called out.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
-            tenant <span className="font-mono text-zinc-100">{session?.tenant_id ?? "local"}</span>
-          </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
-            role <span className="font-mono text-zinc-100">{session?.role_summary?.display_name ?? session?.role ?? "viewer"}</span>
-          </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
             <span className="font-mono text-zinc-100">{summary.agents}</span> agents
           </div>
@@ -470,7 +469,7 @@ export function AgentTopology({
           Security Graph for the remaining {hiddenAgentCount} agents and {hiddenServerCount} servers.
         </div>
       )}
-      <div className="min-h-[460px]">
+      <div className="grid min-h-[460px] lg:grid-cols-[1fr_270px]">
         <div className="px-2 pb-2 pt-1" style={{ height: 460 }}>
           {displayAgents.length === 0 ? (
             <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50">
@@ -486,6 +485,52 @@ export function AgentTopology({
             </ReactFlowProvider>
           )}
         </div>
+        <aside className="border-t border-zinc-800/80 bg-zinc-950/55 p-4 lg:border-l lg:border-t-0">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Operator readout</p>
+          <div className="mt-3 space-y-3">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+              <p className="text-xs font-semibold text-zinc-200">Isolation context</p>
+              <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <dt className="text-zinc-500">Tenant</dt>
+                  <dd className="mt-0.5 truncate font-mono text-zinc-200">{session?.tenant_id ?? "local"}</dd>
+                </div>
+                <div>
+                  <dt className="text-zinc-500">Role</dt>
+                  <dd className="mt-0.5 truncate font-mono text-zinc-200">{session?.role_summary?.display_name ?? session?.role ?? "viewer"}</dd>
+                </div>
+                <div>
+                  <dt className="text-zinc-500">Envs</dt>
+                  <dd className="mt-0.5 font-mono text-zinc-200">{summary.environments}</dd>
+                </div>
+                <div>
+                  <dt className="text-zinc-500">Owners</dt>
+                  <dd className="mt-0.5 font-mono text-zinc-200">{summary.owners || "n/a"}</dd>
+                </div>
+              </dl>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+              <p className="text-xs font-semibold text-zinc-200">Shared service map</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                Duplicate MCP service identities are grouped so shared packages, tools, and credentials do not appear as disconnected copies.
+              </p>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+              <p className="text-xs font-semibold text-zinc-200">Unlinked agents</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                {summary.unlinkedAgents > 0
+                  ? `${summary.unlinkedAgents} agent${summary.unlinkedAgents === 1 ? "" : "s"} have no MCP service edge in the current evidence.`
+                  : "Every rendered agent has at least one MCP service edge."}
+              </p>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+              <p className="text-xs font-semibold text-zinc-200">Priority lanes</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                Neutral edges are inventory. Amber edges carry credential evidence. Red edges carry vulnerability evidence.
+              </p>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );

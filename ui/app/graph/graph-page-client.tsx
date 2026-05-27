@@ -21,7 +21,6 @@ import { GraphEvidenceExportButton, GraphLegend, FullscreenButton } from "@/comp
 import { LargeGraphOverview } from "@/components/large-graph-overview";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import {
-  GraphControlGroup,
   GraphEmptyState,
   GraphFindingsFallback,
   GraphPanelSkeleton,
@@ -120,8 +119,8 @@ function PulseStyles() {
         50% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.55); }
       }
       .node-critical-pulse {
-        animation: pulse-critical 3.2s ease-in-out infinite;
-        /* Respect reduced-motion preferences. */
+        animation: none;
+        box-shadow: 0 0 6px rgba(239, 68, 68, 0.28);
       }
       /* Stagger so a graph with many critical nodes does NOT strobe in
          sync — when ten or twenty nodes pulse together at the same
@@ -159,7 +158,8 @@ function PulseStyles() {
         50% { box-shadow: 0 0 14px rgba(56, 189, 248, 0.65); }
       }
       .cluster-pill-pulse {
-        animation: cluster-pill-pulse 2.6s ease-in-out infinite;
+        animation: none;
+        box-shadow: 0 0 8px rgba(56, 189, 248, 0.32);
       }
       @media (prefers-reduced-motion: reduce) {
         .cluster-pill-pulse {
@@ -516,7 +516,7 @@ function GraphPageInner() {
   const [searching, setSearching] = useState(false);
   const [investigationMode, setInvestigationMode] = useState<InvestigationMode | null>(null);
   const [reachabilitySummary, setReachabilitySummary] = useState<ReachabilitySummary | null>(null);
-  const [loadingReachability, setLoadingReachability] = useState(false);
+  const loadingReachability = false;
   const [reachabilityError, setReachabilityError] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
@@ -986,14 +986,6 @@ function GraphPageInner() {
   }, [lineageLayoutNodes, localNeighborhoodIds, attackPathNodeIds, reachabilitySummary, activeFocusId, effectiveLodBand]);
 
   const compressedGroupCount = aggregatedClusterNodes.length;
-  const compressedNodeCount = useMemo(
-    () =>
-      aggregatedClusterNodes.reduce((total, node) => {
-        const count = (node.data as LineageNodeData & { count?: unknown }).count;
-        return total + (typeof count === "number" && Number.isFinite(count) ? count : 0);
-      }, 0),
-    [aggregatedClusterNodes],
-  );
   const sourceNodeCount = graphData?.nodes.length ?? flow.nodes.length;
   const renderedNodeCount = displayNodes.length;
 
@@ -1051,11 +1043,11 @@ function GraphPageInner() {
       graphFitViewOptions({
         nodeCount: displayNodes.length,
         edgeCount: displayEdges.length,
-        selectedNode: Boolean(selectedNode),
+        selectedNode: false,
         mode: "lineage",
         captureMode,
       }),
-    [captureMode, displayEdges.length, displayNodes.length, selectedNode],
+    [captureMode, displayEdges.length, displayNodes.length],
   );
   const showMiniMap = useMemo(
     () =>
@@ -1080,8 +1072,8 @@ function GraphPageInner() {
   const webglGraphEnabled =
     searchParams?.get("renderer") === "webgl" || searchParams?.get("webgl") === "1";
   const graphRenderer = decideGraphRenderer({
-    nodeCount: displayNodes.length,
-    edgeCount: displayEdges.length,
+    nodeCount: sourceNodeCount,
+    edgeCount: graphData?.edges.length ?? displayEdges.length,
     captureMode,
     selectedAttackPath: Boolean(selectedAttackPath),
     reachabilityActive: Boolean(reachabilitySummary),
@@ -1098,48 +1090,6 @@ function GraphPageInner() {
         })
         .map((node) => ({ id: node.id, data: node.data as LineageNodeData })),
     [displayNodes],
-  );
-
-  const loadReachabilityDrillIn = useCallback(
-    async (rootId: string, rootLabel?: string) => {
-      if (!selectedScanId) return;
-
-      setLoadingReachability(true);
-      setReachabilityError(null);
-      try {
-        const response = await api.queryGraph({
-          roots: [rootId],
-          scan_id: selectedScanId,
-          direction: "forward",
-          max_depth: 4,
-          max_nodes: 350,
-          max_edges: 2200,
-          timeout_ms: 2000,
-          traversable_only: true,
-          static_only: filters.runtimeMode === "static",
-          dynamic_only: filters.runtimeMode === "dynamic",
-          include_roots: true,
-          include_attack_paths: false,
-          relationship_types: serverRelationships,
-        });
-        setReachabilitySummary(
-          summarizeReachability({
-            rootId,
-            rootLabel,
-            nodes: response.nodes,
-            edges: response.edges,
-            depthByNode: response.depth_by_node,
-            truncated: response.truncated,
-          }),
-        );
-      } catch (error) {
-        setReachabilitySummary(null);
-        setReachabilityError(error instanceof Error ? error.message : "Reachability query failed");
-      } finally {
-        setLoadingReachability(false);
-      }
-    },
-    [filters.runtimeMode, selectedScanId, serverRelationships],
   );
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
@@ -1165,13 +1115,12 @@ function GraphPageInner() {
     });
     setSelectedNodeId(node.id);
     setSelectedAttackPathKey(null);
-    void loadReachabilityDrillIn(node.id, data.label);
     // Click pin (#2257): toggle a "pinned focus" on the clicked node.
     // Re-clicking the same node clears the pin. Hover state is reset
     // because the pin replaces hover as the focus source.
     setPinnedFocusId((current) => (current === node.id ? null : node.id));
     setHoveredNodeId(null);
-  }, [loadReachabilityDrillIn]);
+  }, []);
 
   const onLargeGraphNodeSelect = useCallback((nodeId: string) => {
     const node = displayNodes.find((candidate) => candidate.id === nodeId);
@@ -1198,8 +1147,7 @@ function GraphPageInner() {
     setSelectedNodeId(id);
     setHoveredNodeId(id);
     setSelectedAttackPathKey(null);
-    void loadReachabilityDrillIn(id, data.label);
-  }, [loadReachabilityDrillIn]);
+  }, []);
 
   const runSearch = useCallback(async () => {
     const query = searchQuery.trim();
@@ -1377,13 +1325,13 @@ function GraphPageInner() {
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
       <PulseStyles />
 
-      <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_26%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-4">
+      <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-3">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Unified graph</p>
             <h1 className="mt-1 text-lg font-semibold text-zinc-100">Lineage Graph</h1>
             <p className="text-xs text-zinc-500">
-              Focused agent-to-finding graph with packages, credentials, tools, and runtime links.
+              Evidence-backed relationships across agents, servers, packages, credentials, tools, and findings.
             </p>
           </div>
 
@@ -1441,8 +1389,41 @@ function GraphPageInner() {
             </button>
           </form>
 
-          <div className="mt-3 flex flex-wrap gap-4 text-[11px]">
-            <GraphControlGroup label="Scope preset">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+            <ViewPill label="Scope" value={filters.agentName ? filters.agentName : "all agents"} />
+            <ViewPill label="View" value={graphScopeLabelForFilters(filters)} />
+            <ViewPill label="Severity" value={filters.severity ? `${filters.severity}+` : "all"} />
+            {sourceNodeCount > 0 && (
+              <span
+                data-testid="graph-compression-summary"
+                className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400"
+              >
+                {compressedGroupCount > 0
+                  ? `${compressedGroupCount} compressed groups`
+                  : `${renderedNodeCount}/${sourceNodeCount} nodes rendered`}
+              </span>
+            )}
+            {loadingGraph && (
+              <span className="flex items-center gap-1 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-200">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                refreshing
+              </span>
+            )}
+          </div>
+
+          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+              <div>
+                <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">View controls</span>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Change scope, layers, severity, traversal, and page size without changing the persisted graph.
+                </p>
+              </div>
+              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">show</span>
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">hide</span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              <div className="flex flex-wrap gap-2 text-[11px]">
               <button
                 type="button"
                 onClick={() => setFilters(createImmediateGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))}
@@ -1465,50 +1446,27 @@ function GraphPageInner() {
                 className={scopeButtonClass(activeScopePreset === "expanded")}
                 title="Broader topology review with lower-priority context included"
               >
-                Expanded
+                Expanded topology
               </button>
-            </GraphControlGroup>
-            <GraphControlGroup label="Scope">
-              <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
-                {filters.agentName ? `agent ${filters.agentName}` : "all agents"}
-              </span>
-            </GraphControlGroup>
-            <GraphControlGroup label="Filters">
-              <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
-                {filters.severity ? `${filters.severity}+` : "all severities"}
-              </span>
-              <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
-                {graphScopeLabelForFilters(filters)}
-              </span>
-              {filters.vulnOnly && (
-                <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
-                  vulnerable only
-                </span>
-              )}
-            </GraphControlGroup>
-            {sourceNodeCount > 0 && (
-              <GraphControlGroup label="Scale">
-                <span
-                  data-testid="graph-compression-summary"
-                  className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-200"
-                >
-                  {compressedGroupCount > 0
-                    ? `compressed ${compressedGroupCount} groups / ${compressedNodeCount} nodes`
-                    : `rendered ${renderedNodeCount} / ${sourceNodeCount} nodes`}
-                </span>
-              </GraphControlGroup>
-            )}
-          </div>
-
-          <div className="mt-2 text-xs text-zinc-500">
-            {investigationMode
-              ? `Investigating ${investigationMode.rootLabel}: ${investigationMode.nodeCount} nodes and ${investigationMode.edgeCount} edges loaded from a bounded root-centered query.`
-              : graphOnlyFindings
-                ? "This scope currently resolves to findings without surrounding context. Relax filters or expand the view to recover package, server, and agent relationships."
-                : filters.agentName
-                  ? `Focused on ${filters.agentName}. Expand only when you need more of the surrounding graph.`
-                  : "Relevant paths keeps the first view bounded by hop depth, layers, severity, and page size. Use Expanded only when you need broader topology."}
-          </div>
+              <button
+                type="button"
+                onClick={() => setFilters({ ...filters, vulnOnly: !filters.vulnOnly })}
+                className={scopeButtonClass(filters.vulnOnly)}
+                title="Limit the graph to vulnerability-bearing paths"
+              >
+                Vulnerable only
+              </button>
+              </div>
+              <FilterPanel
+                filters={filters}
+                onChange={setFilters}
+                agentNames={flow.agentNames}
+                validValues={validValues}
+                onReset={handleResetFilters}
+                variant="panel"
+              />
+            </div>
+          </details>
 
           {investigationMode && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
@@ -1582,12 +1540,6 @@ function GraphPageInner() {
           {graphData && graphData.pagination.total > 0 && (
             <span>
               showing {pageStart}-{pageEnd} of {graphData.pagination.total} nodes
-            </span>
-          )}
-          {loadingGraph && (
-            <span className="flex items-center gap-1 text-sky-400">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              refreshing graph
             </span>
           )}
         </div>
@@ -1690,11 +1642,23 @@ function GraphPageInner() {
         </div>
 
         {attackPaths.length > 0 && (
-          <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <details
+            className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3 group"
+            {...(selectedAttackPath ? { open: true } : {})}
+          >
+            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.24em] text-orange-400">Attack paths</p>
                 <p className="mt-1 text-xs text-zinc-500">
+                  {attackPaths.length} ranked path{attackPaths.length === 1 ? "" : "s"} available for focused investigation.
+                </p>
+              </div>
+              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">show queue</span>
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">hide queue</span>
+            </summary>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="mt-3 text-xs text-zinc-500">
                   Focus the current graph on a precomputed exploit chain in this filtered snapshot page.
                 </p>
               </div>
@@ -1768,19 +1732,11 @@ function GraphPageInner() {
                 )}
               </div>
             )}
-          </div>
+          </details>
         )}
       </div>
 
-      <div className="flex-1 flex relative min-h-[60vh]">
-        <FilterPanel
-          filters={filters}
-          onChange={setFilters}
-          agentNames={flow.agentNames}
-          validValues={validValues}
-          onReset={handleResetFilters}
-        />
-
+      <div className="flex-1 flex relative min-h-[68vh]">
         <div className="flex-1 relative min-h-[60vh]">
           {loadingGraph && !graphData ? (
             <GraphPanelSkeleton
@@ -1871,16 +1827,7 @@ function GraphPageInner() {
               {/* Dock legend on the canvas itself so node-color -> entity-type
                   is one glance away. */}
               <Panel position="top-right" className="!m-2">
-                <details open={captureMode || undefined} className="rounded-xl border border-zinc-800 bg-zinc-950/85 backdrop-blur p-2 group">
-                  <summary className="flex items-center gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[10px] uppercase tracking-[0.2em] text-zinc-400">
-                    <span>Legend</span>
-                    <span className="text-zinc-600 group-open:hidden">▸</span>
-                    <span className="text-zinc-600 hidden group-open:inline">▾</span>
-                  </summary>
-                  <div className="mt-2">
-                    <GraphLegend items={legendItems} embedded defaultOpen={captureMode} />
-                  </div>
-                </details>
+                <GraphLegend items={legendItems} />
               </Panel>
             </ReactFlow>
           )}
@@ -1924,6 +1871,15 @@ function MetricCard({
     <div className={`rounded-xl border px-3 py-1.5 text-xs ${accentClass}`}>
       <span className="font-mono text-zinc-100">{value}</span> {label}
     </div>
+  );
+}
+
+function ViewPill({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1">
+      <span className="text-zinc-500">{label}</span>
+      <span className="ml-1 text-zinc-300">{value}</span>
+    </span>
   );
 }
 

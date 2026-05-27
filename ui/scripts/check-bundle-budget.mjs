@@ -9,7 +9,8 @@ const BUILD_MANIFEST = path.join(NEXT_DIR, "build-manifest.json");
 const BUDGETS = {
   // Includes the opt-in Sigma.js + graphology WebGL overview chunk for dense graphs.
   // Also includes the Agent BOM manifest cockpit filters used for AI visibility triage.
-  totalClientJsBytes: 2_860_000,
+  // Includes the root exposure cockpit path card and operational action tiles.
+  totalClientJsBytes: 2_864_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

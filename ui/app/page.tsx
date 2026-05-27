@@ -519,8 +519,6 @@ export default function Dashboard() {
     if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
     return {
       nodes,
-      agents,
-      credentials,
       riskScore: topRisk.risk_score ?? topRisk.blast_score / 10,
       href: buildSecurityGraphHref({
         cve: topRisk.vulnerability_id,
@@ -590,15 +588,6 @@ export default function Dashboard() {
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/70">Reachable tools</div>
                 <div className="mt-1 font-mono text-lg font-semibold text-sky-100">{detailsReady ? reachableToolCount : 0}</div>
               </div>
-              {topRisk && (
-                <div className="rounded-2xl border border-zinc-700 bg-zinc-900/80 px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Top exposure</div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="font-mono text-lg font-semibold text-zinc-100">{(topExposurePath?.riskScore ?? 0).toFixed(1)}</span>
-                    <span className="truncate text-xs text-zinc-400">{topRisk.vulnerability_id}</span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
           <div className="flex flex-wrap gap-2 xl:justify-end">
@@ -619,7 +608,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {topExposurePath ? (
+        {topExposurePath && (
           <div className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -637,7 +626,7 @@ export default function Dashboard() {
             </div>
             <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
               <Link href="/findings?severity=critical" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 transition-colors hover:border-red-400/40">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Fix queue</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Response queue</p>
                 <p className="mt-2 font-mono text-2xl font-semibold text-red-100">{severity.critical}</p>
                 <p className="mt-1 text-xs text-red-100/60">critical findings</p>
               </Link>
@@ -647,18 +636,11 @@ export default function Dashboard() {
                 <p className="mt-1 text-xs text-amber-100/60">credential-linked exposures</p>
               </Link>
               <Link href="/agents" className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 transition-colors hover:border-sky-400/40">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Impacted agents</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Agent/service reach</p>
                 <p className="mt-2 font-mono text-2xl font-semibold text-sky-100">{impactedAgentCount || (displayedAgentCount ?? 0)}</p>
                 <p className="mt-1 text-xs text-sky-100/60">agent-facing blast radius</p>
               </Link>
             </div>
-          </div>
-        ) : (
-          <div className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
-            <p className="text-sm font-medium text-zinc-200">No exposure path loaded yet.</p>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-              Run a scan or import a report to populate agent, MCP server, package, credential, and finding paths.
-            </p>
           </div>
         )}
 

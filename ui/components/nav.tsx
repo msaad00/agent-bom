@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Scan,
   Server,
@@ -51,6 +51,7 @@ interface NavLink {
   label: string;
   icon: React.ElementType;
   capability?: string;
+  description?: string;
 }
 
 interface NavGroup {
@@ -76,10 +77,10 @@ const NAV_GROUPS: NavGroup[] = [
     icon: LayoutDashboard,
     accent: "#58a6ff", // blue — discovery layer
     links: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/agents", label: "Agents", icon: Server },
-      { href: "/manifest", label: "Agent BOM", icon: Waypoints },
-      { href: "/fleet", label: "Fleet", icon: Users },
+      { href: "/", label: "Dashboard", icon: LayoutDashboard, description: "Estate overview, exposure paths, and service topology." },
+      { href: "/agents", label: "Agents", icon: Server, description: "Discovered coding agents, MCP clients, and local runtime identities." },
+      { href: "/manifest", label: "Agent BOM", icon: Waypoints, description: "Inventory manifest for agents, servers, tools, packages, and evidence." },
+      { href: "/fleet", label: "Fleet", icon: Users, description: "Control-plane fleet inventory and synchronized agent records." },
     ],
   },
   {
@@ -88,10 +89,10 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Scan,
     accent: "#f85149", // red — scanning layer
     links: [
-      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
-      { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
-      { href: "/jobs", label: "Scan Jobs", icon: Clock },
-      { href: "/findings", label: "Findings", icon: Bug },
+      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage", description: "Connect repositories, inventories, and evidence sources." },
+      { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run", description: "Run local, CI, inventory, and control-plane scans." },
+      { href: "/jobs", label: "Scan Jobs", icon: Clock, description: "Track scan runs, status, artifacts, and failures." },
+      { href: "/findings", label: "Findings", icon: Bug, description: "Review vulnerabilities, prompt risks, secrets, and policy findings." },
     ],
   },
   {
@@ -100,11 +101,11 @@ const NAV_GROUPS: NavGroup[] = [
     icon: GitBranch,
     accent: "#d29922", // amber — analysis layer
     links: [
-      { href: "/security-graph", label: "Security Graph", icon: Network },
-      { href: "/graph", label: "Lineage Graph", icon: GitBranch },
-      { href: "/mesh", label: "Agent Mesh", icon: Network },
-      { href: "/context", label: "Context Map", icon: Waypoints },
-      { href: "/insights", label: "Insights", icon: BarChart3 },
+      { href: "/security-graph", label: "Security Graph", icon: Network, description: "Focused exposure paths and graph-backed blast radius." },
+      { href: "/graph", label: "Lineage Graph", icon: GitBranch, description: "Broader graph topology, lineage, and relationship exploration." },
+      { href: "/mesh", label: "Agent Mesh", icon: Network, description: "Agent, server, tool, package, and credential relationship maps." },
+      { href: "/context", label: "Context Map", icon: Waypoints, description: "Context graph for scan evidence and dependency neighborhoods." },
+      { href: "/insights", label: "Insights", icon: BarChart3, description: "Prioritized trends, coverage gaps, and operational signals." },
     ],
   },
   {
@@ -113,9 +114,9 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Shield,
     accent: "#f778ba", // pink — enforcement layer
     links: [
-      { href: "/proxy", label: "Proxy", icon: Shield, capability: "runtime.ingest" },
-      { href: "/audit", label: "Audit Log", icon: FileText },
-      { href: "/gateway", label: "Gateway", icon: Lock, capability: "policy.manage" },
+      { href: "/proxy", label: "Proxy", icon: Shield, capability: "runtime.ingest", description: "Runtime proxy events, detector output, and blocked calls." },
+      { href: "/audit", label: "Audit Log", icon: FileText, description: "Signed audit records for API, proxy, gateway, and scan events." },
+      { href: "/gateway", label: "Gateway", icon: Lock, capability: "policy.manage", description: "MCP gateway policy posture, upstreams, and decisions." },
     ],
   },
   {
@@ -124,11 +125,11 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Eye,
     accent: "#3fb950", // green — output/governance layer
     links: [
-      { href: "/compliance", label: "Compliance", icon: Shield },
-      { href: "/remediation", label: "Remediation", icon: Wrench },
-      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
-      { href: "/traces", label: "Traces", icon: Radio },
-      { href: "/activity", label: "Activity", icon: Activity },
+      { href: "/compliance", label: "Compliance", icon: Shield, description: "Framework posture, evidence bundles, and mapped controls." },
+      { href: "/remediation", label: "Remediation", icon: Wrench, description: "Tasks, evidence requests, exceptions, and owner workflows." },
+      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage", description: "Policy decisions, deployment gates, and posture checks." },
+      { href: "/traces", label: "Traces", icon: Radio, description: "Runtime traces, sessions, and agent/tool activity." },
+      { href: "/activity", label: "Activity", icon: Activity, description: "Recent events, webhooks, and operator activity." },
     ],
   },
 ];
@@ -149,6 +150,9 @@ export function Nav() {
   );
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [collapsedFlyoutGroup, setCollapsedFlyoutGroup] = useState<string | null>(null);
+  const [collapsedFlyoutTop, setCollapsedFlyoutTop] = useState(96);
+  const collapsedFlyoutTimer = useRef<number | null>(null);
   const { counts } = useDeploymentContext();
   const { session, loading: authLoading, hasCapability } = useAuthState();
 
@@ -196,6 +200,45 @@ export function Nav() {
       return new Set([label]);
     });
   }, [captureMode]);
+
+  const cancelCollapsedFlyoutClose = useCallback(() => {
+    if (collapsedFlyoutTimer.current) {
+      window.clearTimeout(collapsedFlyoutTimer.current);
+      collapsedFlyoutTimer.current = null;
+    }
+  }, []);
+
+  const scheduleCollapsedFlyoutClose = useCallback(() => {
+    cancelCollapsedFlyoutClose();
+    collapsedFlyoutTimer.current = window.setTimeout(() => {
+      setCollapsedFlyoutGroup(null);
+    }, 280);
+  }, [cancelCollapsedFlyoutClose]);
+
+  const openCollapsedFlyout = useCallback(
+    (label: string, target: HTMLElement) => {
+      if (!collapsed) return;
+      cancelCollapsedFlyoutClose();
+      const rect = target.getBoundingClientRect();
+      setCollapsedFlyoutTop(Math.max(12, Math.min(rect.top - 10, window.innerHeight - 380)));
+      setCollapsedFlyoutGroup(label);
+    },
+    [cancelCollapsedFlyoutClose, collapsed],
+  );
+
+  useEffect(() => {
+    if (!collapsed) {
+      setCollapsedFlyoutGroup(null);
+    }
+  }, [collapsed]);
+
+  useEffect(() => {
+    return () => {
+      if (collapsedFlyoutTimer.current) {
+        window.clearTimeout(collapsedFlyoutTimer.current);
+      }
+    };
+  }, []);
 
   // Keyboard shortcut: Cmd/Ctrl+K for search, Cmd/Ctrl+B for sidebar
   useEffect(() => {
@@ -382,11 +425,15 @@ export function Nav() {
                     return;
                   }
                   if (collapsed) {
-                    setCollapsed(false);
+                    return;
                   } else {
                     toggleGroup(group.label);
                   }
                 }}
+                onMouseEnter={(event) => openCollapsedFlyout(group.label, event.currentTarget)}
+                onMouseLeave={scheduleCollapsedFlyoutClose}
+                onFocus={(event) => openCollapsedFlyout(group.label, event.currentTarget)}
+                onBlur={scheduleCollapsedFlyoutClose}
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium transition-colors border-l-2 ${
                   collapsed ? "justify-center px-2 py-3" : ""
                 } ${
@@ -395,7 +442,7 @@ export function Nav() {
                     : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                 }`}
                 style={{ borderLeftColor: group.accent }}
-                title={collapsed ? group.label : undefined}
+                aria-expanded={collapsed ? collapsedFlyoutGroup === group.label : isExpanded}
                 aria-label={collapsed ? `${group.label}: ${group.description}` : undefined}
               >
                 <GroupIcon
@@ -420,53 +467,6 @@ export function Nav() {
                   </>
                 )}
               </button>
-
-              {collapsed && (
-                <div className="pointer-events-none fixed left-[68px] z-50 mt-[-44px] w-72 translate-x-1 opacity-0 transition-all duration-150 group-hover/navlane:pointer-events-auto group-hover/navlane:translate-x-0 group-hover/navlane:opacity-100 group-focus-within/navlane:pointer-events-auto group-focus-within/navlane:translate-x-0 group-focus-within/navlane:opacity-100">
-                  <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3 shadow-2xl shadow-black/40">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border"
-                        style={{ borderColor: `${group.accent}55`, backgroundColor: `${group.accent}16`, color: group.accent }}
-                      >
-                        <GroupIcon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--foreground)]">
-                          {group.label}
-                        </p>
-                        <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
-                          {group.description}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-3 space-y-1">
-                      {group.visibleLinks.map(({ href, label, icon: Icon }) => {
-                        const active =
-                          href === "/"
-                            ? path === "/"
-                            : href === "/findings"
-                            ? path.startsWith("/findings") || path.startsWith("/vulns")
-                            : path.startsWith(href);
-                        return (
-                          <Link
-                            key={href}
-                            href={href}
-                            className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors ${
-                              active
-                                ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                                : "text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--foreground)]"
-                            }`}
-                          >
-                            <Icon className="h-4 w-4 shrink-0" style={active ? { color: group.accent } : undefined} />
-                            <span className="truncate">{label}</span>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Group Links */}
               {(isExpanded || collapsed) && !collapsed && (
@@ -543,6 +543,77 @@ export function Nav() {
                 </div>
               )}
 
+              {collapsed && collapsedFlyoutGroup === group.label && (
+                <div
+                  className="fixed left-[52px] z-[70] w-[340px] pl-4"
+                  style={{ top: collapsedFlyoutTop }}
+                  onMouseEnter={cancelCollapsedFlyoutClose}
+                  onMouseLeave={scheduleCollapsedFlyoutClose}
+                  onFocus={cancelCollapsedFlyoutClose}
+                  onBlur={scheduleCollapsedFlyoutClose}
+                >
+                  <div
+                    className="rounded-2xl border bg-[color:var(--surface)] p-3 shadow-2xl shadow-black/45"
+                    style={{ borderColor: `${group.accent}55` }}
+                  >
+                    <div className="mb-3 flex items-start gap-3">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
+                        style={{ borderColor: `${group.accent}66`, backgroundColor: `${group.accent}16`, color: group.accent }}
+                      >
+                        <GroupIcon className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--foreground)]">
+                          {group.label}
+                        </p>
+                        <p className="mt-1 text-[12px] leading-5 text-[color:var(--text-secondary)]">
+                          {group.description}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      {group.visibleLinks.map(({ href, label, icon: Icon, description }) => {
+                        const active =
+                          href === "/"
+                            ? path === "/"
+                            : href === "/findings"
+                            ? path.startsWith("/findings") || path.startsWith("/vulns")
+                            : path.startsWith(href);
+                        return (
+                          <Link
+                            key={href}
+                            href={href}
+                            className={`group/link flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors ${
+                              active
+                                ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                                : "text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--foreground)]"
+                            }`}
+                            onClick={() => setCollapsedFlyoutGroup(null)}
+                          >
+                            <Icon
+                              className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] group-hover/link:text-[color:var(--foreground)]"
+                              style={active ? { color: group.accent } : undefined}
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium">{label}</span>
+                              <span className="mt-0.5 block text-[11px] leading-4 text-[color:var(--text-tertiary)]">
+                                {description ?? group.description}
+                              </span>
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                    {group.hiddenLinks.length > 0 && (
+                      <p className="mt-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[11px] text-[color:var(--text-tertiary)]">
+                        {group.hiddenLinks.length} page{group.hiddenLinks.length === 1 ? "" : "s"} hidden for{" "}
+                        {deploymentModeLabel(counts?.deployment_mode)} mode.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

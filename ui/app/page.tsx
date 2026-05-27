@@ -13,6 +13,7 @@ import {
 import { AttackPathCard } from "@/components/attack-path-card";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+import { useAuthState } from "@/components/auth-provider";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -337,6 +338,7 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const { session } = useAuthState();
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [detailJobs, setDetailJobs] = useState<ScanJob[]>([]);
   const [agentCount, setAgentCount] = useState<number>(0);
@@ -861,7 +863,7 @@ export default function Dashboard() {
               View all <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          <AgentTopology agents={agentList} />
+          <AgentTopology agents={agentList} session={session} />
         </section>
       )}
 

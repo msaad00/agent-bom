@@ -54,6 +54,7 @@ prompt file. See `docs/FIRST_RUN.md` in the repository for the guided flow.
 ```bash
 pip install agent-bom
 
+agent-bom quickstart --dry-run --offline          # Scan, sample-data, and API/UI next steps
 agent-bom agents -p .                            # Repo + MCP + package blast radius
 agent-bom samples first-run                      # Inspectable sample AI stack
 agent-bom check flask@2.2.0 --ecosystem pypi     # Pre-install package verdict
@@ -65,8 +66,10 @@ agent-bom serve                                  # API + dashboard + graph explo
 
 The base wheel is the scanner/CLI path. Install optional surfaces explicitly:
 `pip install 'agent-bom[mcp-server]'` for MCP server mode and
-`pip install 'agent-bom[ui]'` for the local API/dashboard process. If an extra
-is missing, the command exits with the matching install hint.
+`pip install 'agent-bom[ui]'` for the local API/dashboard process. Use
+`pip install 'agent-bom[all]'` for supported first-run extras; MLflow remains
+separate until its upstream CVE backlog is fixed. If an extra is missing, the
+command exits with the matching install hint.
 
 Self-hosted pilot:
 

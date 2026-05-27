@@ -139,6 +139,24 @@ cloud = [
     "agent-bom[wandb]",
     "agent-bom[openai]",
 ]
+all = [
+    # First-run product surfaces only. Dev/docs stay separate, and MLflow stays
+    # intentionally unbundled until its upstream CVE backlog is fixed.
+    "agent-bom[ai-enrich]",
+    "agent-bom[cloud]",
+    "agent-bom[dashboard]",
+    "agent-bom[graph]",
+    "agent-bom[interactive]",
+    "agent-bom[mcp-server]",
+    "agent-bom[oidc]",
+    "agent-bom[otel]",
+    "agent-bom[postgres]",
+    "agent-bom[runtime]",
+    "agent-bom[saml]",
+    "agent-bom[ui]",
+    "agent-bom[visual]",
+    "agent-bom[watch]",
+]
 docs = [
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.24",

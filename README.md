@@ -54,6 +54,7 @@ the credential environment names in reach, and the agents that can call it.
 
 ```bash
 pip install agent-bom
+agent-bom quickstart --dry-run --offline
 agent-bom agents --demo --offline
 ```
 
@@ -128,6 +129,7 @@ Screenshot capture rules and the full manifest live in
 | Goal | Command | Artifact |
 |---|---|---|
 | Local agent and MCP inventory | `agent-bom agents` | findings, AI BOM, graph-ready JSON |
+| Guided local onboarding | `agent-bom quickstart --dry-run --offline` | scan, sample-data, and local API/UI next steps |
 | Repo and lockfile scan | `agent-bom agents -p .` | package findings, SARIF/SBOM/HTML when requested |
 | Pre-install guard | `agent-bom check flask@2.0.0 --ecosystem pypi` | deterministic allow/warn/block result |
 | Container image scan | `agent-bom image nginx:latest` | image findings and remediation |
@@ -136,6 +138,7 @@ Screenshot capture rules and the full manifest live in
 | CI gate | `uses: msaad00/agent-bom@v0.88.4` | SARIF, PR summary, optional code-scanning upload |
 | MCP tools | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict-args security tools for MCP clients |
 | Local API/UI | `pip install 'agent-bom[ui]' && agent-bom serve` | API plus bundled dashboard |
+| First-run extras | `pip install 'agent-bom[all]'` | supported onboarding extras; MLflow remains separately installed |
 | Self-hosted pilot | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your environment |
 
 The base wheel is the scanner and CLI path. Optional runtime surfaces fail fast

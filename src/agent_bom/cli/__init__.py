@@ -95,6 +95,7 @@ def main(ctx: click.Context, profile: str | None, agent_mode: bool):
 
     \b
     Quick start:
+      agent-bom quickstart                          print local scan, sample-data, and API/UI next steps
       agent-bom agents                               discover + scan local agents and MCP servers
       agent-bom agents -p .                          scan project manifests plus agent/MCP context
       agent-bom samples first-run                    write an inspectable sample AI stack
@@ -296,6 +297,10 @@ main.add_command(db_cmd, "db")
 from agent_bom.cli._samples import samples_group  # noqa: E402
 
 main.add_command(samples_group)
+
+from agent_bom.cli._quickstart import quickstart_cmd  # noqa: E402
+
+main.add_command(quickstart_cmd, "quickstart")
 
 from agent_bom.cli._profiles import profiles_group  # noqa: E402
 

@@ -51,7 +51,6 @@ interface NavLink {
   label: string;
   icon: React.ElementType;
   capability?: string;
-  description?: string;
 }
 
 interface NavGroup {
@@ -77,10 +76,10 @@ const NAV_GROUPS: NavGroup[] = [
     icon: LayoutDashboard,
     accent: "#58a6ff", // blue — discovery layer
     links: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard, description: "Estate overview, exposure paths, and service topology." },
-      { href: "/agents", label: "Agents", icon: Server, description: "Discovered coding agents, MCP clients, and local runtime identities." },
-      { href: "/manifest", label: "Agent BOM", icon: Waypoints, description: "Inventory manifest for agents, servers, tools, packages, and evidence." },
-      { href: "/fleet", label: "Fleet", icon: Users, description: "Control-plane fleet inventory and synchronized agent records." },
+      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/agents", label: "Agents", icon: Server },
+      { href: "/manifest", label: "Agent BOM", icon: Waypoints },
+      { href: "/fleet", label: "Fleet", icon: Users },
     ],
   },
   {
@@ -89,10 +88,10 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Scan,
     accent: "#f85149", // red — scanning layer
     links: [
-      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage", description: "Connect repositories, inventories, and evidence sources." },
-      { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run", description: "Run local, CI, inventory, and control-plane scans." },
-      { href: "/jobs", label: "Scan Jobs", icon: Clock, description: "Track scan runs, status, artifacts, and failures." },
-      { href: "/findings", label: "Findings", icon: Bug, description: "Review vulnerabilities, prompt risks, secrets, and policy findings." },
+      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
+      { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
+      { href: "/jobs", label: "Scan Jobs", icon: Clock },
+      { href: "/findings", label: "Findings", icon: Bug },
     ],
   },
   {
@@ -101,11 +100,11 @@ const NAV_GROUPS: NavGroup[] = [
     icon: GitBranch,
     accent: "#d29922", // amber — analysis layer
     links: [
-      { href: "/security-graph", label: "Security Graph", icon: Network, description: "Focused exposure paths and graph-backed blast radius." },
-      { href: "/graph", label: "Lineage Graph", icon: GitBranch, description: "Broader graph topology, lineage, and relationship exploration." },
-      { href: "/mesh", label: "Agent Mesh", icon: Network, description: "Agent, server, tool, package, and credential relationship maps." },
-      { href: "/context", label: "Context Map", icon: Waypoints, description: "Context graph for scan evidence and dependency neighborhoods." },
-      { href: "/insights", label: "Insights", icon: BarChart3, description: "Prioritized trends, coverage gaps, and operational signals." },
+      { href: "/security-graph", label: "Security Graph", icon: Network },
+      { href: "/graph", label: "Lineage Graph", icon: GitBranch },
+      { href: "/mesh", label: "Agent Mesh", icon: Network },
+      { href: "/context", label: "Context Map", icon: Waypoints },
+      { href: "/insights", label: "Insights", icon: BarChart3 },
     ],
   },
   {
@@ -114,9 +113,9 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Shield,
     accent: "#f778ba", // pink — enforcement layer
     links: [
-      { href: "/proxy", label: "Proxy", icon: Shield, capability: "runtime.ingest", description: "Runtime proxy events, detector output, and blocked calls." },
-      { href: "/audit", label: "Audit Log", icon: FileText, description: "Signed audit records for API, proxy, gateway, and scan events." },
-      { href: "/gateway", label: "Gateway", icon: Lock, capability: "policy.manage", description: "MCP gateway policy posture, upstreams, and decisions." },
+      { href: "/proxy", label: "Proxy", icon: Shield, capability: "runtime.ingest" },
+      { href: "/audit", label: "Audit Log", icon: FileText },
+      { href: "/gateway", label: "Gateway", icon: Lock, capability: "policy.manage" },
     ],
   },
   {
@@ -125,11 +124,11 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Eye,
     accent: "#3fb950", // green — output/governance layer
     links: [
-      { href: "/compliance", label: "Compliance", icon: Shield, description: "Framework posture, evidence bundles, and mapped controls." },
-      { href: "/remediation", label: "Remediation", icon: Wrench, description: "Tasks, evidence requests, exceptions, and owner workflows." },
-      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage", description: "Policy decisions, deployment gates, and posture checks." },
-      { href: "/traces", label: "Traces", icon: Radio, description: "Runtime traces, sessions, and agent/tool activity." },
-      { href: "/activity", label: "Activity", icon: Activity, description: "Recent events, webhooks, and operator activity." },
+      { href: "/compliance", label: "Compliance", icon: Shield },
+      { href: "/remediation", label: "Remediation", icon: Wrench },
+      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
+      { href: "/traces", label: "Traces", icon: Radio },
+      { href: "/activity", label: "Activity", icon: Activity },
     ],
   },
 ];
@@ -573,7 +572,7 @@ export function Nav() {
                       </div>
                     </div>
                     <div className="space-y-1">
-                      {group.visibleLinks.map(({ href, label, icon: Icon, description }) => {
+                      {group.visibleLinks.map(({ href, label, icon: Icon }) => {
                         const active =
                           href === "/"
                             ? path === "/"
@@ -597,9 +596,6 @@ export function Nav() {
                             />
                             <span className="min-w-0">
                               <span className="block text-sm font-medium">{label}</span>
-                              <span className="mt-0.5 block text-[11px] leading-4 text-[color:var(--text-tertiary)]">
-                                {description ?? group.description}
-                              </span>
                             </span>
                           </Link>
                         );

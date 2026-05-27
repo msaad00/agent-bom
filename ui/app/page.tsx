@@ -565,15 +565,15 @@ export default function Dashboard() {
       <section className="relative overflow-hidden rounded-[28px] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(239,68,68,0.12),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.98),rgba(9,9,11,0.96))] p-6 shadow-2xl shadow-black/20">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-400">Command center</p>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-400">Solution overview</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">
-              Exposure overview
+              Exposure command center
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
-              Prioritized AI/MCP exposure paths across {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""}, {(displayedAgentCount ?? "—")} agent{displayedAgentCount === 1 ? "" : "s"}, {detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)} packages, and {detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)} CVEs.
+              Prioritized AI/MCP exposure paths, active services, credentials, packages, and response work across {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""}, {(displayedAgentCount ?? "—")} agent{displayedAgentCount === 1 ? "" : "s"}, {detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)} packages, and {detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)} CVEs.
             </p>
             <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
-              Estate signals
+              Active exposure
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
@@ -626,17 +626,17 @@ export default function Dashboard() {
             </div>
             <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
               <Link href="/findings?severity=critical" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 transition-colors hover:border-red-400/40">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Response queue</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Fix queue</p>
                 <p className="mt-2 font-mono text-2xl font-semibold text-red-100">{severity.critical}</p>
                 <p className="mt-1 text-xs text-red-100/60">critical findings</p>
               </Link>
               <Link href="/security-graph" className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 transition-colors hover:border-amber-400/40">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-amber-200/70">Credential paths</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-amber-200/70">Identity paths</p>
                 <p className="mt-2 font-mono text-2xl font-semibold text-amber-100">{credentialExposureCount}</p>
                 <p className="mt-1 text-xs text-amber-100/60">credential-linked exposures</p>
               </Link>
               <Link href="/agents" className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 transition-colors hover:border-sky-400/40">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Agent/service reach</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Active services</p>
                 <p className="mt-2 font-mono text-2xl font-semibold text-sky-100">{impactedAgentCount || (displayedAgentCount ?? 0)}</p>
                 <p className="mt-1 text-xs text-sky-100/60">agent-facing blast radius</p>
               </Link>

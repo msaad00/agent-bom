@@ -58,7 +58,7 @@ from agent_bom.firewall import evaluate as evaluate_firewall_policy
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc, policy_subject_from_message
-from agent_bom.proxy_policy import summarize_policy_bundle
+from agent_bom.proxy_policy import check_policy_warning, summarize_policy_bundle
 
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")
@@ -970,6 +970,19 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     },
                     status_code=200,
                     headers=rate_limit_headers or None,
+                )
+            warned, warning_reason, warning_rule_id = check_policy_warning(current_policy, tool_name, arguments)
+            if warned and settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.policy_warned",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "method": message.get("method"),
+                        "tool": tool_name,
+                        "rule_id": warning_rule_id,
+                        "reason": warning_reason,
+                    }
                 )
 
         # Forward to the upstream with bounded W3C trace headers and JSON-RPC

@@ -333,3 +333,21 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
                 pass
 
     return True, "", None
+
+
+def check_policy_warning(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, str, str | None]:
+    """Return the first advisory rule match without blocking the call."""
+    advisory_rules: list[dict] = []
+    for raw_rule in policy.get("rules", []):
+        if not isinstance(raw_rule, dict):
+            continue
+        action = str(raw_rule.get("action", "warn")).lower()
+        if action in ("fail", "block"):
+            continue
+        advisory_rule = dict(raw_rule)
+        advisory_rule["action"] = "block"
+        advisory_rules.append(advisory_rule)
+    allowed, reason, rule_id = check_policy_detail({"rules": advisory_rules}, tool_name, arguments)
+    if allowed:
+        return False, "", None
+    return True, reason, rule_id

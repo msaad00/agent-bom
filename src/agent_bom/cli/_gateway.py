@@ -9,9 +9,11 @@ See docs/design/MULTI_MCP_GATEWAY.md.
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from pathlib import Path
+from typing import cast
 
 import click
 
@@ -60,6 +62,62 @@ def _enforce_gateway_auth_defaults(host: str, bearer_token: str | None, allow_in
 @click.group(cls=SuggestingGroup, help="Multi-MCP gateway commands.")
 def gateway_group() -> None:
     """Entry point for gateway subcommands."""
+
+
+@gateway_group.command("init-policy")
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path("gateway-baseline-policy.json"),
+    show_default=True,
+    help="Output path for the rendered gateway baseline policy.",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["audit", "enforce"], case_sensitive=False),
+    default="audit",
+    show_default=True,
+    help="Policy rollout mode. Audit renders advisory rules; enforce renders blocking rules.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["proxy", "control-plane"], case_sensitive=False),
+    default="proxy",
+    show_default=True,
+    help="Render for local `gateway serve --policy` or for control-plane policy import.",
+)
+@click.option(
+    "--tenant-id",
+    default="default",
+    show_default=True,
+    help="Tenant id embedded in control-plane policy output.",
+)
+def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id: str) -> None:
+    """Render the bundled secure-by-default gateway baseline policy."""
+    from agent_bom.gateway_policy_templates import GatewayBaselineFormat, GatewayBaselineMode, render_gateway_baseline_policy
+    from agent_bom.proxy_policy import summarize_policy_bundle
+
+    mode_value = cast(GatewayBaselineMode, mode.lower())
+    format_value = cast(GatewayBaselineFormat, output_format.lower())
+    rendered = render_gateway_baseline_policy(
+        mode=mode_value,
+        output_format=format_value,
+        tenant_id=tenant_id,
+    )
+    output_path.write_text(json.dumps(rendered, indent=2) + "\n")
+
+    if output_format.lower() == "proxy":
+        summary = summarize_policy_bundle(rendered)
+        click.echo(f"Gateway baseline policy written to {output_path}")
+        click.echo(f"Use it with: agent-bom gateway serve --policy {output_path} --upstreams <upstreams.yaml>")
+        click.echo(
+            f"Mode={mode.lower()} rules={summary['total_rules']} blocks={summary['blocking_rules']} warnings={summary['advisory_rules']}"
+        )
+    else:
+        click.echo(f"Gateway baseline control-plane policy written to {output_path}")
 
 
 @gateway_group.command("serve")
@@ -358,4 +416,4 @@ def serve_cmd(
     uvicorn.run(app, host=host, port=port_num, log_level=log_level.lower())
 
 
-__all__ = ["gateway_group", "serve_cmd"]
+__all__ = ["gateway_group", "init_policy_cmd", "serve_cmd"]

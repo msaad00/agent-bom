@@ -163,6 +163,19 @@ One policy engine, shared across all three enforcement points: [`proxy_policy.py
 
 Central policy management at [`/v1/gateway/policies`](../src/agent_bom/api/routes/gateway.py). Sidecars + gateway pull every 30 s and cache by ETag. Policy audit trail persists every create / update / delete with actor + tenant.
 
+Bundled gateway baseline:
+
+```bash
+agent-bom gateway init-policy -o gateway-baseline-policy.json
+agent-bom gateway serve --policy gateway-baseline-policy.json --upstreams upstreams.yaml
+```
+
+The generated artifact is a local gateway runtime policy pack for
+`gateway serve --policy`. It defaults to audit/advisory mode: dangerous tool
+classes, write/execute behavior, secret paths, screen capture, and unknown
+egress are rendered as warnings. Operators can render the same pack with
+`--mode enforce` after reviewing audit evidence.
+
 ### 2.7 Audit + compliance: "Can I hand an external auditor evidence that stands up in a SOC 2 / ISO / PCI review?"
 
 - **HMAC-chained audit log** — [`api/audit_log.py`](../src/agent_bom/api/audit_log.py). Every entry signs the previous entry's signature; tampering with any row invalidates the chain from that point forward.
@@ -239,6 +252,7 @@ Windows + macOS behave identically — the scan, the config parsers, and the pus
 agent-bom gateway serve \
   --from-control-plane https://agent-bom.example.com \
   --control-plane-token "$CP_TOKEN" \
+  --policy /etc/agent-bom/gateway/gateway-baseline-policy.json \
   --upstreams /etc/agent-bom/gateway/overlay.yaml  # operator overlay for auth
 ```
 

@@ -375,8 +375,10 @@ def test_api_key_middleware_exempts_packaged_dashboard_assets():
         routes=[
             Route("/_next/static/app.js", dummy),
             Route("/agents/index.html", dummy),
+            Route("/dashboard", dummy),
             Route("/manifest", dummy),
             Route("/manifest/index.html", dummy),
+            Route("/settings", dummy),
             Route("/vulns.html", dummy),
             Route("/admin.js", dummy),
             Route("/v1/test.js", dummy),
@@ -387,8 +389,10 @@ def test_api_key_middleware_exempts_packaged_dashboard_assets():
     client = TestClient(test_app)
     assert client.get("/_next/static/app.js").status_code == 200
     assert client.get("/agents/index.html").status_code == 200
+    assert client.get("/dashboard").status_code == 200
     assert client.get("/manifest").status_code == 200
     assert client.get("/manifest/index.html").status_code == 200
+    assert client.get("/settings").status_code == 200
     assert client.get("/vulns.html").status_code == 200
     assert client.get("/admin.js").status_code == 401
     assert client.get("/v1/test.js").status_code == 401

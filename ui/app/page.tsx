@@ -494,6 +494,7 @@ export default function Dashboard() {
   const kevCount = useMemo(() => allBlast.filter((b) => (b.is_kev ?? b.cisa_kev) === true).length, [allBlast]);
   const credentialExposureCount = useMemo(() => allBlast.filter((b) => blastCredentials(b).length > 0).length, [allBlast]);
   const reachableToolCount = useMemo(() => new Set(allBlast.flatMap(blastTools)).size, [allBlast]);
+  const impactedAgentCount = useMemo(() => new Set(allBlast.flatMap(blastAgents)).size, [allBlast]);
 
   // Unique CVE count
   const uniqueCVEs = useMemo(() => {
@@ -505,6 +506,27 @@ export default function Dashboard() {
       [...allBlast].sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))[0] ?? null,
     [allBlast]
   );
+  const topExposurePath = useMemo(() => {
+    if (!topRisk) return null;
+    const agents = blastAgents(topRisk);
+    const credentials = blastCredentials(topRisk);
+    const nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[] = [
+      { type: "cve", label: topRisk.vulnerability_id, severity: topRisk.severity?.toLowerCase() },
+    ];
+    if (topRisk.package) nodes.push({ type: "package", label: topRisk.package });
+    if (topRisk.affected_servers && topRisk.affected_servers.length > 0) nodes.push({ type: "server", label: topRisk.affected_servers[0]! });
+    if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
+    if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
+    return {
+      nodes,
+      riskScore: topRisk.risk_score ?? topRisk.blast_score / 10,
+      href: buildSecurityGraphHref({
+        cve: topRisk.vulnerability_id,
+        packageName: topRisk.package,
+        agentName: agents[0],
+      }),
+    };
+  }, [topRisk]);
 
   // Total packages scanned across all jobs
   const totalPackages = useMemo(() => {
@@ -543,15 +565,15 @@ export default function Dashboard() {
       <section className="relative overflow-hidden rounded-[28px] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(239,68,68,0.12),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.98),rgba(9,9,11,0.96))] p-6 shadow-2xl shadow-black/20">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-400">Overview</p>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-400">Solution overview</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">
-              Risk overview
+              Exposure command center
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
-              {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""} · {(displayedAgentCount ?? "—")} agent{displayedAgentCount === 1 ? "" : "s"} · {detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)} packages · {detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)} CVEs
+              Prioritized AI/MCP exposure paths, active services, credentials, packages, and response work across {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""}, {(displayedAgentCount ?? "—")} agent{displayedAgentCount === 1 ? "" : "s"}, {detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)} packages, and {detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)} CVEs.
             </p>
             <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
-              Overview KPIs
+              Active exposure
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
@@ -566,15 +588,6 @@ export default function Dashboard() {
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/70">Reachable tools</div>
                 <div className="mt-1 font-mono text-lg font-semibold text-sky-100">{detailsReady ? reachableToolCount : 0}</div>
               </div>
-              {topRisk && (
-                <div className="rounded-2xl border border-zinc-700 bg-zinc-900/80 px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Top path</div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="font-mono text-lg font-semibold text-zinc-100">{(topRisk.risk_score ?? topRisk.blast_score).toFixed(1)}</span>
-                    <span className="truncate text-xs text-zinc-400">{topRisk.vulnerability_id}</span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
           <div className="flex flex-wrap gap-2 xl:justify-end">
@@ -594,6 +607,42 @@ export default function Dashboard() {
             </Link>
           </div>
         </div>
+
+        {topExposurePath && (
+          <div className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300">Highest priority path</p>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Start here: this chain connects a finding to the agent/runtime surface that can exercise it.
+                  </p>
+                </div>
+                <span className="rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1 font-mono text-xs font-semibold text-red-200">
+                  Risk {topExposurePath.riskScore.toFixed(1)}
+                </span>
+              </div>
+              <AttackPathCard nodes={topExposurePath.nodes} riskScore={topExposurePath.riskScore} href={topExposurePath.href} captureMode />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <Link href="/findings?severity=critical" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 transition-colors hover:border-red-400/40">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Fix queue</p>
+                <p className="mt-2 font-mono text-2xl font-semibold text-red-100">{severity.critical}</p>
+                <p className="mt-1 text-xs text-red-100/60">critical findings</p>
+              </Link>
+              <Link href="/security-graph" className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 transition-colors hover:border-amber-400/40">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-amber-200/70">Identity paths</p>
+                <p className="mt-2 font-mono text-2xl font-semibold text-amber-100">{credentialExposureCount}</p>
+                <p className="mt-1 text-xs text-amber-100/60">credential-linked exposures</p>
+              </Link>
+              <Link href="/agents" className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 transition-colors hover:border-sky-400/40">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Active services</p>
+                <p className="mt-2 font-mono text-2xl font-semibold text-sky-100">{impactedAgentCount || (displayedAgentCount ?? 0)}</p>
+                <p className="mt-1 text-xs text-sky-100/60">agent-facing blast radius</p>
+              </Link>
+            </div>
+          </div>
+        )}
 
         {posture && (
           <div className="mt-6">
@@ -621,7 +670,7 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2">
                   <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/attack:rotate-90" />
                   <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-widest">
-                    Top Attack Paths
+                    Exposure Paths
                   </h2>
                   <span className="rounded-full border border-zinc-800 bg-zinc-900/90 px-2 py-0.5 font-mono text-[10px] text-zinc-400">
                     {Math.min(allBlast.length, 5)} shown

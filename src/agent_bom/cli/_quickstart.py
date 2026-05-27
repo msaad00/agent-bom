@@ -13,6 +13,8 @@ import click
 
 from agent_bom.samples import write_first_run_sample
 
+QUICKSTART_SCAN_TIMEOUT_SECONDS = 300
+
 
 @click.command("quickstart")
 @click.option("--dry-run", is_flag=True, help="Print the onboarding plan without writing files or starting services.")
@@ -143,7 +145,11 @@ def _run_quickstart(
     scan_args = [executable, "agents", "--inventory", str(inventory_path), "-p", str(sample_dir), "--context-graph"]
     scan_args.append("--offline" if offline else "--enrich")
     click.echo(f"[2/3] Scanning sample stack: {' '.join(scan_args[1:])}")
-    result = subprocess.run(scan_args, check=False)  # noqa: S603 - args built from validated inputs
+    result = subprocess.run(  # noqa: S603 - args built from validated inputs
+        scan_args,
+        check=False,
+        timeout=QUICKSTART_SCAN_TIMEOUT_SECONDS,
+    )
     if result.returncode != 0:
         raise click.ClickException(f"Scan exited with status {result.returncode}. The cockpit graph may be incomplete.")
 

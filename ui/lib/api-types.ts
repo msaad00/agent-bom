@@ -6,6 +6,7 @@ import type { ExposurePath } from "./exposure-path";
 export type JobStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 
 export interface ScanRequest {
+  source_id?: string | undefined;
   inventory?: string | undefined;
   images?: string[] | undefined;
   k8s?: boolean | undefined;
@@ -1327,6 +1328,7 @@ export interface JobListItem {
   status: JobStatus;
   created_at: string;
   tenant_id?: string | undefined;
+  source_id?: string | undefined;
   completed_at?: string | undefined;
   request?: ScanRequest | undefined;
   summary?: Summary | undefined;

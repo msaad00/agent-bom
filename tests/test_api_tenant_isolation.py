@@ -565,6 +565,7 @@ async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
                 status=JobStatus.DONE,
                 created_at=_now(),
                 completed_at=_now(),
+                source_id="source-alpha",
                 request=ScanRequest(images=["example:latest"]),
                 result={"summary": {"total_packages": 12, "total_vulnerabilities": 3}},
             )
@@ -582,6 +583,7 @@ async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
 
         hydrated = await scan_routes.list_jobs(req, include_details=True)
         assert store.get_calls == 1
+        assert hydrated["jobs"][0]["source_id"] == "source-alpha"
         assert hydrated["jobs"][0]["request"] == {"images": ["example:latest"]}
         assert hydrated["jobs"][0]["summary"]["total_packages"] == 12
 

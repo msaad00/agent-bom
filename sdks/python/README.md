@@ -32,6 +32,10 @@ print(client.should_i_deploy("flask@2.0.0", block_risk=80))
 - `GET /v1/evaluations/{evaluation_id}`
 - `GET /v1/agent-bom/manifest`
 - `GET /v1/runtime/production-index`
+- `POST /v1/runtime/events`
+- `GET /v1/runtime/sessions`
+- `GET /v1/runtime/observations`
+- `GET /v1/runtime/sessions/{session_id}/observations`
 - `GET /v1/intel/advisories/{advisory_id}`
 - `POST /v1/intel/match`
 - `GET /v1/intel/sources`

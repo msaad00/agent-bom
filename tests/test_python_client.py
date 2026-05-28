@@ -121,6 +121,39 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
     ]
 
 
+def test_client_exposes_runtime_event_sessions() -> None:
+    seen: list[tuple[str, str]] = []
+    bodies: list[dict[str, object]] = []
+    urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path))
+        urls.append(str(request.url))
+        if request.content:
+            bodies.append(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(200, json={"ok": True})
+
+    client = _client(handler)
+
+    client.ingest_runtime_events([{"session_id": "sess-a", "event_type": "tool_call"}])
+    client.runtime_sessions(limit=10)
+    client.runtime_observations(session_id="sess-a", limit=20)
+    client.runtime_session_observations("sess-a", offset=5)
+
+    assert seen == [
+        ("POST", "/v1/runtime/events"),
+        ("GET", "/v1/runtime/sessions"),
+        ("GET", "/v1/runtime/observations"),
+        ("GET", "/v1/runtime/sessions/sess-a/observations"),
+    ]
+    assert bodies == [{"events": [{"session_id": "sess-a", "event_type": "tool_call"}], "tenant_id": "tenant-a"}]
+    assert urls[1:] == [
+        "https://agent-bom.example.com/v1/runtime/sessions?tenant_id=tenant-a&limit=10",
+        "https://agent-bom.example.com/v1/runtime/observations?tenant_id=tenant-a&session_id=sess-a&limit=20",
+        "https://agent-bom.example.com/v1/runtime/sessions/sess-a/observations?tenant_id=tenant-a&offset=5",
+    ]
+
+
 def test_client_accepts_positional_findings_payload() -> None:
     captured: dict[str, object] = {}
 

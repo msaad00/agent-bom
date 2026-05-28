@@ -47,6 +47,7 @@ _PERMISSIONS: dict[str, set[Role]] = {
     "exception_read": {Role.ADMIN, Role.ANALYST, Role.VIEWER},
     "alert_write": {Role.ADMIN},
     "alert_read": {Role.ADMIN, Role.ANALYST, Role.VIEWER},
+    "runtime_ingest": {Role.ADMIN, Role.ANALYST},
     "audit_read": {Role.ADMIN, Role.ANALYST, Role.VIEWER},
     "sla_write": {Role.ADMIN},
     "sla_read": {Role.ADMIN, Role.ANALYST, Role.VIEWER},

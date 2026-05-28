@@ -793,6 +793,14 @@ function GraphPageInner() {
     if (typeof window === "undefined") return;
     const nextParams = encodeFiltersToParams(filters);
     if (selectedScanId) nextParams.set("scan", selectedScanId);
+    const requestedRenderer = searchParams?.get("renderer");
+    if (requestedRenderer === "webgl") {
+      nextParams.set("renderer", requestedRenderer);
+    }
+    const requestedWebgl = searchParams?.get("webgl");
+    if (requestedWebgl === "1") {
+      nextParams.set("webgl", requestedWebgl);
+    }
     const shareableInvestigation = investigationMode ?? requestedInvestigationRef.current;
     if (shareableInvestigation) {
       nextParams.set("investigate", "1");

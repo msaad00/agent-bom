@@ -234,6 +234,9 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
         "dashboard-live.png",
         "dashboard-paths-live.png",
         "mesh-live.png",
+        "security-graph-live.png",
+        "lineage-graph-live.png",
+        "dependency-map-live.png",
         "remediation-live.png",
     }
     screenshots = manifest.get("screenshots")
@@ -250,6 +253,12 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
         rel_path = entry.get("path")
         if not isinstance(rel_path, str):
             _fail("docs/images/product-screenshots.json screenshot entry is missing path")
+        page = entry.get("page")
+        if not isinstance(page, str) or not page:
+            _fail(f"docs/images/{rel_path} manifest entry is missing page")
+        scope = entry.get("scope")
+        if not isinstance(scope, str) or not scope:
+            _fail(f"docs/images/{rel_path} manifest entry is missing scope")
         image = ROOT / "docs" / "images" / rel_path
         if not image.exists():
             _fail(f"docs/images/product-screenshots.json references missing image: docs/images/{rel_path}")

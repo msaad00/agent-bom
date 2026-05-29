@@ -97,6 +97,16 @@
       "schema": "FindingFeedbackRequest.json"
     },
     {
+      "doc": "Request body for PUT /v1/findings/triage/{triage_id}/decision.",
+      "name": "FindingTriageDecisionRequest",
+      "schema": "FindingTriageDecisionRequest.json"
+    },
+    {
+      "doc": "Request body for POST /v1/findings/triage.",
+      "name": "FindingTriageRequest",
+      "schema": "FindingTriageRequest.json"
+    },
+    {
       "doc": "",
       "name": "FleetAgentUpdate",
       "schema": "FleetAgentUpdate.json"

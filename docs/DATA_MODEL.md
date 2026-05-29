@@ -53,8 +53,8 @@ is wired into the docs site so drift produces a visible regression.
 | `config/schemas/inventory.schema.json` | `Agent.agent_type` enum values | 30 |
 | `config/schemas/inventory.schema.json` | `Package.ecosystem` enum values | 9 |
 | `config/schemas/inventory.schema.json` | `MCPServer.transport` enum values | 3 |
-| `docs/openapi/v1.json` | paths | 191 |
-| `docs/openapi/v1.json` | component schemas | 59 |
+| `docs/openapi/v1.json` | paths | 194 |
+| `docs/openapi/v1.json` | component schemas | 61 |
 
 <!-- DATA_MODEL_ATLAS:END -->
 
@@ -345,6 +345,8 @@ tenant boundary, persistence behavior, and redaction behavior here.
 | `intel.match.v1` | `POST /v1/intel/match`, `intel_match` MCP tool | inventory enrichment, CI gates, agent posture checks | submitted packages, matched package count, advisory matches, `match_method`, `match_confidence`, match reason, evidence links | Read-only package-coordinate matching. Inputs use purl when present; otherwise `ecosystem` + `name` + optional `version`. |
 | `intel.daily_brief.v1` | `POST /v1/intel/daily-brief`, `intel_daily_brief` MCP tool | analysts, agents, daily governance jobs | local KEV lookback, high-EPSS inventory matches, vendor advisory matches, caller-supplied IoC telemetry hits, campaign matches, ransomware sector matches, source registry freshness, limitations | Read-only summary over local DB, submitted inventory, and governed caller inputs. IoC/campaign/ransomware entries carry source URL, license/terms, fetched time, content hash, validation status, match method, confidence, and match reason. |
 | `evals.runs.v1` | `POST /v1/evaluations`, `GET /v1/evaluations`, Python/Go/TypeScript control-plane clients | headless evaluators, CI jobs, notebooks, graph enrichment | `evaluation_id`, `dataset_id`, `dataset_version_id`, `trace_id`, `model`, `prompt_hash`, `scores`, `summary`, `cases`, `metadata` | Tenant-scoped control-plane state. The contract stores references, hashes, scores, and finding metadata; raw prompts and dataset rows stay in customer-owned artifact storage. |
+| `findings.triage.v1` | `POST /v1/findings/triage`, `GET /v1/findings/triage`, `PUT /v1/findings/triage/{triage_id}/decision` | analysts, auditors, exception review queues, future UI triage workflows | vulnerability/package/server target, queue state, assignee, decision, OpenVEX justification, decision reason, review timestamp, expiration | Tenant-scoped review state stored through the exception store abstraction. The API stores decision metadata and references, not exploit payloads or credential values. |
+| `findings.triage.vex.v1` | `GET /v1/findings/triage/vex` | auditors, CI release evidence, downstream VEX consumers | signed OpenVEX document for eligible `not_affected` decisions with justification, tenant id, statement count, signature metadata | Derived from tenant-scoped triage rows only. Export payloads are canonicalized and signed; only `not_affected` decisions with explicit OpenVEX justification are emitted. |
 
 ### `agent-bom.manifest/v1`
 

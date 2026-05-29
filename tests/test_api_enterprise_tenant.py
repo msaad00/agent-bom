@@ -8,13 +8,15 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog, get_audit_log, set_audit_log
+from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog, get_audit_log, set_audit_log, verify_export_payload
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
 from agent_bom.api.exception_store import ExceptionStatus, InMemoryExceptionStore, VulnException
 from agent_bom.api.issue_mapping_store import InMemoryIssueMappingStore
 from agent_bom.api.models import (
     CreateKeyRequest,
     FindingFeedbackRequest,
+    FindingTriageDecisionRequest,
+    FindingTriageRequest,
     IssueStatusUpdateRequest,
     JobStatus,
     RotateKeyRequest,
@@ -521,6 +523,122 @@ async def test_finding_feedback_list_is_tenant_scoped(isolated_exception_store):
     assert result["total"] == 1
     assert result["feedback"][0]["id"] == alpha.exception_id
     assert result["feedback"][0]["tenant_id"] == "tenant-alpha"
+
+
+@pytest.mark.asyncio
+async def test_finding_triage_queue_is_tenant_scoped_and_records_decisions(isolated_exception_store, isolated_audit_log):
+    created = await enterprise.create_finding_triage(
+        _request("tenant-alpha", "alice-admin"),
+        FindingTriageRequest(
+            vulnerability_id="CVE-2026-0101",
+            package="pkg:pypi/requests@2.31.0",
+            assignee="secops@example.com",
+            queue_state="assigned",
+            decision="under_investigation",
+            decision_reason="needs runtime confirmation",
+            expires_at="2026-12-31T00:00:00Z",
+        ),
+    )
+    await enterprise.create_finding_triage(
+        _request("tenant-beta", "bob-admin"),
+        FindingTriageRequest(
+            vulnerability_id="CVE-2026-0202",
+            package="pkg:pypi/django@5.0.0",
+            assignee="beta@example.com",
+        ),
+    )
+
+    assert created["queue_state"] == "assigned"
+    assert created["decision"] == "under_investigation"
+    assert created["assignee"] == "secops@example.com"
+    assert created["tenant_id"] == "tenant-alpha"
+
+    decided = await enterprise.update_finding_triage_decision(
+        _request("tenant-alpha", "alice-reviewer"),
+        created["id"],
+        FindingTriageDecisionRequest(
+            decision="not_affected",
+            justification="vulnerable_code_not_in_execute_path",
+            decision_reason="package is present but the vulnerable handler is not reachable",
+        ),
+    )
+    assert decided["queue_state"] == "decided"
+    assert decided["decision"] == "not_affected"
+    assert decided["vex_eligible"] is True
+    assert decided["reviewed_at"]
+
+    alpha = await enterprise.list_finding_triage(_request("tenant-alpha"), decision="not_affected")
+    beta = await enterprise.list_finding_triage(_request("tenant-beta"))
+
+    assert alpha["schema_version"] == "findings.triage.v1"
+    assert alpha["total"] == 1
+    assert alpha["triage"][0]["id"] == created["id"]
+    assert beta["total"] == 1
+    assert beta["triage"][0]["vulnerability_id"] == "CVE-2026-0202"
+
+    actions = [entry.action for entry in isolated_audit_log.list_entries()]
+    assert "findings.triage_created" in actions
+    assert "findings.triage_decision_recorded" in actions
+
+
+@pytest.mark.asyncio
+async def test_finding_triage_requires_justification_for_not_affected(isolated_exception_store):
+    with pytest.raises(HTTPException) as error:
+        await enterprise.create_finding_triage(
+            _request("tenant-alpha"),
+            FindingTriageRequest(
+                vulnerability_id="CVE-2026-0101",
+                package="requests",
+                decision="not_affected",
+            ),
+        )
+
+    assert error.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_finding_triage_exports_signed_openvex_for_eligible_decisions(isolated_exception_store):
+    await enterprise.create_finding_triage(
+        _request("tenant-alpha", "alice-admin"),
+        FindingTriageRequest(
+            vulnerability_id="CVE-2026-0101",
+            package="pkg:pypi/requests@2.31.0",
+            assignee="secops@example.com",
+            decision="not_affected",
+            justification="vulnerable_code_not_in_execute_path",
+            decision_reason="not in the executable path for this tenant",
+        ),
+    )
+    await enterprise.create_finding_triage(
+        _request("tenant-alpha", "alice-admin"),
+        FindingTriageRequest(
+            vulnerability_id="CVE-2026-0102",
+            package="pkg:pypi/flask@3.0.0",
+            decision="affected",
+            decision_reason="reachable endpoint",
+        ),
+    )
+    await enterprise.create_finding_triage(
+        _request("tenant-beta", "bob-admin"),
+        FindingTriageRequest(
+            vulnerability_id="CVE-2026-0202",
+            package="pkg:pypi/django@5.0.0",
+            decision="not_affected",
+            justification="component_not_present",
+        ),
+    )
+
+    exported = await enterprise.export_finding_triage_vex(_request("tenant-alpha"))
+
+    assert exported["schema_version"] == "findings.triage.vex.v1"
+    assert exported["tenant_id"] == "tenant-alpha"
+    assert exported["count"] == 1
+    statement = exported["vex"]["statements"][0]
+    assert statement["vulnerability"]["name"] == "CVE-2026-0101"
+    assert statement["status"] == "not_affected"
+    assert statement["justification"] == "vulnerable_code_not_in_execute_path"
+    canonical = json.dumps(exported["vex"], sort_keys=True, separators=(",", ":")).encode("utf-8")
+    assert verify_export_payload(canonical, exported["signature"]["signature_hex"])
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,87 @@
+{
+  "description": "Request body for POST /v1/findings/triage.",
+  "properties": {
+    "assignee": {
+      "default": "",
+      "maxLength": 256,
+      "title": "Assignee",
+      "type": "string"
+    },
+    "decision": {
+      "default": "under_investigation",
+      "enum": [
+        "not_affected",
+        "affected",
+        "under_investigation"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "decision_reason": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Decision Reason",
+      "type": "string"
+    },
+    "expires_at": {
+      "default": "",
+      "maxLength": 64,
+      "title": "Expires At",
+      "type": "string"
+    },
+    "justification": {
+      "anyOf": [
+        {
+          "enum": [
+            "component_not_present",
+            "vulnerable_code_not_present",
+            "vulnerable_code_not_in_execute_path",
+            "vulnerable_code_cannot_be_controlled_by_adversary",
+            "inline_mitigations_already_exist"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Justification"
+    },
+    "package": {
+      "default": "*",
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Package",
+      "type": "string"
+    },
+    "queue_state": {
+      "default": "open",
+      "enum": [
+        "open",
+        "assigned",
+        "reviewing",
+        "decided"
+      ],
+      "title": "Queue State",
+      "type": "string"
+    },
+    "server_name": {
+      "default": "",
+      "maxLength": 256,
+      "title": "Server Name",
+      "type": "string"
+    },
+    "vulnerability_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Vulnerability Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "vulnerability_id"
+  ],
+  "title": "FindingTriageRequest",
+  "type": "object"
+}

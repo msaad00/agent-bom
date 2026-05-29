@@ -1,0 +1,70 @@
+{
+  "description": "Request body for PUT /v1/findings/triage/{triage_id}/decision.",
+  "properties": {
+    "assignee": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Assignee"
+    },
+    "decision": {
+      "enum": [
+        "not_affected",
+        "affected",
+        "under_investigation"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "decision_reason": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Decision Reason",
+      "type": "string"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    },
+    "justification": {
+      "anyOf": [
+        {
+          "enum": [
+            "component_not_present",
+            "vulnerable_code_not_present",
+            "vulnerable_code_not_in_execute_path",
+            "vulnerable_code_cannot_be_controlled_by_adversary",
+            "inline_mitigations_already_exist"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Justification"
+    }
+  },
+  "required": [
+    "decision"
+  ],
+  "title": "FindingTriageDecisionRequest",
+  "type": "object"
+}

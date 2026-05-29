@@ -785,6 +785,114 @@ components:
       - vulnerability_id
       title: FindingFeedbackRequest
       type: object
+    FindingTriageDecisionRequest:
+      description: Request body for PUT /v1/findings/triage/{triage_id}/decision.
+      properties:
+        assignee:
+          anyOf:
+          - maxLength: 256
+            type: string
+          - type: 'null'
+          title: Assignee
+        decision:
+          enum:
+          - not_affected
+          - affected
+          - under_investigation
+          title: Decision
+          type: string
+        decision_reason:
+          default: ''
+          maxLength: 2000
+          title: Decision Reason
+          type: string
+        expires_at:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Expires At
+        justification:
+          anyOf:
+          - enum:
+            - component_not_present
+            - vulnerable_code_not_present
+            - vulnerable_code_not_in_execute_path
+            - vulnerable_code_cannot_be_controlled_by_adversary
+            - inline_mitigations_already_exist
+            type: string
+          - type: 'null'
+          title: Justification
+      required:
+      - decision
+      title: FindingTriageDecisionRequest
+      type: object
+    FindingTriageRequest:
+      description: Request body for POST /v1/findings/triage.
+      properties:
+        assignee:
+          default: ''
+          maxLength: 256
+          title: Assignee
+          type: string
+        decision:
+          default: under_investigation
+          enum:
+          - not_affected
+          - affected
+          - under_investigation
+          title: Decision
+          type: string
+        decision_reason:
+          default: ''
+          maxLength: 2000
+          title: Decision Reason
+          type: string
+        expires_at:
+          default: ''
+          maxLength: 64
+          title: Expires At
+          type: string
+        justification:
+          anyOf:
+          - enum:
+            - component_not_present
+            - vulnerable_code_not_present
+            - vulnerable_code_not_in_execute_path
+            - vulnerable_code_cannot_be_controlled_by_adversary
+            - inline_mitigations_already_exist
+            type: string
+          - type: 'null'
+          title: Justification
+        package:
+          default: '*'
+          maxLength: 256
+          minLength: 1
+          title: Package
+          type: string
+        queue_state:
+          default: open
+          enum:
+          - open
+          - assigned
+          - reviewing
+          - decided
+          title: Queue State
+          type: string
+        server_name:
+          default: ''
+          maxLength: 256
+          title: Server Name
+          type: string
+        vulnerability_id:
+          maxLength: 128
+          minLength: 1
+          title: Vulnerability Id
+          type: string
+      required:
+      - vulnerability_id
+      title: FindingTriageRequest
+      type: object
     FleetAgentUpdate:
       properties:
         environment:
@@ -5281,6 +5389,142 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Create Jira Ticket Route
+      tags:
+      - enterprise
+  /v1/findings/triage:
+    get:
+      description: List tenant-scoped finding triage queue items.
+      operationId: list_finding_triage_v1_findings_triage_get
+      parameters:
+      - in: query
+        name: queue_state
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Queue State
+      - in: query
+        name: decision
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Decision
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 1000
+          maximum: 1000
+          minimum: 1
+          title: Limit
+          type: integer
+      - in: query
+        name: offset
+        required: false
+        schema:
+          default: 0
+          minimum: 0
+          title: Offset
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response List Finding Triage V1 Findings Triage Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: List Finding Triage
+      tags:
+      - enterprise
+    post:
+      description: Create a tenant-scoped finding triage queue item.
+      operationId: create_finding_triage_v1_findings_triage_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingTriageRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Create Finding Triage V1 Findings Triage Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Create Finding Triage
+      tags:
+      - enterprise
+  /v1/findings/triage/vex:
+    get:
+      description: Export signed OpenVEX for eligible tenant-scoped not_affected triage
+        decisions.
+      operationId: export_finding_triage_vex_v1_findings_triage_vex_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Export Finding Triage Vex V1 Findings Triage Vex Get
+                type: object
+          description: Successful Response
+      summary: Export Finding Triage Vex
+      tags:
+      - enterprise
+  /v1/findings/triage/{triage_id}/decision:
+    put:
+      description: Record a finding triage decision and review timestamp.
+      operationId: update_finding_triage_decision_v1_findings_triage__triage_id__decision_put
+      parameters:
+      - in: path
+        name: triage_id
+        required: true
+        schema:
+          title: Triage Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingTriageDecisionRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Update Finding Triage Decision V1 Findings Triage  Triage
+                  Id  Decision Put
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Update Finding Triage Decision
       tags:
       - enterprise
   /v1/firewall/check:

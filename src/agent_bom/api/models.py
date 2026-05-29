@@ -611,6 +611,15 @@ class FalsePositiveRequest(BaseModel):
 
 
 FindingFeedbackState = Literal["false_positive", "accepted_risk", "not_affected", "not_applicable", "fixed_verified", "needs_review"]
+FindingTriageQueueState = Literal["open", "assigned", "reviewing", "decided"]
+FindingTriageDecision = Literal["not_affected", "affected", "under_investigation"]
+FindingTriageJustification = Literal[
+    "component_not_present",
+    "vulnerable_code_not_present",
+    "vulnerable_code_not_in_execute_path",
+    "vulnerable_code_cannot_be_controlled_by_adversary",
+    "inline_mitigations_already_exist",
+]
 
 
 class FindingFeedbackRequest(BaseModel):
@@ -622,3 +631,27 @@ class FindingFeedbackRequest(BaseModel):
     reason: str = Field("", max_length=2000)
     server_name: str = Field("", max_length=256)
     expires_at: str = Field("", max_length=64)
+
+
+class FindingTriageRequest(BaseModel):
+    """Request body for POST /v1/findings/triage."""
+
+    vulnerability_id: str = Field(..., min_length=1, max_length=128)
+    package: str = Field("*", min_length=1, max_length=256)
+    server_name: str = Field("", max_length=256)
+    assignee: str = Field("", max_length=256)
+    queue_state: FindingTriageQueueState = "open"
+    decision: FindingTriageDecision = "under_investigation"
+    justification: FindingTriageJustification | None = None
+    decision_reason: str = Field("", max_length=2000)
+    expires_at: str = Field("", max_length=64)
+
+
+class FindingTriageDecisionRequest(BaseModel):
+    """Request body for PUT /v1/findings/triage/{triage_id}/decision."""
+
+    decision: FindingTriageDecision
+    justification: FindingTriageJustification | None = None
+    decision_reason: str = Field("", max_length=2000)
+    assignee: str | None = Field(None, max_length=256)
+    expires_at: str | None = Field(None, max_length=64)

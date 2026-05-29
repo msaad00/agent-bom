@@ -49,6 +49,8 @@ from agent_bom.api.models import (
     ExceptionRequest,
     FalsePositiveRequest,
     FindingFeedbackRequest,
+    FindingTriageDecisionRequest,
+    FindingTriageRequest,
     IssueStatusUpdateRequest,
     JiraTicketRequest,
     RotateKeyRequest,
@@ -79,6 +81,7 @@ class AuditExportVerifyRequest(BaseModel):
 _SAML_RELAY_STATES: dict[str, float] = {}
 _SAML_RELAY_LOCK = threading.Lock()
 _FEEDBACK_PREFIX = "[finding_feedback:"
+_TRIAGE_PREFIX = "[finding_triage]"
 _LEGACY_FALSE_POSITIVE_PREFIX = "[false_positive]"
 
 
@@ -184,6 +187,28 @@ def _parse_feedback_reason(reason: str) -> tuple[str, str] | None:
     return None
 
 
+def _validate_triage_decision(decision: str, justification: str | None) -> None:
+    if decision == "not_affected" and not justification:
+        raise HTTPException(status_code=400, detail="not_affected triage decisions require an OpenVEX justification")
+
+
+def _triage_reason(payload: dict[str, Any]) -> str:
+    return f"{_TRIAGE_PREFIX} {json.dumps(payload, sort_keys=True, separators=(',', ':'))}"
+
+
+def _parse_triage_reason(reason: str) -> dict[str, Any] | None:
+    if not reason.startswith(_TRIAGE_PREFIX):
+        return None
+    raw = reason.removeprefix(_TRIAGE_PREFIX).strip()
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _feedback_response(exc: Any) -> dict[str, Any]:
     parsed = _parse_feedback_reason(str(exc.reason))
     state, reason = parsed if parsed else ("unknown", str(exc.reason))
@@ -199,6 +224,30 @@ def _feedback_response(exc: Any) -> dict[str, Any]:
         "created_at": exc.created_at,
         "expires_at": exc.expires_at,
         "tenant_id": exc.tenant_id,
+    }
+
+
+def _triage_response(exc: Any) -> dict[str, Any]:
+    data = _parse_triage_reason(str(exc.reason)) or {}
+    decision = str(data.get("decision") or "under_investigation")
+    queue_state = str(data.get("queue_state") or "open")
+    reviewed_at = str(data.get("reviewed_at") or exc.approved_at or "")
+    return {
+        "id": exc.exception_id,
+        "vulnerability_id": exc.vuln_id,
+        "package": exc.package_name,
+        "server_name": exc.server_name,
+        "queue_state": queue_state,
+        "decision": decision,
+        "justification": data.get("justification"),
+        "decision_reason": str(data.get("decision_reason") or ""),
+        "assignee": str(data.get("assignee") or exc.approved_by or ""),
+        "created_by": exc.requested_by,
+        "created_at": exc.created_at,
+        "reviewed_at": reviewed_at,
+        "expires_at": exc.expires_at,
+        "tenant_id": exc.tenant_id,
+        "vex_eligible": decision == "not_affected" and bool(data.get("justification")),
     }
 
 
@@ -1505,6 +1554,177 @@ async def list_finding_feedback(request: Request, state: str | None = None) -> d
             continue
         entries.append(_feedback_response(exc))
     return {"feedback": entries, "total": len(entries)}
+
+
+@router.post("/v1/findings/triage", tags=["enterprise"], status_code=201)
+async def create_finding_triage(request: Request, req: FindingTriageRequest) -> dict:
+    """Create a tenant-scoped finding triage queue item."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.exception_store import ExceptionStatus, VulnException
+
+    _validate_triage_decision(req.decision, req.justification)
+    tenant_id = require_request_tenant_id(request)
+    actor = _request_actor(request)
+    now = datetime.now(timezone.utc).isoformat()
+    queue_state = "decided" if req.decision in {"affected", "not_affected"} else req.queue_state
+    reviewed_at = now if queue_state == "decided" else ""
+    exc = VulnException(
+        vuln_id=req.vulnerability_id,
+        package_name=req.package,
+        server_name=req.server_name,
+        reason=_triage_reason(
+            {
+                "queue_state": queue_state,
+                "decision": req.decision,
+                "justification": req.justification,
+                "decision_reason": req.decision_reason,
+                "assignee": req.assignee,
+                "reviewed_at": reviewed_at,
+            }
+        ),
+        requested_by=actor,
+        approved_by=req.assignee,
+        status=ExceptionStatus.ACTIVE,
+        expires_at=req.expires_at,
+        approved_at=reviewed_at,
+        tenant_id=tenant_id,
+    )
+    _get_exception_store().put(exc)
+    log_action(
+        "findings.triage_created",
+        actor=actor,
+        resource=f"finding-triage/{exc.exception_id}",
+        tenant_id=tenant_id,
+        vuln_id=req.vulnerability_id,
+        package=req.package,
+        queue_state=queue_state,
+        decision=req.decision,
+    )
+    return _triage_response(exc)
+
+
+@router.get("/v1/findings/triage", tags=["enterprise"])
+async def list_finding_triage(
+    request: Request,
+    queue_state: str | None = None,
+    decision: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 1000,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict:
+    """List tenant-scoped finding triage queue items."""
+    tenant_id = require_request_tenant_id(request)
+    entries = []
+    for exc in _get_exception_store().list_all(tenant_id=tenant_id):
+        data = _parse_triage_reason(exc.reason)
+        if data is None:
+            continue
+        response = _triage_response(exc)
+        if queue_state and response["queue_state"] != queue_state:
+            continue
+        if decision and response["decision"] != decision:
+            continue
+        entries.append(response)
+    total = len(entries)
+    return {
+        "schema_version": "findings.triage.v1",
+        "triage": entries[offset : offset + limit],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.put("/v1/findings/triage/{triage_id}/decision", tags=["enterprise"])
+async def update_finding_triage_decision(request: Request, triage_id: str, req: FindingTriageDecisionRequest) -> dict:
+    """Record a finding triage decision and review timestamp."""
+    from agent_bom.api.audit_log import log_action
+
+    _validate_triage_decision(req.decision, req.justification)
+    tenant_id = require_request_tenant_id(request)
+    actor = _request_actor(request)
+    store = _get_exception_store()
+    exc = store.get(triage_id, tenant_id=tenant_id)
+    if exc is None or _parse_triage_reason(exc.reason) is None:
+        raise HTTPException(status_code=404, detail=f"Finding triage item {triage_id} not found")
+    reviewed_at = datetime.now(timezone.utc).isoformat()
+    current = _parse_triage_reason(exc.reason) or {}
+    assignee = req.assignee if req.assignee is not None else str(current.get("assignee") or exc.approved_by or "")
+    exc.reason = _triage_reason(
+        {
+            "queue_state": "decided",
+            "decision": req.decision,
+            "justification": req.justification,
+            "decision_reason": req.decision_reason,
+            "assignee": assignee,
+            "reviewed_at": reviewed_at,
+        }
+    )
+    exc.approved_by = assignee
+    exc.approved_at = reviewed_at
+    if req.expires_at is not None:
+        exc.expires_at = req.expires_at
+    store.put(exc)
+    log_action(
+        "findings.triage_decision_recorded",
+        actor=actor,
+        resource=f"finding-triage/{triage_id}",
+        tenant_id=tenant_id,
+        vuln_id=exc.vuln_id,
+        package=exc.package_name,
+        decision=req.decision,
+    )
+    return _triage_response(exc)
+
+
+@router.get("/v1/findings/triage/vex", tags=["enterprise"])
+async def export_finding_triage_vex(request: Request) -> dict:
+    """Export signed OpenVEX for eligible tenant-scoped not_affected triage decisions."""
+    from agent_bom.api.compliance_signing import sign_compliance_bundle
+    from agent_bom.vex import VexDocument, VexJustification, VexStatement, VexStatus, export_openvex
+
+    tenant_id = require_request_tenant_id(request)
+    statements = []
+    for exc in _get_exception_store().list_all(tenant_id=tenant_id):
+        data = _parse_triage_reason(exc.reason)
+        if data is None:
+            continue
+        if data.get("decision") != "not_affected" or not data.get("justification"):
+            continue
+        statements.append(
+            VexStatement(
+                vulnerability_id=exc.vuln_id,
+                status=VexStatus.NOT_AFFECTED,
+                justification=VexJustification(str(data["justification"])),
+                impact_statement=str(data.get("decision_reason") or ""),
+                products=[] if exc.package_name in {"", "*"} else [exc.package_name],
+                timestamp=str(data.get("reviewed_at") or exc.approved_at or exc.created_at),
+                author=str(data.get("assignee") or exc.approved_by or exc.requested_by or "agent-bom"),
+            )
+        )
+    doc = VexDocument(
+        statements=statements,
+        metadata={
+            "id": f"urn:agent-bom:vex:{tenant_id}:{len(statements)}",
+            "author": "agent-bom",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "version": 1,
+        },
+    )
+    payload = export_openvex(doc)
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    signature = sign_compliance_bundle(canonical)
+    return {
+        "schema_version": "findings.triage.vex.v1",
+        "tenant_id": tenant_id,
+        "count": len(statements),
+        "format": "openvex",
+        "vex": payload,
+        "signature": {
+            "algorithm": signature.algorithm,
+            "signature_hex": signature.signature_hex,
+            "key_id": signature.key_id,
+        },
+    }
 
 
 @router.get("/v1/findings/false-positives", tags=["enterprise"])

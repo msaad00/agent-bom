@@ -19,6 +19,11 @@ from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
+from agent_bom.api.runtime_event_store import (
+    RuntimeObservationRecord,
+    get_runtime_event_store,
+    sanitize_runtime_metadata,
+)
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota_guard
@@ -30,6 +35,7 @@ from agent_bom.security import (
     sanitize_env_vars,
     sanitize_error,
     sanitize_security_warnings,
+    sanitize_sensitive_payload,
     sanitize_text,
     sanitize_url,
 )
@@ -235,6 +241,55 @@ def _normalize_ocsf_event(event: dict, *, tenant_id: str) -> dict:
     return normalized
 
 
+def _bounded(value: object, *, max_len: int = 200) -> str:
+    return sanitize_text(value, max_len=max_len)
+
+
+def _event_session_id(payload: dict[str, Any]) -> str:
+    for key in ("session_id", "trace_id", "request_id"):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return _bounded(value)
+    return f"runtime-{uuid.uuid4()}"
+
+
+def _runtime_observation_from_event(event: dict[str, Any], *, tenant_id: str, source: str = "api") -> RuntimeObservationRecord:
+    observed_at = str(event.get("event_timestamp") or event.get("observed_at") or event.get("timestamp") or _now())
+    event_id = str(event.get("event_id") or event.get("observation_id") or "").strip() or str(uuid.uuid4())
+    summary: dict[str, Any] = {}
+    for key in ("message", "reason", "decision", "risk", "policy", "blocked"):
+        if key in event:
+            summary[key] = sanitize_sensitive_payload(event[key], key=key, max_str_len=500)
+    metadata_source = event.get("metadata") if isinstance(event.get("metadata"), dict) else event
+    return RuntimeObservationRecord(
+        tenant_id=tenant_id,
+        observation_id=_bounded(event_id),
+        session_id=_event_session_id(event),
+        observed_at=_bounded(observed_at, max_len=80),
+        source=_bounded(event.get("source_id") or event.get("source") or source, max_len=120),
+        surface=_bounded(event.get("surface") or "runtime", max_len=80),
+        event_type=_bounded(event.get("event_type") or event.get("type") or "runtime_event", max_len=120),
+        severity=_bounded(str(event.get("severity") or "unknown").lower(), max_len=40),
+        verdict=_bounded(event.get("verdict") or event.get("action_taken") or event.get("decision") or "observed", max_len=80),
+        tool_name=_bounded(event.get("tool_name") or event.get("tool") or "", max_len=200),
+        agent_name=_bounded(event.get("agent_name") or event.get("agent_id") or "", max_len=200),
+        trace_id=_bounded(event.get("trace_id") or "", max_len=200),
+        span_id=_bounded(event.get("span_id") or "", max_len=200),
+        request_id=_bounded(event.get("request_id") or "", max_len=200),
+        summary=sanitize_runtime_metadata(summary),
+        metadata=sanitize_runtime_metadata(metadata_source),
+    )
+
+
+def _persist_runtime_observations(events: list[dict[str, Any]], *, tenant_id: str, source: str = "api") -> int:
+    store = get_runtime_event_store()
+    count = 0
+    for event in events:
+        store.put_observation(_runtime_observation_from_event(event, tenant_id=tenant_id, source=source))
+        count += 1
+    return count
+
+
 @router.post("/v1/traces", tags=["observability"])
 async def ingest_traces(request: Request, body: dict) -> dict:
     """Ingest OpenTelemetry trace data and flag vulnerable tool calls.
@@ -281,12 +336,17 @@ async def ingest_traces(request: Request, body: dict) -> dict:
             analytics_events = [
                 {
                     "event_id": f"{flag.trace.trace_id}:{flag.trace.span_id}",
+                    "event_timestamp": _now(),
                     "event_type": "vulnerable_tool_call",
                     "detector": "otel_vulnerable_tool_call",
                     "severity": flag.severity,
                     "tool_name": flag.trace.tool_name,
                     "message": flag.reason,
                     "agent_name": "",
+                    "session_id": flag.trace.trace_id,
+                    "trace_id": flag.trace.trace_id,
+                    "span_id": flag.trace.span_id,
+                    "source_id": "otel",
                 }
                 for flag in flagged
             ]
@@ -294,6 +354,7 @@ async def ingest_traces(request: Request, body: dict) -> dict:
                 _get_analytics_store().record_events(analytics_events, tenant_id=_tenant_id(request))
             except Exception:  # noqa: BLE001
                 _logger.warning("Trace analytics sync skipped", exc_info=True)
+            _persist_runtime_observations(analytics_events, tenant_id=_tenant_id(request), source="otel")
 
         return {
             "traces": len(traces),
@@ -369,6 +430,7 @@ async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
             _get_analytics_store().record_events(normalized_events, tenant_id=tenant_id)
     except Exception as exc:  # noqa: BLE001
         _logger.warning("OCSF analytics ingest skipped: %s", exc)
+    _persist_runtime_observations(normalized_events, tenant_id=tenant_id, source="ocsf")
 
     source_ids = sorted({str(event.get("source_id", "")).strip() for event in normalized_events if str(event.get("source_id", "")).strip()})
     log_action(
@@ -385,6 +447,103 @@ async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
         "tenant_id": tenant_id,
         "class_counts": dict(class_counts),
         "sources": source_ids,
+    }
+
+
+@router.post("/v1/runtime/events", tags=["runtime", "observability"], status_code=202, dependencies=[_dep("runtime_ingest")])
+async def ingest_runtime_events(request: Request, body: dict | list[dict]) -> dict[str, object]:
+    """Persist metadata-only runtime observations for tenant-scoped querying."""
+    tenant_id = _tenant_id(request)
+    if isinstance(body, list):
+        events = body
+    elif isinstance(body, dict) and isinstance(body.get("events"), list):
+        events = body["events"]
+    else:
+        events = [body]
+    if not isinstance(events, list) or not all(isinstance(event, dict) for event in events):
+        raise HTTPException(status_code=400, detail="Runtime event ingest expects an event object or events array")
+    persisted = _persist_runtime_observations(cast(list[dict[str, Any]], events), tenant_id=tenant_id, source="runtime")
+    return {
+        "schema_version": "runtime.observability.v1",
+        "persisted": persisted,
+        "tenant_id": tenant_id,
+        "redaction_status": "metadata_only",
+        "raw_payload_stored": False,
+    }
+
+
+@router.get("/v1/runtime/sessions", tags=["runtime", "observability"], dependencies=[_dep("read")])
+async def list_runtime_sessions(
+    request: Request,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, object]:
+    """List tenant-scoped runtime sessions derived from persisted observations."""
+    tenant_id = _tenant_id(request)
+    bounded_limit = max(1, min(limit, 500))
+    bounded_offset = max(0, offset)
+    sessions = get_runtime_event_store().list_sessions(tenant_id, limit=bounded_limit, offset=bounded_offset)
+    return {
+        "schema_version": "runtime.observability.v1",
+        "tenant_id": tenant_id,
+        "count": len(sessions),
+        "limit": bounded_limit,
+        "offset": bounded_offset,
+        "sessions": [session.to_dict() for session in sessions],
+    }
+
+
+@router.get("/v1/runtime/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])
+async def list_runtime_observations(
+    request: Request,
+    session_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, object]:
+    """List metadata-only runtime observations for the active tenant."""
+    tenant_id = _tenant_id(request)
+    bounded_limit = max(1, min(limit, 500))
+    bounded_offset = max(0, offset)
+    observations = get_runtime_event_store().list_observations(
+        tenant_id,
+        session_id=session_id,
+        limit=bounded_limit,
+        offset=bounded_offset,
+    )
+    return {
+        "schema_version": "runtime.observability.v1",
+        "tenant_id": tenant_id,
+        "count": len(observations),
+        "limit": bounded_limit,
+        "offset": bounded_offset,
+        "observations": [observation.to_dict() for observation in observations],
+    }
+
+
+@router.get("/v1/runtime/sessions/{session_id}/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])
+async def list_runtime_session_observations(
+    request: Request,
+    session_id: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, object]:
+    """List observations for one runtime session in the active tenant."""
+    tenant_id = _tenant_id(request)
+    session = get_runtime_event_store().get_session(tenant_id, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Runtime session not found")
+    observations = get_runtime_event_store().list_observations(
+        tenant_id,
+        session_id=session_id,
+        limit=max(1, min(limit, 500)),
+        offset=max(0, offset),
+    )
+    return {
+        "schema_version": "runtime.observability.v1",
+        "tenant_id": tenant_id,
+        "session": session.to_dict(),
+        "count": len(observations),
+        "observations": [observation.to_dict() for observation in observations],
     }
 
 

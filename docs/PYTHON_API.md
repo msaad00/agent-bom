@@ -86,6 +86,10 @@ python examples/python_sdk/control_plane_smoke.py
 | `health()` | `GET /health` | API liveness and configured subsystem health. |
 | `agent_manifest()` | `GET /v1/agent-bom/manifest` | Tenant-scoped agent, MCP server, tool, and credential-reference posture. |
 | `runtime_production_index()` | `GET /v1/runtime/production-index` | Runtime traffic, policy, freshness, alert, and retention posture. |
+| `ingest_runtime_events(...)` | `POST /v1/runtime/events` | Metadata-only runtime event ingest for session and tool-call observability. |
+| `runtime_sessions(...)` | `GET /v1/runtime/sessions` | Tenant-scoped runtime sessions with event, verdict, severity, and tool summaries. |
+| `runtime_observations(...)` | `GET /v1/runtime/observations` | Tenant-scoped metadata-only runtime observations with optional session filtering. |
+| `runtime_session_observations(...)` | `GET /v1/runtime/sessions/{session_id}/observations` | Observations for one runtime session. |
 | `exposure_paths()` | `GET /v1/graph/exposure-paths` | Graph-backed reachability and blast-radius paths. |
 | `should_i_deploy(...)` | `POST /v1/graph/should-i-deploy` | Allow/warn/block deployment guidance from graph risk. |
 | `list_findings(...)` | `GET /v1/findings` | Normalized findings with severity and pagination filters. |

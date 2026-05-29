@@ -193,6 +193,23 @@
     "analytics": {
       "$ref": "#/$defs/AnalyticsHealth"
     },
+    "auth_configured": {
+      "default": false,
+      "title": "Auth Configured",
+      "type": "boolean"
+    },
+    "auth_required": {
+      "default": true,
+      "title": "Auth Required",
+      "type": "boolean"
+    },
+    "configured_auth_modes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Configured Auth Modes",
+      "type": "array"
+    },
     "entitlements": {
       "$ref": "#/$defs/EntitlementHealth"
     },
@@ -206,6 +223,11 @@
     },
     "tracing": {
       "$ref": "#/$defs/TracingHealth"
+    },
+    "unauthenticated_allowed": {
+      "default": false,
+      "title": "Unauthenticated Allowed",
+      "type": "boolean"
     },
     "version": {
       "title": "Version",

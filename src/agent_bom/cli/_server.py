@@ -388,6 +388,7 @@ def serve_cmd(
     configure_api(
         cors_allow_all=cors_allow_all,
         api_key=api_key,
+        allow_unauthenticated=allow_insecure_no_auth,
     )
 
     _ui_dist = Path(__file__).resolve().parents[1] / "ui_dist"
@@ -604,6 +605,7 @@ def api_cmd(
         cors_allow_all=cors_allow_all,
         api_key=api_key,
         rate_limit_rpm=rate_limit_rpm,
+        allow_unauthenticated=allow_insecure_no_auth,
     )
 
     pg_url = _os.environ.get("AGENT_BOM_POSTGRES_URL")

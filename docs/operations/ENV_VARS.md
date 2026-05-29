@@ -24,6 +24,7 @@ so they cannot regress silently, but they are not part of this reference.
 ## API Server Limits
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` | `bool` | `False` | — |
 | `AGENT_BOM_API_JOB_TTL` | `int` | `3600` | — |
 | `AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT` | `int` | `API_MAX_CONCURRENT_JOBS` | — |
 | `AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT` | `int` | `1000` | — |

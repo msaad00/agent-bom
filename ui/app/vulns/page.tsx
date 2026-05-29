@@ -3,11 +3,24 @@
 import { Fragment, Suspense, useCallback, useEffect, useState, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, JobListItem, RemediationItem, type UnifiedGraphResponse } from "@/lib/api";
+import {
+  api,
+  Vulnerability,
+  ScanJob,
+  ScanResult,
+  severityColor,
+  severityDot,
+  JobListItem,
+  RemediationItem,
+  type FindingTriageDecision,
+  type FindingTriageItem,
+  type FindingTriageJustification,
+  type UnifiedGraphResponse,
+} from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
-import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert } from "lucide-react";
+import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert, ClipboardCheck } from "lucide-react";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -133,6 +146,10 @@ function mergeRemediationItems(existing: RemediationSummary[], incoming: Remedia
     }
   }
   return Array.from(merged.values());
+}
+
+function triageKey(vulnerabilityId: string, packageName: string) {
+  return `${vulnerabilityId}::${packageName || "*"}`;
 }
 
 type GraphNode = UnifiedGraphResponse["nodes"][number];
@@ -287,6 +304,10 @@ function VulnsPage() {
   const [search, setSearch] = useState(paramCve ?? paramAgent ?? "");
   const [groupBy, setGroupBy] = useState<GroupKey>("none");
   const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
+  const [triageRows, setTriageRows] = useState<FindingTriageItem[]>([]);
+  const [triageError, setTriageError] = useState("");
+  const [triageBusyKey, setTriageBusyKey] = useState<string | null>(null);
+  const [vexExporting, setVexExporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(paramCve ?? null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
@@ -399,6 +420,83 @@ function VulnsPage() {
     }
   }, []);
 
+  const refreshTriage = useCallback(async () => {
+    try {
+      const response = await api.listFindingTriage({ limit: 1000 });
+      setTriageRows(response.triage);
+      setTriageError("");
+    } catch (e: unknown) {
+      if (e instanceof ApiAuthError || e instanceof ApiForbiddenError) {
+        setTriageError("Sign in with an analyst or admin role to record triage decisions.");
+      } else {
+        setTriageError(e instanceof Error ? e.message : "Unable to load finding triage queue.");
+      }
+    }
+  }, []);
+
+  const handleTriageDecision = useCallback(async (
+    vuln: EnrichedVuln,
+    decision: FindingTriageDecision,
+    justification?: FindingTriageJustification,
+  ) => {
+    const packageName = vuln.packages[0] ?? "*";
+    const key = triageKey(vuln.id, packageName);
+    setTriageBusyKey(key);
+    setTriageError("");
+    const decisionReason =
+      decision === "not_affected"
+        ? "Reviewed from the findings UI: vulnerable code is not in the executable path for this deployment."
+        : decision === "affected"
+          ? "Reviewed from the findings UI: finding remains applicable to this deployment."
+          : "Queued from the findings UI for analyst investigation.";
+    try {
+      const existing = triageRows.find((row) => triageKey(row.vulnerability_id, row.package) === key);
+      if (existing && decision !== "under_investigation") {
+        const updated = await api.updateFindingTriageDecision(existing.id, {
+          decision,
+          justification,
+          decision_reason: decisionReason,
+        });
+        setTriageRows((rows) => rows.map((row) => (row.id === updated.id ? updated : row)));
+      } else if (!existing) {
+        const created = await api.createFindingTriage({
+          vulnerability_id: vuln.id,
+          package: packageName,
+          queue_state: decision === "under_investigation" ? "assigned" : "decided",
+          decision,
+          justification,
+          decision_reason: decisionReason,
+        });
+        setTriageRows((rows) => [created, ...rows]);
+      }
+    } catch (e: unknown) {
+      if (e instanceof ApiAuthError || e instanceof ApiForbiddenError) {
+        setTriageError("Sign in with an analyst or admin role to record triage decisions.");
+      } else {
+        setTriageError(e instanceof Error ? e.message : "Unable to record triage decision.");
+      }
+    } finally {
+      setTriageBusyKey(null);
+    }
+  }, [triageRows]);
+
+  const handleExportVex = useCallback(async () => {
+    setVexExporting(true);
+    setTriageError("");
+    try {
+      const exported = await api.exportFindingTriageVex();
+      downloadJson(exported, `finding-triage-openvex-${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (e: unknown) {
+      if (e instanceof ApiAuthError || e instanceof ApiForbiddenError) {
+        setTriageError("Sign in with an analyst or admin role to export signed VEX evidence.");
+      } else {
+        setTriageError(e instanceof Error ? e.message : "Unable to export signed VEX evidence.");
+      }
+    } finally {
+      setVexExporting(false);
+    }
+  }, []);
+
   useEffect(() => {
     async function loadSummaries() {
       try {
@@ -416,6 +514,10 @@ function VulnsPage() {
     }
     void loadSummaries();
   }, []);
+
+  useEffect(() => {
+    void refreshTriage();
+  }, [refreshTriage]);
 
   useEffect(() => {
     async function loadDetails() {
@@ -517,6 +619,14 @@ function VulnsPage() {
 
   const totalPages = Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
   const paged = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const triageByKey = useMemo(() => {
+    const rows = new Map<string, FindingTriageItem>();
+    for (const row of triageRows) {
+      rows.set(triageKey(row.vulnerability_id, row.package), row);
+    }
+    return rows;
+  }, [triageRows]);
+  const vexEligibleCount = triageRows.filter((row) => row.vex_eligible).length;
 
   // Group displayed vulns
   const grouped = useMemo(() => {
@@ -579,16 +689,33 @@ function VulnsPage() {
           </p>
         </div>
         {vulns.length > 0 && (
-          <button
-            onClick={() => downloadJson(displayed, `findings-${new Date().toISOString().slice(0, 10)}.json`)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
-            title="Export filtered findings as JSON"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Export
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              onClick={handleExportVex}
+              disabled={vexExporting || vexEligibleCount === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-900 bg-emerald-950/40 px-3 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70 disabled:cursor-not-allowed disabled:opacity-50"
+              title={vexEligibleCount > 0 ? "Export signed OpenVEX for not_affected triage decisions" : "Record a not_affected triage decision before exporting VEX"}
+            >
+              {vexExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
+              Export VEX
+            </button>
+            <button
+              onClick={() => downloadJson(displayed, `findings-${new Date().toISOString().slice(0, 10)}.json`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+              title="Export filtered findings as JSON"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export JSON
+            </button>
+          </div>
         )}
       </div>
+
+      {triageError && (
+        <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
+          {triageError}
+        </div>
+      )}
 
       {loading && (
         <PageLoadingState
@@ -729,6 +856,9 @@ function VulnsPage() {
                       handleSort={handleSort}
                       suppressed={suppressed}
                       onMarkFP={handleMarkFP}
+                      triageByKey={triageByKey}
+                      triageBusyKey={triageBusyKey}
+                      onTriageDecision={handleTriageDecision}
                       expandedId={expandedId}
                       onToggleExpanded={setExpandedId}
                     />
@@ -751,6 +881,9 @@ function VulnsPage() {
               handleSort={handleSort}
               suppressed={suppressed}
               onMarkFP={handleMarkFP}
+              triageByKey={triageByKey}
+              triageBusyKey={triageBusyKey}
+              onTriageDecision={handleTriageDecision}
               expandedId={expandedId}
               onToggleExpanded={setExpandedId}
             />
@@ -801,6 +934,9 @@ function VulnTable({
   handleSort,
   suppressed,
   onMarkFP,
+  triageByKey,
+  triageBusyKey,
+  onTriageDecision,
   expandedId,
   onToggleExpanded,
 }: {
@@ -810,6 +946,13 @@ function VulnTable({
   handleSort: (f: SortKey) => void;
   suppressed: Set<string>;
   onMarkFP: (vulnId: string, packageName: string) => void;
+  triageByKey: Map<string, FindingTriageItem>;
+  triageBusyKey: string | null;
+  onTriageDecision: (
+    vuln: EnrichedVuln,
+    decision: FindingTriageDecision,
+    justification?: FindingTriageJustification,
+  ) => void;
   expandedId: string | null;
   onToggleExpanded: (vulnId: string | null) => void;
 }) {
@@ -839,6 +982,9 @@ function VulnTable({
         <tbody className="divide-y divide-zinc-800 bg-zinc-950">
           {vulns?.map((v) => {
             const isExpanded = expandedId === v.id;
+            const primaryPackage = v.packages[0] ?? "*";
+            const currentTriage = triageByKey.get(triageKey(v.id, primaryPackage));
+            const busy = triageBusyKey === triageKey(v.id, primaryPackage);
             return (
               <Fragment key={v.id}>
                 <tr key={v.id} className={`transition-colors ${isExpanded ? "bg-zinc-900/80" : "hover:bg-zinc-900"}`}>
@@ -934,7 +1080,12 @@ function VulnTable({
                 {isExpanded && (
                   <tr key={`${v.id}-detail`} className="bg-zinc-950">
                     <td colSpan={8} className="px-4 pb-4">
-                      <VulnDetailPanel vuln={v} />
+                      <VulnDetailPanel
+                        vuln={v}
+                        triage={currentTriage}
+                        triageBusy={busy}
+                        onTriageDecision={onTriageDecision}
+                      />
                     </td>
                   </tr>
                 )}
@@ -975,7 +1126,21 @@ function renderPercentValue(value: number | undefined, missingLabel: string) {
   );
 }
 
-function VulnDetailPanel({ vuln }: { vuln: EnrichedVuln }) {
+function VulnDetailPanel({
+  vuln,
+  triage,
+  triageBusy,
+  onTriageDecision,
+}: {
+  vuln: EnrichedVuln;
+  triage: FindingTriageItem | undefined;
+  triageBusy: boolean;
+  onTriageDecision: (
+    vuln: EnrichedVuln,
+    decision: FindingTriageDecision,
+    justification?: FindingTriageJustification,
+  ) => void;
+}) {
   const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "No advisory summary available.";
   const cweMatches = summary.match(/CWE-\d+/gi) ?? [];
   const published = vuln.published_at ?? vuln.published ?? vuln.nvd_published;
@@ -1103,6 +1268,50 @@ function VulnDetailPanel({ vuln }: { vuln: EnrichedVuln }) {
               )}
             </div>
           </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Review queue</h4>
+                <p className="mt-2 text-xs leading-5 text-zinc-400">
+                  Record analyst disposition for this package finding. Not affected decisions require an OpenVEX justification and become eligible for signed VEX export.
+                </p>
+              </div>
+              {triage && (
+                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] font-medium text-zinc-300">
+                  {triage.queue_state}
+                </span>
+              )}
+            </div>
+            {triage ? (
+              <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-2">
+                <div><span className="text-zinc-500">Decision:</span> {triage.decision}</div>
+                <div><span className="text-zinc-500">Assignee:</span> {triage.assignee || "unassigned"}</div>
+                {triage.justification && <div className="sm:col-span-2"><span className="text-zinc-500">Justification:</span> {triage.justification}</div>}
+                {triage.decision_reason && <div className="sm:col-span-2"><span className="text-zinc-500">Reason:</span> {triage.decision_reason}</div>}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-zinc-500">No triage item recorded for this finding/package pair.</p>
+            )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <TriageButton
+                label="Investigate"
+                busy={triageBusy}
+                disabled={Boolean(triage)}
+                onClick={() => onTriageDecision(vuln, "under_investigation")}
+              />
+              <TriageButton
+                label="Affected"
+                busy={triageBusy}
+                onClick={() => onTriageDecision(vuln, "affected")}
+              />
+              <TriageButton
+                label="Not affected"
+                busy={triageBusy}
+                tone="green"
+                onClick={() => onTriageDecision(vuln, "not_affected", "vulnerable_code_not_in_execute_path")}
+              />
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             <a
               href={`https://osv.dev/vulnerability/${vuln.id}`}
@@ -1123,6 +1332,36 @@ function VulnDetailPanel({ vuln }: { vuln: EnrichedVuln }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function TriageButton({
+  label,
+  busy,
+  disabled = false,
+  tone = "zinc",
+  onClick,
+}: {
+  label: string;
+  busy: boolean;
+  disabled?: boolean;
+  tone?: "zinc" | "green";
+  onClick: () => void;
+}) {
+  const classes =
+    tone === "green"
+      ? "border-emerald-800 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/70"
+      : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy || disabled}
+      className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${classes}`}
+    >
+      {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+      {label}
+    </button>
   );
 }
 

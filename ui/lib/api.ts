@@ -24,6 +24,10 @@ import type {
   AgentBomManifestResponse,
   PostureCountsResponse,
   RemediationItem,
+  FindingTriageRequest,
+  FindingTriageDecisionRequest,
+  FindingTriageResponse,
+  FindingTriageVexResponse,
   AttackFlowResponse,
   ContextGraphResponse,
   HealthResponse,
@@ -118,6 +122,14 @@ export type {
   DeploymentMode,
   PostureCountsResponse,
   RemediationItem,
+  FindingTriageQueueState,
+  FindingTriageDecision,
+  FindingTriageJustification,
+  FindingTriageRequest,
+  FindingTriageDecisionRequest,
+  FindingTriageItem,
+  FindingTriageResponse,
+  FindingTriageVexResponse,
   AgentStatus,
   Agent,
   MCPServer,
@@ -804,6 +816,22 @@ export const api = {
       total: number;
     }>("/v1/findings/false-positives"),
   removeFalsePositive: (id: string) => del(`/v1/findings/false-positive/${id}`),
+
+  // ── Finding triage and signed VEX ──
+  createFindingTriage: (body: FindingTriageRequest) =>
+    post<FindingTriageResponse["triage"][number]>("/v1/findings/triage", body),
+  listFindingTriage: (filters?: { queueState?: string; decision?: string; limit?: number; offset?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.queueState) params.set("queue_state", filters.queueState);
+    if (filters?.decision) params.set("decision", filters.decision);
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
+    const qs = params.toString();
+    return get<FindingTriageResponse>(`/v1/findings/triage${qs ? `?${qs}` : ""}`);
+  },
+  updateFindingTriageDecision: (triageId: string, body: FindingTriageDecisionRequest) =>
+    put<FindingTriageResponse["triage"][number]>(`/v1/findings/triage/${encodeURIComponent(triageId)}/decision`, body),
+  exportFindingTriageVex: () => get<FindingTriageVexResponse>("/v1/findings/triage/vex"),
 
   // ── Remediation ──
   /** Extract remediation plan from the latest completed scan */

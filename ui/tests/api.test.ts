@@ -632,6 +632,125 @@ describe('api.markFalsePositive', () => {
   })
 })
 
+describe('api finding triage helpers', () => {
+  it('lists tenant-scoped triage queue entries with filters', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'findings.triage.v1',
+      triage: [
+        {
+          id: 'triage-1',
+          vulnerability_id: 'CVE-2026-0101',
+          package: 'pkg:pypi/requests@2.31.0',
+          server_name: '',
+          queue_state: 'decided',
+          decision: 'not_affected',
+          justification: 'vulnerable_code_not_in_execute_path',
+          decision_reason: 'not reachable',
+          assignee: 'secops@example.com',
+          created_by: 'alice',
+          created_at: '2026-05-29T00:00:00Z',
+          reviewed_at: '2026-05-29T00:01:00Z',
+          expires_at: '',
+          tenant_id: 'tenant-alpha',
+          vex_eligible: true,
+        },
+      ],
+      total: 1,
+      limit: 100,
+      offset: 0,
+    })
+
+    const result = await api.listFindingTriage({ decision: 'not_affected', limit: 100 })
+
+    expect(global.fetch).toHaveBeenCalledOnce()
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/findings/triage?')
+    expect(url).toContain('decision=not_affected')
+    expect(url).toContain('limit=100')
+    expect(opts.method).toBeUndefined()
+    expect(result.triage[0]!.vex_eligible).toBe(true)
+  })
+
+  it('creates and updates finding triage decisions', async () => {
+    const created = {
+      id: 'triage-1',
+      vulnerability_id: 'CVE-2026-0101',
+      package: 'requests',
+      server_name: '',
+      queue_state: 'assigned',
+      decision: 'under_investigation',
+      decision_reason: 'needs review',
+      assignee: '',
+      created_by: 'alice',
+      created_at: '2026-05-29T00:00:00Z',
+      reviewed_at: '',
+      expires_at: '',
+      tenant_id: 'tenant-alpha',
+      vex_eligible: false,
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        statusText: 'Created',
+        json: () => Promise.resolve(created),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: () => Promise.resolve({
+          ...created,
+          queue_state: 'decided',
+          decision: 'affected',
+          reviewed_at: '2026-05-29T00:01:00Z',
+        }),
+      })
+    global.fetch = fetchMock
+
+    const result = await api.createFindingTriage({
+      vulnerability_id: 'CVE-2026-0101',
+      package: 'requests',
+      decision: 'under_investigation',
+    })
+    const updated = await api.updateFindingTriageDecision('triage-1', {
+      decision: 'affected',
+      decision_reason: 'reachable package',
+    })
+
+    expect(result.id).toBe('triage-1')
+    expect(updated.decision).toBe('affected')
+    const [createUrl, createOpts] = fetchMock.mock.calls[0]!
+    expect(createUrl).toContain('/v1/findings/triage')
+    expect(createOpts.method).toBe('POST')
+    expect(JSON.parse(createOpts.body as string).decision).toBe('under_investigation')
+    const [updateUrl, updateOpts] = fetchMock.mock.calls[1]!
+    expect(updateUrl).toContain('/v1/findings/triage/triage-1/decision')
+    expect(updateOpts.method).toBe('PUT')
+    expect(JSON.parse(updateOpts.body as string).decision).toBe('affected')
+  })
+
+  it('exports signed OpenVEX triage evidence', async () => {
+    global.fetch = mockFetch({
+      schema_version: 'findings.triage.vex.v1',
+      tenant_id: 'tenant-alpha',
+      count: 1,
+      format: 'openvex',
+      vex: { statements: [{ status: 'not_affected' }] },
+      signature: { algorithm: 'HMAC-SHA256', signature_hex: 'abc123', key_id: 'audit-hmac' },
+    })
+
+    const result = await api.exportFindingTriageVex()
+
+    expect(global.fetch).toHaveBeenCalledOnce()
+    const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect(url).toContain('/v1/findings/triage/vex')
+    expect(result.count).toBe(1)
+    expect(result.signature.signature_hex).toBe('abc123')
+  })
+})
+
 describe('api error handling', () => {
   it('listJobs rejects with network error', async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error'))

@@ -281,6 +281,83 @@ class AgentBomClient:
             params=_strip_query_none({"tenant_id": tenant_id or self.tenant_id}),
         )
 
+    def ingest_runtime_events(
+        self,
+        events: Mapping[str, JsonValue] | Sequence[Mapping[str, JsonValue]],
+        *,
+        tenant_id: str | None = None,
+    ) -> JsonObject:
+        """Persist metadata-only runtime observations for event and session analysis."""
+
+        if isinstance(events, Mapping):
+            payload: Mapping[str, JsonValue] = dict(events)
+        else:
+            payload = {"events": [dict(event) for event in events]}
+        return self._request(
+            "POST",
+            "/v1/runtime/events",
+            json=_strip_none(
+                {
+                    **payload,
+                    "tenant_id": tenant_id or self.tenant_id,
+                }
+            ),
+        )
+
+    def runtime_sessions(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        tenant_id: str | None = None,
+    ) -> JsonObject:
+        """List tenant-scoped runtime sessions with event, verdict, and tool summaries."""
+
+        return self._request(
+            "GET",
+            "/v1/runtime/sessions",
+            params=_strip_query_none({"tenant_id": tenant_id or self.tenant_id, "limit": limit, "offset": offset}),
+        )
+
+    def runtime_observations(
+        self,
+        *,
+        session_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        tenant_id: str | None = None,
+    ) -> JsonObject:
+        """List tenant-scoped metadata-only runtime observations."""
+
+        return self._request(
+            "GET",
+            "/v1/runtime/observations",
+            params=_strip_query_none(
+                {
+                    "tenant_id": tenant_id or self.tenant_id,
+                    "session_id": session_id,
+                    "limit": limit,
+                    "offset": offset,
+                }
+            ),
+        )
+
+    def runtime_session_observations(
+        self,
+        session_id: str,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        tenant_id: str | None = None,
+    ) -> JsonObject:
+        """List observations for one runtime session."""
+
+        return self._request(
+            "GET",
+            f"/v1/runtime/sessions/{_quote_path(session_id)}/observations",
+            params=_strip_query_none({"tenant_id": tenant_id or self.tenant_id, "limit": limit, "offset": offset}),
+        )
+
     def intel_lookup(self, advisory_id: str) -> JsonObject:
         """Look up one advisory by CVE, GHSA, or OSV identifier."""
 

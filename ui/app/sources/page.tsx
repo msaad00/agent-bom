@@ -8,6 +8,7 @@ import {
   CalendarClock,
   Cloud,
   Database,
+  FileCheck2,
   Plus,
   Radio,
   RefreshCcw,
@@ -220,6 +221,13 @@ function toneForStatus(status: string): string {
 
 function formatMode(value: string): string {
   return value.replaceAll("_", " ");
+}
+
+function sourceEvidenceHref(source: SourceRecord, target: "jobs" | "findings" | "graph" | "compliance"): string {
+  const jobId = source.last_job_id ?? "";
+  if (target === "jobs" || !jobId) return `/jobs?q=${encodeURIComponent(source.source_id)}`;
+  const route = target === "graph" ? "security-graph" : target;
+  return `/${route}?scan=${encodeURIComponent(jobId)}`;
 }
 
 function summarizeProviders(contracts: DiscoveryProvidersResponse | null) {
@@ -657,6 +665,7 @@ export default function SourcesPage() {
                 return (
                   <div
                     key={source.source_id}
+                    data-testid={`source-workflow-${source.source_id}`}
                     className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -681,13 +690,57 @@ export default function SourcesPage() {
                       <span>Connector: {source.connector_name || "—"}</span>
                       <span>Last tested: {formatWhen(source.last_tested_at)}</span>
                       <span>Last run: {formatWhen(source.last_run_at)}</span>
-                      <span>Last job: {source.last_job_id || "—"}</span>
+                      <span>
+                        Last job:{" "}
+                        {source.last_job_id ? (
+                          <Link href={`/scan?id=${encodeURIComponent(source.last_job_id)}`} className="text-emerald-300 hover:text-emerald-200">
+                            {source.last_job_id}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </span>
                       <span>Schedules: {scheduleCounts.get(source.source_id) ?? 0}</span>
                     </div>
 
                     {source.last_test_message ? (
                       <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">{source.last_test_message}</p>
                     ) : null}
+
+                    <div className="mt-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
+                      <div className="flex items-start gap-2">
+                        <FileCheck2 className="mt-0.5 h-4 w-4 text-emerald-400" />
+                        <div>
+                          <p className="text-xs font-semibold text-[var(--foreground)]">Evidence workflow</p>
+                          <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                            {source.last_job_id
+                              ? "Open the completed job surfaces created from this source."
+                              : "Run this source to create findings, graph, and compliance evidence."}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {[
+                          { target: "jobs" as const, label: "Jobs" },
+                          { target: "findings" as const, label: "Findings" },
+                          { target: "graph" as const, label: "Graph" },
+                          { target: "compliance" as const, label: "Compliance" },
+                        ].map((link) => (
+                          <Link
+                            key={link.target}
+                            href={sourceEvidenceHref(source, link.target)}
+                            aria-disabled={link.target !== "jobs" && !source.last_job_id}
+                            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition ${
+                              link.target !== "jobs" && !source.last_job_id
+                                ? "pointer-events-none border-[color:var(--border-subtle)] text-[var(--text-tertiary)] opacity-60"
+                                : "border-[color:var(--border-subtle)] text-[var(--foreground)] hover:border-[color:var(--border-strong)]"
+                            }`}
+                          >
+                            {link.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button

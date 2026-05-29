@@ -107,9 +107,9 @@ function primeApi() {
         last_tested_at: null,
         last_test_status: null,
         last_test_message: null,
-        last_run_at: null,
-        last_run_status: null,
-        last_job_id: null,
+        last_run_at: "2026-04-21T02:00:00Z",
+        last_run_status: "done",
+        last_job_id: "job-prod-cloud",
       },
       {
         source_id: "src-2",
@@ -219,6 +219,12 @@ describe("SourcesPage", () => {
     expect(screen.getByText("Nightly cloud posture")).toBeInTheDocument();
     expect(screen.getByText("Source: AWS production account")).toBeInTheDocument();
     expect(screen.getByText("Schedules: 1")).toBeInTheDocument();
+    const workflow = within(screen.getByTestId("source-workflow-src-1"));
+    expect(workflow.getByText("Evidence workflow")).toBeInTheDocument();
+    expect(workflow.getByRole("link", { name: "Jobs" })).toHaveAttribute("href", "/jobs?q=src-1");
+    expect(workflow.getByRole("link", { name: "Findings" })).toHaveAttribute("href", "/findings?scan=job-prod-cloud");
+    expect(workflow.getByRole("link", { name: "Graph" })).toHaveAttribute("href", "/security-graph?scan=job-prod-cloud");
+    expect(workflow.getByRole("link", { name: "Compliance" })).toHaveAttribute("href", "/compliance?scan=job-prod-cloud");
   });
 
   it("creates a schedule bound to a source_id", async () => {

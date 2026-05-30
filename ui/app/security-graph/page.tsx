@@ -254,7 +254,7 @@ function SecurityGraphPageContent() {
             rank: selectedFixFirstCard?.rank,
           })
         : null,
-    [graphNodeById, selectedAttackPath, selectedFixFirstCard?.rank, selectedScanId],
+    [graphNodeById, selectedAttackPath, selectedFixFirstCard, selectedScanId],
   );
 
   const selectedPathActions = useMemo(

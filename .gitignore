@@ -58,3 +58,10 @@ ui/**/* [0-9].ts
 ui/**/* [0-9].tsx
 deploy/helm/agent-bom/**/* [0-9].yaml
 .github/workflows/* [0-9].yml
+# Catch-all for Finder copies anywhere (iCloud Desktop sync spawns these on
+# every edit). The pre-commit guard still fails the commit if one is staged;
+# this just keeps them out of `git add .` in the first place.
+* [0-9].*
+# Local working screenshots dropped at the repo root (graph/console captures);
+# real docs imagery lives under docs/images/.
+/*.png

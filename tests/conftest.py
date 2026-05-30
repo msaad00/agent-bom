@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
+
+os.environ.setdefault("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
 
 
 def _reset_resolver_state() -> None:

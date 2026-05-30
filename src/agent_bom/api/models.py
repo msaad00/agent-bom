@@ -222,6 +222,10 @@ class EntitlementHealth(BaseModel):
 class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
+    auth_required: bool = True
+    auth_configured: bool = False
+    configured_auth_modes: list[str] = Field(default_factory=list)
+    unauthenticated_allowed: bool = False
     tracing: TracingHealth
     analytics: AnalyticsHealth
     storage: StorageHealth

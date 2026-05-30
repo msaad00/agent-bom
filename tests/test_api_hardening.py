@@ -62,6 +62,46 @@ def test_kubernetes_probe_aliases_no_auth():
         assert resp.json()["status"] == status
 
 
+def test_direct_asgi_import_fails_closed_without_auth_config(monkeypatch):
+    """Raw ASGI imports must not expose protected routes without explicit auth or dev opt-out."""
+    for name in (
+        "AGENT_BOM_API_KEY",
+        "AGENT_BOM_API_KEYS",
+        "AGENT_BOM_OIDC_ISSUER",
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+        "AGENT_BOM_TRUST_PROXY_AUTH",
+        "AGENT_BOM_SCIM_BEARER_TOKEN",
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    configure_api_from_env()
+    try:
+        client = TestClient(app)
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["auth_required"] is True
+        assert health.json()["auth_configured"] is False
+        assert health.json()["unauthenticated_allowed"] is False
+        assert client.get("/v1/auth/policy").status_code == 401
+    finally:
+        monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+        configure_api(api_key=None)
+
+
+def test_explicit_unauthenticated_dev_opt_out(monkeypatch):
+    """Local development can still opt into the legacy unauthenticated mode explicitly."""
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    configure_api(api_key=None)
+    client = TestClient(app)
+
+    health = client.get("/health")
+    assert health.status_code == 200
+    assert health.json()["auth_required"] is False
+    assert health.json()["auth_configured"] is False
+    assert health.json()["unauthenticated_allowed"] is True
+    assert client.get("/v1/auth/policy").status_code == 200
+
+
 def test_direct_asgi_import_configures_static_api_key_from_env(monkeypatch):
     """Raw uvicorn imports must honor AGENT_BOM_API_KEY without the CLI wrapper."""
     raw_key = "raw-uvicorn-static-key"

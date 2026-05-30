@@ -443,7 +443,12 @@ def require_authenticated_permission(action: str) -> Callable:
             )
         )
         proxy_identity_headers_present = bool(x_role or x_tenant_id or x_proxy_secret)
-        if not auth_runtime["auth_required"] and not env_auth_configured and not proxy_identity_headers_present:
+        if (
+            auth_runtime.get("unauthenticated_allowed")
+            and not auth_runtime["auth_required"]
+            and not env_auth_configured
+            and not proxy_identity_headers_present
+        ):
             request.state.api_key_name = "local-no-auth"
             request.state.api_key_role = Role.ADMIN.value
             request.state.tenant_id = getattr(request.state, "tenant_id", None) or "default"

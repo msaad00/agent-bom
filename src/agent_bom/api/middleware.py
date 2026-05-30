@@ -54,9 +54,11 @@ _TENANT_SCOPED_AUTH_METHODS = {
     "static_api_key",
 }
 _AUTH_RUNTIME_STATUS: dict[str, object] = {
-    "auth_required": False,
+    "auth_required": True,
+    "auth_configured": False,
     "configured_modes": [],
-    "recommended_ui_mode": "no_auth",
+    "recommended_ui_mode": "configure_auth",
+    "unauthenticated_allowed": False,
 }
 _API_CSP = "default-src 'self'"
 # /docs (Swagger UI) and /redoc serve HTML shells that load swagger-ui /
@@ -411,6 +413,7 @@ def configure_auth_runtime(
     oidc_enabled: bool,
     trusted_proxy_enabled: bool,
     scim_enabled: bool = False,
+    unauthenticated_allowed: bool = False,
 ) -> None:
     """Track the active auth modes for operator/UI introspection surfaces."""
     configured_modes: list[str] = []
@@ -423,8 +426,13 @@ def configure_auth_runtime(
     if scim_enabled:
         configured_modes.append("scim_provisioning")
 
-    recommended_ui_mode = "no_auth"
-    if trusted_proxy_enabled:
+    auth_configured = bool(configured_modes)
+    auth_required = auth_configured or not unauthenticated_allowed
+
+    recommended_ui_mode = "configure_auth"
+    if unauthenticated_allowed and not auth_configured:
+        recommended_ui_mode = "no_auth"
+    elif trusted_proxy_enabled:
         recommended_ui_mode = "reverse_proxy_oidc"
     elif oidc_enabled:
         recommended_ui_mode = "oidc_bearer"
@@ -434,9 +442,11 @@ def configure_auth_runtime(
     _AUTH_RUNTIME_STATUS.clear()
     _AUTH_RUNTIME_STATUS.update(
         {
-            "auth_required": bool(configured_modes),
+            "auth_required": auth_required,
+            "auth_configured": auth_configured,
             "configured_modes": configured_modes,
             "recommended_ui_mode": recommended_ui_mode,
+            "unauthenticated_allowed": unauthenticated_allowed,
         }
     )
 

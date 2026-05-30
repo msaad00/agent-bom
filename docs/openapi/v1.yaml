@@ -1077,6 +1077,19 @@ components:
       properties:
         analytics:
           $ref: '#/components/schemas/AnalyticsHealth'
+        auth_configured:
+          default: false
+          title: Auth Configured
+          type: boolean
+        auth_required:
+          default: true
+          title: Auth Required
+          type: boolean
+        configured_auth_modes:
+          items:
+            type: string
+          title: Configured Auth Modes
+          type: array
         entitlements:
           $ref: '#/components/schemas/EntitlementHealth'
         status:
@@ -1087,6 +1100,10 @@ components:
           $ref: '#/components/schemas/StorageHealth'
         tracing:
           $ref: '#/components/schemas/TracingHealth'
+        unauthenticated_allowed:
+          default: false
+          title: Unauthenticated Allowed
+          type: boolean
         version:
           title: Version
           type: string

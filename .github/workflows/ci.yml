@@ -333,7 +333,7 @@ jobs:
         # The error message tells the dev to run the codegen locally.
         run: |
           set -euo pipefail
-          uv run uvicorn agent_bom.api.server:app \
+          AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1 uv run uvicorn agent_bom.api.server:app \
             --host 127.0.0.1 --port 8422 --log-level warning \
             > /tmp/codegen-api.log 2>&1 &
           API_PID=$!

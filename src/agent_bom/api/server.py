@@ -613,6 +613,7 @@ def configure_api(
     cors_allow_all: bool = False,
     api_key: str | None = None,
     rate_limit_rpm: int = DEFAULT_RATE_LIMIT_RPM,
+    allow_unauthenticated: bool | None = None,
 ) -> None:
     """Configure API hardening before server startup.
 
@@ -640,19 +641,28 @@ def configure_api(
     oidc_enabled = oidc_enabled_from_env()
     scim_enabled = scim_enabled_from_env()
     trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
-    auth_required = bool(api_key or env_key_store_configured or oidc_enabled or trusted_proxy_enabled or scim_enabled)
+    auth_configured = bool(api_key or env_key_store_configured or oidc_enabled or trusted_proxy_enabled or scim_enabled)
+    if allow_unauthenticated is None:
+        allow_unauthenticated = _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API")
+    auth_required = auth_configured or not allow_unauthenticated
     configure_auth_runtime(
         api_key_configured=bool(api_key or env_key_store_configured),
         oidc_enabled=oidc_enabled,
         trusted_proxy_enabled=trusted_proxy_enabled,
         scim_enabled=scim_enabled,
+        unauthenticated_allowed=allow_unauthenticated,
     )
 
-    # Warn if API is exposed without authentication
-    if not auth_required:
+    if not auth_configured and not allow_unauthenticated:
+        _logger.critical(
+            "SECURITY: No control-plane authentication configured; protected API endpoints will fail closed. "
+            "Set AGENT_BOM_API_KEY, AGENT_BOM_API_KEYS, OIDC/SAML/proxy auth, or "
+            "AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1 for local development only."
+        )
+    elif not auth_configured:
         _logger.warning(
-            "SECURITY: No AGENT_BOM_API_KEY set — API endpoints are unauthenticated. "
-            "Set AGENT_BOM_API_KEY environment variable for production deployments."
+            "SECURITY: AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1 enables unauthenticated API access. "
+            "Use only for single-user local development."
         )
 
     # Refresh runtime-configurable middleware. _replace_middleware inserts at
@@ -671,19 +681,6 @@ def configure_api(
 def configure_api_from_env() -> None:
     """Configure API hardening for direct ASGI imports such as raw uvicorn."""
     api_key = os.environ.get("AGENT_BOM_API_KEY") or None
-    has_api_keys = bool(os.environ.get("AGENT_BOM_API_KEYS", "").strip())
-    auth_env_present = any(
-        (
-            api_key,
-            has_api_keys,
-            os.environ.get("AGENT_BOM_OIDC_ISSUER"),
-            _env_truthy("AGENT_BOM_TRUST_PROXY_AUTH"),
-            os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN"),
-        )
-    )
-    if not auth_env_present:
-        return
-
     origins, allow_all = _parse_cors_origins_from_env(_default_origins)
     configure_api(
         cors_origins=origins,
@@ -893,11 +890,17 @@ async def root():
 @app.get("/health", response_model=HealthResponse, tags=["meta"])
 async def health() -> HealthResponse:
     """Liveness probe."""
+    from agent_bom.api.middleware import get_auth_runtime_status
     from agent_bom.entitlements import load_entitlement_state
 
+    auth_runtime = get_auth_runtime_status()
     return HealthResponse(
         status="ok",
         version=__version__,
+        auth_required=bool(auth_runtime["auth_required"]),
+        auth_configured=bool(auth_runtime.get("auth_configured", False)),
+        configured_auth_modes=list(cast(list[str], auth_runtime["configured_modes"])),
+        unauthenticated_allowed=bool(auth_runtime.get("unauthenticated_allowed", False)),
         tracing=TracingHealth(**get_tracing_health()),
         analytics=_analytics_health(),
         storage=_storage_health(),

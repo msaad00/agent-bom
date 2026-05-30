@@ -421,6 +421,74 @@ export interface RemediationItem {
   risk_narrative: string;
 }
 
+export type FindingTriageQueueState = "open" | "assigned" | "reviewing" | "decided";
+export type FindingTriageDecision = "not_affected" | "affected" | "under_investigation";
+export type FindingTriageJustification =
+  | "component_not_present"
+  | "vulnerable_code_not_present"
+  | "vulnerable_code_not_in_execute_path"
+  | "vulnerable_code_cannot_be_controlled_by_adversary"
+  | "inline_mitigations_already_exist";
+
+export interface FindingTriageRequest {
+  vulnerability_id: string;
+  package?: string | undefined;
+  server_name?: string | undefined;
+  assignee?: string | undefined;
+  queue_state?: FindingTriageQueueState | undefined;
+  decision?: FindingTriageDecision | undefined;
+  justification?: FindingTriageJustification | null | undefined;
+  decision_reason?: string | undefined;
+  expires_at?: string | undefined;
+}
+
+export interface FindingTriageDecisionRequest {
+  decision: FindingTriageDecision;
+  justification?: FindingTriageJustification | null | undefined;
+  decision_reason?: string | undefined;
+  assignee?: string | null | undefined;
+  expires_at?: string | null | undefined;
+}
+
+export interface FindingTriageItem {
+  id: string;
+  vulnerability_id: string;
+  package: string;
+  server_name: string;
+  queue_state: FindingTriageQueueState | string;
+  decision: FindingTriageDecision | string;
+  justification?: FindingTriageJustification | string | null | undefined;
+  decision_reason: string;
+  assignee: string;
+  created_by: string;
+  created_at: string;
+  reviewed_at: string;
+  expires_at: string;
+  tenant_id: string;
+  vex_eligible: boolean;
+}
+
+export interface FindingTriageResponse {
+  schema_version: "findings.triage.v1" | string;
+  triage: FindingTriageItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface FindingTriageVexResponse {
+  schema_version: "findings.triage.vex.v1" | string;
+  tenant_id: string;
+  count: number;
+  format: "openvex" | string;
+  vex: Record<string, unknown>;
+  signature: {
+    algorithm: string;
+    signature_hex: string;
+    key_id: string;
+  };
+}
+
 export type AgentStatus = "configured" | "installed-not-configured";
 
 export interface Agent {

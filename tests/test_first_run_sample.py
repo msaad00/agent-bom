@@ -123,8 +123,12 @@ async def test_generated_first_run_manifests_resolve_vulnerability_findings(
             ],
         }
 
+    async def fake_github_advisories(_packages: list[Package]) -> int:
+        return 0
+
     monkeypatch.setattr("agent_bom.scanners._scan_packages_local_db", lambda _packages: (0, set()))
     monkeypatch.setattr("agent_bom.scanners.query_osv_batch", fake_osv_batch)
+    monkeypatch.setattr("agent_bom.scanners.ghsa_advisory.check_github_advisories", fake_github_advisories)
 
     total = await scan_packages(packages, options=ScanOptions(offline=False))
 

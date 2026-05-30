@@ -155,13 +155,18 @@ def scan_iac_with_context(
     ctx = context or ScanContext()
     root_path = Path(root).expanduser().resolve()
 
-    if not root_path.is_dir():
+    # A single explicit file (e.g. `agent-bom iac Dockerfile`) scans just that
+    # file; a directory walks recursively. Only a genuinely missing path is a
+    # hard no-op — silently returning zero findings for an existing file the
+    # operator named is a false-negative in CI gates.
+    explicit_file = root_path.is_file()
+    if not root_path.exists():
         early_verdicts: list[ScannerVerdict] = [
             ScannerVerdict(
                 scanner_id=sid,
                 status="disabled" if (ctx.enabled_scanners is not None and sid not in ctx.enabled_scanners) else "not-applicable",
                 files_scanned=0,
-                reason="scan root does not exist or is not a directory",
+                reason="scan root does not exist",
             )
             for sid in _SCANNER_IDS
         ]
@@ -177,14 +182,19 @@ def scan_iac_with_context(
     files_matched: dict[str, int] = defaultdict(int)
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
-    for path in sorted(root_path.rglob("*")):
+    walk_root = root_path.parent if explicit_file else root_path
+    walk_paths = [root_path] if explicit_file else sorted(root_path.rglob("*"))
+    for path in walk_paths:
         if not path.is_file():
             continue
-        relative_parts = path.relative_to(root_path).parts
-        if any(part.startswith(".") for part in relative_parts) and not (".github" in relative_parts and "workflows" in relative_parts):
-            continue
-        if "node_modules" in path.parts or "__pycache__" in path.parts:
-            continue
+        # An explicitly named file is always scanned; the dotfile/vendored-dir
+        # filters below only apply when walking a directory tree.
+        if not explicit_file:
+            relative_parts = path.relative_to(walk_root).parts
+            if any(part.startswith(".") for part in relative_parts) and not (".github" in relative_parts and "workflows" in relative_parts):
+                continue
+            if "node_modules" in path.parts or "__pycache__" in path.parts:
+                continue
 
         # Dispatch in priority order: more specific checks first.
         if _is_chart_yaml(path) or _is_values_yaml(path):

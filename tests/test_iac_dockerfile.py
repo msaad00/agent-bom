@@ -250,3 +250,34 @@ class TestDockerSeverities:
         assert by_id.get("DOCKER-008") == "medium"
         assert by_id.get("DOCKER-021") == "high"
         assert by_id.get("DOCKER-022") == "high"
+
+
+class TestSingleFileScanParity:
+    """A single explicit file path must scan that file, not silently no-op.
+
+    Regression: ``scan_iac_with_context`` early-returned ``not-applicable`` for
+    any non-directory root, so ``agent-bom iac Dockerfile`` reported zero
+    findings while the same file inside a directory reported many — a silent
+    false-negative in CI gates.
+    """
+
+    def test_single_file_matches_directory(self, tmp_path: Path):
+        from agent_bom.iac import scan_iac_with_context
+
+        content = "FROM ubuntu\nUSER root\nADD https://x.com/i /tmp/i\nRUN curl https://x.com/i | sh\n"
+        dockerfile = tmp_path / "Dockerfile"
+        dockerfile.write_text(content)
+
+        file_result = scan_iac_with_context(dockerfile)
+        dir_result = scan_iac_with_context(tmp_path)
+
+        assert file_result.findings, "single-file scan must return findings, not silently no-op"
+        assert {f.rule_id for f in file_result.findings} == {f.rule_id for f in dir_result.findings}
+        assert any(v.status == "ran" for v in file_result.verdicts)
+
+    def test_missing_path_is_clean_no_op(self, tmp_path: Path):
+        from agent_bom.iac import scan_iac_with_context
+
+        result = scan_iac_with_context(tmp_path / "does-not-exist")
+        assert result.findings == []
+        assert all(v.status in {"not-applicable", "disabled"} for v in result.verdicts)

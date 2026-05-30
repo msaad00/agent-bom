@@ -91,16 +91,38 @@ def _maybe_postgres_advisory_lock(tenant_id: str) -> Iterator[None]:
         pool = _get_pool()
         conn = pool.getconn(timeout=5.0)
     except Exception as exc:  # noqa: BLE001
-        _logger.warning(
-            "tenant_quota_guard could not acquire Postgres advisory lock for tenant=%s: %s. Falling back to per-process serialisation.",
-            tenant_id,
-            exc,
-        )
         if conn is not None and pool is not None:
             try:
                 pool.putconn(conn)
             except Exception:  # noqa: BLE001
                 pass
+        # Under a clustered control plane the per-process lock only serialises
+        # within one replica, so silently falling back would let N replicas each
+        # pass the check and overshoot the quota by N. Fail closed instead: a
+        # rejected request is safer than an unenforced quota. Single-replica /
+        # SQLite paths keep the harmless fallback.
+        from agent_bom.api.middleware import clustered_control_plane_required
+
+        if clustered_control_plane_required():
+            _logger.error(
+                "tenant_quota_guard could not acquire Postgres advisory lock for tenant=%s in clustered mode: %s. "
+                "Refusing the request to avoid cross-replica quota overshoot.",
+                tenant_id,
+                exc,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Tenant quota enforcement is temporarily unavailable: the control plane could not "
+                    "acquire its cross-replica lock. Retry shortly; if this persists, check the Postgres "
+                    "connection pool used for cluster-safe quota serialisation."
+                ),
+            ) from exc
+        _logger.warning(
+            "tenant_quota_guard could not acquire Postgres advisory lock for tenant=%s: %s. Falling back to per-process serialisation.",
+            tenant_id,
+            exc,
+        )
         yield
         return
     try:

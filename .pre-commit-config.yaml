@@ -58,7 +58,10 @@ repos:
         files: ^(src/agent_bom/.*\.py|src/agent_bom/config\.py|scripts/env_var_allowlist\.txt|docs/operations/ENV_VARS\.md)$
       - id: duplicate-artifact-guard
         name: Finder duplicate artifact guard
-        entry: python3 scripts/check_duplicate_artifacts.py
+        # --working-tree also catches untracked Finder copies (e.g. 'nav 2.tsx')
+        # that break local tsc/pytest collection but are never staged, so the
+        # tracked-only CI guard misses them. Build/cache dirs are ignored.
+        entry: python3 scripts/check_duplicate_artifacts.py --working-tree
         language: system
         pass_filenames: false
-        files: ^(src/|tests/|docs/|site-docs/|ui/|contracts/|deploy/|\.github/workflows/)
+        always_run: true

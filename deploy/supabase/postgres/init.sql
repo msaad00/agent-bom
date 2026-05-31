@@ -249,12 +249,23 @@ CREATE TABLE IF NOT EXISTS graph_edges (
     activity_id  INTEGER DEFAULT 1,
     scan_id      TEXT NOT NULL,
     tenant_id    TEXT NOT NULL DEFAULT 'default',
+    -- Edge versioning + provenance (schema v3). Must mirror the application
+    -- bootstrap in api/postgres_graph.py and the SQLite db/graph_store.py
+    -- definitions; read-only connections and migration-only deploys never run
+    -- the app's ADD COLUMN bootstrap, so the baseline must include these.
+    valid_from     TEXT DEFAULT '',
+    valid_to       TEXT DEFAULT NULL,
+    confidence     DOUBLE PRECISION DEFAULT 1.0,
+    provenance     TEXT DEFAULT '{}',
+    source_scan_id TEXT DEFAULT '',
+    source_run_id  TEXT DEFAULT '',
     PRIMARY KEY (source_id, target_id, relationship, scan_id, tenant_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan ON graph_edges(tenant_id, scan_id);
 CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source ON graph_edges(tenant_id, scan_id, source_id);
 CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_target ON graph_edges(tenant_id, scan_id, target_id);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_valid ON graph_edges(tenant_id, valid_from, valid_to);
 CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source_traversable
     ON graph_edges(tenant_id, scan_id, source_id)
     WHERE traversable = 1;

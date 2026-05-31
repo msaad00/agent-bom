@@ -1177,3 +1177,36 @@ async def test_posture_counts_include_deployment_context_by_tenant():
     assert counts["has_traces"] is True
     assert counts["has_registry"] is True
     assert counts["scan_count"] == 1
+
+
+class TestTenantQuotaAdvisoryLockFailClosed:
+    """Cross-replica advisory-lock failure must fail closed under a clustered
+    control plane (refuse, don't silently degrade to per-process locking which
+    lets N replicas overshoot the quota by N). Single-replica deployments keep
+    the harmless fallback."""
+
+    def test_clustered_lock_failure_raises_503(self, monkeypatch):
+        monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://unreachable/db")
+        monkeypatch.setattr(
+            "agent_bom.api.postgres_common._get_pool",
+            lambda: (_ for _ in ()).throw(RuntimeError("pool down")),
+        )
+        monkeypatch.setattr("agent_bom.api.middleware.clustered_control_plane_required", lambda: True)
+
+        with pytest.raises(HTTPException) as exc_info:
+            with tenant_quota_module._maybe_postgres_advisory_lock("tenant-x"):
+                pass
+        assert exc_info.value.status_code == 503
+
+    def test_single_replica_lock_failure_falls_back(self, monkeypatch):
+        monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://unreachable/db")
+        monkeypatch.setattr(
+            "agent_bom.api.postgres_common._get_pool",
+            lambda: (_ for _ in ()).throw(RuntimeError("pool down")),
+        )
+        monkeypatch.setattr("agent_bom.api.middleware.clustered_control_plane_required", lambda: False)
+
+        entered = False
+        with tenant_quota_module._maybe_postgres_advisory_lock("tenant-x"):
+            entered = True
+        assert entered, "single-replica path must fall back to per-process serialisation, not raise"

@@ -1,4 +1,4 @@
-.PHONY: help install test lint docker-build docker-run scan clean build-ui analytics dev
+.PHONY: help install test lint docker-build docker-run scan clean build-ui analytics dev check-dupes clean-dupes
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -62,6 +62,14 @@ docker-compose-down:  ## Stop Docker Compose services
 
 build-ui:  ## Build Next.js dashboard and bundle into package
 	bash scripts/build-ui.sh
+
+check-dupes:  ## Detect Finder-style duplicate files (incl. untracked) in the working tree
+	python3 scripts/check_duplicate_artifacts.py --working-tree
+
+clean-dupes:  ## Delete untracked Finder-style duplicates (e.g. 'foo 2.py'); tracked files are never removed
+	@python3 scripts/check_duplicate_artifacts.py --working-tree 2>&1 | sed -n 's/^- //p' | while IFS= read -r f; do \
+		if [ -n "$$f" ] && [ -z "$$(git ls-files -- "$$f")" ]; then echo "removing $$f"; rm -rf -- "$$f"; fi; \
+	done; echo "✓ untracked duplicates removed (tracked files untouched)"
 
 clean:  ## Clean build artifacts
 	rm -rf build/ dist/ *.egg-info

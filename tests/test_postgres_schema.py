@@ -141,6 +141,36 @@ def test_graph_tables_have_rls_policies():
         assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in SQL
 
 
+def test_graph_edges_has_versioning_columns():
+    """graph_edges baseline must define the schema-v3 versioning + provenance
+    columns. Regression: these were only created by the app bootstrap in
+    api/postgres_graph.py, so fresh Postgres / read-only / migration-only
+    deployments failed with 'column "valid_from" does not exist'."""
+    cols = _columns_for("graph_edges")
+    for col in (
+        "valid_from",
+        "valid_to",
+        "confidence",
+        "provenance",
+        "source_scan_id",
+        "source_run_id",
+    ):
+        assert col in cols, f"graph_edges baseline missing schema-v3 column: {col}"
+    assert "idx_pg_graph_edges_valid" in _indexes()
+
+
+def test_graph_edges_versioning_migration_exists():
+    """An Alembic migration must add the versioning columns for databases
+    provisioned before they were added to the init.sql baseline."""
+    versions = Path(__file__).parent.parent / "deploy" / "supabase" / "postgres" / "alembic" / "versions"
+    migration = versions / "20260530_01_graph_edges_versioning_columns.py"
+    assert migration.exists(), "missing graph_edges versioning Alembic migration"
+    body = migration.read_text()
+    for col in ("valid_from", "valid_to", "confidence", "provenance", "source_scan_id", "source_run_id"):
+        assert f"ADD COLUMN IF NOT EXISTS {col}" in body, f"migration does not add {col}"
+    assert 'down_revision = "20260513_01"' in body
+
+
 def test_schema_summary_comment_is_current():
     assert "--  Schema (21+ tables):" in SQL
     assert "--   api_rate_limits    — shared API rate-limiter buckets" in SQL

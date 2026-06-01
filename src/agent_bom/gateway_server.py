@@ -36,7 +36,7 @@ import threading
 import time
 import uuid
 from contextlib import asynccontextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -122,6 +122,42 @@ class GatewaySettings:
     upstream_http_max_keepalive_connections: int = 20
     listener_host: str = "127.0.0.1"
     allow_insecure_no_auth: bool = False
+    # Control-plane GatewayPolicy bundle (raw dicts with bound_agents /
+    # bound_agent_types / bound_environments). The flattened ``policy`` dict
+    # above is agent-agnostic; this bundle lets the relay enforce per-agent
+    # binding the way the per-MCP proxy does, scoped to the resolved
+    # source_agent. Empty list = no control-plane binding (file policy only).
+    control_plane_policies: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _evaluate_control_plane_bundle(
+    policy_dicts: list[dict[str, Any]], source_agent: str, tool_name: str, arguments: dict
+) -> tuple[bool, str]:
+    """Enforce control-plane GatewayPolicy binding for one relayed call.
+
+    Mirrors the per-MCP proxy: policies are scoped to the resolved source_agent
+    via bound_agents before evaluation, so a policy bound to other agents never
+    applies here. Returns ``(allowed, reason)``; an empty bundle allows.
+    """
+    if not policy_dicts:
+        return True, ""
+    try:
+        from agent_bom.api.policy_store import GatewayPolicy
+        from agent_bom.proxy import _evaluate_gateway_policy_bundle
+
+        policies = []
+        for item in policy_dicts:
+            try:
+                policies.append(GatewayPolicy(**item))
+            except (TypeError, ValueError):
+                continue
+        if not policies:
+            return True, ""
+        return _evaluate_gateway_policy_bundle(policies, source_agent, tool_name, arguments)
+    except Exception as exc:  # noqa: BLE001
+        # Fail closed: a bundle that cannot be evaluated must not silently pass.
+        logger.warning("gateway control-plane bundle evaluation failed: %s", _sanitize_for_log(exc))
+        return False, "control-plane policy evaluation error"
 
 
 class GatewayCircuitOpenError(RuntimeError):
@@ -946,6 +982,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         if policy_subject:
             tool_name, arguments = policy_subject
             allowed, reason = check_policy(current_policy, tool_name, arguments)
+            # Layer control-plane GatewayPolicy binding on top of the file
+            # policy: enforce bound_agents/bound_agent_types/bound_environments
+            # scoped to the resolved source_agent, matching the per-MCP proxy.
+            policy_source = "file"
+            if allowed and settings.control_plane_policies:
+                cp_allowed, cp_reason = _evaluate_control_plane_bundle(settings.control_plane_policies, source_agent, tool_name, arguments)
+                if not cp_allowed:
+                    allowed, reason, policy_source = False, cp_reason or "blocked by control-plane policy binding", "control_plane"
             if not allowed:
                 record_gateway_relay(upstream.name, "blocked")
                 audit_event: dict[str, Any] = {
@@ -955,6 +999,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     "method": message.get("method"),
                     "tool": tool_name,
                     "reason": reason,
+                    "source_agent": source_agent,
+                    "policy_source": policy_source,
                 }
                 if settings.audit_sink is not None:
                     await settings.audit_sink(audit_event)

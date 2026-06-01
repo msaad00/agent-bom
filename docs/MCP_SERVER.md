@@ -156,7 +156,7 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (55 tools)
+## Tool Categories (57 tools)
 
 | Category | Tools | What They Do |
 |----------|-------|-------------|

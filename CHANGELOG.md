@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.88.5] - 2026-06-01
+
 ### Added
 - **Runtime cost attribution (FinOps).** Token counts on ingested OpenTelemetry GenAI spans are priced via an open, operator-tunable cost model (`AGENT_BOM_COST_MODEL_JSON` overrides), persisted per tenant, and exposed as per-agent/model/provider spend with budgets at `GET /v1/observability/costs` and `GET`/`PUT /v1/observability/costs/budget`. New `cost_report` MCP tool. See `docs/COST_MODEL.md`. Metadata only — no prompts or responses are read.
 - **Agent identity lifecycle.** agent-bom can now issue time-scoped agent identities (`abi_` tokens, stored only as SHA-256 hashes), rotate them with an overlap window, and revoke them: `POST /v1/identities`, `POST /v1/identities/{id}/rotate`, `POST /v1/identities/{id}/revoke`, plus list/detail. The proxy and gateway resolve issued tokens and fail closed on revoked/expired identities.
@@ -1487,7 +1491,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.4...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.5...HEAD
+[0.88.5]: https://github.com/msaad00/agent-bom/compare/v0.88.4...v0.88.5
 [0.88.4]: https://github.com/msaad00/agent-bom/compare/v0.88.3...v0.88.4
 [0.88.3]: https://github.com/msaad00/agent-bom/compare/v0.88.1...v0.88.3
 [0.88.1]: https://github.com/msaad00/agent-bom/compare/v0.88.0...v0.88.1

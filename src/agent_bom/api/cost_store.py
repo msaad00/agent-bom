@@ -115,7 +115,9 @@ def budget_status(spend: float, budget: CostBudget | None) -> dict[str, Any]:
         "limit_usd": budget.limit_usd,
         "spend_usd": round(spend, 6),
         "remaining_usd": remaining,
-        "exceeded": spend >= budget.limit_usd > 0,
+        # A zero budget is a valid hard cap — any spend exceeds it. The > 0 guard
+        # belongs only on the utilization divide, not on the exceeded check.
+        "exceeded": spend >= budget.limit_usd,
         "utilization": round(spend / budget.limit_usd, 4) if budget.limit_usd > 0 else None,
     }
 

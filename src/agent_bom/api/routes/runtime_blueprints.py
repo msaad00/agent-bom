@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
@@ -11,6 +12,7 @@ from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.runtime_blueprints import evaluate_runtime_blueprint_drift, runtime_role_blueprint, runtime_role_blueprints
 
 router = APIRouter(tags=["runtime"])
+logger = logging.getLogger(__name__)
 
 
 def _request_tenant_id(request: Request) -> str:
@@ -57,9 +59,13 @@ async def get_runtime_blueprint_drift(request: Request, blueprint_id: str) -> di
         raise HTTPException(status_code=404, detail="Runtime blueprint not found") from exc
     # Close the loop: a drift_detected evaluation becomes a durable, resolvable
     # incident so blueprints act as enforced contracts, not advisory reports.
-    incident = record_drift_if_detected(get_drift_incident_store(), result)
-    if incident is not None:
-        result["incident_id"] = incident.incident_id
+    # Incident persistence must never break the read — degrade to the evaluation.
+    try:
+        incident = record_drift_if_detected(get_drift_incident_store(), result)
+        if incident is not None:
+            result["incident_id"] = incident.incident_id
+    except Exception:  # noqa: BLE001
+        logger.warning("drift incident persistence failed", exc_info=True)
     return result
 
 

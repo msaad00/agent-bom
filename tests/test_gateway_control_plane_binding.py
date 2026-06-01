@@ -82,3 +82,12 @@ def test_no_bundle_leaves_file_policy_behavior_unchanged():
     resp = client.post("/mcp/filesystem", json=_call("token-a"))
     assert resp.status_code == 200
     assert resp.json()["result"] == {"ok": True}
+
+
+def test_all_malformed_bundle_fails_closed():
+    # A non-empty bundle where every policy fails to parse must block, not allow
+    # (an operator typo cannot silently disable control-plane enforcement).
+    bad_bundle = [{"not_a_valid": "policy"}, {"missing": "fields"}]
+    client = TestClient(create_gateway_app(_settings(bad_bundle)))
+    resp = client.post("/mcp/filesystem", json=_call("token-a"))
+    assert _is_blocked(resp), resp.text

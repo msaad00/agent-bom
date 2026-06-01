@@ -20,6 +20,10 @@ from dataclasses import dataclass
 
 PRICE_TABLE_CAPTURED = "2026-06-01"
 
+# Upper bound on tokens attributed to one call; clamps malformed spans so
+# persistence stays inside int64 and cost figures stay sane.
+MAX_TOKENS_PER_CALL = 1_000_000_000_000
+
 
 @dataclass(frozen=True)
 class ModelPrice:
@@ -163,8 +167,11 @@ def compute_cost_usd(provider: str, model: str, input_tokens: int, output_tokens
     price = lookup_price(provider, model)
     if price is None:
         return 0.0
-    inp = max(0, int(input_tokens))
-    out = max(0, int(output_tokens))
+    # Clamp absurd token counts: no single call exceeds this, and it keeps the
+    # persisted integer well inside SQLite/Postgres int64 so a malformed span
+    # cannot raise on insert.
+    inp = min(max(0, int(input_tokens)), MAX_TOKENS_PER_CALL)
+    out = min(max(0, int(output_tokens)), MAX_TOKENS_PER_CALL)
     return round((inp / 1_000_000) * price.input_per_mtok + (out / 1_000_000) * price.output_per_mtok, 6)
 
 

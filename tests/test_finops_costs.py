@@ -112,6 +112,14 @@ def test_budget_status_exceeded():
     assert budget_status(5.0, None)["configured"] is False
 
 
+def test_zero_budget_is_a_hard_cap():
+    # A zero budget means "no spend allowed" — any spend must flag exceeded.
+    budget = CostBudget(tenant_id="t1", agent="", limit_usd=0.0, updated_at="2026-06-01T00:00:00Z")
+    assert budget_status(0.01, budget)["exceeded"] is True
+    assert budget_status(0.0, budget)["exceeded"] is True
+    assert budget_status(0.0, budget)["utilization"] is None  # no divide-by-zero
+
+
 # ── end-to-end via the API ──────────────────────────────────────────────────────
 
 

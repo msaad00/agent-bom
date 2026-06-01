@@ -130,3 +130,11 @@ def test_issue_requires_agent_id(client):
 
 def test_get_unknown_identity_404s(client):
     assert client.get("/v1/identities/nope").status_code == 404
+
+
+def test_double_rotation_is_rejected(store):
+    identity, _ = issue_identity(store, agent_id="agent-a", tenant_id="t1")
+    first = rotate_identity(store, identity.identity_id)
+    assert first is not None
+    # The original is now 'rotating'; rotating it again would orphan the chain.
+    assert rotate_identity(store, identity.identity_id) is None

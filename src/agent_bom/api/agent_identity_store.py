@@ -237,7 +237,9 @@ def rotate_identity(
     """Issue a replacement identity and keep the old one live for ``overlap_seconds``
     so in-flight callers are not cut off. Returns ``(new_identity, raw_token)``."""
     old = store.get(identity_id)
-    if old is None or old.status in ("revoked",):
+    # Don't rotate a revoked identity, or one already mid-rotation (that would
+    # orphan the first replacement and break the rotated_to chain).
+    if old is None or old.status in ("revoked", "rotating"):
         return None
     new_identity, raw = issue_identity(
         store,

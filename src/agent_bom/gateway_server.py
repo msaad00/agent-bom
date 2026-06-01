@@ -146,13 +146,25 @@ def _evaluate_control_plane_bundle(
         from agent_bom.proxy import _evaluate_gateway_policy_bundle
 
         policies = []
+        parse_errors = 0
         for item in policy_dicts:
             try:
                 policies.append(GatewayPolicy(**item))
             except (TypeError, ValueError):
+                parse_errors += 1
                 continue
         if not policies:
+            # The bundle was configured but nothing parsed — an operator typo must
+            # not silently disable all control-plane enforcement. Fail closed.
+            if parse_errors:
+                logger.error(
+                    "gateway control-plane bundle: all %d policy/policies failed to parse; failing closed",
+                    parse_errors,
+                )
+                return False, "control-plane policy malformed"
             return True, ""
+        if parse_errors:
+            logger.warning("gateway control-plane bundle: %d policy/policies failed to parse and were skipped", parse_errors)
         return _evaluate_gateway_policy_bundle(policies, source_agent, tool_name, arguments)
     except Exception as exc:  # noqa: BLE001
         # Fail closed: a bundle that cannot be evaluated must not silently pass.

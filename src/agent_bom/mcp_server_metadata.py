@@ -142,6 +142,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "cost_report",
+        "description": "Return LLM spend attribution per agent/model/provider with budget posture, from OTel GenAI token usage",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "proxy_status",
         "description": "Return current MCP proxy metrics and runtime alert posture",
         "annotations": {"readOnlyHint": True},
@@ -290,6 +295,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "runtime_production_index": ["READ", "RUNTIME", "OBSERVABILITY"],
     "runtime_blueprints": ["READ", "RUNTIME", "POLICY"],
     "runtime_blueprint_drift": ["READ", "RUNTIME", "POLICY", "ANALYZE"],
+    "cost_report": ["READ", "RUNTIME", "OBSERVABILITY"],
     "proxy_status": ["READ", "RUNTIME", "OBSERVABILITY"],
     "proxy_alerts": ["READ", "RUNTIME", "OBSERVABILITY"],
     "gateway_status": ["READ", "RUNTIME", "POLICY"],

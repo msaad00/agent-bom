@@ -162,6 +162,23 @@ async def runtime_blueprint_drift_impl(
         return json.dumps({"error": sanitize_error(exc)})
 
 
+async def cost_report_impl(
+    *,
+    agent: str = "",
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the cost_report tool: tenant LLM spend + budget posture."""
+    try:
+        from agent_bom.api.routes.observability import get_llm_costs
+
+        payload = await get_llm_costs(cast(Any, _request_for_tenant(tenant_id)), agent=agent.strip() or None)
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP cost report error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
 async def proxy_status_impl(
     *,
     tenant_id: str = "default",

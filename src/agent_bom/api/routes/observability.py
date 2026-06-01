@@ -290,6 +290,47 @@ def _persist_runtime_observations(events: list[dict[str, Any]], *, tenant_id: st
     return count
 
 
+def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
+    """Price GenAI spans in an OTLP payload and persist per-call cost records.
+
+    Token counts come from OTel GenAI semantic conventions; cost is the open
+    price model in agent_bom.cost_model. Failures never block trace ingest.
+    """
+    try:
+        from agent_bom.api.cost_store import LLMCostRecord, get_cost_store
+        from agent_bom.cost_model import compute_cost_usd, is_priced
+        from agent_bom.otel_ingest import parse_ml_api_spans
+
+        calls = parse_ml_api_spans(body)
+    except Exception:  # noqa: BLE001
+        _logger.warning("LLM cost ingest skipped", exc_info=True)
+        return {"calls": 0, "cost_usd": 0.0}
+
+    store = get_cost_store()
+    total = 0.0
+    observed = _now()
+    for call in calls:
+        cost = compute_cost_usd(call.provider, call.model_name, call.input_tokens, call.output_tokens)
+        total += cost
+        agent = _bounded(getattr(call, "agent", "") or "", max_len=120)
+        store.record_cost(
+            LLMCostRecord(
+                tenant_id=tenant_id,
+                call_id=f"{call.trace_id}:{call.span_id}",
+                agent=agent,
+                session_id=call.trace_id,
+                provider=_bounded(call.provider, max_len=60),
+                model=_bounded(call.model_name, max_len=120),
+                input_tokens=max(0, int(call.input_tokens)),
+                output_tokens=max(0, int(call.output_tokens)),
+                cost_usd=cost,
+                priced=is_priced(call.provider, call.model_name),
+                observed_at=observed,
+            )
+        )
+    return {"calls": len(calls), "cost_usd": round(total, 6)}
+
+
 @router.post("/v1/traces", tags=["observability"])
 async def ingest_traces(request: Request, body: dict) -> dict:
     """Ingest OpenTelemetry trace data and flag vulnerable tool calls.
@@ -301,9 +342,19 @@ async def ingest_traces(request: Request, body: dict) -> dict:
     try:
         from agent_bom.otel_ingest import flag_vulnerable_tool_calls, parse_otel_traces
 
+        # GenAI cost spans are independent of tool-call traces — price them first
+        # so spend is captured even for payloads with no adk.tool.* spans.
+        llm_cost = _persist_llm_costs(body, tenant_id=_tenant_id(request))
+
         traces = parse_otel_traces(body)
         if not traces:
-            return {"traces": 0, "flagged": [], "message": "No tool call traces found"}
+            return {
+                "traces": 0,
+                "flagged": [],
+                "llm_calls": llm_cost["calls"],
+                "llm_cost_usd": llm_cost["cost_usd"],
+                "message": "No tool call traces found",
+            }
 
         # Gather vulnerable packages and servers from scan history
         vuln_packages: dict[str, set[str]] = defaultdict(set)
@@ -359,6 +410,8 @@ async def ingest_traces(request: Request, body: dict) -> dict:
         return {
             "traces": len(traces),
             "persisted_events": len(flagged),
+            "llm_calls": llm_cost["calls"],
+            "llm_cost_usd": llm_cost["cost_usd"],
             "flagged": [
                 {
                     "tool_name": f.trace.tool_name,
@@ -622,3 +675,69 @@ async def _render_prometheus_metrics(request: Request | None = None):
 @router.get("/metrics", tags=["observability"], dependencies=[_dep("read")])
 async def prometheus_metrics(request: Request):
     return await _render_prometheus_metrics(request)
+
+
+@router.get("/v1/observability/costs", tags=["observability", "finops"], dependencies=[_dep("read")])
+async def get_llm_costs(request: Request, agent: str | None = None, limit: int = 1000) -> dict[str, object]:
+    """Per-agent / per-model / per-provider LLM spend for the active tenant.
+
+    Spend is derived from token counts on ingested OTel GenAI spans priced via
+    the open cost model (agent_bom.cost_model). Includes budget posture.
+    """
+    from agent_bom.api.cost_store import budget_status, get_cost_store, summarize
+
+    tenant_id = _tenant_id(request)
+    store = get_cost_store()
+    bounded_limit = max(1, min(limit, 10000))
+    records = store.list_records(tenant_id, limit=bounded_limit)
+    if agent:
+        records = [r for r in records if r.agent == agent]
+    report = summarize(records)
+    spend = store.total_spend(tenant_id, agent=agent)
+    budget = store.get_budget(tenant_id, agent or "")
+    if budget is None and agent:
+        budget = store.get_budget(tenant_id, "")
+    report["budget"] = budget_status(spend, budget)
+    report["schema_version"] = "observability.costs.v1"
+    report["tenant_id"] = tenant_id
+    report["price_model_captured"] = __import__("agent_bom.cost_model", fromlist=["PRICE_TABLE_CAPTURED"]).PRICE_TABLE_CAPTURED
+    return report
+
+
+@router.get("/v1/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("read")])
+async def get_llm_cost_budget(request: Request, agent: str = "") -> dict[str, object]:
+    """Return the configured spend budget and current utilization."""
+    from agent_bom.api.cost_store import budget_status, get_cost_store
+
+    tenant_id = _tenant_id(request)
+    store = get_cost_store()
+    budget = store.get_budget(tenant_id, agent)
+    spend = store.total_spend(tenant_id, agent=agent or None)
+    return {"schema_version": "observability.costs.v1", "tenant_id": tenant_id, **budget_status(spend, budget)}
+
+
+@router.put("/v1/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("config")])
+async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]:
+    """Set a tenant (or per-agent) USD spend cap. Body: {limit_usd, agent?}."""
+    from agent_bom.api.cost_store import CostBudget, budget_status, get_cost_store
+
+    tenant_id = _tenant_id(request)
+    raw_limit = body.get("limit_usd")
+    if raw_limit is None:
+        raise HTTPException(status_code=400, detail="'limit_usd' is required and must be a number")
+    try:
+        limit_usd = float(raw_limit)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="'limit_usd' is required and must be a number") from exc
+    if limit_usd < 0:
+        raise HTTPException(status_code=400, detail="'limit_usd' must be non-negative")
+    agent = _bounded(str(body.get("agent", "") or ""), max_len=120)
+    store = get_cost_store()
+    store.set_budget(CostBudget(tenant_id=tenant_id, agent=agent, limit_usd=limit_usd, updated_at=_now()))
+    spend = store.total_spend(tenant_id, agent=agent or None)
+    return {
+        "schema_version": "observability.costs.v1",
+        "tenant_id": tenant_id,
+        "updated": True,
+        **budget_status(spend, store.get_budget(tenant_id, agent)),
+    }

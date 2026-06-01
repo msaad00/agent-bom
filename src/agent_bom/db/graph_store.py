@@ -438,6 +438,8 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
             if previous is not None:
                 valid_from = previous["valid_from"] or previous["first_seen"] or valid_from
                 first_seen = previous["first_seen"] or first_seen
+            elif valid_from > now:
+                valid_from = now
             yield (
                 edge.source,
                 edge.target,

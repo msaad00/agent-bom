@@ -501,6 +501,8 @@ class PostgresGraphStore:
                     if previous is not None:
                         valid_from = previous[4] or previous[3] or valid_from
                         first_seen = previous[3] or first_seen
+                    elif valid_from > now:
+                        valid_from = now
                     yield (
                         edge.source,
                         edge.target,

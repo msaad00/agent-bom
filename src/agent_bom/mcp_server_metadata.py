@@ -147,6 +147,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "drift_incidents",
+        "description": "List open blueprint-drift incidents where observed runtime traffic left the approved role blueprint",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "proxy_status",
         "description": "Return current MCP proxy metrics and runtime alert posture",
         "annotations": {"readOnlyHint": True},
@@ -296,6 +301,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "runtime_blueprints": ["READ", "RUNTIME", "POLICY"],
     "runtime_blueprint_drift": ["READ", "RUNTIME", "POLICY", "ANALYZE"],
     "cost_report": ["READ", "RUNTIME", "OBSERVABILITY"],
+    "drift_incidents": ["READ", "RUNTIME", "POLICY", "ANALYZE"],
     "proxy_status": ["READ", "RUNTIME", "OBSERVABILITY"],
     "proxy_alerts": ["READ", "RUNTIME", "OBSERVABILITY"],
     "gateway_status": ["READ", "RUNTIME", "POLICY"],

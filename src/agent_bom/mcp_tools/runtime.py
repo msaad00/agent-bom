@@ -162,6 +162,23 @@ async def runtime_blueprint_drift_impl(
         return json.dumps({"error": sanitize_error(exc)})
 
 
+async def drift_incidents_impl(
+    *,
+    include_resolved: bool = False,
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the drift_incidents tool: open blueprint-drift incidents."""
+    try:
+        from agent_bom.api.routes.runtime_blueprints import list_drift_incidents
+
+        payload = await list_drift_incidents(cast(Any, _request_for_tenant(tenant_id)), include_resolved=include_resolved)
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP drift incidents error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
 async def cost_report_impl(
     *,
     agent: str = "",

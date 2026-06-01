@@ -694,7 +694,7 @@ def mcp_server_cmd(
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 55 security tools via MCP protocol:
+    Exposes 57 security tools via MCP protocol:
       scan                   Full scan — CVEs, config security, blast radius, compliance
       check                  Check a specific package for CVEs before installing
       blast_radius           Look up blast radius for a specific CVE

@@ -34,6 +34,8 @@ def register_operator_tools(
     from agent_bom.mcp_tools.runtime import (
         audit_integrity_impl,
         audit_query_impl,
+        cost_report_impl,
+        drift_incidents_impl,
         firewall_check_impl,
         gateway_status_impl,
         proxy_alerts_impl,
@@ -471,6 +473,54 @@ def register_operator_tools(
             "runtime_blueprint_drift",
             runtime_blueprint_drift_impl,
             blueprint_id=blueprint_id,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Cost Report")
+    async def cost_report(
+        agent: Annotated[
+            str,
+            Field(description="Optional agent name to scope spend to a single agent."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to summarize. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Return LLM spend attribution (per agent/model/provider) and budget posture.
+
+        Spend is derived from token counts on ingested OpenTelemetry GenAI spans
+        priced via agent-bom's open cost model; no prompts or responses are read.
+        """
+        return await execute_tool_async(
+            "cost_report",
+            cost_report_impl,
+            agent=agent,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Drift Incidents")
+    async def drift_incidents(
+        include_resolved: Annotated[
+            bool,
+            Field(description="Include resolved incidents. Defaults to open incidents only."),
+        ] = False,
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to summarize. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """List open blueprint-drift incidents (observed runtime traffic outside the approved role blueprint).
+
+        Each incident records the blueprint, drift score, and top violations so an
+        operator can reconcile the agent or blueprint and resolve it.
+        """
+        return await execute_tool_async(
+            "drift_incidents",
+            drift_incidents_impl,
+            include_resolved=include_resolved,
             tenant_id=tenant_id,
             _truncate_response=truncate_response,
         )

@@ -137,7 +137,7 @@ Screenshot capture rules and the full manifest live in
 | Container image scan | `agent-bom image nginx:latest` | image findings and remediation |
 | IaC scan | `agent-bom iac Dockerfile k8s/ infra/main.tf` | IaC findings and policy context |
 | Cloud posture check | `agent-bom cis-benchmark --provider aws` | runtime CIS posture evidence |
-| CI gate | `uses: msaad00/agent-bom@v0.88.4` | SARIF, PR summary, optional code-scanning upload |
+| CI gate | `uses: msaad00/agent-bom@v0.88.5` | SARIF, PR summary, optional code-scanning upload |
 | MCP tools | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict-args security tools for MCP clients |
 | Local API/UI | `pip install 'agent-bom[ui]' && agent-bom serve` | API plus bundled dashboard |
 | First-run extras | `pip install 'agent-bom[all]'` | supported onboarding extras; MLflow remains separately installed |
@@ -162,7 +162,7 @@ integration docs instead of this front door.
 | Python client | services, notebooks, and automation | typed helper for stable REST endpoints in the packaged wheel |
 | TypeScript client | services and agent runtimes | typed helper for stable REST endpoints |
 
-MCP server mode advertises 55 MCP tools, 6 resources, and 6 workflow prompts.
+MCP server mode advertises 57 MCP tools, 6 resources, and 6 workflow prompts.
 Most tools are read-only. The three Shield write actions fail closed unless
 the caller supplies `operator_role=admin`, `operator_scopes=shield:write`, and
 an audit reason.

@@ -167,6 +167,19 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     help="Reload the gateway policy JSON file in-process on this interval (0 disables hot reload).",
 )
 @click.option(
+    "--policy-bundle",
+    "policy_bundle_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Control-plane GatewayPolicy bundle JSON (a list of policies, or "
+        "{'policies': [...]}). Unlike --policy, these are enforced per "
+        "source_agent via bound_agents/bound_agent_types/bound_environments, "
+        "matching the per-MCP proxy. Export from the control plane's "
+        "/v1/gateway/policies."
+    ),
+)
+@click.option(
     "--firewall-policy",
     "firewall_policy_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
@@ -234,6 +247,7 @@ def serve_cmd(
     control_plane_token: str | None,
     policy_path: Path | None,
     policy_reload_seconds: int,
+    policy_bundle_path: Path | None,
     firewall_policy_path: Path | None,
     firewall_policy_reload_seconds: int,
     bind: str,
@@ -338,10 +352,22 @@ def serve_cmd(
 
     audit_sink = build_control_plane_audit_sink(control_plane_url, control_plane_token, source_id="gateway") if control_plane_url else None
 
+    control_plane_policies: list[dict] = []
+    if policy_bundle_path is not None:
+        import json as _json
+
+        raw_bundle = _json.loads(policy_bundle_path.read_text())
+        bundle_list = raw_bundle.get("policies", []) if isinstance(raw_bundle, dict) else raw_bundle
+        if not isinstance(bundle_list, list):
+            raise click.ClickException("--policy-bundle must be a JSON list of policies or {'policies': [...]}")
+        control_plane_policies = [p for p in bundle_list if isinstance(p, dict)]
+        click.echo(f"loaded {len(control_plane_policies)} control-plane policy/policies from {policy_bundle_path}")
+
     settings = GatewaySettings(
         registry=registry,
         policy=policy,
         audit_sink=audit_sink,
+        control_plane_policies=control_plane_policies,
         bearer_token=bearer_token,
         enable_visual_leak_detection=detect_visual_leaks,
         require_visual_leak_detection_ready=detect_visual_leaks and not allow_visual_leak_best_effort,

@@ -725,6 +725,7 @@ from agent_bom.api.routes.frameworks import router as _frameworks_router  # noqa
 from agent_bom.api.routes.gateway import router as _gateway_router  # noqa: E402
 from agent_bom.api.routes.governance import router as _governance_router  # noqa: E402
 from agent_bom.api.routes.graph import router as _graph_router  # noqa: E402
+from agent_bom.api.routes.identities import router as _identities_router  # noqa: E402
 from agent_bom.api.routes.intel import router as _intel_router  # noqa: E402
 from agent_bom.api.routes.observability import router as _observability_router  # noqa: E402
 from agent_bom.api.routes.plugins import router as _plugins_router  # noqa: E402
@@ -752,6 +753,7 @@ app.include_router(_frameworks_router)
 app.include_router(_gateway_router)
 app.include_router(_governance_router)
 app.include_router(_graph_router)
+app.include_router(_identities_router)
 app.include_router(_intel_router)
 app.include_router(_observability_router)
 app.include_router(_plugins_router)
@@ -763,6 +765,12 @@ app.include_router(_scan_router)
 app.include_router(_schedules_router)
 app.include_router(_scim_router)
 app.include_router(_sources_router)
+
+# Resolve agent-bom-issued (abi_) identity tokens through the lifecycle store so
+# the proxy/gateway honor issuance, rotation overlap, and revocation.
+from agent_bom.api.agent_identity_store import register_local_identity_verifier  # noqa: E402
+
+register_local_identity_verifier()
 
 # Re-export proxy push functions for backward compatibility
 # Re-export connectors helpers for backward compatibility

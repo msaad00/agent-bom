@@ -9,6 +9,8 @@ Raw result artifacts:
 - `docs/perf/results/graph-api-benchmark-sample.json`
 - `docs/perf/results/postgres-graph-explain-sample.json`
 - `docs/perf/results/postgres-graph-explain-sample/*.sql`
+- `docs/perf/results/postgres-graph-latency-sample.json`
+- `docs/perf/results/postgres-graph-latency-sample/*.sql`
 - `docs/perf/results/graph-benchmark-estate-live-2026-05-13.json`
 - `docs/perf/results/graph-benchmark-estate-live-2026-05-13-report.json`
 - `docs/perf/results/graph-benchmark-store-load-live-2026-05-13.json`
@@ -43,11 +45,13 @@ Covered by the checked-in evidence:
 - Docker Postgres graph-store load for the same old/current snapshots
 - Postgres `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plan artifacts for node
   search, node detail, attack-path drilldown, graph diff, and bounded traversal
+- repeatable Postgres latency scaffold for the same query families, producing
+  p50/p95/p99 client wall-clock summaries when run against a loaded database
 
 Excluded from these local artifacts:
 
 - authenticated remote API latency
-- Postgres p50/p95/p99 repeated-run latency
+- measured Postgres p50/p95/p99 repeated-run latency
 - Snowflake or managed-operator deployment timings
 - browser/UI interaction timing
 - 50k / 100k edge Postgres runs
@@ -137,6 +141,15 @@ uv run python scripts/run_graph_postgres_explain.py \
   --summary-output docs/perf/results/postgres-graph-explain-sample.json
 ```
 
+Generate Postgres repeated-latency SQL artifacts without measuring:
+
+```bash
+uv run python scripts/run_graph_postgres_latency.py \
+  --dry-run \
+  --output-dir docs/perf/results/postgres-graph-latency-sample \
+  --summary-output docs/perf/results/postgres-graph-latency-sample.json
+```
+
 Run Postgres EXPLAIN ANALYZE against a loaded graph store:
 
 ```bash
@@ -184,6 +197,22 @@ uv run python scripts/run_graph_postgres_explain.py \
   --summary-output docs/perf/results/postgres-graph-explain-live-2026-05-13.json
 ```
 
+Run repeated Postgres latency probes against the same loaded graph store:
+
+```bash
+AGENT_BOM_POSTGRES_DSN=postgresql://postgres:agentbom@127.0.0.1:5432/agentbom \
+uv run python scripts/run_graph_postgres_latency.py \
+  --run \
+  --psql-bin /tmp/psql \
+  --scan-id graph-benchmark-estate-current \
+  --old-scan-id graph-benchmark-estate-old \
+  --source-node agent:agent-00000 \
+  --detail-node pkg:go:langchain@1.0.0 \
+  --repeat 30 \
+  --output-dir docs/perf/results/postgres-graph-latency-live-YYYY-MM-DD \
+  --summary-output docs/perf/results/postgres-graph-latency-live-YYYY-MM-DD.json
+```
+
 ## Results
 
 | Artifact | Status | What it supports |
@@ -191,6 +220,7 @@ uv run python scripts/run_graph_postgres_explain.py \
 | `graph-benchmark-estate-sample.json` | scaffold | deterministic skewed estate shape and source mix |
 | `graph-api-benchmark-sample.json` | dry-run | API benchmark request coverage only |
 | `postgres-graph-explain-sample.json` | dry-run | Postgres EXPLAIN artifact paths only |
+| `postgres-graph-latency-sample.json` | dry-run | Postgres repeated-latency SQL paths only |
 | `graph-benchmark-estate-live-2026-05-13.json` | generated | 250-agent estate with 604 servers, 3,475 tools, and 5,958 package instances |
 | `graph-benchmark-store-load-live-2026-05-13.json` | measured load | SQLite graph store loaded old/current snapshots; current has 10,479 nodes, 11,242 edges, 291 attack paths |
 | `graph-api-benchmark-live-2026-05-13.json` | measured API | loopback API p50/p95/p99 client timings across five graph hot paths |
@@ -244,7 +274,7 @@ resource sizing before making an operator or enterprise-pilot latency claim.
 ## Gaps
 
 - Run the API benchmark under the intended authenticated remote topology.
-- Add repeated Postgres timing summaries in addition to single
-  `EXPLAIN ANALYZE` plans.
+- Run the repeated Postgres timing scaffold and check in measured
+  p50/p95/p99 artifacts in addition to single `EXPLAIN ANALYZE` plans.
 - Add 50k / 100k edge Postgres artifacts.
 - Add browser interaction timing separately if UI scale claims are needed.

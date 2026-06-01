@@ -33,6 +33,7 @@ import json
 import logging
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 from agent_bom.security import sanitize_log_label
@@ -209,6 +210,20 @@ def _looks_like_jwt(token: str) -> bool:
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 
+_LOCAL_IDENTITY_VERIFIER: Callable[[str], tuple[str, str | None]] | None = None
+
+
+def set_local_identity_verifier(verifier: Callable[[str], tuple[str, str | None]] | None) -> None:
+    """Register a resolver for agent-bom-issued ``abi_`` identity tokens.
+
+    The control-plane identity lifecycle store registers this so issued tokens
+    resolve to their agent_id and revoked/expired ones fail closed, without this
+    low-level module importing the API layer.
+    """
+    global _LOCAL_IDENTITY_VERIFIER
+    _LOCAL_IDENTITY_VERIFIER = verifier
+
+
 def extract_identity_token(msg: dict) -> str | None:
     """Extract the agent identity token from an MCP JSON-RPC message.
 
@@ -267,6 +282,14 @@ def resolve_agent_id(token: str, policy: dict) -> tuple[str, str | None]:
         if not agent_id or not isinstance(agent_id, str):
             return ANONYMOUS, "JWT missing sub/agent_id/name claim"
         return agent_id.strip(), None
+
+    # agent-bom-issued lifecycle token: resolve via the registered verifier so
+    # revoked/expired identities fail closed (provisioning/rotation/revocation).
+    if token.startswith("abi_") and _LOCAL_IDENTITY_VERIFIER is not None:
+        agent_id, error = _LOCAL_IDENTITY_VERIFIER(token)
+        if error is not None:
+            return ANONYMOUS, error
+        return agent_id, None
 
     # Opaque token: look up in policy.agent_tokens
     agent_tokens: dict = policy.get("agent_tokens", {})

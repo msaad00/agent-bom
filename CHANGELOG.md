@@ -10,7 +10,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Runtime cost attribution (FinOps).** Token counts on ingested OpenTelemetry GenAI spans are priced via an open, operator-tunable cost model (`AGENT_BOM_COST_MODEL_JSON` overrides), persisted per tenant, and exposed as per-agent/model/provider spend with budgets at `GET /v1/observability/costs` and `GET`/`PUT /v1/observability/costs/budget`. New `cost_report` MCP tool. See `docs/COST_MODEL.md`. Metadata only — no prompts or responses are read.
+- **Agent identity lifecycle.** agent-bom can now issue time-scoped agent identities (`abi_` tokens, stored only as SHA-256 hashes), rotate them with an overlap window, and revoke them: `POST /v1/identities`, `POST /v1/identities/{id}/rotate`, `POST /v1/identities/{id}/revoke`, plus list/detail. The proxy and gateway resolve issued tokens and fail closed on revoked/expired identities.
+- **Blueprint-drift incidents.** Drift evaluations that report `drift_detected` now persist a durable, deduplicated, tenant-scoped incident, listable at `GET /v1/runtime/drift/incidents` and resolvable at `POST /v1/runtime/drift/incidents/{id}/resolve`. New `drift_incidents` MCP tool. Blueprints become enforced contracts with an audit trail rather than advisory reports.
 - `agent-bom quickstart --run` executes first-run onboarding end to end: writes the bundled sample stack, runs a graph-persisting scan that populates the local security-graph cockpit, and seeds the secure-by-default gateway baseline policy. The print-only guide remains the default.
+
+### Changed
+- The multi-MCP gateway relay now enforces control-plane `GatewayPolicy` bindings (`bound_agents`/`bound_agent_types`/`bound_environments`) scoped to the resolved source agent — matching the per-MCP proxy — via a new `gateway serve --policy-bundle` flag. Previously these bindings were enforced only by the proxy.
+
+### Fixed
+- `agent-bom iac <file>` now scans a single named file instead of silently returning zero findings (previously only directories were scanned).
+- Fresh Postgres deployments include the `graph_edges` edge-versioning columns in the `init.sql` baseline and a self-contained Alembic migration, fixing `column "valid_from" does not exist` on migration-only/read-only paths.
+- The multi-replica tenant-quota guard fails closed (HTTP 503) when its Postgres advisory lock is unavailable under a clustered control plane, instead of silently degrading and overshooting the quota.
+- Removed committed macOS Finder duplicate files and hardened the duplicate-artifact guard to catch untracked copies in the working tree.
 
 ---
 

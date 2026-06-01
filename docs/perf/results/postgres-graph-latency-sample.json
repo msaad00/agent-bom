@@ -1,0 +1,28 @@
+{
+  "commands": {
+    "dry_run": "uv run python scripts/run_graph_postgres_latency.py --dry-run",
+    "live": "AGENT_BOM_POSTGRES_DSN=postgresql://... uv run python scripts/run_graph_postgres_latency.py --run --scan-id <new> --old-scan-id <old> --repeat 30"
+  },
+  "edge_targets": "10000,50000,100000",
+  "evidence_status": "postgres_latency_scaffold_not_measured",
+  "gaps": [
+    "Dry-run writes non-EXPLAIN SQL only; it does not seed Postgres or measure latency.",
+    "Measured artifacts must record database size, Postgres version, tenant, scan IDs, and repeat count."
+  ],
+  "generated_at": "2026-06-01T04:46:41.937624+00:00",
+  "old_scan_id": "graph-benchmark-estate-old",
+  "owner_issue": 2145,
+  "psql_bin": "psql",
+  "query_artifacts": {
+    "attack_path_drilldown": "docs/perf/results/postgres-graph-latency-sample/attack_path_drilldown.sql",
+    "bounded_traversal_edges": "docs/perf/results/postgres-graph-latency-sample/bounded_traversal_edges.sql",
+    "graph_diff_nodes": "docs/perf/results/postgres-graph-latency-sample/graph_diff_nodes.sql",
+    "node_detail": "docs/perf/results/postgres-graph-latency-sample/node_detail.sql",
+    "node_search": "docs/perf/results/postgres-graph-latency-sample/node_search.sql"
+  },
+  "repeat": 30,
+  "results": [],
+  "scan_id": "graph-benchmark-estate-current",
+  "schema_version": 1,
+  "tenant_id": "default"
+}

@@ -8,6 +8,7 @@ from pathlib import Path
 from scripts.generate_graph_benchmark_estate import generate_estate
 from scripts.run_graph_api_benchmark import request_plan
 from scripts.run_graph_postgres_explain import explain_queries
+from scripts.run_graph_postgres_latency import latency_queries
 
 
 def test_synthetic_estate_has_skewed_topology_and_sources() -> None:
@@ -57,6 +58,23 @@ def test_postgres_explain_queries_cover_graph_hot_paths() -> None:
     assert "WITH RECURSIVE" in queries["bounded_traversal_edges"]
 
 
+def test_postgres_latency_queries_cover_non_explain_hot_paths() -> None:
+    queries = latency_queries(
+        tenant_id="default",
+        scan_id="new-scan",
+        old_scan_id="old-scan",
+        source_node="agent:agent-00000",
+        detail_node="package:langchain",
+    )
+
+    assert set(queries) == {"node_search", "node_detail", "attack_path_drilldown", "graph_diff_nodes", "bounded_traversal_edges"}
+    assert all("EXPLAIN" not in sql for sql in queries.values())
+    assert "graph_node_search" in queries["node_search"]
+    assert "attack_paths" in queries["attack_path_drilldown"]
+    assert "FULL OUTER JOIN" in queries["graph_diff_nodes"]
+    assert "WITH RECURSIVE" in queries["bounded_traversal_edges"]
+
+
 def test_graph_benchmark_scripts_write_dry_run_artifacts(tmp_path: Path) -> None:
     estate_report = tmp_path / "estate-report.json"
     estate_summary = tmp_path / "estate-summary.json"
@@ -65,6 +83,8 @@ def test_graph_benchmark_scripts_write_dry_run_artifacts(tmp_path: Path) -> None
     store_summary = tmp_path / "store-load.json"
     explain_dir = tmp_path / "explain"
     explain_summary = tmp_path / "explain.json"
+    latency_dir = tmp_path / "latency"
+    latency_summary = tmp_path / "latency.json"
 
     commands = [
         [
@@ -99,6 +119,15 @@ def test_graph_benchmark_scripts_write_dry_run_artifacts(tmp_path: Path) -> None
             "--summary-output",
             str(explain_summary),
         ],
+        [
+            sys.executable,
+            "scripts/run_graph_postgres_latency.py",
+            "--dry-run",
+            "--output-dir",
+            str(latency_dir),
+            "--summary-output",
+            str(latency_summary),
+        ],
     ]
     for command in commands:
         result = subprocess.run(command, check=False, capture_output=True, text=True)
@@ -114,3 +143,8 @@ def test_graph_benchmark_scripts_write_dry_run_artifacts(tmp_path: Path) -> None
     explain = json.loads(explain_summary.read_text())
     assert explain["evidence_status"] == "explain_sql_scaffold_not_measured"
     assert (explain_dir / "node_search.sql").exists()
+    latency = json.loads(latency_summary.read_text())
+    assert latency["evidence_status"] == "postgres_latency_scaffold_not_measured"
+    assert latency["repeat"] == 30
+    assert (latency_dir / "node_search.sql").exists()
+    assert "EXPLAIN" not in (latency_dir / "node_search.sql").read_text()

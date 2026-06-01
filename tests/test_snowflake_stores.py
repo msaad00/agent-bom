@@ -832,7 +832,7 @@ class TestSnowflakeExceptionStore:
             approved_by="bob@example.com" if status != "pending" else "",
             status=ExceptionStatus(status),
             created_at="2026-01-01T00:00:00Z",
-            expires_at="2026-06-01T00:00:00Z",
+            expires_at="2099-06-01T00:00:00Z",
             tenant_id=tenant_id,
         )
 

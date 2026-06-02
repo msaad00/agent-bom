@@ -43,7 +43,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from agent_bom.agent_identity import ANONYMOUS, check_identity
+from agent_bom.agent_identity import ANONYMOUS, check_identity, extract_identity_token
 from agent_bom.api.auth import Role, get_key_store
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
@@ -1034,10 +1034,23 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         if policy_subject:
             tool_name, arguments = policy_subject
             allowed, reason = check_policy(current_policy, tool_name, arguments)
+            # Per-tool identity scopes: a managed identity with a non-empty
+            # allowed_tools allowlist may only call tools in that list — the
+            # identity itself bounds authorization, independent of policy.
+            policy_source = "file"
+            if allowed:
+                try:
+                    from agent_bom.api.agent_identity_store import get_agent_identity_store, identity_for_token
+
+                    identity_token = extract_identity_token(message)
+                    scoped_identity = identity_for_token(get_agent_identity_store(), identity_token) if identity_token else None
+                except Exception:  # noqa: BLE001
+                    scoped_identity = None
+                if scoped_identity is not None and not scoped_identity.tool_allowed(tool_name):
+                    allowed, reason, policy_source = False, f"tool '{tool_name}' not in identity scope", "identity_scope"
             # Layer control-plane GatewayPolicy binding on top of the file
             # policy: enforce bound_agents/bound_agent_types/bound_environments
             # scoped to the resolved source_agent, matching the per-MCP proxy.
-            policy_source = "file"
             if allowed and settings.control_plane_policies:
                 cp_allowed, cp_reason = _evaluate_control_plane_bundle(settings.control_plane_policies, source_agent, tool_name, arguments)
                 if not cp_allowed:

@@ -158,3 +158,37 @@ def test_lifecycle_writes_audit_chain(client):
         assert "agent_identity.revoked" in actions
     finally:
         set_audit_log(InMemoryAuditLog())
+
+
+def test_per_tool_scope_blocks_out_of_scope_tool(store):
+    from starlette.testclient import TestClient
+
+    from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+    from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+
+    # Issue an identity scoped to only "list_files".
+    identity, token = issue_identity(store, agent_id="agent-a", tenant_id="default", allowed_tools=["list_files"])
+    assert identity.tool_allowed("list_files") and not identity.tool_allowed("read_file")
+
+    async def ok_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://fs.local:8100")]),
+        policy={},
+        upstream_caller=ok_caller,
+    )
+    client = TestClient(create_gateway_app(settings))
+
+    def call(tool):
+        return {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": {}, "_meta": {"agent_identity": token}},
+        }
+
+    blocked = client.post("/mcp/filesystem", json=call("read_file"))
+    assert blocked.json().get("error", {}).get("code") == -32001, blocked.text
+    allowed = client.post("/mcp/filesystem", json=call("list_files"))
+    assert allowed.status_code == 200 and allowed.json()["result"] == {"ok": True}

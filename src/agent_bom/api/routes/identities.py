@@ -51,6 +51,10 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
         raise HTTPException(status_code=400, detail="'ttl_seconds' must be an integer") from exc
     if ttl_seconds < 60:
         raise HTTPException(status_code=400, detail="'ttl_seconds' must be at least 60")
+    raw_tools = body.get("allowed_tools", [])
+    if not isinstance(raw_tools, list):
+        raise HTTPException(status_code=400, detail="'allowed_tools' must be a list of tool names")
+    allowed_tools = [str(t).strip()[:120] for t in raw_tools if str(t).strip()][:200]
 
     identity, raw_token = issue_identity(
         get_agent_identity_store(),
@@ -59,6 +63,7 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
         role=role,
         blueprint_id=blueprint_id,
         ttl_seconds=ttl_seconds,
+        allowed_tools=allowed_tools,
     )
     log_action(
         "agent_identity.issued",

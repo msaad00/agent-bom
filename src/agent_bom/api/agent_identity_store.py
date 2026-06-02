@@ -16,7 +16,7 @@ import os
 import secrets
 import sqlite3
 import threading
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
@@ -59,9 +59,20 @@ class AgentIdentity:
     status: str  # active | rotating | revoked | expired
     issued_at: str
     expires_at: str
+    # Per-tool scope allowlist. Empty = the identity may call any tool the
+    # policy permits; non-empty = the identity is bounded to these tool names
+    # ("*" allows all). Enforced at the gateway/proxy decision point so the
+    # identity itself constrains authorization, not just the policy.
+    allowed_tools: list[str] = field(default_factory=list)
     rotated_to_id: str = ""
     revoked_at: str = ""
     revoked_reason: str = ""
+
+    def tool_allowed(self, tool_name: str) -> bool:
+        """True when this identity may call ``tool_name`` (empty allowlist = any)."""
+        if not self.allowed_tools:
+            return True
+        return "*" in self.allowed_tools or tool_name in self.allowed_tools
 
     def to_public_dict(self) -> dict[str, Any]:
         """Serialize without the token hash."""
@@ -206,6 +217,7 @@ def issue_identity(
     role: str = "agent",
     blueprint_id: str = "",
     ttl_seconds: int = 90 * 86400,
+    allowed_tools: list[str] | None = None,
 ) -> tuple[AgentIdentity, str]:
     """Issue a new identity. Returns ``(identity, raw_token)``; the raw token is
     only available here and at rotation."""
@@ -222,9 +234,22 @@ def issue_identity(
         status="active",
         issued_at=_iso(now),
         expires_at=_ttl_to_expiry(ttl_seconds, at=now),
+        allowed_tools=list(allowed_tools or []),
     )
     store.put(identity)
     return identity, raw
+
+
+def identity_for_token(store: AgentIdentityStore, token: str) -> AgentIdentity | None:
+    """Resolve a raw token to its live managed identity, or None.
+
+    Used by the runtime relay to enforce per-tool scopes; returns None for
+    unknown or non-live (revoked/expired) tokens.
+    """
+    identity = store.get_by_token_hash(hash_token(token))
+    if identity is None or not identity.is_live():
+        return None
+    return identity
 
 
 def rotate_identity(
@@ -248,6 +273,7 @@ def rotate_identity(
         role=old.role,
         blueprint_id=old.blueprint_id,
         ttl_seconds=ttl_seconds,
+        allowed_tools=old.allowed_tools,
     )
     now = _now()
     old.status = "rotating"

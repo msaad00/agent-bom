@@ -26,13 +26,13 @@
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
     "@tanstack/react-table": "^8.21.3",
-    "@tanstack/react-virtual": "^3.13.26",
-    "@xyflow/react": "^12.10.2",
+    "@tanstack/react-virtual": "^3.14.1",
+    "@xyflow/react": "^12.11.0",
     "graphology": "^0.26.0",
     "lucide-react": "^1.17.0",
-    "next": "^16.2.6",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
+    "next": "^16.2.7",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "recharts": "^3.8.1",
     "sigma": "^3.0.3"
   },
@@ -40,7 +40,7 @@
     "postcss": "8.5.10"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "^16.2.6",
+    "@next/eslint-plugin-next": "^16.2.7",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.2.4",
     "@testing-library/jest-dom": "^6.9.1",
@@ -51,7 +51,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "eslint": "9.39.4",
-    "eslint-config-next": "^16.2.6",
+    "eslint-config-next": "^16.2.7",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react-hooks": "^7.0.1",
     "jsdom": "^29.1.0",
@@ -59,6 +59,6 @@
     "tailwindcss": "^4.2.3",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.60.0",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.8"
   }
 }

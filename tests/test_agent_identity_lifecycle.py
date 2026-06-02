@@ -138,3 +138,23 @@ def test_double_rotation_is_rejected(store):
     assert first is not None
     # The original is now 'rotating'; rotating it again would orphan the chain.
     assert rotate_identity(store, identity.identity_id) is None
+
+
+def test_lifecycle_writes_audit_chain(client):
+    from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+
+    audit = InMemoryAuditLog()
+    set_audit_log(audit)
+    try:
+        issued = client.post("/v1/identities", json={"agent_id": "agent-a"})
+        iid = issued.json()["identity"]["identity_id"]
+        rotated = client.post(f"/v1/identities/{iid}/rotate", json={})
+        nid = rotated.json()["identity"]["identity_id"]
+        client.post(f"/v1/identities/{nid}/revoke", json={"reason": "test"})
+
+        actions = {e.action for e in audit.list_entries(limit=100)}
+        assert "agent_identity.issued" in actions
+        assert "agent_identity.rotated" in actions
+        assert "agent_identity.revoked" in actions
+    finally:
+        set_audit_log(InMemoryAuditLog())

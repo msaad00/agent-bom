@@ -18,6 +18,7 @@ from agent_bom.api.agent_identity_store import (
     revoke_identity,
     rotate_identity,
 )
+from agent_bom.api.audit_log import log_action
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
 
@@ -30,6 +31,10 @@ def _dep(permission: str) -> Any:
 
 def _tenant(request: Request) -> str:
     return require_request_tenant_id(request)
+
+
+def _actor(request: Request) -> str:
+    return getattr(getattr(request, "state", None), "actor", None) or "api"
 
 
 @router.post("/v1/identities", status_code=201, dependencies=[_dep("config")])
@@ -54,6 +59,16 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
         role=role,
         blueprint_id=blueprint_id,
         ttl_seconds=ttl_seconds,
+    )
+    log_action(
+        "agent_identity.issued",
+        actor=_actor(request),
+        resource=f"identity/{identity.identity_id}",
+        tenant_id=identity.tenant_id,
+        agent_id=identity.agent_id,
+        role=identity.role,
+        blueprint_id=identity.blueprint_id,
+        expires_at=identity.expires_at,
     )
     return {
         "schema_version": "agent.identity.v1",
@@ -80,6 +95,15 @@ async def rotate_agent_identity(request: Request, identity_id: str, body: dict |
     if result is None:
         raise HTTPException(status_code=409, detail="Identity cannot be rotated (revoked)")
     new_identity, raw_token = result
+    log_action(
+        "agent_identity.rotated",
+        actor=_actor(request),
+        resource=f"identity/{new_identity.identity_id}",
+        tenant_id=new_identity.tenant_id,
+        agent_id=new_identity.agent_id,
+        rotated_from=identity_id,
+        overlap_seconds=max(0, overlap_seconds),
+    )
     return {
         "schema_version": "agent.identity.v1",
         "identity": new_identity.to_public_dict(),
@@ -100,6 +124,14 @@ async def revoke_agent_identity(request: Request, identity_id: str, body: dict |
     revoked = revoke_identity(store, identity_id, reason=reason)
     if revoked is None:
         raise HTTPException(status_code=404, detail="Agent identity not found")
+    log_action(
+        "agent_identity.revoked",
+        actor=_actor(request),
+        resource=f"identity/{revoked.identity_id}",
+        tenant_id=revoked.tenant_id,
+        agent_id=revoked.agent_id,
+        reason=reason,
+    )
     return {"schema_version": "agent.identity.v1", "revoked": True, "identity": revoked.to_public_dict()}
 
 

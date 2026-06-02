@@ -11,7 +11,8 @@ const BUDGETS = {
   // Also includes the Agent BOM manifest cockpit filters used for AI visibility triage.
   // Includes the root exposure cockpit path card and operational action tiles.
   // Includes the dashboard trust-mesh topology filters and offline-state workflow.
-  totalClientJsBytes: 2_876_000,
+  // Allows measured framework/runtime drift from the June 2026 UI dependency refresh.
+  totalClientJsBytes: 2_880_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

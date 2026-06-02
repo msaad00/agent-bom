@@ -732,8 +732,11 @@ async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]
     if limit_usd < 0:
         raise HTTPException(status_code=400, detail="'limit_usd' must be non-negative")
     agent = _bounded(str(body.get("agent", "") or ""), max_len=120)
+    mode = str(body.get("mode", "report") or "report").strip().lower()
+    if mode not in ("report", "enforce"):
+        raise HTTPException(status_code=400, detail="'mode' must be 'report' or 'enforce'")
     store = get_cost_store()
-    store.set_budget(CostBudget(tenant_id=tenant_id, agent=agent, limit_usd=limit_usd, updated_at=_now()))
+    store.set_budget(CostBudget(tenant_id=tenant_id, agent=agent, limit_usd=limit_usd, updated_at=_now(), mode=mode))
     spend = store.total_spend(tenant_id, agent=agent or None)
     return {
         "schema_version": "observability.costs.v1",

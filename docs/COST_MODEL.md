@@ -65,3 +65,23 @@ A budget is a USD cap, tenant-wide (`agent: ""`) or scoped to one agent. The
 report's `budget` block reports `spend_usd`, `remaining_usd`, `utilization`, and
 an `exceeded` flag once spend reaches the cap. A per-agent budget falls back to
 the tenant-wide cap when none is set for that agent.
+
+### Enforcement (`mode`)
+
+A budget has a `mode`:
+
+- `report` (default) — advisory; surfaced in budget posture only.
+- `enforce` — **pre-invocation enforcement**. Once the agent (or tenant) reaches
+  the cap, the gateway relay fails subsequent calls closed with JSON-RPC
+  `-32001` *before the upstream is touched*, and writes a
+  `gateway.budget_exceeded` audit event. A per-agent enforce budget takes
+  precedence; otherwise a tenant-wide enforce budget applies.
+
+```bash
+# Hard-stop agent "billing-bot" at $50 of spend:
+curl -XPUT $API/v1/observability/costs/budget -H "X-API-Key: $KEY" \
+  -d '{"agent":"billing-bot","limit_usd":50,"mode":"enforce"}'
+```
+
+Enforcement requires the gateway and control plane to share `AGENT_BOM_DB` so the
+relay can read accumulated spend.

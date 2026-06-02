@@ -196,3 +196,35 @@ def test_set_budget_then_exceeded_flag(client):
 def test_set_budget_rejects_bad_input(client):
     assert client.put("/v1/observability/costs/budget", json={}).status_code == 400
     assert client.put("/v1/observability/costs/budget", json={"limit_usd": -5}).status_code == 400
+
+
+def test_check_budget_enforcement_modes():
+    from agent_bom.api.cost_store import check_budget_enforcement
+
+    store = InMemoryCostStore()
+    store.record_cost(_rec(agent="a", cost=12.5, call_id="x"))
+    # report mode never blocks, even over limit
+    store.set_budget(CostBudget("t1", "a", 10.0, "2026-06-02", "report"))
+    assert check_budget_enforcement(store, "t1", "a")[0] is False
+    # enforce + over limit blocks; enforce + under does not
+    store.set_budget(CostBudget("t1", "a", 10.0, "2026-06-02", "enforce"))
+    assert check_budget_enforcement(store, "t1", "a")[0] is True
+    store.set_budget(CostBudget("t1", "a", 100.0, "2026-06-02", "enforce"))
+    assert check_budget_enforcement(store, "t1", "a")[0] is False
+
+
+def test_tenant_wide_enforce_budget_blocks_unscoped_agent():
+    from agent_bom.api.cost_store import check_budget_enforcement
+
+    store = InMemoryCostStore()
+    store.record_cost(_rec(agent="b", cost=12.5, call_id="y"))
+    store.set_budget(CostBudget("t1", "", 10.0, "2026-06-02", "enforce"))
+    assert check_budget_enforcement(store, "t1", "b")[0] is True
+
+
+def test_set_budget_mode_via_api(client):
+    put = client.put("/v1/observability/costs/budget", json={"limit_usd": 5.0, "mode": "enforce"})
+    assert put.status_code == 200, put.text
+    assert put.json()["mode"] == "enforce"
+    bad = client.put("/v1/observability/costs/budget", json={"limit_usd": 5.0, "mode": "bogus"})
+    assert bad.status_code == 400

@@ -990,6 +990,46 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     },
                 )
 
+        # Pre-invocation budget enforcement: an enforce-mode spend cap fails the
+        # call closed once the agent/tenant has burned its budget, before the
+        # upstream is touched. Report-mode budgets never block. Cost-store
+        # failures must not break the relay.
+        try:
+            from agent_bom.api.cost_store import check_budget_enforcement, get_cost_store
+
+            budget_blocked, budget, budget_spend = check_budget_enforcement(get_cost_store(), tenant_id, source_agent)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("gateway budget check failed: %s", _sanitize_for_log(exc))
+            budget_blocked, budget, budget_spend = False, None, 0.0
+        if budget_blocked and budget is not None:
+            record_gateway_relay(upstream.name, "blocked")
+            if settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.budget_exceeded",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "source_agent": source_agent,
+                        "limit_usd": budget.limit_usd,
+                        "spend_usd": round(budget_spend, 6),
+                        "budget_scope": "agent" if budget.agent else "tenant",
+                        "reason": "budget_enforced",
+                    }
+                )
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32001,
+                        "message": "Blocked by agent-bom gateway: spend budget exceeded",
+                        "data": {"limit_usd": budget.limit_usd, "spend_usd": round(budget_spend, 6)},
+                    },
+                },
+                status_code=200,
+                headers=rate_limit_headers or None,
+            )
+
         policy_subject = policy_subject_from_message(message)
         if policy_subject:
             tool_name, arguments = policy_subject

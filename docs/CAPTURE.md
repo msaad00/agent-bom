@@ -24,7 +24,7 @@ before replacing any published product image.
    ```bash
    pip install -e ".[ui,api]"
    make build-ui
-   AGENT_BOM_DB=/tmp/agent-bom-capture.db agent-bom serve
+   agent-bom serve --persist /tmp/agent-bom-capture.db --allow-insecure-no-auth
    ```
 
    Use the packaged UI path for captures. Do not shoot screenshots from the
@@ -49,6 +49,7 @@ before replacing any published product image.
 | `dashboard-live.png` | `/?capture=1` (Risk overview) | All agents · top crop showing the gauge, posture sub-scores, score breakdown, and the start of the attack-path list | The published README should not use one tall stitched dashboard asset when two shorter frames tell the story more clearly |
 | `dashboard-paths-live.png` | `/?capture=1` (Risk overview) | All agents · mid-page crop showing the attack-path list, exposure KPI band, and the first backlog charts | Keeps the fix-first path list readable in GitHub while still proving the KPI / backlog context lives on the same page |
 | `mesh-live.png` | `/mesh?capture=1` | Focused agent mesh graph across selected agents, MCP servers, tools, packages, credentials, and findings | Public README, Docker Hub, and marketplace surfaces should show one readable graph proof, not duplicate dark/light theme captures |
+| `gateway-policies-live.png` | `/gateway?capture=1` | One advisory baseline gateway policy, two rules, one dry-run evaluation, and a clean top-frame policy posture | Proves the runtime policy surface without requiring a live proxy session during README capture |
 | `security-graph-live.png` | `/security-graph?capture=1` | Capture the fix-first attack-path queue with snapshot pressure, graph evidence export, and remediation handoff | Shows the operator workflow before raw topology so the public image is readable and action oriented |
 | `lineage-graph-live.png` | `/graph?capture=1&investigate=1&root=agent:cursor&q=cursor` | Capture the root-centered lineage investigation with reachability summary, bounded paths, filters, and export controls | Uses a shipped graph drilldown workflow over the current bundled demo agent instead of an unreadable expanded topology capture |
 | `dependency-map-live.png` | `/insights?capture=1` | Capture the supply chain dependency map with scan pipeline counts and package risk distribution | Proves package risk visualization from the same pushed scan payload |
@@ -85,6 +86,29 @@ For public release screenshots, sanitize demo agent labels before pushing the
 payload to the capture API. Keep the generated inventory, findings,
 relationships, and traversal shape intact, but use generic agent names in the
 visible UI.
+
+For `gateway-policies-live.png`, seed a policy into the capture store before
+capturing the route. Use trusted proxy auth only for the write calls, then
+restart `agent-bom serve` in local capture mode for the screenshot:
+
+```bash
+AGENT_BOM_TRUST_PROXY_AUTH=1 \
+AGENT_BOM_TRUST_PROXY_AUTH_SECRET=test-proxy-secret-with-32-plus-bytes \
+  agent-bom serve --persist /tmp/agent-bom-capture.db --allow-insecure-no-auth
+
+curl -X POST http://127.0.0.1:8422/v1/gateway/policies \
+  -H 'content-type: application/json' \
+  -H 'X-Agent-Bom-Role: admin' \
+  -H 'X-Agent-Bom-Tenant-ID: default' \
+  -H 'X-Agent-Bom-Proxy-Secret: test-proxy-secret-with-32-plus-bytes' \
+  -d '{"name":"Baseline MCP runtime policy","mode":"audit","enabled":true,"bound_agents":["cursor","claude-desktop"],"rules":[{"id":"deny-shell","action":"block","block_tools":["execute_command","exec","shell"]},{"id":"watch-secrets","action":"warn"}]}'
+curl -X POST http://127.0.0.1:8422/v1/gateway/evaluate \
+  -H 'content-type: application/json' \
+  -H 'X-Agent-Bom-Role: admin' \
+  -H 'X-Agent-Bom-Tenant-ID: default' \
+  -H 'X-Agent-Bom-Proxy-Secret: test-proxy-secret-with-32-plus-bytes' \
+  -d '{"tool_name":"execute_command","arguments":{"command":"cat /etc/passwd","reason":"README capture policy smoke"}}'
+```
 
 ## Accuracy guardrail
 

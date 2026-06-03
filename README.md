@@ -50,6 +50,13 @@ Blast radius is the core idea. A vulnerable package is not just a CVE row; it
 is linked to the MCP server that loads it, the tools exposed by that server,
 the credential environment names in reach, and the agents that can call it.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/control-loop-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/control-loop-light.svg" alt="agent-bom control loop from discovery to graph evidence to gateway policy and runtime enforcement" width="900" />
+  </picture>
+</p>
+
 ## First Run
 
 ```bash
@@ -76,6 +83,16 @@ agent-bom agents --inventory agent-bom-first-run/inventory.json -p agent-bom-fir
 
 See [docs/FIRST_RUN.md](docs/FIRST_RUN.md) for the guided path from CLI output
 to the dashboard.
+
+To reproduce the dashboard screenshots from a clean local control-plane store:
+
+```bash
+make build-ui
+uv run agent-bom serve --persist /tmp/agent-bom-demo.db --allow-insecure-no-auth
+uv run agent-bom agents --demo --offline --no-auto-update-db -f json -o /tmp/agent-bom-demo.json
+curl -sS -H 'content-type: application/json' --data-binary @/tmp/agent-bom-demo.json \
+  http://127.0.0.1:8422/v1/results/push
+```
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo" width="820" />
@@ -117,6 +134,15 @@ gallery when you want to inspect the control-plane surfaces.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="agent-bom remediation dashboard with prioritized package fixes and compliance context" width="900" />
+</p>
+
+</details>
+
+<details>
+<summary><b>Runtime policy and audit posture</b></summary>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="agent-bom gateway policy dashboard showing advisory runtime posture, enabled policy count, rule counts, and bound agents" width="900" />
 </p>
 
 </details>
@@ -169,6 +195,16 @@ an audit reason.
 
 CLI scan commands run local scan pipelines today. They share lower scanner and
 discovery libraries with the API, but they are not API wrappers yet.
+
+Runtime enforcement is explicit. Proxy mode either wraps a target MCP server
+for audit and policy decisions, or runs that server through Docker/Podman
+isolation when a sandbox image is supplied:
+
+```bash
+agent-bom proxy --no-isolate --policy policy.json --detect-credentials --block-undeclared -- npx @mcp/server-github
+agent-bom proxy --sandbox-image ghcr.io/acme/mcp-runtime@sha256:<digest> \
+  --sandbox-image-pin-policy enforce --block-undeclared -- npx @mcp/server-postgres
+```
 
 ## Deploy In Your Boundary
 

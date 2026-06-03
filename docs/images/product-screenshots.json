@@ -1,7 +1,7 @@
 {
   "release_version": "0.88.5",
-  "captured_at": "2026-05-18T06:21:02Z",
-  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main after the graph/ExposurePath/MCP enhancements, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README/Docker proof uses one focused graph capture that keeps the active exposure path visible instead of mixing bright path nodes with dimmed context nodes. Manifest metadata targets v0.88.5; recapture is only required if the release proof must show the new version string in the image pixels.",
+  "captured_at": "2026-06-03T01:25:52Z",
+  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README proof uses one focused graph capture that keeps the active exposure path visible. The gateway policy frame was captured from the same SQLite capture store after seeding one advisory baseline policy and one dry-run evaluation.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
@@ -19,6 +19,12 @@
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
       "scope": "Focused agent mesh graph across the active agent, MCP server, package, tool, and CVE path, cropped to the product graph surface",
+      "visible_version": "0.88.5"
+    },
+    {
+      "path": "gateway-policies-live.png",
+      "page": "/gateway?capture=1",
+      "scope": "Runtime gateway policy posture with one advisory baseline policy, two rules, and two bound agents",
       "visible_version": "0.88.5"
     },
     {

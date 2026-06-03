@@ -8,12 +8,14 @@ else is metadata only.
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.agent_identity_store import (
     approve_jit_grant,
+    create_conditional_policy,
     deny_jit_grant,
     get_agent_identity_store,
     issue_identity,
@@ -22,6 +24,7 @@ from agent_bom.api.agent_identity_store import (
     revoke_identity,
     revoke_jit_grant,
     rotate_identity,
+    set_conditional_policy_status,
 )
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -343,6 +346,142 @@ async def list_agent_identity_jit_for_identity(
         "count": len(grants),
         "grants": [g.to_public_dict() for g in grants],
     }
+
+
+def _str_list(body: dict, key: str, *, max_items: int = 200, max_len: int = 120) -> list[str]:
+    raw = body.get(key, [])
+    if raw in (None, ""):
+        return []
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail=f"'{key}' must be a list of strings")
+    return [str(v).strip()[:max_len] for v in raw if str(v).strip()][:max_items]
+
+
+def _int_list(body: dict, key: str, *, lo: int, hi: int) -> list[int]:
+    raw = body.get(key, [])
+    if raw in (None, ""):
+        return []
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail=f"'{key}' must be a list of integers")
+    out: list[int] = []
+    for v in raw:
+        try:
+            n = int(v)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"'{key}' must contain integers") from exc
+        if not (lo <= n <= hi):
+            raise HTTPException(status_code=400, detail=f"'{key}' values must be between {lo} and {hi}")
+        out.append(n)
+    return out
+
+
+@router.post("/v1/conditional-access-policies", status_code=201, dependencies=[_dep("config")])
+async def create_conditional_access_policy(request: Request, body: dict) -> dict[str, object]:
+    """Create a context-aware access policy (time / CIDR / environment guardrail)."""
+    name = str(body.get("name", "") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="'name' is required")
+    effect = str(body.get("effect", "require") or "require").strip()
+    if effect not in ("require", "deny"):
+        raise HTTPException(status_code=400, detail="'effect' must be 'require' or 'deny'")
+    try:
+        priority = int(body.get("priority", 100))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="'priority' must be an integer") from exc
+    cidrs = _str_list(body, "allowed_source_cidrs", max_len=64)
+    for cidr in cidrs:
+        try:
+            ipaddress.ip_network(cidr, strict=False)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"invalid CIDR '{cidr}'") from exc
+
+    policy = create_conditional_policy(
+        get_agent_identity_store(),
+        tenant_id=_tenant(request),
+        name=name,
+        effect=effect,
+        priority=priority,
+        identity_ids=_str_list(body, "identity_ids"),
+        agent_ids=_str_list(body, "agent_ids"),
+        tools=_str_list(body, "tools"),
+        allowed_environments=_str_list(body, "allowed_environments", max_len=60),
+        allowed_hours_utc=_int_list(body, "allowed_hours_utc", lo=0, hi=23),
+        allowed_weekdays=_int_list(body, "allowed_weekdays", lo=0, hi=6),
+        allowed_source_cidrs=cidrs,
+        description=str(body.get("description", "") or ""),
+    )
+    log_action(
+        "agent_identity.conditional_policy_created",
+        actor=_actor(request),
+        resource=f"conditional-access/{policy.policy_id}",
+        tenant_id=policy.tenant_id,
+        name=policy.name,
+        effect=policy.effect,
+        priority=policy.priority,
+    )
+    return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
+
+
+def _conditional_policy_for_tenant(request: Request, policy_id: str):
+    policy = get_agent_identity_store().get_conditional_policy(policy_id)
+    if policy is None or policy.tenant_id != _tenant(request):
+        raise HTTPException(status_code=404, detail="Conditional-access policy not found")
+    return policy
+
+
+@router.post("/v1/conditional-access-policies/{policy_id}/disable", dependencies=[_dep("config")])
+async def disable_conditional_access_policy(request: Request, policy_id: str) -> dict[str, object]:
+    """Disable a conditional-access policy without deleting it."""
+    _conditional_policy_for_tenant(request, policy_id)
+    policy = set_conditional_policy_status(get_agent_identity_store(), policy_id, status="disabled")
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Conditional-access policy not found")
+    log_action(
+        "agent_identity.conditional_policy_disabled",
+        actor=_actor(request),
+        resource=f"conditional-access/{policy.policy_id}",
+        tenant_id=policy.tenant_id,
+        name=policy.name,
+    )
+    return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
+
+
+@router.post("/v1/conditional-access-policies/{policy_id}/enable", dependencies=[_dep("config")])
+async def enable_conditional_access_policy(request: Request, policy_id: str) -> dict[str, object]:
+    """Re-enable a previously disabled conditional-access policy."""
+    _conditional_policy_for_tenant(request, policy_id)
+    policy = set_conditional_policy_status(get_agent_identity_store(), policy_id, status="active")
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Conditional-access policy not found")
+    log_action(
+        "agent_identity.conditional_policy_enabled",
+        actor=_actor(request),
+        resource=f"conditional-access/{policy.policy_id}",
+        tenant_id=policy.tenant_id,
+        name=policy.name,
+    )
+    return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
+
+
+@router.get("/v1/conditional-access-policies", dependencies=[_dep("read")])
+async def list_conditional_access_policies(request: Request, include_disabled: bool = False, limit: int = 200) -> dict[str, object]:
+    """List conditional-access policies for the active tenant."""
+    tenant_id = _tenant(request)
+    bounded = max(1, min(limit, 1000))
+    policies = get_agent_identity_store().list_conditional_policies(tenant_id, include_disabled=include_disabled, limit=bounded)
+    return {
+        "schema_version": "agent.identity.conditional.v1",
+        "tenant_id": tenant_id,
+        "count": len(policies),
+        "policies": [p.to_public_dict() for p in policies],
+    }
+
+
+@router.get("/v1/conditional-access-policies/{policy_id}", dependencies=[_dep("read")])
+async def get_conditional_access_policy(request: Request, policy_id: str) -> dict[str, object]:
+    """Return one conditional-access policy."""
+    policy = _conditional_policy_for_tenant(request, policy_id)
+    return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
 
 
 @router.get("/v1/identities", dependencies=[_dep("read")])

@@ -172,6 +172,26 @@ def _evaluate_control_plane_bundle(
         return False, "control-plane policy evaluation error"
 
 
+def _request_source_ip(request: Request) -> str:
+    """Resolve the caller IP for conditional-access CIDR conditions.
+
+    Prefers the first hop of ``X-Forwarded-For`` (the original client behind a
+    trusted reverse proxy), falling back to the direct socket peer.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    client = getattr(request, "client", None)
+    return getattr(client, "host", "") or ""
+
+
+def _request_environment(request: Request) -> str:
+    """Resolve the caller-declared environment for conditional-access conditions."""
+    return (request.headers.get("x-agent-environment", "") or "").strip()[:60]
+
+
 class GatewayCircuitOpenError(RuntimeError):
     """Raised when an upstream circuit is open and calls should fail fast."""
 
@@ -1077,6 +1097,48 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                     "expires_at": jit_grant.expires_at,
                                 }
                             )
+            # Context-aware (conditional) access: time-of-day / weekday window,
+            # source CIDR, and environment guardrails scoped to the identity,
+            # agent, or tool. Deny policies win; require policies deny when the
+            # request context does not satisfy them. Evaluated after scope/JIT so
+            # a JIT grant cannot bypass an environment/CIDR/time guardrail.
+            if allowed:
+                try:
+                    from agent_bom.api.agent_identity_store import (
+                        AccessContext,
+                        evaluate_conditional_access_for_request,
+                        get_agent_identity_store,
+                    )
+
+                    ctx = AccessContext(
+                        identity_id=scoped_identity.identity_id if scoped_identity is not None else "",
+                        agent_id=source_agent,
+                        tool_name=tool_name,
+                        environment=_request_environment(request),
+                        source_ip=_request_source_ip(request),
+                    )
+                    cond_allowed, cond_reason, cond_policy_id = evaluate_conditional_access_for_request(
+                        get_agent_identity_store(),
+                        tenant_id=tenant_id,
+                        ctx=ctx,
+                    )
+                except Exception:  # noqa: BLE001
+                    cond_allowed, cond_reason, cond_policy_id = True, "", ""
+                if not cond_allowed:
+                    allowed, reason, policy_source = False, cond_reason, "conditional_access"
+                    if settings.audit_sink is not None:
+                        await settings.audit_sink(
+                            {
+                                "action": "gateway.conditional_access_blocked",
+                                "upstream": upstream.name,
+                                "tenant_id": tenant_id,
+                                "source_agent": source_agent,
+                                "identity_id": ctx.identity_id,
+                                "tool": tool_name,
+                                "policy_id": cond_policy_id,
+                                "reason": cond_reason,
+                            }
+                        )
             # Layer control-plane GatewayPolicy binding on top of the file
             # policy: enforce bound_agents/bound_agent_types/bound_environments
             # scoped to the resolved source_agent, matching the per-MCP proxy.

@@ -9,9 +9,12 @@ from starlette.testclient import TestClient
 
 from agent_bom import agent_identity
 from agent_bom.api.agent_identity_store import (
+    AccessContext,
     InMemoryAgentIdentityStore,
     approve_jit_grant,
+    create_conditional_policy,
     deny_jit_grant,
+    evaluate_conditional_access,
     hash_token,
     issue_identity,
     issue_jit_grant,
@@ -20,6 +23,7 @@ from agent_bom.api.agent_identity_store import (
     revoke_jit_grant,
     rotate_identity,
     set_agent_identity_store,
+    set_conditional_policy_status,
     verify_token,
 )
 
@@ -331,3 +335,122 @@ def test_jit_grant_temporarily_allows_out_of_scope_tool(store):
     blocked = client.post("/mcp/filesystem", json=message)
     assert blocked.json().get("error", {}).get("code") == -32001, blocked.text
     assert blocked.json()["error"]["data"]["reason"] == "tool 'read_file' not in identity scope"
+
+
+# ── conditional / context-aware access ──────────────────────────────────────────
+
+
+def test_require_policy_denies_when_environment_off():
+    policy = create_conditional_policy(
+        InMemoryAgentIdentityStore(),
+        tenant_id="t1",
+        name="prod-only",
+        effect="require",
+        agent_ids=["agent-a"],
+        allowed_environments=["prod"],
+    )
+    allowed, _, pid = evaluate_conditional_access([policy], AccessContext(agent_id="agent-a", environment="dev"))
+    assert not allowed and pid == policy.policy_id
+    allowed, _, _ = evaluate_conditional_access([policy], AccessContext(agent_id="agent-a", environment="prod"))
+    assert allowed
+    # A policy out of scope never applies.
+    allowed, _, _ = evaluate_conditional_access([policy], AccessContext(agent_id="agent-b", environment="dev"))
+    assert allowed
+
+
+def test_require_policy_fails_closed_on_missing_context():
+    policy = create_conditional_policy(
+        InMemoryAgentIdentityStore(), tenant_id="t1", name="cidr", effect="require", allowed_source_cidrs=["10.0.0.0/8"]
+    )
+    # No source IP supplied → the require condition cannot be proven → deny.
+    allowed, _, _ = evaluate_conditional_access([policy], AccessContext(source_ip=""))
+    assert not allowed
+    allowed, _, _ = evaluate_conditional_access([policy], AccessContext(source_ip="10.1.2.3"))
+    assert allowed
+    allowed, _, _ = evaluate_conditional_access([policy], AccessContext(source_ip="192.168.1.1"))
+    assert not allowed
+
+
+def test_deny_policy_wins_over_require():
+    require = create_conditional_policy(
+        InMemoryAgentIdentityStore(), tenant_id="t1", name="allow-prod", effect="require", allowed_environments=["prod"]
+    )
+    deny = create_conditional_policy(InMemoryAgentIdentityStore(), tenant_id="t1", name="block-shell", effect="deny", tools=["run_shell"])
+    ctx = AccessContext(tool_name="run_shell", environment="prod")
+    allowed, _, pid = evaluate_conditional_access([require, deny], ctx)
+    assert not allowed and pid == deny.policy_id
+
+
+def test_disabled_policy_is_ignored():
+    store = InMemoryAgentIdentityStore()
+    policy = create_conditional_policy(store, tenant_id="t1", name="prod-only", effect="require", allowed_environments=["prod"])
+    set_conditional_policy_status(store, policy.policy_id, status="disabled")
+    active = store.list_conditional_policies("t1")
+    assert active == []
+    allowed, _, _ = evaluate_conditional_access(store.list_conditional_policies("t1"), AccessContext(environment="dev"))
+    assert allowed
+
+
+def test_conditional_access_blocks_at_gateway(store):
+    from starlette.testclient import TestClient
+
+    from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+    from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+
+    issue_identity(store, agent_id="agent-a", tenant_id="default")
+    create_conditional_policy(store, tenant_id="default", name="prod-only", effect="require", allowed_environments=["prod"])
+    audit_events = []
+
+    async def ok_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    settings = GatewaySettings(
+        registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://fs.local:8100")]),
+        policy={},
+        upstream_caller=ok_caller,
+        audit_sink=audit_sink,
+    )
+    client = TestClient(create_gateway_app(settings))
+    message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_files", "arguments": {}}}
+
+    blocked = client.post("/mcp/filesystem", json=message, headers={"x-agent-environment": "dev"})
+    assert blocked.json().get("error", {}).get("code") == -32001, blocked.text
+    assert any(e.get("action") == "gateway.conditional_access_blocked" for e in audit_events)
+
+    allowed = client.post("/mcp/filesystem", json=message, headers={"x-agent-environment": "prod"})
+    assert allowed.status_code == 200 and allowed.json()["result"] == {"ok": True}
+
+
+def test_conditional_access_api_crud(client):
+    created = client.post(
+        "/v1/conditional-access-policies",
+        json={
+            "name": "business-hours",
+            "effect": "require",
+            "allowed_hours_utc": [9, 10, 11, 12, 13, 14, 15, 16, 17],
+            "allowed_source_cidrs": ["10.0.0.0/8"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    pid = created.json()["policy"]["policy_id"]
+    assert created.json()["policy"]["status"] == "active"
+
+    assert client.get("/v1/conditional-access-policies").json()["count"] == 1
+
+    disabled = client.post(f"/v1/conditional-access-policies/{pid}/disable")
+    assert disabled.status_code == 200 and disabled.json()["policy"]["status"] == "disabled"
+    assert client.get("/v1/conditional-access-policies").json()["count"] == 0
+    assert client.get("/v1/conditional-access-policies?include_disabled=true").json()["count"] == 1
+
+    enabled = client.post(f"/v1/conditional-access-policies/{pid}/enable")
+    assert enabled.status_code == 200 and enabled.json()["policy"]["status"] == "active"
+
+
+def test_conditional_access_api_rejects_bad_input(client):
+    assert client.post("/v1/conditional-access-policies", json={"effect": "require"}).status_code == 400
+    assert client.post("/v1/conditional-access-policies", json={"name": "x", "effect": "maybe"}).status_code == 400
+    assert client.post("/v1/conditional-access-policies", json={"name": "x", "allowed_source_cidrs": ["not-a-cidr"]}).status_code == 400
+    assert client.post("/v1/conditional-access-policies", json={"name": "x", "allowed_hours_utc": [25]}).status_code == 400

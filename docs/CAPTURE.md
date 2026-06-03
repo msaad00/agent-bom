@@ -52,6 +52,9 @@ before replacing any published product image.
 | `gateway-policies-live.png` | `/gateway?capture=1` | One advisory baseline gateway policy, two rules, one dry-run evaluation, and a clean top-frame policy posture | Proves the runtime policy surface without requiring a live proxy session during README capture |
 | `security-graph-live.png` | `/security-graph?capture=1` | Capture the fix-first attack-path queue with snapshot pressure, graph evidence export, and remediation handoff | Shows the operator workflow before raw topology so the public image is readable and action oriented |
 | `lineage-graph-live.png` | `/graph?capture=1&investigate=1&root=agent:cursor&q=cursor` | Capture the root-centered lineage investigation with reachability summary, bounded paths, filters, and export controls | Uses a shipped graph drilldown workflow over the current bundled demo agent instead of an unreadable expanded topology capture |
+| `context-map-live.png` | `/context?capture=1` | Capture one agent-scoped context map with reachable MCP servers and the lateral movement side panel | Shows a non-CVE topology view so README proof is not only package-to-finding blast radius |
+| `fleet-state-live.png` | `/fleet?capture=1` | Seed fleet sync, set one agent owner/environment, approve it, then expand that row before capture | Shows environment and lifecycle state as control-plane evidence instead of implying the local scan alone owns review state |
+| `identity-audit-live.png` | `/audit?capture=1` | Use a stable `AGENT_BOM_AUDIT_HMAC_KEY`, issue/rotate/revoke one agent identity, filter resource to `identity`, and capture HMAC counters plus lifecycle rows | Shows IAM lifecycle evidence and tamper-evident audit posture from the real identity API |
 | `dependency-map-live.png` | `/insights?capture=1` | Capture the supply chain dependency map with scan pipeline counts and package risk distribution | Proves package risk visualization from the same pushed scan payload |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
@@ -81,6 +84,32 @@ without the left navigation or a large empty canvas. Do not publish duplicate
 dark/light theme copies in the public README or Docker Hub description unless
 the section is specifically proving a theme bug fix. Do not publish a docs-only
 slide or card view in place of the graph screenshot.
+
+The README graph proof should show more than the mesh path. Keep
+`security-graph-live.png`, `lineage-graph-live.png`, and `context-map-live.png`
+in the open graph gallery so readers can see fix-first paths, bounded lineage,
+and non-CVE topology without expanding every details block.
+
+For environment and IAM proof, keep the claim precise. The demo graph scan
+stores agents, MCP servers, tools, credentials, packages, findings, provider,
+and graph edges. Environment review state and identity lifecycle are seeded
+control-plane records. Use the real APIs for capture:
+
+```bash
+AGENT_BOM_AUDIT_HMAC_KEY=readme-capture-audit-hmac-key-32-plus-bytes \
+AGENT_BOM_TRUST_PROXY_AUTH=1 \
+AGENT_BOM_TRUST_PROXY_AUTH_SECRET=test-proxy-secret-with-32-plus-bytes \
+  agent-bom serve --persist /tmp/agent-bom-capture.db --allow-insecure-no-auth
+
+curl -H 'X-Agent-Bom-Role: admin' \
+  -H 'X-Agent-Bom-Tenant-ID: default' \
+  -H 'X-Agent-Bom-Proxy-Secret: test-proxy-secret-with-32-plus-bytes' \
+  -X POST http://127.0.0.1:8422/v1/fleet/sync
+
+# Then update owner/environment with PUT /v1/fleet/{agent_id}, approve with
+# PUT /v1/fleet/{agent_id}/state, and issue/rotate/revoke an identity through
+# /v1/identities. Capture `/audit?capture=1` with resource filter `identity`.
+```
 
 For public release screenshots, sanitize demo agent labels before pushing the
 payload to the capture API. Keep the generated inventory, findings,

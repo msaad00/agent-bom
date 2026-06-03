@@ -101,8 +101,10 @@ curl -sS -H 'content-type: application/json' --data-binary @/tmp/agent-bom-demo.
 ## Product Proof
 
 The dashboard screenshots below are captured from the packaged UI with bundled
-demo data, not mockups. The README keeps the first screen focused; expand the
-gallery when you want to inspect the control-plane surfaces.
+demo scan data and seeded control-plane records, not static mockups. The data is
+synthetic where needed, but the routes are the real scan, graph, fleet,
+identity, audit, and gateway surfaces. The README keeps the first screen
+focused; expand the gallery when you want to inspect the control-plane surfaces.
 
 <details open>
 <summary><b>Evidence cockpit and agent mesh</b></summary>
@@ -117,8 +119,13 @@ gallery when you want to inspect the control-plane surfaces.
 
 </details>
 
-<details>
-<summary><b>Graph investigation and remediation views</b></summary>
+<details open>
+<summary><b>Graph views beyond the agent mesh</b></summary>
+
+The graph proof set is intentionally split across modes: fix-first exposure
+paths, root-centered lineage, lateral context, and package risk distribution.
+That keeps each view readable instead of forcing every relationship into one
+sprawling canvas.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="agent-bom security graph with attack-path queue, graph evidence export, and remediation handoff" width="900" />
@@ -129,7 +136,34 @@ gallery when you want to inspect the control-plane surfaces.
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="agent-bom dependency map with scan pipeline counts and package risk distribution" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/context-map-live.png" alt="agent-bom context map showing agent-to-server reachability and lateral movement context" width="900" />
+</p>
+
+</details>
+
+<details open>
+<summary><b>Environment state and identity lifecycle</b></summary>
+
+Fleet and identity views use the same control-plane APIs that operators use for
+customer-owned deployments. The sample below seeds environment, owner, lifecycle
+state, and agent identity events so the screenshots show how local scan evidence
+connects to reviewable governance records.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/fleet-state-live.png" alt="agent-bom fleet state dashboard showing lifecycle distribution, approved and discovered agents, owner metadata, environment labels, and discovery state" width="900" />
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/identity-audit-live.png" alt="agent-bom audit log filtered to identity lifecycle events with HMAC integrity counters and issue, rotate, revoke rows" width="900" />
+</p>
+
+</details>
+
+<details>
+<summary><b>Dependency and remediation views</b></summary>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="agent-bom dependency map with scan pipeline counts, supply-chain treemap, blast-radius chart, and EPSS by CVSS risk map" width="900" />
 </p>
 
 <p align="center">

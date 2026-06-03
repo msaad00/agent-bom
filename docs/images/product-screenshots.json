@@ -1,7 +1,7 @@
 {
   "release_version": "0.88.5",
-  "captured_at": "2026-06-03T01:25:52Z",
-  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README proof uses one focused graph capture that keeps the active exposure path visible. The gateway policy frame was captured from the same SQLite capture store after seeding one advisory baseline policy and one dry-run evaluation.",
+  "captured_at": "2026-06-03T20:30:00Z",
+  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README proof now shows focused graph modes instead of one all-in mesh canvas. Fleet and identity frames use synthetic seeded control-plane records written through /v1/fleet and /v1/identities so the UI shows environment review state and IAM lifecycle evidence without claiming that the local demo scan alone discovers those records. The gateway policy frame was captured from the same SQLite capture store after seeding one advisory baseline policy and one dry-run evaluation.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
@@ -37,6 +37,24 @@
       "path": "lineage-graph-live.png",
       "page": "/graph?capture=1&investigate=1&root=agent:cursor&q=cursor",
       "scope": "Root-centered lineage investigation with reachable node counts, bounded paths, filters, and graph evidence export",
+      "visible_version": "0.88.5"
+    },
+    {
+      "path": "context-map-live.png",
+      "page": "/context?capture=1",
+      "scope": "Agent-scoped context map showing reachable MCP servers and lateral movement side panel",
+      "visible_version": "0.88.5"
+    },
+    {
+      "path": "fleet-state-live.png",
+      "page": "/fleet?capture=1",
+      "scope": "Expanded fleet row showing lifecycle distribution, approved state, owner metadata, environment label, and discovery state",
+      "visible_version": "0.88.5"
+    },
+    {
+      "path": "identity-audit-live.png",
+      "page": "/audit?capture=1",
+      "scope": "Audit log filtered to identity resources with HMAC integrity counters and agent identity issue, rotate, revoke events",
       "visible_version": "0.88.5"
     },
     {

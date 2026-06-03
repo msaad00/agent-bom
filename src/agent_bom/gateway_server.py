@@ -1040,14 +1040,43 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             policy_source = "file"
             if allowed:
                 try:
-                    from agent_bom.api.agent_identity_store import get_agent_identity_store, identity_for_token
+                    from agent_bom.api.agent_identity_store import (
+                        active_jit_grant_for_tool,
+                        get_agent_identity_store,
+                        identity_for_token,
+                    )
 
                     identity_token = extract_identity_token(message)
                     scoped_identity = identity_for_token(get_agent_identity_store(), identity_token) if identity_token else None
                 except Exception:  # noqa: BLE001
                     scoped_identity = None
                 if scoped_identity is not None and not scoped_identity.tool_allowed(tool_name):
-                    allowed, reason, policy_source = False, f"tool '{tool_name}' not in identity scope", "identity_scope"
+                    try:
+                        jit_grant = active_jit_grant_for_tool(
+                            get_agent_identity_store(),
+                            tenant_id=scoped_identity.tenant_id,
+                            identity_id=scoped_identity.identity_id,
+                            tool_name=tool_name,
+                        )
+                    except Exception:  # noqa: BLE001
+                        jit_grant = None
+                    if jit_grant is None:
+                        allowed, reason, policy_source = False, f"tool '{tool_name}' not in identity scope", "identity_scope"
+                    else:
+                        policy_source = "identity_jit"
+                        if settings.audit_sink is not None:
+                            await settings.audit_sink(
+                                {
+                                    "action": "gateway.identity_jit_grant_used",
+                                    "upstream": upstream.name,
+                                    "tenant_id": tenant_id,
+                                    "source_agent": source_agent,
+                                    "identity_id": scoped_identity.identity_id,
+                                    "grant_id": jit_grant.grant_id,
+                                    "tool": tool_name,
+                                    "expires_at": jit_grant.expires_at,
+                                }
+                            )
             # Layer control-plane GatewayPolicy binding on top of the file
             # policy: enforce bound_agents/bound_agent_types/bound_environments
             # scoped to the resolved source_agent, matching the per-MCP proxy.

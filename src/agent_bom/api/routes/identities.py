@@ -13,9 +13,14 @@ from typing import Any, cast
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.agent_identity_store import (
+    approve_jit_grant,
+    deny_jit_grant,
     get_agent_identity_store,
     issue_identity,
+    issue_jit_grant,
+    request_jit_grant,
     revoke_identity,
+    revoke_jit_grant,
     rotate_identity,
 )
 from agent_bom.api.audit_log import log_action
@@ -35,6 +40,32 @@ def _tenant(request: Request) -> str:
 
 def _actor(request: Request) -> str:
     return getattr(getattr(request, "state", None), "actor", None) or "api"
+
+
+def _tool_name(body: dict) -> str:
+    tool_name = str(body.get("tool_name", "") or "").strip()[:120]
+    if not tool_name:
+        raise HTTPException(status_code=400, detail="'tool_name' is required")
+    return tool_name
+
+
+def _ttl_seconds(body: dict, *, default: int = 3600, max_seconds: int = 24 * 3600) -> int:
+    try:
+        ttl_seconds = int(body.get("ttl_seconds", default))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="'ttl_seconds' must be an integer") from exc
+    if ttl_seconds < 60:
+        raise HTTPException(status_code=400, detail="'ttl_seconds' must be at least 60")
+    if ttl_seconds > max_seconds:
+        raise HTTPException(status_code=400, detail=f"'ttl_seconds' must be at most {max_seconds}")
+    return ttl_seconds
+
+
+def _identity_for_tenant(request: Request, identity_id: str):
+    identity = get_agent_identity_store().get(identity_id)
+    if identity is None or identity.tenant_id != _tenant(request):
+        raise HTTPException(status_code=404, detail="Agent identity not found")
+    return identity
 
 
 @router.post("/v1/identities", status_code=201, dependencies=[_dep("config")])
@@ -138,6 +169,180 @@ async def revoke_agent_identity(request: Request, identity_id: str, body: dict |
         reason=reason,
     )
     return {"schema_version": "agent.identity.v1", "revoked": True, "identity": revoked.to_public_dict()}
+
+
+@router.post("/v1/identities/{identity_id}/jit-requests", status_code=201, dependencies=[_dep("config")])
+async def request_agent_identity_jit(request: Request, identity_id: str, body: dict) -> dict[str, object]:
+    """Request time-bound access to one tool. Requests do not authorize calls."""
+    identity = _identity_for_tenant(request, identity_id)
+    tool_name = _tool_name(body)
+    grant = request_jit_grant(
+        get_agent_identity_store(),
+        identity_id=identity.identity_id,
+        agent_id=identity.agent_id,
+        tenant_id=identity.tenant_id,
+        tool_name=tool_name,
+        requested_by=_actor(request),
+        reason=str(body.get("reason", "") or ""),
+        ticket_id=str(body.get("ticket_id", "") or ""),
+    )
+    log_action(
+        "agent_identity.jit_requested",
+        actor=_actor(request),
+        resource=f"identity-jit/{grant.grant_id}",
+        tenant_id=grant.tenant_id,
+        agent_id=grant.agent_id,
+        identity_id=grant.identity_id,
+        tool_name=grant.tool_name,
+        ticket_id=grant.ticket_id,
+    )
+    return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
+
+
+@router.post("/v1/identities/{identity_id}/jit-grants", status_code=201, dependencies=[_dep("config")])
+async def grant_agent_identity_jit(request: Request, identity_id: str, body: dict) -> dict[str, object]:
+    """Grant one identity time-bound access to one tool."""
+    identity = _identity_for_tenant(request, identity_id)
+    ttl_seconds = _ttl_seconds(body)
+    grant = issue_jit_grant(
+        get_agent_identity_store(),
+        identity_id=identity.identity_id,
+        agent_id=identity.agent_id,
+        tenant_id=identity.tenant_id,
+        tool_name=_tool_name(body),
+        ttl_seconds=ttl_seconds,
+        approved_by=_actor(request),
+        reason=str(body.get("reason", "") or ""),
+        ticket_id=str(body.get("ticket_id", "") or ""),
+    )
+    log_action(
+        "agent_identity.jit_granted",
+        actor=_actor(request),
+        resource=f"identity-jit/{grant.grant_id}",
+        tenant_id=grant.tenant_id,
+        agent_id=grant.agent_id,
+        identity_id=grant.identity_id,
+        tool_name=grant.tool_name,
+        expires_at=grant.expires_at,
+        ticket_id=grant.ticket_id,
+    )
+    return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
+
+
+@router.post("/v1/identity-jit-grants/{grant_id}/approve", dependencies=[_dep("config")])
+async def approve_agent_identity_jit(request: Request, grant_id: str, body: dict | None = None) -> dict[str, object]:
+    """Approve a pending JIT request for a bounded TTL."""
+    payload = body or {}
+    store = get_agent_identity_store()
+    existing = store.get_jit_grant(grant_id)
+    if existing is None or existing.tenant_id != _tenant(request):
+        raise HTTPException(status_code=404, detail="JIT grant not found")
+    grant = approve_jit_grant(store, grant_id, ttl_seconds=_ttl_seconds(payload), approved_by=_actor(request))
+    if grant is None:
+        raise HTTPException(status_code=409, detail="JIT grant cannot be approved")
+    log_action(
+        "agent_identity.jit_approved",
+        actor=_actor(request),
+        resource=f"identity-jit/{grant.grant_id}",
+        tenant_id=grant.tenant_id,
+        agent_id=grant.agent_id,
+        identity_id=grant.identity_id,
+        tool_name=grant.tool_name,
+        expires_at=grant.expires_at,
+    )
+    return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
+
+
+@router.post("/v1/identity-jit-grants/{grant_id}/deny", dependencies=[_dep("config")])
+async def deny_agent_identity_jit(request: Request, grant_id: str, body: dict | None = None) -> dict[str, object]:
+    """Deny a pending JIT request."""
+    store = get_agent_identity_store()
+    existing = store.get_jit_grant(grant_id)
+    if existing is None or existing.tenant_id != _tenant(request):
+        raise HTTPException(status_code=404, detail="JIT grant not found")
+    grant = deny_jit_grant(store, grant_id, reason=str((body or {}).get("reason", "") or ""))
+    if grant is None:
+        raise HTTPException(status_code=409, detail="JIT grant cannot be denied")
+    log_action(
+        "agent_identity.jit_denied",
+        actor=_actor(request),
+        resource=f"identity-jit/{grant.grant_id}",
+        tenant_id=grant.tenant_id,
+        agent_id=grant.agent_id,
+        identity_id=grant.identity_id,
+        tool_name=grant.tool_name,
+    )
+    return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
+
+
+@router.post("/v1/identity-jit-grants/{grant_id}/revoke", dependencies=[_dep("config")])
+async def revoke_agent_identity_jit(request: Request, grant_id: str, body: dict | None = None) -> dict[str, object]:
+    """Revoke an active JIT grant immediately."""
+    store = get_agent_identity_store()
+    existing = store.get_jit_grant(grant_id)
+    if existing is None or existing.tenant_id != _tenant(request):
+        raise HTTPException(status_code=404, detail="JIT grant not found")
+    grant = revoke_jit_grant(store, grant_id, reason=str((body or {}).get("reason", "") or ""))
+    if grant is None:
+        raise HTTPException(status_code=409, detail="JIT grant cannot be revoked")
+    log_action(
+        "agent_identity.jit_revoked",
+        actor=_actor(request),
+        resource=f"identity-jit/{grant.grant_id}",
+        tenant_id=grant.tenant_id,
+        agent_id=grant.agent_id,
+        identity_id=grant.identity_id,
+        tool_name=grant.tool_name,
+    )
+    return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
+
+
+@router.get("/v1/identity-jit-grants", dependencies=[_dep("read")])
+async def list_agent_identity_jit_grants(
+    request: Request,
+    identity_id: str | None = None,
+    include_inactive: bool = False,
+    limit: int = 200,
+) -> dict[str, object]:
+    """List JIT grants for the active tenant."""
+    bounded = max(1, min(limit, 1000))
+    grants = get_agent_identity_store().list_jit_grants(
+        _tenant(request),
+        identity_id=identity_id,
+        include_inactive=include_inactive,
+        limit=bounded,
+    )
+    return {
+        "schema_version": "agent.identity.jit.v1",
+        "tenant_id": _tenant(request),
+        "count": len(grants),
+        "grants": [g.to_public_dict() for g in grants],
+    }
+
+
+@router.get("/v1/identities/{identity_id}/jit-grants", dependencies=[_dep("read")])
+async def list_agent_identity_jit_for_identity(
+    request: Request,
+    identity_id: str,
+    include_inactive: bool = False,
+    limit: int = 200,
+) -> dict[str, object]:
+    """List JIT grants attached to one identity."""
+    identity = _identity_for_tenant(request, identity_id)
+    bounded = max(1, min(limit, 1000))
+    grants = get_agent_identity_store().list_jit_grants(
+        identity.tenant_id,
+        identity_id=identity.identity_id,
+        include_inactive=include_inactive,
+        limit=bounded,
+    )
+    return {
+        "schema_version": "agent.identity.jit.v1",
+        "tenant_id": identity.tenant_id,
+        "identity_id": identity.identity_id,
+        "count": len(grants),
+        "grants": [g.to_public_dict() for g in grants],
+    }
 
 
 @router.get("/v1/identities", dependencies=[_dep("read")])

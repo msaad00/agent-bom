@@ -32,6 +32,7 @@ def register_operator_tools(
     from agent_bom.mcp_tools.compliance import cis_benchmark_impl
     from agent_bom.mcp_tools.registry import fleet_scan_impl, marketplace_check_impl
     from agent_bom.mcp_tools.runtime import (
+        anomaly_scan_impl,
         audit_integrity_impl,
         audit_query_impl,
         cost_report_impl,
@@ -497,6 +498,27 @@ def register_operator_tools(
             "cost_report",
             cost_report_impl,
             agent=agent,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Anomaly Scan")
+    async def anomaly_scan(
+        z_threshold: Annotated[
+            float,
+            Field(description="Z-score threshold for flagging an outlier (default 3.0; higher = stricter)."),
+        ] = 3.0,
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to summarize. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Surface cost and behavior anomalies: per-agent spend and per-session
+        tool-call-rate statistical outliers, for proactive runaway-agent detection."""
+        return await execute_tool_async(
+            "anomaly_scan",
+            anomaly_scan_impl,
+            z_threshold=z_threshold,
             tenant_id=tenant_id,
             _truncate_response=truncate_response,
         )

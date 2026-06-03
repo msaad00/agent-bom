@@ -147,6 +147,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "anomaly_scan",
+        "description": "Detect cost and behavior anomalies (per-agent spend + per-session call-rate z-score outliers)",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "drift_incidents",
         "description": "List open blueprint-drift incidents where observed runtime traffic left the approved role blueprint",
         "annotations": {"readOnlyHint": True},
@@ -301,6 +306,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "runtime_blueprints": ["READ", "RUNTIME", "POLICY"],
     "runtime_blueprint_drift": ["READ", "RUNTIME", "POLICY", "ANALYZE"],
     "cost_report": ["READ", "RUNTIME", "OBSERVABILITY"],
+    "anomaly_scan": ["READ", "RUNTIME", "OBSERVABILITY", "ANALYZE"],
     "drift_incidents": ["READ", "RUNTIME", "POLICY", "ANALYZE"],
     "proxy_status": ["READ", "RUNTIME", "OBSERVABILITY"],
     "proxy_alerts": ["READ", "RUNTIME", "OBSERVABILITY"],

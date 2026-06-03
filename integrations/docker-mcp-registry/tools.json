@@ -537,6 +537,22 @@
     ]
   },
   {
+    "name": "anomaly_scan",
+    "description": "Detect cost and behavior anomalies (per-agent spend + per-session call-rate z-score outliers).",
+    "arguments": [
+      {
+        "name": "z_threshold",
+        "type": "number",
+        "desc": "Z-score threshold (default 3.0)"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope"
+      }
+    ]
+  },
+  {
     "name": "drift_incidents",
     "description": "List open blueprint-drift incidents where observed runtime traffic left the approved role blueprint.",
     "arguments": [

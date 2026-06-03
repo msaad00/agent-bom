@@ -744,3 +744,13 @@ async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]
         "updated": True,
         **budget_status(spend, store.get_budget(tenant_id, agent)),
     }
+
+
+@router.get("/v1/observability/anomalies", tags=["observability", "finops"], dependencies=[_dep("read")])
+async def get_anomalies(request: Request, z_threshold: float = 3.0) -> dict[str, object]:
+    """Detect cost and behavior anomalies (per-agent spend + per-session call-rate
+    z-scores) for the active tenant. Proactive surfacing of runaway agents."""
+    from agent_bom.api.anomaly import scan_anomalies
+
+    bounded = max(1.0, min(z_threshold, 10.0))
+    return scan_anomalies(_tenant_id(request), z_threshold=bounded)

@@ -6,7 +6,7 @@ between principals. This overlay resolves them into *effective* access — what 
 principal can reach after assuming the roles it is allowed to assume — and emits
 ``HAS_PERMISSION`` edges for the transitive closure. A principal that reaches a
 resource only by assuming another role is flagged as a privilege-escalation
-chain (the canonical Wiz/Orca identity attack path).
+chain.
 
 Computed over edges already in the graph; no new scanner input. Bounded for
 scale: principals and chain depth are capped.

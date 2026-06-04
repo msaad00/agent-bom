@@ -55,7 +55,7 @@ class EntityType(str, Enum):
     DRIFT_INCIDENT = "drift_incident"
 
     # Cloud-CNAPP primitives (network exposure + data) — make internet exposure
-    # and path-to-sensitive-data first-class so attack paths reach Wiz/Orca grade.
+    # and path-to-sensitive-data first-class for attack-path traversal.
     DATA_STORE = "data_store"  # database / bucket / data lake holding data at rest
 
     # Organizational hierarchy

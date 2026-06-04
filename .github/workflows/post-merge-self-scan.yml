@@ -29,7 +29,7 @@ jobs:
       security-events: write  # required: SARIF upload to GitHub Security tab
       issues: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - uses: ./.github/actions/setup-python
         with:
@@ -128,7 +128,7 @@ jobs:
 
       - name: Upload dep scan SARIF
         if: always() && hashFiles('sarif/self-dep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
+        uses: github/codeql-action/upload-sarif@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4
         with:
           sarif_file: sarif/self-dep.sarif
           category: agent-bom-self-dep
@@ -198,7 +198,7 @@ jobs:
       contents: read
       security-events: write  # required: SARIF upload to GitHub Security tab
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - uses: ./.github/actions/setup-python
         with:
@@ -223,7 +223,7 @@ jobs:
 
       - name: Upload SAST SARIF
         if: always() && hashFiles('sarif/self-sast.sarif') != ''
-        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
+        uses: github/codeql-action/upload-sarif@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4
         with:
           sarif_file: sarif/self-sast.sarif
           category: agent-bom-self-sast
@@ -235,7 +235,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - uses: ./.github/actions/setup-python
         with:

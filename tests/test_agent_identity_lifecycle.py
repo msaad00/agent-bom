@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -454,3 +455,135 @@ def test_conditional_access_api_rejects_bad_input(client):
     assert client.post("/v1/conditional-access-policies", json={"name": "x", "effect": "maybe"}).status_code == 400
     assert client.post("/v1/conditional-access-policies", json={"name": "x", "allowed_source_cidrs": ["not-a-cidr"]}).status_code == 400
     assert client.post("/v1/conditional-access-policies", json={"name": "x", "allowed_hours_utc": [25]}).status_code == 400
+
+
+# ── MCP identity write tools (admin/scope/audit gated) ──────────────────────────
+
+
+def _passthrough(s: str) -> str:
+    return s
+
+
+@pytest.mark.asyncio
+async def test_mcp_identity_issue_requires_admin_and_scope(store):
+    from agent_bom.mcp_tools.identity import identity_issue_impl
+
+    # Non-admin is blocked before any state change.
+    out = json.loads(
+        await identity_issue_impl(
+            agent_id="agent-a",
+            operator_role="viewer",
+            operator_scopes="identity:write",
+            reason="provision build agent",
+            _truncate_response=_passthrough,
+        )
+    )
+    assert out["status"] == "blocked" and "admin role" in out["error"]
+    assert store.list("default") == []
+
+    # Admin without the scope is blocked.
+    out = json.loads(
+        await identity_issue_impl(
+            agent_id="agent-a",
+            operator_role="admin",
+            operator_scopes="",
+            reason="provision build agent",
+            _truncate_response=_passthrough,
+        )
+    )
+    assert out["status"] == "blocked" and "identity:write" in out["error"]
+
+    # Short audit reason is blocked.
+    out = json.loads(
+        await identity_issue_impl(
+            agent_id="agent-a",
+            operator_role="admin",
+            operator_scopes="identity:write",
+            reason="x",
+            _truncate_response=_passthrough,
+        )
+    )
+    assert out["status"] == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_mcp_identity_issue_then_grant_and_revoke_jit(store):
+    from agent_bom.mcp_tools.identity import (
+        identity_grant_jit_impl,
+        identity_issue_impl,
+        identity_revoke_jit_impl,
+    )
+
+    issued = json.loads(
+        await identity_issue_impl(
+            agent_id="agent-a",
+            allowed_tools="list_files",
+            operator_role="admin",
+            operator_scopes="identity:write",
+            reason="provision build agent",
+            _truncate_response=_passthrough,
+        )
+    )
+    assert issued["token"].startswith("abi_")
+    assert issued["mcp_write_policy"]["required_scope"] == "identity:write"
+    identity_id = issued["identity"]["identity_id"]
+    assert store.get(identity_id) is not None
+
+    granted = json.loads(
+        await identity_grant_jit_impl(
+            identity_id=identity_id,
+            tool_name="read_file",
+            ttl_seconds=300,
+            operator_role="admin",
+            operator_scopes="identity:write",
+            reason="incident response window",
+            _truncate_response=_passthrough,
+        )
+    )
+    grant_id = granted["grant"]["grant_id"]
+    assert store.active_jit_grant("default", identity_id, "read_file") is not None
+
+    revoked = json.loads(
+        await identity_revoke_jit_impl(
+            grant_id=grant_id,
+            operator_role="admin",
+            operator_scopes="identity:write",
+            reason="window closed early",
+            _truncate_response=_passthrough,
+        )
+    )
+    assert revoked["grant"]["status"] == "revoked"
+    assert store.active_jit_grant("default", identity_id, "read_file") is None
+
+
+@pytest.mark.asyncio
+async def test_mcp_identity_write_emits_lifecycle_audit_chain(store):
+    from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+    from agent_bom.mcp_tools.identity import identity_issue_impl, identity_revoke_impl
+
+    audit = InMemoryAuditLog()
+    set_audit_log(audit)
+    try:
+        issued = json.loads(
+            await identity_issue_impl(
+                agent_id="agent-a",
+                operator_role="admin",
+                operator_scopes="identity:write",
+                reason="provision build agent",
+                _truncate_response=_passthrough,
+            )
+        )
+        await identity_revoke_impl(
+            identity_id=issued["identity"]["identity_id"],
+            operator_role="admin",
+            operator_scopes="identity:write",
+            reason="decommission build agent",
+            _truncate_response=_passthrough,
+        )
+        actions = {e.action for e in audit.list_entries(limit=100)}
+        assert "agent_identity.issued" in actions
+        assert "agent_identity.revoked" in actions
+        # The MCP write path stamps the operator role as the audit actor.
+        assert any(e.actor == "admin" for e in audit.list_entries(limit=100))
+    finally:
+        set_audit_log(InMemoryAuditLog())

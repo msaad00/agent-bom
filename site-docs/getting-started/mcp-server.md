@@ -1,10 +1,13 @@
 # MCP Server Setup
 
-agent-bom runs as an MCP server, exposing 58 MCP tools to any MCP client.
+agent-bom runs as an MCP server, exposing 63 MCP tools to any MCP client.
 The server card also advertises 6 resources and 6 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
 Most tools are read-only. Shield write actions require `operator_role=admin`,
 `operator_scopes=shield:write`, and an audit reason.
+Identity write actions require `operator_role=admin`, `operator_scopes=identity:write`, and an audit reason —
+the same admin/scope/audit contract for issuing, rotating, and revoking
+identities and granting or revoking just-in-time access.
 
 ## Local (stdio)
 

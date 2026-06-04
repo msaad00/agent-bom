@@ -30,6 +30,13 @@ def register_operator_tools(
     """Register graph, analytics, fleet, benchmark, and runtime MCP tools."""
     from agent_bom.mcp_tools.analysis import analytics_query_impl, context_graph_impl
     from agent_bom.mcp_tools.compliance import cis_benchmark_impl
+    from agent_bom.mcp_tools.identity import (
+        identity_grant_jit_impl,
+        identity_issue_impl,
+        identity_revoke_impl,
+        identity_revoke_jit_impl,
+        identity_rotate_impl,
+    )
     from agent_bom.mcp_tools.registry import fleet_scan_impl, marketplace_check_impl
     from agent_bom.mcp_tools.runtime import (
         anomaly_scan_impl,
@@ -725,6 +732,127 @@ def register_operator_tools(
             "shield_break_glass",
             shield_break_glass_impl,
             session_id=session_id,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Identity Issue")
+    async def identity_issue(
+        agent_id: Annotated[str, Field(description="Agent identifier the issued identity represents.")],
+        role: Annotated[str, Field(description="Identity role label, for example agent or service.")] = "agent",
+        blueprint_id: Annotated[str, Field(description="Optional runtime blueprint id bound to the identity.")] = "",
+        ttl_seconds: Annotated[int, Field(ge=60, le=31536000, description="Identity lifetime in seconds.")] = 7776000,
+        allowed_tools: Annotated[str, Field(description="Comma-separated per-tool scope allowlist. Empty means any tool.")] = "",
+        operator_role: Annotated[str, Field(description="Operator role for this write action. Must be admin.")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes. Must include identity:write.")] = "",
+        reason: Annotated[str, Field(description="Human audit reason for issuing the identity.")] = "",
+        tenant_id: Annotated[str, Field(description="Tenant scope for the identity and audit logging.")] = "default",
+    ) -> str:
+        """Issue a managed agent identity. Requires admin role, identity:write scope, and an audit reason. Returns the raw token once."""
+        return await execute_tool_async(
+            "identity_issue",
+            identity_issue_impl,
+            agent_id=agent_id,
+            role=role,
+            blueprint_id=blueprint_id,
+            ttl_seconds=ttl_seconds,
+            allowed_tools=allowed_tools,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Identity Rotate")
+    async def identity_rotate(
+        identity_id: Annotated[str, Field(description="Identity id to rotate.")],
+        overlap_seconds: Annotated[int, Field(ge=0, le=86400, description="Seconds the old token stays live during rotation.")] = 3600,
+        ttl_seconds: Annotated[int, Field(ge=60, le=31536000, description="Lifetime of the replacement identity in seconds.")] = 7776000,
+        operator_role: Annotated[str, Field(description="Operator role for this write action. Must be admin.")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes. Must include identity:write.")] = "",
+        reason: Annotated[str, Field(description="Human audit reason for rotating the identity.")] = "",
+        tenant_id: Annotated[str, Field(description="Tenant scope for audit logging.")] = "default",
+    ) -> str:
+        """Rotate a managed identity, keeping the old token live during the overlap window.
+
+        Requires admin role, identity:write scope, and an audit reason.
+        """
+        return await execute_tool_async(
+            "identity_rotate",
+            identity_rotate_impl,
+            identity_id=identity_id,
+            overlap_seconds=overlap_seconds,
+            ttl_seconds=ttl_seconds,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Identity Revoke")
+    async def identity_revoke(
+        identity_id: Annotated[str, Field(description="Identity id to revoke.")],
+        operator_role: Annotated[str, Field(description="Operator role for this write action. Must be admin.")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes. Must include identity:write.")] = "",
+        reason: Annotated[str, Field(description="Human audit reason for revoking the identity.")] = "",
+        tenant_id: Annotated[str, Field(description="Tenant scope for audit logging.")] = "default",
+    ) -> str:
+        """Revoke a managed identity immediately. Requires admin role, identity:write scope, and an audit reason."""
+        return await execute_tool_async(
+            "identity_revoke",
+            identity_revoke_impl,
+            identity_id=identity_id,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Identity Grant JIT")
+    async def identity_grant_jit(
+        identity_id: Annotated[str, Field(description="Identity id to grant time-bound access to.")],
+        tool_name: Annotated[str, Field(description="Tool the grant authorizes, beyond the identity's standing scope.")],
+        ttl_seconds: Annotated[int, Field(ge=60, le=86400, description="Grant lifetime in seconds.")] = 3600,
+        ticket_id: Annotated[str, Field(description="Optional change/incident ticket id for the grant.")] = "",
+        operator_role: Annotated[str, Field(description="Operator role for this write action. Must be admin.")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes. Must include identity:write.")] = "",
+        reason: Annotated[str, Field(description="Human audit reason for granting access.")] = "",
+        tenant_id: Annotated[str, Field(description="Tenant scope for audit logging.")] = "default",
+    ) -> str:
+        """Grant an identity time-bound JIT access to one tool. Requires admin role, identity:write scope, and an audit reason."""
+        return await execute_tool_async(
+            "identity_grant_jit",
+            identity_grant_jit_impl,
+            identity_id=identity_id,
+            tool_name=tool_name,
+            ttl_seconds=ttl_seconds,
+            ticket_id=ticket_id,
+            operator_role=operator_role,
+            operator_scopes=operator_scopes,
+            reason=reason,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=write_action, title="Identity Revoke JIT")
+    async def identity_revoke_jit(
+        grant_id: Annotated[str, Field(description="JIT grant id to revoke.")],
+        operator_role: Annotated[str, Field(description="Operator role for this write action. Must be admin.")] = "viewer",
+        operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes. Must include identity:write.")] = "",
+        reason: Annotated[str, Field(description="Human audit reason for revoking the grant.")] = "",
+        tenant_id: Annotated[str, Field(description="Tenant scope for audit logging.")] = "default",
+    ) -> str:
+        """Revoke an active JIT grant immediately. Requires admin role, identity:write scope, and an audit reason."""
+        return await execute_tool_async(
+            "identity_revoke_jit",
+            identity_revoke_jit_impl,
+            grant_id=grant_id,
             operator_role=operator_role,
             operator_scopes=operator_scopes,
             reason=reason,

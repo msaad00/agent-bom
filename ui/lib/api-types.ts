@@ -2036,3 +2036,170 @@ export interface HubPostureResponse {
   };
   hub_severity_breakdown: Record<string, number>;
 }
+
+// ── Runtime governance cockpits: cost, identity, drift ──────────────────────
+
+export interface CostBudgetStatus {
+  configured: boolean;
+  agent?: string | null;
+  mode?: string; // "report" | "enforce"
+  limit_usd: number | null;
+  spend_usd: number;
+  remaining_usd: number | null;
+  exceeded: boolean;
+  utilization: number | null; // 0-1
+}
+
+export interface CostBreakdownRow {
+  key: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  unpriced_calls: number;
+}
+
+export interface CostReport {
+  schema_version: string;
+  tenant_id: string;
+  price_model_captured: Record<string, boolean>;
+  total_cost_usd: number;
+  total_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  unpriced_calls: number;
+  by_agent: CostBreakdownRow[];
+  by_model: CostBreakdownRow[];
+  by_provider: CostBreakdownRow[];
+  budget: CostBudgetStatus;
+}
+
+export interface CostAnomaly {
+  type: string;
+  severity: string;
+  agent?: string;
+  session_id?: string;
+  metric: string;
+  value: number;
+  baseline_median: number;
+  z_score: number;
+  recommendation: string;
+}
+
+export interface AnomaliesReport {
+  schema_version: string;
+  tenant_id: string;
+  z_threshold: number;
+  anomaly_count: number;
+  cost_anomalies: CostAnomaly[];
+  behavior_anomalies: CostAnomaly[];
+}
+
+export interface AgentIdentitySummary {
+  identity_id: string;
+  agent_id: string;
+  tenant_id: string;
+  token_prefix: string;
+  role: string;
+  blueprint_id: string;
+  status: "active" | "rotating" | "revoked" | "expired";
+  issued_at: string;
+  expires_at: string;
+  allowed_tools: string[];
+  rotated_to_id: string;
+  revoked_at: string;
+  revoked_reason: string;
+}
+
+export interface IdentitiesResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  identities: AgentIdentitySummary[];
+}
+
+export interface JITGrant {
+  grant_id: string;
+  identity_id: string;
+  agent_id: string;
+  tenant_id: string;
+  tool_name: string;
+  status: "requested" | "active" | "denied" | "revoked";
+  requested_at: string;
+  requested_by: string;
+  approved_at: string;
+  approved_by: string;
+  starts_at: string;
+  expires_at: string;
+  reason: string;
+  ticket_id: string;
+  revoked_at: string;
+  revoked_reason: string;
+  denied_at: string;
+  denied_reason: string;
+}
+
+export interface JITGrantsResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  grants: JITGrant[];
+}
+
+export interface ConditionalAccessPolicy {
+  policy_id: string;
+  tenant_id: string;
+  name: string;
+  effect: "require" | "deny";
+  status: "active" | "disabled";
+  created_at: string;
+  priority: number;
+  identity_ids: string[];
+  agent_ids: string[];
+  tools: string[];
+  allowed_environments: string[];
+  allowed_hours_utc: number[];
+  allowed_weekdays: number[];
+  allowed_source_cidrs: string[];
+  updated_at: string;
+  description: string;
+}
+
+export interface ConditionalAccessResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  policies: ConditionalAccessPolicy[];
+}
+
+export interface DriftViolation {
+  tool_name?: string;
+  type?: string;
+  [key: string]: unknown;
+}
+
+export interface DriftIncident {
+  incident_id: string;
+  tenant_id: string;
+  blueprint_id: string;
+  status: string;
+  drift_score: number;
+  violation_count: number;
+  warning_count: number;
+  top_violations: DriftViolation[];
+  first_detected_at: string;
+  last_detected_at: string;
+  occurrences: number;
+  resolved: boolean;
+  resolved_at: string;
+  resolved_by: string;
+  resolution_note: string;
+}
+
+export interface DriftIncidentsResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  open_count: number;
+  incidents: DriftIncident[];
+}

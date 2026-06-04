@@ -45,7 +45,7 @@ const CHART_THEME = {
   },
 } as const;
 
-function ChartTooltip({
+export function ChartTooltip({
   active,
   payload,
   label,

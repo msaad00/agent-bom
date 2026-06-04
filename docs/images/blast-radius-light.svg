@@ -82,14 +82,14 @@
   <rect x="560" y="78" width="130" height="56" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
   <rect x="560" y="78" width="4" height="56" rx="2" fill="#3b82f6"/>
   <text x="580" y="96" class="node-type" fill="#2563eb">AI AGENT</text>
-  <text x="580" y="112" class="node-label">Cursor IDE</text>
+  <text x="580" y="112" class="node-label">code-agent</text>
   <text x="580" y="126" class="node-detail">4 servers · 12 tools</text>
 
   <!-- NODE: Agent 2 — affected by BOTH servers -->
   <rect x="560" y="196" width="130" height="56" rx="10" fill="#fafafa" stroke="#ef4444" stroke-width="1.5" stroke-opacity="0.35"/>
   <rect x="560" y="196" width="4" height="56" rx="2" fill="#3b82f6"/>
   <text x="580" y="214" class="node-type" fill="#2563eb">AI AGENT</text>
-  <text x="580" y="230" class="node-label">Claude Desktop</text>
+  <text x="580" y="230" class="node-label">desktop-agent</text>
   <text x="580" y="244" class="node-detail">3 servers · 8 tools</text>
 
   <rect x="658" y="196" width="30" height="16" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="0.5" stroke-opacity="0.4"/>
@@ -99,7 +99,7 @@
   <rect x="560" y="320" width="130" height="56" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
   <rect x="560" y="320" width="4" height="56" rx="2" fill="#3b82f6"/>
   <text x="580" y="338" class="node-type" fill="#2563eb">AI AGENT</text>
-  <text x="580" y="354" class="node-label">Windsurf</text>
+  <text x="580" y="354" class="node-label">review-agent</text>
   <text x="580" y="368" class="node-detail">2 servers · 6 tools</text>
 
   <!-- CREDENTIALS -->

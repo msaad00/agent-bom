@@ -8,7 +8,6 @@ import process from "node:process";
 const UI_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const REPO_ROOT = path.resolve(UI_ROOT, "..");
 const IMAGE_DIR = path.join(REPO_ROOT, "docs", "images");
-const VERSION = "0.88.5";
 const CREATED_AT = "2026-06-03T20:30:00Z";
 const SCAN_ID = "scan-proof-ai-platform";
 const PREVIOUS_SCAN_ID = "scan-proof-ai-platform-prev";

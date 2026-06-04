@@ -298,6 +298,18 @@ def _first_href_for_agent(agent: str) -> str:
     return f"/agents?name={quote(agent)}"
 
 
+_RUNTIME_OBSERVED_RELS = frozenset(
+    {
+        RelationshipType.INVOKED.value,
+        RelationshipType.CALLED.value,
+        RelationshipType.ACCESSED.value,
+        RelationshipType.ACTED_AS.value,
+        RelationshipType.USED_CREDENTIAL.value,
+        RelationshipType.DELEGATED_TO.value,
+    }
+)
+
+
 def _exposed_port_detail(attrs: dict) -> str:
     """Render the internet-open ports on a node as ' on port(s) 22, 3389'."""
     ports = attrs.get("exposed_ports") or []
@@ -339,6 +351,12 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
             add("exposed_sensitive_data", "Exposed sensitive data", f"{node.label} holds sensitive data and is internet-exposed.", 22.0)
         elif attrs.get("data_sensitivity"):
             add("sensitive_data", "Sensitive data", f"{node.label} holds sensitive (PII/PHI/secret) data.", 8.0)
+        # Runtime-observed reachability: a hop with actual observed runtime
+        # activity is confirmed reachable, not just statically connected — so it
+        # ranks above an identical static-only chain.
+        hop_edges = graph.adjacency.get(hop_id, []) + graph.reverse_adjacency.get(hop_id, [])
+        if any(_rel_value(e) in _RUNTIME_OBSERVED_RELS for e in hop_edges):
+            add("runtime_observed", "Runtime-observed", f"{node.label} has observed runtime activity (confirmed reachable).", 10.0)
         # One-hop governance/exposure neighbours of this node.
         for edge in graph.adjacency.get(hop_id, []):
             target = graph.nodes.get(edge.target)

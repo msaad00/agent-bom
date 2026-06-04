@@ -51,6 +51,8 @@ ENTITY_OCSF_MAP: dict[str, dict[str, int]] = {
     EntityType.VULNERABILITY: {"category_uid": 2, "class_uid": 2001},
     EntityType.MISCONFIGURATION: {"category_uid": 2, "class_uid": 2003},
     EntityType.DRIFT_INCIDENT: {"category_uid": 2, "class_uid": 2004},
+    # Cloud-CNAPP data primitive (Category 5 — inventory)
+    EntityType.DATA_STORE: {"category_uid": 5, "class_uid": 4001},
     # Organizational (virtual)
     EntityType.PROVIDER: {"category_uid": 0, "class_uid": 0},
     EntityType.ENVIRONMENT: {"category_uid": 0, "class_uid": 0},

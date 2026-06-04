@@ -891,6 +891,15 @@ def build_unified_graph_from_report(
             vuln_node.attributes["reachability"] = br_dict.get("reachability", "")
             vuln_node.attributes["actionable"] = br_dict.get("actionable", False)
 
+    # Cloud-CNAPP enrichment: derive internet exposure, data stores, and toxic
+    # (exposed + vulnerable) chains from the CIS/IaC findings now in the graph.
+    try:
+        from agent_bom.graph.cnapp_overlay import apply_cnapp_overlay
+
+        apply_cnapp_overlay(graph)
+    except Exception:  # noqa: BLE001
+        _logger.warning("CNAPP overlay failed", exc_info=True)
+
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)
         span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")

@@ -2214,6 +2214,38 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
         "target_types": [EntityType.DRIFT_INCIDENT.value],
         "traversable": True,
     },
+    RelationshipType.EXPOSED_TO.value: {
+        "category": "exposure",
+        "direction": "directed",
+        "source_types": [
+            EntityType.CLOUD_RESOURCE.value,
+            EntityType.SERVER.value,
+            EntityType.AGENT.value,
+            EntityType.DATA_STORE.value,
+        ],
+        "target_types": [EntityType.CLOUD_RESOURCE.value, EntityType.RESOURCE.value, EntityType.DATA_STORE.value],
+        "traversable": True,
+    },
+    RelationshipType.STORES.value: {
+        "category": "exposure",
+        "direction": "directed",
+        "source_types": [EntityType.CLOUD_RESOURCE.value, EntityType.DATA_STORE.value, EntityType.SERVER.value],
+        "target_types": [EntityType.DATASET.value, EntityType.DATA_STORE.value],
+        "traversable": True,
+    },
+    RelationshipType.HAS_PERMISSION.value: {
+        "category": "identity",
+        "direction": "directed",
+        "source_types": [
+            EntityType.USER.value,
+            EntityType.ROLE.value,
+            EntityType.SERVICE_ACCOUNT.value,
+            EntityType.SERVICE_PRINCIPAL.value,
+            EntityType.MANAGED_IDENTITY.value,
+        ],
+        "target_types": [EntityType.CLOUD_RESOURCE.value, EntityType.DATA_STORE.value, EntityType.RESOURCE.value, EntityType.TOOL.value],
+        "traversable": True,
+    },
 }
 
 

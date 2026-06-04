@@ -298,6 +298,27 @@ def _first_href_for_agent(agent: str) -> str:
     return f"/agents?name={quote(agent)}"
 
 
+_RUNTIME_OBSERVED_RELS = frozenset(
+    {
+        RelationshipType.INVOKED.value,
+        RelationshipType.CALLED.value,
+        RelationshipType.ACCESSED.value,
+        RelationshipType.ACTED_AS.value,
+        RelationshipType.USED_CREDENTIAL.value,
+        RelationshipType.DELEGATED_TO.value,
+    }
+)
+
+
+def _exposed_port_detail(attrs: dict) -> str:
+    """Render the internet-open ports on a node as ' on port(s) 22, 3389'."""
+    ports = attrs.get("exposed_ports") or []
+    if not isinstance(ports, list):
+        return ""
+    nums = sorted({str(p["from_port"]) for p in ports if isinstance(p, dict) and p.get("from_port") is not None})
+    return f" on port(s) {', '.join(nums[:5])}" if nums else ""
+
+
 def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple[str, str, str, float]]:
     """Governance / CNAPP / runtime signals that should weight a path's rank.
 
@@ -319,16 +340,25 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
         if node is None:
             continue
         attrs = node.attributes
+        port_detail = _exposed_port_detail(attrs)
         if attrs.get("toxic_exposed_vulnerable"):
-            add("toxic_exposed_vulnerable", "Toxic: exposed + vulnerable", f"{node.label} is internet-exposed and vulnerable.", 20.0)
+            add("toxic_exposed_vulnerable", "Toxic: exposed + vulnerable", f"{node.label}: exposed{port_detail} + vulnerable.", 20.0)
         elif attrs.get("internet_exposed"):
-            add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet.", 15.0)
-        if attrs.get("can_escalate_privilege"):
+            add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet{port_detail}.", 15.0)
+        if attrs.get("escalates_to_admin"):
+            add("privilege_escalation_admin", "Admin escalation", f"{node.label} can assume an admin-privileged role.", 20.0)
+        elif attrs.get("can_escalate_privilege"):
             add("privilege_escalation", "Privilege escalation", f"{node.label} can assume a role with broader effective access.", 16.0)
         if attrs.get("toxic_exposed_sensitive"):
             add("exposed_sensitive_data", "Exposed sensitive data", f"{node.label} holds sensitive data and is internet-exposed.", 22.0)
         elif attrs.get("data_sensitivity"):
             add("sensitive_data", "Sensitive data", f"{node.label} holds sensitive (PII/PHI/secret) data.", 8.0)
+        # Runtime-observed reachability: a hop with actual observed runtime
+        # activity is confirmed reachable, not just statically connected — so it
+        # ranks above an identical static-only chain.
+        hop_edges = graph.adjacency.get(hop_id, []) + graph.reverse_adjacency.get(hop_id, [])
+        if any(_rel_value(e) in _RUNTIME_OBSERVED_RELS for e in hop_edges):
+            add("runtime_observed", "Runtime-observed", f"{node.label} has observed runtime activity (confirmed reachable).", 10.0)
         # One-hop governance/exposure neighbours of this node.
         for edge in graph.adjacency.get(hop_id, []):
             target = graph.nodes.get(edge.target)

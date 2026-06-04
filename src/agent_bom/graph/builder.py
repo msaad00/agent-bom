@@ -618,6 +618,7 @@ def build_unified_graph_from_report(
                         "recommendation": check.get("recommendation", ""),
                         "resource_ids": resource_ids,
                         "cloud_provider": cloud_provider,
+                        "network_exposure": list(check.get("network_exposure", [])),
                     },
                     compliance_tags=[f"CIS-{check_id}"],
                     data_sources=[section_key],
@@ -1512,14 +1513,16 @@ def _policy_entries(principal: dict[str, Any]) -> list[dict[str, str]]:
 
     policies: list[dict[str, str]] = []
     for raw_policy in raw_policies:
+        privilege_level = "unknown"
         if isinstance(raw_policy, dict):
             policy_id = _clean_graph_part(raw_policy.get("policy_id")) or _clean_graph_part(raw_policy.get("arn"))
             policy_name = _clean_graph_part(raw_policy.get("policy_name")) or _clean_graph_part(raw_policy.get("name")) or policy_id
+            privilege_level = str(raw_policy.get("privilege_level") or "unknown")
         else:
             policy_id = _clean_graph_part(raw_policy)
             policy_name = policy_id
         if policy_id:
-            policies.append({"id": policy_id, "name": policy_name or policy_id})
+            policies.append({"id": policy_id, "name": policy_name or policy_id, "privilege_level": privilege_level})
     return policies
 
 
@@ -1779,7 +1782,12 @@ def _add_agent_cloud_lineage(
                 id=policy_node_id,
                 entity_type=EntityType.POLICY,
                 label=policy["name"],
-                attributes={"policy_id": policy["id"], "policy_name": policy["name"], "cloud_provider": provider},
+                attributes={
+                    "policy_id": policy["id"],
+                    "policy_name": policy["name"],
+                    "privilege_level": policy.get("privilege_level", "unknown"),
+                    "cloud_provider": provider,
+                },
                 data_sources=data_sources,
                 dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
             )

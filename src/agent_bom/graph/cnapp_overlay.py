@@ -149,13 +149,19 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
 
     exposed_ids: set[str] = set()
     for mc in misconfigs:
-        if not _matches(_text_of(mc), _EXPOSURE_KEYWORDS):
+        # Prefer structured network_exposure (open ports/CIDR to the internet,
+        # emitted by the cloud scanner) over keyword-matching the evidence text.
+        structured = [e for e in (mc.attributes.get("network_exposure") or []) if isinstance(e, dict) and e.get("scope") == "internet"]
+        if not structured and not _matches(_text_of(mc), _EXPOSURE_KEYWORDS):
             continue
+        ports = [{"from_port": e.get("from_port"), "to_port": e.get("to_port"), "protocol": e.get("protocol", "tcp")} for e in structured]
         for target_id in affected_by_misconfig.get(mc.id, []):
             node = graph.nodes.get(target_id)
             if node is not None:
                 node.attributes["internet_exposed"] = True
                 exposed_ids.add(target_id)
+                if ports:
+                    node.attributes.setdefault("exposed_ports", []).extend(ports)
     # Also mark cloud resources whose own attributes/label signal public exposure.
     for node in cloud_resources:
         if node.attributes.get("internet_exposed") or _matches(_text_of(node), _EXPOSURE_KEYWORDS):

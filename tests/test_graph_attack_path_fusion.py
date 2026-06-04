@@ -45,3 +45,21 @@ def test_no_signals_yields_no_boost():
     g = _chain_graph(expose=False, drift=False)
     path = _derived_attack_paths(g)[0]
     assert _fusion_signals_for_path(g, path.hops) == []
+
+
+def test_runtime_observed_activity_boosts_path():
+    from agent_bom.api.routes.graph import _fusion_signals_for_path
+    from agent_bom.graph.types import EntityType, RelationshipType
+
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+    g.add_node(UnifiedNode(id="call:1", entity_type=EntityType.TOOL_CALL, label="tool-call"))
+    g.add_node(UnifiedNode(id="res:1", entity_type=EntityType.RESOURCE, label="db"))
+    g.add_edge(UnifiedEdge(source="agent:a", target="call:1", relationship=RelationshipType.INVOKED))
+    g.add_edge(UnifiedEdge(source="call:1", target="res:1", relationship=RelationshipType.ACCESSED))
+
+    kinds = {k for k, _l, _d, _b in _fusion_signals_for_path(g, ["agent:a", "call:1", "res:1"])}
+    assert "runtime_observed" in kinds
+    # a purely static node yields no runtime signal
+    g.add_node(UnifiedNode(id="pkg:x", entity_type=EntityType.PACKAGE, label="x"))
+    assert not _fusion_signals_for_path(g, ["pkg:x"])

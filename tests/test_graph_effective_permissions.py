@@ -66,3 +66,19 @@ def test_assume_cycle_is_bounded():
 
     apply_effective_permissions(g)  # must terminate
     assert _perm(g, "role:a").get("cloud:x") == "assume_chain"
+
+
+def test_escalation_to_admin_role_is_higher_risk():
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:dev", entity_type=EntityType.USER, label="dev"))
+    g.add_node(UnifiedNode(id="role:admin", entity_type=EntityType.ROLE, label="prod-admin-role"))
+    g.add_node(UnifiedNode(id="pol:admin", entity_type=EntityType.POLICY, label="AdministratorAccess"))
+    g.add_node(UnifiedNode(id="cloud:x", entity_type=EntityType.CLOUD_RESOURCE, label="x"))
+    g.add_edge(UnifiedEdge(source="user:dev", target="role:admin", relationship=RelationshipType.TRUSTS))
+    g.add_edge(UnifiedEdge(source="role:admin", target="pol:admin", relationship=RelationshipType.ATTACHED))
+    g.add_edge(UnifiedEdge(source="role:admin", target="cloud:x", relationship=RelationshipType.CAN_ACCESS))
+
+    apply_effective_permissions(g)
+    assert g.nodes["user:dev"].attributes.get("escalates_to_admin") is True
+    esc = [r for r in g.interaction_risks if r.pattern == "privilege_escalation"]
+    assert esc and esc[0].risk_score == 9.0 and "admin-privileged" in esc[0].description

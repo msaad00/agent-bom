@@ -68,3 +68,31 @@ def test_overlay_no_exposure_is_noop_for_private_resources():
     assert stats["exposed_nodes"] == 0
     assert stats["toxic_combinations"] == 0
     assert graph.nodes["cloud:rds"].attributes.get("internet_exposed") is None
+
+
+def test_structured_network_exposure_is_port_aware():
+    from agent_bom.api.routes.graph import _fusion_signals_for_path
+
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="cloud:vm", entity_type=EntityType.CLOUD_RESOURCE, label="bastion vm"))
+    g.add_node(
+        UnifiedNode(
+            id="mc:sg",
+            entity_type=EntityType.MISCONFIGURATION,
+            label="security group allows admin access",
+            attributes={
+                "network_exposure": [{"resource": "sg-bad", "from_port": 22, "to_port": 22, "protocol": "tcp", "scope": "internet"}]
+            },
+        )
+    )
+    g.add_edge(UnifiedEdge(source="mc:sg", target="cloud:vm", relationship=RelationshipType.AFFECTS))
+
+    apply_cnapp_overlay(g)
+    vm = g.nodes["cloud:vm"]
+    # Structured exposure (no exposure keyword in the label) still marks it exposed,
+    # and attaches the specific open port.
+    assert vm.attributes.get("internet_exposed") is True
+    assert vm.attributes.get("exposed_ports") == [{"from_port": 22, "to_port": 22, "protocol": "tcp"}]
+    # The attack-path reason names the port.
+    detail = next(d for k, _l, d, _b in _fusion_signals_for_path(g, ["cloud:vm"]) if k == "internet_exposed")
+    assert "port(s) 22" in detail

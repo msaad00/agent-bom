@@ -42,16 +42,16 @@
   <!-- CVE → Server B (db-tools) — smooth S-curve from center -->
   <path d="M316 218 C340 218, 352 300, 372 300" stroke="#ef4444" stroke-width="1.5" opacity="0.35" fill="none" marker-end="url(#arrow-red)"/>
 
-  <!-- Server A → Agent 1 (Cursor) — smooth S-curve -->
+  <!-- Server A → Agent 1 — smooth S-curve -->
   <path d="M512 142 C530 142, 542 106, 560 106" stroke="#a78bfa" stroke-width="1.5" opacity="0.3" fill="none" marker-end="url(#arrow-muted)"/>
 
-  <!-- Server A → Agent 2 (Claude Desktop) — shared path highlight -->
+  <!-- Server A → Agent 2 — shared path highlight -->
   <path d="M512 142 C530 142, 542 224, 560 224" stroke="#a78bfa" stroke-width="2" opacity="0.5" fill="none" marker-end="url(#arrow-muted)"/>
 
-  <!-- Server B → Agent 2 (Claude Desktop) — shared path highlight -->
+  <!-- Server B → Agent 2 — shared path highlight -->
   <path d="M512 300 C530 300, 542 224, 560 224" stroke="#a78bfa" stroke-width="2" opacity="0.5" fill="none" marker-end="url(#arrow-muted)"/>
 
-  <!-- Server B → Agent 3 (Windsurf) — smooth S-curve -->
+  <!-- Server B → Agent 3 — smooth S-curve -->
   <path d="M512 300 C530 300, 542 348, 560 348" stroke="#a78bfa" stroke-width="1.5" opacity="0.3" fill="none" marker-end="url(#arrow-muted)"/>
 
   <!-- Agent 1 → Credentials -->
@@ -111,21 +111,21 @@
   <text x="392" y="318" class="node-detail">verified · 5 tools</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!-- NODE: Agent 1 (Cursor)                                                  -->
+  <!-- NODE: Agent 1                                                           -->
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <rect x="560" y="78" width="130" height="56" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
   <rect x="560" y="78" width="4" height="56" rx="2" fill="#3b82f6"/>
   <text x="580" y="96" class="node-type" fill="#3b82f6">AI AGENT</text>
-  <text x="580" y="112" class="node-label">Cursor IDE</text>
+  <text x="580" y="112" class="node-label">code-agent</text>
   <text x="580" y="126" class="node-detail">4 servers · 12 tools</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!-- NODE: Agent 2 (Claude Desktop) — affected by BOTH servers               -->
+  <!-- NODE: Agent 2 — affected by BOTH servers                                -->
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <rect x="560" y="196" width="130" height="56" rx="10" fill="#18181b" stroke="#ef4444" stroke-width="1.5" stroke-opacity="0.4"/>
   <rect x="560" y="196" width="4" height="56" rx="2" fill="#3b82f6"/>
   <text x="580" y="214" class="node-type" fill="#3b82f6">AI AGENT</text>
-  <text x="580" y="230" class="node-label">Claude Desktop</text>
+  <text x="580" y="230" class="node-label">desktop-agent</text>
   <text x="580" y="244" class="node-detail">3 servers · 8 tools</text>
 
   <!-- "2 paths" badge on Agent 2 -->
@@ -133,12 +133,12 @@
   <text x="673" y="207" text-anchor="middle" font-size="8" font-weight="700" fill="#fca5a5" font-family="system-ui, sans-serif">2x</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
-  <!-- NODE: Agent 3 (Windsurf)                                                -->
+  <!-- NODE: Agent 3                                                           -->
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <rect x="560" y="320" width="130" height="56" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
   <rect x="560" y="320" width="4" height="56" rx="2" fill="#3b82f6"/>
   <text x="580" y="338" class="node-type" fill="#3b82f6">AI AGENT</text>
-  <text x="580" y="354" class="node-label">Windsurf</text>
+  <text x="580" y="354" class="node-label">review-agent</text>
   <text x="580" y="368" class="node-detail">2 servers · 6 tools</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->

@@ -60,17 +60,19 @@ export function ExposurePathCommandCenter({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-        <div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(220px,280px)]">
+        <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Command center</p>
-          <h2 className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">{pathDisplayTitle(path)}</h2>
+          <h2 className="mt-1 text-lg font-semibold leading-7 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+            {pathDisplayTitle(path)}
+          </h2>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-[color:var(--text-secondary)]">
             {path.summary ||
               evidence?.attackVectorSummary ||
               "Selected exposure path with the entities, relationships, and evidence needed to choose the first fix."}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="grid min-w-0 grid-cols-2 gap-2 text-xs">
           <CommandMetric label="Risk" value={path.riskScore.toFixed(1)} tone="red" />
           <CommandMetric label="Hops" value={String(Math.max(0, path.hops.length - 1))} />
           <CommandMetric label="Agents" value={String(path.affectedAgents.length)} />
@@ -82,11 +84,17 @@ export function ExposurePathCommandCenter({
         {investigationBrief.map((item) => (
           <div
             key={item.label}
-            className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2"
+            className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2"
           >
             <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{item.label}</div>
-            <div className="mt-1 text-sm font-semibold leading-5 text-[color:var(--foreground)]">{item.value}</div>
-            {item.detail && <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{item.detail}</p>}
+            <div className="mt-1 text-sm font-semibold leading-5 text-[color:var(--foreground)] [overflow-wrap:anywhere]">
+              {item.value}
+            </div>
+            {item.detail && (
+              <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)] [overflow-wrap:anywhere]">
+                {item.detail}
+              </p>
+            )}
           </div>
         ))}
       </section>
@@ -108,8 +116,8 @@ export function ExposurePathCommandCenter({
             {path.relationships.slice(0, 5).map((relationship) => (
               <div key={relationship.id} className="grid gap-2 px-3 py-2 text-xs md:grid-cols-[1fr_auto]">
                 <div className="min-w-0">
-                  <span className="font-mono text-[color:var(--foreground)]">{relationship.relationship}</span>
-                  <span className="ml-2 break-all text-[color:var(--text-tertiary)]">
+                  <span className="font-mono text-[color:var(--foreground)] [overflow-wrap:anywhere]">{relationship.relationship}</span>
+                  <span className="ml-2 break-all text-[color:var(--text-tertiary)] [overflow-wrap:anywhere]">
                     {relationship.source} → {relationship.target}
                   </span>
                 </div>
@@ -277,11 +285,15 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
               <text x="32" y="24" fill={style.accent} fontSize="10" fontWeight="700" letterSpacing="2" fontFamily="var(--font-mono), monospace">
                 {meta.label.toUpperCase()}
               </text>
-              <text x="16" y="50" fill={style.text} fontSize="16" fontWeight="700" fontFamily="var(--font-sans), system-ui">
-                {truncateGraphText(node.label, 17)}
+              <text x="16" y="49" fill={style.text} fontSize="14" fontWeight="700" fontFamily="var(--font-sans), system-ui">
+                {wrapGraphText(node.label, 18, 2).map((line, lineIndex) => (
+                  <tspan key={`${node.id}-line-${lineIndex}`} x="16" dy={lineIndex === 0 ? 0 : 17}>
+                    {line}
+                  </tspan>
+                ))}
               </text>
               {node.severity && (
-                <text x="16" y="70" fill="#94a3b8" fontSize="11" letterSpacing="1.4" fontFamily="var(--font-mono), monospace">
+                <text x="16" y="79" fill="#94a3b8" fontSize="10" letterSpacing="1.4" fontFamily="var(--font-mono), monospace">
                   {String(node.severity).toUpperCase()}
                 </text>
               )}
@@ -297,7 +309,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
 function buildPathGraphLayout(path: ExposurePath) {
   const width = 920;
   const nodeWidth = 178;
-  const nodeHeight = 84;
+  const nodeHeight = 96;
   const columns = Math.min(3, Math.max(1, path.hops.length));
   const rows = Math.max(1, Math.ceil(path.hops.length / columns));
   const xGap = columns > 1 ? (width - nodeWidth - 64) / (columns - 1) : 0;
@@ -355,6 +367,34 @@ function truncateGraphText(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, Math.max(1, maxLength - 1))}…` : value;
 }
 
+function wrapGraphText(value: string, maxLineLength: number, maxLines: number): string[] {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLineLength) return [normalized];
+
+  const lines: string[] = [];
+  let remaining = normalized;
+  while (remaining.length > 0 && lines.length < maxLines) {
+    const isLastLine = lines.length === maxLines - 1;
+    if (remaining.length <= maxLineLength) {
+      lines.push(remaining);
+      break;
+    }
+    if (isLastLine) {
+      lines.push(truncateGraphText(remaining, maxLineLength));
+      break;
+    }
+
+    const window = remaining.slice(0, maxLineLength + 1);
+    const breakpoints = [" ", "-", "_", "/", ":", "@", "."].map((character) => window.lastIndexOf(character));
+    const breakpoint = Math.max(...breakpoints);
+    const cut = breakpoint >= Math.floor(maxLineLength * 0.45) ? breakpoint + 1 : maxLineLength;
+    lines.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+
+  return lines.length > 0 ? lines : [truncateGraphText(normalized, maxLineLength)];
+}
+
 function CommandMetric({ label, value, tone = "zinc" }: { label: string; value: string; tone?: "red" | "green" | "zinc" }) {
   const toneClass =
     tone === "red"
@@ -364,9 +404,9 @@ function CommandMetric({ label, value, tone = "zinc" }: { label: string; value: 
         : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]";
 
   return (
-    <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
+    <div className={`min-w-0 rounded-xl border px-3 py-2 ${toneClass}`}>
       <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{label}</div>
-      <div className="mt-1 truncate font-mono text-sm font-semibold">{value}</div>
+      <div className="mt-1 font-mono text-sm font-semibold leading-5 [overflow-wrap:anywhere]">{value}</div>
     </div>
   );
 }
@@ -381,13 +421,13 @@ function EvidenceRow({
   emptyLabel?: string;
 }) {
   return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] px-3 py-2 text-xs">
+    <div className="min-w-0 rounded-xl border border-[color:var(--border-subtle)] px-3 py-2 text-xs">
       <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {(values.length > 0 ? values : [emptyLabel]).slice(0, 4).map((value) => (
           <span
             key={`${label}-${value}`}
-            className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[color:var(--text-secondary)]"
+            className="max-w-full rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[color:var(--text-secondary)] [overflow-wrap:anywhere]"
           >
             {value}
           </span>

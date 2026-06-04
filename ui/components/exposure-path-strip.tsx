@@ -18,19 +18,22 @@ export function ExposurePathStrip({
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] bg-red-950/20 px-4 py-2.5 text-xs">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="inline-flex items-center gap-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 font-semibold uppercase text-red-200">
+      <div className="flex min-w-[min(100%,24rem)] flex-1 flex-wrap items-center gap-2">
+        <span className="inline-flex shrink-0 items-center gap-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 font-semibold uppercase text-red-200">
           <Crosshair className="h-3.5 w-3.5" />
           Top exposed path
         </span>
-        <span className="rounded bg-red-500/15 px-2 py-0.5 font-mono text-[11px] uppercase text-red-200">
+        <span className="shrink-0 rounded bg-red-500/15 px-2 py-0.5 font-mono text-[11px] uppercase text-red-200">
           {path.severity}
         </span>
-        <span className="min-w-0 truncate text-[var(--text-secondary)]" title={path.label}>
+        <span
+          className="min-w-[12rem] flex-1 overflow-hidden break-words text-[var(--text-secondary)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [overflow-wrap:anywhere]"
+          title={path.label}
+        >
           {pathDisplayTitle(path)}
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
         <Metric icon={ShieldAlert} label="risk" value={Math.round(path.riskScore * 10) / 10} />
         <Metric icon={Route} label="hops" value={Math.max(0, path.hops.length - 1)} />
         <Metric label="agents" value={path.affectedAgents.length} />
@@ -39,7 +42,7 @@ export function ExposurePathStrip({
           <Metric icon={KeyRound} label="creds" value={path.exposedCredentials.length} />
         )}
         {fixLabel && (
-          <span>
+          <span className="min-w-0 break-words [overflow-wrap:anywhere]">
             fix <b className="text-emerald-300">{fixLabel}</b>
           </span>
         )}
@@ -67,7 +70,7 @@ function Metric({
   value: string | number;
 }) {
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex shrink-0 items-center gap-1">
       {Icon && <Icon className="h-3 w-3" />}
       {label} <b className="text-foreground">{value}</b>
     </span>

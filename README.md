@@ -43,7 +43,11 @@ to environments where enforcement is worth the operational cost.
 </p>
 
 ```text
-package -> vulnerability finding -> MCP server -> tools + credential refs -> agent
+package
+  -> vulnerability finding
+  -> MCP server
+  -> tools + credential refs
+  -> agent
 ```
 
 Blast radius is the core idea. A vulnerable package is not just a CVE row; it

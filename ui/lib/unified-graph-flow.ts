@@ -65,15 +65,15 @@ const ENTITY_TO_NODE_TYPE: Partial<Record<EntityType | string, LineageNodeType>>
   [EntityType.DATASET]: "dataset",
   [EntityType.CONTAINER]: "container",
   [EntityType.CLOUD_RESOURCE]: "cloudResource",
-  // Agent-identity governance + cloud-CNAPP nodes render with the closest
-  // existing visual taxonomy so they are visible and filterable (distinct
-  // iconography is a follow-up): identities → service account, grants/policies
-  // → credential, drift → misconfiguration finding, data stores → cloud asset.
-  [EntityType.MANAGED_IDENTITY]: "serviceAccount",
-  [EntityType.ACCESS_GRANT]: "credential",
-  [EntityType.ACCESS_POLICY]: "credential",
-  [EntityType.DRIFT_INCIDENT]: "misconfiguration",
-  [EntityType.DATA_STORE]: "cloudResource",
+  // Agent-identity governance + cloud-CNAPP nodes get distinct render types
+  // (own color/label/badge) reusing the closest component renderer, so an
+  // investigator can tell a managed identity from a service account, a drift
+  // incident from a misconfiguration, and a data store from a cloud resource.
+  [EntityType.MANAGED_IDENTITY]: "managedIdentity",
+  [EntityType.ACCESS_GRANT]: "accessGrant",
+  [EntityType.ACCESS_POLICY]: "accessPolicy",
+  [EntityType.DRIFT_INCIDENT]: "driftIncident",
+  [EntityType.DATA_STORE]: "dataStore",
 };
 
 const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
@@ -96,6 +96,11 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   container: "containerNode",
   cloudResource: "cloudResourceNode",
   misconfiguration: "misconfigNode",
+  managedIdentity: "managedIdentityNode",
+  accessGrant: "accessGrantNode",
+  accessPolicy: "accessPolicyNode",
+  driftIncident: "driftIncidentNode",
+  dataStore: "dataStoreNode",
 };
 
 const NODE_LABELS: Record<LineageNodeType, string> = {
@@ -118,6 +123,11 @@ const NODE_LABELS: Record<LineageNodeType, string> = {
   container: "Container",
   cloudResource: "Cloud Resource",
   misconfiguration: "Misconfiguration",
+  managedIdentity: "Managed Identity",
+  accessGrant: "Access Grant",
+  accessPolicy: "Access Policy",
+  driftIncident: "Drift Incident",
+  dataStore: "Data Store",
 };
 
 const NODE_COLORS: Record<LineageNodeType, string> = {
@@ -140,6 +150,11 @@ const NODE_COLORS: Record<LineageNodeType, string> = {
   container: "#6366f1",
   cloudResource: "#0ea5e9",
   misconfiguration: "#f97316",
+  managedIdentity: "#0891b2",
+  accessGrant: "#ca8a04",
+  accessPolicy: "#a16207",
+  driftIncident: "#fb923c",
+  dataStore: "#0284c7",
 };
 
 const NODE_LAYERS: Record<LineageNodeType, string> = {
@@ -162,6 +177,11 @@ const NODE_LAYERS: Record<LineageNodeType, string> = {
   container: "infra",
   cloudResource: "infra",
   misconfiguration: "finding",
+  managedIdentity: "identity",
+  accessGrant: "identity",
+  accessPolicy: "identity",
+  driftIncident: "finding",
+  dataStore: "asset",
 };
 
 const FINDING_NODE_TYPES = new Set<LineageNodeType>(["vulnerability", "misconfiguration"]);

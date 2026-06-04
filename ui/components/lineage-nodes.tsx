@@ -39,7 +39,12 @@ export type LineageNodeType =
   | "environment"
   | "fleet"
   | "cluster"
-  | "sharedServer";
+  | "sharedServer"
+  | "managedIdentity"
+  | "accessGrant"
+  | "accessPolicy"
+  | "driftIncident"
+  | "dataStore";
 
 export type LineageNodeData = {
   label: string;
@@ -179,6 +184,11 @@ const NODE_TYPE_BADGES: Record<LineageNodeType, string> = {
   fleet: "Fleet",
   cluster: "Cluster",
   sharedServer: "Shared",
+  managedIdentity: "Identity",
+  accessGrant: "Grant",
+  accessPolicy: "Policy",
+  driftIncident: "Drift",
+  dataStore: "Data",
 };
 
 function AgentNode({ data }: { data: LineageNodeData }) {
@@ -757,6 +767,11 @@ const CLUSTER_BUBBLE_COLORS: Record<LineageNodeType, string> = {
   container: "#6366f1",
   cloudResource: "#0ea5e9",
   misconfiguration: "#f97316",
+  managedIdentity: "#0891b2",
+  accessGrant: "#ca8a04",
+  accessPolicy: "#a16207",
+  driftIncident: "#fb923c",
+  dataStore: "#0284c7",
 };
 
 const DETAIL_RENDERERS: Record<LineageNodeType, ComponentType<{ data: LineageNodeData }>> = {
@@ -779,6 +794,11 @@ const DETAIL_RENDERERS: Record<LineageNodeType, ComponentType<{ data: LineageNod
   dataset: DatasetNode,
   container: ContainerNode,
   cloudResource: CloudResourceNode,
+  managedIdentity: ServiceAccountNode,
+  accessGrant: CredentialNode,
+  accessPolicy: CredentialNode,
+  driftIncident: MisconfigNode,
+  dataStore: CloudResourceNode,
 };
 
 function AdaptiveLineageNode({ data }: { data: LineageNodeData }) {
@@ -808,6 +828,11 @@ export const lineageNodeTypesAdaptive = {
   containerNode: AdaptiveLineageNode,
   cloudResourceNode: AdaptiveLineageNode,
   sharedServerNode: AdaptiveLineageNode,
+  managedIdentityNode: AdaptiveLineageNode,
+  accessGrantNode: AdaptiveLineageNode,
+  accessPolicyNode: AdaptiveLineageNode,
+  driftIncidentNode: AdaptiveLineageNode,
+  dataStoreNode: AdaptiveLineageNode,
   clusterPillNode: ClusterPillNode,
 };
 
@@ -835,6 +860,11 @@ export const lineageNodeTypes = {
   containerNode: ContainerNode,
   cloudResourceNode: CloudResourceNode,
   sharedServerNode: SharedServerNode,
+  managedIdentityNode: ServiceAccountNode,
+  accessGrantNode: CredentialNode,
+  accessPolicyNode: CredentialNode,
+  driftIncidentNode: MisconfigNode,
+  dataStoreNode: CloudResourceNode,
   clusterPillNode: ClusterPillNode,
 };
 
@@ -863,6 +893,11 @@ export const lineageNodeTypesSummary = {
   containerNode: SummaryNode,
   cloudResourceNode: SummaryNode,
   sharedServerNode: SummaryNode,
+  managedIdentityNode: SummaryNode,
+  accessGrantNode: SummaryNode,
+  accessPolicyNode: SummaryNode,
+  driftIncidentNode: SummaryNode,
+  dataStoreNode: SummaryNode,
   clusterPillNode: ClusterPillNode,
 };
 
@@ -891,5 +926,10 @@ export const lineageNodeTypesCluster = {
   containerNode: ClusterBubbleNode,
   cloudResourceNode: ClusterBubbleNode,
   sharedServerNode: ClusterBubbleNode,
+  managedIdentityNode: ClusterBubbleNode,
+  accessGrantNode: ClusterBubbleNode,
+  accessPolicyNode: ClusterBubbleNode,
+  driftIncidentNode: ClusterBubbleNode,
+  dataStoreNode: ClusterBubbleNode,
   clusterPillNode: ClusterPillNode,
 };

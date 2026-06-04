@@ -37,6 +37,11 @@ export const FOCUSED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   misconfiguration: true,
   credential: true,
   tool: true,
+  managedIdentity: true,
+  accessGrant: true,
+  accessPolicy: false,
+  driftIncident: true,
+  dataStore: true,
 };
 
 export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
@@ -59,6 +64,11 @@ export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   misconfiguration: true,
   credential: true,
   tool: true,
+  managedIdentity: true,
+  accessGrant: true,
+  accessPolicy: true,
+  driftIncident: true,
+  dataStore: true,
 };
 
 export type GraphScopePreset = "immediate" | "relevant" | "expanded";

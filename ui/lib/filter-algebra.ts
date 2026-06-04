@@ -77,6 +77,11 @@ const LAYER_TO_ENTITY: Record<LineageNodeType, EntityType | string> = {
   misconfiguration: EntityType.MISCONFIGURATION,
   credential: EntityType.CREDENTIAL,
   tool: EntityType.TOOL,
+  managedIdentity: EntityType.MANAGED_IDENTITY,
+  accessGrant: EntityType.ACCESS_GRANT,
+  accessPolicy: EntityType.ACCESS_POLICY,
+  driftIncident: EntityType.DRIFT_INCIDENT,
+  dataStore: EntityType.DATA_STORE,
 };
 
 const ENTITY_TO_LAYER: Map<string, LineageNodeType> = new Map();

@@ -98,6 +98,11 @@ const NODE_TYPE_TO_RENDERER: Record<LineageNodeType, string> = {
   fleet: "fleetNode",
   cluster: "clusterNode",
   sharedServer: "sharedServerNode",
+  managedIdentity: "managedIdentityNode",
+  accessGrant: "accessGrantNode",
+  accessPolicy: "accessPolicyNode",
+  driftIncident: "driftIncidentNode",
+  dataStore: "dataStoreNode",
 };
 
 // ─── Edge colors ─────────────────────────────────────────────────────────────

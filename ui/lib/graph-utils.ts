@@ -44,6 +44,11 @@ const LINEAGE_NODE_GRAPH_KIND: Record<LineageNodeType, GraphNodeKindKey | null> 
   environment: "environment",
   fleet: "fleet",
   cluster: "cluster",
+  managedIdentity: "service_account",
+  accessGrant: "credential",
+  accessPolicy: "credential",
+  driftIncident: "misconfiguration",
+  dataStore: "cloud_resource",
 };
 
 function generatedMetaForNodeType(nodeType: LineageNodeType) {

@@ -138,3 +138,149 @@ jobs:
             exit 1
           fi
           rm -f "$RESPONSE_FILE"
+
+  refresh-ui-latest:
+    name: Rebuild and publish UI latest from latest release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve latest release tag
+        id: release
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          TAG=$(git tag -l 'v*.*.*' --sort=-version:refname | head -n1)
+          if [ -z "$TAG" ]; then
+            echo "::error::No semver release tag found"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          git checkout "$TAG"
+
+      - name: Verify UI package version matches release tag
+        run: |
+          set -euo pipefail
+          VERSION=$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path("ui/package.json").read_text())["version"])
+          PY
+          )
+          if [ "$VERSION" != "${{ steps.release.outputs.version }}" ]; then
+            echo "::error::Checked out tag ${{ steps.release.outputs.tag }} but ui/package.json reports $VERSION"
+            exit 1
+          fi
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build refresh candidate UI image
+        run: docker build -f ui/Dockerfile -t agent-bom-ui:latest-refresh-test ui
+
+      - name: Smoke test refresh candidate UI
+        run: |
+          set -euo pipefail
+          cleanup() {
+            status=$?
+            if [ $status -ne 0 ]; then
+              docker logs agent-bom-ui-refresh-smoke || true
+            fi
+            docker stop agent-bom-ui-refresh-smoke >/dev/null 2>&1 || true
+            exit $status
+          }
+          docker run -d --rm --name agent-bom-ui-refresh-smoke -p 3000:3000 -e NEXT_PUBLIC_API_URL= agent-bom-ui:latest-refresh-test
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/ >/dev/null || {
+            echo "::error::UI container did not become healthy in time"
+            exit 1
+          }
+
+      - name: UI image vulnerability refresh gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          image-ref: agent-bom-ui:latest-refresh-test
+          format: table
+          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .image-scan-ignore
+
+      - name: Build and push refreshed UI latest
+        id: build-push-ui
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: ui
+          file: ui/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            NEXT_PUBLIC_API_URL=
+          provenance: true
+          sbom: true
+          tags: |
+            agentbom/agent-bom-ui:latest
+          labels: |
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=agent-bom-ui
+            org.opencontainers.image.description=Standalone browser UI for the self-hosted agent-bom control plane. Requires the agent-bom API image.
+            org.opencontainers.image.created=${{ github.run_id }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.tag }}
+
+      - name: Sync UI Docker Hub README
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHORT_DESCRIPTION="Standalone browser UI for the self-hosted agent-bom control plane. Requires the agent-bom API image."
+          TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            | jq -r '.token')
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Docker Hub login failed"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          DESCRIPTION=$(jq -Rs . < DOCKER_HUB_UI_README.md)
+          SHORT_DESCRIPTION_JSON=$(printf '%s' "$SHORT_DESCRIPTION" | jq -Rs .)
+          RESPONSE_FILE=$(mktemp)
+          HTTP_CODE=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" -X PATCH \
+            "https://hub.docker.com/v2/repositories/agentbom/agent-bom-ui/" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"full_description\": ${DESCRIPTION}, \"description\": ${SHORT_DESCRIPTION_JSON}}")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Docker Hub UI README sync failed (HTTP $HTTP_CODE)"
+            cat "$RESPONSE_FILE"
+            exit 1
+          fi
+          rm -f "$RESPONSE_FILE"

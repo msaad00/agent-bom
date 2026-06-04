@@ -2,7 +2,7 @@ import { MarkerType, type Edge, type Node } from "@xyflow/react";
 
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
 import { readReachBreakdown, readReachScore, reachEdgeWidth, reachStrokeColor } from "@/lib/effective-reach";
-import type { LegendItem } from "@/lib/graph-utils";
+import { relationshipLegendItem, type LegendItem } from "@/lib/graph-utils";
 import {
   EntityType,
   type UnifiedEdge,
@@ -65,6 +65,15 @@ const ENTITY_TO_NODE_TYPE: Partial<Record<EntityType | string, LineageNodeType>>
   [EntityType.DATASET]: "dataset",
   [EntityType.CONTAINER]: "container",
   [EntityType.CLOUD_RESOURCE]: "cloudResource",
+  // Agent-identity governance + cloud-CNAPP nodes get distinct render types
+  // (own color/label/badge) reusing the closest component renderer, so an
+  // investigator can tell a managed identity from a service account, a drift
+  // incident from a misconfiguration, and a data store from a cloud resource.
+  [EntityType.MANAGED_IDENTITY]: "managedIdentity",
+  [EntityType.ACCESS_GRANT]: "accessGrant",
+  [EntityType.ACCESS_POLICY]: "accessPolicy",
+  [EntityType.DRIFT_INCIDENT]: "driftIncident",
+  [EntityType.DATA_STORE]: "dataStore",
 };
 
 const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
@@ -87,6 +96,11 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   container: "containerNode",
   cloudResource: "cloudResourceNode",
   misconfiguration: "misconfigNode",
+  managedIdentity: "managedIdentityNode",
+  accessGrant: "accessGrantNode",
+  accessPolicy: "accessPolicyNode",
+  driftIncident: "driftIncidentNode",
+  dataStore: "dataStoreNode",
 };
 
 const NODE_LABELS: Record<LineageNodeType, string> = {
@@ -109,6 +123,11 @@ const NODE_LABELS: Record<LineageNodeType, string> = {
   container: "Container",
   cloudResource: "Cloud Resource",
   misconfiguration: "Misconfiguration",
+  managedIdentity: "Managed Identity",
+  accessGrant: "Access Grant",
+  accessPolicy: "Access Policy",
+  driftIncident: "Drift Incident",
+  dataStore: "Data Store",
 };
 
 const NODE_COLORS: Record<LineageNodeType, string> = {
@@ -131,6 +150,11 @@ const NODE_COLORS: Record<LineageNodeType, string> = {
   container: "#6366f1",
   cloudResource: "#0ea5e9",
   misconfiguration: "#f97316",
+  managedIdentity: "#0891b2",
+  accessGrant: "#ca8a04",
+  accessPolicy: "#a16207",
+  driftIncident: "#fb923c",
+  dataStore: "#0284c7",
 };
 
 const NODE_LAYERS: Record<LineageNodeType, string> = {
@@ -153,12 +177,19 @@ const NODE_LAYERS: Record<LineageNodeType, string> = {
   container: "infra",
   cloudResource: "infra",
   misconfiguration: "finding",
+  managedIdentity: "identity",
+  accessGrant: "identity",
+  accessPolicy: "identity",
+  driftIncident: "finding",
+  dataStore: "asset",
 };
 
 const FINDING_NODE_TYPES = new Set<LineageNodeType>(["vulnerability", "misconfiguration"]);
 const RUNTIME_RELATIONSHIPS = new Set<string>([
   RelationshipType.INVOKED,
+  RelationshipType.CALLED,
   RelationshipType.ACCESSED,
+  RelationshipType.USED_CREDENTIAL,
   RelationshipType.DELEGATED_TO,
 ]);
 const ANIMATED_RELATIONSHIPS = new Set<string>([
@@ -167,13 +198,20 @@ const ANIMATED_RELATIONSHIPS = new Set<string>([
   RelationshipType.LATERAL_PATH,
   RelationshipType.SHARES_SERVER,
   RelationshipType.SHARES_CRED,
+  RelationshipType.EXPOSED_TO,
+  RelationshipType.HAS_PERMISSION,
+  RelationshipType.EXHIBITS_DRIFT,
   ...RUNTIME_RELATIONSHIPS,
 ]);
 const DASHED_RELATIONSHIPS = new Set<string>([
   RelationshipType.EXPOSES_CRED,
+  RelationshipType.REACHES_TOOL,
+  RelationshipType.EXPLOITABLE_VIA,
   RelationshipType.SHARES_SERVER,
   RelationshipType.SHARES_CRED,
   RelationshipType.LATERAL_PATH,
+  RelationshipType.EXPOSED_TO,
+  RelationshipType.HAS_PERMISSION,
   ...RUNTIME_RELATIONSHIPS,
 ]);
 
@@ -249,7 +287,8 @@ function deriveVisibleNodeIds(
       .filter((node) => node.entity_type === EntityType.AGENT && node.label === filters.agentName)
       .map((node) => node.id);
     if (seeds.length > 0) {
-      visible = intersectSets(visible, collectNeighborhood(seeds, undirected, Math.max(filters.maxDepth, 2)));
+      const agentDepth = filters.vulnOnly || filters.severity ? Math.max(filters.maxDepth, 3) : Math.max(filters.maxDepth, 2);
+      visible = intersectSets(visible, collectNeighborhood(seeds, undirected, agentDepth));
     }
   }
 
@@ -268,7 +307,11 @@ function deriveVisibleNodeIds(
       })
       .slice(0, filters.agentName ? 14 : 18)
       .map((node) => node.id);
-    visible = intersectSets(visible, collectNeighborhood(findingSeeds, undirected, Math.max(2, filters.maxDepth - 1)));
+    // Keep complete investigation chains visible. With agent focus + vuln-only,
+    // using a shallow finding-side neighborhood kept only middle nodes
+    // (server/package) and dropped the endpoints an operator needs to explain
+    // the path: the source agent and the CVE/finding.
+    visible = intersectSets(visible, collectNeighborhood(findingSeeds, undirected, Math.max(3, filters.maxDepth)));
   }
 
   visible = new Set(
@@ -393,6 +436,41 @@ function toLineageData(
     case "credential":
       data.serverName = firstLinkedLabel(node.id, incoming, nodeById, EntityType.SERVER);
       break;
+    case "managedIdentity":
+      data.description =
+        stringAttr(node, "principal_id") ||
+        stringAttr(node, "tenant_id") ||
+        stringAttr(node, "provider") ||
+        stringAttr(node, "description");
+      break;
+    case "accessGrant":
+      data.description =
+        stringAttr(node, "scope") ||
+        stringAttr(node, "role") ||
+        stringAttr(node, "permission") ||
+        stringAttr(node, "description");
+      break;
+    case "accessPolicy":
+      data.description =
+        stringAttr(node, "condition") ||
+        stringAttr(node, "effect") ||
+        stringAttr(node, "policy_id") ||
+        stringAttr(node, "description");
+      break;
+    case "driftIncident":
+      data.description =
+        stringAttr(node, "signal") ||
+        stringAttr(node, "expected") ||
+        stringAttr(node, "observed") ||
+        stringAttr(node, "recommendation");
+      break;
+    case "dataStore":
+      data.description =
+        stringAttr(node, "store_type") ||
+        stringAttr(node, "cloud_provider") ||
+        stringAttr(node, "classification") ||
+        stringAttr(node, "description");
+      break;
     case "tool":
       data.description = stringAttr(node, "description");
       break;
@@ -420,18 +498,25 @@ function toLineageData(
 function toFlowEdge(edge: UnifiedEdge): Edge {
   const relationship = String(edge.relationship);
   const color = RELATIONSHIP_COLOR_MAP[relationship] ?? "#52525b";
+  const legend = relationshipLegendItem(relationship);
   const reachScore = readReachScore(edge.evidence?.effective_reach_score);
   const reachColor = reachStrokeColor(reachScore);
   const strokeColor = reachColor ?? color;
   const dashed = DASHED_RELATIONSHIPS.has(relationship);
   const animated = ANIMATED_RELATIONSHIPS.has(relationship) || edge.weight >= 4 || (reachScore ?? 0) >= 90;
+  const runtime = RUNTIME_RELATIONSHIPS.has(relationship);
 
   return {
     id: edge.id || `${edge.source}:${relationship}:${edge.target}`,
     source: edge.source,
     target: edge.target,
     type: "smoothstep",
-    data: { relationship },
+    data: {
+      relationship,
+      relationshipLabel: legend.label,
+      relationshipCategory: legend.layer,
+      evidenceMode: runtime ? "runtime" : dashed ? "inferred" : "static",
+    },
     animated,
     style: {
       stroke: strokeColor,
@@ -492,10 +577,15 @@ function legendForNodeTypes(nodeTypes: Set<LineageNodeType>): LegendItem[] {
     "dataset",
     "container",
     "cloudResource",
+    "dataStore",
     "credential",
+    "managedIdentity",
+    "accessGrant",
+    "accessPolicy",
     "tool",
     "vulnerability",
     "misconfiguration",
+    "driftIncident",
   ]
     .filter((nodeType): nodeType is LineageNodeType => nodeTypes.has(nodeType as LineageNodeType))
     .map((nodeType) => ({

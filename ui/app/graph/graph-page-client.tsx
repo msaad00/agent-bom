@@ -230,6 +230,11 @@ const LAYER_ENTITY_TYPES: Array<[LineageNodeType, EntityType]> = [
   ["misconfiguration", EntityType.MISCONFIGURATION],
   ["credential", EntityType.CREDENTIAL],
   ["tool", EntityType.TOOL],
+  ["managedIdentity", EntityType.MANAGED_IDENTITY],
+  ["accessGrant", EntityType.ACCESS_GRANT],
+  ["accessPolicy", EntityType.ACCESS_POLICY],
+  ["driftIncident", EntityType.DRIFT_INCIDENT],
+  ["dataStore", EntityType.DATA_STORE],
 ];
 
 const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], RelationshipType[] | undefined> = {
@@ -253,10 +258,15 @@ const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], Relations
     RelationshipType.SHARES_SERVER,
     RelationshipType.SHARES_CRED,
     RelationshipType.LATERAL_PATH,
+    RelationshipType.EXPLOITABLE_VIA,
+    RelationshipType.EXPOSED_TO,
+    RelationshipType.HAS_PERMISSION,
   ],
   runtime: [
     RelationshipType.INVOKED,
     RelationshipType.ACCESSED,
+    RelationshipType.CALLED,
+    RelationshipType.USED_CREDENTIAL,
     RelationshipType.DELEGATED_TO,
   ],
   governance: [
@@ -264,6 +274,18 @@ const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], Relations
     RelationshipType.OWNS,
     RelationshipType.PART_OF,
     RelationshipType.MEMBER_OF,
+    RelationshipType.AUTHENTICATES_AS,
+    RelationshipType.SCOPED_TO,
+    RelationshipType.GOVERNS,
+    RelationshipType.EXHIBITS_DRIFT,
+    RelationshipType.ASSUMES,
+    RelationshipType.TRUSTS,
+    RelationshipType.ATTACHED,
+    RelationshipType.INHERITS,
+    RelationshipType.CAN_ACCESS,
+    RelationshipType.CROSS_ACCOUNT_TRUST,
+    RelationshipType.STORES,
+    RelationshipType.HAS_PERMISSION,
   ],
 };
 
@@ -511,6 +533,7 @@ function GraphPageInner() {
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
+  const [autoPathDismissed, setAutoPathDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UnifiedNode[]>([]);
   const [searching, setSearching] = useState(false);
@@ -601,6 +624,7 @@ function GraphPageInner() {
     setExpandedClusterIds(new Set());
     setPinnedFocusId(null);
     setHoveredNodeId(null);
+    setAutoPathDismissed(false);
     setReachabilitySummary(null);
     setReachabilityError(null);
   }, [serverFilterKey]);
@@ -609,6 +633,7 @@ function GraphPageInner() {
     setSearchResults([]);
     setSearchQuery("");
     setSelectedAttackPathKey(null);
+    setAutoPathDismissed(false);
     setInvestigationMode(null);
     setReachabilitySummary(null);
     setReachabilityError(null);
@@ -743,6 +768,7 @@ function GraphPageInner() {
     () => new Map((graphData?.nodes ?? []).map((node) => [node.id, node])),
     [graphData?.nodes],
   );
+  const activeScopePreset = graphScopePresetForFilters(filters);
 
   const attackPaths = useMemo(
     () =>
@@ -753,12 +779,18 @@ function GraphPageInner() {
     [graphData?.attack_paths],
   );
 
+  const effectiveSelectedAttackPathKey =
+    selectedAttackPathKey ??
+    (!autoPathDismissed && activeScopePreset !== "expanded" && attackPaths[0]
+      ? attackPathKey(attackPaths[0])
+      : null);
+
   const selectedAttackPath = useMemo(
     () =>
-      selectedAttackPathKey
-        ? attackPaths.find((path) => attackPathKey(path) === selectedAttackPathKey) ?? null
+      effectiveSelectedAttackPathKey
+        ? attackPaths.find((path) => attackPathKey(path) === effectiveSelectedAttackPathKey) ?? null
         : null,
-    [attackPaths, selectedAttackPathKey],
+    [attackPaths, effectiveSelectedAttackPathKey],
   );
 
   useEffect(() => {
@@ -826,7 +858,6 @@ function GraphPageInner() {
     [graphData, filters],
   );
   const validValues = filterAlgebra.validValues;
-  const activeScopePreset = graphScopePresetForFilters(filters);
 
   const handleResetFilters = useCallback(() => {
     setFilters(createFocusedGraphFilters(flow.agentNames[0] ?? null));
@@ -841,9 +872,11 @@ function GraphPageInner() {
   // preset — operator triage (focused) collapses faster than topology
   // review (expanded). Run before layout so the layout engine never positions
   // siblings that the cluster pill is going to hide.
-  const aggregationThreshold = filters.vulnOnly
-    ? FOCUSED_AGGREGATION_THRESHOLD
-    : EXPANDED_AGGREGATION_THRESHOLD;
+  const aggregationThreshold = selectedAttackPath
+    ? Number.MAX_SAFE_INTEGER
+    : filters.vulnOnly
+      ? FOCUSED_AGGREGATION_THRESHOLD
+      : EXPANDED_AGGREGATION_THRESHOLD;
 
   const aggregated = useMemo(
     () =>
@@ -906,6 +939,10 @@ function GraphPageInner() {
     () => (selectedAttackPath ? buildPathEdgeKeys(selectedAttackPath.hops) : null),
     [selectedAttackPath],
   );
+  const attackPathNodeOrder = useMemo(
+    () => (selectedAttackPath ? new Map(selectedAttackPath.hops.map((hop, index) => [hop, index])) : null),
+    [selectedAttackPath],
+  );
 
   /**
    * Compose the existing className (e.g. `node-critical-pulse`) with the
@@ -937,10 +974,15 @@ function GraphPageInner() {
   const lineageLayoutNodes = layoutNodes as Node<LineageNodeData>[];
   const displayNodes = useMemo<Node<LineageNodeData>[]>(() => {
     if (attackPathNodeIds) {
-      return lineageLayoutNodes.map((node) => {
+      return lineageLayoutNodes.filter((node) => attackPathNodeIds.has(node.id)).map((node) => {
         const inPath = attackPathNodeIds.has(node.id);
+        const order = attackPathNodeOrder?.get(node.id) ?? 0;
         return {
           ...node,
+          position: {
+            x: order * 255,
+            y: order % 2 === 0 ? 0 : 96,
+          },
           className: composeFocusClass(node.className, inPath, !inPath),
           data: {
             ...node.data,
@@ -991,7 +1033,7 @@ function GraphPageInner() {
         },
       };
     });
-  }, [lineageLayoutNodes, localNeighborhoodIds, attackPathNodeIds, reachabilitySummary, activeFocusId, effectiveLodBand]);
+  }, [lineageLayoutNodes, localNeighborhoodIds, attackPathNodeIds, attackPathNodeOrder, reachabilitySummary, activeFocusId, effectiveLodBand]);
 
   const compressedGroupCount = aggregatedClusterNodes.length;
   const sourceNodeCount = graphData?.nodes.length ?? flow.nodes.length;
@@ -999,10 +1041,29 @@ function GraphPageInner() {
 
   const displayEdges = useMemo(() => {
     if (attackPathEdgeKeys) {
-      return layoutEdges.map((edge): Edge => {
+      return layoutEdges.filter((edge) => attackPathEdgeKeys.has(`${edge.source}=>${edge.target}`)).map((edge): Edge => {
         const inPath = attackPathEdgeKeys.has(`${edge.source}=>${edge.target}`);
+        const relationshipLabel =
+          typeof edge.data?.relationshipLabel === "string"
+            ? edge.data.relationshipLabel
+            : typeof edge.data?.relationship === "string"
+              ? edge.data.relationship.replace(/_/g, " ")
+              : undefined;
         return {
           ...edge,
+          label: relationshipLabel,
+          labelShowBg: true,
+          labelBgPadding: [8, 4],
+          labelBgBorderRadius: 6,
+          labelBgStyle: {
+            fill: captureMode ? "#0a0a0a" : "rgba(24,24,27,0.92)",
+            fillOpacity: 0.94,
+          },
+          labelStyle: {
+            fill: "#f4f4f5",
+            fontSize: 11,
+            fontWeight: 600,
+          },
           animated: captureMode ? false : Boolean(inPath || edge.animated),
           style: {
             ...edge.style,
@@ -1123,6 +1184,7 @@ function GraphPageInner() {
     });
     setSelectedNodeId(node.id);
     setSelectedAttackPathKey(null);
+    setAutoPathDismissed(true);
     // Click pin (#2257): toggle a "pinned focus" on the clicked node.
     // Re-clicking the same node clears the pin. Hover state is reset
     // because the pin replaces hover as the focus source.
@@ -1155,6 +1217,7 @@ function GraphPageInner() {
     setSelectedNodeId(id);
     setHoveredNodeId(id);
     setSelectedAttackPathKey(null);
+    setAutoPathDismissed(true);
   }, []);
 
   const runSearch = useCallback(async () => {
@@ -1201,6 +1264,7 @@ function GraphPageInner() {
       setPinnedFocusId(null);
       setHoveredNodeId(request.rootId);
       setSelectedAttackPathKey(null);
+      setAutoPathDismissed(true);
       setReachabilitySummary(null);
       setReachabilityError(null);
       setSearchResults([]);
@@ -1277,6 +1341,7 @@ function GraphPageInner() {
     setPinnedFocusId(null);
     setHoveredNodeId(null);
     setSelectedAttackPathKey(null);
+    setAutoPathDismissed(false);
     setReachabilitySummary(null);
     setReachabilityError(null);
   }, []);
@@ -1652,7 +1717,7 @@ function GraphPageInner() {
         {attackPaths.length > 0 && (
           <details
             className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3 group"
-            {...(selectedAttackPath ? { open: true } : {})}
+            {...(selectedAttackPathKey ? { open: true } : {})}
           >
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
               <div>
@@ -1673,7 +1738,10 @@ function GraphPageInner() {
               {selectedAttackPath && (
                 <button
                   type="button"
-                  onClick={() => setSelectedAttackPathKey(null)}
+                  onClick={() => {
+                    setSelectedAttackPathKey(null);
+                    setAutoPathDismissed(true);
+                  }}
                   className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
                 >
                   Clear path focus
@@ -1686,7 +1754,7 @@ function GraphPageInner() {
                 const key = attackPathKey(path);
                 const pathNodes = toAttackCardNodes(path, graphNodeById);
                 if (pathNodes.length === 0) return null;
-                const isActive = selectedAttackPathKey === key;
+                const isActive = effectiveSelectedAttackPathKey === key;
                 return (
                   <div
                     key={key}
@@ -1699,7 +1767,9 @@ function GraphPageInner() {
                       onClick={() => {
                         setReachabilitySummary(null);
                         setReachabilityError(null);
-                        setSelectedAttackPathKey((current) => (current === key ? null : key));
+                        const clearing = effectiveSelectedAttackPathKey === key;
+                        setAutoPathDismissed(clearing);
+                        setSelectedAttackPathKey(clearing ? null : key);
                       }}
                     />
                   </div>
@@ -1835,7 +1905,7 @@ function GraphPageInner() {
               {/* Dock legend on the canvas itself so node-color -> entity-type
                   is one glance away. */}
               <Panel position="top-right" className="!m-2">
-                <GraphLegend items={legendItems} />
+                <GraphLegend items={legendItems} defaultOpen={captureMode} />
               </Panel>
             </ReactFlow>
           )}

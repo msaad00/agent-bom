@@ -327,6 +327,9 @@ describe("applyFilters — constraint propagation", () => {
       "shares_server",
       "shares_cred",
       "lateral_path",
+      "exposed_to",
+      "has_permission",
+      "exhibits_drift",
     ]);
     for (const e of result.edges) {
       expect(allowed.has(String(e.relationship))).toBe(true);
@@ -380,12 +383,16 @@ describe("URL state codec", () => {
     expect(params.get("agent")).toBe("claude-desktop");
     expect(params.get("depth")).toBe("4");
     expect(params.get("relationships")).toBe("attack");
+    expect(params.get("layers")).toContain("managedIdentity");
+    expect(params.get("layers")).toContain("dataStore");
 
     const decoded = decodeFiltersFromParams(params);
     expect(decoded.severity).toBe("high");
     expect(decoded.agentName).toBe("claude-desktop");
     expect(decoded.maxDepth).toBe(4);
     expect(decoded.relationshipScope).toBe("attack");
+    expect(decoded.layers?.managedIdentity).toBe(true);
+    expect(decoded.layers?.dataStore).toBe(true);
   });
 
   it("ignores unknown / malformed values", () => {

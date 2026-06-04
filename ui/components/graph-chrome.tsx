@@ -39,6 +39,12 @@ const LAYER_ORDER = [
   "tool",
   "package",
   "runtime_evidence",
+  "inventory",
+  "vulnerability",
+  "lateral_movement",
+  "governance",
+  "runtime",
+  "correlation",
   "asset",
   "infra",
   "finding",
@@ -54,6 +60,12 @@ const LAYER_LABELS: Record<string, string> = {
   tool: "Tools",
   package: "Packages",
   runtime_evidence: "Runtime Evidence",
+  inventory: "Inventory",
+  vulnerability: "Vulnerability",
+  lateral_movement: "Lateral Movement",
+  governance: "Governance",
+  runtime: "Runtime",
+  correlation: "Correlation",
   asset: "Assets",
   infra: "Infrastructure",
   finding: "Findings",
@@ -138,7 +150,11 @@ function LegendSection({ title, items }: { title: string; items: LegendItem[] })
       <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{title}</div>
       <div className="grid grid-cols-1 gap-x-3 gap-y-2 text-[11px] text-[var(--text-secondary)] sm:grid-cols-2">
         {items.map((item) => (
-          <span key={`${title}:${item.label}`} className="flex min-w-0 items-center gap-2">
+          <span
+            key={`${title}:${item.label}`}
+            className="flex min-w-0 items-center gap-2"
+            title={item.description ?? item.label}
+          >
             <LegendMarker item={item} />
             <LegendIcon item={item} />
             <span className="min-w-0 truncate" title={item.label}>{item.label}</span>
@@ -195,6 +211,9 @@ function LegendIcon({ item }: { item: LegendItem }) {
   const className = "h-3.5 w-3.5 shrink-0";
 
   if (label.includes("agent")) return <Shield className={className} style={{ color: item.color }} />;
+  if (label.includes("identity") || label.includes("grant") || label.includes("policy") || label.includes("permission")) {
+    return <KeyRound className={className} style={{ color: item.color }} />;
+  }
   if (label.includes("server")) return <Server className={className} style={{ color: item.color }} />;
   if (label.includes("package")) return <Boxes className={className} style={{ color: item.color }} />;
   if (label.includes("cred")) return <KeyRound className={className} style={{ color: item.color }} />;

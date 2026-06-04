@@ -37,6 +37,11 @@ export const FOCUSED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   misconfiguration: true,
   credential: true,
   tool: true,
+  managedIdentity: true,
+  accessGrant: true,
+  accessPolicy: false,
+  driftIncident: true,
+  dataStore: true,
 };
 
 export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
@@ -59,6 +64,11 @@ export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   misconfiguration: true,
   credential: true,
   tool: true,
+  managedIdentity: true,
+  accessGrant: true,
+  accessPolicy: true,
+  driftIncident: true,
+  dataStore: true,
 };
 
 export type GraphScopePreset = "immediate" | "relevant" | "expanded";
@@ -178,9 +188,30 @@ const SCOPE_RELATIONSHIPS: Record<Exclude<FilterState["relationshipScope"], "all
     "shares_server",
     "shares_cred",
     "lateral_path",
+    "exposed_to",
+    "has_permission",
+    "exhibits_drift",
   ],
-  runtime: ["invoked", "accessed", "delegated_to"],
-  governance: ["manages", "owns", "part_of", "member_of"],
+  runtime: ["invoked", "called", "accessed", "used_credential", "delegated_to"],
+  governance: [
+    "manages",
+    "owns",
+    "part_of",
+    "member_of",
+    "assumes",
+    "trusts",
+    "attached",
+    "inherits",
+    "can_access",
+    "cross_account_trust",
+    "authenticates_as",
+    "scoped_to",
+    "governs",
+    "exhibits_drift",
+    "has_permission",
+    "stores",
+    "exposed_to",
+  ],
 };
 
 /** Severity rank used to decide whether a min-severity option is reachable. */
@@ -214,6 +245,11 @@ const LAYER_LABELS: { key: LineageNodeType; label: string; color: string }[] = [
   { key: "misconfiguration", label: "Misconfigs", color: "bg-orange-500" },
   { key: "credential", label: "Credentials", color: "bg-amber-500" },
   { key: "tool", label: "Tools", color: "bg-purple-500" },
+  { key: "managedIdentity", label: "Managed IDs", color: "bg-cyan-600" },
+  { key: "accessGrant", label: "Access Grants", color: "bg-yellow-600" },
+  { key: "accessPolicy", label: "Policies", color: "bg-amber-700" },
+  { key: "driftIncident", label: "Drift", color: "bg-orange-400" },
+  { key: "dataStore", label: "Data Stores", color: "bg-sky-600" },
 ];
 
 const AGENT_OPTION_HEIGHT = 32;

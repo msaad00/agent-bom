@@ -893,6 +893,7 @@ ENTITY_LEGEND: list[LegendEntry] = [
     LegendEntry(key="access_grant", label="Access Grant", color="#ca8a04", shape="diamond", layer=GraphSemanticLayer.IDENTITY.value),
     LegendEntry(key="access_policy", label="Access Policy", color="#a16207", shape="diamond", layer=GraphSemanticLayer.IDENTITY.value),
     LegendEntry(key="drift_incident", label="Drift Incident", color="#fb923c", shape="triangle", layer=GraphSemanticLayer.FINDING.value),
+    LegendEntry(key="data_store", label="Data Store", color="#0284c7", shape="square", layer=GraphSemanticLayer.ASSET.value),
 ]
 
 RELATIONSHIP_LEGEND: list[LegendEntry] = [
@@ -945,4 +946,8 @@ RELATIONSHIP_LEGEND: list[LegendEntry] = [
     LegendEntry(key="scoped_to", label="Scoped To", color="#22d3ee"),
     LegendEntry(key="governs", label="Governs", color="#a16207"),
     LegendEntry(key="exhibits_drift", label="Exhibits Drift", color="#fb923c"),
+    # Cloud-CNAPP
+    LegendEntry(key="exposed_to", label="Exposed To", color="#e11d48"),
+    LegendEntry(key="stores", label="Stores", color="#0284c7"),
+    LegendEntry(key="has_permission", label="Has Permission", color="#dc2626"),
 ]

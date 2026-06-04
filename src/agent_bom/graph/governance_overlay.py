@@ -36,6 +36,10 @@ def _label_index(graph: UnifiedGraph, entity_type: EntityType) -> dict[str, list
 
 def _gnode(node_id: str, entity_type: EntityType, label: str, **kw: Any) -> UnifiedNode:
     attributes = kw.pop("attributes", {})
+    # Governance context nodes carry an "info" severity so they survive default
+    # graph queries (severity_id 0 / unknown is dropped by some filters) while
+    # never outranking real findings. Callers (e.g. drift) override this.
+    kw.setdefault("severity", "info")
     return UnifiedNode(
         id=node_id,
         entity_type=entity_type,

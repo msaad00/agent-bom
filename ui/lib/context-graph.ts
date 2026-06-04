@@ -6,6 +6,7 @@
 import { type Node, type Edge, MarkerType } from "@xyflow/react";
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
 import { readReachBreakdown, readReachScore, reachEdgeWidth, reachStrokeColor } from "@/lib/effective-reach";
+import { RELATIONSHIP_COLOR_MAP } from "@/lib/graph-schema";
 
 // ─── Types (mirror Python context_graph.to_serializable) ────────────────────
 
@@ -98,6 +99,11 @@ const NODE_TYPE_TO_RENDERER: Record<LineageNodeType, string> = {
   fleet: "fleetNode",
   cluster: "clusterNode",
   sharedServer: "sharedServerNode",
+  managedIdentity: "managedIdentityNode",
+  accessGrant: "accessGrantNode",
+  accessPolicy: "accessPolicyNode",
+  driftIncident: "driftIncidentNode",
+  dataStore: "dataStoreNode",
 };
 
 // ─── Edge colors ─────────────────────────────────────────────────────────────
@@ -202,7 +208,7 @@ export function buildContextFlowGraph(
     .map((e, i) => {
     const isOnPath = pathEdgePairs.has(`${e.source}→${e.target}`);
     const relationship = e.relationship ?? e.kind;
-    const baseColor = EDGE_COLORS[relationship] ?? "#52525b";
+    const baseColor = RELATIONSHIP_COLOR_MAP[relationship] ?? EDGE_COLORS[relationship] ?? "#52525b";
     const reachScore = readReachScore(e.metadata?.effective_reach_score);
     const reachColor = reachStrokeColor(reachScore);
     const strokeColor = isOnPath ? "#f97316" : reachColor ?? baseColor;
@@ -212,6 +218,11 @@ export function buildContextFlowGraph(
         source: e.source,
         target: e.target,
         type: "smoothstep",
+        data: {
+          relationship,
+          relationshipLabel: relationship.replace(/_/g, " "),
+          evidenceMode: isOnPath ? "selected_path" : relationship.includes("runtime") ? "runtime" : "static",
+        },
         animated: isOnPath,
         style: {
           stroke: strokeColor,

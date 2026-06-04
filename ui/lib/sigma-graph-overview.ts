@@ -65,6 +65,11 @@ const SIGMA_DEFAULT_LAYERS: Record<LineageNodeType, boolean> = {
   container: true,
   cloudResource: true,
   misconfiguration: true,
+  managedIdentity: true,
+  accessGrant: true,
+  accessPolicy: true,
+  driftIncident: true,
+  dataStore: true,
 };
 
 const SIGMA_DEFAULT_FILTERS: UnifiedGraphFlowFilters = {

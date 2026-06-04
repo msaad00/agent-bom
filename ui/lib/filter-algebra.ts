@@ -77,6 +77,11 @@ const LAYER_TO_ENTITY: Record<LineageNodeType, EntityType | string> = {
   misconfiguration: EntityType.MISCONFIGURATION,
   credential: EntityType.CREDENTIAL,
   tool: EntityType.TOOL,
+  managedIdentity: EntityType.MANAGED_IDENTITY,
+  accessGrant: EntityType.ACCESS_GRANT,
+  accessPolicy: EntityType.ACCESS_POLICY,
+  driftIncident: EntityType.DRIFT_INCIDENT,
+  dataStore: EntityType.DATA_STORE,
 };
 
 const ENTITY_TO_LAYER: Map<string, LineageNodeType> = new Map();
@@ -109,10 +114,16 @@ const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], Set<strin
     RelationshipType.SHARES_SERVER,
     RelationshipType.SHARES_CRED,
     RelationshipType.LATERAL_PATH,
+    RelationshipType.EXPLOITABLE_VIA,
+    RelationshipType.EXPOSED_TO,
+    RelationshipType.HAS_PERMISSION,
+    RelationshipType.EXHIBITS_DRIFT,
   ]),
   runtime: new Set<string>([
     RelationshipType.INVOKED,
+    RelationshipType.CALLED,
     RelationshipType.ACCESSED,
+    RelationshipType.USED_CREDENTIAL,
     RelationshipType.DELEGATED_TO,
   ]),
   governance: new Set<string>([
@@ -120,12 +131,26 @@ const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], Set<strin
     RelationshipType.OWNS,
     RelationshipType.PART_OF,
     RelationshipType.MEMBER_OF,
+    RelationshipType.ASSUMES,
+    RelationshipType.TRUSTS,
+    RelationshipType.ATTACHED,
+    RelationshipType.INHERITS,
+    RelationshipType.CAN_ACCESS,
+    RelationshipType.CROSS_ACCOUNT_TRUST,
+    RelationshipType.AUTHENTICATES_AS,
+    RelationshipType.SCOPED_TO,
+    RelationshipType.GOVERNS,
+    RelationshipType.EXHIBITS_DRIFT,
+    RelationshipType.STORES,
+    RelationshipType.HAS_PERMISSION,
   ]),
 };
 
 const RUNTIME_RELATIONSHIPS: Set<string> = new Set([
   RelationshipType.INVOKED,
+  RelationshipType.CALLED,
   RelationshipType.ACCESSED,
+  RelationshipType.USED_CREDENTIAL,
   RelationshipType.DELEGATED_TO,
 ]);
 
@@ -433,6 +458,11 @@ const URL_LAYER_KEYS: LineageNodeType[] = [
   "misconfiguration",
   "credential",
   "tool",
+  "managedIdentity",
+  "accessGrant",
+  "accessPolicy",
+  "driftIncident",
+  "dataStore",
 ];
 
 /** Encode a FilterState into URLSearchParams (deterministic, no defaults). */

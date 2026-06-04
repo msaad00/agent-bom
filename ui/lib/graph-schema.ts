@@ -80,6 +80,8 @@ export enum EntityType {
   ACCESS_POLICY = "access_policy",
   // Behavioral drift (detection finding)
   DRIFT_INCIDENT = "drift_incident",
+  // Cloud-CNAPP primitives
+  DATA_STORE = "data_store",
   // Organizational hierarchy
   PROVIDER = "provider",
   ENVIRONMENT = "environment",
@@ -138,6 +140,11 @@ export enum RelationshipType {
   SCOPED_TO = "scoped_to",
   GOVERNS = "governs",
   EXHIBITS_DRIFT = "exhibits_drift",
+
+  // Cloud-CNAPP: exposure, data reachability, effective permissions
+  EXPOSED_TO = "exposed_to",
+  STORES = "stores",
+  HAS_PERMISSION = "has_permission",
 }
 
 export enum NodeStatus {
@@ -450,6 +457,7 @@ export const ENTITY_COLOR_MAP: Record<string, string> = {
   [EntityType.ACCESS_GRANT]: "#ca8a04",    // amber
   [EntityType.ACCESS_POLICY]: "#a16207",   // amber
   [EntityType.DRIFT_INCIDENT]: "#fb923c",  // orange
+  [EntityType.DATA_STORE]: "#0284c7",      // sky
   [EntityType.PROVIDER]: "#6b7280",        // gray
   [EntityType.ENVIRONMENT]: "#6b7280",     // gray
 };
@@ -501,6 +509,10 @@ export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.SCOPED_TO]: "#22d3ee",
   [RelationshipType.GOVERNS]: "#a16207",
   [RelationshipType.EXHIBITS_DRIFT]: "#fb923c",
+  // Cloud-CNAPP relations.
+  [RelationshipType.EXPOSED_TO]: "#e11d48",
+  [RelationshipType.STORES]: "#0284c7",
+  [RelationshipType.HAS_PERMISSION]: "#dc2626",
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

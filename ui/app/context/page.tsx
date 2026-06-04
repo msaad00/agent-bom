@@ -43,7 +43,7 @@ import {
   MINIMAP_MASK,
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
-  legendItemsForVisibleNodes,
+  legendItemsForVisibleGraph,
   minimapNodeColor,
   readableGraphEdges,
 } from "@/lib/graph-utils";
@@ -366,7 +366,7 @@ export default function ContextPage() {
       displayEdges.some((edge) => edge.animated || Boolean(edge.style?.strokeDasharray))
         ? [{ label: "Lateral", color: "#f97316", dashed: true, shape: "diamond" as const }]
         : [];
-    return legendItemsForVisibleNodes(displayNodes, extras);
+    return legendItemsForVisibleGraph(displayNodes, displayEdges, extras);
   }, [displayEdges, displayNodes]);
 
   const viewportOptions = useMemo(
@@ -512,7 +512,7 @@ export default function ContextPage() {
           </div>
 
           <FullscreenButton />
-          <GraphLegend items={legendItems} />
+          <GraphLegend items={legendItems} defaultOpen={captureMode} />
         </div>
       </div>
 

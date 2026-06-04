@@ -4,8 +4,10 @@ import { GraphNodeKind, GRAPH_NODE_KIND_META } from "@/lib/graph-schema";
 import {
   legendItemForNodeType,
   legendItemsForVisibleNodes,
+  legendItemsForVisibleGraph,
   minimapNodeColor,
   NODE_COLOR_MAP,
+  relationshipLegendItem,
   readableGraphEdges,
 } from "@/lib/graph-utils";
 
@@ -46,6 +48,29 @@ describe("graph utility metadata", () => {
         shape: "square",
       },
     ]);
+  });
+
+  it("surfaces identity, data-store, and governance relationship legend metadata", () => {
+    expect(legendItemForNodeType("managedIdentity")).toMatchObject({
+      label: "Managed Identity",
+      kind: "node",
+    });
+    expect(legendItemForNodeType("dataStore")).toMatchObject({
+      label: "Data Store",
+      kind: "node",
+    });
+    expect(relationshipLegendItem("has_permission")).toMatchObject({
+      label: "Has Permission",
+      kind: "edge",
+      lineStyle: "dashed",
+      layer: "identity",
+    });
+    expect(
+      legendItemsForVisibleGraph(
+        [{ data: { nodeType: "managedIdentity" } }, { data: { nodeType: "dataStore" } }],
+        [{ data: { relationship: "has_permission" } }],
+      ).map((item) => item.label),
+    ).toEqual(["Data Store", "Managed Identity", "Has Permission"]);
   });
 
   it("de-emphasizes dense default edges and restores contrast for focused paths", () => {

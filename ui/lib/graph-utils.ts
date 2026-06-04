@@ -6,7 +6,9 @@
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
 import type { Edge } from "@xyflow/react";
 import {
+  GRAPH_EDGE_KIND_META,
   GRAPH_NODE_KIND_META,
+  type GraphEdgeKindKey,
   type GraphNodeKindKey,
 } from "@/lib/graph-schema";
 
@@ -44,12 +46,25 @@ const LINEAGE_NODE_GRAPH_KIND: Record<LineageNodeType, GraphNodeKindKey | null> 
   environment: "environment",
   fleet: "fleet",
   cluster: "cluster",
+  managedIdentity: "managed_identity",
+  accessGrant: "access_grant",
+  accessPolicy: "access_policy",
+  driftIncident: "drift_incident",
+  dataStore: "data_store",
 };
 
 function generatedMetaForNodeType(nodeType: LineageNodeType) {
   const kind = LINEAGE_NODE_GRAPH_KIND[nodeType];
   return kind ? GRAPH_NODE_KIND_META[kind] : null;
 }
+
+const UI_NODE_LEGEND_OVERRIDES: Partial<Record<LineageNodeType, Pick<LegendItem, "label" | "color" | "shape">>> = {
+  managedIdentity: { label: "Managed Identity", color: "#0891b2", shape: "dot" },
+  accessGrant: { label: "Access Grant", color: "#ca8a04", shape: "diamond" },
+  accessPolicy: { label: "Access Policy", color: "#a16207", shape: "diamond" },
+  driftIncident: { label: "Drift Incident", color: "#fb923c", shape: "diamond" },
+  dataStore: { label: "Data Store", color: "#0284c7", shape: "square" },
+};
 
 // ─── MiniMap Node Color Map ──────────────────────────────────────────────────
 
@@ -101,6 +116,7 @@ export interface LegendItem {
   label: string;
   color: string;
   layer?: string | undefined;
+  description?: string | undefined;
   dashed?: boolean | undefined;
   kind?: "node" | "edge" | undefined;
   lineStyle?: "solid" | "dashed" | undefined;
@@ -131,14 +147,19 @@ const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
   "dataset",
   "container",
   "cloudResource",
+  "dataStore",
   "environment",
   "fleet",
   "cluster",
   "user",
   "group",
   "serviceAccount",
+  "managedIdentity",
+  "accessGrant",
+  "accessPolicy",
   "vulnerability",
   "misconfiguration",
+  "driftIncident",
   "credential",
   "tool",
 ];
@@ -155,12 +176,13 @@ export function legendItemForNodeType(nodeType: LineageNodeType): LegendItem {
   }
 
   const meta = generatedMetaForNodeType(nodeType);
+  const override = UI_NODE_LEGEND_OVERRIDES[nodeType];
   return {
-    label: meta?.label ?? nodeType,
-    color: meta?.color ?? "#52525b",
+    label: override?.label ?? meta?.label ?? nodeType,
+    color: override?.color ?? meta?.color ?? "#52525b",
     layer: meta?.layer,
     kind: "node",
-    shape: meta ? legendShapeForGraphShape(meta.shape) : "pill",
+    shape: override?.shape ?? (meta ? legendShapeForGraphShape(meta.shape) : "pill"),
   };
 }
 
@@ -169,32 +191,123 @@ const NODE_TYPE_LEGEND_ITEMS: Record<LineageNodeType, LegendItem> = Object.fromE
 ) as Record<LineageNodeType, LegendItem>;
 
 const RELATIONSHIP_LEGEND_ORDER = [
+  "hosts",
   "uses",
   "depends_on",
   "provides_tool",
   "exposes_cred",
   "reaches_tool",
+  "serves_model",
+  "contains",
   "vulnerable_to",
+  "affects",
+  "exploitable_via",
+  "remediates",
+  "triggers",
   "shares_server",
   "shares_cred",
   "lateral_path",
+  "authenticates_as",
+  "scoped_to",
+  "governs",
+  "exhibits_drift",
+  "assumes",
+  "trusts",
+  "attached",
+  "inherits",
+  "can_access",
+  "cross_account_trust",
+  "exposed_to",
+  "stores",
+  "has_permission",
   "invoked",
+  "called",
   "accessed",
+  "used_credential",
+  "delegated_to",
 ] as const;
 
-const RELATIONSHIP_LEGEND_ITEMS: Record<(typeof RELATIONSHIP_LEGEND_ORDER)[number], LegendItem> = {
-  uses: { label: "Uses", color: EDGE_COLORS.agentToServer, kind: "edge", lineStyle: "solid" },
-  depends_on: { label: "Depends On", color: EDGE_COLORS.serverToPackage, kind: "edge", lineStyle: "solid" },
-  provides_tool: { label: "Provides Tool", color: EDGE_COLORS.serverToTool, kind: "edge", lineStyle: "solid" },
-  exposes_cred: { label: "Exposes Cred", color: EDGE_COLORS.serverToCredential, kind: "edge", lineStyle: "dashed", dashed: true },
-  reaches_tool: { label: "Credential Reaches Tool", color: "#fbbf24", kind: "edge", lineStyle: "dashed", dashed: true },
-  vulnerable_to: { label: "Vulnerable To", color: EDGE_COLORS.packageToVuln, kind: "edge", lineStyle: "solid" },
-  shares_server: { label: "Shares Server", color: EDGE_COLORS.sharedServer, kind: "edge", lineStyle: "dashed", dashed: true },
-  shares_cred: { label: "Shares Cred", color: EDGE_COLORS.sharedCredential, kind: "edge", lineStyle: "dashed", dashed: true },
-  lateral_path: { label: "Lateral Path", color: EDGE_COLORS.lateralPath, kind: "edge", lineStyle: "dashed", dashed: true },
-  invoked: { label: "Runtime Invoke", color: EDGE_COLORS.agentToServer, kind: "edge", lineStyle: "dashed", dashed: true },
-  accessed: { label: "Runtime Access", color: EDGE_COLORS.serverToPackage, kind: "edge", lineStyle: "dashed", dashed: true },
+const DASHED_LEGEND_RELATIONSHIPS = new Set<string>([
+  "exposes_cred",
+  "reaches_tool",
+  "shares_server",
+  "shares_cred",
+  "lateral_path",
+  "exploitable_via",
+  "exposed_to",
+  "has_permission",
+  "invoked",
+  "called",
+  "accessed",
+  "used_credential",
+  "delegated_to",
+]);
+
+const RELATIONSHIP_LABEL_OVERRIDES: Record<string, string> = {
+  exposes_cred: "Exposes Credential",
+  reaches_tool: "Credential Reaches Tool",
+  vulnerable_to: "Has CVE",
+  exploitable_via: "Exploitable Via",
+  shares_cred: "Shares Credential",
+  lateral_path: "Lateral Movement",
+  authenticates_as: "Authenticates As",
+  scoped_to: "Scoped To",
+  exhibits_drift: "Exhibits Drift",
+  can_access: "Can Access",
+  cross_account_trust: "Cross-account Trust",
+  exposed_to: "Exposed To",
+  has_permission: "Has Permission",
+  used_credential: "Used Credential",
+  delegated_to: "Delegated To",
 };
+
+const RELATIONSHIP_DESCRIPTION_OVERRIDES: Record<string, string> = {
+  exposes_cred: "Static evidence that a server can surface a credential or secret reference.",
+  reaches_tool: "Credential or identity can reach a tool-capable execution boundary.",
+  vulnerable_to: "Package or component is linked to a vulnerability finding.",
+  exploitable_via: "Finding has a reachable exploit path through agent, MCP, tool, or identity context.",
+  shares_server: "Multiple agents share an MCP server, creating a lateral movement choke point.",
+  shares_cred: "Multiple agents or servers share credential material.",
+  lateral_path: "Ranked traversal chain that connects source, tool/credential, and impacted target.",
+  authenticates_as: "Agent can operate as a managed identity or service principal.",
+  scoped_to: "Access grant is constrained to a resource, tool, or environment scope.",
+  governs: "Policy or control applies to the connected identity, tool, or environment.",
+  exhibits_drift: "Observed behavior or posture differs from expected governance state.",
+  exposed_to: "Internet, account, or environment exposure reaches this asset.",
+  stores: "Asset stores or indexes data that may be reachable from the path.",
+  has_permission: "Identity has an effective permission on the connected resource.",
+  invoked: "Runtime evidence that an agent invoked a server or tool.",
+  called: "Runtime evidence of a concrete tool call.",
+  accessed: "Runtime evidence that a tool or call accessed an asset.",
+  used_credential: "Runtime evidence that credential material was used.",
+  delegated_to: "Runtime delegation from one actor or tool boundary to another.",
+};
+
+function fallbackRelationshipLabel(relationship: string): string {
+  return relationship
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+export function relationshipLegendItem(relationship: string): LegendItem {
+  const meta = GRAPH_EDGE_KIND_META[relationship as GraphEdgeKindKey];
+  const dashed = DASHED_LEGEND_RELATIONSHIPS.has(relationship);
+  return {
+    label: RELATIONSHIP_LABEL_OVERRIDES[relationship] ?? meta?.label ?? fallbackRelationshipLabel(relationship),
+    color: meta?.color ?? "#52525b",
+    layer: meta?.category,
+    description: RELATIONSHIP_DESCRIPTION_OVERRIDES[relationship],
+    kind: "edge",
+    dashed,
+    lineStyle: dashed ? "dashed" : "solid",
+  };
+}
+
+const RELATIONSHIP_LEGEND_ITEMS: Record<(typeof RELATIONSHIP_LEGEND_ORDER)[number], LegendItem> = Object.fromEntries(
+  RELATIONSHIP_LEGEND_ORDER.map((relationship) => [relationship, relationshipLegendItem(relationship)]),
+) as Record<(typeof RELATIONSHIP_LEGEND_ORDER)[number], LegendItem>;
 
 function isLineageNodeType(value: unknown): value is LineageNodeType {
   return typeof value === "string" && value in NODE_TYPE_LEGEND_ITEMS;

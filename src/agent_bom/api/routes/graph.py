@@ -298,8 +298,56 @@ def _first_href_for_agent(agent: str) -> str:
     return f"/agents?name={quote(agent)}"
 
 
+def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple[str, str, str, float]]:
+    """Governance / CNAPP / runtime signals that should weight a path's rank.
+
+    Returns ``(kind, label, detail, risk_boost)`` tuples. Inspects each hop node
+    and its one-hop governance/exposure neighbours so the managed-identity,
+    drift, and internet-exposure edges (added by the governance + CNAPP
+    overlays) actually sharpen attack-path ranking rather than sitting inert.
+    """
+    signals: list[tuple[str, str, str, float]] = []
+    seen_kinds: set[str] = set()
+
+    def add(kind: str, label: str, detail: str, boost: float) -> None:
+        if kind not in seen_kinds:
+            seen_kinds.add(kind)
+            signals.append((kind, label, detail, boost))
+
+    for hop_id in hops:
+        node = graph.nodes.get(hop_id)
+        if node is None:
+            continue
+        attrs = node.attributes
+        if attrs.get("toxic_exposed_vulnerable"):
+            add("toxic_exposed_vulnerable", "Toxic: exposed + vulnerable", f"{node.label} is internet-exposed and vulnerable.", 20.0)
+        elif attrs.get("internet_exposed"):
+            add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet.", 15.0)
+        if attrs.get("can_escalate_privilege"):
+            add("privilege_escalation", "Privilege escalation", f"{node.label} can assume a role with broader effective access.", 16.0)
+        if attrs.get("toxic_exposed_sensitive"):
+            add("exposed_sensitive_data", "Exposed sensitive data", f"{node.label} holds sensitive data and is internet-exposed.", 22.0)
+        elif attrs.get("data_sensitivity"):
+            add("sensitive_data", "Sensitive data", f"{node.label} holds sensitive (PII/PHI/secret) data.", 8.0)
+        # One-hop governance/exposure neighbours of this node.
+        for edge in graph.adjacency.get(hop_id, []):
+            target = graph.nodes.get(edge.target)
+            if target is None:
+                continue
+            rel = _rel_value(edge)
+            if rel == RelationshipType.EXHIBITS_DRIFT.value:
+                add("behavioral_drift", "Behavioral drift", f"{node.label} has an open drift incident.", 12.0)
+            elif rel == RelationshipType.AUTHENTICATES_AS.value and not target.attributes.get("scope_bound", True):
+                add("broad_identity_scope", "Unscoped identity", f"{node.label} runs as an identity with no per-tool scope.", 8.0)
+            elif rel == RelationshipType.STORES.value and target.attributes.get("internet_exposed"):
+                add("exposed_data_store", "Exposed data store", f"{node.label} backs an internet-exposed data store.", 14.0)
+    return signals
+
+
 def _risk_reasons_for_path(graph: UnifiedGraph, path) -> list[dict[str, str]]:
     reasons: list[dict[str, str]] = []
+    for kind, label, detail, _boost in _fusion_signals_for_path(graph, path.hops):
+        reasons.append({"kind": kind, "label": label, "detail": detail})
     if path.composite_risk >= 90:
         reasons.append(
             {
@@ -686,6 +734,123 @@ def _node_risk_100(node) -> float:
     return max(0.0, min(100.0, risk))
 
 
+_DANGEROUS_TOOL_KEYWORDS = ("shell", "exec", "run", "command", "subprocess", "filesystem", "admin", "delete", "write", "sudo", "deploy")
+_MAX_GOVERNANCE_PATHS = 200
+
+
+def _is_dangerous_tool(label: str) -> bool:
+    low = label.lower()
+    return any(keyword in low for keyword in _DANGEROUS_TOOL_KEYWORDS)
+
+
+def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
+    """Derive attack paths that the governance / CNAPP / effective-permission
+    overlays make possible but that are not anchored on a CVE/misconfig finding.
+
+    Surfaces four chains as first-class paths so humans and agents can
+    investigate them via /v1/graph/attack-paths and the governance endpoint:
+
+    - privilege escalation: principal --HAS_PERMISSION(assume_chain)--> resource
+    - over-scoped tool access: agent --AUTHENTICATES_AS--> identity --SCOPED_TO-->
+      dangerous tool (standing scope or JIT grant)
+    - behavioral drift: agent --EXHIBITS_DRIFT--> drift_incident --SCOPED_TO--> tool
+    - data exposure: resource --EXPOSED_TO--> internet-exposed data_store
+    """
+    paths: list[AttackPath] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def emit(kind: str, source: str, target: str, hops: list[str], edges: list[str], base: float, summary: str) -> None:
+        key = (kind, source, target)
+        if key in seen or len(paths) >= _MAX_GOVERNANCE_PATHS:
+            return
+        seen.add(key)
+        risk = base + sum(boost for _k, _l, _d, boost in _fusion_signals_for_path(graph, hops))
+        paths.append(
+            AttackPath(
+                source=source,
+                target=target,
+                hops=hops,
+                edges=edges,
+                composite_risk=round(min(100.0, risk), 2),
+                summary=summary,
+                vuln_ids=[],
+            )
+        )
+
+    for edge in graph.edges:
+        rel = _rel_value(edge)
+        src = graph.nodes.get(edge.source)
+        tgt = graph.nodes.get(edge.target)
+        if src is None or tgt is None:
+            continue
+
+        # Privilege escalation: effective access gained only by assuming a role.
+        if rel == RelationshipType.HAS_PERMISSION.value and (edge.evidence or {}).get("access") == "assume_chain":
+            exposed = bool(tgt.attributes.get("internet_exposed"))
+            emit(
+                "privilege_escalation",
+                src.id,
+                tgt.id,
+                [src.id, tgt.id],
+                ["has_permission"],
+                65.0 if exposed else 55.0,
+                f"{src.label} reaches {tgt.label} by assuming another role" + (" (internet-exposed)." if exposed else "."),
+            )
+        # Data exposure: internet-exposed resource backing a data store.
+        elif rel == RelationshipType.EXPOSED_TO.value and _node_type_value(tgt) == EntityType.DATA_STORE.value:
+            sensitive = bool(tgt.attributes.get("data_sensitivity"))
+            emit(
+                "data_exposure",
+                src.id,
+                tgt.id,
+                [src.id, tgt.id],
+                ["exposed_to"],
+                70.0 if sensitive else 55.0,
+                f"{src.label} is internet-exposed and backs {'sensitive ' if sensitive else ''}data store {tgt.label}.",
+            )
+
+    # Agent → identity → dangerous tool, and agent → drift incident → tool.
+    for node in graph.nodes.values():
+        ntype = _node_type_value(node)
+        if ntype == EntityType.AGENT.value:
+            for id_edge in graph.adjacency.get(node.id, []):
+                if _rel_value(id_edge) == RelationshipType.AUTHENTICATES_AS.value:
+                    identity = graph.nodes.get(id_edge.target)
+                    if identity is None:
+                        continue
+                    for tool_edge in graph.adjacency.get(identity.id, []):
+                        tool = graph.nodes.get(tool_edge.target)
+                        if tool is None or _node_type_value(tool) != EntityType.TOOL.value or not _is_dangerous_tool(tool.label):
+                            continue
+                        emit(
+                            "over_scoped_tool",
+                            node.id,
+                            tool.id,
+                            [node.id, identity.id, tool.id],
+                            ["authenticates_as", _rel_value(tool_edge)],
+                            48.0,
+                            f"{node.label} can reach high-capability tool {tool.label} through identity {identity.label}.",
+                        )
+                elif _rel_value(id_edge) == RelationshipType.EXHIBITS_DRIFT.value:
+                    incident = graph.nodes.get(id_edge.target)
+                    if incident is None:
+                        continue
+                    for tool_edge in graph.adjacency.get(incident.id, []):
+                        tool = graph.nodes.get(tool_edge.target)
+                        if tool is None or _node_type_value(tool) != EntityType.TOOL.value:
+                            continue
+                        emit(
+                            "drift_to_tool",
+                            node.id,
+                            tool.id,
+                            [node.id, incident.id, tool.id],
+                            ["exhibits_drift", _rel_value(tool_edge)],
+                            45.0,
+                            f"{node.label} drifted to using tool {tool.label} outside its declared blueprint.",
+                        )
+    return paths
+
+
 def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     """Derive fix-first paths when a snapshot lacks materialised path rows.
 
@@ -694,9 +859,18 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     agent -> MCP server -> package/server -> vulnerability, enriched with the
     server's credential and tool exposure. Keep this deterministic and bounded;
     stores with first-class path rows remain the source of truth.
+
+    Governance / CNAPP / effective-permission chains (privilege escalation,
+    over-scoped tool access, drift, data exposure) are derived and merged in
+    both branches so they surface even when materialised vuln paths exist.
     """
+    governance_paths = _derived_governance_attack_paths(graph)
     if graph.attack_paths:
-        return list(graph.attack_paths)
+        return sorted(
+            list(graph.attack_paths) + governance_paths,
+            key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
+            reverse=True,
+        )
 
     incoming: dict[str, list] = {}
     outgoing: dict[str, list] = {}
@@ -765,6 +939,9 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                     risk = _node_risk_100(finding)
                     risk += min(10.0, len(credentials) * 3.0)
                     risk += min(10.0, len(tools) * 0.75)
+                    # Fuse governance / CNAPP / runtime evidence into the score so
+                    # exposed, drifting, or unscoped-identity paths rank higher.
+                    risk += sum(boost for _k, _l, _d, boost in _fusion_signals_for_path(graph, hop_ids))
                     paths.append(
                         AttackPath(
                             source=agent_id,
@@ -782,6 +959,7 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                         )
                     )
 
+    paths.extend(governance_paths)
     return sorted(
         paths,
         key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
@@ -2212,6 +2390,38 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
         "direction": "bidirectional",
         "source_types": [EntityType.AGENT.value],
         "target_types": [EntityType.DRIFT_INCIDENT.value],
+        "traversable": True,
+    },
+    RelationshipType.EXPOSED_TO.value: {
+        "category": "exposure",
+        "direction": "directed",
+        "source_types": [
+            EntityType.CLOUD_RESOURCE.value,
+            EntityType.SERVER.value,
+            EntityType.AGENT.value,
+            EntityType.DATA_STORE.value,
+        ],
+        "target_types": [EntityType.CLOUD_RESOURCE.value, EntityType.RESOURCE.value, EntityType.DATA_STORE.value],
+        "traversable": True,
+    },
+    RelationshipType.STORES.value: {
+        "category": "exposure",
+        "direction": "directed",
+        "source_types": [EntityType.CLOUD_RESOURCE.value, EntityType.DATA_STORE.value, EntityType.SERVER.value],
+        "target_types": [EntityType.DATASET.value, EntityType.DATA_STORE.value],
+        "traversable": True,
+    },
+    RelationshipType.HAS_PERMISSION.value: {
+        "category": "identity",
+        "direction": "directed",
+        "source_types": [
+            EntityType.USER.value,
+            EntityType.ROLE.value,
+            EntityType.SERVICE_ACCOUNT.value,
+            EntityType.SERVICE_PRINCIPAL.value,
+            EntityType.MANAGED_IDENTITY.value,
+        ],
+        "target_types": [EntityType.CLOUD_RESOURCE.value, EntityType.DATA_STORE.value, EntityType.RESOURCE.value, EntityType.TOOL.value],
         "traversable": True,
     },
 }

@@ -50,6 +50,11 @@ const TYPE_ICON = {
   dataset: Database,
   container: Package,
   cloudResource: Cloud,
+  managedIdentity: KeyRound,
+  accessGrant: KeyRound,
+  accessPolicy: KeyRound,
+  driftIncident: TriangleAlert,
+  dataStore: Database,
 } as const;
 
 const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
@@ -72,6 +77,11 @@ const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
   dataset: "Dataset",
   container: "Container",
   cloudResource: "Cloud Resource",
+  managedIdentity: "Managed Identity",
+  accessGrant: "Access Grant",
+  accessPolicy: "Access Policy",
+  driftIncident: "Drift Incident",
+  dataStore: "Data Store",
 };
 
 const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
@@ -94,6 +104,11 @@ const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
   dataset: "border-cyan-700",
   container: "border-indigo-700",
   cloudResource: "border-sky-700",
+  managedIdentity: "border-cyan-700",
+  accessGrant: "border-yellow-700",
+  accessPolicy: "border-amber-700",
+  driftIncident: "border-orange-700",
+  dataStore: "border-sky-700",
 };
 
 export function LineageDetailPanel({

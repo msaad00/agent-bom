@@ -47,6 +47,19 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Apply latest OS security patches (fixes base-image CVEs visible in Docker Scout)
 RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
+# The production image runs Next's standalone server with `node server.js`.
+# npm, npx, yarn, and corepack are build-time tooling only; removing them from
+# the runner avoids shipping their transitive package-manager CVE surface.
+RUN rm -rf \
+    /opt/yarn* \
+    /usr/local/bin/corepack \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/bin/yarn \
+    /usr/local/bin/yarnpkg \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/lib/node_modules/npm
+
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 

@@ -84,7 +84,14 @@ import type {
   AuditEntry,
   AuditLogResponse,
   AuditIntegrityResponse,
-  HubPostureResponse
+  HubPostureResponse,
+  CostReport,
+  AnomaliesReport,
+  CostBudgetStatus,
+  IdentitiesResponse,
+  JITGrantsResponse,
+  ConditionalAccessResponse,
+  DriftIncidentsResponse
 } from "./api-types";
 export type {
   JobStatus,
@@ -233,6 +240,13 @@ export type {
   AuditLogResponse,
   AuditIntegrityResponse,
   HubPostureResponse,
+  CostReport,
+  AnomaliesReport,
+  CostBudgetStatus,
+  IdentitiesResponse,
+  JITGrantsResponse,
+  ConditionalAccessResponse,
+  DriftIncidentsResponse,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 
@@ -853,6 +867,28 @@ export const api = {
   },
   getAuditIntegrity: (limit = 1000) => get<AuditIntegrityResponse>(`/v1/audit/integrity?limit=${limit}`),
   getAuditLog: (limit?: number) => get<{ entries: AuditEntry[] }>(`/v1/audit?limit=${limit ?? 10}`),
+
+  // ── Cost / FinOps cockpit ──
+  getCostReport: (agent?: string) =>
+    get<CostReport>(`/v1/observability/costs${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`),
+  getCostBudget: (agent?: string) =>
+    get<CostBudgetStatus>(`/v1/observability/costs/budget${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`),
+  getCostAnomalies: (zThreshold?: number) =>
+    get<AnomaliesReport>(`/v1/observability/anomalies${zThreshold ? `?z_threshold=${zThreshold}` : ""}`),
+
+  // ── Identity / access-governance cockpit ──
+  listIdentities: (includeInactive = false, limit = 200) =>
+    get<IdentitiesResponse>(`/v1/identities?include_inactive=${includeInactive}&limit=${limit}`),
+  listJitGrants: (includeInactive = false, limit = 200) =>
+    get<JITGrantsResponse>(`/v1/identity-jit-grants?include_inactive=${includeInactive}&limit=${limit}`),
+  listConditionalAccessPolicies: (includeDisabled = false, limit = 200) =>
+    get<ConditionalAccessResponse>(`/v1/conditional-access-policies?include_disabled=${includeDisabled}&limit=${limit}`),
+
+  // ── Drift / behavior-incident cockpit ──
+  listDriftIncidents: (includeResolved = false, limit = 200) =>
+    get<DriftIncidentsResponse>(`/v1/runtime/drift/incidents?include_resolved=${includeResolved}&limit=${limit}`),
+  resolveDriftIncident: (incidentId: string, note?: string) =>
+    post<{ resolved: boolean }>(`/v1/runtime/drift/incidents/${encodeURIComponent(incidentId)}/resolve`, { note: note ?? "" }),
 };
 
 // ─── Threat Framework Catalogs ────────────────────────────────────────────────

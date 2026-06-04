@@ -86,6 +86,8 @@ export const GRAPH_SEMANTIC_LAYER_META: Record<GraphSemanticLayerKey, GraphSeman
 // ═══════════════════════════════════════════════════════════════════════════
 
 export enum GraphNodeKind {
+  ACCESS_GRANT = "access_grant",
+  ACCESS_POLICY = "access_policy",
   ACCOUNT = "account",
   AGENT = "agent",
   CI_JOB = "ci_job",
@@ -97,11 +99,13 @@ export enum GraphNodeKind {
   CREDENTIAL = "credential",
   CREDENTIAL_REF = "credential_ref",
   DATASET = "dataset",
+  DRIFT_INCIDENT = "drift_incident",
   ENVIRONMENT = "environment",
   EXTERNAL_IMPORT = "external_import",
   FEDERATED_IDENTITY = "federated_identity",
   FLEET = "fleet",
   GROUP = "group",
+  MANAGED_IDENTITY = "managed_identity",
   MISCONFIGURATION = "misconfiguration",
   MODEL = "model",
   ORG = "org",
@@ -120,9 +124,9 @@ export enum GraphNodeKind {
   VULNERABILITY = "vulnerability",
 }
 
-export type GraphNodeKindKey = "account" | "agent" | "ci_job" | "cloud_resource" | "cluster" | "code_module" | "config_file" | "container" | "credential" | "credential_ref" | "dataset" | "environment" | "external_import" | "federated_identity" | "fleet" | "group" | "misconfiguration" | "model" | "org" | "package" | "policy" | "provider" | "resource" | "role" | "server" | "service_account" | "service_principal" | "source_file" | "tool" | "tool_call" | "user" | "vulnerability";
+export type GraphNodeKindKey = "access_grant" | "access_policy" | "account" | "agent" | "ci_job" | "cloud_resource" | "cluster" | "code_module" | "config_file" | "container" | "credential" | "credential_ref" | "dataset" | "drift_incident" | "environment" | "external_import" | "federated_identity" | "fleet" | "group" | "managed_identity" | "misconfiguration" | "model" | "org" | "package" | "policy" | "provider" | "resource" | "role" | "server" | "service_account" | "service_principal" | "source_file" | "tool" | "tool_call" | "user" | "vulnerability";
 
-export const GRAPH_NODE_KINDS: readonly GraphNodeKindKey[] = ["account", "agent", "ci_job", "cloud_resource", "cluster", "code_module", "config_file", "container", "credential", "credential_ref", "dataset", "environment", "external_import", "federated_identity", "fleet", "group", "misconfiguration", "model", "org", "package", "policy", "provider", "resource", "role", "server", "service_account", "service_principal", "source_file", "tool", "tool_call", "user", "vulnerability"] as const;
+export const GRAPH_NODE_KINDS: readonly GraphNodeKindKey[] = ["access_grant", "access_policy", "account", "agent", "ci_job", "cloud_resource", "cluster", "code_module", "config_file", "container", "credential", "credential_ref", "dataset", "drift_incident", "environment", "external_import", "federated_identity", "fleet", "group", "managed_identity", "misconfiguration", "model", "org", "package", "policy", "provider", "resource", "role", "server", "service_account", "service_principal", "source_file", "tool", "tool_call", "user", "vulnerability"] as const;
 
 export interface GraphNodeKindMeta {
   label: string;
@@ -135,6 +139,24 @@ export interface GraphNodeKindMeta {
 }
 
 export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> = {
+  "access_grant": {
+    "label": "Access Grant",
+    "color": "#ca8a04",
+    "shape": "diamond",
+    "layer": "identity",
+    "icon": "diamond",
+    "category_uid": 3,
+    "class_uid": 3001
+  },
+  "access_policy": {
+    "label": "Access Policy",
+    "color": "#a16207",
+    "shape": "diamond",
+    "layer": "identity",
+    "icon": "diamond",
+    "category_uid": 3,
+    "class_uid": 3001
+  },
   "account": {
     "label": "Account",
     "color": "#0f766e",
@@ -234,6 +256,15 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "category_uid": 5,
     "class_uid": 4001
   },
+  "drift_incident": {
+    "label": "Drift Incident",
+    "color": "#fb923c",
+    "shape": "triangle",
+    "layer": "finding",
+    "icon": "triangle",
+    "category_uid": 2,
+    "class_uid": 2004
+  },
   "environment": {
     "label": "Environment",
     "color": "#9ca3af",
@@ -273,6 +304,15 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
   "group": {
     "label": "Group",
     "color": "#0d9488",
+    "shape": "circle",
+    "layer": "identity",
+    "icon": "circle",
+    "category_uid": 3,
+    "class_uid": 3001
+  },
+  "managed_identity": {
+    "label": "Managed Identity",
+    "color": "#0891b2",
     "shape": "circle",
     "layer": "identity",
     "icon": "circle",
@@ -435,6 +475,7 @@ export enum GraphEdgeKind {
   AFFECTS = "affects",
   ASSUMES = "assumes",
   ATTACHED = "attached",
+  AUTHENTICATES_AS = "authenticates_as",
   CALLED = "called",
   CAN_ACCESS = "can_access",
   CONFIGURES = "configures",
@@ -444,8 +485,10 @@ export enum GraphEdgeKind {
   DEFINES = "defines",
   DELEGATED_TO = "delegated_to",
   DEPENDS_ON = "depends_on",
+  EXHIBITS_DRIFT = "exhibits_drift",
   EXPLOITABLE_VIA = "exploitable_via",
   EXPOSES_CRED = "exposes_cred",
+  GOVERNS = "governs",
   HOSTS = "hosts",
   IMPORTS = "imports",
   INHERITS = "inherits",
@@ -460,6 +503,7 @@ export enum GraphEdgeKind {
   REACHES_TOOL = "reaches_tool",
   REMEDIATES = "remediates",
   RUNS = "runs",
+  SCOPED_TO = "scoped_to",
   SERVES_MODEL = "serves_model",
   SHARES_CRED = "shares_cred",
   SHARES_SERVER = "shares_server",
@@ -470,9 +514,9 @@ export enum GraphEdgeKind {
   VULNERABLE_TO = "vulnerable_to",
 }
 
-export type GraphEdgeKindKey = "accessed" | "acted_as" | "affects" | "assumes" | "attached" | "called" | "can_access" | "configures" | "contains" | "correlates_with" | "cross_account_trust" | "defines" | "delegated_to" | "depends_on" | "exploitable_via" | "exposes_cred" | "hosts" | "imports" | "inherits" | "invoked" | "lateral_path" | "manages" | "member_of" | "owns" | "part_of" | "possibly_correlates_with" | "provides_tool" | "reaches_tool" | "remediates" | "runs" | "serves_model" | "shares_cred" | "shares_server" | "triggers" | "trusts" | "used_credential" | "uses" | "vulnerable_to";
+export type GraphEdgeKindKey = "accessed" | "acted_as" | "affects" | "assumes" | "attached" | "authenticates_as" | "called" | "can_access" | "configures" | "contains" | "correlates_with" | "cross_account_trust" | "defines" | "delegated_to" | "depends_on" | "exhibits_drift" | "exploitable_via" | "exposes_cred" | "governs" | "hosts" | "imports" | "inherits" | "invoked" | "lateral_path" | "manages" | "member_of" | "owns" | "part_of" | "possibly_correlates_with" | "provides_tool" | "reaches_tool" | "remediates" | "runs" | "scoped_to" | "serves_model" | "shares_cred" | "shares_server" | "triggers" | "trusts" | "used_credential" | "uses" | "vulnerable_to";
 
-export const GRAPH_EDGE_KINDS: readonly GraphEdgeKindKey[] = ["accessed", "acted_as", "affects", "assumes", "attached", "called", "can_access", "configures", "contains", "correlates_with", "cross_account_trust", "defines", "delegated_to", "depends_on", "exploitable_via", "exposes_cred", "hosts", "imports", "inherits", "invoked", "lateral_path", "manages", "member_of", "owns", "part_of", "possibly_correlates_with", "provides_tool", "reaches_tool", "remediates", "runs", "serves_model", "shares_cred", "shares_server", "triggers", "trusts", "used_credential", "uses", "vulnerable_to"] as const;
+export const GRAPH_EDGE_KINDS: readonly GraphEdgeKindKey[] = ["accessed", "acted_as", "affects", "assumes", "attached", "authenticates_as", "called", "can_access", "configures", "contains", "correlates_with", "cross_account_trust", "defines", "delegated_to", "depends_on", "exhibits_drift", "exploitable_via", "exposes_cred", "governs", "hosts", "imports", "inherits", "invoked", "lateral_path", "manages", "member_of", "owns", "part_of", "possibly_correlates_with", "provides_tool", "reaches_tool", "remediates", "runs", "scoped_to", "serves_model", "shares_cred", "shares_server", "triggers", "trusts", "used_credential", "uses", "vulnerable_to"] as const;
 
 export interface GraphEdgeKindMeta {
   label: string;
@@ -561,10 +605,25 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "group",
       "role",
       "service_account",
-      "service_principal"
+      "service_principal",
+      "managed_identity"
     ],
     "target_types": [
-      "policy"
+      "policy",
+      "access_grant"
+    ],
+    "traversable": true
+  },
+  "authenticates_as": {
+    "label": "Authenticates As",
+    "color": "#0891b2",
+    "category": "governance",
+    "direction": "directed",
+    "source_types": [
+      "agent"
+    ],
+    "target_types": [
+      "managed_identity"
     ],
     "traversable": true
   },
@@ -714,6 +773,19 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     ],
     "traversable": true
   },
+  "exhibits_drift": {
+    "label": "Exhibits Drift",
+    "color": "#fb923c",
+    "category": "governance",
+    "direction": "bidirectional",
+    "source_types": [
+      "agent"
+    ],
+    "target_types": [
+      "drift_incident"
+    ],
+    "traversable": true
+  },
   "exploitable_via": {
     "label": "Exploitable Via",
     "color": "#b91c1c",
@@ -742,6 +814,21 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "credential"
     ],
     "traversable": true
+  },
+  "governs": {
+    "label": "Governs",
+    "color": "#a16207",
+    "category": "governance",
+    "direction": "directed",
+    "source_types": [
+      "access_policy"
+    ],
+    "target_types": [
+      "agent",
+      "managed_identity",
+      "tool"
+    ],
+    "traversable": false
   },
   "hosts": {
     "label": "Hosts",
@@ -977,6 +1064,21 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "tool",
       "server",
       "agent"
+    ],
+    "traversable": true
+  },
+  "scoped_to": {
+    "label": "Scoped To",
+    "color": "#22d3ee",
+    "category": "governance",
+    "direction": "directed",
+    "source_types": [
+      "managed_identity",
+      "access_grant",
+      "drift_incident"
+    ],
+    "target_types": [
+      "tool"
     ],
     "traversable": true
   },

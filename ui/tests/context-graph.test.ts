@@ -48,7 +48,9 @@ describe("buildContextFlowGraph", () => {
 
     const graph = buildContextFlowGraph(data);
 
-    expect(graph.nodes.find((node) => node.id === "iam_role:prod")?.type).toBe("serviceAccount");
+    const identityNode = graph.nodes.find((node) => node.id === "iam_role:prod");
+    expect(identityNode?.type).toBe("serviceAccountNode");
+    expect(identityNode?.data.nodeType).toBe("serviceAccount");
     expect(graph.edges[0]?.style?.stroke).toBe("#60a5fa");
   });
 });

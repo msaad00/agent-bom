@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="360" viewBox="0 0 900 360" role="img" aria-labelledby="title desc">
+  <title id="title">agent-bom evidence control loop</title>
+  <desc id="desc">Inventory, graph, policy, and runtime enforcement connected through signed evidence.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#2dd4bf"/>
+    </marker>
+    <style>
+      .bg{fill:#030712}
+      .box{fill:#0f172a;stroke:#334155;stroke-width:1.5}
+      .band{fill:#042f2e;stroke:#0f766e;stroke-width:1.5}
+      .title{font:700 18px Inter,Arial,sans-serif;fill:#f8fafc}
+      .label{font:700 13px Inter,Arial,sans-serif;letter-spacing:.08em;fill:#2dd4bf}
+      .body{font:500 13px Inter,Arial,sans-serif;fill:#cbd5e1}
+      .small{font:600 12px Inter,Arial,sans-serif;fill:#d1d5db}
+      .line{stroke:#2dd4bf;stroke-width:2.5;fill:none;marker-end:url(#arrow)}
+      .stub{stroke:#2dd4bf;stroke-width:2;fill:none}
+    </style>
+  </defs>
+  <rect class="bg" width="900" height="360" rx="18"/>
+  <text class="label" x="50" y="42">CONTROL LOOP</text>
+  <text class="title" x="50" y="68">One evidence model from scan to runtime decision</text>
+
+  <rect class="box" x="50" y="104" width="170" height="142" rx="10"/>
+  <text class="label" x="70" y="136">DISCOVER</text>
+  <text class="body" x="70" y="166">Agents, MCP servers</text>
+  <text class="body" x="70" y="188">tools, packages,</text>
+  <text class="body" x="70" y="210">and credential refs</text>
+
+  <rect class="box" x="275" y="104" width="170" height="142" rx="10"/>
+  <text class="label" x="295" y="136">GRAPH</text>
+  <text class="body" x="295" y="166">Package risk maps</text>
+  <text class="body" x="295" y="188">to reachable tools</text>
+  <text class="body" x="295" y="210">and agents</text>
+
+  <rect class="box" x="500" y="104" width="170" height="142" rx="10"/>
+  <text class="label" x="520" y="136">DECIDE</text>
+  <text class="body" x="520" y="166">Gateway policy,</text>
+  <text class="body" x="520" y="188">exceptions, tenant</text>
+  <text class="body" x="520" y="210">scope, and audit</text>
+
+  <rect class="box" x="725" y="104" width="170" height="142" rx="10"/>
+  <text class="label" x="745" y="136">ENFORCE</text>
+  <text class="body" x="745" y="166">Proxy and gateway</text>
+  <text class="body" x="745" y="188">inspect, block,</text>
+  <text class="body" x="745" y="210">sign, and report</text>
+
+  <path class="line" d="M220 175 H266"/>
+  <path class="line" d="M445 175 H491"/>
+  <path class="line" d="M670 175 H716"/>
+
+  <path class="stub" d="M135 246 V277"/>
+  <path class="stub" d="M360 246 V277"/>
+  <path class="stub" d="M585 246 V277"/>
+  <path class="stub" d="M810 246 V277"/>
+  <rect class="band" x="50" y="277" width="845" height="58" rx="10"/>
+  <text class="label" x="70" y="303">SIGNED EVIDENCE</text>
+  <text class="small" x="70" y="323">JSON, SARIF, SBOM, graph export, policy audit, runtime replay, and compliance bundle outputs</text>
+</svg>

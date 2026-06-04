@@ -78,6 +78,28 @@ const KIND_TO_NODE_TYPE: Record<string, LineageNodeType> = {
   service_account: "serviceAccount",
 };
 
+const NODE_TYPE_TO_RENDERER: Record<LineageNodeType, string> = {
+  provider: "providerNode",
+  agent: "agentNode",
+  server: "serverNode",
+  package: "packageNode",
+  vulnerability: "vulnNode",
+  misconfiguration: "misconfigNode",
+  credential: "credentialNode",
+  tool: "toolNode",
+  model: "modelNode",
+  dataset: "datasetNode",
+  container: "containerNode",
+  cloudResource: "cloudResourceNode",
+  user: "userNode",
+  group: "groupNode",
+  serviceAccount: "serviceAccountNode",
+  environment: "environmentNode",
+  fleet: "fleetNode",
+  cluster: "clusterNode",
+  sharedServer: "sharedServerNode",
+};
+
 // ─── Edge colors ─────────────────────────────────────────────────────────────
 
 const EDGE_COLORS: Record<string, string> = {
@@ -169,7 +191,7 @@ export function buildContextFlowGraph(
 
       return {
         id: n.id,
-        type: nodeType,
+        type: NODE_TYPE_TO_RENDERER[nodeType] ?? "serverNode",
         data: nodeData,
         position: { x: 0, y: 0 },
       };

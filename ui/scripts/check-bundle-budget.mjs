@@ -12,7 +12,8 @@ const BUDGETS = {
   // Includes the root exposure cockpit path card and operational action tiles.
   // Includes the dashboard trust-mesh topology filters and offline-state workflow.
   // Allows measured framework/runtime drift from the June 2026 UI dependency refresh.
-  totalClientJsBytes: 2_880_000,
+  // Includes the parity governance cockpits for cost, identity, and drift.
+  totalClientJsBytes: 2_960_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

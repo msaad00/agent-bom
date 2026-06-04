@@ -223,7 +223,9 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
     await expect(largeOverview).toBeVisible();
     await expect(page.getByText("Pan, zoom, search, filter, and select nodes for evidence.")).toBeVisible();
   } else {
-    await expect(page.locator('[data-testid="cluster-pill"]').first()).toBeVisible();
+    const canvas = page.getByRole("application");
+    await expect(canvas.getByText("Desktop Agent").first()).toBeVisible();
+    await expect(canvas.getByText("CVE-2026-103").first()).toBeVisible();
     await expect(page.getByText("Legend").first()).toBeVisible();
   }
   await page.screenshot({

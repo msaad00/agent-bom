@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildContextFlowGraph, type ContextGraphData } from "@/lib/context-graph";
+import { RELATIONSHIP_COLOR_MAP, RelationshipType } from "@/lib/graph-schema";
 
 describe("buildContextFlowGraph", () => {
   it("prefers canonical entity and relationship fields when present", () => {
@@ -51,6 +52,7 @@ describe("buildContextFlowGraph", () => {
     const identityNode = graph.nodes.find((node) => node.id === "iam_role:prod");
     expect(identityNode?.type).toBe("serviceAccountNode");
     expect(identityNode?.data.nodeType).toBe("serviceAccount");
-    expect(graph.edges[0]?.style?.stroke).toBe("#60a5fa");
+    expect(graph.edges[0]?.data).toMatchObject({ relationship: "member_of" });
+    expect(graph.edges[0]?.style?.stroke).toBe(RELATIONSHIP_COLOR_MAP[RelationshipType.MEMBER_OF]);
   });
 });

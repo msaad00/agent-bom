@@ -298,8 +298,50 @@ def _first_href_for_agent(agent: str) -> str:
     return f"/agents?name={quote(agent)}"
 
 
+def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple[str, str, str, float]]:
+    """Governance / CNAPP / runtime signals that should weight a path's rank.
+
+    Returns ``(kind, label, detail, risk_boost)`` tuples. Inspects each hop node
+    and its one-hop governance/exposure neighbours so the managed-identity,
+    drift, and internet-exposure edges (added by the governance + CNAPP
+    overlays) actually sharpen attack-path ranking rather than sitting inert.
+    """
+    signals: list[tuple[str, str, str, float]] = []
+    seen_kinds: set[str] = set()
+
+    def add(kind: str, label: str, detail: str, boost: float) -> None:
+        if kind not in seen_kinds:
+            seen_kinds.add(kind)
+            signals.append((kind, label, detail, boost))
+
+    for hop_id in hops:
+        node = graph.nodes.get(hop_id)
+        if node is None:
+            continue
+        attrs = node.attributes
+        if attrs.get("toxic_exposed_vulnerable"):
+            add("toxic_exposed_vulnerable", "Toxic: exposed + vulnerable", f"{node.label} is internet-exposed and vulnerable.", 20.0)
+        elif attrs.get("internet_exposed"):
+            add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet.", 15.0)
+        # One-hop governance/exposure neighbours of this node.
+        for edge in graph.adjacency.get(hop_id, []):
+            target = graph.nodes.get(edge.target)
+            if target is None:
+                continue
+            rel = _rel_value(edge)
+            if rel == RelationshipType.EXHIBITS_DRIFT.value:
+                add("behavioral_drift", "Behavioral drift", f"{node.label} has an open drift incident.", 12.0)
+            elif rel == RelationshipType.AUTHENTICATES_AS.value and not target.attributes.get("scope_bound", True):
+                add("broad_identity_scope", "Unscoped identity", f"{node.label} runs as an identity with no per-tool scope.", 8.0)
+            elif rel == RelationshipType.STORES.value and target.attributes.get("internet_exposed"):
+                add("exposed_data_store", "Exposed data store", f"{node.label} backs an internet-exposed data store.", 14.0)
+    return signals
+
+
 def _risk_reasons_for_path(graph: UnifiedGraph, path) -> list[dict[str, str]]:
     reasons: list[dict[str, str]] = []
+    for kind, label, detail, _boost in _fusion_signals_for_path(graph, path.hops):
+        reasons.append({"kind": kind, "label": label, "detail": detail})
     if path.composite_risk >= 90:
         reasons.append(
             {
@@ -765,6 +807,9 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                     risk = _node_risk_100(finding)
                     risk += min(10.0, len(credentials) * 3.0)
                     risk += min(10.0, len(tools) * 0.75)
+                    # Fuse governance / CNAPP / runtime evidence into the score so
+                    # exposed, drifting, or unscoped-identity paths rank higher.
+                    risk += sum(boost for _k, _l, _d, boost in _fusion_signals_for_path(graph, hop_ids))
                     paths.append(
                         AttackPath(
                             source=agent_id,

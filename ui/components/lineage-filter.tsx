@@ -178,9 +178,24 @@ const SCOPE_RELATIONSHIPS: Record<Exclude<FilterState["relationshipScope"], "all
     "shares_server",
     "shares_cred",
     "lateral_path",
+    "exposed_to",
+    "has_permission",
+    "exhibits_drift",
   ],
   runtime: ["invoked", "accessed", "delegated_to"],
-  governance: ["manages", "owns", "part_of", "member_of"],
+  governance: [
+    "manages",
+    "owns",
+    "part_of",
+    "member_of",
+    "authenticates_as",
+    "scoped_to",
+    "governs",
+    "exhibits_drift",
+    "has_permission",
+    "stores",
+    "exposed_to",
+  ],
 };
 
 /** Severity rank used to decide whether a min-severity option is reachable. */

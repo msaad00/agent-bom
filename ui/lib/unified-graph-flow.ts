@@ -65,6 +65,15 @@ const ENTITY_TO_NODE_TYPE: Partial<Record<EntityType | string, LineageNodeType>>
   [EntityType.DATASET]: "dataset",
   [EntityType.CONTAINER]: "container",
   [EntityType.CLOUD_RESOURCE]: "cloudResource",
+  // Agent-identity governance + cloud-CNAPP nodes render with the closest
+  // existing visual taxonomy so they are visible and filterable (distinct
+  // iconography is a follow-up): identities → service account, grants/policies
+  // → credential, drift → misconfiguration finding, data stores → cloud asset.
+  [EntityType.MANAGED_IDENTITY]: "serviceAccount",
+  [EntityType.ACCESS_GRANT]: "credential",
+  [EntityType.ACCESS_POLICY]: "credential",
+  [EntityType.DRIFT_INCIDENT]: "misconfiguration",
+  [EntityType.DATA_STORE]: "cloudResource",
 };
 
 const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {

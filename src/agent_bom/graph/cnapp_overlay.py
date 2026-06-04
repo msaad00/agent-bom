@@ -128,6 +128,7 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
                     id=ds_id,
                     entity_type=EntityType.DATA_STORE,
                     label=f"data: {node.label}",
+                    severity="info",
                     data_sources=[_OVERLAY_SOURCE],
                     attributes={"backed_by": node.id, "internet_exposed": bool(node.attributes.get("internet_exposed"))},
                 )

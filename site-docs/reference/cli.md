@@ -63,7 +63,7 @@
 | `serve` | Start the API server and dashboard |
 | `api` | Start the REST API server |
 | `schedule` | Manage recurring scan schedules |
-| `remediate` | Generate a prioritized remediation plan |
+| `remediate` | Generate a prioritized remediation plan; with explicit `--apply`, patch supported dependency manifests |
 | `teardown` | Tear down the AWS/EKS reference install owned by agent-bom |
 
 ### Database And Utilities
@@ -88,7 +88,8 @@
 - `report history` and `report diff` support `--format json` for CI and automation.
 - `report pipeline-events <scan-job.json>` exports structured scan progress as JSONL for DAG/dashboard consumers.
 - `report query "SELECT ..."` runs read-only SQL against the local scan analytics store.
-- `remediate` supports `--format json` as the machine-readable remediation contract.
+- `remediate` is read-only by default and supports `--format json` as the machine-readable remediation contract.
+- `remediate --apply` patches supported package dependency manifests only after confirmation; `--apply --open-pr` creates a draft PR instead of pushing to the default branch.
 - `agents --agent-mode` emits a stable JSON envelope for assistant and automation callers. It defaults to JSON stdout, reports `ok`, `exit_code`, summary counts, confidence signals, truncation metadata, and the full scan payload under `data`.
 - Use `agent-bom agents -f <format> -o <path>` for SARIF, HTML, SBOM, and richer environment exports.
 - Use `agent-bom agents -f sarif -o -` when you need SARIF on stdout for piping.

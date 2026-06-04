@@ -16,6 +16,7 @@ import click
 from agent_bom import __version__
 from agent_bom.cli._common import _make_console, _sync_runtime_consoles, logger
 from agent_bom.cli._scan_runner import ScanConfig, run_default_scan
+from agent_bom.remediation_apply import RemediationApplyError, apply_remediation_plan
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -166,6 +167,30 @@ def _plan_to_json(plan_items: list[dict]) -> dict:
     }
 
 
+def _print_apply_outcome(output_console, outcome) -> None:
+    """Render guarded apply results for console output."""
+    output_console.print()
+    output_console.print("[bold green]Remediation apply result[/bold green]")
+    if outcome.apply_result.applied:
+        for fix in outcome.apply_result.applied:
+            output_console.print(f"  [green]applied[/green] {fix.package} {fix.current_version} -> {fix.fixed_version}")
+    if outcome.apply_result.skipped:
+        for fix in outcome.apply_result.skipped:
+            output_console.print(f"  [yellow]skipped[/yellow] {fix.package} ({fix.ecosystem})")
+    if outcome.changed_files:
+        output_console.print("  changed files: " + ", ".join(outcome.changed_files))
+    if outcome.validation_commands:
+        commands = [" ".join(cmd) for cmd in outcome.validation_commands]
+        output_console.print("  validation: " + "; ".join(commands))
+    if outcome.branch_name:
+        output_console.print(f"  branch: {outcome.branch_name}")
+    if outcome.pr_url:
+        output_console.print(f"  draft PR: {outcome.pr_url}")
+    if outcome.audit_log_path:
+        output_console.print(f"  audit: {outcome.audit_log_path}")
+    output_console.print()
+
+
 # ---------------------------------------------------------------------------
 # Click command
 # ---------------------------------------------------------------------------
@@ -194,6 +219,14 @@ def _plan_to_json(plan_items: list[dict]) -> dict:
 )
 @click.option("--fixable-only", is_flag=True, default=False, help="Hide items without a fix version.")
 @click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress scan chatter and file-write status messages.")
+@click.option("--apply", "apply_changes", is_flag=True, default=False, help="Apply fixable package dependency remediations.")
+@click.option("--open-pr", is_flag=True, default=False, help="Create a draft GitHub PR after applying fixes.")
+@click.option("-y", "--yes", is_flag=True, default=False, help="Confirm remediation writes without prompting.")
+@click.option("--no-backup", is_flag=True, default=False, help="Do not create .agent-bom-backup files for local applies.")
+@click.option("--skip-verify", is_flag=True, default=False, help="Skip dependency file validation after applying fixes.")
+@click.option("--branch-name", default=None, help="Branch name to use with --open-pr.")
+@click.option("--pr-title", default=None, help="Draft PR title to use with --open-pr.")
+@click.option("--audit-log", default=None, type=click.Path(), help="Write remediation apply audit JSONL to this path.")
 def remediate_cmd(
     demo: bool,
     offline: bool,
@@ -204,6 +237,14 @@ def remediate_cmd(
     min_priority: Optional[str],
     fixable_only: bool,
     quiet: bool,
+    apply_changes: bool,
+    open_pr: bool,
+    yes: bool,
+    no_backup: bool,
+    skip_verify: bool,
+    branch_name: Optional[str],
+    pr_title: Optional[str],
+    audit_log: Optional[str],
 ) -> None:
     """Generate a prioritized remediation plan for discovered vulnerabilities.
 
@@ -217,6 +258,8 @@ def remediate_cmd(
       agent-bom remediate -p . -f json -o plan.json   JSON plan for current project
       agent-bom remediate --fixable-only --priority P2 show P1+P2 fixable items only
       agent-bom remediate --server-group               group by MCP server
+      agent-bom remediate -p . --apply                 apply package fixes after review
+      agent-bom remediate -p . --apply --open-pr       apply fixes and open a draft PR
     """
     import agent_bom.output as output_mod
 
@@ -224,6 +267,9 @@ def remediate_cmd(
     output_console = _make_console()
     _sync_runtime_consoles(runtime_console)
     output_mod.console = output_console
+
+    if open_pr and not apply_changes:
+        raise click.ClickException("--open-pr requires --apply")
 
     # Run the scan pipeline
     try:
@@ -277,6 +323,32 @@ def remediate_cmd(
         output_console.print("\n[dim]No remediation items match the current filters.[/dim]\n")
         return
 
+    apply_outcome = None
+    if apply_changes:
+        fixable_count = sum(1 for item in plan if item.get("fix"))
+        if fixable_count == 0:
+            output_console.print("\n[dim]No fixable package remediation items to apply.[/dim]\n")
+            return
+        if not yes and not click.confirm(
+            f"Apply {fixable_count} package remediation update(s) to dependency files?",
+            default=False,
+        ):
+            output_console.print("[yellow]Remediation apply cancelled.[/yellow]")
+            return
+        try:
+            apply_outcome = apply_remediation_plan(
+                plan,
+                project_dir=project or ".",
+                open_pr=open_pr,
+                backup=not no_backup,
+                verify=not skip_verify,
+                branch_name=branch_name,
+                pr_title=pr_title,
+                audit_log_path=audit_log,
+            )
+        except RemediationApplyError as exc:
+            raise click.ClickException(str(exc)) from exc
+
     # Render output
     if output_format == "console":
         if server_group:
@@ -309,6 +381,8 @@ def remediate_cmd(
             json_out["server_groups"] = {srv: [item["package"] for item in items] for srv, items in groups.items()}
         else:
             json_out = _plan_to_json(plan)
+        if apply_outcome is not None:
+            json_out["apply_result"] = apply_outcome.to_json()
         _out_str = json.dumps(json_out, indent=2)
         if output_path:
             Path(output_path).write_text(_out_str)
@@ -325,3 +399,6 @@ def remediate_cmd(
                 output_console.print(f"[green]Remediation report written[/green] -> {output_path}")
         else:
             click.echo(md)
+
+    if output_format == "console" and apply_outcome is not None:
+        _print_apply_outcome(output_console, apply_outcome)

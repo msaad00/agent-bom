@@ -23,6 +23,24 @@ Optional grouping:
 agent-bom remediate -p . --format json --server-group --output plan.json
 ```
 
+Guarded apply:
+
+```bash
+agent-bom remediate -p . --apply
+```
+
+Draft PR flow:
+
+```bash
+agent-bom remediate -p . --apply --open-pr
+```
+
+`remediate` remains read-only unless `--apply` is present. The apply path is
+limited to package CVE dependency updates, refuses dirty worktrees, refuses
+writes outside the git repo root, writes an audit JSONL event, and validates
+dependency files before opening a draft PR. SAST, IaC, and credential
+remediation remain advisory/manual in this command.
+
 ## Top-level JSON shape
 
 ```json
@@ -49,6 +67,25 @@ When `--server-group` is set, one additional top-level field is present:
   "server_groups": {
     "jira": ["urllib3", "requests"],
     "github": ["openssl"]
+  }
+}
+```
+
+When `--apply` is set with JSON output, one additional top-level field is
+present:
+
+```json
+{
+  "apply_result": {
+    "dry_run": false,
+    "applied": [],
+    "skipped": [],
+    "backed_up": [],
+    "changed_files": [],
+    "validation_commands": [],
+    "audit_log_path": ".agent-bom/remediation-audit.jsonl",
+    "branch_name": null,
+    "pr_url": null
   }
 }
 ```
@@ -100,6 +137,7 @@ These keys are the supported JSON contract for automation:
 
 - top level: `version`, `generated_at`, `remediation_plan`, `summary`
 - optional top level with `--server-group`: `server_groups`
+- optional top level with `--apply`: `apply_result`
 - item fields:
   - `package`
   - `ecosystem`

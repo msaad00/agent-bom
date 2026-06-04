@@ -280,3 +280,44 @@ def test_remediate_quiet_suppresses_scan_chatter():
     assert result.exit_code == 0, result.output
     assert "scan chatter" not in result.output
     assert "flask" in result.output
+
+
+def test_remediate_open_pr_requires_apply():
+    runner = CliRunner()
+    with _patch_scan():
+        result = runner.invoke(remediate_cmd, ["--demo", "--offline", "--open-pr"])
+
+    assert result.exit_code != 0
+    assert "--open-pr requires --apply" in result.output
+
+
+def test_remediate_apply_invokes_guarded_apply(tmp_path):
+    runner = CliRunner()
+    audit_log = tmp_path / "remediate-audit.jsonl"
+
+    mock_apply_result = MagicMock()
+    mock_apply_result.applied = []
+    mock_apply_result.skipped = []
+    mock_apply_result.backed_up = []
+    mock_apply_result.dry_run = False
+
+    mock_outcome = MagicMock()
+    mock_outcome.apply_result = mock_apply_result
+    mock_outcome.changed_files = ["package.json"]
+    mock_outcome.validation_commands = []
+    mock_outcome.branch_name = None
+    mock_outcome.pr_url = None
+    mock_outcome.audit_log_path = str(audit_log)
+
+    with _patch_scan(), patch("agent_bom.cli._remediate.apply_remediation_plan", return_value=mock_outcome) as apply_mock:
+        result = runner.invoke(
+            remediate_cmd,
+            ["--demo", "--offline", "--apply", "--yes", "--audit-log", str(audit_log)],
+        )
+
+    assert result.exit_code == 0, result.output
+    apply_mock.assert_called_once()
+    kwargs = apply_mock.call_args.kwargs
+    assert kwargs["open_pr"] is False
+    assert kwargs["audit_log_path"] == str(audit_log)
+    assert "Remediation apply result" in result.output

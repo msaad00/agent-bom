@@ -522,6 +522,75 @@ def _extract_trust_principals(policy_document: Any, *, account_id: str | None) -
     return entries
 
 
+# Canonical AWS-managed policy → privilege level (name is authoritative, no fetch needed).
+_AWS_MANAGED_PRIVILEGE: dict[str, str] = {
+    "administratoraccess": "admin",
+    "iamfullaccess": "admin",
+    "poweruseraccess": "write",
+    "readonlyaccess": "read",
+    "viewonlyaccess": "read",
+    "securityaudit": "read",
+}
+# Action verbs that imply write/mutate (vs read).
+_WRITE_VERBS = ("create", "delete", "put", "update", "modify", "write", "attach", "detach", "remove", "set", "tag", "untag", "run")
+
+
+def _classify_policy_actions(actions: list[str]) -> str:
+    """Classify an action list as admin / write / read."""
+    admin = {"*", "*:*", "iam:*"}
+    has_write = False
+    for raw in actions:
+        action = str(raw).lower()
+        if action in admin or action.endswith(":*") and action.startswith("iam"):
+            return "admin"
+        if action == "*":
+            return "admin"
+        verb = action.split(":", 1)[-1]
+        if any(verb.startswith(w) for w in _WRITE_VERBS) or action.endswith(":*"):
+            has_write = True
+    return "write" if has_write else "read"
+
+
+def _policy_actions_from_document(document: Any) -> list[str]:
+    """Extract the Action strings from an IAM policy document (Allow statements)."""
+    actions: list[str] = []
+    statements = document.get("Statement", []) if isinstance(document, dict) else []
+    if isinstance(statements, dict):
+        statements = [statements]
+    for stmt in statements:
+        if not isinstance(stmt, dict) or stmt.get("Effect") != "Allow":
+            continue
+        raw = stmt.get("Action", [])
+        actions.extend([raw] if isinstance(raw, str) else [a for a in raw if isinstance(a, str)])
+    return actions
+
+
+def _policy_privilege(iam: Any, policy_arn: str, policy_name: str, *, warnings: list[str]) -> tuple[str, list[str]]:
+    """Return (privilege_level, sampled_actions) for an attached policy.
+
+    AWS-managed policies are classified by their canonical name (no API call).
+    Customer-managed policies are fetched and classified by their actions.
+    Degrades to ('unknown', []) on any error — never blocks discovery.
+    """
+    name_key = (policy_name or policy_arn).rsplit("/", 1)[-1].lower()
+    if ":aws:policy/" in policy_arn and name_key in _AWS_MANAGED_PRIVILEGE:
+        return _AWS_MANAGED_PRIVILEGE[name_key], []
+    if ":aws:policy/" in policy_arn:
+        # Unknown AWS-managed policy — name still hints at privilege.
+        if "fullaccess" in name_key or "admin" in name_key:
+            return "admin", []
+        if "readonly" in name_key or "viewonly" in name_key:
+            return "read", []
+    try:
+        version_id = iam.get_policy(PolicyArn=policy_arn)["Policy"]["DefaultVersionId"]
+        document = iam.get_policy_version(PolicyArn=policy_arn, VersionId=version_id)["PolicyVersion"]["Document"]
+        actions = _policy_actions_from_document(document)
+        return _classify_policy_actions(actions), sorted(set(actions))[:25]
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"IAM policy action lookup skipped for {policy_name or policy_arn}: {sanitize_discovery_warning(exc)}")
+        return "unknown", []
+
+
 def _enrich_agents_with_iam(session: Any, agents: list[Agent], *, account_id: str | None, warnings: list[str]) -> None:
     """Attach live IAM role policy/trust metadata to discovered principals."""
 
@@ -548,17 +617,24 @@ def _enrich_agents_with_iam(session: Any, agents: list[Agent], *, account_id: st
         try:
             role_detail = iam.get_role(RoleName=role_name).get("Role", {})
             paginator = iam.get_paginator("list_attached_role_policies")
-            policies = [
-                {
-                    "policy_id": str(policy.get("PolicyArn") or ""),
-                    "policy_name": str(policy.get("PolicyName") or policy.get("PolicyArn") or ""),
-                    "attachment_type": "managed",
-                    "source_field": "ListAttachedRolePolicies.AttachedPolicies",
-                }
-                for page in paginator.paginate(RoleName=role_name)
-                for policy in page.get("AttachedPolicies", [])
-                if policy.get("PolicyArn") or policy.get("PolicyName")
-            ]
+            policies = []
+            for page in paginator.paginate(RoleName=role_name):
+                for policy in page.get("AttachedPolicies", []):
+                    policy_arn = str(policy.get("PolicyArn") or "")
+                    policy_name = str(policy.get("PolicyName") or policy_arn or "")
+                    if not (policy_arn or policy_name):
+                        continue
+                    privilege_level, actions = _policy_privilege(iam, policy_arn, policy_name, warnings=warnings)
+                    policies.append(
+                        {
+                            "policy_id": policy_arn,
+                            "policy_name": policy_name,
+                            "attachment_type": "managed",
+                            "privilege_level": privilege_level,
+                            "actions": actions,
+                            "source_field": "ListAttachedRolePolicies.AttachedPolicies",
+                        }
+                    )
         except Exception as exc:
             warnings.append(f"IAM role enrichment skipped for {role_name}: {sanitize_discovery_warning(exc)}")
             continue

@@ -58,6 +58,7 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
     direct_access: dict[str, set[str]] = defaultdict(set)
     assumes: dict[str, set[str]] = defaultdict(set)
     attached_policy_labels: dict[str, list[str]] = defaultdict(list)
+    admin_by_policy_actions: set[str] = set()
     for edge in graph.edges:
         rel = edge.relationship
         if rel == RelationshipType.CAN_ACCESS and edge.source in principal_ids:
@@ -70,11 +71,17 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
             policy = graph.nodes.get(edge.target)
             if policy is not None and policy.entity_type == EntityType.POLICY:
                 attached_policy_labels[edge.source].append(policy.label)
+                # Action-derived privilege from the scanner (precise, beats name match).
+                if policy.attributes.get("privilege_level") == "admin":
+                    admin_by_policy_actions.add(edge.source)
 
-    # A principal is admin-privileged when its own name or an attached policy
-    # name signals broad access (AdministratorAccess, *FullAccess, wildcard).
-    admin_principals: set[str] = set()
+    # A principal is admin-privileged when a scanner-classified policy grants admin
+    # actions, or (fallback) its own name or an attached policy name signals broad
+    # access (AdministratorAccess / *FullAccess / wildcard).
+    admin_principals: set[str] = set(admin_by_policy_actions)
     for p in principals:
+        if p.id in admin_principals:
+            continue
         haystack = " ".join([p.label, *attached_policy_labels.get(p.id, [])]).lower().replace(" ", "")
         if any(kw in haystack for kw in _ADMIN_PRIVILEGE_KEYWORDS):
             admin_principals.add(p.id)

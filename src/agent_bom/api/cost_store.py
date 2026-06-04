@@ -41,12 +41,19 @@ class LLMCostRecord:
 
 @dataclass(frozen=True)
 class CostBudget:
-    """A spend cap for a tenant (optionally scoped to one agent)."""
+    """A spend cap for a tenant (optionally scoped to one agent).
+
+    ``mode`` controls whether the cap is advisory or blocking:
+    - ``"report"`` (default): surfaced in budget posture only.
+    - ``"enforce"``: the runtime relay fails calls closed once spend reaches
+      the cap (pre-invocation enforcement), turning FinOps into a control.
+    """
 
     tenant_id: str
     agent: str  # "" means tenant-wide
     limit_usd: float
     updated_at: str
+    mode: str = "report"  # report | enforce
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -112,6 +119,7 @@ def budget_status(spend: float, budget: CostBudget | None) -> dict[str, Any]:
     return {
         "configured": True,
         "agent": budget.agent or None,
+        "mode": budget.mode,
         "limit_usd": budget.limit_usd,
         "spend_usd": round(spend, 6),
         "remaining_usd": remaining,
@@ -197,10 +205,15 @@ class SQLiteCostStore:
                 agent TEXT NOT NULL DEFAULT '',
                 limit_usd REAL NOT NULL,
                 updated_at TEXT NOT NULL,
+                mode TEXT NOT NULL DEFAULT 'report',
                 PRIMARY KEY (tenant_id, agent)
             )
             """
         )
+        # Backfill mode for databases created before enforcement existed.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(llm_cost_budgets)").fetchall()]
+        if "mode" not in cols:
+            self._conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN mode TEXT NOT NULL DEFAULT 'report'")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_agent ON llm_costs(tenant_id, agent)")
         self._conn.commit()
 
@@ -246,17 +259,37 @@ class SQLiteCostStore:
 
     def set_budget(self, budget: CostBudget) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO llm_cost_budgets (tenant_id, agent, limit_usd, updated_at) VALUES (?, ?, ?, ?)",
-            (budget.tenant_id, budget.agent, budget.limit_usd, budget.updated_at),
+            "INSERT OR REPLACE INTO llm_cost_budgets (tenant_id, agent, limit_usd, updated_at, mode) VALUES (?, ?, ?, ?, ?)",
+            (budget.tenant_id, budget.agent, budget.limit_usd, budget.updated_at, budget.mode),
         )
         self._conn.commit()
 
     def get_budget(self, tenant_id: str, agent: str = "") -> CostBudget | None:
         row = self._conn.execute(
-            "SELECT tenant_id, agent, limit_usd, updated_at FROM llm_cost_budgets WHERE tenant_id = ? AND agent = ?",
+            "SELECT tenant_id, agent, limit_usd, updated_at, mode FROM llm_cost_budgets WHERE tenant_id = ? AND agent = ?",
             (tenant_id, agent),
         ).fetchone()
-        return CostBudget(row[0], row[1], float(row[2]), row[3]) if row else None
+        return CostBudget(row[0], row[1], float(row[2]), row[3], row[4] if len(row) > 4 else "report") if row else None
+
+
+def check_budget_enforcement(store: CostStore, tenant_id: str, agent: str) -> tuple[bool, CostBudget | None, float]:
+    """Decide whether a call should be blocked for exceeding an enforced budget.
+
+    Returns ``(blocked, budget, spend)``. An agent-scoped enforce budget wins;
+    otherwise the tenant-wide enforce budget applies. Report-mode budgets and
+    missing budgets never block.
+    """
+    budget = store.get_budget(tenant_id, agent) if agent else None
+    spend = store.total_spend(tenant_id, agent=agent or None)
+    if budget is None or budget.mode != "enforce":
+        tenant_budget = store.get_budget(tenant_id, "")
+        if tenant_budget is not None and tenant_budget.mode == "enforce":
+            budget = tenant_budget
+            spend = store.total_spend(tenant_id, agent=None)
+        elif budget is None or budget.mode != "enforce":
+            return False, budget, spend
+    blocked = budget is not None and budget.mode == "enforce" and spend >= budget.limit_usd
+    return blocked, budget, spend
 
 
 _COST_STORE: CostStore | None = None

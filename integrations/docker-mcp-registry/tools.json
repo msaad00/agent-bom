@@ -537,6 +537,22 @@
     ]
   },
   {
+    "name": "anomaly_scan",
+    "description": "Detect cost and behavior anomalies (per-agent spend + per-session call-rate z-score outliers).",
+    "arguments": [
+      {
+        "name": "z_threshold",
+        "type": "number",
+        "desc": "Z-score threshold (default 3.0)"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope"
+      }
+    ]
+  },
+  {
     "name": "drift_incidents",
     "description": "List open blueprint-drift incidents where observed runtime traffic left the approved role blueprint.",
     "arguments": [
@@ -686,6 +702,206 @@
         "name": "reason",
         "type": "string",
         "desc": "Audit reason for the emergency override"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope for audit logging"
+      }
+    ]
+  },
+  {
+    "name": "identity_issue",
+    "description": "Issue a managed agent identity; requires admin role, identity:write scope, and an audit reason. Returns the raw token once.",
+    "arguments": [
+      {
+        "name": "agent_id",
+        "type": "string",
+        "desc": "Agent identifier the issued identity represents"
+      },
+      {
+        "name": "role",
+        "type": "string",
+        "desc": "Identity role label, for example agent or service"
+      },
+      {
+        "name": "blueprint_id",
+        "type": "string",
+        "desc": "Optional runtime blueprint id bound to the identity"
+      },
+      {
+        "name": "ttl_seconds",
+        "type": "number",
+        "desc": "Identity lifetime in seconds"
+      },
+      {
+        "name": "allowed_tools",
+        "type": "string",
+        "desc": "Comma-separated per-tool scope allowlist; empty means any tool"
+      },
+      {
+        "name": "operator_role",
+        "type": "string",
+        "desc": "Caller role; must be admin"
+      },
+      {
+        "name": "operator_scopes",
+        "type": "string",
+        "desc": "Comma-separated operator scopes; must include identity:write"
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "desc": "Audit reason for the write action"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope for the identity and audit logging"
+      }
+    ]
+  },
+  {
+    "name": "identity_rotate",
+    "description": "Rotate a managed agent identity with an overlap window; requires admin role, identity:write scope, and an audit reason.",
+    "arguments": [
+      {
+        "name": "identity_id",
+        "type": "string",
+        "desc": "Identity id to rotate"
+      },
+      {
+        "name": "overlap_seconds",
+        "type": "number",
+        "desc": "Seconds the old token stays live during rotation"
+      },
+      {
+        "name": "ttl_seconds",
+        "type": "number",
+        "desc": "Lifetime of the replacement identity in seconds"
+      },
+      {
+        "name": "operator_role",
+        "type": "string",
+        "desc": "Caller role; must be admin"
+      },
+      {
+        "name": "operator_scopes",
+        "type": "string",
+        "desc": "Comma-separated operator scopes; must include identity:write"
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "desc": "Audit reason for the write action"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope for audit logging"
+      }
+    ]
+  },
+  {
+    "name": "identity_revoke",
+    "description": "Revoke a managed agent identity immediately; requires admin role, identity:write scope, and an audit reason.",
+    "arguments": [
+      {
+        "name": "identity_id",
+        "type": "string",
+        "desc": "Identity id to revoke"
+      },
+      {
+        "name": "operator_role",
+        "type": "string",
+        "desc": "Caller role; must be admin"
+      },
+      {
+        "name": "operator_scopes",
+        "type": "string",
+        "desc": "Comma-separated operator scopes; must include identity:write"
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "desc": "Audit reason for the write action"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope for audit logging"
+      }
+    ]
+  },
+  {
+    "name": "identity_grant_jit",
+    "description": "Grant an identity time-bound JIT access to one tool; requires admin role, identity:write scope, and an audit reason.",
+    "arguments": [
+      {
+        "name": "identity_id",
+        "type": "string",
+        "desc": "Identity id to grant time-bound access to"
+      },
+      {
+        "name": "tool_name",
+        "type": "string",
+        "desc": "Tool the grant authorizes beyond the identity's standing scope"
+      },
+      {
+        "name": "ttl_seconds",
+        "type": "number",
+        "desc": "Grant lifetime in seconds"
+      },
+      {
+        "name": "ticket_id",
+        "type": "string",
+        "desc": "Optional change/incident ticket id"
+      },
+      {
+        "name": "operator_role",
+        "type": "string",
+        "desc": "Caller role; must be admin"
+      },
+      {
+        "name": "operator_scopes",
+        "type": "string",
+        "desc": "Comma-separated operator scopes; must include identity:write"
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "desc": "Audit reason for the write action"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope for audit logging"
+      }
+    ]
+  },
+  {
+    "name": "identity_revoke_jit",
+    "description": "Revoke an active JIT access grant immediately; requires admin role, identity:write scope, and an audit reason.",
+    "arguments": [
+      {
+        "name": "grant_id",
+        "type": "string",
+        "desc": "JIT grant id to revoke"
+      },
+      {
+        "name": "operator_role",
+        "type": "string",
+        "desc": "Caller role; must be admin"
+      },
+      {
+        "name": "operator_scopes",
+        "type": "string",
+        "desc": "Comma-separated operator scopes; must include identity:write"
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "desc": "Audit reason for the write action"
       },
       {
         "name": "tenant_id",

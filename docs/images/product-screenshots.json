@@ -1,7 +1,7 @@
 {
   "release_version": "0.88.5",
-  "captured_at": "2026-05-18T06:21:02Z",
-  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main after the graph/ExposurePath/MCP enhancements, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README/Docker proof uses one focused graph capture that keeps the active exposure path visible instead of mixing bright path nodes with dimmed context nodes. Manifest metadata targets v0.88.5; recapture is only required if the release proof must show the new version string in the image pixels.",
+  "captured_at": "2026-06-03T20:30:00Z",
+  "capture_note": "Captured from real Next.js dashboard routes in capture mode. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
@@ -22,6 +22,12 @@
       "visible_version": "0.88.5"
     },
     {
+      "path": "gateway-policies-live.png",
+      "page": "/gateway?capture=1",
+      "scope": "Runtime gateway policy posture with one advisory baseline policy, two rules, and two bound agents",
+      "visible_version": "0.88.5"
+    },
+    {
       "path": "security-graph-live.png",
       "page": "/security-graph?capture=1",
       "scope": "Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff",
@@ -29,8 +35,26 @@
     },
     {
       "path": "lineage-graph-live.png",
-      "page": "/graph?capture=1&investigate=1&root=agent:cursor&q=cursor",
-      "scope": "Root-centered lineage investigation with reachable node counts, bounded paths, filters, and graph evidence export",
+      "page": "/graph?capture=1",
+      "scope": "Expanded but bounded lineage topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes",
+      "visible_version": "0.88.5"
+    },
+    {
+      "path": "context-map-live.png",
+      "page": "/context?capture=1",
+      "scope": "Agent-scoped context map showing reachable MCP servers and lateral movement side panel",
+      "visible_version": "0.88.5"
+    },
+    {
+      "path": "fleet-state-live.png",
+      "page": "/fleet?capture=1",
+      "scope": "Expanded fleet row showing lifecycle distribution, approved state, owner metadata, environment label, and discovery state",
+      "visible_version": "0.88.5"
+    },
+    {
+      "path": "identity-audit-live.png",
+      "page": "/audit?capture=1",
+      "scope": "Audit log filtered to identity resources with HMAC integrity counters and agent identity issue, rotate, revoke events",
       "visible_version": "0.88.5"
     },
     {

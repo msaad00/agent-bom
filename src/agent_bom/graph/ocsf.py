@@ -43,9 +43,14 @@ ENTITY_OCSF_MAP: dict[str, dict[str, int]] = {
     EntityType.SERVICE_ACCOUNT: {"category_uid": 3, "class_uid": 3001},
     EntityType.SERVICE_PRINCIPAL: {"category_uid": 3, "class_uid": 3001},
     EntityType.FEDERATED_IDENTITY: {"category_uid": 3, "class_uid": 3001},
+    # Agent-identity governance control plane (Category 3 — Identity & Access)
+    EntityType.MANAGED_IDENTITY: {"category_uid": 3, "class_uid": 3001},
+    EntityType.ACCESS_GRANT: {"category_uid": 3, "class_uid": 3001},
+    EntityType.ACCESS_POLICY: {"category_uid": 3, "class_uid": 3001},
     # Findings (Category 2)
     EntityType.VULNERABILITY: {"category_uid": 2, "class_uid": 2001},
     EntityType.MISCONFIGURATION: {"category_uid": 2, "class_uid": 2003},
+    EntityType.DRIFT_INCIDENT: {"category_uid": 2, "class_uid": 2004},
     # Organizational (virtual)
     EntityType.PROVIDER: {"category_uid": 0, "class_uid": 0},
     EntityType.ENVIRONMENT: {"category_uid": 0, "class_uid": 0},
@@ -58,6 +63,7 @@ FINDING_ENTITY_TYPES: frozenset[EntityType] = frozenset(
     {
         EntityType.VULNERABILITY,
         EntityType.MISCONFIGURATION,
+        EntityType.DRIFT_INCIDENT,
     }
 )
 

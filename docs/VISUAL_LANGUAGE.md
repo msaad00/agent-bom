@@ -38,7 +38,10 @@ Current PNG inventory:
 | `dashboard-paths-live.png` | Packaged Next.js attack paths and exposure view | Product views |
 | `mesh-live.png` | Focused agent mesh graph across agents, MCP servers, packages, tools, credentials, and findings | Product views |
 | `security-graph-live.png` | Fix-first attack-path queue with export controls and remediation handoff | Product views |
-| `lineage-graph-live.png` | Root-centered lineage investigation with bounded paths and reachability summary | Product views |
+| `lineage-graph-live.png` | Expanded but bounded topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes | Product views |
+| `context-map-live.png` | Focused lateral context map with MCP reachability, shared infrastructure, credentials, tools, and findings | Product views |
+| `fleet-state-live.png` | Fleet lifecycle review state with owner, environment, trust factors, and quarantine context | Product views |
+| `gateway-policies-live.png` | Runtime gateway posture with enforcement, firewall decisions, policy rules, and bound agents | Product views |
 | `dependency-map-live.png` | Supply chain dependency map with scan pipeline counts and package risk distribution | Product views |
 | `remediation-live.png` | Fix-first remediation surface | Product views |
 

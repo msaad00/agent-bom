@@ -43,7 +43,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from agent_bom.agent_identity import ANONYMOUS, check_identity
+from agent_bom.agent_identity import ANONYMOUS, check_identity, extract_identity_token
 from agent_bom.api.auth import Role, get_key_store
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
@@ -170,6 +170,26 @@ def _evaluate_control_plane_bundle(
         # Fail closed: a bundle that cannot be evaluated must not silently pass.
         logger.warning("gateway control-plane bundle evaluation failed: %s", _sanitize_for_log(exc))
         return False, "control-plane policy evaluation error"
+
+
+def _request_source_ip(request: Request) -> str:
+    """Resolve the caller IP for conditional-access CIDR conditions.
+
+    Prefers the first hop of ``X-Forwarded-For`` (the original client behind a
+    trusted reverse proxy), falling back to the direct socket peer.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    client = getattr(request, "client", None)
+    return getattr(client, "host", "") or ""
+
+
+def _request_environment(request: Request) -> str:
+    """Resolve the caller-declared environment for conditional-access conditions."""
+    return (request.headers.get("x-agent-environment", "") or "").strip()[:60]
 
 
 class GatewayCircuitOpenError(RuntimeError):
@@ -990,14 +1010,138 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     },
                 )
 
+        # Pre-invocation budget enforcement: an enforce-mode spend cap fails the
+        # call closed once the agent/tenant has burned its budget, before the
+        # upstream is touched. Report-mode budgets never block. Cost-store
+        # failures must not break the relay.
+        try:
+            from agent_bom.api.cost_store import check_budget_enforcement, get_cost_store
+
+            budget_blocked, budget, budget_spend = check_budget_enforcement(get_cost_store(), tenant_id, source_agent)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("gateway budget check failed: %s", _sanitize_for_log(exc))
+            budget_blocked, budget, budget_spend = False, None, 0.0
+        if budget_blocked and budget is not None:
+            record_gateway_relay(upstream.name, "blocked")
+            if settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.budget_exceeded",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "source_agent": source_agent,
+                        "limit_usd": budget.limit_usd,
+                        "spend_usd": round(budget_spend, 6),
+                        "budget_scope": "agent" if budget.agent else "tenant",
+                        "reason": "budget_enforced",
+                    }
+                )
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32001,
+                        "message": "Blocked by agent-bom gateway: spend budget exceeded",
+                        "data": {"limit_usd": budget.limit_usd, "spend_usd": round(budget_spend, 6)},
+                    },
+                },
+                status_code=200,
+                headers=rate_limit_headers or None,
+            )
+
         policy_subject = policy_subject_from_message(message)
         if policy_subject:
             tool_name, arguments = policy_subject
             allowed, reason = check_policy(current_policy, tool_name, arguments)
+            # Per-tool identity scopes: a managed identity with a non-empty
+            # allowed_tools allowlist may only call tools in that list — the
+            # identity itself bounds authorization, independent of policy.
+            policy_source = "file"
+            if allowed:
+                try:
+                    from agent_bom.api.agent_identity_store import (
+                        active_jit_grant_for_tool,
+                        get_agent_identity_store,
+                        identity_for_token,
+                    )
+
+                    identity_token = extract_identity_token(message)
+                    scoped_identity = identity_for_token(get_agent_identity_store(), identity_token) if identity_token else None
+                except Exception:  # noqa: BLE001
+                    scoped_identity = None
+                if scoped_identity is not None and not scoped_identity.tool_allowed(tool_name):
+                    try:
+                        jit_grant = active_jit_grant_for_tool(
+                            get_agent_identity_store(),
+                            tenant_id=scoped_identity.tenant_id,
+                            identity_id=scoped_identity.identity_id,
+                            tool_name=tool_name,
+                        )
+                    except Exception:  # noqa: BLE001
+                        jit_grant = None
+                    if jit_grant is None:
+                        allowed, reason, policy_source = False, f"tool '{tool_name}' not in identity scope", "identity_scope"
+                    else:
+                        policy_source = "identity_jit"
+                        if settings.audit_sink is not None:
+                            await settings.audit_sink(
+                                {
+                                    "action": "gateway.identity_jit_grant_used",
+                                    "upstream": upstream.name,
+                                    "tenant_id": tenant_id,
+                                    "source_agent": source_agent,
+                                    "identity_id": scoped_identity.identity_id,
+                                    "grant_id": jit_grant.grant_id,
+                                    "tool": tool_name,
+                                    "expires_at": jit_grant.expires_at,
+                                }
+                            )
+            # Context-aware (conditional) access: time-of-day / weekday window,
+            # source CIDR, and environment guardrails scoped to the identity,
+            # agent, or tool. Deny policies win; require policies deny when the
+            # request context does not satisfy them. Evaluated after scope/JIT so
+            # a JIT grant cannot bypass an environment/CIDR/time guardrail.
+            if allowed:
+                try:
+                    from agent_bom.api.agent_identity_store import (
+                        AccessContext,
+                        evaluate_conditional_access_for_request,
+                        get_agent_identity_store,
+                    )
+
+                    ctx = AccessContext(
+                        identity_id=scoped_identity.identity_id if scoped_identity is not None else "",
+                        agent_id=source_agent,
+                        tool_name=tool_name,
+                        environment=_request_environment(request),
+                        source_ip=_request_source_ip(request),
+                    )
+                    cond_allowed, cond_reason, cond_policy_id = evaluate_conditional_access_for_request(
+                        get_agent_identity_store(),
+                        tenant_id=tenant_id,
+                        ctx=ctx,
+                    )
+                except Exception:  # noqa: BLE001
+                    cond_allowed, cond_reason, cond_policy_id = True, "", ""
+                if not cond_allowed:
+                    allowed, reason, policy_source = False, cond_reason, "conditional_access"
+                    if settings.audit_sink is not None:
+                        await settings.audit_sink(
+                            {
+                                "action": "gateway.conditional_access_blocked",
+                                "upstream": upstream.name,
+                                "tenant_id": tenant_id,
+                                "source_agent": source_agent,
+                                "identity_id": ctx.identity_id,
+                                "tool": tool_name,
+                                "policy_id": cond_policy_id,
+                                "reason": cond_reason,
+                            }
+                        )
             # Layer control-plane GatewayPolicy binding on top of the file
             # policy: enforce bound_agents/bound_agent_types/bound_environments
             # scoped to the resolved source_agent, matching the per-MCP proxy.
-            policy_source = "file"
             if allowed and settings.control_plane_policies:
                 cp_allowed, cp_reason = _evaluate_control_plane_bundle(settings.control_plane_policies, source_agent, tool_name, arguments)
                 if not cp_allowed:

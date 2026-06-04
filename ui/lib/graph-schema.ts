@@ -74,6 +74,12 @@ export enum EntityType {
   SERVICE_ACCOUNT = "service_account",
   SERVICE_PRINCIPAL = "service_principal",
   FEDERATED_IDENTITY = "federated_identity",
+  // Agent-identity governance control plane
+  MANAGED_IDENTITY = "managed_identity",
+  ACCESS_GRANT = "access_grant",
+  ACCESS_POLICY = "access_policy",
+  // Behavioral drift (detection finding)
+  DRIFT_INCIDENT = "drift_incident",
   // Organizational hierarchy
   PROVIDER = "provider",
   ENVIRONMENT = "environment",
@@ -126,6 +132,12 @@ export enum RelationshipType {
   // Cross-environment correlation (#1892)
   CORRELATES_WITH = "correlates_with",
   POSSIBLY_CORRELATES_WITH = "possibly_correlates_with",
+
+  // Agent-identity governance
+  AUTHENTICATES_AS = "authenticates_as",
+  SCOPED_TO = "scoped_to",
+  GOVERNS = "governs",
+  EXHIBITS_DRIFT = "exhibits_drift",
 }
 
 export enum NodeStatus {
@@ -434,6 +446,10 @@ export const ENTITY_COLOR_MAP: Record<string, string> = {
   [EntityType.SERVICE_ACCOUNT]: "#0f766e", // teal
   [EntityType.SERVICE_PRINCIPAL]: "#0f766e", // teal
   [EntityType.FEDERATED_IDENTITY]: "#0e7490", // cyan
+  [EntityType.MANAGED_IDENTITY]: "#0891b2", // cyan
+  [EntityType.ACCESS_GRANT]: "#ca8a04",    // amber
+  [EntityType.ACCESS_POLICY]: "#a16207",   // amber
+  [EntityType.DRIFT_INCIDENT]: "#fb923c",  // orange
   [EntityType.PROVIDER]: "#6b7280",        // gray
   [EntityType.ENVIRONMENT]: "#6b7280",     // gray
 };
@@ -480,6 +496,11 @@ export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.INHERITS]: "#a16207",
   [RelationshipType.CAN_ACCESS]: "#dc2626",
   [RelationshipType.CROSS_ACCOUNT_TRUST]: "#be123c",
+  // Agent-identity governance relations.
+  [RelationshipType.AUTHENTICATES_AS]: "#0891b2",
+  [RelationshipType.SCOPED_TO]: "#22d3ee",
+  [RelationshipType.GOVERNS]: "#a16207",
+  [RelationshipType.EXHIBITS_DRIFT]: "#fb923c",
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -668,4 +689,5 @@ export const RELATIONSHIP_LEGEND: LegendEntry[] = [
 export const FINDING_ENTITY_TYPES: Set<EntityType> = new Set([
   EntityType.VULNERABILITY,
   EntityType.MISCONFIGURATION,
+  EntityType.DRIFT_INCIDENT,
 ]);

@@ -889,6 +889,10 @@ ENTITY_LEGEND: list[LegendEntry] = [
     LegendEntry(key="dataset", label="Dataset", color="#06b6d4", shape="square", layer=GraphSemanticLayer.ASSET.value),
     LegendEntry(key="environment", label="Environment", color="#9ca3af", shape="square", layer=GraphSemanticLayer.INFRA.value),
     LegendEntry(key="provider", label="Provider", color="#d1d5db", shape="square", layer=GraphSemanticLayer.INFRA.value),
+    LegendEntry(key="managed_identity", label="Managed Identity", color="#0891b2", shape="circle", layer=GraphSemanticLayer.IDENTITY.value),
+    LegendEntry(key="access_grant", label="Access Grant", color="#ca8a04", shape="diamond", layer=GraphSemanticLayer.IDENTITY.value),
+    LegendEntry(key="access_policy", label="Access Policy", color="#a16207", shape="diamond", layer=GraphSemanticLayer.IDENTITY.value),
+    LegendEntry(key="drift_incident", label="Drift Incident", color="#fb923c", shape="triangle", layer=GraphSemanticLayer.FINDING.value),
 ]
 
 RELATIONSHIP_LEGEND: list[LegendEntry] = [
@@ -936,4 +940,9 @@ RELATIONSHIP_LEGEND: list[LegendEntry] = [
     # Cross-environment correlation (#1892)
     LegendEntry(key="correlates_with", label="Correlates With (cross-env)", color="#0ea5e9"),
     LegendEntry(key="possibly_correlates_with", label="Possibly Correlates With (low confidence)", color="#7dd3fc"),
+    # Agent-identity governance
+    LegendEntry(key="authenticates_as", label="Authenticates As", color="#0891b2"),
+    LegendEntry(key="scoped_to", label="Scoped To", color="#22d3ee"),
+    LegendEntry(key="governs", label="Governs", color="#a16207"),
+    LegendEntry(key="exhibits_drift", label="Exhibits Drift", color="#fb923c"),
 ]

@@ -179,6 +179,23 @@ async def drift_incidents_impl(
         return json.dumps({"error": sanitize_error(exc)})
 
 
+async def anomaly_scan_impl(
+    *,
+    z_threshold: float = 3.0,
+    tenant_id: str = "default",
+    _truncate_response,
+) -> str:
+    """Implementation of the anomaly_scan tool: cost + behavior anomalies."""
+    try:
+        from agent_bom.api.routes.observability import get_anomalies
+
+        payload = await get_anomalies(cast(Any, _request_for_tenant(tenant_id)), z_threshold=z_threshold)
+        return _truncate_response(json.dumps(payload, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP anomaly scan error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
 async def cost_report_impl(
     *,
     agent: str = "",

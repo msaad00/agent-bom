@@ -147,6 +147,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "anomaly_scan",
+        "description": "Detect cost and behavior anomalies (per-agent spend + per-session call-rate z-score outliers)",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "drift_incidents",
         "description": "List open blueprint-drift incidents where observed runtime traffic left the approved role blueprint",
         "annotations": {"readOnlyHint": True},
@@ -185,6 +190,31 @@ _SERVER_CARD_TOOLS = [
         "name": "shield_break_glass",
         "description": "Emergency Shield override; requires admin role, shield:write scope, and an audit reason",
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    },
+    {
+        "name": "identity_issue",
+        "description": "Issue a managed agent identity; requires admin role, identity:write scope, and an audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "identity_rotate",
+        "description": "Rotate a managed agent identity with an overlap window; requires admin role, identity:write scope, audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "identity_revoke",
+        "description": "Revoke a managed agent identity immediately; requires admin role, identity:write scope, and an audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True},
+    },
+    {
+        "name": "identity_grant_jit",
+        "description": "Grant an identity time-bound JIT access to one tool; requires admin role, identity:write scope, audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "identity_revoke_jit",
+        "description": "Revoke an active JIT access grant immediately; requires admin role, identity:write scope, and an audit reason",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True},
     },
     {
         "name": "firewall_check",
@@ -301,6 +331,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "runtime_blueprints": ["READ", "RUNTIME", "POLICY"],
     "runtime_blueprint_drift": ["READ", "RUNTIME", "POLICY", "ANALYZE"],
     "cost_report": ["READ", "RUNTIME", "OBSERVABILITY"],
+    "anomaly_scan": ["READ", "RUNTIME", "OBSERVABILITY", "ANALYZE"],
     "drift_incidents": ["READ", "RUNTIME", "POLICY", "ANALYZE"],
     "proxy_status": ["READ", "RUNTIME", "OBSERVABILITY"],
     "proxy_alerts": ["READ", "RUNTIME", "OBSERVABILITY"],
@@ -309,6 +340,11 @@ _TOOL_CAPABILITY_CLASSES = {
     "shield_start": ["WRITE", "RUNTIME", "SECURITY", "AUDIT"],
     "shield_unblock": ["WRITE", "RUNTIME", "SECURITY", "AUDIT"],
     "shield_break_glass": ["WRITE", "RUNTIME", "SECURITY", "AUDIT"],
+    "identity_issue": ["WRITE", "IDENTITY", "AUDIT"],
+    "identity_rotate": ["WRITE", "IDENTITY", "AUDIT"],
+    "identity_revoke": ["WRITE", "IDENTITY", "AUDIT"],
+    "identity_grant_jit": ["WRITE", "IDENTITY", "AUDIT"],
+    "identity_revoke_jit": ["WRITE", "IDENTITY", "AUDIT"],
     "firewall_check": ["READ", "RUNTIME", "POLICY"],
     "audit_query": ["READ", "AUDIT"],
     "audit_integrity": ["READ", "AUDIT", "PROVENANCE"],

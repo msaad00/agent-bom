@@ -44,6 +44,16 @@ class EntityType(str, Enum):
     SERVICE_PRINCIPAL = "service_principal"
     FEDERATED_IDENTITY = "federated_identity"
 
+    # Agent-identity governance control plane (OCSF Category 3) — these make the
+    # cost/identity/drift side stores traversable as first-class graph nodes so
+    # attack paths can run agent → identity → grant → tool → vulnerable-package.
+    MANAGED_IDENTITY = "managed_identity"  # an agent-bom-issued agent identity
+    ACCESS_GRANT = "access_grant"  # a time-bound JIT access grant
+    ACCESS_POLICY = "access_policy"  # a conditional/context-aware access policy
+
+    # Behavioral drift (OCSF Category 2 — detection finding)
+    DRIFT_INCIDENT = "drift_incident"
+
     # Organizational hierarchy
     PROVIDER = "provider"
     ENVIRONMENT = "environment"
@@ -110,6 +120,12 @@ class RelationshipType(str, Enum):
     INHERITS = "inherits"  # principal/group/role → policy/role
     CAN_ACCESS = "can_access"  # identity principal/account → resource
     CROSS_ACCOUNT_TRUST = "cross_account_trust"  # account/principal → external account/principal
+
+    # ── Agent-identity governance (control plane → graph) ──
+    AUTHENTICATES_AS = "authenticates_as"  # agent → managed_identity
+    SCOPED_TO = "scoped_to"  # managed_identity/access_grant/drift_incident → tool
+    GOVERNS = "governs"  # access_policy → agent/managed_identity/tool
+    EXHIBITS_DRIFT = "exhibits_drift"  # agent ↔ drift_incident (bidirectional)
 
     # ── Runtime events (dynamic) ──
     ACTED_AS = "acted_as"  # user/service principal → agent (runtime identity)

@@ -91,3 +91,23 @@ def test_all_malformed_bundle_fails_closed():
     client = TestClient(create_gateway_app(_settings(bad_bundle)))
     resp = client.post("/mcp/filesystem", json=_call("token-a"))
     assert _is_blocked(resp), resp.text
+
+
+def test_gateway_enforces_spend_budget():
+    from agent_bom.api.cost_store import CostBudget, InMemoryCostStore, LLMCostRecord, set_cost_store
+
+    store = InMemoryCostStore()
+    store.record_cost(LLMCostRecord("default", "c1", "agent-a", "s", "openai", "gpt-4o", 1_000_000, 1_000_000, 12.5, True, "2026-06-02"))
+    store.set_budget(CostBudget("default", "agent-a", 10.0, "2026-06-02", "enforce"))
+    set_cost_store(store)
+    try:
+        client = TestClient(create_gateway_app(_settings([])))
+        # agent-a is over its enforced budget -> blocked before reaching upstream.
+        blocked = client.post("/mcp/filesystem", json=_call("token-a"))
+        assert _is_blocked(blocked), blocked.text
+        assert "budget" in blocked.json()["error"]["message"].lower()
+        # agent-b has no budget -> relays normally.
+        allowed = client.post("/mcp/filesystem", json=_call("token-b"))
+        assert allowed.status_code == 200 and allowed.json()["result"] == {"ok": True}
+    finally:
+        set_cost_store(None)

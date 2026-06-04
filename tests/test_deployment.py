@@ -186,7 +186,25 @@ def test_server_card_tools_expose_capability_classes():
     """Server card should classify tool capabilities for agents and marketplaces."""
     from agent_bom.mcp_server import build_server_card
 
-    write_tools = {"shield_start", "shield_unblock", "shield_break_glass"}
+    write_tools = {
+        "shield_start",
+        "shield_unblock",
+        "shield_break_glass",
+        "identity_issue",
+        "identity_rotate",
+        "identity_revoke",
+        "identity_grant_jit",
+        "identity_revoke_jit",
+    }
+    # Writes that tear down or invalidate state advertise destructiveHint; issuing
+    # an identity or granting access creates state and is non-destructive.
+    destructive_writes = {
+        "shield_start",
+        "shield_unblock",
+        "shield_break_glass",
+        "identity_revoke",
+        "identity_revoke_jit",
+    }
     card = build_server_card()
     for tool in card["tools"]:
         classes = tool.get("capability_classes")
@@ -195,7 +213,7 @@ def test_server_card_tools_expose_capability_classes():
         if tool["name"] in write_tools:
             assert "WRITE" in classes, tool["name"]
             assert tool["annotations"]["readOnlyHint"] is False
-            assert tool["annotations"]["destructiveHint"] is True
+            assert tool["annotations"]["destructiveHint"] is (tool["name"] in destructive_writes), tool["name"]
         else:
             assert "READ" in classes, tool["name"]
             assert tool["annotations"]["readOnlyHint"] is True
@@ -240,8 +258,19 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     assert "Most tools are read-only" in docs
     assert "Shield write actions require `operator_role=admin`" in docs
     assert "operator_scopes=shield:write" in docs
+    assert "Identity write actions require `operator_role=admin`" in docs
+    assert "operator_scopes=identity:write" in docs
     write_tools = [tool["name"] for tool in card["tools"] if tool.get("annotations", {}).get("readOnlyHint") is False]
-    assert sorted(write_tools) == ["shield_break_glass", "shield_start", "shield_unblock"]
+    assert sorted(write_tools) == [
+        "identity_grant_jit",
+        "identity_issue",
+        "identity_revoke",
+        "identity_revoke_jit",
+        "identity_rotate",
+        "shield_break_glass",
+        "shield_start",
+        "shield_unblock",
+    ]
     for resource in card["resources"]:
         assert resource["uri"] in docs
     for prompt in card["prompts"]:

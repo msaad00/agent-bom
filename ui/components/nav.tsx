@@ -32,6 +32,9 @@ import {
   Focus,
   Copy,
   SunMoon,
+  DollarSign,
+  Fingerprint,
+  Radar,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
@@ -125,6 +128,9 @@ const NAV_GROUPS: NavGroup[] = [
     accent: "#3fb950", // green — output/governance layer
     links: [
       { href: "/compliance", label: "Compliance", icon: Shield },
+      { href: "/cost", label: "Cost", icon: DollarSign },
+      { href: "/identity", label: "Identity", icon: Fingerprint },
+      { href: "/drift", label: "Drift", icon: Radar },
       { href: "/remediation", label: "Remediation", icon: Wrench },
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
       { href: "/traces", label: "Traces", icon: Radio },

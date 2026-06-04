@@ -28,6 +28,7 @@ from agent_bom.api.agent_identity_store import (
 )
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.webhook_store import emit_governance_event
 from agent_bom.rbac import require_authenticated_permission
 
 router = APIRouter(tags=["identity"])
@@ -43,6 +44,11 @@ def _tenant(request: Request) -> str:
 
 def _actor(request: Request) -> str:
     return getattr(getattr(request, "state", None), "actor", None) or "api"
+
+
+def _emit(event_type: str, *, tenant_id: str, subject_id: str, **payload: object) -> None:
+    """Fan a governance lifecycle event out to subscribed webhooks (best-effort)."""
+    emit_governance_event(event_type=event_type, tenant_id=tenant_id, source="identities.api", subject_id=subject_id, payload=payload)
 
 
 def _tool_name(body: dict) -> str:
@@ -109,6 +115,14 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
         blueprint_id=identity.blueprint_id,
         expires_at=identity.expires_at,
     )
+    _emit(
+        "identity.issued",
+        tenant_id=identity.tenant_id,
+        subject_id=identity.identity_id,
+        agent_id=identity.agent_id,
+        role=identity.role,
+        expires_at=identity.expires_at,
+    )
     return {
         "schema_version": "agent.identity.v1",
         "identity": identity.to_public_dict(),
@@ -143,6 +157,13 @@ async def rotate_agent_identity(request: Request, identity_id: str, body: dict |
         rotated_from=identity_id,
         overlap_seconds=max(0, overlap_seconds),
     )
+    _emit(
+        "identity.rotated",
+        tenant_id=new_identity.tenant_id,
+        subject_id=new_identity.identity_id,
+        agent_id=new_identity.agent_id,
+        rotated_from=identity_id,
+    )
     return {
         "schema_version": "agent.identity.v1",
         "identity": new_identity.to_public_dict(),
@@ -171,6 +192,7 @@ async def revoke_agent_identity(request: Request, identity_id: str, body: dict |
         agent_id=revoked.agent_id,
         reason=reason,
     )
+    _emit("identity.revoked", tenant_id=revoked.tenant_id, subject_id=revoked.identity_id, agent_id=revoked.agent_id, reason=reason)
     return {"schema_version": "agent.identity.v1", "revoked": True, "identity": revoked.to_public_dict()}
 
 
@@ -228,6 +250,14 @@ async def grant_agent_identity_jit(request: Request, identity_id: str, body: dic
         tool_name=grant.tool_name,
         expires_at=grant.expires_at,
         ticket_id=grant.ticket_id,
+    )
+    _emit(
+        "identity.jit_granted",
+        tenant_id=grant.tenant_id,
+        subject_id=grant.grant_id,
+        identity_id=grant.identity_id,
+        tool=grant.tool_name,
+        expires_at=grant.expires_at,
     )
     return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
 
@@ -296,6 +326,13 @@ async def revoke_agent_identity_jit(request: Request, grant_id: str, body: dict 
         agent_id=grant.agent_id,
         identity_id=grant.identity_id,
         tool_name=grant.tool_name,
+    )
+    _emit(
+        "identity.jit_revoked",
+        tenant_id=grant.tenant_id,
+        subject_id=grant.grant_id,
+        identity_id=grant.identity_id,
+        tool=grant.tool_name,
     )
     return {"schema_version": "agent.identity.jit.v1", "grant": grant.to_public_dict()}
 

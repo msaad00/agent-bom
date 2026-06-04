@@ -737,6 +737,7 @@ from agent_bom.api.routes.scan import router as _scan_router  # noqa: E402
 from agent_bom.api.routes.schedules import router as _schedules_router  # noqa: E402
 from agent_bom.api.routes.scim import router as _scim_router  # noqa: E402
 from agent_bom.api.routes.sources import router as _sources_router  # noqa: E402
+from agent_bom.api.routes.webhooks import router as _webhooks_router  # noqa: E402
 
 app.include_router(_assets_router)
 app.include_router(_agent_manifest_router)
@@ -765,6 +766,7 @@ app.include_router(_scan_router)
 app.include_router(_schedules_router)
 app.include_router(_scim_router)
 app.include_router(_sources_router)
+app.include_router(_webhooks_router)
 
 # Resolve agent-bom-issued (abi_) identity tokens through the lifecycle store so
 # the proxy/gateway honor issuance, rotation overlap, and revocation.

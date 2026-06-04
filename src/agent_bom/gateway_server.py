@@ -192,6 +192,21 @@ def _request_environment(request: Request) -> str:
     return (request.headers.get("x-agent-environment", "") or "").strip()[:60]
 
 
+def _emit_gateway_governance_event(event_type: str, *, tenant_id: str, subject_id: str, payload: dict[str, Any]) -> None:
+    """Fan a gateway governance event to subscribed webhooks (best-effort).
+
+    Uses the shared subscription store + durable outbox; in DB-backed
+    deployments the gateway and API processes share both, so API-registered
+    subscriptions receive gateway events.
+    """
+    try:
+        from agent_bom.api.webhook_store import emit_governance_event
+
+        emit_governance_event(event_type=event_type, tenant_id=tenant_id, source="gateway", subject_id=subject_id, payload=payload)
+    except Exception:  # noqa: BLE001
+        logger.debug("gateway governance webhook emit failed for %s", event_type, exc_info=True)
+
+
 class GatewayCircuitOpenError(RuntimeError):
     """Raised when an upstream circuit is open and calls should fail fast."""
 
@@ -1036,6 +1051,17 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "reason": "budget_enforced",
                     }
                 )
+            _emit_gateway_governance_event(
+                "budget.exceeded",
+                tenant_id=tenant_id,
+                subject_id=source_agent,
+                payload={
+                    "source_agent": source_agent,
+                    "limit_usd": budget.limit_usd,
+                    "spend_usd": round(budget_spend, 6),
+                    "budget_scope": "agent" if budget.agent else "tenant",
+                },
+            )
             return JSONResponse(
                 {
                     "jsonrpc": "2.0",
@@ -1139,6 +1165,18 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                 "reason": cond_reason,
                             }
                         )
+                    _emit_gateway_governance_event(
+                        "identity.conditional_access_blocked",
+                        tenant_id=tenant_id,
+                        subject_id=ctx.identity_id or source_agent,
+                        payload={
+                            "source_agent": source_agent,
+                            "identity_id": ctx.identity_id,
+                            "tool": tool_name,
+                            "policy_id": cond_policy_id,
+                            "reason": cond_reason,
+                        },
+                    )
             # Layer control-plane GatewayPolicy binding on top of the file
             # policy: enforce bound_agents/bound_agent_types/bound_environments
             # scoped to the resolved source_agent, matching the per-MCP proxy.

@@ -70,6 +70,21 @@ async def get_runtime_blueprint_drift(request: Request, blueprint_id: str) -> di
         incident = record_drift_if_detected(get_drift_incident_store(), result)
         if incident is not None:
             result["incident_id"] = incident.incident_id
+            from agent_bom.api.webhook_store import emit_governance_event
+
+            emit_governance_event(
+                event_type="drift.detected",
+                tenant_id=tenant_id,
+                source="runtime.drift",
+                subject_id=incident.incident_id,
+                payload={
+                    "incident_id": incident.incident_id,
+                    "blueprint_id": incident.blueprint_id,
+                    "drift_score": incident.drift_score,
+                    "violation_count": incident.violation_count,
+                    "occurrences": incident.occurrences,
+                },
+            )
     except Exception:  # noqa: BLE001
         logger.warning("drift incident persistence failed", exc_info=True)
     return result

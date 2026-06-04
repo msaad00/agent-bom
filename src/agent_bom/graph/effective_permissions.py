@@ -41,6 +41,7 @@ _ASSUME_RELS = frozenset(
 
 _MAX_PRINCIPALS = 5000
 _MAX_DEPTH = 6
+_ADMIN_PRIVILEGE_KEYWORDS = ("administratoraccess", "fullaccess", "poweruseraccess", "iamfullaccess", "*:*", "admin", "owner", "root")
 
 
 def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
@@ -56,6 +57,7 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
 
     direct_access: dict[str, set[str]] = defaultdict(set)
     assumes: dict[str, set[str]] = defaultdict(set)
+    attached_policy_labels: dict[str, list[str]] = defaultdict(list)
     for edge in graph.edges:
         rel = edge.relationship
         if rel == RelationshipType.CAN_ACCESS and edge.source in principal_ids:
@@ -64,11 +66,24 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
                 direct_access[edge.source].add(edge.target)
         elif rel in _ASSUME_RELS and edge.source in principal_ids and edge.target in principal_ids:
             assumes[edge.source].add(edge.target)
+        elif rel == RelationshipType.ATTACHED and edge.source in principal_ids:
+            policy = graph.nodes.get(edge.target)
+            if policy is not None and policy.entity_type == EntityType.POLICY:
+                attached_policy_labels[edge.source].append(policy.label)
 
-    def effective(principal_id: str) -> tuple[set[str], set[str]]:
-        """Return (all_resources, via_assume_only) for a principal."""
+    # A principal is admin-privileged when its own name or an attached policy
+    # name signals broad access (AdministratorAccess, *FullAccess, wildcard).
+    admin_principals: set[str] = set()
+    for p in principals:
+        haystack = " ".join([p.label, *attached_policy_labels.get(p.id, [])]).lower().replace(" ", "")
+        if any(kw in haystack for kw in _ADMIN_PRIVILEGE_KEYWORDS):
+            admin_principals.add(p.id)
+
+    def effective(principal_id: str) -> tuple[set[str], set[str], set[str]]:
+        """Return (all_resources, via_assume_only, assumed_principal_ids)."""
         direct = set(direct_access.get(principal_id, set()))
         via_assume: set[str] = set()
+        assumed: set[str] = set()
         visited = {principal_id}
         frontier = list(assumes.get(principal_id, set()))
         depth = 0
@@ -78,17 +93,18 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
                 if pid in visited:
                     continue
                 visited.add(pid)
+                assumed.add(pid)
                 via_assume |= direct_access.get(pid, set())
                 nxt.extend(assumes.get(pid, set()))
             frontier = nxt
             depth += 1
-        return direct | via_assume, via_assume - direct
+        return direct | via_assume, via_assume - direct, assumed
 
     edges_added = 0
     escalations = 0
     seen_perm: set[tuple[str, str]] = set()
     for principal in principals:
-        all_resources, escalated = effective(principal.id)
+        all_resources, escalated, assumed = effective(principal.id)
         for resource_id in all_resources:
             key = (principal.id, resource_id)
             if key in seen_perm:
@@ -108,14 +124,19 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
             edges_added += 1
         if escalated:
             principal.attributes["can_escalate_privilege"] = True
+            to_admin = bool(assumed & admin_principals)
+            if to_admin:
+                principal.attributes["escalates_to_admin"] = True
             exposed = sorted(rid for rid in escalated if graph.nodes.get(rid) and graph.nodes[rid].attributes.get("internet_exposed"))
+            risk = 9.5 if exposed else (9.0 if to_admin else 8.5)
             graph.interaction_risks.append(
                 InteractionRisk(
                     pattern="privilege_escalation",
                     agents=[principal.label],
-                    risk_score=8.5 if not exposed else 9.5,
+                    risk_score=risk,
                     description=(
-                        f"{principal.label} reaches {len(escalated)} additional resource(s) by assuming another role"
+                        f"{principal.label} reaches {len(escalated)} additional resource(s) by assuming "
+                        + ("an admin-privileged role" if to_admin else "another role")
                         + (f", including {len(exposed)} internet-exposed." if exposed else ".")
                     ),
                     owasp_agentic_tag=None,

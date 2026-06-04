@@ -345,7 +345,9 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
             add("toxic_exposed_vulnerable", "Toxic: exposed + vulnerable", f"{node.label}: exposed{port_detail} + vulnerable.", 20.0)
         elif attrs.get("internet_exposed"):
             add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet{port_detail}.", 15.0)
-        if attrs.get("can_escalate_privilege"):
+        if attrs.get("escalates_to_admin"):
+            add("privilege_escalation_admin", "Admin escalation", f"{node.label} can assume an admin-privileged role.", 20.0)
+        elif attrs.get("can_escalate_privilege"):
             add("privilege_escalation", "Privilege escalation", f"{node.label} can assume a role with broader effective access.", 16.0)
         if attrs.get("toxic_exposed_sensitive"):
             add("exposed_sensitive_data", "Exposed sensitive data", f"{node.label} holds sensitive data and is internet-exposed.", 22.0)

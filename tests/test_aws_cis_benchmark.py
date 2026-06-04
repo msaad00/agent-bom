@@ -559,6 +559,8 @@ class TestCheck52:
         result = _check_5_2(client)
         assert result.status == CheckStatus.FAIL
         assert "sg-bad" in result.evidence
+        # Structured network exposure (open port/CIDR) for the graph, not just text.
+        assert result.network_exposure == [{"resource": "sg-bad", "from_port": 22, "to_port": 22, "protocol": "tcp", "scope": "internet"}]
 
     def test_fail_rdp_ipv6_open(self):
         client = MagicMock()

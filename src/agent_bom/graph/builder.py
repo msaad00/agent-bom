@@ -618,6 +618,7 @@ def build_unified_graph_from_report(
                         "recommendation": check.get("recommendation", ""),
                         "resource_ids": resource_ids,
                         "cloud_provider": cloud_provider,
+                        "network_exposure": list(check.get("network_exposure", [])),
                     },
                     compliance_tags=[f"CIS-{check_id}"],
                     data_sources=[section_key],

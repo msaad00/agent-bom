@@ -298,6 +298,15 @@ def _first_href_for_agent(agent: str) -> str:
     return f"/agents?name={quote(agent)}"
 
 
+def _exposed_port_detail(attrs: dict) -> str:
+    """Render the internet-open ports on a node as ' on port(s) 22, 3389'."""
+    ports = attrs.get("exposed_ports") or []
+    if not isinstance(ports, list):
+        return ""
+    nums = sorted({str(p["from_port"]) for p in ports if isinstance(p, dict) and p.get("from_port") is not None})
+    return f" on port(s) {', '.join(nums[:5])}" if nums else ""
+
+
 def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple[str, str, str, float]]:
     """Governance / CNAPP / runtime signals that should weight a path's rank.
 
@@ -319,10 +328,11 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
         if node is None:
             continue
         attrs = node.attributes
+        port_detail = _exposed_port_detail(attrs)
         if attrs.get("toxic_exposed_vulnerable"):
-            add("toxic_exposed_vulnerable", "Toxic: exposed + vulnerable", f"{node.label} is internet-exposed and vulnerable.", 20.0)
+            add("toxic_exposed_vulnerable", "Toxic: exposed + vulnerable", f"{node.label}: exposed{port_detail} + vulnerable.", 20.0)
         elif attrs.get("internet_exposed"):
-            add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet.", 15.0)
+            add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet{port_detail}.", 15.0)
         if attrs.get("can_escalate_privilege"):
             add("privilege_escalation", "Privilege escalation", f"{node.label} can assume a role with broader effective access.", 16.0)
         if attrs.get("toxic_exposed_sensitive"):

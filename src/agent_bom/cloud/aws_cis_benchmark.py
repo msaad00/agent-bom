@@ -89,6 +89,11 @@ class CISCheckResult:
     resource_ids: list[str] = field(default_factory=list)
     recommendation: str = ""
     cis_section: str = ""
+    # Structured network exposure (open ports/CIDR to the internet) so the graph
+    # can model port-level reachability instead of keyword-matching evidence text.
+    # Each entry: {"resource": str, "from_port": int, "to_port": int,
+    # "protocol": str, "scope": "internet"}.
+    network_exposure: list[dict] = field(default_factory=list)
     # Structured remediation (issue #665). Populated by
     # ``agent_bom.cloud.cis_remediation.attach_remediation(result, cloud=...)``
     # so per-check functions stay thin. Schema defined in that module.
@@ -144,6 +149,7 @@ class CISBenchmarkReport:
                     "recommendation": c.recommendation,
                     "remediation": c.remediation,
                     "cis_section": c.cis_section,
+                    "network_exposure": c.network_exposure,
                     "attack_techniques": tag_cis_check(c),
                 }
                 for c in self.checks
@@ -2221,6 +2227,7 @@ def _check_5_2(ec2_client: Any) -> CISCheckResult:
     )
     admin_ports = {22, 3389}
     open_sgs = []
+    exposures: list[dict] = []
 
     paginator = ec2_client.get_paginator("describe_security_groups")
     for page in paginator.paginate():
@@ -2228,6 +2235,7 @@ def _check_5_2(ec2_client: Any) -> CISCheckResult:
             for perm in sg.get("IpPermissions", []):
                 from_port = perm.get("FromPort", 0)
                 to_port = perm.get("ToPort", 0)
+                protocol = str(perm.get("IpProtocol", "tcp"))
                 # Check if any admin port falls in this range
                 if not any(from_port <= p <= to_port for p in admin_ports):
                     continue
@@ -2235,10 +2243,28 @@ def _check_5_2(ec2_client: Any) -> CISCheckResult:
                 for ip_range in perm.get("IpRanges", []):
                     if ip_range.get("CidrIp") == "0.0.0.0/0":
                         open_sgs.append(f"{sg['GroupId']} (port {from_port}-{to_port})")
+                        exposures.append(
+                            {
+                                "resource": sg["GroupId"],
+                                "from_port": from_port,
+                                "to_port": to_port,
+                                "protocol": protocol,
+                                "scope": "internet",
+                            }
+                        )
                         break
                 for ip_range in perm.get("Ipv6Ranges", []):
                     if ip_range.get("CidrIpv6") == "::/0":
                         open_sgs.append(f"{sg['GroupId']} (port {from_port}-{to_port}, IPv6)")
+                        exposures.append(
+                            {
+                                "resource": sg["GroupId"],
+                                "from_port": from_port,
+                                "to_port": to_port,
+                                "protocol": protocol,
+                                "scope": "internet",
+                            }
+                        )
                         break
 
     # Deduplicate
@@ -2250,6 +2276,7 @@ def _check_5_2(ec2_client: Any) -> CISCheckResult:
         if len(open_sgs) > 5:
             result.evidence += f" (+{len(open_sgs) - 5} more)"
         result.resource_ids = open_sgs[:20]
+        result.network_exposure = exposures[:50]
     else:
         result.evidence = "No security groups allow unrestricted ingress to SSH/RDP."
     return result

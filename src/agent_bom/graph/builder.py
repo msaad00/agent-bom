@@ -900,6 +900,16 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("CNAPP overlay failed", exc_info=True)
 
+    # Effective permissions: resolve assume/trust chains into HAS_PERMISSION
+    # edges and flag privilege-escalation paths. Runs after CNAPP so escalation
+    # to internet-exposed resources is scored higher.
+    try:
+        from agent_bom.graph.effective_permissions import apply_effective_permissions
+
+        apply_effective_permissions(graph)
+    except Exception:  # noqa: BLE001
+        _logger.warning("effective-permissions overlay failed", exc_info=True)
+
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)
         span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")

@@ -730,6 +730,122 @@ def _node_risk_100(node) -> float:
     return max(0.0, min(100.0, risk))
 
 
+_DANGEROUS_TOOL_KEYWORDS = ("shell", "exec", "run", "command", "subprocess", "filesystem", "admin", "delete", "write", "sudo", "deploy")
+_MAX_GOVERNANCE_PATHS = 200
+
+
+def _is_dangerous_tool(label: str) -> bool:
+    low = label.lower()
+    return any(keyword in low for keyword in _DANGEROUS_TOOL_KEYWORDS)
+
+
+def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
+    """Derive attack paths that the governance / CNAPP / effective-permission
+    overlays make possible but that are not anchored on a CVE/misconfig finding.
+
+    Surfaces four chains as first-class paths so humans and agents can
+    investigate them via /v1/graph/attack-paths and the governance endpoint:
+
+    - privilege escalation: principal --HAS_PERMISSION(assume_chain)--> resource
+    - over-scoped tool access: agent --AUTHENTICATES_AS--> identity --SCOPED_TO-->
+      dangerous tool (standing scope or JIT grant)
+    - behavioral drift: agent --EXHIBITS_DRIFT--> drift_incident --SCOPED_TO--> tool
+    - data exposure: resource --EXPOSED_TO--> internet-exposed data_store
+    """
+    paths: list[AttackPath] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def emit(kind: str, source: str, target: str, hops: list[str], edges: list[str], base: float, summary: str) -> None:
+        key = (kind, source, target)
+        if key in seen or len(paths) >= _MAX_GOVERNANCE_PATHS:
+            return
+        seen.add(key)
+        risk = base + sum(boost for _k, _l, _d, boost in _fusion_signals_for_path(graph, hops))
+        paths.append(
+            AttackPath(
+                source=source,
+                target=target,
+                hops=hops,
+                edges=edges,
+                composite_risk=round(min(100.0, risk), 2),
+                summary=summary,
+                vuln_ids=[],
+            )
+        )
+
+    for edge in graph.edges:
+        rel = _rel_value(edge)
+        src = graph.nodes.get(edge.source)
+        tgt = graph.nodes.get(edge.target)
+        if src is None or tgt is None:
+            continue
+
+        # Privilege escalation: effective access gained only by assuming a role.
+        if rel == RelationshipType.HAS_PERMISSION.value and (edge.evidence or {}).get("access") == "assume_chain":
+            exposed = bool(tgt.attributes.get("internet_exposed"))
+            emit(
+                "privilege_escalation",
+                src.id,
+                tgt.id,
+                [src.id, tgt.id],
+                ["has_permission"],
+                65.0 if exposed else 55.0,
+                f"{src.label} reaches {tgt.label} by assuming another role" + (" (internet-exposed)." if exposed else "."),
+            )
+        # Data exposure: internet-exposed resource backing a data store.
+        elif rel == RelationshipType.EXPOSED_TO.value and _node_type_value(tgt) == EntityType.DATA_STORE.value:
+            emit(
+                "data_exposure",
+                src.id,
+                tgt.id,
+                [src.id, tgt.id],
+                ["exposed_to"],
+                55.0,
+                f"{src.label} is internet-exposed and backs data store {tgt.label}.",
+            )
+
+    # Agent → identity → dangerous tool, and agent → drift incident → tool.
+    for node in graph.nodes.values():
+        ntype = _node_type_value(node)
+        if ntype == EntityType.AGENT.value:
+            for id_edge in graph.adjacency.get(node.id, []):
+                if _rel_value(id_edge) == RelationshipType.AUTHENTICATES_AS.value:
+                    identity = graph.nodes.get(id_edge.target)
+                    if identity is None:
+                        continue
+                    for tool_edge in graph.adjacency.get(identity.id, []):
+                        tool = graph.nodes.get(tool_edge.target)
+                        if tool is None or _node_type_value(tool) != EntityType.TOOL.value or not _is_dangerous_tool(tool.label):
+                            continue
+                        emit(
+                            "over_scoped_tool",
+                            node.id,
+                            tool.id,
+                            [node.id, identity.id, tool.id],
+                            ["authenticates_as", _rel_value(tool_edge)],
+                            48.0,
+                            f"{node.label} can reach high-capability tool {tool.label} through identity {identity.label}.",
+                        )
+                elif _rel_value(id_edge) == RelationshipType.EXHIBITS_DRIFT.value:
+                    incident = graph.nodes.get(id_edge.target)
+                    if incident is None:
+                        continue
+                    for tool_edge in graph.adjacency.get(incident.id, []):
+                        tool = graph.nodes.get(tool_edge.target)
+                        if tool is None or _node_type_value(tool) != EntityType.TOOL.value:
+                            continue
+                        emit(
+                            "drift_to_tool",
+                            node.id,
+                            tool.id,
+                            [node.id, incident.id, tool.id],
+                            ["exhibits_drift", _rel_value(tool_edge)],
+                            45.0,
+                            f"{node.label} drifted to using tool {tool.label} outside its declared blueprint.",
+                        )
+    return paths
+
+
 def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     """Derive fix-first paths when a snapshot lacks materialised path rows.
 
@@ -738,9 +854,18 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     agent -> MCP server -> package/server -> vulnerability, enriched with the
     server's credential and tool exposure. Keep this deterministic and bounded;
     stores with first-class path rows remain the source of truth.
+
+    Governance / CNAPP / effective-permission chains (privilege escalation,
+    over-scoped tool access, drift, data exposure) are derived and merged in
+    both branches so they surface even when materialised vuln paths exist.
     """
+    governance_paths = _derived_governance_attack_paths(graph)
     if graph.attack_paths:
-        return list(graph.attack_paths)
+        return sorted(
+            list(graph.attack_paths) + governance_paths,
+            key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
+            reverse=True,
+        )
 
     incoming: dict[str, list] = {}
     outgoing: dict[str, list] = {}
@@ -829,6 +954,7 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                         )
                     )
 
+    paths.extend(governance_paths)
     return sorted(
         paths,
         key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),

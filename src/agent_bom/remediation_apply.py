@@ -21,6 +21,7 @@ class RemediationApplyError(RuntimeError):
 
 
 CommandRunner = Callable[[Sequence[str], Path], subprocess.CompletedProcess[str]]
+_DEFAULT_COMMAND_TIMEOUT_SECONDS = 300
 
 
 @dataclass
@@ -50,14 +51,24 @@ class RemediationApplyOutcome:
 
 def default_command_runner(args: Sequence[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     """Run a command with captured output for deterministic error handling."""
-    return subprocess.run(
-        list(args),
-        cwd=str(cwd),
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    command = list(args)
+    try:
+        return subprocess.run(
+            command,
+            cwd=str(cwd),
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=_DEFAULT_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        if stderr:
+            stderr = f"{stderr.rstrip()}\n"
+        stderr = f"{stderr}command timed out after {_DEFAULT_COMMAND_TIMEOUT_SECONDS}s"
+        return subprocess.CompletedProcess(command, 124, stdout=stdout, stderr=stderr)
 
 
 def apply_remediation_plan(

@@ -1,9 +1,8 @@
 """Cloud-CNAPP enrichment: internet exposure, data stores, and toxic chains.
 
-Moves the graph toward Wiz/Orca/CrowdStrike attack-path grade by deriving
-network-exposure and data-at-rest structure from signals already in the graph
-(CIS/IaC misconfigurations + cloud resources), without needing new scanner
-inputs:
+Derives network-exposure and data-at-rest structure from signals already in
+the graph (CIS/IaC misconfigurations + cloud resources), without needing new
+scanner inputs:
 
 - Cloud resources flagged public/internet-reachable by a misconfiguration are
   marked ``internet_exposed`` and linked ``EXPOSED_TO`` the data stores they can
@@ -61,6 +60,29 @@ _DATA_STORE_KEYWORDS = (
 )
 
 
+_SENSITIVE_KEYWORDS = (
+    "pii",
+    "phi",
+    "personal data",
+    "personally identifiable",
+    "gdpr",
+    "hipaa",
+    "pci",
+    "ssn",
+    "social security",
+    "credit card",
+    "secret",
+    "credential",
+    "confidential",
+    "biometric",
+    "protected health",
+    "financial record",
+    "passport",
+    "bank account",
+    "sensitive",
+)
+
+
 def _text_of(node: UnifiedNode) -> str:
     parts = [node.label]
     for key in ("description", "rule", "rule_id", "title", "resource_type", "service", "name"):
@@ -70,8 +92,36 @@ def _text_of(node: UnifiedNode) -> str:
     return " ".join(parts).lower()
 
 
+def _sensitive_text(node: UnifiedNode) -> str:
+    """Gather the text that may signal the node holds sensitive data."""
+    parts = [node.label]
+    desc = node.attributes.get("description")
+    if isinstance(desc, str):
+        parts.append(desc)
+    parts.extend(str(tag) for tag in node.compliance_tags)
+    flags = node.attributes.get("security_flags")
+    if isinstance(flags, list):
+        for flag in flags:
+            if isinstance(flag, dict):
+                parts.append(str(flag.get("type", "")))
+                parts.append(str(flag.get("description", "")))
+            else:
+                parts.append(str(flag))
+    for key in ("task_categories", "features", "data_classification"):
+        val = node.attributes.get(key)
+        if isinstance(val, list):
+            parts.extend(str(item) for item in val)
+        elif isinstance(val, str):
+            parts.append(val)
+    return " ".join(parts).lower()
+
+
 def _matches(text: str, keywords: tuple[str, ...]) -> bool:
     return any(kw in text for kw in keywords)
+
+
+def _is_sensitive(node: UnifiedNode) -> bool:
+    return _matches(_sensitive_text(node), _SENSITIVE_KEYWORDS)
 
 
 def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
@@ -179,4 +229,42 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
         )
         toxic += 1
 
-    return {"exposed_nodes": len(exposed_ids), "data_stores_added": data_stores_added, "toxic_combinations": toxic}
+    # ── Data sensitivity (PII/PHI/secrets) on datasets and data stores ──
+    sensitive_ids: set[str] = set()
+    for node in graph.nodes.values():
+        if node.entity_type not in (EntityType.DATASET, EntityType.DATA_STORE):
+            continue
+        backing = graph.nodes.get(node.attributes.get("backed_by", "")) if node.entity_type == EntityType.DATA_STORE else None
+        if _is_sensitive(node) or (backing is not None and _is_sensitive(backing)):
+            node.attributes["data_sensitivity"] = "sensitive"
+            sensitive_ids.add(node.id)
+
+    # Toxic: sensitive data that is internet-exposed.
+    exposed_sensitive = 0
+    for node_id in sorted(sensitive_ids):
+        node = graph.nodes.get(node_id)
+        if node is None or not node.attributes.get("internet_exposed"):
+            continue
+        node.attributes["toxic_exposed_sensitive"] = True
+        if node.risk_score < 9.5:
+            node.risk_score = 9.5
+        node.severity = "high"
+        node.status = NodeStatus.VULNERABLE
+        graph.interaction_risks.append(
+            InteractionRisk(
+                pattern="internet_exposed_sensitive_data",
+                agents=[node.label],
+                risk_score=9.7,
+                description=f"{node.label} holds sensitive data and is internet-exposed (path to sensitive data).",
+                owasp_agentic_tag=None,
+            )
+        )
+        exposed_sensitive += 1
+
+    return {
+        "exposed_nodes": len(exposed_ids),
+        "data_stores_added": data_stores_added,
+        "toxic_combinations": toxic,
+        "sensitive_data_nodes": len(sensitive_ids),
+        "exposed_sensitive_data": exposed_sensitive,
+    }

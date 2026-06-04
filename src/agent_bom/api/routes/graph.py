@@ -325,6 +325,10 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
             add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet.", 15.0)
         if attrs.get("can_escalate_privilege"):
             add("privilege_escalation", "Privilege escalation", f"{node.label} can assume a role with broader effective access.", 16.0)
+        if attrs.get("toxic_exposed_sensitive"):
+            add("exposed_sensitive_data", "Exposed sensitive data", f"{node.label} holds sensitive data and is internet-exposed.", 22.0)
+        elif attrs.get("data_sensitivity"):
+            add("sensitive_data", "Sensitive data", f"{node.label} holds sensitive (PII/PHI/secret) data.", 8.0)
         # One-hop governance/exposure neighbours of this node.
         for edge in graph.adjacency.get(hop_id, []):
             target = graph.nodes.get(edge.target)
@@ -794,14 +798,15 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
             )
         # Data exposure: internet-exposed resource backing a data store.
         elif rel == RelationshipType.EXPOSED_TO.value and _node_type_value(tgt) == EntityType.DATA_STORE.value:
+            sensitive = bool(tgt.attributes.get("data_sensitivity"))
             emit(
                 "data_exposure",
                 src.id,
                 tgt.id,
                 [src.id, tgt.id],
                 ["exposed_to"],
-                55.0,
-                f"{src.label} is internet-exposed and backs data store {tgt.label}.",
+                70.0 if sensitive else 55.0,
+                f"{src.label} is internet-exposed and backs {'sensitive ' if sensitive else ''}data store {tgt.label}.",
             )
 
     # Agent → identity → dangerous tool, and agent → drift incident → tool.

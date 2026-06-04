@@ -51,7 +51,7 @@ before replacing any published product image.
 | `mesh-live.png` | `/mesh?capture=1` | Focused agent mesh graph across selected agents, MCP servers, tools, packages, credentials, and findings | Public README, Docker Hub, and marketplace surfaces should show one readable graph proof, not duplicate dark/light theme captures |
 | `gateway-policies-live.png` | `/gateway?capture=1` | One advisory baseline gateway policy, two rules, one dry-run evaluation, and a clean top-frame policy posture | Proves the runtime policy surface without requiring a live proxy session during README capture |
 | `security-graph-live.png` | `/security-graph?capture=1` | Capture the fix-first attack-path queue with snapshot pressure, graph evidence export, and remediation handoff | Shows the operator workflow before raw topology so the public image is readable and action oriented |
-| `lineage-graph-live.png` | `/graph?capture=1&investigate=1&root=agent:cursor&q=cursor` | Capture the root-centered lineage investigation with reachability summary, bounded paths, filters, and export controls | Uses a shipped graph drilldown workflow over the current bundled demo agent instead of an unreadable expanded topology capture |
+| `lineage-graph-live.png` | `/graph?capture=1` | Capture an expanded but bounded topology view across environment, identity, MCP, package, credential, model, dataset, and finding nodes | Shows broader graph evidence without turning the README frame into whole-tenant edge spaghetti |
 | `context-map-live.png` | `/context?capture=1` | Capture one agent-scoped context map with reachable MCP servers and the lateral movement side panel | Shows a non-CVE topology view so README proof is not only package-to-finding blast radius |
 | `fleet-state-live.png` | `/fleet?capture=1` | Seed fleet sync, set one agent owner/environment, approve it, then expand that row before capture | Shows environment and lifecycle state as control-plane evidence instead of implying the local scan alone owns review state |
 | `identity-audit-live.png` | `/audit?capture=1` | Use a stable `AGENT_BOM_AUDIT_HMAC_KEY`, issue/rotate/revoke one agent identity, filter resource to `identity`, and capture HMAC counters plus lifecycle rows | Shows IAM lifecycle evidence and tamper-evident audit posture from the real identity API |
@@ -87,8 +87,22 @@ slide or card view in place of the graph screenshot.
 
 The README graph proof should show more than the mesh path. Keep
 `security-graph-live.png`, `lineage-graph-live.png`, and `context-map-live.png`
-in the open graph gallery so readers can see fix-first paths, bounded lineage,
-and non-CVE topology without expanding every details block.
+in the open graph gallery so readers can see fix-first paths, expanded but
+bounded topology, and focused lateral context without expanding every details
+block.
+
+For repeatable docs refreshes, use the deterministic Playwright harness from
+the UI package after the graph schema and UI build are current:
+
+```bash
+cd ui
+npm run capture:product-proof
+```
+
+The harness routes seeded scan, fleet, gateway, IAM, environment, runtime, and
+package evidence into the real Next.js pages. It is suitable for README proof
+captures, not for claiming those exact entities were discovered from a buyer
+environment.
 
 For environment and IAM proof, keep the claim precise. The demo graph scan
 stores agents, MCP servers, tools, credentials, packages, findings, provider,

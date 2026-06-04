@@ -1029,6 +1029,18 @@ async def get_graph(
         )
         graph = graph.filtered_view(filters)
 
+        # Overlay the live agent-identity governance control plane (managed
+        # identities, JIT grants, conditional-access policies, drift incidents)
+        # so attack paths can traverse agent → identity → grant → tool and
+        # agent ↔ drift. Best-effort; never breaks the graph read.
+        if not et_set:
+            try:
+                from agent_bom.graph.governance_overlay import apply_governance_overlay
+
+                apply_governance_overlay(graph, tenant_id=tenant)
+            except Exception:  # noqa: BLE001
+                logger.warning("governance overlay failed", exc_info=True)
+
         stats = graph.stats()
         all_nodes = list(graph.nodes.values())
         paged_nodes, pagination = _paginate(all_nodes, offset, limit)
@@ -1269,6 +1281,68 @@ async def get_graph_attack_paths(
         "interaction_risks": [],
         "stats": stats,
         "pagination": _page_meta(total, offset, limit),
+    }
+
+
+@router.get("/v1/graph/governance", tags=["graph"])
+async def get_graph_governance(
+    request: Request,
+    scan_id: Optional[str] = Query(None, description="Scan ID"),
+    limit: int = Query(2000, ge=1, le=10000, description="Max nodes to return"),
+) -> dict:
+    """Return the agent-identity governance subgraph projected onto the inventory.
+
+    Loads the latest unified graph, overlays the live governance control plane
+    (managed identities, JIT grants, conditional-access policies, drift
+    incidents) from the identity/drift stores, and returns the governance nodes
+    plus the agent/tool nodes they connect to — making
+    `agent → identity → grant → tool → vulnerable package` and `agent ↔ drift`
+    traversable for headless agents, the API, and the UI cockpits.
+    """
+    from agent_bom.graph.governance_overlay import apply_governance_overlay
+
+    tenant = _tenant(request)
+    graph_store = _get_graph_store_or_503()
+    graph = await _graph_store_call(graph_store.load_graph, scan_id=scan_id or "", tenant_id=tenant)
+    overlay_stats = apply_governance_overlay(graph, tenant_id=tenant)
+
+    governance_types = {
+        EntityType.MANAGED_IDENTITY,
+        EntityType.ACCESS_GRANT,
+        EntityType.ACCESS_POLICY,
+        EntityType.DRIFT_INCIDENT,
+    }
+    governance_ids = {node.id for node in graph.nodes.values() if node.entity_type in governance_types}
+    # Keep governance nodes plus the inventory nodes they touch (one hop) so the
+    # subgraph is self-contained and renderable.
+    keep_edges = [e for e in graph.edges if e.source in governance_ids or e.target in governance_ids]
+    keep_ids = set(governance_ids)
+    for edge in keep_edges:
+        keep_ids.add(edge.source)
+        keep_ids.add(edge.target)
+    nodes = [graph.nodes[nid].to_dict() for nid in keep_ids if nid in graph.nodes][:limit]
+    node_id_window = {n["id"] for n in nodes}
+    edges = [e.to_dict() for e in keep_edges if e.source in node_id_window and e.target in node_id_window]
+
+    derived = [
+        _serialize_attack_path(p, keep_edges, nodes_by_id=graph.nodes, scan_id=graph.scan_id)
+        for p in _derived_attack_paths(graph)
+        if p.hops and any(hop in governance_ids for hop in p.hops)
+    ]
+    counts: dict[str, int] = {}
+    for node in graph.nodes.values():
+        if node.entity_type in governance_types:
+            counts[node.entity_type.value] = counts.get(node.entity_type.value, 0) + 1
+    return {
+        "scan_id": graph.scan_id,
+        "tenant_id": tenant,
+        "created_at": graph.created_at,
+        "nodes": nodes,
+        "edges": edges,
+        "attack_paths": derived,
+        "overlay": overlay_stats,
+        "governance_counts": counts,
+        "stats": {"node_count": len(nodes), "edge_count": len(edges)},
     }
 
 
@@ -1991,8 +2065,9 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
             EntityType.ROLE.value,
             EntityType.SERVICE_ACCOUNT.value,
             EntityType.SERVICE_PRINCIPAL.value,
+            EntityType.MANAGED_IDENTITY.value,
         ],
-        "target_types": [EntityType.POLICY.value],
+        "target_types": [EntityType.POLICY.value, EntityType.ACCESS_GRANT.value],
         "traversable": True,
     },
     RelationshipType.INHERITS.value: {
@@ -2106,6 +2181,38 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
         "source_types": [EntityType.AGENT.value, EntityType.SERVER.value],
         "target_types": [EntityType.AGENT.value, EntityType.SERVER.value],
         "traversable": False,
+    },
+    RelationshipType.AUTHENTICATES_AS.value: {
+        "category": "governance",
+        "direction": "directed",
+        "source_types": [EntityType.AGENT.value],
+        "target_types": [EntityType.MANAGED_IDENTITY.value],
+        "traversable": True,
+    },
+    RelationshipType.SCOPED_TO.value: {
+        "category": "governance",
+        "direction": "directed",
+        "source_types": [
+            EntityType.MANAGED_IDENTITY.value,
+            EntityType.ACCESS_GRANT.value,
+            EntityType.DRIFT_INCIDENT.value,
+        ],
+        "target_types": [EntityType.TOOL.value],
+        "traversable": True,
+    },
+    RelationshipType.GOVERNS.value: {
+        "category": "governance",
+        "direction": "directed",
+        "source_types": [EntityType.ACCESS_POLICY.value],
+        "target_types": [EntityType.AGENT.value, EntityType.MANAGED_IDENTITY.value, EntityType.TOOL.value],
+        "traversable": False,
+    },
+    RelationshipType.EXHIBITS_DRIFT.value: {
+        "category": "governance",
+        "direction": "bidirectional",
+        "source_types": [EntityType.AGENT.value],
+        "target_types": [EntityType.DRIFT_INCIDENT.value],
+        "traversable": True,
     },
 }
 

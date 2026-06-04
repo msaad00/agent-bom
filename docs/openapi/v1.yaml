@@ -7413,6 +7413,56 @@ paths:
       summary: Get Graph Exposure Paths
       tags:
       - graph
+  /v1/graph/governance:
+    get:
+      description: "Return the agent-identity governance subgraph projected onto the\
+        \ inventory.\n\nLoads the latest unified graph, overlays the live governance\
+        \ control plane\n(managed identities, JIT grants, conditional-access policies,\
+        \ drift\nincidents) from the identity/drift stores, and returns the governance\
+        \ nodes\nplus the agent/tool nodes they connect to \u2014 making\n`agent \u2192\
+        \ identity \u2192 grant \u2192 tool \u2192 vulnerable package` and `agent\
+        \ \u2194 drift`\ntraversable for headless agents, the API, and the UI cockpits."
+      operationId: get_graph_governance_v1_graph_governance_get
+      parameters:
+      - description: Scan ID
+        in: query
+        name: scan_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Scan ID
+          title: Scan Id
+      - description: Max nodes to return
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 2000
+          description: Max nodes to return
+          maximum: 10000
+          minimum: 1
+          title: Limit
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Graph Governance V1 Graph Governance Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Graph Governance
+      tags:
+      - graph
   /v1/graph/impact:
     get:
       description: "Compute blast radius of a node \u2014 what depends on it?"

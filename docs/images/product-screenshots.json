@@ -1,7 +1,7 @@
 {
   "release_version": "0.88.5",
   "captured_at": "2026-06-03T20:30:00Z",
-  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve on current main, with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README proof now shows focused graph modes instead of one all-in mesh canvas. Fleet and identity frames use synthetic seeded control-plane records written through /v1/fleet and /v1/identities so the UI shows environment review state and IAM lifecycle evidence without claiming that the local demo scan alone discovers those records. The gateway policy frame was captured from the same SQLite capture store after seeding one advisory baseline policy and one dry-run evaluation.",
+  "capture_note": "Captured from real Next.js dashboard routes in capture mode. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
@@ -35,8 +35,8 @@
     },
     {
       "path": "lineage-graph-live.png",
-      "page": "/graph?capture=1&investigate=1&root=agent:cursor&q=cursor",
-      "scope": "Root-centered lineage investigation with reachable node counts, bounded paths, filters, and graph evidence export",
+      "page": "/graph?capture=1",
+      "scope": "Expanded but bounded lineage topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes",
       "visible_version": "0.88.5"
     },
     {

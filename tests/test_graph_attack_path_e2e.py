@@ -112,3 +112,4 @@ def test_every_attack_path_class_fires_end_to_end():
     summaries = " || ".join(p.summary for p in paths)
     assert "assuming" in summaries  # privilege escalation path
     assert "sensitive" in summaries  # path to sensitive data
+    assert "no per-tool scope" in summaries  # broad-scope identity (pure governance)

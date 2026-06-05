@@ -133,11 +133,26 @@ jobs:
           sarif_file: sarif/self-dep.sarif
           category: agent-bom-self-dep
 
-      - name: Refresh legacy scheduled SARIF category
+      - name: Prepare legacy scheduled SARIF category
         if: always() && hashFiles('sarif/self-dep.sarif') != ''
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = Path("sarif/self-dep.sarif")
+          target = Path("sarif/self-dep-scheduled.sarif")
+          data = json.loads(source.read_text())
+          for run in data.get("runs", []):
+              run.setdefault("automationDetails", {})["id"] = "agent-bom-scheduled"
+          target.write_text(json.dumps(data, indent=2) + "\n")
+          PY
+
+      - name: Refresh legacy scheduled SARIF category
+        if: always() && hashFiles('sarif/self-dep-scheduled.sarif') != ''
         uses: github/codeql-action/upload-sarif@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4
         with:
-          sarif_file: sarif/self-dep.sarif
+          sarif_file: sarif/self-dep-scheduled.sarif
           category: agent-bom-scheduled
 
       - name: Fail on critical (optional, only when explicitly requested)

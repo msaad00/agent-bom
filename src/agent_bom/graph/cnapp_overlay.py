@@ -124,6 +124,41 @@ def _is_sensitive(node: UnifiedNode) -> bool:
     return _matches(_sensitive_text(node), _SENSITIVE_KEYWORDS)
 
 
+# Regulatory frameworks inferred from METADATA only (labels, compliance tags,
+# dataset-card flags) — never from data contents. Ordered by remediation
+# severity so the first match names the headline regulation at risk. The first
+# three are high-sensitivity regimes that escalate an exposed store to the
+# "restricted" tier.
+_REGULATORY_FRAMEWORKS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("PCI-DSS", "card data", ("pci", "credit card", "cardholder", "card data", "bank account")),
+    ("HIPAA", "protected health information", ("phi", "hipaa", "protected health", "health record", "medical record")),
+    (
+        "GDPR",
+        "personal data",
+        ("gdpr", "pii", "personal data", "personally identifiable", "ssn", "social security", "passport", "biometric"),
+    ),
+    ("SOC2", "secrets/credentials", ("secret", "credential", "confidential")),
+)
+_HIGH_SENSITIVITY_FRAMEWORKS = frozenset({"PCI-DSS", "HIPAA", "GDPR"})
+
+
+def _classify_regulatory_frameworks(node: UnifiedNode) -> list[str]:
+    """Regulatory frameworks a data node is subject to, by metadata signals.
+
+    Returns framework codes in remediation-severity order (PCI-DSS, HIPAA,
+    GDPR, SOC2); empty when only the generic ``sensitive`` keyword matched.
+    """
+    text = _sensitive_text(node)
+    return [code for code, _label, kws in _REGULATORY_FRAMEWORKS if _matches(text, kws)]
+
+
+def _framework_label(code: str) -> str:
+    for c, label, _kws in _REGULATORY_FRAMEWORKS:
+        if c == code:
+            return f"{c} {label}"
+    return code
+
+
 def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
     """Enrich ``graph`` with exposure + data-store structure in place.
 
@@ -243,6 +278,15 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
         backing = graph.nodes.get(node.attributes.get("backed_by", "")) if node.entity_type == EntityType.DATA_STORE else None
         if _is_sensitive(node) or (backing is not None and _is_sensitive(backing)):
             node.attributes["data_sensitivity"] = "sensitive"
+            # Which regulatory regimes govern this store (PCI/HIPAA/GDPR/SOC2),
+            # merged from the store and the resource it backs — metadata only.
+            frameworks = _classify_regulatory_frameworks(node)
+            if backing is not None:
+                for code in _classify_regulatory_frameworks(backing):
+                    if code not in frameworks:
+                        frameworks.append(code)
+            if frameworks:
+                node.attributes["data_regulatory_frameworks"] = frameworks
             sensitive_ids.add(node.id)
 
     # Toxic: sensitive data that is internet-exposed.
@@ -256,12 +300,19 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
             node.risk_score = 9.5
         node.severity = "high"
         node.status = NodeStatus.VULNERABLE
+        # Exposed + governed by a high-sensitivity regime → "restricted"; an
+        # exposed store with only generic sensitivity → "confidential".
+        frameworks = node.attributes.get("data_regulatory_frameworks") or []
+        node.attributes["data_classification_tier"] = (
+            "restricted" if any(f in _HIGH_SENSITIVITY_FRAMEWORKS for f in frameworks) else "confidential"
+        )
+        regulation = f" ({_framework_label(frameworks[0])})" if frameworks else ""
         graph.interaction_risks.append(
             InteractionRisk(
                 pattern="internet_exposed_sensitive_data",
                 agents=[node.label],
                 risk_score=9.7,
-                description=f"{node.label} holds sensitive data and is internet-exposed (path to sensitive data).",
+                description=f"{node.label} holds sensitive data{regulation} and is internet-exposed (path to sensitive data).",
                 owasp_agentic_tag=None,
             )
         )

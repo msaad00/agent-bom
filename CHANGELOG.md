@@ -11,6 +11,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.88.6] - 2026-06-05
+
+### Added
+- **Agent governance parity controls.** Budget enforcement, signed identity lifecycle audit events, per-tool scopes, JIT/time-bound access, conditional access decisions, and identity/cost/drift UI cockpits are now wired through the control plane, API, MCP tools, tests, and dashboard surfaces.
+- **CNAPP-style security graph depth.** Exposure paths now include cloud exposure, sensitive data paths, effective-permission escalation, governance decisions, action-level IAM privilege, port-aware network exposure, runtime-observed reachability, and policy/webhook evidence with distinct node and edge semantics.
+- **Guarded remediation flow.** Remediation can now stage guarded apply operations and draft pull requests with explicit policy, scope, and audit evidence before changes are applied.
+
+### Changed
+- README and product screenshots now emphasize scan-to-runtime evidence, graph-backed findings, environment/identity/IAM attack paths, readable legends, and contained dashboard visuals.
+- Dependency automation was consolidated across Python, UI, and GitHub Actions updates so approved dependency PRs land as coherent review units.
+- The Docker latest refresh workflow now handles API and UI image refresh paths together after a release tag is published.
+
+### Fixed
+- Upgraded `aiohttp` to address the GitHub security alerts for cross-origin redirects with per-request cookies and unsafe deserialization.
+- Reworked Railway SSE deployment to run from the trusted release workflow tag instead of checking out `workflow_run` metadata in a privileged deployment context, and refreshed the legacy `agent-bom-scheduled` SARIF category from the current self-scan workflow.
+- Hardened the UI runtime Docker image by removing build-time package-manager tooling from the final image, clearing the Trivy gate that blocked `agentbom/agent-bom-ui:latest` refresh.
+- Tightened dashboard and README visual containment so graph labels, path headers, cards, and code samples wrap inside their containers across dark, light, and mobile views.
+
+---
+
 ## [0.88.5] - 2026-06-01
 
 ### Added
@@ -1491,7 +1511,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.5...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.6...HEAD
+[0.88.6]: https://github.com/msaad00/agent-bom/compare/v0.88.5...v0.88.6
 [0.88.5]: https://github.com/msaad00/agent-bom/compare/v0.88.4...v0.88.5
 [0.88.4]: https://github.com/msaad00/agent-bom/compare/v0.88.3...v0.88.4
 [0.88.3]: https://github.com/msaad00/agent-bom/compare/v0.88.1...v0.88.3

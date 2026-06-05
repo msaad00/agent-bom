@@ -1,15 +1,13 @@
 name: Deploy MCP SSE
 
-# Deploys the SSE container to Railway after a successful Release workflow.
+# Deploys the SSE container to Railway from the trusted release tag checkout.
 # Requires RAILWAY_TOKEN secret and DEPLOY_TARGET=railway variable.
 # Optional: RAILWAY_SERVICE variable to specify the service name.
 #
 # Post-deploy: verifies the deployed version matches the release tag.
 
 on:
-  workflow_run:
-    workflows: ["Release"]
-    types: [completed]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -23,45 +21,52 @@ jobs:
       contents: read
     if: >-
       ${{
-        vars.DEPLOY_TARGET == 'railway' &&
-        (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+        vars.DEPLOY_TARGET == 'railway'
       }}
     steps:
-      - name: Resolve release ref
+      - name: Resolve trusted release tag
         id: tag
         env:
-          EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
-          # Use head_branch (tag name like "v0.71.2"), NOT head_sha —
-          # head_sha is flagged by CodeQL as untrusted code in privileged context.
-          WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            REF="$REF_NAME"
-          else
-            REF="$WORKFLOW_HEAD_BRANCH"
-          fi
-          # Verify ref matches a semver tag pattern (rejects arbitrary branches)
-          if ! echo "$REF" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+          REF="$REF_NAME"
+          # Only release tags are deployable. Branches and partial semver refs
+          # are rejected before any repository code is checked out.
+          if ! echo "$REF" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Refusing to deploy non-semver ref: $REF"
             exit 1
           fi
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
-          echo "Deploying ref: $REF"
+          echo "version=${REF#v}" >> "$GITHUB_OUTPUT"
+          echo "Deploying trusted release tag: $REF"
 
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ steps.tag.outputs.ref }}
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify checkout matches expected version
+      - name: Verify checkout matches trusted release tag
+        env:
+          EXPECTED_TAG: ${{ steps.tag.outputs.ref }}
+          EXPECTED_VERSION: ${{ steps.tag.outputs.version }}
         run: |
+          git fetch --force --tags origin "refs/tags/$EXPECTED_TAG:refs/tags/$EXPECTED_TAG"
+          TAG_SHA=$(git rev-list -n 1 "$EXPECTED_TAG^{commit}")
+          HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+            echo "::error::Checked-out commit $HEAD_SHA does not match $EXPECTED_TAG commit $TAG_SHA"
+            exit 1
+          fi
           REPO_VERSION=$(python3 -c "
           import re, pathlib
           text = pathlib.Path('pyproject.toml').read_text()
           m = re.search(r'version\s*=\s*\"([^\"]+)\"', text)
           print(m.group(1))
           ")
+          if [ "$REPO_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Checked-out version $REPO_VERSION does not match release tag $EXPECTED_TAG"
+            exit 1
+          fi
           echo "Checked-out version: $REPO_VERSION"
           echo "repo_version=$REPO_VERSION" >> "$GITHUB_ENV"
 

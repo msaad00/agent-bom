@@ -1022,3 +1022,10 @@ jobs:
             fi
             echo "Updated floating tag $MAJOR → ${{ github.ref_name }}"
           fi
+
+  deploy-mcp-sse:
+    name: Deploy MCP SSE
+    needs: github-release
+    if: ${{ vars.DEPLOY_TARGET == 'railway' }}
+    uses: ./.github/workflows/deploy-mcp-sse.yml
+    secrets: inherit

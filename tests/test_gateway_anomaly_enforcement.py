@@ -106,10 +106,15 @@ def _reset():
 
 def test_enforce_blocks_anomalous_agent():
     _seed_runaway()
-    client = TestClient(create_gateway_app(_settings("enforce")))
+    audit: list[dict[str, Any]] = []
+    client = TestClient(create_gateway_app(_settings("enforce", audit=audit)))
     resp = client.post("/mcp/filesystem", json=_call("token-a"))
     assert _is_blocked(resp), resp.text
-    assert "anomalous" in resp.json()["error"]["data"]["reason"].lower()
+    assert resp.json()["error"]["data"] == {
+        "reason": "Anomaly enforcement blocked this request",
+        "policy_source": "anomaly_enforcement",
+    }
+    assert any(e.get("action") == "gateway.anomaly_blocked" and "anomalous spend" in e.get("reason", "") for e in audit)
 
 
 def test_enforce_allows_normal_agent():

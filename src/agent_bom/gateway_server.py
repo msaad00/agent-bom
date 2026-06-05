@@ -90,6 +90,7 @@ def _public_gateway_block_reason(policy_source: str) -> str:
         "conditional_access": "Conditional access blocked this request",
         "control_plane": "Control-plane gateway policy blocked this request",
         "drift_enforcement": "Drift enforcement blocked this request",
+        "anomaly_enforcement": "Anomaly enforcement blocked this request",
         "identity_scope": "Identity scope blocked this tool",
         "identity_jit": "Gateway policy blocked this request",
     }.get(policy_source, "Gateway policy blocked this request")
@@ -1177,7 +1178,10 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "error": {
                             "code": -32001,
                             "message": "Blocked by agent-bom gateway: anomalous spend",
-                            "data": {"reason": anomaly_reason},
+                            "data": {
+                                "reason": _public_gateway_block_reason("anomaly_enforcement"),
+                                "policy_source": "anomaly_enforcement",
+                            },
                         },
                     },
                     status_code=200,

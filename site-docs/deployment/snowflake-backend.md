@@ -27,6 +27,25 @@ It is the right answer for teams that want Snowflake-native inventory, fleet,
 policy, and governance workflows. It is not the default answer for every
 self-hosted control-plane deployment.
 
+## Architecture at a glance
+
+The Snowflake lane is a warehouse-native security data lake story, not a
+separate managed service. OCSF and AI/MCP evidence enters through validated
+write paths, selected control-plane stores live in Snowflake tables, operators
+replay evidence through read-only SQL, and remediation or policy decisions are
+written back as audit records.
+
+![Snowflake security data lake architecture](../../docs/images/snowflake-security-data-lake.svg)
+
+The diagram is intentionally lane-based:
+
+- **Write lane** — normalize cloud, identity, MCP, runtime, and repository
+  signals before append-only Snowflake writes.
+- **Replay lane** — read historical rows through `source-snowflake-query` with
+  an allowlisted SQL surface.
+- **Governance lane** — human-approved remediation, policy decisions, and audit
+  write-back stay inside the customer-controlled warehouse boundary.
+
 ---
 
 ## When Snowflake is the right fit

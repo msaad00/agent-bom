@@ -265,6 +265,29 @@ Production self-hosting starts with the deployment chooser:
 There is no managed cloud offering in this repository today. Product lane
 boundaries are documented in [docs/PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md).
 
+## Snowflake Security Data Lake
+
+For warehouse-centric teams, `agent-bom` can land selected governance and
+control-plane evidence in Snowflake instead of forcing a separate analytics
+silo. The lane is intentionally scoped: OCSF and AI/MCP evidence is normalized,
+written through validated append paths, replayed through read-only SQL, and
+closed with auditable remediation records under the customer's warehouse,
+roles, retention, and network boundary.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/snowflake-security-data-lake.svg" alt="Snowflake security data lake architecture with write, replay, and governance lanes" width="900" />
+</p>
+
+Snowflake is the warehouse-native governance and selected-store path, not a
+claim of universal transactional parity. Use it when your organization already
+governs scan inventory, fleet state, schedules, gateway policies, exceptions,
+and policy audit in Snowflake. Keep the default Postgres-backed control plane
+when you need the broadest API surface.
+
+- [Snowflake-native backend](site-docs/deployment/snowflake-backend.md)
+- [Backend parity matrix](site-docs/deployment/backend-parity.md)
+- [Backend and security-lake strategy](site-docs/deployment/backend-and-security-lakes.md)
+
 ## Trust Model
 
 - Read-only discovery by default for cloud and local inventory.

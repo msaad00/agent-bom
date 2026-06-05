@@ -1,0 +1,245 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900" role="img" aria-labelledby="title desc">
+  <title id="title">Snowflake security data lake architecture</title>
+  <desc id="desc">Warehouse-native agent-bom architecture showing write, read, replay, and governance lanes for Snowflake-backed security evidence.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/>
+      <stop offset="0.62" stop-color="#0b1830"/>
+      <stop offset="1" stop-color="#082f3f"/>
+    </linearGradient>
+    <linearGradient id="snow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#164e63"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0e7490"/>
+      <stop offset="1" stop-color="#115e59"/>
+    </linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#312e81"/>
+      <stop offset="1" stop-color="#581c87"/>
+    </linearGradient>
+    <linearGradient id="audit" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7f1d1d"/>
+      <stop offset="1" stop-color="#4c0519"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#16304a" stroke-width="1" opacity="0.35"/>
+    </pattern>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.38"/>
+    </filter>
+    <marker id="arrowWrite" markerWidth="13" markerHeight="13" refX="11" refY="6.5" orient="auto">
+      <path d="M 0 0 L 13 6.5 L 0 13 z" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrowRead" markerWidth="13" markerHeight="13" refX="11" refY="6.5" orient="auto">
+      <path d="M 0 0 L 13 6.5 L 0 13 z" fill="#fbbf24"/>
+    </marker>
+    <marker id="arrowAudit" markerWidth="13" markerHeight="13" refX="11" refY="6.5" orient="auto">
+      <path d="M 0 0 L 13 6.5 L 0 13 z" fill="#fb7185"/>
+    </marker>
+    <marker id="arrowArtifact" markerWidth="13" markerHeight="13" refX="11" refY="6.5" orient="auto">
+      <path d="M 0 0 L 13 6.5 L 0 13 z" fill="#34d399"/>
+    </marker>
+    <style>
+      .sans { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+      .title { fill: #f8fafc; font-size: 36px; font-weight: 800; letter-spacing: -0.02em; }
+      .subtitle { fill: #cbd5e1; font-size: 15px; font-weight: 600; }
+      .label { fill: #67e8f9; font-size: 11px; font-weight: 800; letter-spacing: 0.18em; }
+      .lane { fill: #c4b5fd; font-size: 11px; font-weight: 800; letter-spacing: 0.18em; }
+      .card-title { fill: #ffffff; font-size: 18px; font-weight: 800; }
+      .card-text { fill: #cbd5e1; font-size: 13px; font-weight: 600; }
+      .small { fill: #94a3b8; font-size: 11px; font-weight: 700; }
+      .tiny { fill: #94a3b8; font-size: 10px; font-weight: 700; }
+      .code { fill: #e0f2fe; font-size: 12px; font-weight: 800; }
+      .box { fill: #0f172a; stroke: #334155; stroke-width: 1.4; }
+      .box2 { fill: #111827; stroke: #38bdf8; stroke-width: 1.8; }
+      .box3 { fill: #172554; stroke: #818cf8; stroke-width: 1.6; }
+      .chip { fill: #10243a; stroke: #334155; stroke-width: 1.2; }
+      .table { fill: rgba(15,23,42,0.72); stroke: #38bdf8; stroke-width: 1.25; }
+      .table-yellow { fill: rgba(120,53,15,0.56); stroke: #fbbf24; stroke-width: 1.2; }
+    </style>
+  </defs>
+
+  <rect width="1500" height="900" fill="url(#bg)"/>
+  <rect width="1500" height="900" fill="url(#grid)" opacity="0.9"/>
+  <circle cx="1245" cy="190" r="210" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.17"/>
+  <circle cx="1310" cy="650" r="180" fill="none" stroke="#14b8a6" stroke-width="2" opacity="0.18"/>
+
+  <g class="sans">
+    <text x="70" y="72" class="title">Snowflake Security Data Lake</text>
+    <text x="70" y="101" class="subtitle">Warehouse-native governance, selected control-plane stores, and customer-owned retention for AI/MCP security evidence.</text>
+
+    <g transform="translate(1172 42)">
+      <rect x="0" y="0" width="276" height="68" rx="16" class="box"/>
+      <g transform="translate(20 20)" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.95">
+        <path d="M18 0v28M0 14h36M5 5l26 18M31 5L5 23"/>
+      </g>
+      <text x="70" y="30" class="card-title" font-size="16">Snowflake lane</text>
+      <text x="70" y="50" class="tiny">schema - row policies - rollups - replay SQL</text>
+    </g>
+
+    <g transform="translate(70 146)">
+      <rect x="0" y="0" width="152" height="30" rx="15" fill="#0e7490" stroke="#22d3ee" opacity="0.9"/>
+      <text x="76" y="20" text-anchor="middle" class="label">WRITE LANE</text>
+    </g>
+
+    <g transform="translate(70 200)" filter="url(#softShadow)">
+      <rect width="300" height="238" rx="18" class="box"/>
+      <text x="24" y="40" class="card-title">Covered signals</text>
+      <text x="24" y="62" class="card-text">Existing OCSF and AI/MCP sources</text>
+      <g transform="translate(24 92)">
+        <rect width="122" height="52" rx="12" class="chip"/>
+        <circle cx="26" cy="26" r="16" fill="#f59e0b"/>
+        <text x="26" y="30" text-anchor="middle" fill="#0f172a" font-size="10" font-weight="900">AWS</text>
+        <text x="52" y="24" class="card-text" font-weight="800">AWS</text>
+        <text x="52" y="40" class="tiny">trail - flow</text>
+      </g>
+      <g transform="translate(160 92)">
+        <rect width="122" height="52" rx="12" class="chip"/>
+        <circle cx="26" cy="26" r="16" fill="#3b82f6"/>
+        <text x="26" y="30" text-anchor="middle" fill="#fff" font-size="10" font-weight="900">GCP</text>
+        <text x="52" y="24" class="card-text" font-weight="800">GCP</text>
+        <text x="52" y="40" class="tiny">audit - SCC</text>
+      </g>
+      <g transform="translate(24 160)">
+        <rect width="122" height="52" rx="12" class="chip"/>
+        <circle cx="26" cy="26" r="16" fill="#2563eb"/>
+        <text x="26" y="30" text-anchor="middle" fill="#fff" font-size="10" font-weight="900">AZ</text>
+        <text x="52" y="24" class="card-text" font-weight="800">Azure</text>
+        <text x="52" y="40" class="tiny">activity - Entra</text>
+      </g>
+      <g transform="translate(160 160)">
+        <rect width="122" height="52" rx="12" class="chip"/>
+        <circle cx="26" cy="26" r="16" fill="#111827" stroke="#94a3b8"/>
+        <text x="26" y="30" text-anchor="middle" fill="#fff" font-size="10" font-weight="900">AI</text>
+        <text x="52" y="24" class="card-text" font-weight="800">MCP</text>
+        <text x="52" y="40" class="tiny">tools - agents</text>
+      </g>
+    </g>
+
+    <g transform="translate(446 230)" filter="url(#softShadow)">
+      <rect width="228" height="190" rx="18" fill="url(#teal)" stroke="#22d3ee" stroke-width="1.6"/>
+      <text x="30" y="44" class="card-title">Normalize</text>
+      <text x="30" y="66" class="card-text">OCSF plus AI/MCP facts</text>
+      <rect x="30" y="96" width="168" height="48" rx="10" fill="#0e7490" stroke="#67e8f9"/>
+      <text x="114" y="121" text-anchor="middle" class="code">OCSF 1.8 JSONL</text>
+      <text x="30" y="164" class="tiny">stable ids: scan_uid - finding_uid</text>
+    </g>
+
+    <g transform="translate(742 230)" filter="url(#softShadow)">
+      <rect width="228" height="190" rx="18" class="box3"/>
+      <text x="30" y="44" class="card-title">Write</text>
+      <text x="30" y="66" class="card-text">sink-snowflake-jsonl</text>
+      <rect x="30" y="92" width="168" height="32" rx="9" fill="#0f3a4a" stroke="#38bdf8"/>
+      <text x="114" y="113" text-anchor="middle" class="code">append-only batch</text>
+      <rect x="30" y="132" width="168" height="32" rx="9" fill="#0f3a4a" stroke="#38bdf8"/>
+      <text x="114" y="153" text-anchor="middle" class="code">dry-run default</text>
+    </g>
+
+    <line x1="370" y1="320" x2="430" y2="320" stroke="#22d3ee" stroke-width="4" marker-end="url(#arrowWrite)"/>
+    <line x1="674" y1="320" x2="728" y2="320" stroke="#22d3ee" stroke-width="4" marker-end="url(#arrowWrite)"/>
+    <line x1="970" y1="320" x2="1034" y2="320" stroke="#22d3ee" stroke-width="4" marker-end="url(#arrowWrite)"/>
+
+    <g transform="translate(1046 190)" filter="url(#softShadow)">
+      <rect width="382" height="330" rx="22" fill="url(#snow)" stroke="#38bdf8" stroke-width="2.2"/>
+      <g transform="translate(30 26)" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.95">
+        <path d="M22 0v34M0 17h44M7 6l30 22M37 6L7 28"/>
+      </g>
+      <text x="92" y="54" class="card-title" font-size="23">Snowflake lake</text>
+      <text x="92" y="78" class="card-text">customer warehouse and role boundary</text>
+
+      <g transform="translate(34 112)">
+        <rect width="148" height="58" rx="10" class="table"/>
+        <text x="18" y="28" class="code">scan_jobs</text>
+        <text x="18" y="44" class="tiny">inventory runs</text>
+      </g>
+      <g transform="translate(200 112)">
+        <rect width="148" height="58" rx="10" class="table"/>
+        <text x="18" y="28" class="code">fleet_agents</text>
+        <text x="18" y="44" class="tiny">agent lifecycle</text>
+      </g>
+      <g transform="translate(34 188)">
+        <rect width="148" height="58" rx="10" class="table"/>
+        <text x="18" y="28" class="code">gateway_policies</text>
+        <text x="18" y="44" class="tiny">runtime controls</text>
+      </g>
+      <g transform="translate(200 188)">
+        <rect width="148" height="58" rx="10" class="table"/>
+        <text x="18" y="28" class="code">policy_audit_log</text>
+        <text x="18" y="44" class="tiny">legal trail</text>
+      </g>
+      <rect x="34" y="274" width="314" height="38" rx="10" class="table-yellow" stroke-dasharray="6 5"/>
+      <text x="191" y="297" text-anchor="middle" fill="#fef3c7" font-size="14" font-weight="900">dynamic-table rollups</text>
+      <text x="191" y="313" text-anchor="middle" fill="#fde68a" font-size="10" font-weight="700">policy state - fleet state - exception views</text>
+    </g>
+
+    <g transform="translate(70 565)">
+      <rect x="0" y="0" width="156" height="30" rx="15" fill="#3b0764" stroke="#a78bfa" opacity="0.95"/>
+      <text x="78" y="20" text-anchor="middle" class="lane">REPLAY LANE</text>
+    </g>
+
+    <g transform="translate(70 622)" filter="url(#softShadow)">
+      <rect width="300" height="146" rx="18" fill="#052e2b" stroke="#34d399" stroke-width="1.5"/>
+      <text x="24" y="40" class="card-title">Operator artifacts</text>
+      <text x="24" y="66" class="card-text">new findings</text>
+      <text x="24" y="90" class="card-text">SARIF handoff</text>
+      <text x="24" y="114" class="card-text">dashboard query pack</text>
+    </g>
+
+    <g transform="translate(446 622)" filter="url(#softShadow)">
+      <rect width="228" height="146" rx="18" fill="url(#purple)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="30" y="42" class="card-title">Replay rows</text>
+      <text x="30" y="68" class="card-text">detect-* rules</text>
+      <text x="30" y="92" class="card-text">view-* renderers</text>
+      <text x="30" y="116" class="card-text">UID windows</text>
+    </g>
+
+    <g transform="translate(742 622)" filter="url(#softShadow)">
+      <rect width="228" height="146" rx="18" fill="#1e1b4b" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="30" y="42" class="card-title">Read</text>
+      <text x="30" y="66" class="card-text">source-snowflake-query</text>
+      <rect x="30" y="94" width="168" height="34" rx="9" fill="#312e81" stroke="#c4b5fd"/>
+      <text x="114" y="116" text-anchor="middle" class="code">read-only SQL gate</text>
+    </g>
+
+    <line x1="1046" y1="645" x2="984" y2="645" stroke="#fbbf24" stroke-width="4" marker-end="url(#arrowRead)"/>
+    <line x1="742" y1="695" x2="690" y2="695" stroke="#a78bfa" stroke-width="4" marker-end="url(#arrowRead)"/>
+    <line x1="446" y1="695" x2="386" y2="695" stroke="#34d399" stroke-width="4" marker-end="url(#arrowArtifact)"/>
+
+    <g transform="translate(70 805)">
+      <rect x="0" y="0" width="170" height="30" rx="15" fill="#4c0519" stroke="#fb7185" opacity="0.98"/>
+      <text x="85" y="20" text-anchor="middle" fill="#fecdd3" font-size="11" font-weight="900" letter-spacing="0.18em">GOVERNANCE LANE</text>
+    </g>
+
+    <g transform="translate(446 790)" filter="url(#softShadow)">
+      <rect width="230" height="62" rx="16" fill="url(#audit)" stroke="#fb7185" stroke-width="1.5"/>
+      <text x="28" y="28" class="card-title">HITL response</text>
+      <text x="28" y="46" class="tiny">approved window - dry-run first</text>
+    </g>
+    <g transform="translate(742 790)" filter="url(#softShadow)">
+      <rect width="230" height="62" rx="16" fill="url(#audit)" stroke="#fb7185" stroke-width="1.5"/>
+      <text x="28" y="28" class="card-title">Audit write-back</text>
+      <text x="28" y="46" class="tiny">append-only remediation records</text>
+    </g>
+    <g transform="translate(1038 790)" filter="url(#softShadow)">
+      <rect width="390" height="62" rx="16" fill="#111827" stroke="#64748b" stroke-width="1.5"/>
+      <text x="28" y="28" class="card-title">Customer-owned boundary</text>
+      <text x="28" y="46" class="tiny">roles, keys, retention, network, and access logs stay operator controlled</text>
+    </g>
+
+    <line x1="676" y1="821" x2="728" y2="821" stroke="#fb7185" stroke-width="4" marker-end="url(#arrowAudit)"/>
+    <line x1="972" y1="821" x2="1024" y2="821" stroke="#fb7185" stroke-width="4" marker-end="url(#arrowAudit)"/>
+    <path d="M 1180 790 L 1180 536" fill="none" stroke="#34d399" stroke-width="3" stroke-dasharray="8 8" marker-end="url(#arrowArtifact)"/>
+    <path d="M 972 790 L 1004 790 L 1004 580 C 1010 545 1210 570 1240 536" fill="none" stroke="#fb7185" stroke-width="3" stroke-dasharray="8 8" marker-end="url(#arrowAudit)" opacity="0.95"/>
+    <text x="1018" y="760" class="tiny">audit trail captures decisions and tool activity</text>
+
+    <g transform="translate(70 858)">
+      <circle cx="0" cy="0" r="5" fill="#22d3ee"/><text x="16" y="4" class="tiny">write</text>
+      <circle cx="86" cy="0" r="5" fill="#fbbf24"/><text x="102" y="4" class="tiny">read</text>
+      <circle cx="168" cy="0" r="5" fill="#34d399"/><text x="184" y="4" class="tiny">artifact</text>
+      <circle cx="268" cy="0" r="5" fill="#fb7185"/><text x="284" y="4" class="tiny">audit</text>
+    </g>
+  </g>
+</svg>

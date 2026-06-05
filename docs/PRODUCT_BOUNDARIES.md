@@ -40,6 +40,7 @@ agent-bom agents --snowflake --format json --output snowflake-inventory.json
 ```
 
 Artifact: read-only Snowflake evidence visible to the configured role.
+Architecture visual: [Snowflake security data lake](images/snowflake-security-data-lake.svg).
 
 ## Copy Rules
 

@@ -230,6 +230,14 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     help="OCR-scan image tool responses for credentials/PII (requires 'agent-bom[visual]').",
 )
 @click.option(
+    "--drift-enforcement",
+    type=click.Choice(["off", "warn", "enforce"]),
+    envvar="AGENT_BOM_GATEWAY_DRIFT_ENFORCEMENT",
+    default="off",
+    show_default=True,
+    help="Act on open behavioral-drift incidents: 'enforce' blocks out-of-blueprint tools, 'warn' audits them, 'off' stays advisory.",
+)
+@click.option(
     "--allow-visual-leak-best-effort",
     is_flag=True,
     default=False,
@@ -256,6 +264,7 @@ def serve_cmd(
     bearer_token: str | None,
     allow_insecure_no_auth: bool,
     detect_visual_leaks: bool,
+    drift_enforcement: str,
     allow_visual_leak_best_effort: bool,
     log_level: str,
 ) -> None:
@@ -379,6 +388,7 @@ def serve_cmd(
         firewall_policy_reload_interval_seconds=max(firewall_policy_reload_seconds, 0),
         listener_host=host,
         allow_insecure_no_auth=allow_insecure_no_auth,
+        drift_enforcement_mode=drift_enforcement,
     )
     app = create_gateway_app(settings)
     policy_summary = summarize_policy_bundle(policy)

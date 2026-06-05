@@ -905,7 +905,14 @@ function GraphPageInner() {
     setHoveredNodeId(null);
   }, [graphIdentityKey]);
 
-  const graphLayoutKind = filters.agentName || filters.vulnOnly || selectedAttackPath ? "dagre-lr" : "force";
+  // The unified security graph is DAG-shaped (provider/identity → agent →
+  // server → tool/package → finding, and user → role → resource). A
+  // left-to-right hierarchical layout reads as blast-radius flow and never
+  // overlaps nodes; the force layout piled siblings on top of each other on
+  // the broad estate view. Large graphs switch to the WebGL/overview
+  // renderers upstream, so ReactFlow only ever lays out small/medium graphs
+  // where dagre is the better fit.
+  const graphLayoutKind = "dagre-lr";
   const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(graphLayoutKind, aggregated.nodes, aggregated.edges, {
     force: {
       idealEdgeLength: filters.agentName ? 168 : 196,

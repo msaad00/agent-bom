@@ -214,6 +214,25 @@ describe("applyFilters — constraint propagation", () => {
     });
   });
 
+  it("[1b] vulnOnly → keeps vulnerability-bearing paths, drops clean subgraphs", () => {
+    // Components A and B each contain a CVE, so their full chains
+    // (agent → server → package/tool/cred → CVE) survive. Component C has
+    // no vulnerability at all, so it drops entirely — not just its leaves.
+    const filters: FilterState = { ...wideFilters(), vulnOnly: true };
+    const result = applyFilters(graph, filters);
+    const ids = new Set(result.nodes.map((n) => n.id));
+    // both CVEs and their reaching context
+    expect(ids).toContain("cve-1");
+    expect(ids).toContain("cve-2");
+    expect(ids).toContain("agent-A");
+    expect(ids).toContain("server-B");
+    expect(ids).toContain("pkg-A2"); // sibling package on a vulnerable server stays on the path
+    // the entire clean component C is gone
+    for (const id of ["agent-C", "server-C", "pkg-C1", "pkg-C2", "tool-C", "cred-C"]) {
+      expect(ids.has(id)).toBe(false);
+    }
+  });
+
   it("[2] severity=critical only → only critical-pass nodes; agents narrowed", () => {
     const filters: FilterState = { ...wideFilters(), severity: "critical" };
     const result = applyFilters(graph, filters);

@@ -19,6 +19,32 @@ from typing import Any, Protocol
 
 from agent_bom.db import graph_store as sqlite_graph_store
 from agent_bom.graph import AttackPath, EntityType, NodeDimensions, NodeStatus, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
+
+# Only finding-like nodes (vulnerabilities, misconfigurations, drift) carry a
+# severity; a `min_severity` filter must narrow those findings without dropping
+# the topology/context nodes around them (agents, servers, resources, identities
+# all have rank 0). Matches the in-memory ``filtered_view`` / ``_node_matches_query``
+# behaviour so the SQL paging path and the in-memory path agree.
+_FINDING_ENTITY_VALUES: tuple[str, ...] = tuple(sorted(t.value for t in FINDING_ENTITY_TYPES))
+
+
+def _min_severity_clause(
+    min_severity_rank: int,
+    *,
+    column: str = "severity_id",
+    entity_column: str = "entity_type",
+) -> tuple[str, list[Any]]:
+    """Build a severity-floor WHERE fragment that exempts non-finding nodes.
+
+    Returns ``(sql, params)``; ``sql`` is empty when no floor is requested.
+    """
+    if not min_severity_rank:
+        return "", []
+    placeholders = ",".join("?" for _ in _FINDING_ENTITY_VALUES)
+    sql = f"({column} >= ? OR {entity_column} NOT IN ({placeholders}))"
+    return sql, [min_severity_rank, *_FINDING_ENTITY_VALUES]
+
 
 _CREATE_PRESET_TABLE_SQLITE = """\
 CREATE TABLE IF NOT EXISTS graph_filter_presets (
@@ -1179,9 +1205,10 @@ class SQLiteGraphStore:
                 placeholders = ",".join("?" for _ in entity_types)
                 node_where.append(f"entity_type IN ({placeholders})")
                 params.extend(sorted(entity_types))
-            if min_severity_rank:
-                node_where.append("severity_id >= ?")
-                params.append(min_severity_rank)
+            sev_sql, sev_params = _min_severity_clause(min_severity_rank)
+            if sev_sql:
+                node_where.append(sev_sql)
+                params.extend(sev_params)
             where_sql = " AND ".join(node_where)
 
             total_nodes = conn.execute(
@@ -1264,9 +1291,10 @@ class SQLiteGraphStore:
                 placeholders = ",".join("?" for _ in entity_types)
                 where.append(f"entity_type IN ({placeholders})")
                 params.extend(sorted(entity_types))
-            if min_severity_rank:
-                where.append("severity_id >= ?")
-                params.append(min_severity_rank)
+            sev_sql, sev_params = _min_severity_clause(min_severity_rank)
+            if sev_sql:
+                where.append(sev_sql)
+                params.extend(sev_params)
             where_sql = " AND ".join(where)
             total = int(
                 conn.execute(
@@ -1387,9 +1415,10 @@ class SQLiteGraphStore:
                     placeholders = ",".join("?" for _ in entity_types)
                     local_where.append(f"gn.entity_type IN ({placeholders})")
                     local_params.extend(sorted(entity_types))
-                if min_severity_rank:
-                    local_where.append("gn.severity_id >= ?")
-                    local_params.append(min_severity_rank)
+                sev_sql, sev_params = _min_severity_clause(min_severity_rank, column="gn.severity_id", entity_column="gn.entity_type")
+                if sev_sql:
+                    local_where.append(sev_sql)
+                    local_params.extend(sev_params)
                 if compliance_prefixes:
                     prefix_filters = []
                     for prefix in sorted(compliance_prefixes):

@@ -179,12 +179,67 @@ function layerPasses(node: UnifiedNode, layers: Record<LineageNodeType, boolean>
   return Boolean(layers[layer]);
 }
 
-function vulnOnlyPasses(node: UnifiedNode, vulnOnly: boolean): boolean {
+/**
+ * "Vulnerable-only" means *vulnerability-bearing paths*, not bare
+ * vulnerability dots. A node passes when it is a vulnerability /
+ * misconfiguration itself, or it sits on a path connected to one — i.e.
+ * it shares a connected component with a vulnerability over the active
+ * edge subset. Keeping the agent → server → package → CVE chain (and the
+ * misconfig → resource → identity chains) is what makes fix-first mode
+ * legible instead of a scatter of disconnected findings.
+ */
+function vulnOnlyPasses(
+  node: UnifiedNode,
+  vulnOnly: boolean,
+  vulnReach: Set<string> | null,
+): boolean {
   if (!vulnOnly) return true;
-  return (
+  if (
     node.entity_type === EntityType.VULNERABILITY ||
     node.entity_type === EntityType.MISCONFIGURATION
+  ) {
+    return true;
+  }
+  return vulnReach?.has(node.id) ?? false;
+}
+
+/**
+ * Node IDs that share a connected component with a vulnerability or
+ * misconfiguration over the given edges (undirected). Computed once per
+ * filter pass when vuln-only is active.
+ */
+function buildVulnReachSet(nodes: UnifiedNode[], edges: UnifiedEdge[]): Set<string> {
+  const reach = new Set<string>();
+  const seeds = nodes.filter(
+    (n) =>
+      n.entity_type === EntityType.VULNERABILITY ||
+      n.entity_type === EntityType.MISCONFIGURATION,
   );
+  if (seeds.length === 0) return reach;
+  const adj = new Map<string, Set<string>>();
+  for (const e of edges) {
+    if (!adj.has(e.source)) adj.set(e.source, new Set());
+    if (!adj.has(e.target)) adj.set(e.target, new Set());
+    adj.get(e.source)!.add(e.target);
+    adj.get(e.target)!.add(e.source);
+  }
+  const queue: string[] = [];
+  for (const s of seeds) {
+    if (!reach.has(s.id)) {
+      reach.add(s.id);
+      queue.push(s.id);
+    }
+  }
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const neighbor of adj.get(current) ?? []) {
+      if (!reach.has(neighbor)) {
+        reach.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+  return reach;
 }
 
 function relationshipScopePasses(
@@ -304,10 +359,11 @@ function passNodes(
   opts: FilterPassOptions,
 ): { nodes: UnifiedNode[]; reachIndex: ReachIndex } {
   const reachIndex = buildAgentReachIndex(nodes, edgeSubset, filters.maxDepth);
+  const vulnReach = filters.vulnOnly ? buildVulnReachSet(nodes, edgeSubset) : null;
   const filtered = nodes.filter((n) => {
     if (!opts.skipLayer && !layerPasses(n, filters.layers)) return false;
     if (!opts.skipSeverity && !severityPasses(n, filters.severity)) return false;
-    if (!vulnOnlyPasses(n, filters.vulnOnly)) return false;
+    if (!vulnOnlyPasses(n, filters.vulnOnly, vulnReach)) return false;
     if (!opts.skipAgent && !nodeIsInAgentNeighborhood(n, filters.agentName, reachIndex)) {
       return false;
     }

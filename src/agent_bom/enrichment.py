@@ -20,7 +20,20 @@ from agent_bom.config import ENRICHMENT_MAX_CACHE_ENTRIES as _MAX_ENRICHMENT_CAC
 from agent_bom.config import ENRICHMENT_TTL_SECONDS as _ENRICHMENT_TTL
 from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import create_client, request_with_retry
-from agent_bom.models import Vulnerability
+from agent_bom.models import Vulnerability, compute_confidence
+
+
+def _finalize_confidence(vulnerabilities: list[Vulnerability]) -> None:
+    """Set the 0.0-1.0 data-quality confidence on each vuln after enrichment.
+
+    Native (OSV/GHSA) findings previously left ``confidence`` unset while
+    external-scanner findings carried it, so the same finding looked more or
+    less trustworthy purely by source. Computing it here — once, post-enrichment
+    — gives every finding a consistent CVSS/EPSS/CWE/fix-backed confidence.
+    """
+    for vuln in vulnerabilities:
+        vuln.confidence = compute_confidence(vuln)
+
 
 console = Console(stderr=True)
 _logger = logging.getLogger(__name__)
@@ -467,6 +480,8 @@ async def enrich_vulnerabilities(
 
     cve_ids = extract_cve_ids(vulnerabilities)
     if not cve_ids:
+        # No CVEs to enrich, but confidence still reflects OSV severity/fix data.
+        _finalize_confidence(vulnerabilities)
         return 0
 
     console.print(f"\n[bold blue]🔬 Enriching {len(cve_ids)} CVE(s) with external data...[/bold blue]\n")
@@ -642,6 +657,7 @@ async def enrich_vulnerabilities(
     # Persist enrichment caches to disk
     _save_enrichment_cache()
 
+    _finalize_confidence(vulnerabilities)
     console.print(f"\n  [bold]Enriched {enriched_count} vulnerabilities.[/bold]")
     return enriched_count
 

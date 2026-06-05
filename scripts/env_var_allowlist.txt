@@ -85,6 +85,8 @@ AGENT_BOM_EXTERNAL_SECRETS_ENABLED
 AGENT_BOM_GATEWAY_ALLOW_INSECURE_NO_AUTH
 AGENT_BOM_GATEWAY_BEARER_TOKEN
 AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS
+# opt-in anomaly-triggered gateway enforcement mode (off|warn|enforce)
+AGENT_BOM_GATEWAY_ANOMALY_ENFORCEMENT
 # opt-in drift-triggered gateway enforcement mode (off|warn|enforce)
 AGENT_BOM_GATEWAY_DRIFT_ENFORCEMENT
 # shared fallback policy path for standalone gateway and control-plane firewall decision route

@@ -80,6 +80,21 @@ def _sanitize_for_log(value: Any) -> str:
     return str(value).replace("\r", "").replace("\n", "")
 
 
+def _public_gateway_block_reason(policy_source: str) -> str:
+    """Return a client-safe gateway block reason.
+
+    Policy evaluator reasons can include user-controlled paths, regexes, or
+    exception-derived text. Keep those details in audit records only.
+    """
+    return {
+        "conditional_access": "Conditional access blocked this request",
+        "control_plane": "Control-plane gateway policy blocked this request",
+        "drift_enforcement": "Drift enforcement blocked this request",
+        "identity_scope": "Identity scope blocked this tool",
+        "identity_jit": "Gateway policy blocked this request",
+    }.get(policy_source, "Gateway policy blocked this request")
+
+
 def _get_visual_leak_detector() -> Any:
     global _visual_detector_singleton
     if _visual_detector_singleton is None:
@@ -1263,7 +1278,10 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "error": {
                             "code": -32001,  # Application-defined error
                             "message": "Blocked by agent-bom gateway policy",
-                            "data": {"reason": reason},
+                            "data": {
+                                "reason": _public_gateway_block_reason(policy_source),
+                                "policy_source": policy_source,
+                            },
                         },
                     },
                     status_code=200,

@@ -853,6 +853,7 @@ def test_relay_blocks_tool_by_policy() -> None:
     assert "error" in body
     assert body["error"]["code"] == -32001
     assert "Blocked by agent-bom gateway policy" in body["error"]["message"]
+    assert body["error"]["data"] == {"reason": "Gateway policy blocked this request", "policy_source": "file"}
     # Blocked tool must NOT reach the upstream
     assert upstream_calls == []
     # And the audit trail must record the block with the tool name + reason
@@ -861,6 +862,38 @@ def test_relay_blocks_tool_by_policy() -> None:
     assert audit_events[0]["method"] == "tools/call"
     assert audit_events[0]["tool"] == "run_shell"
     assert "no-shell" in (audit_events[0]["reason"] or "")
+
+
+def test_relay_policy_block_response_does_not_expose_internal_reason(monkeypatch) -> None:
+    audit_events: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    internal_reason = "Traceback: File '/Users/alice/prod/.env', line 7, in policy_loader"
+    monkeypatch.setattr("agent_bom.gateway_server.check_policy", lambda policy, tool, arguments: (False, internal_reason))
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={"rules": [{"id": "unsafe", "action": "block", "block_tools": ["run_shell"]}]},
+        upstream_caller=fake_caller,
+        audit_sink=audit_sink,
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post(
+        "/mcp/filesystem",
+        json=_json_rpc("tools/call", name="run_shell", arguments={"path": "/Users/alice/prod/.env"}),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()["error"]["data"]
+    assert data == {"reason": "Gateway policy blocked this request", "policy_source": "file"}
+    assert "Traceback" not in str(data)
+    assert "/Users/alice" not in str(data)
+    assert audit_events[0]["reason"] == internal_reason
 
 
 def test_relay_allows_tool_not_in_blocklist() -> None:
@@ -1154,10 +1187,12 @@ def test_relay_blocks_resource_prompt_sampling_methods_by_policy() -> None:
         assert resp.status_code == 200
         body = resp.json()
         assert body["error"]["code"] == -32001
-        assert method in body["error"]["data"]["reason"]
+        assert body["error"]["data"] == {"reason": "Gateway policy blocked this request", "policy_source": "file"}
 
     assert upstream_calls == []
     assert [event["method"] for event in audit_events] == ["resources/read", "prompts/get", "sampling/createMessage"]
+    for method, event in zip(["resources/read", "prompts/get", "sampling/createMessage"], audit_events, strict=True):
+        assert method in event["reason"]
 
 
 def test_relay_rejects_oversized_jsonrpc_request() -> None:

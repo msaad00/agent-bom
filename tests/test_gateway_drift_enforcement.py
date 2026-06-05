@@ -89,7 +89,10 @@ def test_enforce_blocks_drifted_tool():
     client = TestClient(create_gateway_app(_settings("enforce")))
     resp = client.post("/mcp/filesystem", json=_call(tool="run_shell"))
     assert _is_blocked(resp), resp.text
-    assert "drift" in resp.json()["error"]["data"]["reason"].lower()
+    assert resp.json()["error"]["data"] == {
+        "reason": "Drift enforcement blocked this request",
+        "policy_source": "drift_enforcement",
+    }
 
 
 def test_enforce_allows_non_drifted_tool():

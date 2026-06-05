@@ -335,7 +335,7 @@ def test_jit_grant_temporarily_allows_out_of_scope_tool(store):
     revoke_jit_grant(store, grant.grant_id)
     blocked = client.post("/mcp/filesystem", json=message)
     assert blocked.json().get("error", {}).get("code") == -32001, blocked.text
-    assert blocked.json()["error"]["data"]["reason"] == "tool 'read_file' not in identity scope"
+    assert blocked.json()["error"]["data"] == {"reason": "Identity scope blocked this tool", "policy_source": "identity_scope"}
 
 
 # ── conditional / context-aware access ──────────────────────────────────────────

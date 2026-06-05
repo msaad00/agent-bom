@@ -64,6 +64,38 @@ def test_over_scoped_tool_and_drift_paths():
     assert drift
 
 
+def test_broad_scope_identity_surfaces_without_dangerous_tool():
+    # An unscoped identity reaching only a benign tool: the old engine surfaced
+    # nothing (no dangerous-tool anchor, no vuln). The broad-scope-identity class
+    # surfaces the standing-access posture risk on its own.
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="reporting-agent"))
+    g.add_node(UnifiedNode(id="id:1", entity_type=EntityType.MANAGED_IDENTITY, label="reporting-agent", attributes={"scope_bound": False}))
+    g.add_node(UnifiedNode(id="tool:read", entity_type=EntityType.TOOL, label="read_report"))  # benign
+    g.add_edge(UnifiedEdge(source="agent:a", target="id:1", relationship=RelationshipType.AUTHENTICATES_AS))
+    g.add_edge(UnifiedEdge(source="id:1", target="tool:read", relationship=RelationshipType.SCOPED_TO))
+
+    paths = _derived_governance_attack_paths(g)
+    # no dangerous-tool path (read_report is benign)
+    assert not any(p.target == "tool:read" for p in paths)
+    # but the broad-scope-identity path surfaces
+    broad = [p for p in paths if p.hops == ["agent:a", "id:1"]]
+    assert broad, "broad-scope identity path should surface"
+    assert "no per-tool scope" in broad[0].summary
+    # base 40 + broad_identity_scope fusion (+8)
+    assert broad[0].composite_risk >= 48
+
+
+def test_scoped_identity_does_not_surface_broad_scope_path():
+    # A scope-bound identity is NOT flagged as broad-scope.
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+    g.add_node(UnifiedNode(id="id:1", entity_type=EntityType.MANAGED_IDENTITY, label="agent-a", attributes={"scope_bound": True}))
+    g.add_edge(UnifiedEdge(source="agent:a", target="id:1", relationship=RelationshipType.AUTHENTICATES_AS))
+    paths = _derived_governance_attack_paths(g)
+    assert not any(p.hops == ["agent:a", "id:1"] for p in paths)
+
+
 def test_governance_paths_merge_into_derived_attack_paths():
     g = UnifiedGraph(scan_id="s", tenant_id="t")
     g.add_node(UnifiedNode(id="user:dev", entity_type=EntityType.USER, label="dev"))

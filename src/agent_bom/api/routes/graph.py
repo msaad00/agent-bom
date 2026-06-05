@@ -777,7 +777,7 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     """Derive attack paths that the governance / CNAPP / effective-permission
     overlays make possible but that are not anchored on a CVE/misconfig finding.
 
-    Surfaces four chains as first-class paths so humans and agents can
+    Surfaces five chains as first-class paths so humans and agents can
     investigate them via /v1/graph/attack-paths and the governance endpoint:
 
     - privilege escalation: principal --HAS_PERMISSION(assume_chain)--> resource
@@ -785,6 +785,8 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
       dangerous tool (standing scope or JIT grant)
     - behavioral drift: agent --EXHIBITS_DRIFT--> drift_incident --SCOPED_TO--> tool
     - data exposure: resource --EXPOSED_TO--> internet-exposed data_store
+    - broad-scope identity: agent --AUTHENTICATES_AS--> identity with no per-tool
+      scope (standing access to everything it can reach), no finding anchor needed
     """
     paths: list[AttackPath] = []
     seen: set[tuple[str, str, str]] = set()
@@ -860,6 +862,21 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                             ["authenticates_as", _rel_value(tool_edge)],
                             48.0,
                             f"{node.label} can reach high-capability tool {tool.label} through identity {identity.label}.",
+                        )
+                    # Broad-scope identity: standing access with no per-tool scope.
+                    # This is a posture risk on its own — no vulnerability or
+                    # dangerous-tool anchor required — so surface it as a path even
+                    # when the identity's reachable tools are benign or not yet wired.
+                    if identity.attributes.get("scope_bound") is False:
+                        emit(
+                            "broad_scope_identity",
+                            node.id,
+                            identity.id,
+                            [node.id, identity.id],
+                            ["authenticates_as"],
+                            40.0,
+                            f"{node.label} authenticates as {identity.label}, an identity with no per-tool scope — "
+                            "it holds standing access to every tool it can reach.",
                         )
                 elif _rel_value(id_edge) == RelationshipType.EXHIBITS_DRIFT.value:
                     incident = graph.nodes.get(id_edge.target)

@@ -128,6 +128,39 @@ class GatewaySettings:
     # binding the way the per-MCP proxy does, scoped to the resolved
     # source_agent. Empty list = no control-plane binding (file policy only).
     control_plane_policies: list[dict[str, Any]] = field(default_factory=list)
+    # Drift-triggered enforcement (#detection→enforcement). When an agent has an
+    # open behavioral-drift incident, the tools that incident named as out-of-
+    # blueprint violations can be blocked ("enforce") or flagged ("warn") at the
+    # gateway. Default "off" keeps drift purely advisory (visibility only), so
+    # enabling enforcement is an explicit operator decision. Fail-open: a drift
+    # store error never blocks the relay.
+    drift_enforcement_mode: str = "off"
+
+
+def _open_drift_violates_tool(tenant_id: str, source_agent: str, tool_name: str) -> tuple[bool, str]:
+    """Return (violates, reason) if an open drift incident for ``source_agent``
+    names ``tool_name`` as an out-of-blueprint violation. Fail-open — any drift
+    store error returns ``(False, "")`` and never blocks the relay.
+    """
+    if not source_agent or not tool_name:
+        return False, ""
+    try:
+        from agent_bom.api.drift_incident_store import get_drift_incident_store
+
+        incidents = get_drift_incident_store().list(tenant_id, include_resolved=False, limit=200)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gateway drift check failed: %s", _sanitize_for_log(exc))
+        return False, ""
+    agent_key = source_agent.strip().lower()
+    for incident in incidents:
+        if (getattr(incident, "blueprint_id", "") or "").strip().lower() != agent_key:
+            continue
+        drifted_tools = {
+            str(v.get("tool_name", "")).strip() for v in (getattr(incident, "top_violations", None) or []) if isinstance(v, dict)
+        }
+        if tool_name in drifted_tools:
+            return True, (f"agent '{source_agent}' has an open drift incident; tool '{tool_name}' is outside its declared blueprint")
+    return False, ""
 
 
 def _evaluate_control_plane_bundle(
@@ -1184,6 +1217,31 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 cp_allowed, cp_reason = _evaluate_control_plane_bundle(settings.control_plane_policies, source_agent, tool_name, arguments)
                 if not cp_allowed:
                     allowed, reason, policy_source = False, cp_reason or "blocked by control-plane policy binding", "control_plane"
+            # Drift-triggered enforcement: a tool an open drift incident named as
+            # out-of-blueprint is blocked ("enforce") or flagged ("warn"). Off by
+            # default so drift stays advisory unless the operator opts in.
+            if allowed and settings.drift_enforcement_mode in ("warn", "enforce"):
+                drift_violates, drift_reason = _open_drift_violates_tool(tenant_id, source_agent, tool_name)
+                if drift_violates:
+                    if settings.drift_enforcement_mode == "enforce":
+                        allowed, reason, policy_source = False, drift_reason, "drift_enforcement"
+                        _emit_gateway_governance_event(
+                            "drift.blocked",
+                            tenant_id=tenant_id,
+                            subject_id=source_agent,
+                            payload={"source_agent": source_agent, "tool": tool_name, "reason": drift_reason},
+                        )
+                    elif settings.audit_sink is not None:
+                        await settings.audit_sink(
+                            {
+                                "action": "gateway.drift_warned",
+                                "upstream": upstream.name,
+                                "tenant_id": tenant_id,
+                                "source_agent": source_agent,
+                                "tool": tool_name,
+                                "reason": drift_reason,
+                            }
+                        )
             if not allowed:
                 record_gateway_relay(upstream.name, "blocked")
                 audit_event: dict[str, Any] = {

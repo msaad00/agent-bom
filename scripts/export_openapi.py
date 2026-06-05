@@ -33,6 +33,10 @@ def _openapi_schema() -> dict[str, Any]:
     # stable local key keeps import-time audit logging quiet for this contract
     # generation path without affecting runtime configuration.
     os.environ.setdefault("AGENT_BOM_AUDIT_HMAC_KEY", "openapi-export-local-contract-key")
+    # Keep the committed API contract deterministic even when tests or a local
+    # shell enable unauthenticated development mode.
+    os.environ.pop("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", None)
+    sys.path.insert(0, str(ROOT / "src"))
     from agent_bom.api.server import app
 
     app.openapi_schema = None

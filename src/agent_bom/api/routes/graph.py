@@ -831,6 +831,9 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
         # Data exposure: internet-exposed resource backing a data store.
         elif rel == RelationshipType.EXPOSED_TO.value and _node_type_value(tgt) == EntityType.DATA_STORE.value:
             sensitive = bool(tgt.attributes.get("data_sensitivity"))
+            frameworks = tgt.attributes.get("data_regulatory_frameworks") or []
+            # Name the regulation at risk when classified (PCI-DSS / HIPAA / GDPR / SOC2).
+            data_descr = f"{'/'.join(frameworks)} data store" if frameworks else f"{'sensitive ' if sensitive else ''}data store"
             emit(
                 "data_exposure",
                 src.id,
@@ -838,7 +841,7 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                 [src.id, tgt.id],
                 ["exposed_to"],
                 70.0 if sensitive else 55.0,
-                f"{src.label} is internet-exposed and backs {'sensitive ' if sensitive else ''}data store {tgt.label}.",
+                f"{src.label} is internet-exposed and backs {data_descr} {tgt.label}.",
             )
 
     # Agent → identity → dangerous tool, and agent → drift incident → tool.

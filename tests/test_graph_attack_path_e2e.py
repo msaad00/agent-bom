@@ -111,5 +111,5 @@ def test_every_attack_path_class_fires_end_to_end():
     assert top[0].composite_risk >= 85
     summaries = " || ".join(p.summary for p in paths)
     assert "assuming" in summaries  # privilege escalation path
-    assert "sensitive" in summaries  # path to sensitive data
+    assert "GDPR" in summaries  # path to sensitive data, regulation named (PII → GDPR)
     assert "no per-tool scope" in summaries  # broad-scope identity (pure governance)

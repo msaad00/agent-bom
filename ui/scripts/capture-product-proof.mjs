@@ -65,7 +65,7 @@ function buildGraph() {
     node("provider:aws-prod", "provider", "AWS prod account", "medium", 5.4, { environment: "prod", owner: "cloud-platform" }),
     node("env:prod-ai", "environment", "prod-ai-control-plane", "high", 7.8, { environment: "prod", owner: "ai-platform" }),
     node("cluster:eks-ai", "cluster", "eks-ai-runtime", "high", 7.5, { environment: "prod", owner: "platform-security" }),
-    node("container:agent-gateway", "container", "agent-gateway:0.88.5", "high", 7.6, { image: "agent-bom/gateway:0.88.5" }),
+    node("container:agent-gateway", "container", "agent-gateway:0.88.6", "high", 7.6, { image: "agent-bom/gateway:0.88.6" }),
     node("agent:developer-copilot", "agent", "developer-copilot", "critical", 9.4, { agent_type: "ide", owner: "platform-security", environment: "prod" }),
     node("agent:sre-runbook", "agent", "sre-runbook-agent", "high", 8.6, { agent_type: "runbook", owner: "sre", environment: "prod" }),
     node("agent:finance-rag", "agent", "finance-rag-agent", "high", 8.2, { agent_type: "rag", owner: "finance-data", environment: "prod" }),

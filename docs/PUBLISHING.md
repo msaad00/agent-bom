@@ -97,7 +97,7 @@ npm install -g clawhub@latest
 clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 clawhub publish integrations/openclaw/scan \
   --slug agent-bom-scan --name "agent-bom scan" \
-  --version "0.88.5"
+  --version "0.88.6"
 ```
 
 Release automation uses the same official `clawhub` CLI flow, not a custom
@@ -149,8 +149,8 @@ Images published:
 Tag push triggers the full pipeline automatically:
 
 ```bash
-git tag v0.88.5
-git push origin v0.88.5
+git tag v0.88.6
+git push origin v0.88.6
 ```
 
 This triggers:
@@ -158,7 +158,7 @@ This triggers:
 2. **publish-mcp.yml** → GHCR stdio + SSE containers (via workflow_run)
 3. **publish-registries.yml** → Smithery + ClawHub (via workflow_run)
 4. **publish-mcp-registry.yml** → Official MCP Registry (via workflow_run)
-5. **deploy-mcp-sse.yml** → Railway deployment (via workflow_run)
+5. **deploy-mcp-sse.yml** → Railway deployment (called from the release workflow)
 
 Each GitHub Release should include these verification assets alongside the
 wheel and source tarball:
@@ -196,4 +196,4 @@ For dependency-heavy or security-driven releases, also verify:
 | **Smithery** | workflow API | publish-registries.yml | workflow_run |
 | **ClawHub** | curated `integrations/openclaw/*/SKILL.md` set | publish-registries.yml | workflow_run |
 | **MCP Registry** | `integrations/mcp-registry/server.json` | publish-mcp-registry.yml | workflow_run |
-| **Railway** | `deploy/docker/Dockerfile.sse` | deploy-mcp-sse.yml | workflow_run |
+| **Railway** | `deploy/docker/Dockerfile.sse` | deploy-mcp-sse.yml | release workflow_call / workflow_dispatch |

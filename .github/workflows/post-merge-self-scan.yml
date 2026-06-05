@@ -133,6 +133,13 @@ jobs:
           sarif_file: sarif/self-dep.sarif
           category: agent-bom-self-dep
 
+      - name: Refresh legacy scheduled SARIF category
+        if: always() && hashFiles('sarif/self-dep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4
+        with:
+          sarif_file: sarif/self-dep.sarif
+          category: agent-bom-scheduled
+
       - name: Fail on critical (optional, only when explicitly requested)
         if: inputs.fail_on_critical == true
         run: |

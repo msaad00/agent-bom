@@ -80,6 +80,22 @@ def _sanitize_for_log(value: Any) -> str:
     return str(value).replace("\r", "").replace("\n", "")
 
 
+def _public_gateway_block_reason(policy_source: str) -> str:
+    """Return a client-safe gateway block reason.
+
+    Policy evaluator reasons can include user-controlled paths, regexes, or
+    exception-derived text. Keep those details in audit records only.
+    """
+    return {
+        "conditional_access": "Conditional access blocked this request",
+        "control_plane": "Control-plane gateway policy blocked this request",
+        "drift_enforcement": "Drift enforcement blocked this request",
+        "anomaly_enforcement": "Anomaly enforcement blocked this request",
+        "identity_scope": "Identity scope blocked this tool",
+        "identity_jit": "Gateway policy blocked this request",
+    }.get(policy_source, "Gateway policy blocked this request")
+
+
 def _get_visual_leak_detector() -> Any:
     global _visual_detector_singleton
     if _visual_detector_singleton is None:
@@ -135,6 +151,29 @@ class GatewaySettings:
     # enabling enforcement is an explicit operator decision. Fail-open: a drift
     # store error never blocks the relay.
     drift_enforcement_mode: str = "off"
+    # Anomaly-triggered enforcement. An agent whose spend is a statistical
+    # outlier vs the tenant fleet (cost-spike anomaly) can be blocked ("enforce")
+    # or flagged ("warn") at the gateway — catching a runaway agent before it
+    # exhausts an absolute budget. Default "off" keeps anomalies advisory.
+    anomaly_enforcement_mode: str = "off"
+
+
+def _agent_cost_anomaly(tenant_id: str, source_agent: str) -> tuple[bool, str]:
+    """Return (anomalous, reason) if ``source_agent`` currently has a cost-spike
+    anomaly vs the tenant fleet. Cached upstream; fail-open on any store error."""
+    if not source_agent:
+        return False, ""
+    try:
+        from agent_bom.api.anomaly import cost_anomalous_agents
+
+        flagged = cost_anomalous_agents(tenant_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gateway anomaly check failed: %s", _sanitize_for_log(exc))
+        return False, ""
+    info = flagged.get(source_agent)
+    if info:
+        return True, (f"agent '{source_agent}' has anomalous spend (z={info.get('z_score')}) vs the tenant fleet baseline")
+    return False, ""
 
 
 def _open_drift_violates_tool(tenant_id: str, source_agent: str, tool_name: str) -> tuple[bool, str]:
@@ -1109,6 +1148,56 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 headers=rate_limit_headers or None,
             )
 
+        # Anomaly-triggered enforcement: a runaway agent (spend outlier vs the
+        # fleet) is blocked/flagged before its next call, even while it is still
+        # under any absolute budget. Off by default; cached + fail-open.
+        if settings.anomaly_enforcement_mode in ("warn", "enforce"):
+            anomalous, anomaly_reason = _agent_cost_anomaly(tenant_id, source_agent)
+            if anomalous and settings.anomaly_enforcement_mode == "enforce":
+                record_gateway_relay(upstream.name, "blocked")
+                if settings.audit_sink is not None:
+                    await settings.audit_sink(
+                        {
+                            "action": "gateway.anomaly_blocked",
+                            "upstream": upstream.name,
+                            "tenant_id": tenant_id,
+                            "source_agent": source_agent,
+                            "reason": anomaly_reason,
+                        }
+                    )
+                _emit_gateway_governance_event(
+                    "anomaly.blocked",
+                    tenant_id=tenant_id,
+                    subject_id=source_agent,
+                    payload={"source_agent": source_agent, "reason": anomaly_reason},
+                )
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message.get("id"),
+                        "error": {
+                            "code": -32001,
+                            "message": "Blocked by agent-bom gateway: anomalous spend",
+                            "data": {
+                                "reason": _public_gateway_block_reason("anomaly_enforcement"),
+                                "policy_source": "anomaly_enforcement",
+                            },
+                        },
+                    },
+                    status_code=200,
+                    headers=rate_limit_headers or None,
+                )
+            if anomalous and settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.anomaly_warned",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "source_agent": source_agent,
+                        "reason": anomaly_reason,
+                    }
+                )
+
         policy_subject = policy_subject_from_message(message)
         if policy_subject:
             tool_name, arguments = policy_subject
@@ -1263,7 +1352,10 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "error": {
                             "code": -32001,  # Application-defined error
                             "message": "Blocked by agent-bom gateway policy",
-                            "data": {"reason": reason},
+                            "data": {
+                                "reason": _public_gateway_block_reason(policy_source),
+                                "policy_source": policy_source,
+                            },
                         },
                     },
                     status_code=200,

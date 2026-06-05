@@ -238,6 +238,14 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     help="Act on open behavioral-drift incidents: 'enforce' blocks out-of-blueprint tools, 'warn' audits them, 'off' stays advisory.",
 )
 @click.option(
+    "--anomaly-enforcement",
+    type=click.Choice(["off", "warn", "enforce"]),
+    envvar="AGENT_BOM_GATEWAY_ANOMALY_ENFORCEMENT",
+    default="off",
+    show_default=True,
+    help="Act on cost-spike anomalies: 'enforce' blocks a runaway agent, 'warn' audits it, 'off' stays advisory.",
+)
+@click.option(
     "--allow-visual-leak-best-effort",
     is_flag=True,
     default=False,
@@ -265,6 +273,7 @@ def serve_cmd(
     allow_insecure_no_auth: bool,
     detect_visual_leaks: bool,
     drift_enforcement: str,
+    anomaly_enforcement: str,
     allow_visual_leak_best_effort: bool,
     log_level: str,
 ) -> None:
@@ -389,6 +398,7 @@ def serve_cmd(
         listener_host=host,
         allow_insecure_no_auth=allow_insecure_no_auth,
         drift_enforcement_mode=drift_enforcement,
+        anomaly_enforcement_mode=anomaly_enforcement,
     )
     app = create_gateway_app(settings)
     policy_summary = summarize_policy_bundle(policy)

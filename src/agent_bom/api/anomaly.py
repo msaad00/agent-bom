@@ -10,6 +10,8 @@ open posture of the rest of the platform.
 
 from __future__ import annotations
 
+import threading
+import time
 from collections import defaultdict
 from typing import Any
 
@@ -124,3 +126,37 @@ def scan_anomalies(tenant_id: str, *, z_threshold: float = DEFAULT_Z_THRESHOLD) 
         "behavior_anomalies": behavior,
         "anomaly_count": len(cost) + len(behavior),
     }
+
+
+# Brief cache so a hot caller (the gateway relay) can ask "is this agent's spend
+# anomalous?" without re-aggregating every record on every call. The TTL bounds
+# how stale the signal can be; a spike is still caught within one window.
+_COST_ANOMALY_CACHE_TTL_SECONDS = 30.0
+_cost_anomaly_cache: dict[str, tuple[float, dict[str, dict[str, Any]]]] = {}
+_cost_anomaly_cache_lock = threading.Lock()
+
+
+def clear_cost_anomaly_cache() -> None:
+    """Drop the cost-anomaly cache (tests / explicit refresh)."""
+    with _cost_anomaly_cache_lock:
+        _cost_anomaly_cache.clear()
+
+
+def cost_anomalous_agents(
+    tenant_id: str,
+    *,
+    z_threshold: float = DEFAULT_Z_THRESHOLD,
+    _now: float | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Agents whose total spend is anomalous vs the tenant fleet, mapped to their
+    anomaly record. Cached per tenant for ``_COST_ANOMALY_CACHE_TTL_SECONDS``."""
+    now = _now if _now is not None else time.monotonic()
+    with _cost_anomaly_cache_lock:
+        cached = _cost_anomaly_cache.get(tenant_id)
+        if cached is not None and cached[0] > now:
+            return cached[1]
+    result = scan_anomalies(tenant_id, z_threshold=z_threshold)
+    by_agent = {a["agent"]: a for a in result.get("cost_anomalies", []) if a.get("agent")}
+    with _cost_anomaly_cache_lock:
+        _cost_anomaly_cache[tenant_id] = (now + _COST_ANOMALY_CACHE_TTL_SECONDS, by_agent)
+    return by_agent

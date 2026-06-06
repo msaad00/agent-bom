@@ -43,12 +43,71 @@ def _is_prerelease(version_str: str) -> bool:
     return "-" in base
 
 
+def _semver_tuple(version_str: str) -> tuple[int, int, int] | None:
+    """Parse an npm version core into a (major, minor, patch) tuple, or None.
+
+    Strips pre-release / build metadata and pads to three components so
+    comparisons are well-defined (``1.2`` → ``(1, 2, 0)``).
+    """
+    base = version_str.split("+")[0].split("-")[0].strip()
+    parts = base.split(".")
+    try:
+        nums = [int(p) for p in parts[:3]]
+    except ValueError:
+        return None
+    if not nums:
+        return None
+    while len(nums) < 3:
+        nums.append(0)
+    return (nums[0], nums[1], nums[2])
+
+
+def _npm_caret_tilde_bounds(version_range: str) -> tuple[tuple[int, int, int], tuple[int, int, int]] | None:
+    """Return ``(lo_inclusive, hi_exclusive)`` for an npm ``^``/``~`` range.
+
+    Implements npm's real caret/tilde semantics, including the 0.x special
+    cases the previous matcher got wrong:
+
+    - ``^1.2.3`` → ``>=1.2.3 <2.0.0``
+    - ``^0.2.3`` → ``>=0.2.3 <0.3.0``   (caret pins minor when major is 0)
+    - ``^0.0.3`` → ``>=0.0.3 <0.0.4``   (caret pins patch when major.minor are 0)
+    - ``~1.2.3`` / ``~1.2`` → ``>=… <1.3.0``
+    - ``~1``     → ``>=1.0.0 <2.0.0``
+    """
+    if not version_range or version_range[0] not in "^~":
+        return None
+    op = version_range[0]
+    body = version_range[1:].split(" ")[0]
+    comps = body.split(".")
+    try:
+        nums = [int(x) for x in comps if x.lstrip("-").isdigit()]
+    except ValueError:
+        return None
+    if not nums:
+        return None
+    major = nums[0]
+    minor = nums[1] if len(nums) > 1 else 0
+    patch = nums[2] if len(nums) > 2 else 0
+    lo = (major, minor, patch)
+    if op == "^":
+        if major > 0:
+            hi = (major + 1, 0, 0)
+        elif minor > 0:
+            hi = (0, minor + 1, 0)
+        else:
+            hi = (0, 0, patch + 1)
+    else:  # "~": ~X.Y[.Z] pins the minor; bare ~X pins the major.
+        hi = (major, minor + 1, 0) if len(nums) >= 2 else (major + 1, 0, 0)
+    return lo, hi
+
+
 def _resolve_npm_version(version_range: str, pkg_data: dict) -> str:
     """Pick the best npm version satisfying a semver range.
 
-    Uses a simplified semver matcher sufficient for most ^X.Y.Z / ~X.Y.Z / >=X patterns.
-    Excludes pre-release versions (e.g., 1.0.0-beta) unless no stable match is found.
-    Falls back to dist-tags.latest if no match found.
+    Resolves ``^X.Y.Z`` / ``~X.Y.Z`` / ``>=X`` ranges to the highest stable
+    version inside the range's real semver bounds (caret/tilde 0.x semantics
+    included). Excludes pre-releases unless no stable match exists. Falls back
+    to ``dist-tags.latest`` when nothing matches.
     """
     latest = pkg_data.get("dist-tags", {}).get("latest", "")
 
@@ -59,57 +118,30 @@ def _resolve_npm_version(version_range: str, pkg_data: dict) -> str:
     if not available:
         return latest
 
-    # Strip leading ^, ~, =, >, < to get the minimum version
-    stripped = version_range.lstrip("^~>=<").split(" ")[0]
-    try:
-        # Parse minimum as tuple of ints for comparison
-        min_parts = tuple(int(x) for x in stripped.split(".") if x.isdigit())
-    except ValueError:
-        return latest
-
-    # Parse operator
-    if version_range.startswith("^"):
-        # Compatible: same major, >= minor.patch
-        major = min_parts[0] if min_parts else 0
+    bounds = _npm_caret_tilde_bounds(version_range)
+    if bounds is not None:
+        lo, hi = bounds
         candidates = []
         for v in available:
             if _is_prerelease(v):
                 continue
-            try:
-                parts = tuple(int(x) for x in v.split(".") if x.isdigit())
-                if parts[0] == major and parts >= min_parts:
-                    candidates.append((parts, v))
-            except (ValueError, IndexError):
-                continue
+            parts = _semver_tuple(v)
+            if parts is not None and lo <= parts < hi:
+                candidates.append((parts, v))
         return max(candidates)[1] if candidates else latest
 
-    elif version_range.startswith("~"):
-        # Approximately: same major.minor, >= patch
-        major = min_parts[0] if len(min_parts) > 0 else 0
-        minor = min_parts[1] if len(min_parts) > 1 else 0
+    if ">=" in version_range:
+        stripped = version_range.lstrip("^~>=< ").split(" ")[0]
+        floor = _semver_tuple(stripped)
+        if floor is None:
+            return latest
         candidates = []
         for v in available:
             if _is_prerelease(v):
                 continue
-            try:
-                parts = tuple(int(x) for x in v.split(".") if x.isdigit())
-                if len(parts) >= 2 and parts[0] == major and parts[1] == minor and parts >= min_parts:
-                    candidates.append((parts, v))
-            except (ValueError, IndexError):
-                continue
-        return max(candidates)[1] if candidates else latest
-
-    elif ">=" in version_range:
-        candidates = []
-        for v in available:
-            if _is_prerelease(v):
-                continue
-            try:
-                parts = tuple(int(x) for x in v.split(".") if x.isdigit())
-                if parts >= min_parts:
-                    candidates.append((parts, v))
-            except (ValueError, IndexError):
-                continue
+            parts = _semver_tuple(v)
+            if parts is not None and parts >= floor:
+                candidates.append((parts, v))
         return max(candidates)[1] if candidates else latest
 
     return latest

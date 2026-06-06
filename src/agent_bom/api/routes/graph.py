@@ -901,6 +901,99 @@ def _derived_governance_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     return paths
 
 
+_TOXIC_RESOURCE_TYPES = frozenset(
+    {
+        EntityType.CLOUD_RESOURCE.value,
+        EntityType.RESOURCE.value,
+        EntityType.SERVER.value,
+        EntityType.DATA_STORE.value,
+    }
+)
+_MAX_TOXIC_PATHS = 100
+
+
+# Factor-count → base composite-risk band. Two stacked factors is already a
+# toxic combination; three-plus is a crown jewel — the single most dangerous
+# thing in the estate — banded above the constituent single-factor governance
+# paths it fuses, so it tops the queue rather than competing with its parts.
+def _toxic_band(factor_count: int) -> float:
+    if factor_count >= 4:
+        return 100.0
+    if factor_count == 3:
+        return 99.0
+    return 82.0
+
+
+def _derived_toxic_combination_paths(graph: UnifiedGraph) -> list[AttackPath]:
+    """Cloud-security crown-jewel paths: assets where multiple toxic factors stack.
+
+    A single resource that is *internet-exposed* AND carries an *exploitable
+    vulnerability* AND can *reach sensitive data* AND/or is *reachable by an
+    admin-escalating identity* is the chain an attacker actually walks — and the
+    one thing a security team must fix first. Each independent factor present
+    raises the band; three or more is surfaced as a crown jewel at the top of
+    the attack-path queue. Fuses attributes the overlays already computed (no new
+    scanner input), so it surfaces wherever attack paths do — the headless
+    ``/v1/graph/attack-paths`` queue for agents and the graph cockpit for humans.
+    """
+    vulnerable: set[str] = set()
+    admin_reachable: set[str] = set()
+    sensitive_neighbors: dict[str, list[str]] = {}
+    for edge in graph.edges:
+        rel = _rel_value(edge)
+        if rel == RelationshipType.VULNERABLE_TO.value:
+            vulnerable.add(edge.source)
+        elif rel == RelationshipType.HAS_PERMISSION.value:
+            principal = graph.nodes.get(edge.source)
+            if principal is not None and principal.attributes.get("escalates_to_admin"):
+                admin_reachable.add(edge.target)
+        elif rel in (RelationshipType.STORES.value, RelationshipType.EXPOSED_TO.value):
+            store = graph.nodes.get(edge.target)
+            if store is not None and store.attributes.get("data_sensitivity"):
+                sensitive_neighbors.setdefault(edge.source, []).append(edge.target)
+
+    paths: list[AttackPath] = []
+    for node in graph.nodes.values():
+        if _node_type_value(node) not in _TOXIC_RESOURCE_TYPES or len(paths) >= _MAX_TOXIC_PATHS:
+            continue
+        attrs = node.attributes
+        factors: list[str] = []
+        if attrs.get("internet_exposed"):
+            factors.append("internet-exposed")
+        if node.id in vulnerable or attrs.get("toxic_exposed_vulnerable"):
+            factors.append("exploitable vulnerability")
+        sens_ids = sensitive_neighbors.get(node.id, [])
+        if attrs.get("data_sensitivity") or sens_ids:
+            regs = list(attrs.get("data_regulatory_frameworks") or [])
+            for sid in sens_ids:
+                store = graph.nodes.get(sid)
+                for code in (store.attributes.get("data_regulatory_frameworks") or []) if store else []:
+                    if code not in regs:
+                        regs.append(code)
+            factors.append("sensitive data" + (f" ({'/'.join(regs)})" if regs else ""))
+        if node.id in admin_reachable:
+            factors.append("admin-privilege reachable")
+        if len(factors) < 2:
+            continue
+        target = sens_ids[0] if sens_ids else node.id
+        hops = [node.id, target] if target != node.id else [node.id]
+        edges = ["exposed_to"] if target != node.id else []
+        base = _toxic_band(len(factors))
+        prefix = "Crown jewel" if len(factors) >= 3 else "Toxic combination"
+        paths.append(
+            AttackPath(
+                source=node.id,
+                target=target,
+                hops=hops,
+                edges=edges,
+                composite_risk=round(min(100.0, base), 2),
+                summary=f"{prefix}: {node.label} stacks {len(factors)} toxic factors — " + ", ".join(factors) + ".",
+                vuln_ids=[],
+            )
+        )
+    return paths
+
+
 def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     """Derive fix-first paths when a snapshot lacks materialised path rows.
 
@@ -914,7 +1007,7 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
     over-scoped tool access, drift, data exposure) are derived and merged in
     both branches so they surface even when materialised vuln paths exist.
     """
-    governance_paths = _derived_governance_attack_paths(graph)
+    governance_paths = _derived_governance_attack_paths(graph) + _derived_toxic_combination_paths(graph)
     if graph.attack_paths:
         return sorted(
             list(graph.attack_paths) + governance_paths,

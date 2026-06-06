@@ -1630,6 +1630,7 @@ def _add_agent_cloud_lineage(
                 "cloud_service": service,
                 "location": location,
                 "scope": origin.get("scope", {}),
+                "network": origin.get("network", {}),
                 "cloud_origin": origin,
                 "cloud_state": agent_metadata.get("cloud_state"),
                 "cloud_scope": agent_metadata.get("cloud_scope"),

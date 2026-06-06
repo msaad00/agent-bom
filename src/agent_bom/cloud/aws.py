@@ -1477,6 +1477,32 @@ def _extract_sfn_task_resources(definition: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _aws_instance_network(instance: dict) -> dict[str, Any]:
+    """Extract low-risk network placement (subnet/VPC/SG ids, IPs, AZ) from a
+    describe_instances Instance. Identifiers only — no rules, no credentials."""
+    sg_ids: list[str] = []
+    for group in instance.get("SecurityGroups", []) or []:
+        gid = group.get("GroupId") if isinstance(group, dict) else None
+        if gid and gid not in sg_ids:
+            sg_ids.append(gid)
+    for nic in instance.get("NetworkInterfaces", []) or []:
+        for group in (nic.get("Groups", []) if isinstance(nic, dict) else []) or []:
+            gid = group.get("GroupId") if isinstance(group, dict) else None
+            if gid and gid not in sg_ids:
+                sg_ids.append(gid)
+    placement_raw = instance.get("Placement")
+    placement = placement_raw if isinstance(placement_raw, dict) else {}
+    network = {
+        "subnet_id": instance.get("SubnetId", ""),
+        "vpc_id": instance.get("VpcId", ""),
+        "public_ip": instance.get("PublicIpAddress", ""),
+        "private_ip": instance.get("PrivateIpAddress", ""),
+        "availability_zone": placement.get("AvailabilityZone", ""),
+        "security_group_ids": sg_ids,
+    }
+    return {k: v for k, v in network.items() if v}
+
+
 def _discover_ec2_instances(
     session: Any,
     region: str,
@@ -1540,6 +1566,7 @@ def _discover_ec2_instances(
                                 location=region,
                                 account_id=account_id,
                                 raw_identity={"instance_id": instance_id, "instance_type": instance_type, "ami_id": ami_id},
+                                network=_aws_instance_network(instance),
                             )
                         },
                     )

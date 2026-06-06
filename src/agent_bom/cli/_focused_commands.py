@@ -258,6 +258,12 @@ def sbom_cmd(
 @click.option("--no-color", is_flag=True, help="Disable colored output")
 @click.option("--log-json", "log_json", is_flag=True, help="Emit structured JSON logs to stderr")
 @click.option("--log-file", "log_file", type=click.Path(), default=None, help="Write JSON logs to file")
+@click.option(
+    "--detect-entropy",
+    is_flag=True,
+    default=False,
+    help="Also flag high-entropy values assigned to secret-named keys (catches novel secrets; higher recall, some false positives).",
+)
 @click.option("--quiet", "-q", is_flag=True)
 def secrets_cmd(
     path: str,
@@ -266,6 +272,7 @@ def secrets_cmd(
     no_color: bool,
     log_json: bool,
     log_file: Optional[str],
+    detect_entropy: bool,
     quiet: bool,
 ) -> None:
     """Scan a directory for hardcoded secrets and PII.
@@ -291,7 +298,7 @@ def secrets_cmd(
     setup_logging(level="ERROR" if quiet else "INFO", json_output=log_json, log_file=log_file)
 
     con = Console(stderr=True, quiet=quiet, no_color=no_color)
-    result = scan_secrets(path)
+    result = scan_secrets(path, detect_entropy=detect_entropy)
 
     if output_format == "json":
         output = _json.dumps(result.to_dict(), indent=2)

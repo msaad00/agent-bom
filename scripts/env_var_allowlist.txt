@@ -89,6 +89,8 @@ AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS
 AGENT_BOM_GATEWAY_ANOMALY_ENFORCEMENT
 # opt-in drift-triggered gateway enforcement mode (off|warn|enforce)
 AGENT_BOM_GATEWAY_DRIFT_ENFORCEMENT
+# opt-in fleet-quarantine gateway enforcement mode (off|warn|enforce)
+AGENT_BOM_GATEWAY_FLEET_ENFORCEMENT
 # shared fallback policy path for standalone gateway and control-plane firewall decision route
 AGENT_BOM_GATEWAY_FIREWALL_POLICY
 AGENT_BOM_GATEWAY_FIREWALL_POLICY_RELOAD_SECONDS

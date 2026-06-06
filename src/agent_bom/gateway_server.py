@@ -91,6 +91,7 @@ def _public_gateway_block_reason(policy_source: str) -> str:
         "control_plane": "Control-plane gateway policy blocked this request",
         "drift_enforcement": "Drift enforcement blocked this request",
         "anomaly_enforcement": "Anomaly enforcement blocked this request",
+        "fleet_quarantine": "Agent is quarantined in the fleet roster",
         "identity_scope": "Identity scope blocked this tool",
         "identity_jit": "Gateway policy blocked this request",
     }.get(policy_source, "Gateway policy blocked this request")
@@ -156,6 +157,11 @@ class GatewaySettings:
     # or flagged ("warn") at the gateway — catching a runaway agent before it
     # exhausts an absolute budget. Default "off" keeps anomalies advisory.
     anomaly_enforcement_mode: str = "off"
+    # Fleet-state enforcement. An agent the operator has moved to the
+    # QUARANTINED lifecycle state in the fleet roster can be fully blocked
+    # ("enforce") or flagged ("warn") at the gateway — isolating a compromised
+    # or under-review agent without touching per-tool policy. Default "off".
+    fleet_enforcement_mode: str = "off"
 
 
 def _agent_cost_anomaly(tenant_id: str, source_agent: str) -> tuple[bool, str]:
@@ -174,6 +180,33 @@ def _agent_cost_anomaly(tenant_id: str, source_agent: str) -> tuple[bool, str]:
     if info:
         return True, (f"agent '{source_agent}' has anomalous spend (z={info.get('z_score')}) vs the tenant fleet baseline")
     return False, ""
+
+
+def _agent_is_quarantined(tenant_id: str, source_agent: str) -> bool:
+    """Return True when ``source_agent`` is quarantined in this tenant's fleet.
+
+    Fail-open: fleet-store errors are logged and never block the relay.
+    """
+    if not source_agent:
+        return False
+    try:
+        from agent_bom.api.fleet_store import FleetLifecycleState
+        from agent_bom.api.stores import _get_fleet_store
+
+        agents = _get_fleet_store().list_by_tenant(tenant_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gateway fleet check failed: %s", _sanitize_for_log(exc))
+        return False
+    key = source_agent.strip().lower()
+    for agent in agents:
+        identifiers = (
+            (getattr(agent, "name", "") or "").strip().lower(),
+            (getattr(agent, "agent_id", "") or "").strip().lower(),
+            (getattr(agent, "canonical_id", "") or "").strip().lower(),
+        )
+        if key in identifiers:
+            return getattr(agent, "lifecycle_state", None) == FleetLifecycleState.QUARANTINED
+    return False
 
 
 def _open_drift_violates_tool(tenant_id: str, source_agent: str, tool_name: str) -> tuple[bool, str]:
@@ -1195,6 +1228,55 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "tenant_id": tenant_id,
                         "source_agent": source_agent,
                         "reason": anomaly_reason,
+                    }
+                )
+
+        # Fleet-state enforcement: a quarantined agent is isolated — every call
+        # blocked/flagged regardless of tool — before the upstream is touched.
+        # Off by default; fails open on a fleet-store error.
+        if settings.fleet_enforcement_mode in ("warn", "enforce") and _agent_is_quarantined(tenant_id, source_agent):
+            if settings.fleet_enforcement_mode == "enforce":
+                record_gateway_relay(upstream.name, "blocked")
+                if settings.audit_sink is not None:
+                    await settings.audit_sink(
+                        {
+                            "action": "gateway.fleet_blocked",
+                            "upstream": upstream.name,
+                            "tenant_id": tenant_id,
+                            "source_agent": source_agent,
+                            "reason": "agent quarantined in fleet roster",
+                        }
+                    )
+                _emit_gateway_governance_event(
+                    "fleet.blocked",
+                    tenant_id=tenant_id,
+                    subject_id=source_agent,
+                    payload={"source_agent": source_agent, "reason": "agent quarantined in fleet roster"},
+                )
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message.get("id"),
+                        "error": {
+                            "code": -32001,
+                            "message": "Blocked by agent-bom gateway: agent quarantined",
+                            "data": {
+                                "reason": _public_gateway_block_reason("fleet_quarantine"),
+                                "policy_source": "fleet_quarantine",
+                            },
+                        },
+                    },
+                    status_code=200,
+                    headers=rate_limit_headers or None,
+                )
+            if settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.fleet_warned",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "source_agent": source_agent,
+                        "reason": "agent quarantined in fleet roster",
                     }
                 )
 

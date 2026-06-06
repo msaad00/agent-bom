@@ -156,6 +156,66 @@ _FILE_SECRET_PATTERNS: list[tuple[str, re.Pattern]] = [
     (".env token", re.compile(r"^(?:AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN|SESSION_SECRET)\s*=\s*\S+", re.MULTILINE | re.IGNORECASE)),
 ]
 
+# ── Entropy detection (opt-in) ───────────────────────────────────────────────
+# The named patterns above catch known credential *formats*. Entropy detection
+# catches novel/unknown secrets — a high-randomness value assigned to a
+# secret-suggesting key — that no fixed pattern names. Opt-in (--detect-entropy)
+# because, even constrained to secret-named keys, it can surface false positives
+# (hashes, UUIDs, build IDs) that a baseline/allowlist would otherwise suppress.
+import math  # noqa: E402
+
+_ENTROPY_MIN_LEN = 20
+_ENTROPY_THRESHOLD = 3.5  # bits/char; base64-ish secrets score ~4.5-6, prose ~3
+# key suggests a secret, then capture the assigned value (quoted or bare).
+_ENTROPY_ASSIGN_RE = re.compile(
+    r"""(?ix)
+    (?:secret|token|password|passwd|pwd|api[_-]?key|access[_-]?key|
+       client[_-]?secret|auth|credential|private[_-]?key|apikey|bearer)
+    \w* \s* [=:] \s*
+    ['"]? ([A-Za-z0-9+/=_\-\.]{%d,}) ['"]?
+    """
+    % _ENTROPY_MIN_LEN
+)
+# Obvious non-secrets to skip even when assigned to a secret-named key.
+_ENTROPY_PLACEHOLDER_RE = re.compile(
+    r"(?i)^(?:your[_-]|xxx|placeholder|example|changeme|none|null|true|false|enabled|disabled|"
+    r"\$\{|\{\{|<[a-z]|/[a-z]|https?://|[a-z]+(?:[._-][a-z]+)+$)"
+)
+
+
+def _shannon_entropy(value: str) -> float:
+    """Shannon entropy in bits/char — high for random tokens, low for words."""
+    if not value:
+        return 0.0
+    counts: dict[str, int] = {}
+    for ch in value:
+        counts[ch] = counts.get(ch, 0) + 1
+    n = len(value)
+    return -sum((c / n) * math.log2(c / n) for c in counts.values())
+
+
+def _entropy_findings(line: str, rel_path: str, line_num: int) -> list[SecretFinding]:
+    """Flag a high-entropy value assigned to a secret-suggesting key."""
+    out: list[SecretFinding] = []
+    for match in _ENTROPY_ASSIGN_RE.finditer(line):
+        value = match.group(1)
+        if len(value) < _ENTROPY_MIN_LEN or _ENTROPY_PLACEHOLDER_RE.search(value):
+            continue
+        if _shannon_entropy(value) < _ENTROPY_THRESHOLD:
+            continue
+        out.append(
+            SecretFinding(
+                file_path=rel_path,
+                line_number=line_num,
+                secret_type="High-entropy secret",
+                severity="high",
+                matched_preview="[ENTROPY_REDACTED]",
+                category="entropy",
+            )
+        )
+        break  # one entropy finding per line is enough
+    return out
+
 
 # ── Data model ───────────────────────────────────────────────────────────────
 
@@ -234,7 +294,7 @@ def _should_scan(path: Path) -> bool:
     return path.suffix.lower() in _SCAN_EXTENSIONS
 
 
-def _scan_file(file_path: Path, rel_path: str) -> list[SecretFinding]:
+def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) -> list[SecretFinding]:
     """Scan a single file for secrets."""
     try:
         content = file_path.read_text(encoding="utf-8", errors="replace")
@@ -303,6 +363,11 @@ def _scan_file(file_path: Path, rel_path: str) -> list[SecretFinding]:
                     )
                     break
 
+        # Entropy detection runs only on lines no named pattern already flagged,
+        # so it adds coverage for novel secrets instead of duplicating findings.
+        if detect_entropy and not any(f.line_number == line_num for f in findings):
+            findings.extend(_entropy_findings(line, rel_path, line_num))
+
     return findings
 
 
@@ -314,7 +379,7 @@ def _should_scan_pii_line(file_path: Path, line: str) -> bool:
     return suffix in _PII_CODE_EXTENSIONS and bool(_PII_CONTEXT_RE.search(line))
 
 
-def scan_secrets(project_path: str | Path) -> SecretScanResult:
+def scan_secrets(project_path: str | Path, *, detect_entropy: bool = False) -> SecretScanResult:
     """Scan a project directory for hardcoded secrets and PII.
 
     Uses the same 31 credential + 11 PII patterns from the runtime
@@ -323,6 +388,9 @@ def scan_secrets(project_path: str | Path) -> SecretScanResult:
 
     Args:
         project_path: Root directory to scan.
+        detect_entropy: Also flag high-entropy values assigned to
+            secret-suggesting keys (novel/unknown secrets no fixed pattern
+            names). Opt-in — higher recall, some false positives.
 
     Returns:
         SecretScanResult with findings, file count, and statistics.
@@ -345,7 +413,7 @@ def scan_secrets(project_path: str | Path) -> SecretScanResult:
 
         file_count += 1
         rel = str(f.relative_to(project))
-        findings = _scan_file(f, rel)
+        findings = _scan_file(f, rel, detect_entropy=detect_entropy)
         result.findings.extend(findings)
 
     result.files_scanned = file_count

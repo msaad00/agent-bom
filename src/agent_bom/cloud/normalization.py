@@ -124,12 +124,16 @@ def build_cloud_origin(
     subscription_id: str | None = None,
     project_id: str | None = None,
     raw_identity: dict[str, Any] | None = None,
+    network: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a stable cloud-origin envelope for discovered assets.
 
     The envelope keeps the low-risk identifying fields needed to validate
     provider mappings without dragging full vendor payloads through the core
-    product model.
+    product model. ``network`` carries low-risk network-placement metadata
+    (subnet / VPC membership, attached security groups, public/private IP) used
+    downstream to reason about reachability — identifiers only, never rules or
+    credentials.
     """
     scope: dict[str, str] = {}
     if account_id:
@@ -160,7 +164,28 @@ def build_cloud_origin(
                     sanitized_identity[str(key)] = sanitized_value
         if sanitized_identity:
             envelope["raw_identity"] = sanitized_identity
+    if network:
+        sanitized_network = _sanitize_network_envelope(network)
+        if sanitized_network:
+            envelope["network"] = sanitized_network
     return envelope
+
+
+def _sanitize_network_envelope(network: dict[str, Any]) -> dict[str, Any]:
+    """Keep only low-risk network-placement identifiers (ids, IPs, AZ, SG ids)."""
+    out: dict[str, Any] = {}
+    for key in ("subnet_id", "vpc_id", "public_ip", "private_ip", "availability_zone"):
+        value = network.get(key)
+        if isinstance(value, str) and value:
+            cleaned = sanitize_sensitive_payload(value, key=key, max_str_len=200)
+            if cleaned not in ("", None):
+                out[key] = cleaned
+    sgs = network.get("security_group_ids")
+    if isinstance(sgs, (list, tuple)):
+        cleaned_sgs = [str(s) for s in sgs if isinstance(s, str) and s]
+        if cleaned_sgs:
+            out["security_group_ids"] = cleaned_sgs[:64]
+    return out
 
 
 def sanitize_discovery_warning(value: Any, *, max_len: int = 500) -> str:

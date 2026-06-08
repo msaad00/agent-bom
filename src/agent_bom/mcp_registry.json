@@ -1,7 +1,7 @@
 {
   "_comment": "agent-bom MCP Server Registry — security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-06-01",
+  "_updated": "2026-06-08",
   "_total_servers": 738,
   "_differentiator": "Security metadata database — not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
@@ -432,7 +432,7 @@
     "mcp-server-git": {
       "package": "mcp-server-git",
       "ecosystem": "pypi",
-      "latest_version": "2026.1.14",
+      "latest_version": "2026.6.4",
       "description": "Git operations on local repositories",
       "name": "Git",
       "risk_justification": "Read/write access to local Git repositories. Can commit and push code changes without credential exposure.",
@@ -454,12 +454,13 @@
         "git_checkout"
       ],
       "credential_env_vars": [],
-      "source_url": "https://github.com/modelcontextprotocol/servers"
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "version_source": "pypi"
     },
     "mcp-server-time": {
       "package": "mcp-server-time",
       "ecosystem": "pypi",
-      "latest_version": "2026.1.26",
+      "latest_version": "2026.6.4",
       "description": "Time and timezone utilities",
       "name": "Time",
       "risk_justification": "Local computation only. No credential exposure or network access.",
@@ -475,12 +476,13 @@
         "convert_timezone"
       ],
       "credential_env_vars": [],
-      "source_url": "https://github.com/modelcontextprotocol/servers"
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "version_source": "pypi"
     },
     "mcp-server-fetch": {
       "package": "mcp-server-fetch",
       "ecosystem": "pypi",
-      "latest_version": "2025.4.7",
+      "latest_version": "2026.6.4",
       "description": "HTTP fetch (Python implementation)",
       "name": "Fetch (Python)",
       "risk_justification": "Can fetch arbitrary HTTP URLs, enabling SSRF and internal network probing. No credential storage but network access is unbounded.",
@@ -495,7 +497,8 @@
         "fetch"
       ],
       "credential_env_vars": [],
-      "source_url": "https://github.com/modelcontextprotocol/servers"
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "version_source": "pypi"
     },
     "@anthropic-ai/mcp-server-filesystem": {
       "package": "@anthropic-ai/mcp-server-filesystem",
@@ -774,7 +777,7 @@
     "mongodb-mcp-server": {
       "package": "mongodb-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "1.11.0",
+      "latest_version": "1.12.0",
       "description": "Query and modify MongoDB collections",
       "name": "MongoDB",
       "risk_justification": "Executes arbitrary MongoDB queries via MONGODB_URI. Full data read/write/delete possible across all collections.",
@@ -800,7 +803,8 @@
       "credential_env_vars": [
         "MONGODB_URI"
       ],
-      "source_url": "https://github.com/mongodb-js/mongodb-mcp-server"
+      "source_url": "https://github.com/mongodb-js/mongodb-mcp-server",
+      "version_source": "npm"
     },
     "@supabase/mcp-server-supabase": {
       "package": "@supabase/mcp-server-supabase",
@@ -1117,7 +1121,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "0.15.0",
+      "latest_version": "0.15.2",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -2695,7 +2699,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.5.28",
+      "latest_version": "2026.6.1",
       "description": "OpenClaw personal AI assistant — multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessag…",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2753,7 +2757,7 @@
     "mcp-clickhouse": {
       "package": "mcp-clickhouse",
       "ecosystem": "pypi",
-      "latest_version": "0.3.0",
+      "latest_version": "0.4.0",
       "description": "ClickHouse MCP server — SQL query, database/table listing, chDB embedded engine (691 GitHub stars)",
       "name": "ClickHouse",
       "risk_justification": "Executes raw SQL queries via CLICKHOUSE_PASSWORD. Arbitrary data read/write/delete possible across all databases.",
@@ -2779,7 +2783,8 @@
         "CLICKHOUSE_PASSWORD",
         "CLICKHOUSE_MCP_AUTH_TOKEN"
       ],
-      "source_url": "https://github.com/ClickHouse/mcp-clickhouse"
+      "source_url": "https://github.com/ClickHouse/mcp-clickhouse",
+      "version_source": "pypi"
     },
     "figma-mcp": {
       "package": "figma-mcp",
@@ -14978,8 +14983,573 @@
       "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
       "version_source": "official-registry",
       "auto_enriched": true
+    },
+    "ai.bittlebits/bittlebits": {
+      "package": "ai.bittlebits/bittlebits",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "GEO scores and content-rewrite suggestions for any web page, as MCP tools.",
+      "name": "ai.bittlebits/bittlebits",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.bittlebits/bittlebits",
+        "bittlebits"
+      ],
+      "source_url": "https://github.com/bittlebitsai/bittlebits-plugin",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.bunzee/bunzee": {
+      "package": "ai.bunzee/bunzee",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Turn your app idea into IA, wireframes, PRD, style guides, and dev specs for coding agents.",
+      "name": "ai.bunzee/bunzee",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.bunzee/bunzee",
+        "bunzee"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.calfeed/calfeed": {
+      "package": "ai.calfeed/calfeed",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Turn a written schedule into a live calendar link people subscribe to in Apple, Google, Outlook.",
+      "name": "ai.calfeed/calfeed",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.calfeed/calfeed",
+        "calfeed"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.canvora/canvora": {
+      "package": "ai.canvora/canvora",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Create professional visuals from text, URLs, or PDFs. Carousels, presentations, posts. 100+ formats",
+      "name": "ai.canvora/canvora",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.canvora/canvora",
+        "canvora"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.deinai/creator-skill": {
+      "package": "ai.deinai/creator-skill",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.2",
+      "description": "AI influencer search on TikTok, Instagram, YouTube. Deinai MCP token required; credits per result.",
+      "name": "ai.deinai/creator-skill",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.deinai/creator-skill",
+        "creator-skill"
+      ],
+      "source_url": "https://github.com/deinai/deinai_backend",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.edusignal/districts": {
+      "package": "ai.edusignal/districts",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "K-12 school district data for all 50 US states. Enrollment, demographics, and academics.",
+      "name": "ai.edusignal/districts",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.edusignal/districts",
+        "districts"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.filepad/filepad": {
+      "package": "ai.filepad/filepad",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.1",
+      "description": "Connect AI agents to Filepad workspaces through OAuth MCP.",
+      "name": "ai.filepad/filepad",
+      "category": "filesystem",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.filepad/filepad",
+        "filepad"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.getoptimal/optibot": {
+      "package": "ai.getoptimal/optibot",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.4.1",
+      "description": "AI code review for your AI assistant — review local changes, branch diffs, and patch files.",
+      "name": "ai.getoptimal/optibot",
+      "category": "filesystem",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.getoptimal/optibot",
+        "optibot"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.intuitek.the-stall/the-stall": {
+      "package": "ai.intuitek.the-stall/the-stall",
+      "ecosystem": "mcp-registry",
+      "latest_version": "4.9.0",
+      "description": "152 pay-per-call tools: finance, macro, DeFi, crypto, legal, weather. x402 USDC/Base. No API keys.",
+      "name": "ai.intuitek.the-stall/the-stall",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.intuitek.the-stall/the-stall",
+        "the-stall"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.kifly/mcp": {
+      "package": "ai.kifly/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.2.0",
+      "description": "Multi-seller shopping for AI agents. Settle via Stripe MPP or x402 USDC on Base. Hosted.",
+      "name": "ai.kifly/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.kifly/mcp"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.marketintell/marketintell": {
+      "package": "ai.marketintell/marketintell",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.3.1",
+      "description": "AI analyst desk for stocks, options & crypto with sourced trade setups and a public accuracy record.",
+      "name": "ai.marketintell/marketintell",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.marketintell/marketintell",
+        "marketintell"
+      ],
+      "source_url": "https://github.com/ravidsrk/marketintell",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.mrmarket/mrmarket-mcp": {
+      "package": "ai.mrmarket/mrmarket-mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Analytical engine for US-listed equities: screens, rankings, and event studies in plain English.",
+      "name": "ai.mrmarket/mrmarket-mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.mrmarket/mrmarket-mcp",
+        "mrmarket-mcp"
+      ],
+      "source_url": "https://github.com/codinghaven/mrmarket-mcp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.painspotter/painspotter": {
+      "package": "ai.painspotter/painspotter",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "AI-analyzed startup opportunities from Reddit, Hacker News & Product Hunt, with commercial scores.",
+      "name": "ai.painspotter/painspotter",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.painspotter/painspotter",
+        "painspotter"
+      ],
+      "source_url": "https://github.com/archoor/reddit-insight",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.responsibleailabs/rail-score": {
+      "package": "ai.responsibleailabs/rail-score",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.1.0",
+      "description": "Responsible-AI guardrails for agents: scoring with policy, injection & PII detection, DPDP.",
+      "name": "ai.responsibleailabs/rail-score",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.responsibleailabs/rail-score",
+        "rail-score"
+      ],
+      "source_url": "https://github.com/Responsible-AI-Labs/rail-score-mcp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.rfix/mcp": {
+      "package": "ai.rfix/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Create RF signal projects from prompts, inspect graphs, and export IQ data.",
+      "name": "ai.rfix/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.rfix/mcp"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.robomart/robomart": {
+      "package": "ai.robomart/robomart",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.0.1",
+      "description": "Driverless delivery.",
+      "name": "ai.robomart/robomart",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.robomart/robomart",
+        "robomart"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.seocrawl/mcp": {
+      "package": "ai.seocrawl/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Live Google Search Console data, keyword/page analysis, site audit and SEO tasks from SEOcrawl AI.",
+      "name": "ai.seocrawl/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.seocrawl/mcp"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.sessionkeeper/mcp": {
+      "package": "ai.sessionkeeper/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.1",
+      "description": "Dungeons & Dragons (D&D) and TTRPG companion: SessionKeeper sessions, NPCs, wiki, DM prep.",
+      "name": "ai.sessionkeeper/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.sessionkeeper/mcp"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.sitepulsar/mcp": {
+      "package": "ai.sitepulsar/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "SitePulsar AEO audits: fetch FIND/READ/USE agent-readiness scores for any website.",
+      "name": "ai.sitepulsar/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.sitepulsar/mcp"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.speko/mcp": {
+      "package": "ai.speko/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.9",
+      "description": "Official Speko MCP server: voice AI routing and failover across STT, TTS, and V2V providers.",
+      "name": "ai.speko/mcp",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.speko/mcp"
+      ],
+      "source_url": "https://github.com/SpekoAI/mcp-bridge",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.superfact/superfact": {
+      "package": "ai.superfact/superfact",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Turn any AI chat or agent run into a beautiful, shareable public page.",
+      "name": "ai.superfact/superfact",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.superfact/superfact",
+        "superfact"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.switchapp/switch": {
+      "package": "ai.switchapp/switch",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Generate, manage and explore your Switch AI image and video library, scoped to your account.",
+      "name": "ai.switchapp/switch",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.switchapp/switch",
+        "switch"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.threadminder/threadminder": {
+      "package": "ai.threadminder/threadminder",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Persistent context for Claude. Your AI always knows your projects and next actions across sessions.",
+      "name": "ai.threadminder/threadminder",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.threadminder/threadminder",
+        "threadminder"
+      ],
+      "source_url": "https://github.com/pluralityworks/threadminder-mcp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.trycanonical/company-search": {
+      "package": "ai.trycanonical/company-search",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Verified, long-tail company search: describe what you want, get an LLM-verified company shortlist.",
+      "name": "ai.trycanonical/company-search",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.trycanonical/company-search",
+        "company-search"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.verlon/mcp": {
+      "package": "ai.verlon/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.3.0",
+      "description": "Inspect and manage Verlon AI gates, logs, recommendations, and experiments from any MCP client.",
+      "name": "ai.verlon/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.verlon/mcp"
+      ],
+      "source_url": "https://github.com/micah-nettey/verlon-ai-internal",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.walterwrites/mcp-server": {
+      "package": "ai.walterwrites/mcp-server",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.1",
+      "description": "Walter Remote MCP Server — AI humanization and detection tools",
+      "name": "ai.walterwrites/mcp-server",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.walterwrites/mcp-server",
+        "mcp-server"
+      ],
+      "source_url": "https://github.com/WALTER-WRITES/walter-mcp-server",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-08T12:54:42Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
     }
   },
-  "_mcp_registry_sync": "2026-06-01T14:43:59Z",
+  "_mcp_registry_sync": "2026-06-08T12:54:44Z",
   "_mcp_registry_sync_source": "mcp-official"
 }

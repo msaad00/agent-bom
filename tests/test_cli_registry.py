@@ -208,6 +208,8 @@ def test_registry_enrich_cves_found():
     runner = CliRunner()
     mock_result = SimpleNamespace(
         enriched=1,
+        updated=1,
+        cleared=0,
         total=5,
         scannable=3,
         total_cves=3,
@@ -227,6 +229,8 @@ def test_registry_enrich_cves_none():
     runner = CliRunner()
     mock_result = SimpleNamespace(
         enriched=0,
+        updated=0,
+        cleared=0,
         total=5,
         scannable=3,
         total_cves=0,
@@ -244,6 +248,8 @@ def test_registry_enrich_cves_with_kev():
     runner = CliRunner()
     mock_result = SimpleNamespace(
         enriched=1,
+        updated=1,
+        cleared=0,
         total=2,
         scannable=2,
         total_cves=1,

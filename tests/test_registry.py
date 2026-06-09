@@ -562,6 +562,8 @@ def test_cve_enrich_result_dataclass():
     assert r.total == 10
     assert r.scannable == 5
     assert r.enriched == 2
+    assert r.updated == 0
+    assert r.cleared == 0
     assert r.total_cves == 3
     assert r.total_critical == 0
     assert r.total_kev == 0
@@ -649,9 +651,56 @@ async def test_enrich_registry_with_cves_with_vulns():
         result = await enrich_registry_with_cves(dry_run=True)
 
     assert result.enriched == 1
+    assert result.updated == 1
     assert result.total_cves == 1
     assert result.total_critical == 1  # EPSS >= 0.7
     assert result.details[0]["cves"] == ["CVE-2024-12345"]
+    assert result.details[0]["changed"] is True
+
+
+@pytest.mark.asyncio
+async def test_enrich_registry_with_cves_unchanged_metadata_not_counted_as_update():
+    """Existing matching CVE metadata is reported without inflating update counts."""
+    from agent_bom.registry import enrich_registry_with_cves
+
+    summary = {
+        "total": 1,
+        "ghsa_count": 0,
+        "critical": 0,
+        "kev": 0,
+        "severity_breakdown": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "fix_available": False,
+        "fix_versions": [],
+    }
+    registry = {
+        "servers": {
+            "stable-vuln-server": {
+                "package": "stable-vuln-pkg",
+                "ecosystem": "npm",
+                "latest_version": "1.0.0",
+                "known_cves": ["CVE-2024-12345"],
+                "cve_summary": summary,
+            }
+        }
+    }
+    osv_vulns = {
+        "npm:stable-vuln-pkg@1.0.0": [
+            {"id": "CVE-2024-12345", "aliases": [], "severity": [], "affected": []},
+        ],
+    }
+
+    with (
+        patch("agent_bom.registry._load_registry_full", return_value=registry),
+        patch("agent_bom.scanners.query_osv_batch", new_callable=AsyncMock, return_value=osv_vulns),
+        patch("agent_bom.enrichment.fetch_epss_scores", new_callable=AsyncMock, return_value={}),
+        patch("agent_bom.enrichment.fetch_cisa_kev_catalog", new_callable=AsyncMock, return_value={}),
+    ):
+        result = await enrich_registry_with_cves(dry_run=True)
+
+    assert result.enriched == 1
+    assert result.updated == 0
+    assert result.details[0]["changed"] is False
+    assert result.details[0]["change_type"] == "unchanged"
 
 
 @pytest.mark.asyncio
@@ -689,6 +738,7 @@ async def test_enrich_registry_with_cves_kev_detection():
         result = await enrich_registry_with_cves(dry_run=True)
 
     assert result.enriched == 1
+    assert result.updated == 1
     assert result.total_kev == 1
     assert result.total_critical == 1  # KEV = critical
 
@@ -716,4 +766,40 @@ async def test_enrich_registry_with_cves_no_vulns():
 
     assert result.scannable == 1
     assert result.enriched == 0
+    assert result.updated == 0
     assert result.total_cves == 0
+
+
+@pytest.mark.asyncio
+async def test_enrich_registry_with_cves_clears_stale_metadata(tmp_path):
+    """A clean OSV response removes stale CVE metadata and writes the registry."""
+    from agent_bom.registry import enrich_registry_with_cves
+
+    registry_path = tmp_path / "mcp_registry.json"
+    registry = {
+        "servers": {
+            "formerly-vuln-server": {
+                "package": "formerly-vuln-pkg",
+                "ecosystem": "npm",
+                "latest_version": "3.0.0",
+                "known_cves": ["CVE-2024-99999"],
+                "cve_summary": {"total": 1},
+            }
+        }
+    }
+
+    with (
+        patch("agent_bom.registry._REGISTRY_PATH", registry_path),
+        patch("agent_bom.registry._load_registry_full", return_value=registry),
+        patch("agent_bom.scanners.query_osv_batch", new_callable=AsyncMock, return_value={}),
+    ):
+        result = await enrich_registry_with_cves(dry_run=False)
+
+    assert result.enriched == 0
+    assert result.updated == 1
+    assert result.cleared == 1
+    assert result.details[0]["change_type"] == "cleared"
+    written = json.loads(registry_path.read_text(encoding="utf-8"))
+    server = written["servers"]["formerly-vuln-server"]
+    assert server["known_cves"] == []
+    assert server["cve_summary"] == {}

@@ -1,0 +1,153 @@
+name: Azure Ingestion
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_cis:
+        description: "Run CIS Azure benchmark checks"
+        required: false
+        type: boolean
+        default: true
+      push_fleet:
+        description: "Also sync discovered agents into /v1/fleet/sync"
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "23 7 * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-ingestion-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    name: Azure scan and API ingest
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AGENT_BOM_AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AGENT_BOM_AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AGENT_BOM_AZURE_SUBSCRIPTION_ID }}
+      AGENT_BOM_AZURE_KEY_VAULT_NAME: ${{ vars.AGENT_BOM_AZURE_KEY_VAULT_NAME }}
+      AGENT_BOM_API_URL: ${{ vars.AGENT_BOM_API_URL }}
+      AGENT_BOM_API_KEY: ${{ secrets.AGENT_BOM_API_KEY }}
+      AGENT_BOM_PUSH_SOURCE_ID: github-actions-azure-${{ github.repository_id }}
+      AGENT_BOM_PUSH_OWNER: platform-security
+      AGENT_BOM_PUSH_ENVIRONMENT: azure
+      AGENT_BOM_PUSH_TAGS: azure,github-actions,oidc
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Validate Azure OIDC configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required repository variable(s): %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Azure login with GitHub OIDC
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "GitHub OIDC token request variables are unavailable. Check id-token: write permissions." >&2
+            exit 1
+          fi
+          oidc_token="$(
+            python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=api://AzureADTokenExchange"
+          req = urllib.request.Request(url, headers={"Authorization": f"Bearer {os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']}"})
+          with urllib.request.urlopen(req, timeout=30) as response:
+              print(json.load(response)["value"])
+          PY
+          )"
+          az login \
+            --service-principal \
+            --tenant "$AZURE_TENANT_ID" \
+            --username "$AZURE_CLIENT_ID" \
+            --federated-token "$oidc_token" \
+            --output none
+          az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+
+      - name: Load API ingestion config from Key Vault
+        if: env.AGENT_BOM_AZURE_KEY_VAULT_NAME != '' && (env.AGENT_BOM_API_URL == '' || env.AGENT_BOM_API_KEY == '')
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${AGENT_BOM_API_URL:-}" ]; then
+            api_url="$(az keyvault secret show --vault-name "$AGENT_BOM_AZURE_KEY_VAULT_NAME" --name agent-bom-api-url --query value -o tsv)"
+            echo "::add-mask::$api_url"
+            echo "AGENT_BOM_API_URL=$api_url" >> "$GITHUB_ENV"
+          fi
+          if [ -z "${AGENT_BOM_API_KEY:-}" ]; then
+            api_key="$(az keyvault secret show --vault-name "$AGENT_BOM_AZURE_KEY_VAULT_NAME" --name agent-bom-api-key --query value -o tsv)"
+            echo "::add-mask::$api_key"
+            echo "AGENT_BOM_API_KEY=$api_key" >> "$GITHUB_ENV"
+          fi
+
+      - name: Validate API ingestion configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in AGENT_BOM_API_URL AGENT_BOM_API_KEY; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing API ingestion configuration: %s\n' "${missing[*]}" >&2
+            printf 'Set vars.AGENT_BOM_API_URL + secrets.AGENT_BOM_API_KEY or configure AGENT_BOM_AZURE_KEY_VAULT_NAME with the expected secrets.\n' >&2
+            exit 1
+          fi
+
+      - name: Install Azure scanner dependencies
+        run: uv sync --frozen --extra azure
+
+      - name: Run Azure scan and push results
+        shell: bash
+        env:
+          RUN_CIS: ${{ inputs.run_cis }}
+        run: |
+          set -euo pipefail
+          args=(agent-bom scan --azure --azure-subscription "$AZURE_SUBSCRIPTION_ID" --format json --quiet)
+          if [ "${RUN_CIS:-true}" = "true" ]; then
+            args+=(--azure-cis-benchmark)
+          fi
+          args+=(--push-url "${AGENT_BOM_API_URL%/}/v1/results/push" --push-api-key "$AGENT_BOM_API_KEY")
+          uv run "${args[@]}"
+
+      - name: Sync fleet inventory
+        if: inputs.push_fleet == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run agent-bom scan \
+            --azure \
+            --azure-subscription "$AZURE_SUBSCRIPTION_ID" \
+            --no-scan \
+            --format json \
+            --quiet \
+            --push-url "${AGENT_BOM_API_URL%/}/v1/fleet/sync" \
+            --push-api-key "$AGENT_BOM_API_KEY"

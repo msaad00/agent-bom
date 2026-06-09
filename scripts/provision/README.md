@@ -140,6 +140,17 @@ Covers: AKS (Azure Kubernetes Service), Azure ML, Container Instances, Cognitive
 AKS is Azure's managed Kubernetes service — the custom role covers both ARM-level
 cluster discovery and AKS credential retrieval for K8s API access.
 
+### Terraform + GitHub Actions OIDC ingestion
+
+For production GitHub Actions ingestion, prefer the Terraform baseline in
+`deploy/terraform/azure/ingestion`. It creates the Entra application, service
+principal, GitHub federated credential, scanner role assignment, and optional
+Key Vault used by `.github/workflows/azure-ingestion.yml`.
+
+The Azure tenant and subscription must already exist; Terraform targets them
+through explicit `tenant_id` and `subscription_id` inputs. See
+`site-docs/deployment/terraform-azure-ingestion.md`.
+
 ### 1. Create the custom role
 
 ```bash

@@ -354,11 +354,12 @@ def registry_enrich_cves(nvd_api_key, dry_run):
 
     con.print(
         f"\n[bold]Summary:[/bold] {result.scannable} scannable, {result.enriched} with CVEs, "
+        f"{result.updated} CVE metadata update(s), {result.cleared} cleared, "
         f"{result.total_cves} total CVEs, {result.total_critical} critical, {result.total_kev} KEV "
         f"(of {result.total} total servers)"
     )
-    if not dry_run and result.enriched > 0:
-        con.print("[green]Registry file updated with CVE data.[/green]")
+    if not dry_run and result.updated > 0:
+        con.print("[green]Registry file updated with CVE metadata changes.[/green]")
 
 
 @registry.command("smithery-sync")

@@ -122,11 +122,12 @@ jobs:
           async def main():
               from agent_bom.registry import enrich_registry_with_cves
               result = await enrich_registry_with_cves(dry_run=False)
-              print(f"Scannable: {result.scannable}, With CVEs: {result.enriched}")
+              print(f"Scannable: {result.scannable}, With CVEs: {result.enriched}, CVE metadata updates: {result.updated}")
               print(f"Total CVEs: {result.total_cves}, Critical: {result.total_critical}, KEV: {result.total_kev}")
               for d in result.details[:10]:
-                  print(f"  {d['server']}: {d['cve_count']} CVEs")
-              Path("/tmp/cve_count").write_text(str(result.enriched))
+                  suffix = " changed" if d.get("changed") else " unchanged"
+                  print(f"  {d['server']}: {d['cve_count']} CVEs ({d.get('change_type', 'unknown')}{suffix})")
+              Path("/tmp/cve_count").write_text(str(result.updated))
 
           asyncio.run(main())
           EOF
@@ -182,24 +183,24 @@ jobs:
           BRANCH="chore/mcp-registry-$(date +%Y%m%d)"
           git switch -C "$BRANCH" origin/main
           git add src/agent_bom/mcp_registry.json
-          git commit -S -m "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} with CVEs"
+          git commit -S -m "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE metadata updates"
           git push --force-with-lease origin "$BRANCH"
           BODY="Automated weekly sync from the official MCP server registry.
 
           **New-server source:** ${SOURCE} (${SOURCE_URL})
           **New servers added:** ${NEW_COUNT}
           **Versions refreshed:** ${VERSION_COUNT}
-          **Servers with CVE data:** ${CVE_COUNT}
+          **CVE metadata updates:** ${CVE_COUNT}
 
           Please review the changes in \`src/agent_bom/mcp_registry.json\` before merging."
           PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number')
           if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
             gh pr edit "$PR_NUMBER" \
-              --title "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE-enriched" \
+              --title "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE metadata updates" \
               --body "$BODY"
           else
             gh pr create \
-              --title "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE-enriched" \
+              --title "chore: sync MCP registry — ${NEW_COUNT} new, ${VERSION_COUNT} versions, ${CVE_COUNT} CVE metadata updates" \
               --body "$BODY" \
               --base main
           fi

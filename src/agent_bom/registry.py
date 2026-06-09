@@ -644,6 +644,8 @@ class CVEEnrichResult:
     total: int = 0
     scannable: int = 0
     enriched: int = 0
+    updated: int = 0
+    cleared: int = 0
     total_cves: int = 0
     total_critical: int = 0
     total_kev: int = 0
@@ -739,7 +741,24 @@ async def enrich_registry_with_cves(
         vulns = osv_results.get(key, [])
 
         if not vulns:
-            if not dry_run and entry.get("known_cves"):
+            had_cve_metadata = bool(entry.get("known_cves") or entry.get("cve_summary"))
+            if had_cve_metadata:
+                result.updated += 1
+                result.cleared += 1
+                result.details.append(
+                    {
+                        "server": name,
+                        "package": pkg_name,
+                        "cve_count": 0,
+                        "ghsa_count": 0,
+                        "critical": 0,
+                        "kev": 0,
+                        "cves": [],
+                        "changed": True,
+                        "change_type": "cleared",
+                    }
+                )
+            if not dry_run and had_cve_metadata:
                 entry["known_cves"] = []
                 entry["cve_summary"] = {}
             continue
@@ -811,8 +830,12 @@ async def enrich_registry_with_cves(
             "fix_versions": fix_versions[:5],
         }
 
+        known_cves = cve_ids + [g for g in ghsa_ids if g not in cve_ids]
+        metadata_changed = entry.get("known_cves", []) != known_cves or entry.get("cve_summary", {}) != summary
+        if metadata_changed:
+            result.updated += 1
         if not dry_run:
-            entry["known_cves"] = cve_ids + [g for g in ghsa_ids if g not in cve_ids]
+            entry["known_cves"] = known_cves
             entry["cve_summary"] = summary
 
         result.enriched += 1
@@ -828,11 +851,13 @@ async def enrich_registry_with_cves(
                 "critical": critical_count,
                 "kev": kev_count,
                 "cves": cve_ids[:10],
+                "changed": metadata_changed,
+                "change_type": "updated" if metadata_changed else "unchanged",
             }
         )
 
     # Write updated registry
-    if not dry_run and result.enriched > 0:
+    if not dry_run and result.updated > 0:
         from datetime import datetime, timezone
 
         data["_cve_enriched"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")

@@ -40,6 +40,8 @@ def main() -> None:
     print(f"\nTotal servers: {result.total}")
     print(f"Scannable (npm/pypi): {result.scannable}")
     print(f"With CVEs: {result.enriched}")
+    print(f"CVE metadata updates: {result.updated}")
+    print(f"CVE metadata cleared: {result.cleared}")
     print(f"Total CVEs found: {result.total_cves}")
     print(f"Critical (EPSS >= 0.7 or KEV): {result.total_critical}")
     print(f"In CISA KEV: {result.total_kev}")
@@ -52,8 +54,8 @@ def main() -> None:
             if d["cves"]:
                 print(f"    {', '.join(d['cves'][:5])}")
 
-    if not args.dry_run and result.enriched > 0:
-        print("\nRegistry file updated with CVE data.")
+    if not args.dry_run and result.updated > 0:
+        print("\nRegistry file updated with CVE metadata changes.")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 ## ── Builder stage ────────────────────────────────────────────────────────────
-FROM python:3.14.5-alpine3.23@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614 AS builder
+FROM python:3.15.0b2-alpine3.23@sha256:8d3de8aae4a0549621b4053ca36a849d89300f7f114d5f5a89a037c783743c62 AS builder
 
 WORKDIR /app
 ARG HTTP_PROXY
@@ -18,7 +18,7 @@ ENV HTTP_PROXY=${HTTP_PROXY} \
     PIP_CERT=${PIP_CERT}
 
 # Build-time deps for wheel compilation when musllinux wheels are unavailable.
-RUN apk add --no-cache build-base ca-certificates git linux-headers \
+RUN apk add --no-cache build-base ca-certificates git libffi-dev linux-headers \
     && apk upgrade --no-cache --available \
     && update-ca-certificates
 
@@ -28,7 +28,7 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake]"
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
-FROM python:3.14.5-alpine3.23@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
+FROM python:3.15.0b2-alpine3.23@sha256:8d3de8aae4a0549621b4053ca36a849d89300f7f114d5f5a89a037c783743c62
 
 ARG VERSION=0.88.6
 ARG HTTP_PROXY
@@ -49,7 +49,7 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=builder /install /usr/local
 COPY --from=builder /app/LICENSE /app/LICENSE
 
-RUN apk add --no-cache ca-certificates \
+RUN apk add --no-cache ca-certificates libffi libgcc libstdc++ \
     && apk upgrade --no-cache --available \
     && update-ca-certificates
 COPY deploy/docker/pip-requirements.txt /tmp/pip-req.txt

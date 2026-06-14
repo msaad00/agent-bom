@@ -518,6 +518,91 @@ def test_cli_graph_mermaid_to_stdout():
         os.unlink(path)
 
 
+def test_cli_graph_evaluates_expected_fixture(tmp_path: Path):
+    from agent_bom.cli import main
+
+    data = _make_scan_json(
+        [
+            _agent(
+                "eval-agent",
+                [
+                    _server(
+                        "github",
+                        [_pkg("next", "16.2.6", "npm", vulns=[_vuln("CVE-2026-21441", "critical")])],
+                        credential_env_vars=["GITHUB_TOKEN"],
+                        tools=[{"name": "create_pull_request"}],
+                    )
+                ],
+            )
+        ]
+    )
+    scan_path = _write_scan(data)
+    expected_path = tmp_path / "expected-graph.json"
+    evaluation_path = tmp_path / "graph-eval.json"
+    expected_path.write_text(
+        json.dumps(
+            {
+                "name": "cli-eval",
+                "expected_nodes": [
+                    "agent:eval-agent",
+                    "server:eval-agent/github",
+                    "pkg:npm/next@16.2.6",
+                    "cve:CVE-2026-21441",
+                ],
+                "expected_edges": [
+                    ["agent:eval-agent", "server:eval-agent/github", "uses"],
+                    ["server:eval-agent/github", "pkg:npm/next@16.2.6", "depends_on"],
+                    ["pkg:npm/next@16.2.6", "cve:CVE-2026-21441", "affects"],
+                ],
+            }
+        )
+    )
+
+    try:
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "graph",
+                scan_path,
+                "--format",
+                "json",
+                "--output",
+                str(tmp_path / "graph.json"),
+                "--expected",
+                str(expected_path),
+                "--eval-output",
+                str(evaluation_path),
+                "--fail-under",
+                "0.80",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(evaluation_path.read_text())
+        assert payload["name"] == "cli-eval"
+        assert payload["overall_score"] >= 0.8
+        assert payload["scores"]["edges"]["matched"] == 3
+    finally:
+        os.unlink(scan_path)
+
+
+def test_cli_graph_evaluation_fail_under_exits_nonzero(tmp_path: Path):
+    from agent_bom.cli import main
+
+    scan_path = _write_scan(_make_scan_json([_agent("a", [_server("s", [_pkg("pkg", "1.0.0")])])]))
+    expected_path = tmp_path / "expected-graph.json"
+    expected_path.write_text(json.dumps({"expected_nodes": ["agent:missing"]}))
+
+    try:
+        runner = CliRunner()
+        result = runner.invoke(main, ["graph", scan_path, "--expected", str(expected_path), "--fail-under", "0.99"])
+
+        assert result.exit_code != 0
+    finally:
+        os.unlink(scan_path)
+
+
 def test_cli_graph_invalid_file_exits_nonzero():
     from agent_bom.cli import main
 

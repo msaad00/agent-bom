@@ -243,13 +243,41 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url, ten
 @click.option("--output", "-o", "output_path", default=None, help="Write to file instead of stdout.")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress success messages when writing files.")
 @click.option(
+    "--expected",
+    "expected_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Evaluate the graph against an expected graph fixture JSON.",
+)
+@click.option(
+    "--eval-output",
+    "eval_output_path",
+    default=None,
+    help="Write graph evaluation JSON to this path when --expected is set.",
+)
+@click.option(
+    "--fail-under",
+    type=click.FloatRange(min=0.0, max=1.0),
+    default=None,
+    help="Exit non-zero when the graph evaluation score is below this threshold.",
+)
+@click.option(
     "--mermaid-limit",
     type=click.IntRange(min=0),
     default=80,
     show_default=True,
     help="Maximum nodes rendered for Mermaid output; 0 renders the full graph.",
 )
-def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str], quiet: bool, mermaid_limit: int) -> None:
+def graph_cmd(
+    scan_file: str,
+    fmt: str,
+    output_path: Optional[str],
+    quiet: bool,
+    expected_path: Optional[str],
+    eval_output_path: Optional[str],
+    fail_under: Optional[float],
+    mermaid_limit: int,
+) -> None:
     """Export the transitive dependency graph from a saved JSON scan report.
 
     \b
@@ -262,14 +290,17 @@ def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str], quiet: bool,
         dot -Tsvg deps.dot -o deps.svg
 
         agent-bom graph report.json --format mermaid
+        agent-bom graph report.json --expected expected-graph.json --eval-output graph-eval.json --fail-under 0.9
 
     Closes #292.
     """
     from rich.console import Console as _Console
 
+    from agent_bom.graph.evaluation import evaluate_graph, load_expected_graph_spec
     from agent_bom.output.graph_export import load_graph_from_scan, to_cypher, to_dot, to_graphml, to_json, to_mermaid
 
     _con = _Console()
+    _err_con = _Console(stderr=True)
 
     try:
         graph = load_graph_from_scan(scan_file)
@@ -297,6 +328,36 @@ def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str], quiet: bool,
             _con.print(f"[green]Graph exported[/green] ({graph.node_count()} nodes, {graph.edge_count()} edges) → {output_path}")
     else:
         click.echo(output)
+
+    if expected_path:
+        try:
+            evaluation = evaluate_graph(to_json(graph), load_expected_graph_spec(expected_path))
+        except ValueError as exc:
+            _err_con.print(f"[red]Error evaluating graph:[/red] {exc}")
+            raise SystemExit(1) from exc
+
+        evaluation_json = json.dumps(evaluation.to_dict(), indent=2, sort_keys=True)
+        if eval_output_path:
+            Path(eval_output_path).write_text(evaluation_json)
+            if not quiet:
+                _err_con.print(
+                    "[green]Graph evaluated[/green] "
+                    f"({evaluation.overall_score:.2%}, {evaluation.to_dict()['grade']}) -> {eval_output_path}",
+                )
+        elif not quiet:
+            _err_con.print(
+                "[bold]Graph evaluation[/bold] "
+                f"{evaluation.overall_score:.2%} ({evaluation.to_dict()['grade']}) "
+                f"nodes {evaluation.nodes.matched}/{evaluation.nodes.expected}, "
+                f"edges {evaluation.edges.matched}/{evaluation.edges.expected}, "
+                f"paths {evaluation.paths.matched}/{evaluation.paths.expected}",
+            )
+
+        if fail_under is not None and evaluation.overall_score < fail_under:
+            _err_con.print(
+                f"[red]Graph evaluation failed:[/red] score {evaluation.overall_score:.4f} is below {fail_under:.4f}",
+            )
+            raise SystemExit(1)
 
 
 @click.command("mesh")

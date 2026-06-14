@@ -65,8 +65,8 @@ class BasePolicy:
 POLICY: dict[str, BasePolicy] = {
     "Dockerfile": BasePolicy(
         image="python",
-        expected_tags=("3.14.5-alpine3.23",),
-        rationale="Alpine + Python 3.14 is the canonical scanner runtime; smallest attack surface.",
+        expected_tags=("3.15.0b2-alpine3.23",),
+        rationale="Alpine + Python 3.15 beta is the current scanner runtime candidate; smallest attack surface.",
     ),
     "ui/Dockerfile": BasePolicy(
         image="node",

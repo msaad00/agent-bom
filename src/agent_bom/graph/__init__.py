@@ -23,6 +23,7 @@ from agent_bom.graph.dependency_reach import (
     compute_dependency_reach,
 )
 from agent_bom.graph.edge import UnifiedEdge
+from agent_bom.graph.evaluation import GraphEvaluationResult, evaluate_graph, graph_score_grade, load_expected_graph_spec
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
 from agent_bom.graph.ocsf import ENTITY_OCSF_MAP, FINDING_ENTITY_TYPES, ocsf_type_uid
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, SemanticCluster, build_semantic_clusters, semantic_cluster_stats
@@ -71,6 +72,11 @@ __all__ = [
     "stable_node_id",
     # Edge
     "UnifiedEdge",
+    # Evaluation
+    "GraphEvaluationResult",
+    "evaluate_graph",
+    "graph_score_grade",
+    "load_expected_graph_spec",
     # Container
     "UnifiedGraph",
     "AttackPath",

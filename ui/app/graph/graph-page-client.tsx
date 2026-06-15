@@ -17,6 +17,7 @@ import "@xyflow/react/dist/style.css";
 import { AlertTriangle, Loader2, Route, ShieldAlert } from "lucide-react";
 
 import { AttackPathCard } from "@/components/attack-path-card";
+import { GraphEvaluationSummary } from "@/components/graph-evaluation-summary";
 import { GraphEvidenceExportButton, GraphLegend, FullscreenButton } from "@/components/graph-chrome";
 import { LargeGraphOverview } from "@/components/large-graph-overview";
 import { LineageDetailPanel } from "@/components/lineage-detail";
@@ -77,6 +78,7 @@ import {
   summarizeReachability,
   type ReachabilitySummary,
 } from "@/lib/graph-reachability";
+import { evaluateGraphUx } from "@/lib/graph-ux-evaluation";
 import {
   api,
   type GraphDiffResponse,
@@ -1110,6 +1112,11 @@ function GraphPageInner() {
     });
   }, [layoutEdges, localNeighborhoodIds, attackPathEdgeKeys, reachabilitySummary, graphLayoutKind, captureMode]);
 
+  const graphEvaluation = useMemo(
+    () => evaluateGraphUx(graphData, displayNodes, displayEdges),
+    [displayEdges, displayNodes, graphData],
+  );
+
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
     [displayEdges, displayNodes],
@@ -1623,6 +1630,8 @@ function GraphPageInner() {
             </span>
           )}
         </div>
+
+        <GraphEvaluationSummary evaluation={graphEvaluation} />
 
         {/* Snapshot diff + how-to-read default-collapsed so the canvas owns the
             viewport. The four redundant SnapshotMetaCards (Snapshot/Topology/

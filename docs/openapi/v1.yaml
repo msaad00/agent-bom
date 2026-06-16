@@ -1528,6 +1528,11 @@ components:
             type: object
           - type: 'null'
           title: Result
+        schedule_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Schedule Id
         source_id:
           anyOf:
           - type: string

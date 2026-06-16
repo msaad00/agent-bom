@@ -299,7 +299,14 @@ def get_cost_store() -> CostStore:
     global _COST_STORE
     if _COST_STORE is not None:
         return _COST_STORE
-    if os.environ.get("AGENT_BOM_DB"):
+    # Priority mirrors the control-plane store-swap: shared Postgres first so
+    # per-agent spend and budget enforcement stay consistent across replicas;
+    # SQLite/in-memory remain for single-node and dev.
+    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        from agent_bom.api.postgres_cost import PostgresCostStore
+
+        _COST_STORE = PostgresCostStore()
+    elif os.environ.get("AGENT_BOM_DB"):
         _COST_STORE = SQLiteCostStore(os.environ["AGENT_BOM_DB"])
     else:
         _COST_STORE = InMemoryCostStore()

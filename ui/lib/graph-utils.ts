@@ -26,7 +26,7 @@ export const BACKGROUND_GAP = 24;
 
 const SHARED_SERVER_COLOR = "#22d3ee";
 
-const LINEAGE_NODE_GRAPH_KIND: Record<LineageNodeType, GraphNodeKindKey | null> = {
+export const LINEAGE_NODE_GRAPH_KIND: Record<LineageNodeType, GraphNodeKindKey | null> = {
   provider: "provider",
   agent: "agent",
   server: "server",
@@ -40,9 +40,15 @@ const LINEAGE_NODE_GRAPH_KIND: Record<LineageNodeType, GraphNodeKindKey | null> 
   dataset: "dataset",
   container: "container",
   cloudResource: "cloud_resource",
+  org: "org",
+  account: "account",
   user: "user",
   group: "group",
+  role: "role",
+  policy: "policy",
   serviceAccount: "service_account",
+  servicePrincipal: "service_principal",
+  federatedIdentity: "federated_identity",
   environment: "environment",
   fleet: "fleet",
   cluster: "cluster",
@@ -151,9 +157,15 @@ const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
   "environment",
   "fleet",
   "cluster",
+  "org",
+  "account",
   "user",
   "group",
+  "role",
+  "policy",
   "serviceAccount",
+  "servicePrincipal",
+  "federatedIdentity",
   "managedIdentity",
   "accessGrant",
   "accessPolicy",

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 _SCHEDULER_LEADER_LOCK_ID = 4_197_042_001
@@ -27,86 +27,87 @@ def validate_cron_expression(cron_expr: str) -> bool:
 
     ranges = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7))
     for spec, (min_val, max_val) in zip(parts, ranges, strict=True):
-        if spec == "*":
-            continue
-        if spec.startswith("*/"):
-            try:
-                step = int(spec[2:])
-            except ValueError:
-                return False
-            if step <= 0 or step > max_val:
-                return False
-            continue
-        try:
-            value = int(spec)
-        except ValueError:
-            return False
-        if value < min_val or value > max_val:
+        if _expand_cron_field(spec, min_val, max_val) is None:
             return False
     return True
 
 
-def parse_cron_next(cron_expr: str, after: datetime) -> datetime | None:
-    """Calculate next run time from a basic cron expression.
+def _expand_cron_field(spec: str, min_val: int, max_val: int) -> set[int] | None:
+    """Expand one cron field into allowed values.
 
-    Supports a subset of standard cron::
+    Supports standard five-field cron atoms: ``*``, ``*/N``, ``N``,
+    ``A-B``, ``A-B/N``, and comma-separated lists of those atoms.
+    """
+    values: set[int] = set()
+    for raw_token in spec.split(","):
+        token = raw_token.strip()
+        if not token:
+            return None
+        step = 1
+        base = token
+        if "/" in token:
+            base, step_raw = token.split("/", 1)
+            try:
+                step = int(step_raw)
+            except ValueError:
+                return None
+            if step <= 0:
+                return None
+        if base == "*":
+            start, end = min_val, max_val
+        elif "-" in base:
+            start_raw, end_raw = base.split("-", 1)
+            try:
+                start, end = int(start_raw), int(end_raw)
+            except ValueError:
+                return None
+            if start > end:
+                return None
+        else:
+            try:
+                start = end = int(base)
+            except ValueError:
+                return None
+        if start < min_val or end > max_val:
+            return None
+        values.update(range(start, end + 1, step))
+    return values
+
+
+def parse_cron_next(cron_expr: str, after: datetime) -> datetime | None:
+    """Calculate next run time from a standard five-field cron expression.
+
+    Supports::
 
         minute hour day_of_month month day_of_week
-        *      */6  *            *     *
 
-    Supported field values:
-    - ``*`` — every value
-    - ``*/N`` — every N-th value
-    - ``N``  — fixed value
-
-    Returns None if the expression cannot be parsed.
+    Field values may be wildcards, steps, fixed values, ranges, and lists.
+    Returns None if the expression cannot be parsed or no next occurrence is
+    found inside the one-year guard window.
     """
-    if not validate_cron_expression(cron_expr):
-        return None
     parts = cron_expr.strip().split()
-
-    try:
-        minute_spec, hour_spec, dom_spec, month_spec, dow_spec = parts
-
-        def _next_match(spec: str, current: int, max_val: int) -> int | None:
-            """Find the next matching value >= current, or None if wrapped."""
-            if spec == "*":
-                return current
-            if spec.startswith("*/"):
-                step = int(spec[2:])
-                if step <= 0:
-                    return None
-                # Next value that is a multiple of step and >= current
-                remainder = current % step
-                return current if remainder == 0 else current + (step - remainder)
-            # Fixed value
-            val = int(spec)
-            return val if val >= current else None
-
-        # Start from the minute after 'after'
-        candidate = after.replace(second=0, microsecond=0)
-
-        # Try up to 1440 minutes (24 hours) to find next match
-        for _ in range(1440):
-            m = candidate.minute
-            h = candidate.hour
-
-            m_match = _next_match(minute_spec, m, 59)
-            h_match = _next_match(hour_spec, h, 23)
-
-            if m_match is not None and m_match <= 59 and h_match is not None and h_match <= 23:
-                result = candidate.replace(minute=m_match, hour=h_match)
-                if result > after:
-                    return result
-
-            # Advance by 1 minute
-            from datetime import timedelta
-
-            candidate += timedelta(minutes=1)
-
+    if len(parts) != 5:
         return None
-    except (ValueError, IndexError):
+    ranges = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7))
+    expanded = [_expand_cron_field(spec, min_val, max_val) for spec, (min_val, max_val) in zip(parts, ranges, strict=True)]
+    if any(values is None for values in expanded):
         return None
+    minutes, hours, days_of_month, months, days_of_week = [values or set() for values in expanded]
+    days_of_week = {0 if value == 7 else value for value in days_of_week}
+
+    candidate = after.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    for _ in range(366 * 24 * 60):
+        cron_dow = (candidate.weekday() + 1) % 7
+        if (
+            candidate.minute in minutes
+            and candidate.hour in hours
+            and candidate.day in days_of_month
+            and candidate.month in months
+            and cron_dow in days_of_week
+        ):
+            return candidate
+        candidate += timedelta(minutes=1)
+    return None
 
 
 async def scheduler_loop(
@@ -122,7 +123,9 @@ async def scheduler_loop(
 
     Args:
         schedule_store: ScheduleStore instance.
-        run_scan_fn: Callable to trigger a scan (receives scan_config dict).
+        run_scan_fn: Callable to trigger a scan. Receives scan_config plus
+            schedule_id and tenant_id keyword metadata so persisted jobs can
+            link back to the schedule that created them.
         interval_seconds: Check interval in seconds.
         max_backoff: Maximum backoff delay in seconds (default 15 min).
     """
@@ -174,7 +177,11 @@ async def scheduler_loop(
                         continue
                     logger.info("Triggering scheduled scan: %s (%s)", schedule.name, schedule.schedule_id)
                     try:
-                        job_id = run_scan_fn(schedule.scan_config)
+                        job_id = run_scan_fn(
+                            schedule.scan_config,
+                            schedule_id=schedule.schedule_id,
+                            tenant_id=schedule.tenant_id,
+                        )
                         schedule.last_run = now_iso
                         schedule.last_job_id = job_id
 

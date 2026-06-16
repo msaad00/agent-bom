@@ -141,10 +141,12 @@ class SnowflakeJobStore:
                     created_at TIMESTAMP_TZ NOT NULL,
                     completed_at TIMESTAMP_TZ,
                     tenant_id VARCHAR NOT NULL DEFAULT 'default',
+                    schedule_id VARCHAR,
                     data VARIANT NOT NULL
                 )
             """)
             conn.cursor().execute("ALTER TABLE scan_jobs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
+            conn.cursor().execute("ALTER TABLE scan_jobs ADD COLUMN IF NOT EXISTS schedule_id VARCHAR")
             _ensure_tenant_row_access_policy(conn.cursor(), ("scan_jobs",))
 
     def put(self, job: ScanJob) -> None:
@@ -153,23 +155,25 @@ class SnowflakeJobStore:
                 """MERGE INTO scan_jobs t USING (SELECT %s AS job_id) s
                    ON t.job_id = s.job_id
                    WHEN MATCHED THEN UPDATE SET
-                     status = %s, created_at = %s, completed_at = %s, tenant_id = %s,
+                     status = %s, created_at = %s, completed_at = %s, tenant_id = %s, schedule_id = %s,
                      data = PARSE_JSON(%s)
                    WHEN NOT MATCHED THEN INSERT
-                     (job_id, status, created_at, completed_at, tenant_id, data)
-                     VALUES (%s, %s, %s, %s, %s, PARSE_JSON(%s))""",
+                     (job_id, status, created_at, completed_at, tenant_id, schedule_id, data)
+                     VALUES (%s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     job.job_id,
                     job.status.value,
                     job.created_at,
                     job.completed_at,
                     job.tenant_id,
+                    job.schedule_id,
                     job.model_dump_json(),
                     job.job_id,
                     job.status.value,
                     job.created_at,
                     job.completed_at,
                     job.tenant_id,
+                    job.schedule_id,
                     job.model_dump_json(),
                 ),
             )
@@ -208,10 +212,14 @@ class SnowflakeJobStore:
         with self._connect() as conn:
             cur = conn.cursor()
             if tenant_id is None:
-                cur.execute("SELECT job_id, tenant_id, status, created_at, completed_at, data FROM scan_jobs ORDER BY created_at DESC")
+                cur.execute(
+                    """SELECT job_id, tenant_id, status, created_at, completed_at, data, schedule_id
+                       FROM scan_jobs
+                       ORDER BY created_at DESC"""
+                )
             else:
                 cur.execute(
-                    """SELECT job_id, tenant_id, status, created_at, completed_at, data
+                    """SELECT job_id, tenant_id, status, created_at, completed_at, data, schedule_id
                        FROM scan_jobs
                        WHERE tenant_id = %s
                        ORDER BY created_at DESC""",
@@ -228,6 +236,7 @@ class SnowflakeJobStore:
                         "job_id": row[0],
                         "tenant_id": row[1],
                         "triggered_by": triggered_by,
+                        "schedule_id": row[6] if len(row) > 6 else None,
                         "status": row[2],
                         "created_at": str(row[3]) if row[3] else None,
                         "completed_at": str(row[4]) if row[4] else None,

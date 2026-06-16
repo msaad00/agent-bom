@@ -65,6 +65,7 @@ class PostgresJobStore:
                     created_at TEXT NOT NULL,
                     completed_at TEXT,
                     team_id TEXT NOT NULL DEFAULT 'default',
+                    schedule_id TEXT,
                     triggered_by TEXT,
                     data JSONB NOT NULL
                 )
@@ -77,6 +78,12 @@ class PostgresJobStore:
                         WHERE table_name = 'scan_jobs' AND column_name = 'team_id'
                     ) THEN
                         ALTER TABLE scan_jobs ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default';
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'scan_jobs' AND column_name = 'schedule_id'
+                    ) THEN
+                        ALTER TABLE scan_jobs ADD COLUMN schedule_id TEXT;
                     END IF;
                     IF NOT EXISTS (
                         SELECT 1 FROM information_schema.columns
@@ -111,6 +118,7 @@ class PostgresJobStore:
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_team_created ON scan_jobs(team_id, created_at DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_schedule ON scan_jobs(team_id, schedule_id, created_at DESC)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cis_checks_team_cloud_status_priority "
                 "ON cis_benchmark_checks(team_id, cloud, status, priority, measured_at DESC)"
@@ -143,15 +151,25 @@ class PostgresJobStore:
         data = job.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
-                """INSERT INTO scan_jobs (job_id, status, created_at, completed_at, team_id, triggered_by, data)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """INSERT INTO scan_jobs (job_id, status, created_at, completed_at, team_id, schedule_id, triggered_by, data)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (job_id) DO UPDATE SET
                      status = EXCLUDED.status,
                      completed_at = EXCLUDED.completed_at,
                      team_id = EXCLUDED.team_id,
+                     schedule_id = EXCLUDED.schedule_id,
                      triggered_by = EXCLUDED.triggered_by,
                      data = EXCLUDED.data""",
-                (job.job_id, job.status.value, job.created_at, job.completed_at, job.tenant_id, getattr(job, "triggered_by", None), data),
+                (
+                    job.job_id,
+                    job.status.value,
+                    job.created_at,
+                    job.completed_at,
+                    job.tenant_id,
+                    getattr(job, "schedule_id", None),
+                    getattr(job, "triggered_by", None),
+                    data,
+                ),
             )
             self._replace_cis_checks(conn, job)
             conn.commit()
@@ -201,11 +219,13 @@ class PostgresJobStore:
         with _tenant_connection(self._pool) as conn:
             if tenant_id is None:
                 rows = conn.execute(
-                    "SELECT job_id, team_id, status, created_at, completed_at, triggered_by FROM scan_jobs ORDER BY created_at DESC"
+                    """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id
+                       FROM scan_jobs
+                       ORDER BY created_at DESC"""
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    """SELECT job_id, team_id, status, created_at, completed_at, triggered_by
+                    """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id
                        FROM scan_jobs
                        WHERE team_id = %s
                        ORDER BY created_at DESC""",
@@ -219,6 +239,7 @@ class PostgresJobStore:
                     "created_at": row[3],
                     "completed_at": row[4],
                     "triggered_by": row[5] if len(row) > 5 else None,
+                    "schedule_id": row[6] if len(row) > 6 else None,
                 }
                 for row in rows
             ]

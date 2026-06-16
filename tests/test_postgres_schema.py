@@ -220,6 +220,18 @@ def test_scan_jobs_has_triggered_by():
     assert "triggered_by" in SQL
 
 
+def test_scan_jobs_has_schedule_id_back_pointer():
+    cols = _columns_for("scan_jobs")
+    assert "schedule_id" in cols
+    assert "idx_jobs_schedule" in _indexes()
+
+
+def test_scan_jobs_keeps_team_id_as_rls_column_with_api_tenant_translation():
+    cols = _columns_for("scan_jobs")
+    assert "team_id" in cols
+    assert "tenant_id" not in cols
+
+
 def test_scan_jobs_do_block_migration_present():
     """Idempotent DO $$ block adds team_id to pre-existing scan_jobs."""
     assert "ADD COLUMN team_id" in SQL or "team_id" in _columns_for("scan_jobs")

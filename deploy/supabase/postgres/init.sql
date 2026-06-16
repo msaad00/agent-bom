@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
     created_at   TEXT NOT NULL,
     completed_at TEXT,
     team_id      TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+    schedule_id  TEXT,
     triggered_by TEXT,
     data         JSONB NOT NULL
 );
@@ -72,12 +73,20 @@ DO $$ BEGIN
             ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
             ADD COLUMN triggered_by TEXT;
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scan_jobs' AND column_name = 'schedule_id'
+    ) THEN
+        ALTER TABLE scan_jobs
+            ADD COLUMN schedule_id TEXT;
+    END IF;
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON scan_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON scan_jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_team_status  ON scan_jobs(team_id, status);
 CREATE INDEX IF NOT EXISTS idx_jobs_team_created ON scan_jobs(team_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_schedule ON scan_jobs(team_id, schedule_id, created_at DESC);
 
 -- ── Table: CIS Benchmark Checks ──────────────────────────────────────────────
 -- Normalized cloud CIS benchmark observations extracted from scan JSON blobs.

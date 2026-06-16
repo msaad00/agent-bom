@@ -246,6 +246,14 @@ ENRICHMENT_MAX_CACHE_ENTRIES = _int("AGENT_BOM_ENRICHMENT_MAX_CACHE", 10_000)
 API_MAX_CONCURRENT_JOBS = _int("AGENT_BOM_API_MAX_JOBS", 10)
 API_SCAN_WORKERS = _int("AGENT_BOM_API_SCAN_WORKERS", min(4, (os.cpu_count() or 2)))
 API_SCAN_WORKER_RECYCLE_JOBS = _int("AGENT_BOM_API_SCAN_WORKER_RECYCLE_JOBS", 10)
+# Distributed scan dispatch (multi-replica work-stealing). When enabled, scan
+# jobs are enqueued to a shared Postgres dispatch queue and any control-plane
+# replica claims them via FOR UPDATE SKIP LOCKED, so scan throughput scales with
+# replicas instead of pinning each job to the node that received the request.
+# Lease seconds bound how long a claimed job may run before another node may
+# reclaim it (the owning node renews the lease each poll while the job runs).
+API_SCAN_LEASE_SECONDS = _int("AGENT_BOM_API_SCAN_LEASE_SECONDS", 600)
+API_SCAN_CLAIM_POLL_SECONDS = _int("AGENT_BOM_API_SCAN_CLAIM_POLL_SECONDS", 3)
 API_JOB_TTL_SECONDS = _int("AGENT_BOM_API_JOB_TTL", 3_600)
 API_MAX_IN_MEMORY_JOBS = _int("AGENT_BOM_API_MAX_MEMORY_JOBS", 200)
 API_MAX_JOB_PROGRESS_EVENTS = _int("AGENT_BOM_API_MAX_JOB_PROGRESS_EVENTS", 500)

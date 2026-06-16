@@ -453,11 +453,35 @@ async def _lifespan(app_instance: FastAPI):
                 reconcile_scan_jobs_active(store)
             except Exception:  # noqa: BLE001
                 pass
-        loop = asyncio.get_running_loop()
-        submit_scheduled_scan_job(loop, job)
+        from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+
+        if distributed_scans_enabled() and store_supports_dispatch(store):
+            store.enqueue_for_dispatch(job)
+        else:
+            loop = asyncio.get_running_loop()
+            submit_scheduled_scan_job(loop, job)
         return job.job_id
 
     _scheduler_task = asyncio.create_task(scheduler_loop(_get_schedule_store(), _schedule_scan))
+
+    # ── Distributed scan dispatch ──
+    # Start a per-replica claim-loop so queued scans are stolen across the
+    # cluster. No-op on single-node / non-Postgres deployments.
+    _scan_worker = None
+    try:
+        from agent_bom.api.scan_queue import (
+            DistributedScanWorker,
+            distributed_scans_enabled,
+            store_supports_dispatch,
+        )
+
+        _scan_store = _get_store()
+        if distributed_scans_enabled() and store_supports_dispatch(_scan_store):
+            _scan_worker = DistributedScanWorker(_scan_store)
+            await _scan_worker.start()
+    except Exception:  # noqa: BLE001
+        _logger.exception("Distributed scan worker failed to start; continuing single-node")
+        _scan_worker = None
 
     yield
 
@@ -467,6 +491,12 @@ async def _lifespan(app_instance: FastAPI):
     # _shutting_down under the same module; see meta_routes.
     global _shutting_down
     _shutting_down = True
+    # Stop claiming new distributed work before draining in-flight scans.
+    if _scan_worker is not None:
+        try:
+            await _scan_worker.stop()
+        except Exception:  # noqa: BLE001
+            _logger.debug("scan worker stop skipped", exc_info=True)
     if _scheduler_task:
         _scheduler_task.cancel()
     if _cleanup_task:

@@ -2,6 +2,7 @@
 
 from starlette.testclient import TestClient
 
+from agent_bom.api.middleware import APIKeyMiddleware
 from agent_bom.api.scim_store import InMemorySCIMStore, SCIMUser
 from agent_bom.api.server import app
 from agent_bom.api.stores import set_scim_store
@@ -80,6 +81,36 @@ def test_attested_proxy_headers_reject_wrong_secret(monkeypatch) -> None:
     )
 
     assert response.status_code == 401
+
+
+def test_unmatched_v1_mutating_route_requires_admin_by_default(monkeypatch) -> None:
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
+    test_app = Starlette(routes=[Route("/v1/unmatched-enterprise-write", dummy, methods=["POST"])])
+    test_app.add_middleware(APIKeyMiddleware, api_key="")
+    client = TestClient(test_app)
+
+    denied = client.post(
+        "/v1/unmatched-enterprise-write",
+        json={"name": "new-route"},
+        headers=_proxy_headers(subject="viewer@example.com", role="viewer"),
+    )
+    allowed = client.post(
+        "/v1/unmatched-enterprise-write",
+        json={"name": "new-route"},
+        headers=_proxy_headers(subject="admin@example.com", role="admin"),
+    )
+
+    assert denied.status_code == 403
+    assert "requires admin role" in denied.json()["detail"]
+    assert allowed.status_code == 200
 
 
 def test_scim_role_can_authorize_attested_proxy_subject(monkeypatch) -> None:

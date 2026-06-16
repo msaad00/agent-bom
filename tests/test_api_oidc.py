@@ -213,6 +213,16 @@ def test_oidc_config_from_env_rejects_duplicate_issuers():
             OIDCConfig.from_env()
 
 
+def test_oidc_config_from_env_rejects_reserved_tenant_bound_provider_id():
+    with patch.dict(
+        os.environ,
+        {"AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON": ('{"admin":{"issuer":"https://admin.okta.example","audience":"agent-bom"}}')},
+        clear=False,
+    ):
+        with pytest.raises(OIDCError, match="reserved by agent-bom"):
+            OIDCConfig.from_env()
+
+
 @pytest.fixture(autouse=True)
 def _reset_oidc_metrics():
     reset_oidc_decode_failures()
@@ -273,6 +283,15 @@ def test_claims_permissions_array_admin():
 
 def test_claims_to_tenant_direct_claim():
     assert claims_to_tenant({"tenant_id": "tenant-alpha"}) == "tenant-alpha"
+
+
+def test_claims_to_tenant_normalizes_customer_claim():
+    assert claims_to_tenant({"tenant_id": " tenant-alpha "}) == "tenant-alpha"
+
+
+def test_claims_to_tenant_rejects_reserved_customer_claim():
+    with pytest.raises(OIDCError, match="reserved by agent-bom"):
+        claims_to_tenant({"tenant_id": "admin"})
 
 
 def test_claims_to_tenant_alias():
@@ -420,6 +439,12 @@ def test_oidc_config_resolve_tenant_raises_when_claim_missing_without_opt_in():
     cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom")
     with pytest.raises(OIDCError, match="missing required tenant claim"):
         cfg.resolve_tenant({"sub": "user-1"})
+
+
+def test_oidc_config_resolve_tenant_rejects_reserved_claim():
+    cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom")
+    with pytest.raises(OIDCError, match="reserved by agent-bom"):
+        cfg.resolve_tenant({"sub": "user-1", "tenant_id": "viewer"})
 
 
 def test_oidc_config_verify_routes_token_by_issuer_for_tenant_bound_providers():

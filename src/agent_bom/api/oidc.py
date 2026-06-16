@@ -121,6 +121,15 @@ def _optional_env_bool(name: str) -> bool | None:
     return value.strip().lower() in {"1", "true", "yes"}
 
 
+def _validate_tenant_claim_value(value: object) -> str:
+    from agent_bom.platform_invariants import ReservedTenantIdError, validate_customer_tenant_id
+
+    try:
+        return validate_customer_tenant_id(str(value))
+    except ReservedTenantIdError as exc:
+        raise OIDCError(str(exc)) from exc
+
+
 # ── Discovery ──────────────────────────────────────────────────────────────────
 
 
@@ -339,13 +348,13 @@ def claims_to_tenant(claims: dict, tenant_claim: str = "tenant_id") -> str | Non
     """Map OIDC JWT claims to a tenant identifier."""
     tenant_val = claims.get(tenant_claim)
     if tenant_val not in (None, ""):
-        return str(tenant_val)
+        return _validate_tenant_claim_value(tenant_val)
 
     if tenant_claim == "tenant_id":
         for alias in ("tid", "tenant", "org_id", "organization_id"):
             alias_val = claims.get(alias)
             if alias_val not in (None, ""):
-                return str(alias_val)
+                return _validate_tenant_claim_value(alias_val)
     return None
 
 
@@ -427,7 +436,7 @@ class OIDCConfig:
         self.jwks_uri = jwks_uri or os.environ.get("AGENT_BOM_OIDC_JWKS_URI", "") or None
         self.tenant_claim = tenant_claim or os.environ.get("AGENT_BOM_OIDC_TENANT_CLAIM", "tenant_id")
         self.required_nonce = required_nonce or os.environ.get("AGENT_BOM_OIDC_REQUIRED_NONCE", "") or None
-        self.tenant_id = tenant_id or None
+        self.tenant_id = _validate_tenant_claim_value(tenant_id) if tenant_id else None
         self.tenant_providers = tenant_providers or {}
         self.allowed_jwks_uris = allowed_jwks_uris or _csv_env_list(os.environ.get("AGENT_BOM_OIDC_ALLOWED_JWKS_URIS"))
         require_tenant_claim_env = _optional_env_bool("AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM")
@@ -553,9 +562,7 @@ class OIDCConfig:
             providers: dict[str, OIDCConfig] = {}
             seen_issuers: set[str] = set()
             for tenant_id, provider_raw in raw.items():
-                normalized_tenant = str(tenant_id).strip()
-                if not normalized_tenant:
-                    raise OIDCError("Tenant-bound OIDC config contains an empty tenant ID")
+                normalized_tenant = _validate_tenant_claim_value(tenant_id)
                 if not isinstance(provider_raw, dict):
                     raise OIDCError(f"OIDC provider config for tenant '{normalized_tenant}' must be an object")
                 if "tenant_id" in provider_raw and str(provider_raw["tenant_id"]).strip() != normalized_tenant:

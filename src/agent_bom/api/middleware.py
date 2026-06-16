@@ -892,6 +892,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("PUT", "/v1/exceptions/", "exception:write"),
         ("DELETE", "/v1/exceptions/", "exception:write"),
     )
+    _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+    _PROTECTED_API_EXACT_PATHS = {"/v1", "/scim"}
+    _PROTECTED_API_PREFIXES = ("/v1/", "/scim/")
 
     @classmethod
     def scope_catalog(cls) -> list[dict[str, str]]:
@@ -945,9 +948,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     def _required_role(self, method: str, path: str) -> str:
         """Determine the minimum role required for a request."""
+        method = method.upper()
         for m, p, role in self._ROLE_RULES:
             if method == m and path.startswith(p):
                 return role
+        if method in self._MUTATING_METHODS and (path in self._PROTECTED_API_EXACT_PATHS or path.startswith(self._PROTECTED_API_PREFIXES)):
+            return "admin"
         return "viewer"
 
     def _required_scope(self, method: str, path: str) -> str | None:
@@ -1154,20 +1160,29 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         traffic cannot be hijacked through dashboard sessions or general API
         keys, and tenant routing cannot be supplied by the inbound payload.
         """
-        configured = os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN", "").strip()
         auth = request.headers.get("authorization", "")
         raw_key = auth[7:] if auth.startswith("Bearer ") else ""
-        if not configured or not raw_key or not secrets.compare_digest(raw_key, configured):
+
+        from agent_bom.api.scim import SCIMConfigurationError, resolve_scim_bearer_token
+
+        try:
+            binding = resolve_scim_bearer_token(raw_key)
+        except SCIMConfigurationError:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "SCIM bearer token configuration is invalid"},
+            )
+        if binding is None:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Unauthorized — SCIM bearer token required"},
             )
 
-        from agent_bom.api.scim import scim_tenant_id_from_env
-
         request.state.api_key_name = "scim-provisioner"
         request.state.api_key_role = "admin"
-        request.state.tenant_id = scim_tenant_id_from_env()
+        request.state.tenant_id = binding.tenant_id
+        request.state.scim_token_source = binding.source
+        request.state.scim_token_id = binding.token_id
         request.state.api_key_scopes = ["auth.scim:read", "auth.scim:write"]
         request.state.auth_method = "scim_bearer"
         return await self._call_with_tenant_context(request, call_next)

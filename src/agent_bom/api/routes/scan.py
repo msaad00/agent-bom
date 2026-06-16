@@ -600,7 +600,15 @@ def enqueue_scan_job(
         except Exception:  # noqa: BLE001
             pass
 
-    submit_scan_job(job)
+    # In a clustered control plane, hand the job to the shared dispatch queue so
+    # any replica can claim and run it (work-stealing). Single-node deployments
+    # keep running the job on this process directly.
+    from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+
+    if distributed_scans_enabled() and store_supports_dispatch(store):
+        store.enqueue_for_dispatch(job)
+    else:
+        submit_scan_job(job)
     return job
 
 

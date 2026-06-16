@@ -143,6 +143,53 @@ def submit_scheduled_scan_job(loop: Any, job: ScanJob) -> None:
     future.add_done_callback(_observe_scan_future)
 
 
+def _run_claimed_scan_sync(job: ScanJob) -> None:
+    """Run a distributed-claimed scan with the job's tenant context bound.
+
+    The claim-loop runs outside any HTTP request, so the worker thread has no
+    tenant contextvar set. Bind it from the job here so the pipeline's durable
+    persistence (PostgresJobStore.put) lands under the job's own tenant and
+    passes RLS WITH CHECK, instead of silently writing as the default tenant.
+    """
+    from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
+
+    token = set_current_tenant(job.tenant_id or "default")
+    try:
+        _run_scan_sync(job)
+    finally:
+        reset_current_tenant(token)
+
+
+def submit_claimed_scan_job(job: ScanJob, on_complete: Any) -> None:
+    """Submit a claimed (distributed) job to the local worker pool.
+
+    Mirrors :func:`submit_scan_job` but runs the tenant-bound runner and invokes
+    ``on_complete(job_id)`` after the scan finishes so the dispatcher can free
+    local capacity and clear the job's dispatch-queue row.
+    """
+    global _executor_active_jobs  # noqa: PLW0603
+
+    with _executor_lock:
+        executor = _executor_for_submission_locked()
+        _executor_active_jobs += 1
+        try:
+            future = executor.submit(_run_claimed_scan_sync, job)
+        except Exception:
+            _executor_active_jobs = max(0, _executor_active_jobs - 1)
+            raise
+
+    def _done(done_future: Future | Any) -> None:
+        try:
+            _observe_scan_future(done_future)
+        finally:
+            try:
+                on_complete(job.job_id)
+            except Exception:  # noqa: BLE001
+                _logger.exception("claimed scan on_complete callback failed job=%s", job.job_id)
+
+    future.add_done_callback(_done)
+
+
 def shutdown_scan_executor(*, wait: bool, cancel_futures: bool) -> None:
     """Drain or cancel the shared scan executor without racing submissions."""
 

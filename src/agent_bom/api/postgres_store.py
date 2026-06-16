@@ -29,6 +29,7 @@ from agent_bom.api.postgres_common import (
     reset_pool,
     set_current_tenant,
 )
+from agent_bom.api.postgres_cost import PostgresCostStore  # noqa: F401
 from agent_bom.api.postgres_graph import PostgresGraphStore, PostgresScanCache
 from agent_bom.api.postgres_policy import (  # noqa: F401
     PostgresCredentialRefStore,

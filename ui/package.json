@@ -30,7 +30,7 @@
     "@tanstack/react-virtual": "^3.14.2",
     "@xyflow/react": "^12.11.0",
     "graphology": "^0.26.0",
-    "lucide-react": "^1.17.0",
+    "lucide-react": "^1.18.0",
     "next": "^16.2.9",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -43,7 +43,7 @@
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.2.9",
     "@playwright/test": "^1.60.0",
-    "@tailwindcss/postcss": "^4.2.4",
+    "@tailwindcss/postcss": "^4.3.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/dagre": "^0.7.54",
@@ -57,9 +57,9 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "jsdom": "^29.1.0",
     "lightningcss": "1.32.0",
-    "tailwindcss": "^4.2.3",
+    "tailwindcss": "^4.3.1",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.61.0",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.9"
   }
 }

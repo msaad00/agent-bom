@@ -2,6 +2,7 @@
 
 from starlette.testclient import TestClient
 
+from agent_bom.api.middleware import APIKeyMiddleware
 from agent_bom.api.scim_store import InMemorySCIMStore, SCIMUser
 from agent_bom.api.server import app
 from agent_bom.api.stores import set_scim_store
@@ -82,6 +83,36 @@ def test_attested_proxy_headers_reject_wrong_secret(monkeypatch) -> None:
     assert response.status_code == 401
 
 
+def test_unmatched_v1_mutating_route_requires_admin_by_default(monkeypatch) -> None:
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
+    test_app = Starlette(routes=[Route("/v1/unmatched-enterprise-write", dummy, methods=["POST"])])
+    test_app.add_middleware(APIKeyMiddleware, api_key="")
+    client = TestClient(test_app)
+
+    denied = client.post(
+        "/v1/unmatched-enterprise-write",
+        json={"name": "new-route"},
+        headers=_proxy_headers(subject="viewer@example.com", role="viewer"),
+    )
+    allowed = client.post(
+        "/v1/unmatched-enterprise-write",
+        json={"name": "new-route"},
+        headers=_proxy_headers(subject="admin@example.com", role="admin"),
+    )
+
+    assert denied.status_code == 403
+    assert "requires admin role" in denied.json()["detail"]
+    assert allowed.status_code == 200
+
+
 def test_scim_role_can_authorize_attested_proxy_subject(monkeypatch) -> None:
     _configure_trusted_proxy_with_scim(monkeypatch)
     store = InMemorySCIMStore()
@@ -152,3 +183,21 @@ def test_scim_role_does_not_downgrade_regular_service_api_key(monkeypatch) -> No
         set_key_store(original_key_store)
 
     assert response.status_code == 200
+
+
+def test_read_shaped_posts_stay_viewer_reachable() -> None:
+    """The mutating-route admin fallback must not lock viewers out of
+    read-shaped POSTs (bounded query / deploy decision / audit verify).
+
+    Regression guard: these return no key material and were viewer-reachable
+    before the unmatched-mutating-route admin fallback was added.
+    """
+    middleware = APIKeyMiddleware(app, api_key="")
+    for path in (
+        "/v1/graph/query",
+        "/v1/graph/should-i-deploy",
+        "/v1/audit/export/verify",
+    ):
+        assert middleware._required_role("POST", path) == "viewer", path
+    # The fallback itself still defends genuinely-unlisted mutating routes.
+    assert middleware._required_role("POST", "/v1/auth/keys") == "admin"

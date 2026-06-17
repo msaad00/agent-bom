@@ -184,10 +184,12 @@ SAML configuration is driven by:
 Recommended production posture:
 
 - set `AGENT_BOM_SAML_REQUIRE_ROLE_ATTRIBUTE=1`
-- set `AGENT_BOM_SAML_REQUIRE_TENANT_ATTRIBUTE=1`
+- keep tenant attributes fail-closed; this is the default
+- use `AGENT_BOM_SAML_ALLOW_DEFAULT_TENANT=1` only for explicit single-tenant compatibility
 
-That keeps SAML fail-closed in the same way OIDC is now fail-closed for tenant
-resolution.
+SAML and OIDC both fail closed when a verified assertion/token omits tenant
+context, unless the operator explicitly opts into the single-tenant `default`
+bucket.
 
 ## API keys and rotation
 
@@ -216,16 +218,29 @@ Key rotation endpoints and policy introspection:
 ## SCIM lifecycle boundary
 
 SCIM user and group provisioning records tenant-bound role membership metadata
-for operators and audits. The SCIM tenant is resolved only from server
-configuration (`AGENT_BOM_SCIM_TENANT_ID`), not from the IdP payload. SCIM
-deactivation updates provisioned lifecycle state; runtime OIDC, SAML,
+for operators and audits. Single-tenant SCIM uses
+`AGENT_BOM_SCIM_BEARER_TOKEN` plus `AGENT_BOM_SCIM_TENANT_ID`. Multi-tenant
+control planes can instead set `AGENT_BOM_SCIM_BEARER_TOKENS_JSON`, a JSON
+object mapping `tenant_id` to either a token string or an object with `token`
+and optional `token_id`.
+
+The first command is the IdP SCIM test request to
+`/scim/v2/ServiceProviderConfig` with the bearer token for that tenant. The
+artifact is a tenant-bound SCIM user or group under `/scim/v2/Users` or
+`/scim/v2/Groups`; the next step is to verify `/v1/auth/policy` reports
+`payload_tenant_attributes_ignored=true`.
+
+The SCIM tenant is resolved only from server configuration, not from the IdP
+payload. Mapped tokens are rejected when blank, duplicated, or bound to a
+reserved tenant ID. Error and posture surfaces do not include token material.
+SCIM deactivation updates provisioned lifecycle state; runtime OIDC, SAML,
 reverse-proxy, browser-session, and API-key access is revoked by the upstream
 auth provider or the API key lifecycle endpoints.
 
 The data-boundary contract exposes this as
 `payload_tenant_attributes_ignored=true`, with tenant source
-`AGENT_BOM_SCIM_TENANT_ID`. The repository also keeps the longer operator note
-at `docs/SCIM_SECURITY_MODEL.md`.
+`AGENT_BOM_SCIM_TENANT_ID` or `AGENT_BOM_SCIM_BEARER_TOKENS_JSON`. The
+repository also keeps the longer operator note at `docs/SCIM_SECURITY_MODEL.md`.
 
 ## Operator debugging
 

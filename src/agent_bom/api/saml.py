@@ -19,7 +19,8 @@ Configuration via environment variables::
     AGENT_BOM_SAML_ROLE_ATTRIBUTE="agent_bom_role"
     AGENT_BOM_SAML_TENANT_ATTRIBUTE="tenant_id"
     AGENT_BOM_SAML_REQUIRE_ROLE_ATTRIBUTE="1"
-    AGENT_BOM_SAML_REQUIRE_TENANT_ATTRIBUTE="1"
+    AGENT_BOM_SAML_REQUIRE_TENANT_ATTRIBUTE="1"  # optional override; strict is now the default
+    AGENT_BOM_SAML_ALLOW_DEFAULT_TENANT="1"      # explicit single-tenant compatibility mode
     AGENT_BOM_SAML_SESSION_TTL_SECONDS="3600"
 """
 
@@ -30,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
-from agent_bom.api.oidc import claims_have_role_signal, claims_to_role, claims_to_tenant
+from agent_bom.api.oidc import OIDCError, claims_have_role_signal, claims_to_role, claims_to_tenant
 
 
 class SAMLError(Exception):
@@ -39,6 +40,13 @@ class SAMLError(Exception):
 
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _optional_env_flag(name: str) -> bool | None:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    return value.strip().lower() in {"1", "true", "yes"}
 
 
 def _check_saml_support() -> None:
@@ -77,7 +85,10 @@ def saml_attributes_to_role(attributes: dict[str, Any], role_attribute: str = "a
 
 def saml_attributes_to_tenant(attributes: dict[str, Any], tenant_attribute: str = "tenant_id") -> str | None:
     claims = _normalize_saml_attributes(attributes)
-    return claims_to_tenant(claims, tenant_attribute)
+    try:
+        return claims_to_tenant(claims, tenant_attribute)
+    except OIDCError as exc:
+        raise SAMLError(str(exc)) from exc
 
 
 @dataclass
@@ -129,7 +140,8 @@ class SAMLConfig:
     role_attribute: str = "agent_bom_role"
     tenant_attribute: str = "tenant_id"
     require_role_attribute: bool = False
-    require_tenant_attribute: bool = False
+    require_tenant_attribute: bool | None = None
+    allow_default_tenant: bool | None = None
     session_ttl_seconds: int = 3600
 
     def __post_init__(self) -> None:
@@ -147,8 +159,15 @@ class SAMLConfig:
         self.tenant_attribute = self.tenant_attribute or os.environ.get("AGENT_BOM_SAML_TENANT_ATTRIBUTE", "tenant_id")
         if not self.require_role_attribute:
             self.require_role_attribute = _env_flag("AGENT_BOM_SAML_REQUIRE_ROLE_ATTRIBUTE")
-        if not self.require_tenant_attribute:
-            self.require_tenant_attribute = _env_flag("AGENT_BOM_SAML_REQUIRE_TENANT_ATTRIBUTE")
+        allow_default_tenant_env = _optional_env_flag("AGENT_BOM_SAML_ALLOW_DEFAULT_TENANT")
+        if self.allow_default_tenant is None:
+            self.allow_default_tenant = allow_default_tenant_env if allow_default_tenant_env is not None else False
+        require_tenant_attribute_env = _optional_env_flag("AGENT_BOM_SAML_REQUIRE_TENANT_ATTRIBUTE")
+        if self.require_tenant_attribute is None:
+            if require_tenant_attribute_env is not None:
+                self.require_tenant_attribute = require_tenant_attribute_env
+            else:
+                self.require_tenant_attribute = not self.allow_default_tenant
         if self.session_ttl_seconds == 3600:
             self.session_ttl_seconds = int(os.environ.get("AGENT_BOM_SAML_SESSION_TTL_SECONDS", "3600"))
 
@@ -228,6 +247,12 @@ class SAMLConfig:
         if tenant_id is None:
             if self.require_tenant_attribute:
                 raise SAMLError(f"SAML assertion missing required tenant attribute '{self.tenant_attribute}'")
+            if not self.allow_default_tenant:
+                raise SAMLError(
+                    f"SAML assertion missing tenant attribute '{self.tenant_attribute}'. "
+                    "Set AGENT_BOM_SAML_REQUIRE_TENANT_ATTRIBUTE=1 for production fail-closed enforcement "
+                    "or explicitly opt into single-tenant default mode with AGENT_BOM_SAML_ALLOW_DEFAULT_TENANT=1."
+                )
             tenant_id = "default"
         subject = auth.get_nameid() or auth.get_nameid_format() or "saml-user"
         return SAMLAssertion(
@@ -257,6 +282,7 @@ def describe_saml_posture() -> dict[str, object]:
             "tenant_attribute": config.tenant_attribute,
             "require_role_attribute": config.require_role_attribute,
             "require_tenant_attribute": config.require_tenant_attribute,
+            "allow_default_tenant": config.allow_default_tenant,
             "session_ttl_seconds": config.session_ttl_seconds,
             "message": (
                 "SAML assertion exchange is not configured. When enabled, agent-bom verifies the IdP assertion and mints "
@@ -275,6 +301,7 @@ def describe_saml_posture() -> dict[str, object]:
         "tenant_attribute": config.tenant_attribute,
         "require_role_attribute": config.require_role_attribute,
         "require_tenant_attribute": config.require_tenant_attribute,
+        "allow_default_tenant": config.allow_default_tenant,
         "session_ttl_seconds": config.session_ttl_seconds,
         "message": "SAML assertion exchange is enabled and mints short-lived session API keys after IdP verification.",
     }

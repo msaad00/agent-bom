@@ -289,6 +289,17 @@ def test_intel_api_routes_are_read_only_and_tenant_scoped(intel_client: TestClie
     assert brief.json()["sections"]["ioc_telemetry_hits"][0]["indicator"] == "198.51.100.42"
 
 
+def test_intel_post_lookups_remain_viewer_read_routes() -> None:
+    from agent_bom.api.middleware import APIKeyMiddleware
+
+    middleware = APIKeyMiddleware(app, api_key="")
+
+    assert middleware._required_role("POST", "/v1/intel/match") == "viewer"
+    assert middleware._required_role("POST", "/v1/intel/daily-brief") == "viewer"
+    assert middleware._required_scope("POST", "/v1/intel/match") == "intel:read"
+    assert middleware._required_scope("POST", "/v1/intel/daily-brief") == "intel:read"
+
+
 def test_intel_api_match_validates_package_shape(intel_client: TestClient) -> None:
     response = intel_client.post("/v1/intel/match", headers=VIEWER_HEADERS, json={"packages": [{"name": "requests"}]})
 

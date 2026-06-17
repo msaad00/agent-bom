@@ -73,6 +73,12 @@ def test_saml_config_disabled_when_env_missing():
 def test_saml_attribute_mapping_uses_existing_role_and_tenant_contract():
     assert saml_attributes_to_role({"groups": ["security-analyst"]}) == "analyst"
     assert saml_attributes_to_tenant({"tenant_id": ["tenant-alpha"]}) == "tenant-alpha"
+    assert saml_attributes_to_tenant({"tenant_id": [" tenant-beta "]}) == "tenant-beta"
+
+
+def test_saml_attribute_mapping_rejects_reserved_tenant_id():
+    with pytest.raises(SAMLError, match="reserved by agent-bom"):
+        saml_attributes_to_tenant({"tenant_id": ["admin"]})
 
 
 def test_saml_verify_requires_role_attribute_when_enabled():
@@ -105,6 +111,59 @@ def test_saml_verify_requires_tenant_attribute_when_enabled():
         return_value=_FakeAuth(attributes={"agent_bom_role": ["admin"]}),
     ):
         with pytest.raises(SAMLError, match="required tenant attribute"):
+            cfg.verify_response("encoded-response")
+
+
+def test_saml_verify_requires_tenant_attribute_by_default():
+    cfg = SAMLConfig(
+        idp_entity_id="https://idp.example.com/metadata",
+        idp_sso_url="https://idp.example.com/sso",
+        idp_x509_cert="cert",
+        sp_entity_id="https://agent-bom.example.com/saml/metadata",
+        sp_acs_url="https://agent-bom.example.com/v1/auth/saml/login",
+    )
+
+    with patch(
+        "agent_bom.api.saml._build_saml_auth",
+        return_value=_FakeAuth(attributes={"agent_bom_role": ["admin"]}),
+    ):
+        with pytest.raises(SAMLError, match="required tenant attribute"):
+            cfg.verify_response("encoded-response")
+
+
+def test_saml_verify_allows_default_tenant_with_explicit_opt_in():
+    cfg = SAMLConfig(
+        idp_entity_id="https://idp.example.com/metadata",
+        idp_sso_url="https://idp.example.com/sso",
+        idp_x509_cert="cert",
+        sp_entity_id="https://agent-bom.example.com/saml/metadata",
+        sp_acs_url="https://agent-bom.example.com/v1/auth/saml/login",
+        allow_default_tenant=True,
+    )
+
+    with patch(
+        "agent_bom.api.saml._build_saml_auth",
+        return_value=_FakeAuth(attributes={"agent_bom_role": ["admin"]}),
+    ):
+        assertion = cfg.verify_response("encoded-response")
+
+    assert assertion.tenant_id == "default"
+
+
+def test_saml_verify_rejects_reserved_tenant_attribute():
+    cfg = SAMLConfig(
+        idp_entity_id="https://idp.example.com/metadata",
+        idp_sso_url="https://idp.example.com/sso",
+        idp_x509_cert="cert",
+        sp_entity_id="https://agent-bom.example.com/saml/metadata",
+        sp_acs_url="https://agent-bom.example.com/v1/auth/saml/login",
+    )
+
+    with patch(
+        "agent_bom.api.saml._build_saml_auth",
+        return_value=_FakeAuth(attributes={"agent_bom_role": ["admin"], "tenant_id": ["system"]}),
+    ):
+        with pytest.raises(SAMLError, match="reserved by agent-bom"):
             cfg.verify_response("encoded-response")
 
 

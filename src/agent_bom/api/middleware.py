@@ -787,6 +787,15 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("GET", "/v1/entitlements", "admin"),
         ("GET", "/v1/credentials", "viewer"),
         ("GET", "/v1/evaluations", "viewer"),
+        ("POST", "/v1/intel/match", "viewer"),
+        ("POST", "/v1/intel/daily-brief", "viewer"),
+        # Read-shaped POSTs (bounded query / decision / verify-only). These
+        # return no key material and were viewer-reachable before the mutating
+        # admin fallback below; keep them explicitly viewer so the fallback
+        # doesn't silently lock viewers/analysts out of read-only surfaces.
+        ("POST", "/v1/graph/query", "viewer"),
+        ("POST", "/v1/graph/should-i-deploy", "viewer"),
+        ("POST", "/v1/audit/export/verify", "viewer"),
         ("GET", "/scim/v2", "admin"),
         ("POST", "/scim/v2", "admin"),
         ("PATCH", "/scim/v2", "admin"),
@@ -853,6 +862,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("GET", "/v1/auth/scim/config", "auth.scim:read"),
         ("GET", "/v1/credentials", "source:read"),
         ("GET", "/v1/evaluations", "eval:read"),
+        ("GET", "/v1/intel", "intel:read"),
+        ("POST", "/v1/intel/match", "intel:read"),
+        ("POST", "/v1/intel/daily-brief", "intel:read"),
         ("GET", "/scim/v2", "auth.scim:read"),
         ("POST", "/scim/v2", "auth.scim:write"),
         ("PATCH", "/scim/v2", "auth.scim:write"),
@@ -892,6 +904,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("PUT", "/v1/exceptions/", "exception:write"),
         ("DELETE", "/v1/exceptions/", "exception:write"),
     )
+    _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+    _PROTECTED_API_EXACT_PATHS = {"/v1", "/scim"}
+    _PROTECTED_API_PREFIXES = ("/v1/", "/scim/")
 
     @classmethod
     def scope_catalog(cls) -> list[dict[str, str]]:
@@ -945,9 +960,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     def _required_role(self, method: str, path: str) -> str:
         """Determine the minimum role required for a request."""
+        method = method.upper()
         for m, p, role in self._ROLE_RULES:
             if method == m and path.startswith(p):
                 return role
+        if method in self._MUTATING_METHODS and (path in self._PROTECTED_API_EXACT_PATHS or path.startswith(self._PROTECTED_API_PREFIXES)):
+            return "admin"
         return "viewer"
 
     def _required_scope(self, method: str, path: str) -> str | None:
@@ -1154,20 +1172,29 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         traffic cannot be hijacked through dashboard sessions or general API
         keys, and tenant routing cannot be supplied by the inbound payload.
         """
-        configured = os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN", "").strip()
         auth = request.headers.get("authorization", "")
         raw_key = auth[7:] if auth.startswith("Bearer ") else ""
-        if not configured or not raw_key or not secrets.compare_digest(raw_key, configured):
+
+        from agent_bom.api.scim import SCIMConfigurationError, resolve_scim_bearer_token
+
+        try:
+            binding = resolve_scim_bearer_token(raw_key)
+        except SCIMConfigurationError:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "SCIM bearer token configuration is invalid"},
+            )
+        if binding is None:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Unauthorized — SCIM bearer token required"},
             )
 
-        from agent_bom.api.scim import scim_tenant_id_from_env
-
         request.state.api_key_name = "scim-provisioner"
         request.state.api_key_role = "admin"
-        request.state.tenant_id = scim_tenant_id_from_env()
+        request.state.tenant_id = binding.tenant_id
+        request.state.scim_token_source = binding.source
+        request.state.scim_token_id = binding.token_id
         request.state.api_key_scopes = ["auth.scim:read", "auth.scim:write"]
         request.state.auth_method = "scim_bearer"
         return await self._call_with_tenant_context(request, call_next)

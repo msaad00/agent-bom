@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 from agent_bom.api import server as api_server
+from agent_bom.api.scim import SCIMConfigurationError, configured_scim_bearer_token_bindings, describe_scim_posture
 from agent_bom.api.scim_store import InMemorySCIMStore
 from agent_bom.api.server import app
 from agent_bom.api.stores import _get_scim_store, set_scim_store
@@ -13,6 +16,7 @@ from agent_bom.api.stores import _get_scim_store, set_scim_store
 def scim_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN", "scim-secret")
     monkeypatch.setenv("AGENT_BOM_SCIM_TENANT_ID", "tenant-alpha")
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKENS_JSON", raising=False)
     set_scim_store(InMemorySCIMStore())
     api_server.configure_api(api_key=None)
     return TestClient(app)
@@ -186,6 +190,81 @@ def test_scim_user_roles_are_normalized_and_tenant_bound(
     assert patched.status_code == 200
     assert patched.json()["roles"] == [{"value": "analyst", "display": "analyst", "type": "agent_bom"}]
     assert patched.json()[AGENT_BOM_USER_EXTENSION]["memberships"][0]["role"] == "analyst"
+
+
+def test_scim_per_tenant_bearer_mapping_binds_tokens_to_server_side_tenants(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SCIM_TENANT_ID", raising=False)
+    monkeypatch.setenv(
+        "AGENT_BOM_SCIM_BEARER_TOKENS_JSON",
+        json.dumps(
+            {
+                "tenant-alpha": "alpha-scim-secret",
+                "tenant-beta": {"token": "beta-scim-secret", "token_id": "beta-idp-token"},
+            }
+        ),
+    )
+    set_scim_store(InMemorySCIMStore())
+    api_server.configure_api(api_key=None)
+    client = TestClient(app)
+
+    alpha_created = client.post(
+        "/scim/v2/Users",
+        headers=_headers("alpha-scim-secret"),
+        json={"userName": "shared@example.com", "tenant_id": "tenant-beta"},
+    )
+    assert alpha_created.status_code == 201
+    alpha_user = alpha_created.json()
+    assert alpha_user[AGENT_BOM_USER_EXTENSION]["tenantId"] == "tenant-alpha"
+
+    beta_created = client.post(
+        "/scim/v2/Users",
+        headers=_headers("beta-scim-secret"),
+        json={"userName": "shared@example.com", "tenant_id": "tenant-alpha"},
+    )
+    assert beta_created.status_code == 201
+    beta_user = beta_created.json()
+    assert beta_user[AGENT_BOM_USER_EXTENSION]["tenantId"] == "tenant-beta"
+
+    alpha_list = client.get("/scim/v2/Users", headers=_headers("alpha-scim-secret"))
+    beta_list = client.get("/scim/v2/Users", headers=_headers("beta-scim-secret"))
+    assert [resource["id"] for resource in alpha_list.json()["Resources"]] == [alpha_user["id"]]
+    assert [resource["id"] for resource in beta_list.json()["Resources"]] == [beta_user["id"]]
+    assert client.get(f"/scim/v2/Users/{alpha_user['id']}", headers=_headers("beta-scim-secret")).status_code == 404
+
+    posture = describe_scim_posture()
+    assert posture["token_binding_mode"] == "multi_tenant"
+    assert posture["token_binding_count"] == 2
+    assert posture["tenant_ids"] == ["tenant-alpha", "tenant-beta"]
+    assert posture["tenant_assignment"] == {
+        "source": "AGENT_BOM_SCIM_BEARER_TOKENS_JSON",
+        "payload_tenant_attributes_ignored": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("mapping", "expected"),
+    [
+        ({"tenant-alpha": "shared-token", "tenant-beta": {"token": "shared-token"}}, "duplicate token"),
+        ({"tenant-alpha": " "}, "must not be blank"),
+        ({"admin": "admin-token"}, "reserved SCIM tenant id"),
+    ],
+)
+def test_scim_per_tenant_bearer_mapping_rejects_unsafe_config(
+    monkeypatch: pytest.MonkeyPatch,
+    mapping: dict[str, object],
+    expected: str,
+) -> None:
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKENS_JSON", json.dumps(mapping))
+
+    with pytest.raises(SCIMConfigurationError, match=expected):
+        configured_scim_bearer_token_bindings()
+
+    posture = describe_scim_posture()
+    assert posture["status"] == "misconfigured"
+    assert posture["token_binding_mode"] == "invalid"
+    assert posture["token_binding_count"] == 0
 
 
 def test_scim_group_create_patch_and_delete(scim_client: TestClient) -> None:

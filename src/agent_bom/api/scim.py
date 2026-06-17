@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import os
+import secrets
+from collections.abc import Mapping
+from dataclasses import dataclass
+from json import JSONDecodeError
 from typing import Any
 
-from agent_bom.platform_invariants import normalize_tenant_id
+from agent_bom.platform_invariants import ReservedTenantIdError, validate_customer_tenant_id
 
 _SCIM_ROLE_VALUES = ("admin", "analyst", "viewer")
 _SCIM_ROLE_ALIASES = {
@@ -14,6 +19,23 @@ _SCIM_ROLE_ALIASES = {
     "read-only": "viewer",
     "readonly": "viewer",
 }
+_SCIM_SINGLE_TOKEN_ENV = "AGENT_BOM_SCIM_BEARER_TOKEN"
+_SCIM_TOKEN_MAPPING_ENV = "AGENT_BOM_SCIM_BEARER_TOKENS_JSON"
+_SCIM_SINGLE_TENANT_ENV = "AGENT_BOM_SCIM_TENANT_ID"
+
+
+class SCIMConfigurationError(RuntimeError):
+    """Raised when SCIM bearer-token configuration is invalid."""
+
+
+@dataclass(frozen=True)
+class SCIMBearerTokenBinding:
+    """A server-side SCIM bearer token to tenant binding."""
+
+    tenant_id: str
+    token: str
+    source: str
+    token_id: str | None = None
 
 
 def _env_flag(name: str) -> bool:
@@ -28,14 +50,143 @@ def scim_base_path() -> str:
 
 
 def scim_enabled_from_env() -> bool:
-    """Return whether the dedicated SCIM bearer token is configured."""
-    return bool(os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN", "").strip())
+    """Return whether any dedicated SCIM bearer token source is configured."""
+    return bool(os.environ.get(_SCIM_SINGLE_TOKEN_ENV, "").strip() or os.environ.get(_SCIM_TOKEN_MAPPING_ENV, "").strip())
 
 
 def scim_tenant_id_from_env() -> str:
     """Return the tenant bound to inbound SCIM provisioning requests."""
-    raw = os.environ.get("AGENT_BOM_SCIM_TENANT_ID", "").strip() or os.environ.get("AGENT_BOM_TENANT_ID", "").strip() or "default"
-    return normalize_tenant_id(raw)
+    raw = os.environ.get(_SCIM_SINGLE_TENANT_ENV, "").strip() or os.environ.get("AGENT_BOM_TENANT_ID", "").strip() or "default"
+    return _validate_scim_tenant_id(raw, source=_SCIM_SINGLE_TENANT_ENV)
+
+
+def _validate_scim_tenant_id(raw: str, *, source: str) -> str:
+    try:
+        return validate_customer_tenant_id(raw)
+    except ReservedTenantIdError as exc:
+        raise SCIMConfigurationError(f"{source} contains a blank or reserved SCIM tenant id") from exc
+
+
+def _token_from_mapping_value(tenant_id: str, value: object) -> tuple[str, str | None]:
+    token: object
+    token_id: object = None
+    if isinstance(value, str):
+        token = value
+    elif isinstance(value, Mapping):
+        token = value.get("token") or value.get("bearer_token") or value.get("bearerToken")
+        token_id = value.get("token_id") or value.get("key_id") or value.get("id")
+    else:
+        raise SCIMConfigurationError(f"{_SCIM_TOKEN_MAPPING_ENV} value for tenant {tenant_id!r} must be a token string or object")
+
+    if not isinstance(token, str):
+        raise SCIMConfigurationError(f"{_SCIM_TOKEN_MAPPING_ENV} token for tenant {tenant_id!r} must be a string")
+    stripped = token.strip()
+    if not stripped:
+        raise SCIMConfigurationError(f"{_SCIM_TOKEN_MAPPING_ENV} token for tenant {tenant_id!r} must not be blank")
+    token_id_text = str(token_id).strip() if token_id is not None else ""
+    return stripped, token_id_text or None
+
+
+def _mapping_scim_bearer_token_bindings() -> list[SCIMBearerTokenBinding]:
+    raw = os.environ.get(_SCIM_TOKEN_MAPPING_ENV, "").strip()
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+    except JSONDecodeError as exc:
+        raise SCIMConfigurationError(f"{_SCIM_TOKEN_MAPPING_ENV} must be a JSON object mapping tenant id to token config") from exc
+    if not isinstance(payload, dict):
+        raise SCIMConfigurationError(f"{_SCIM_TOKEN_MAPPING_ENV} must be a JSON object mapping tenant id to token config")
+
+    bindings: list[SCIMBearerTokenBinding] = []
+    for raw_tenant_id, value in payload.items():
+        tenant_id = _validate_scim_tenant_id(str(raw_tenant_id).strip(), source=_SCIM_TOKEN_MAPPING_ENV)
+        token, token_id = _token_from_mapping_value(tenant_id, value)
+        bindings.append(
+            SCIMBearerTokenBinding(
+                tenant_id=tenant_id,
+                token=token,
+                token_id=token_id,
+                source=_SCIM_TOKEN_MAPPING_ENV,
+            )
+        )
+    return bindings
+
+
+def configured_scim_bearer_token_bindings() -> list[SCIMBearerTokenBinding]:
+    """Return configured SCIM bearer token bindings without exposing them to callers."""
+    bindings: list[SCIMBearerTokenBinding] = []
+    single_token = os.environ.get(_SCIM_SINGLE_TOKEN_ENV, "").strip()
+    if single_token:
+        bindings.append(
+            SCIMBearerTokenBinding(
+                tenant_id=scim_tenant_id_from_env(),
+                token=single_token,
+                token_id=os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN_ID", "").strip() or None,
+                source=_SCIM_SINGLE_TOKEN_ENV,
+            )
+        )
+    bindings.extend(_mapping_scim_bearer_token_bindings())
+
+    seen_tokens: set[str] = set()
+    for binding in bindings:
+        if binding.token in seen_tokens:
+            raise SCIMConfigurationError("SCIM bearer token configuration contains duplicate token values")
+        seen_tokens.add(binding.token)
+    return bindings
+
+
+def resolve_scim_bearer_token(raw_token: str) -> SCIMBearerTokenBinding | None:
+    """Resolve a presented SCIM bearer token to its server-side tenant binding."""
+    candidate = raw_token.strip()
+    if not candidate:
+        return None
+    for binding in configured_scim_bearer_token_bindings():
+        if secrets.compare_digest(candidate, binding.token):
+            return binding
+    return None
+
+
+def _scim_token_binding_posture() -> dict[str, object]:
+    if not scim_enabled_from_env():
+        return {
+            "configured": False,
+            "status": "disabled",
+            "mode": "none",
+            "token_count": 0,
+            "tenant_count": 0,
+            "tenant_id": None,
+            "tenant_ids": [],
+            "tenant_id_source": _SCIM_SINGLE_TENANT_ENV,
+        }
+    try:
+        bindings = configured_scim_bearer_token_bindings()
+    except SCIMConfigurationError as exc:
+        return {
+            "configured": True,
+            "status": "misconfigured",
+            "mode": "invalid",
+            "token_count": 0,
+            "tenant_count": 0,
+            "tenant_id": None,
+            "tenant_ids": [],
+            "tenant_id_source": None,
+            "message": str(exc),
+        }
+
+    sources = {binding.source for binding in bindings}
+    tenant_ids = sorted({binding.tenant_id for binding in bindings})
+    mode = "multi_tenant" if _SCIM_TOKEN_MAPPING_ENV in sources else "single_tenant"
+    return {
+        "configured": bool(bindings),
+        "status": "configured" if bindings else "disabled",
+        "mode": mode,
+        "token_count": len(bindings),
+        "tenant_count": len(tenant_ids),
+        "tenant_id": tenant_ids[0] if len(tenant_ids) == 1 else None,
+        "tenant_ids": tenant_ids,
+        "tenant_id_source": _SCIM_TOKEN_MAPPING_ENV if _SCIM_TOKEN_MAPPING_ENV in sources else _SCIM_SINGLE_TENANT_ENV,
+    }
 
 
 def scim_role_attribute() -> str:
@@ -127,7 +278,8 @@ def describe_scim_posture() -> dict[str, object]:
     material or trusting tenant information supplied by the IdP payload.
     """
 
-    configured = scim_enabled_from_env()
+    token_posture = _scim_token_binding_posture()
+    configured = bool(token_posture["configured"])
     base_path = scim_base_path()
     role_attribute = scim_role_attribute()
     tenant_attribute = os.environ.get("AGENT_BOM_SCIM_TENANT_ATTRIBUTE", "").strip() or "tenant_id"
@@ -143,7 +295,9 @@ def describe_scim_posture() -> dict[str, object]:
     shared_required = scim_requires_shared_store()
     multi_node_ready = storage_backend == "postgres"
     status = "disabled"
-    if configured:
+    if token_posture["status"] == "misconfigured":
+        status = "misconfigured"
+    elif configured:
         status = "configured" if (multi_node_ready or not shared_required) else "misconfigured"
 
     return {
@@ -152,8 +306,12 @@ def describe_scim_posture() -> dict[str, object]:
         "status": status,
         "base_path": base_path,
         "token_configured": configured,
-        "tenant_id": scim_tenant_id_from_env() if configured else None,
-        "tenant_id_source": "AGENT_BOM_SCIM_TENANT_ID",
+        "token_binding_mode": token_posture["mode"],
+        "token_binding_count": token_posture["token_count"],
+        "tenant_count": token_posture["tenant_count"],
+        "tenant_id": token_posture["tenant_id"],
+        "tenant_ids": token_posture["tenant_ids"],
+        "tenant_id_source": token_posture["tenant_id_source"],
         "storage_backend": storage_backend,
         "configured_api_replicas": replicas,
         "shared_store_required": shared_required,
@@ -169,7 +327,7 @@ def describe_scim_posture() -> dict[str, object]:
         "role_values": list(_SCIM_ROLE_VALUES),
         "tenant_attribute": tenant_attribute,
         "tenant_assignment": {
-            "source": "AGENT_BOM_SCIM_TENANT_ID",
+            "source": token_posture["tenant_id_source"] or "AGENT_BOM_SCIM_TENANT_ID",
             "payload_tenant_attributes_ignored": True,
         },
         "provisioning_authority": "scim_lifecycle_store",
@@ -203,19 +361,23 @@ def describe_scim_posture() -> dict[str, object]:
             },
         ],
         "message": (
-            (
-                "SCIM lifecycle provisioning is configured with Postgres-backed shared state."
-                if multi_node_ready
-                else (
-                    "SCIM lifecycle provisioning requires Postgres-backed shared state for this replica count. "
-                    "Configure AGENT_BOM_POSTGRES_URL before enabling clustered SCIM."
-                    if shared_required
-                    else "SCIM lifecycle provisioning is configured for a single-node pilot. Use Postgres-backed storage "
-                    "for clustered or EKS deployments."
+            "SCIM bearer token configuration is invalid; fix the tenant-token mapping before accepting provisioning traffic."
+            if token_posture["status"] == "misconfigured"
+            else (
+                (
+                    "SCIM lifecycle provisioning is configured with Postgres-backed shared state."
+                    if multi_node_ready
+                    else (
+                        "SCIM lifecycle provisioning requires Postgres-backed shared state for this replica count. "
+                        "Configure AGENT_BOM_POSTGRES_URL before enabling clustered SCIM."
+                        if shared_required
+                        else "SCIM lifecycle provisioning is configured for a single-node pilot. Use Postgres-backed storage "
+                        "for clustered or EKS deployments."
+                    )
                 )
+                if configured
+                else "SCIM provisioning is not configured. User and group lifecycle still depends on the upstream identity "
+                "provider, reverse proxy, or manual API-key administration."
             )
-            if configured
-            else "SCIM provisioning is not configured. User and group lifecycle still depends on the upstream identity "
-            "provider, reverse proxy, or manual API-key administration."
         ),
     }

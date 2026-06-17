@@ -18,16 +18,16 @@ Source of truth: authenticated identity at the request boundary.
 | OIDC tenant providers | The matching tenant from `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON` issuer match |
 | SAML | `Tenant ID` SAML attribute from the assertion |
 | Trusted proxy | `X-Agent-Bom-Tenant-ID` header — only honoured when `AGENT_BOM_TRUST_PROXY_AUTH_SECRET` matches |
-| SCIM | `AGENT_BOM_SCIM_TENANT_ID` (server-side, never from request payload) |
+| SCIM | `AGENT_BOM_SCIM_TENANT_ID` for the legacy single token, or `AGENT_BOM_SCIM_BEARER_TOKENS_JSON` for per-tenant bearer tokens (server-side, never from request payload) |
 
 The middleware in `src/agent_bom/api/middleware.py` writes the resolved
 value to `request.state.tenant_id` and to the Postgres session
 (`SELECT set_config('app.tenant_id', ...)`) so RLS policies enforce the
 boundary at the storage layer.
 
-A missing tenant claim **fails closed by default** —
-`AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1` is the explicit single-tenant
-opt-in.
+A missing OIDC tenant claim or SAML tenant attribute **fails closed by default**.
+`AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1` and
+`AGENT_BOM_SAML_ALLOW_DEFAULT_TENANT=1` are explicit single-tenant opt-ins.
 
 ## CLI
 
@@ -94,6 +94,8 @@ For an operator deploying `agent-bom` for more than one tenant:
 - [ ] CLI write commands wrapped to call `resolve_cli_tenant_id_strict`
   via the central helper (see `cli/agents/_post.py`).
 - [ ] HTTP control plane configured with one of OIDC-with-tenant-claim,
-  SAML, or RBAC API keys — never `AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1`.
+  SAML-with-tenant-attribute, or RBAC API keys — never
+  `AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1` or
+  `AGENT_BOM_SAML_ALLOW_DEFAULT_TENANT=1`.
 - [ ] Postgres RLS policies enabled (`scripts/check_postgres_rls.py` or
   the integration tests in `tests/test_postgres_integration.py`).

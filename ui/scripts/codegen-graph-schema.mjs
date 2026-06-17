@@ -131,6 +131,11 @@ function render(schema) {
     )
     .join("\n");
 
+  // emission_status / emission_surfaces / emission_notes are intentionally
+  // excluded from the client bundle: they are documentation metadata served by
+  // GET /v1/graph/schema for tooling, but the dashboard renders only from
+  // label/color/shape/layer/icon/uids. Baking the emission docs into every
+  // browser bundle blew the client-JS budget for no runtime benefit.
   const nodeMetadataObj = nodeKinds
     .map(
       (n) =>
@@ -142,9 +147,6 @@ function render(schema) {
           icon: n.icon,
           category_uid: n.category_uid,
           class_uid: n.class_uid,
-          emission_status: n.emission_status,
-          emission_surfaces: n.emission_surfaces,
-          emission_notes: n.emission_notes,
         }).replace(/\n/g, "\n  ")},`,
     )
     .join("\n");
@@ -160,9 +162,6 @@ function render(schema) {
           source_types: e.source_types,
           target_types: e.target_types,
           traversable: e.traversable,
-          emission_status: e.emission_status,
-          emission_surfaces: e.emission_surfaces,
-          emission_notes: e.emission_notes,
         }).replace(/\n/g, "\n  ")},`,
     )
     .join("\n");
@@ -219,9 +218,6 @@ export interface GraphNodeKindMeta {
   icon: string;
   category_uid: number;
   class_uid: number;
-  emission_status: "emitted" | "reserved";
-  emission_surfaces: readonly string[];
-  emission_notes: string;
 }
 
 export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> = {
@@ -248,9 +244,6 @@ export interface GraphEdgeKindMeta {
   source_types: readonly GraphNodeKindKey[];
   target_types: readonly GraphNodeKindKey[];
   traversable: boolean;
-  emission_status: "emitted" | "reserved";
-  emission_surfaces: readonly string[];
-  emission_notes: string;
 }
 
 export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> = {

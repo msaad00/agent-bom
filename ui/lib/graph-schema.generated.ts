@@ -137,9 +137,6 @@ export interface GraphNodeKindMeta {
   icon: string;
   category_uid: number;
   class_uid: number;
-  emission_status: "emitted" | "reserved";
-  emission_surfaces: readonly string[];
-  emission_notes: string;
 }
 
 export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> = {
@@ -150,13 +147,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "diamond",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "access_policy": {
     "label": "Access Policy",
@@ -165,13 +156,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "diamond",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "account": {
     "label": "Account",
@@ -180,13 +165,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "square",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "agent": {
     "label": "AI Agent",
@@ -195,13 +174,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "orchestration",
     "icon": "circle",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "ci_job": {
     "label": "CI/CD Job",
@@ -210,12 +183,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "ci",
     "icon": "diamond",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "ci_graph"
-    ],
-    "emission_notes": "Reserved for CI/CD topology; scan jobs are tracked operationally but are not emitted as graph nodes yet."
+    "class_uid": 4001
   },
   "cloud_resource": {
     "label": "Cloud Resource",
@@ -224,13 +192,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "infra",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "cluster": {
     "label": "Cluster",
@@ -239,13 +201,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "infra",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "code_module": {
     "label": "Code Module",
@@ -254,12 +210,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "code",
     "icon": "circle",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "code_graph"
-    ],
-    "emission_notes": "Reserved for source-code topology; static supply-chain scans do not emit module-level nodes yet."
+    "class_uid": 4001
   },
   "config_file": {
     "label": "Config File",
@@ -268,12 +219,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "code",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "code_graph"
-    ],
-    "emission_notes": "Reserved for configuration topology; static supply-chain scans do not emit config-file nodes yet."
+    "class_uid": 4001
   },
   "container": {
     "label": "Container",
@@ -282,13 +228,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "infra",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "credential": {
     "label": "Credential",
@@ -297,13 +237,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "diamond",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "credential_ref": {
     "label": "Credential Reference",
@@ -312,13 +246,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "diamond",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "data_store": {
     "label": "Data Store",
@@ -327,13 +255,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "asset",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "dataset": {
     "label": "Dataset",
@@ -342,13 +264,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "asset",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "drift_incident": {
     "label": "Drift Incident",
@@ -357,13 +273,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "finding",
     "icon": "triangle",
     "category_uid": 2,
-    "class_uid": 2004,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 2004
   },
   "environment": {
     "label": "Environment",
@@ -372,13 +282,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "infra",
     "icon": "square",
     "category_uid": 0,
-    "class_uid": 0,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 0
   },
   "external_import": {
     "label": "External Import",
@@ -387,12 +291,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "code",
     "icon": "circle",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "code_graph"
-    ],
-    "emission_notes": "Reserved for source-code import topology; static supply-chain scans do not emit import nodes yet."
+    "class_uid": 4001
   },
   "federated_identity": {
     "label": "Federated Identity",
@@ -401,13 +300,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "circle",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "fleet": {
     "label": "Fleet",
@@ -416,13 +309,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "infra",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "group": {
     "label": "Group",
@@ -431,13 +318,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "circle",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "managed_identity": {
     "label": "Managed Identity",
@@ -446,13 +327,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "circle",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "misconfiguration": {
     "label": "Misconfiguration",
@@ -461,13 +336,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "finding",
     "icon": "triangle",
     "category_uid": 2,
-    "class_uid": 2003,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 2003
   },
   "model": {
     "label": "Model",
@@ -476,13 +345,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "asset",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "org": {
     "label": "Organization",
@@ -491,13 +354,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "square",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "package": {
     "label": "Package",
@@ -506,13 +363,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "package",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "policy": {
     "label": "Policy",
@@ -521,13 +372,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "diamond",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "provider": {
     "label": "Provider",
@@ -536,13 +381,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "infra",
     "icon": "square",
     "category_uid": 0,
-    "class_uid": 0,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 0
   },
   "resource": {
     "label": "Resource",
@@ -551,14 +390,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "asset",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "runtime_proxy",
-      "gateway_event_projection",
-      "cnapp_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "role": {
     "label": "Role",
@@ -567,13 +399,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "circle",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "server": {
     "label": "MCP Server",
@@ -582,13 +408,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "mcp_server",
     "icon": "circle",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "service_account": {
     "label": "Service Account",
@@ -597,13 +417,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "circle",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "service_principal": {
     "label": "Service Principal",
@@ -612,13 +426,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "identity",
     "icon": "circle",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "source_file": {
     "label": "Source File",
@@ -627,12 +435,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "code",
     "icon": "square",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "code_graph"
-    ],
-    "emission_notes": "Reserved for source-code topology; static supply-chain scans do not emit file-level nodes yet."
+    "class_uid": 4001
   },
   "tool": {
     "label": "Tool",
@@ -641,13 +444,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "tool",
     "icon": "diamond",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "tool_call": {
     "label": "Tool Call",
@@ -656,13 +453,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "runtime_evidence",
     "icon": "diamond",
     "category_uid": 5,
-    "class_uid": 4001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "runtime_proxy",
-      "gateway_event_projection"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 4001
   },
   "user": {
     "label": "User",
@@ -671,13 +462,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "user",
     "icon": "circle",
     "category_uid": 3,
-    "class_uid": 3001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 3001
   },
   "vulnerability": {
     "label": "Vulnerability",
@@ -686,13 +471,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "layer": "finding",
     "icon": "triangle",
     "category_uid": 2,
-    "class_uid": 2001,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "class_uid": 2001
   },
 };
 
@@ -760,9 +539,6 @@ export interface GraphEdgeKindMeta {
   source_types: readonly GraphNodeKindKey[];
   target_types: readonly GraphNodeKindKey[];
   traversable: boolean;
-  emission_status: "emitted" | "reserved";
-  emission_surfaces: readonly string[];
-  emission_notes: string;
 }
 
 export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> = {
@@ -782,14 +558,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "credential_ref",
       "resource"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "acted_as": {
     "label": "Acted As (runtime)",
@@ -805,12 +574,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "agent"
     ],
-    "traversable": true,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "runtime_graph"
-    ],
-    "emission_notes": "Reserved for explicit user/service-principal runtime delegation once traces carry that identity link."
+    "traversable": true
   },
   "affects": {
     "label": "Affects",
@@ -826,14 +590,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "server",
       "container"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "assumes": {
     "label": "Assumes",
@@ -849,14 +606,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "role"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "attached": {
     "label": "Attached",
@@ -875,14 +625,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "policy",
       "access_grant"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "authenticates_as": {
     "label": "Authenticates As",
@@ -895,14 +638,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "managed_identity"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "called": {
     "label": "Called (runtime)",
@@ -917,13 +653,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "tool",
       "server"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "runtime_proxy",
-      "gateway_event_projection"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "can_access": {
     "label": "Can Access",
@@ -945,14 +675,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "credential",
       "resource"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "configures": {
     "label": "Configures",
@@ -968,12 +691,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "ci_job",
       "tool"
     ],
-    "traversable": true,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "code_graph"
-    ],
-    "emission_notes": "Reserved for configuration topology linking config files to agents, servers, CI jobs, and tools."
+    "traversable": true
   },
   "contains": {
     "label": "Contains",
@@ -990,14 +708,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "server",
       "container"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "correlates_with": {
     "label": "Correlates With (cross-env)",
@@ -1012,14 +723,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "agent",
       "server"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "cross_account_trust": {
     "label": "Cross-Account Trust",
@@ -1038,14 +742,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "service_principal",
       "federated_identity"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "defines": {
     "label": "Defines",
@@ -1060,12 +757,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "tool",
       "ci_job"
     ],
-    "traversable": true,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "code_graph"
-    ],
-    "emission_notes": "Reserved for source-code topology linking source files to modules, tools, and CI jobs."
+    "traversable": true
   },
   "delegated_to": {
     "label": "Delegated To (runtime)",
@@ -1078,14 +770,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "agent"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "depends_on": {
     "label": "Depends On",
@@ -1099,14 +784,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "package"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "exhibits_drift": {
     "label": "Exhibits Drift",
@@ -1119,14 +797,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "drift_incident"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "exploitable_via": {
     "label": "Exploitable Via",
@@ -1141,14 +812,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "tool",
       "credential"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "exposed_to": {
     "label": "Exposed To",
@@ -1166,14 +830,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "resource",
       "data_store"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "exposes_cred": {
     "label": "Exposes Credential",
@@ -1187,14 +844,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "credential"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "governs": {
     "label": "Governs",
@@ -1209,14 +859,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "managed_identity",
       "tool"
     ],
-    "traversable": false,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": false
   },
   "has_permission": {
     "label": "Has Permission",
@@ -1236,14 +879,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "resource",
       "tool"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "hosts": {
     "label": "Hosts",
@@ -1264,14 +900,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "server",
       "cloud_resource"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "imports": {
     "label": "Imports",
@@ -1287,12 +916,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "code_module",
       "package"
     ],
-    "traversable": true,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "code_graph"
-    ],
-    "emission_notes": "Reserved for source-code topology linking files, modules, packages, and imports."
+    "traversable": true
   },
   "inherits": {
     "label": "Inherits",
@@ -1310,14 +934,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "policy",
       "role"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "invoked": {
     "label": "Invoked (runtime)",
@@ -1332,14 +949,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "tool",
       "tool_call"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "lateral_path": {
     "label": "Lateral Path",
@@ -1352,14 +962,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "agent"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "manages": {
     "label": "Manages",
@@ -1380,14 +983,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "environment",
       "cloud_resource"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "member_of": {
     "label": "Member Of",
@@ -1409,14 +1005,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "agent",
       "fleet"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "owns": {
     "label": "Owns",
@@ -1437,12 +1026,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "cloud_resource",
       "agent"
     ],
-    "traversable": true,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "identity_graph"
-    ],
-    "emission_notes": "Reserved for ownership imports from enterprise identity and cloud inventory sources."
+    "traversable": true
   },
   "part_of": {
     "label": "Part Of",
@@ -1461,14 +1045,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "cluster",
       "environment"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "possibly_correlates_with": {
     "label": "Possibly Correlates With (low confidence)",
@@ -1483,14 +1060,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "agent",
       "server"
     ],
-    "traversable": false,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": false
   },
   "provides_tool": {
     "label": "Provides Tool",
@@ -1503,14 +1073,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "tool"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "reaches_tool": {
     "label": "Credential Reaches Tool",
@@ -1524,14 +1087,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "tool"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "remediates": {
     "label": "Remediates",
@@ -1545,12 +1101,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "vulnerability",
       "misconfiguration"
     ],
-    "traversable": false,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "remediation_graph"
-    ],
-    "emission_notes": "Reserved for fixed-version and remediation-plan graph edges."
+    "traversable": false
   },
   "runs": {
     "label": "Runs",
@@ -1565,12 +1116,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "server",
       "agent"
     ],
-    "traversable": true,
-    "emission_status": "reserved",
-    "emission_surfaces": [
-      "ci_graph"
-    ],
-    "emission_notes": "Reserved for CI/CD topology linking workflow jobs to tools, servers, and agents."
+    "traversable": true
   },
   "scoped_to": {
     "label": "Scoped To",
@@ -1585,14 +1131,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "tool"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "serves_model": {
     "label": "Serves Model",
@@ -1605,14 +1144,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "model"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "shares_cred": {
     "label": "Shares Credential",
@@ -1625,14 +1157,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "agent"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "shares_server": {
     "label": "Shares Server",
@@ -1645,14 +1170,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "agent"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "stores": {
     "label": "Stores",
@@ -1668,14 +1186,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "dataset",
       "data_store"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "triggers": {
     "label": "Triggers",
@@ -1688,14 +1199,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "misconfiguration"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "trusts": {
     "label": "Trusts",
@@ -1715,14 +1219,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "service_principal",
       "federated_identity"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "used_credential": {
     "label": "Used Credential (runtime)",
@@ -1738,13 +1235,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
       "credential_ref",
       "credential"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "runtime_proxy",
-      "gateway_event_projection"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "uses": {
     "label": "Uses",
@@ -1757,14 +1248,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "server"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
   "vulnerable_to": {
     "label": "Vulnerable To",
@@ -1779,14 +1263,7 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "vulnerability"
     ],
-    "traversable": true,
-    "emission_status": "emitted",
-    "emission_surfaces": [
-      "static_scan",
-      "graph_overlay",
-      "computed_path"
-    ],
-    "emission_notes": "Emitted by at least one graph builder or runtime projection."
+    "traversable": true
   },
 };
 

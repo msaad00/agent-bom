@@ -789,6 +789,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("GET", "/v1/evaluations", "viewer"),
         ("POST", "/v1/intel/match", "viewer"),
         ("POST", "/v1/intel/daily-brief", "viewer"),
+        # Read-shaped POSTs (bounded query / decision / verify-only). These
+        # return no key material and were viewer-reachable before the mutating
+        # admin fallback below; keep them explicitly viewer so the fallback
+        # doesn't silently lock viewers/analysts out of read-only surfaces.
+        ("POST", "/v1/graph/query", "viewer"),
+        ("POST", "/v1/graph/should-i-deploy", "viewer"),
+        ("POST", "/v1/audit/export/verify", "viewer"),
         ("GET", "/scim/v2", "admin"),
         ("POST", "/scim/v2", "admin"),
         ("PATCH", "/scim/v2", "admin"),

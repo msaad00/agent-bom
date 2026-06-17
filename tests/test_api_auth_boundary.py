@@ -183,3 +183,21 @@ def test_scim_role_does_not_downgrade_regular_service_api_key(monkeypatch) -> No
         set_key_store(original_key_store)
 
     assert response.status_code == 200
+
+
+def test_read_shaped_posts_stay_viewer_reachable() -> None:
+    """The mutating-route admin fallback must not lock viewers out of
+    read-shaped POSTs (bounded query / deploy decision / audit verify).
+
+    Regression guard: these return no key material and were viewer-reachable
+    before the unmatched-mutating-route admin fallback was added.
+    """
+    middleware = APIKeyMiddleware(app, api_key="")
+    for path in (
+        "/v1/graph/query",
+        "/v1/graph/should-i-deploy",
+        "/v1/audit/export/verify",
+    ):
+        assert middleware._required_role("POST", path) == "viewer", path
+    # The fallback itself still defends genuinely-unlisted mutating routes.
+    assert middleware._required_role("POST", "/v1/auth/keys") == "admin"

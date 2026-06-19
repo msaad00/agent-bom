@@ -1,3 +1,4 @@
+# ruff: noqa: N803  — fake boto3 client methods mirror boto3's PascalCase kwargs (Bucket=).
 """Tests for agent_bom.cloud.aws_inventory — estate-wide AWS asset inventory.
 
 Boto3 is not a hard dependency, so these tests inject a fake ``boto3`` module

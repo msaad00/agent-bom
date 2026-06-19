@@ -56,6 +56,8 @@ AGENT_BOM_CLICKHOUSE_MAX_BATCH
 AGENT_BOM_CLICKHOUSE_PASSWORD
 AGENT_BOM_CLICKHOUSE_URL
 AGENT_BOM_CLICKHOUSE_USER
+# Opt-in (default OFF) gate for the estate-wide read-only AWS asset inventory scanner.
+AGENT_BOM_CLOUD_INVENTORY
 # CLI profile config path override; read at command invocation time.
 AGENT_BOM_CONFIG
 AGENT_BOM_COMPLIANCE_BUNDLE_TTL_SECONDS

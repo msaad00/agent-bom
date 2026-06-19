@@ -302,7 +302,7 @@ def _bucket_public(s3: Any, name: str, warnings: list[str]) -> bool:
 def _bucket_tags(s3: Any, name: str, warnings: list[str]) -> dict[str, str]:
     try:
         tag_set = s3.get_bucket_tagging(Bucket=name).get("TagSet", [])
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         # NoSuchTagSet is normal (no tags) — silently skip.
         return {}
     return {str(t.get("Key", "")): str(t.get("Value", "")) for t in tag_set if t.get("Key")}

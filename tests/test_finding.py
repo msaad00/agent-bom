@@ -406,6 +406,41 @@ def test_blast_radius_to_finding_kev():
     assert finding.is_kev is True
 
 
+def test_blast_radius_to_finding_preserves_suppression_ai_context_and_reach():
+    """The shim must not drop suppression, AI-context, or reach lists.
+
+    Regression guard: a suppressed BlastRadius previously surfaced as an
+    unsuppressed Finding, and multi-server / credential reach collapsed to
+    bare counts in evidence. These are now first-class on Finding.
+    """
+    br = _make_blast_radius(
+        servers=[_make_server("server-a"), _make_server("server-b")],
+        credentials=["OPENAI_API_KEY", "AWS_SECRET_ACCESS_KEY"],
+    )
+    br.suppressed = True
+    br.suppression_id = "sup-123"
+    br.suppression_state = "acknowledged"
+    br.suppression_reason = "risk accepted by owner"
+    br.unsuppressed_risk_score = 9.1
+    br.ai_risk_context = "Reachable from an internet-exposed agent"
+    br.ai_summary = "LLM-generated narrative"
+    br.attack_vector_summary = "agent -> server -> vulnerable package"
+
+    finding = blast_radius_to_finding(br)
+
+    assert finding.suppressed is True
+    assert finding.suppression_id == "sup-123"
+    assert finding.suppression_state == "acknowledged"
+    assert finding.suppression_reason == "risk accepted by owner"
+    assert finding.unsuppressed_risk_score == 9.1
+    assert finding.ai_risk_context == "Reachable from an internet-exposed agent"
+    assert finding.ai_summary == "LLM-generated narrative"
+    assert finding.attack_vector_summary == "agent -> server -> vulnerable package"
+    # Reach preserved structurally, not collapsed to counts.
+    assert finding.affected_servers == ["server-a", "server-b"]
+    assert finding.exposed_credentials == ["OPENAI_API_KEY", "AWS_SECRET_ACCESS_KEY"]
+
+
 def test_blast_radius_to_finding_evidence_has_package_info():
     br = _make_blast_radius()
     finding = blast_radius_to_finding(br)

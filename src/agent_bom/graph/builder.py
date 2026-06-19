@@ -892,6 +892,13 @@ def build_unified_graph_from_report(
             vuln_node.attributes["reachability"] = br_dict.get("reachability", "")
             vuln_node.attributes["actionable"] = br_dict.get("actionable", False)
 
+    # ── General cloud-asset inventory (estate-wide, opt-in) ──────────
+    # Promote estate-wide cloud assets (S3 buckets, EC2 instances + security
+    # groups, IAM roles/users) into the graph so a resource with no CIS/IaC
+    # finding still becomes a node the CNAPP / effective-permissions overlays
+    # below can consume. Runs before those overlays so they see the inventory.
+    _add_cloud_inventory(graph, report_json.get("cloud_inventory"), data_source_tag)
+
     # Cloud-CNAPP enrichment: derive internet exposure, data stores, and toxic
     # (exposed + vulnerable) chains from the CIS/IaC findings now in the graph.
     try:
@@ -1856,6 +1863,328 @@ def _add_agent_cloud_lineage(
             },
         )
     )
+
+
+def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) -> None:
+    """Promote estate-wide cloud inventory into first-class graph nodes.
+
+    Consumes the payload produced by
+    :func:`agent_bom.cloud.aws_inventory.discover_inventory` (stored under
+    ``report_json["cloud_inventory"]``) and emits:
+
+    - S3 buckets   → ``CLOUD_RESOURCE`` carrying ``resource_kind="s3-bucket"`` and
+      a data-store-signalling label, so the CNAPP overlay attaches a
+      ``DATA_STORE`` companion (via ``STORES``) and ``EXPOSED_TO`` when public —
+      the path the DSPM tiers consume.
+    - EC2 instances + security groups → ``CLOUD_RESOURCE``; an instance is linked
+      ``EXPOSED_TO`` an internet-facing security group, and the group carries the
+      structured ``network_exposure`` the CNAPP overlay reads.
+    - IAM roles / users → identity principal nodes with attached ``POLICY`` nodes
+      (``ATTACHED``) and trust principals (``TRUSTS`` / ``CROSS_ACCOUNT_TRUST``),
+      plus ``CAN_ACCESS`` edges to the account's resources, so the
+      effective-permissions overlay resolves ``HAS_PERMISSION``.
+
+    Inventory is opt-in upstream; a missing / empty / non-ok payload is a no-op.
+    Never raises into the builder.
+    """
+    if not isinstance(inventory, dict) or inventory.get("status") != "ok":
+        return
+    provider = _clean_graph_part(inventory.get("provider")) or "aws"
+    account_id = _clean_graph_part(inventory.get("account_id"))
+    region = _clean_graph_part(inventory.get("region"))
+    data_sources = sorted({data_source, f"cloud-inventory:{provider}"} - {""})
+
+    provider_node_id = f"provider:{provider}"
+    graph.add_node(
+        UnifiedNode(
+            id=provider_node_id,
+            entity_type=EntityType.PROVIDER,
+            label=provider,
+            attributes={"provider": provider, "source": "cloud-inventory"},
+            data_sources=data_sources,
+        )
+    )
+    account_node_id = ""
+    if account_id:
+        account_node_id = _identity_node_id(EntityType.ACCOUNT, provider, account_id)
+        graph.add_node(
+            UnifiedNode(
+                id=account_node_id,
+                entity_type=EntityType.ACCOUNT,
+                label=account_id,
+                attributes={"account_id": account_id, "cloud_provider": provider, "source": "cloud-inventory"},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+            )
+        )
+
+    resource_ids: list[str] = []
+
+    # ── S3 buckets → CLOUD_RESOURCE (CNAPP makes the DATA_STORE companion) ──
+    for bucket in inventory.get("buckets", []) or []:
+        if not isinstance(bucket, dict):
+            continue
+        name = _clean_graph_part(bucket.get("name"))
+        if not name:
+            continue
+        node_id = f"cloud_resource:{provider}:s3:bucket:{name}"
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.CLOUD_RESOURCE,
+                # Label carries "s3 bucket" so the CNAPP overlay's data-store
+                # keyword match fires and builds the DATA_STORE companion.
+                label=f"s3 bucket: {name}",
+                attributes={
+                    "resource_id": bucket.get("arn") or name,
+                    "resource_name": name,
+                    "resource_type": "bucket",
+                    "resource_kind": "s3-bucket",
+                    "cloud_provider": provider,
+                    "cloud_service": "s3",
+                    "location": _clean_graph_part(bucket.get("location")) or region,
+                    "internet_exposed": bool(bucket.get("publicly_accessible")),
+                    "tags": bucket.get("tags", {}),
+                    "account_id": account_id,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="s3"),
+            )
+        )
+        resource_ids.append(node_id)
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
+                )
+            )
+
+    # ── EC2 security groups → CLOUD_RESOURCE (carry structured exposure) ──
+    sg_node_by_id: dict[str, str] = {}
+    for group in inventory.get("security_groups", []) or []:
+        if not isinstance(group, dict):
+            continue
+        group_id = _clean_graph_part(group.get("group_id"))
+        if not group_id:
+            continue
+        node_id = f"cloud_resource:{provider}:ec2:security-group:{group_id}"
+        sg_node_by_id[group_id] = node_id
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"security-group: {group.get('name') or group_id}",
+                attributes={
+                    "resource_id": group_id,
+                    "resource_name": _clean_graph_part(group.get("name")) or group_id,
+                    "resource_type": "security-group",
+                    "resource_kind": "ec2-security-group",
+                    "cloud_provider": provider,
+                    "cloud_service": "ec2",
+                    "location": region,
+                    "vpc_id": _clean_graph_part(group.get("vpc_id")),
+                    "internet_exposed": bool(group.get("internet_exposed")),
+                    "network_exposure": list(group.get("network_exposure", []) or []),
+                    "account_id": account_id,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="ec2"),
+            )
+        )
+        resource_ids.append(node_id)
+
+    # ── EC2 instances → CLOUD_RESOURCE (linked to their security groups) ──
+    for instance in inventory.get("instances", []) or []:
+        if not isinstance(instance, dict):
+            continue
+        instance_id = _clean_graph_part(instance.get("instance_id"))
+        if not instance_id:
+            continue
+        node_id = f"cloud_resource:{provider}:ec2:instance:{instance_id}"
+        public_ip = _clean_graph_part(instance.get("public_ip"))
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"ec2: {instance.get('name') or instance_id}",
+                attributes={
+                    "resource_id": instance_id,
+                    "resource_name": _clean_graph_part(instance.get("name")) or instance_id,
+                    "resource_type": "instance",
+                    "resource_kind": "ec2-instance",
+                    "cloud_provider": provider,
+                    "cloud_service": "ec2",
+                    "location": _clean_graph_part(instance.get("region")) or region,
+                    "instance_type": _clean_graph_part(instance.get("instance_type")),
+                    "image_id": _clean_graph_part(instance.get("image_id")),
+                    "state": _clean_graph_part(instance.get("state")),
+                    "vpc_id": _clean_graph_part(instance.get("vpc_id")),
+                    "public_ip": public_ip,
+                    "private_ip": _clean_graph_part(instance.get("private_ip")),
+                    "iam_instance_profile": _clean_graph_part(instance.get("iam_instance_profile")),
+                    "security_group_ids": list(instance.get("security_group_ids", []) or []),
+                    "account_id": account_id,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="ec2"),
+            )
+        )
+        resource_ids.append(node_id)
+        for sg_id in instance.get("security_group_ids", []) or []:
+            sg_node_id = sg_node_by_id.get(_clean_graph_part(sg_id))
+            if not sg_node_id:
+                continue
+            graph.add_edge(
+                UnifiedEdge(
+                    source=node_id, target=sg_node_id, relationship=RelationshipType.PART_OF, evidence={"source": "cloud-inventory"}
+                )
+            )
+            # An internet-facing security group exposes the instances in it.
+            sg_node = graph.nodes.get(sg_node_id)
+            if sg_node is not None and sg_node.attributes.get("internet_exposed"):
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=sg_node_id,
+                        target=node_id,
+                        relationship=RelationshipType.EXPOSED_TO,
+                        weight=6.0,
+                        evidence={"source": "cloud-inventory", "reason": "internet_facing_security_group"},
+                    )
+                )
+
+    # ── IAM roles + users → identity principals (CAN_ACCESS resources) ──
+    for principal in [*(inventory.get("roles", []) or []), *(inventory.get("users", []) or [])]:
+        if isinstance(principal, dict):
+            _add_inventory_principal(
+                graph, principal, provider=provider, account_node_id=account_node_id, resource_ids=resource_ids, data_sources=data_sources
+            )
+
+
+def _add_inventory_principal(
+    graph: UnifiedGraph,
+    principal: dict[str, Any],
+    *,
+    provider: str,
+    account_node_id: str,
+    resource_ids: list[str],
+    data_sources: list[str],
+) -> None:
+    """Emit one IAM role/user as an identity principal with policy + access edges."""
+    principal_type = _clean_graph_part(principal.get("principal_type")) or "user"
+    principal_id = _clean_graph_part(principal.get("arn")) or _clean_graph_part(principal.get("name"))
+    principal_name = _clean_graph_part(principal.get("name")) or principal_id
+    if not principal_id:
+        return
+    entity_type = _identity_entity_type(principal_type)
+    principal_node_id = _identity_node_id(entity_type, provider, principal_id)
+    graph.add_node(
+        UnifiedNode(
+            id=principal_node_id,
+            entity_type=entity_type,
+            label=principal_name,
+            attributes={
+                "principal_id": principal_id,
+                "principal_name": principal_name,
+                "principal_type": principal_type,
+                "cloud_provider": provider,
+                "privilege_level": _clean_graph_part(principal.get("privilege_level")) or "unknown",
+                "iam_path": _clean_graph_part(principal.get("path")),
+                "source": "cloud-inventory",
+            },
+            data_sources=data_sources,
+            dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+        )
+    )
+    if account_node_id:
+        graph.add_edge(
+            UnifiedEdge(
+                source=principal_node_id,
+                target=account_node_id,
+                relationship=RelationshipType.MEMBER_OF,
+                evidence={"source": "cloud-inventory", "principal_type": principal_type},
+            )
+        )
+
+    # Attached policies (privilege already classified by the scanner).
+    for policy in _policy_entries(principal):
+        policy_node_id = _identity_node_id(EntityType.POLICY, provider, policy["id"])
+        graph.add_node(
+            UnifiedNode(
+                id=policy_node_id,
+                entity_type=EntityType.POLICY,
+                label=policy["name"],
+                attributes={
+                    "policy_id": policy["id"],
+                    "policy_name": policy["name"],
+                    "privilege_level": policy.get("privilege_level", "unknown"),
+                    "cloud_provider": provider,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+            )
+        )
+        graph.add_edge(
+            UnifiedEdge(
+                source=principal_node_id,
+                target=policy_node_id,
+                relationship=RelationshipType.ATTACHED,
+                evidence={"source": "cloud-inventory", "principal_type": principal_type},
+            )
+        )
+
+    # Trust principals from the AssumeRole policy document.
+    for trust in _trust_entries(principal):
+        trust_entity_type = _identity_entity_type(trust["type"])
+        trust_node_id = _identity_node_id(trust_entity_type, provider, trust["id"])
+        graph.add_node(
+            UnifiedNode(
+                id=trust_node_id,
+                entity_type=trust_entity_type,
+                label=trust["name"],
+                attributes={
+                    "principal_id": trust["id"],
+                    "principal_name": trust["name"],
+                    "principal_type": trust["type"],
+                    "cloud_provider": provider,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+            )
+        )
+        relationship = (
+            RelationshipType.CROSS_ACCOUNT_TRUST
+            if trust["relationship"] == RelationshipType.CROSS_ACCOUNT_TRUST.value
+            else RelationshipType.TRUSTS
+        )
+        graph.add_edge(
+            UnifiedEdge(
+                source=principal_node_id,
+                target=trust_node_id,
+                relationship=relationship,
+                evidence={
+                    "source": "cloud-inventory",
+                    "principal_type": principal_type,
+                    "trusted_principal_type": trust["type"],
+                    "source_field": trust["source_field"],
+                },
+            )
+        )
+
+    # Direct access to the account's inventoried resources. The effective-
+    # permissions overlay turns CAN_ACCESS (+ assume/trust chains) into the
+    # HAS_PERMISSION transitive closure; admin-privileged principals reach
+    # every resource, others get a baseline same-account access edge.
+    privilege = _clean_graph_part(principal.get("privilege_level")) or "unknown"
+    if privilege in ("admin", "write"):
+        for resource_id in resource_ids:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=principal_node_id,
+                    target=resource_id,
+                    relationship=RelationshipType.CAN_ACCESS,
+                    evidence={"source": "cloud-inventory", "basis": f"{privilege}_privilege"},
+                )
+            )
 
 
 def _add_cross_env_correlation(

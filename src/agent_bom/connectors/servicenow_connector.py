@@ -1,7 +1,9 @@
 """ServiceNow connector — discover AI agents from Flow Designer and IntegrationHub.
 
-Uses ServiceNow REST API with basic auth.
-Env vars: SERVICENOW_INSTANCE, SERVICENOW_USER, SERVICENOW_PASSWORD.
+Uses the ServiceNow REST API with an OAuth / API bearer token. Per policy,
+agent-bom never uses passwords — only short-lived tokens. The token is
+referenced from the OS environment only and never stored or logged.
+Env vars: SERVICENOW_INSTANCE, AGENT_BOM_SERVICENOW_TOKEN.
 """
 
 from __future__ import annotations
@@ -18,31 +20,33 @@ from .base import CONNECTOR_HEALTH_TIMEOUT, ConnectorError, ConnectorHealthState
 logger = logging.getLogger(__name__)
 
 
+def _bearer_headers(token: str) -> dict[str, str]:
+    """Return Authorization headers for the ServiceNow OAuth/API bearer token."""
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _get_config(
     instance_url: str | None = None,
-    username: str | None = None,
-    password: str | None = None,
-) -> tuple[str, str, str]:
+    token: str | None = None,
+) -> tuple[str, str]:
     """Resolve ServiceNow config from args or env vars."""
     url = instance_url or os.environ.get("SERVICENOW_INSTANCE", "")
-    user = username or os.environ.get("SERVICENOW_USER", "")
-    pwd = password or os.environ.get("SERVICENOW_PASSWORD", "")
+    tok = token or os.environ.get("AGENT_BOM_SERVICENOW_TOKEN", "")
     if not url:
         raise ConnectorError("ServiceNow instance URL required. Set --servicenow-instance or SERVICENOW_INSTANCE env var.")
-    if not user or not pwd:
-        raise ConnectorError("ServiceNow credentials required. Set SERVICENOW_USER and SERVICENOW_PASSWORD env vars.")
-    return url.rstrip("/"), user, pwd
+    if not tok:
+        raise ConnectorError("ServiceNow token required. Set --servicenow-token or AGENT_BOM_SERVICENOW_TOKEN env var.")
+    return url.rstrip("/"), tok
 
 
 async def _discover_async(
     instance_url: str,
-    username: str,
-    password: str,
+    token: str,
 ) -> tuple[list[Agent], list[str]]:
     """Async discovery of ServiceNow AI agents."""
     agents: list[Agent] = []
     warnings: list[str] = []
-    auth = (username, password)
+    headers = _bearer_headers(token)
 
     async with create_client() as client:
         # 1. Discover Flow Designer flows
@@ -50,7 +54,7 @@ async def _discover_async(
             client,
             "GET",
             f"{instance_url}/api/now/table/sys_hub_flow",
-            auth=auth,
+            headers=headers,
             params={"sysparm_limit": "200", "sysparm_fields": "sys_id,name,description,active,sys_scope.name"},
         )
         if resp and resp.status_code == 200:
@@ -86,7 +90,7 @@ async def _discover_async(
             client,
             "GET",
             f"{instance_url}/api/now/table/sys_hub_action_type_definition",
-            auth=auth,
+            headers=headers,
             params={"sysparm_limit": "200", "sysparm_fields": "sys_id,name,description,sys_scope.name"},
         )
         if resp and resp.status_code == 200:
@@ -125,14 +129,13 @@ async def _discover_async(
 
 def discover(
     instance_url: str | None = None,
-    username: str | None = None,
-    password: str | None = None,
+    token: str | None = None,
     **_kwargs: object,
 ) -> tuple[list[Agent], list[str]]:
     """Discover AI agents from ServiceNow Flow Designer and IntegrationHub."""
-    url, user, pwd = _get_config(instance_url, username, password)
+    url, tok = _get_config(instance_url, token)
     try:
-        return asyncio.run(_discover_async(url, user, pwd))
+        return asyncio.run(_discover_async(url, tok))
     except ConnectorError:
         raise
     except Exception as e:
@@ -141,13 +144,12 @@ def discover(
 
 def health_check(
     instance_url: str | None = None,
-    username: str | None = None,
-    password: str | None = None,
+    token: str | None = None,
     **_kwargs: object,
 ) -> ConnectorStatus:
     """Verify ServiceNow API connectivity."""
     try:
-        url, user, pwd = _get_config(instance_url, username, password)
+        url, tok = _get_config(instance_url, token)
     except ConnectorError as e:
         return ConnectorStatus(connector="servicenow", state=ConnectorHealthState.AUTH_FAILED, message=str(e))
 
@@ -157,7 +159,7 @@ def health_check(
                 client,
                 "GET",
                 f"{url}/api/now/table/sys_properties",
-                auth=(user, pwd),
+                headers=_bearer_headers(tok),
                 params={"sysparm_limit": "1"},
             )
             if resp is None:

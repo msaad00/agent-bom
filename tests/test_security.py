@@ -432,3 +432,63 @@ def test_create_safe_subprocess_env():
     assert "LD_PRELOAD" not in env
     assert "DYLD_INSERT_LIBRARIES" not in env
     assert "PATH" in env
+
+
+# ---------------------------------------------------------------------------
+# mask_email — email is sensitive PII
+# ---------------------------------------------------------------------------
+
+
+def test_mask_email_basic():
+    from agent_bom.security import mask_email
+
+    assert mask_email("alice@example.com") == "a***@e***.com"
+
+
+def test_mask_email_within_text():
+    from agent_bom.security import mask_email
+
+    masked = mask_email("contact bob@acme.io for the report")
+    assert "bob@acme.io" not in masked
+    assert "b***@a***.io" in masked
+
+
+def test_mask_email_multiple_in_one_string():
+    from agent_bom.security import mask_email
+
+    masked = mask_email("a@x.com, b@y.org")
+    assert "a@x.com" not in masked
+    assert "b@y.org" not in masked
+
+
+def test_mask_email_leaves_non_email_untouched():
+    from agent_bom.security import mask_email
+
+    # Scoped npm package names contain "@" but are not emails.
+    assert mask_email("@scope/pkg") == "@scope/pkg"
+    assert mask_email("v4.18.2") == "v4.18.2"
+    assert mask_email("not an email @ all") == "not an email @ all"
+
+
+def test_sanitize_text_masks_email():
+    from agent_bom.security import sanitize_text
+
+    out = sanitize_text("notify owner alice@corp.com on failure")
+    assert "alice@corp.com" not in out
+    assert "a***@c***.com" in out
+
+
+def test_sanitize_sensitive_payload_masks_email_keys():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    result = sanitize_sensitive_payload(
+        {
+            "user_email": "carol@example.com",
+            "email": "dave@example.org",
+            "package": "express",
+        }
+    )
+    assert "carol@example.com" not in str(result)
+    assert "dave@example.org" not in str(result)
+    assert result["package"] == "express"
+    assert result["user_email"] == "c***@e***.com"

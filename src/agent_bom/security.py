@@ -295,6 +295,57 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
     return sanitized
 
 
+# Email is sensitive PII. We mask the local part and the domain label while
+# preserving enough shape to keep records correlatable (first char + TLD).
+# Conservative on purpose: only well-formed addresses are masked so legitimate
+# non-PII fields (versions, identifiers containing "@" such as scoped npm
+# package names like "@scope/pkg") are left untouched.
+_EMAIL_RE = re.compile(r"\b([A-Za-z0-9._%+\-]+)@([A-Za-z0-9.\-]+)\.([A-Za-z]{2,})\b")
+
+
+def _mask_email_match(local: str, domain: str, tld: str) -> str:
+    """Mask one parsed email address into ``a***@e***.com`` shape."""
+    local_masked = f"{local[0]}***" if local else "***"
+    domain_masked = f"{domain[0]}***" if domain else "***"
+    return f"{local_masked}@{domain_masked}.{tld}"
+
+
+def mask_email(value: object) -> str:
+    """Mask every email address in *value*, preserving non-email text.
+
+    ``alice@example.com`` → ``a***@e***.com``. Strings without a well-formed
+    address pass through unchanged, so scoped package names (``@scope/pkg``)
+    and version specifiers are not corrupted.
+    """
+    text = str(value)
+    return _EMAIL_RE.sub(lambda m: _mask_email_match(m.group(1), m.group(2), m.group(3)), text)
+
+
+def _contains_email(value: str) -> bool:
+    return bool(_EMAIL_RE.search(value))
+
+
+# Field names whose values are email addresses and must always be masked in
+# operational records (audit metadata, connector identity fields, evidence).
+_EMAIL_KEYS = {
+    "email",
+    "email_address",
+    "user_email",
+    "actor_email",
+    "owner_email",
+    "contact_email",
+    "notify_email",
+    "reporter_email",
+    "assignee_email",
+    "mail",
+}
+
+
+def _key_looks_like_email(key: object) -> bool:
+    key_text = str(key or "").strip().lower().replace("-", "_")
+    return key_text in _EMAIL_KEYS or key_text.endswith("_email")
+
+
 def sanitize_url(value: str | None) -> str | None:
     """Strip credentials, query strings, and fragments from display/export URLs."""
     if value is None:
@@ -312,11 +363,13 @@ def sanitize_url(value: str | None) -> str | None:
 
 
 def sanitize_text(value: object, max_len: int = 1000) -> str:
-    """Redact credential-shaped substrings and credential-bearing URLs in text."""
+    """Redact credential-shaped substrings, credential-bearing URLs, and emails in text."""
     text = sanitize_log_label(value, max_len=max_len)
     text = re.sub(r"https?://[^\s\"'<>]+", lambda match: str(sanitize_url(match.group(0)) or ""), text)
     for pattern in _VALUE_CREDENTIAL_PATTERNS:
         text = pattern.sub("<redacted>", text)
+    # Email is sensitive PII — mask any addresses left in free text.
+    text = mask_email(text)
     return text[:max_len]
 
 
@@ -444,6 +497,8 @@ def sanitize_sensitive_payload(value: object, *, key: object | None = None, max_
     if isinstance(value, str):
         if key is not None and _key_looks_sensitive(key):
             return "***REDACTED***"
+        if key is not None and _key_looks_like_email(key):
+            return mask_email(value)
         if key is not None and _key_looks_like_url(key):
             return sanitize_url(value)
         if key is not None and _key_looks_like_cloud_identity(key):
@@ -763,6 +818,7 @@ __all__ = [
     "sanitize_path_label",
     "sanitize_text",
     "sanitize_url",
+    "mask_email",
     "validate_file_size",
     "validate_json_file",
     "validate_url",

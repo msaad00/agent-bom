@@ -150,6 +150,9 @@ AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM
 AGENT_BOM_OIDC_ROLE_CLAIM
 AGENT_BOM_OIDC_TENANT_CLAIM
 AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON
+AGENT_BOM_OKTA_DISCOVERY  # opt-in flag (default OFF) gating read-only Okta non-human-identity discovery; read in identity/okta_nhi.py
+AGENT_BOM_OKTA_TOKEN  # SSWS/bearer token for read-only Okta NHI discovery (tokens-only, no passwords); never stored, read in identity/okta_nhi.py
+AGENT_BOM_OKTA_ORG_URL  # Okta org base URL for read-only NHI discovery; read in identity/okta_nhi.py
 # Local metadata-only entitlement file for self-hosted packaging.
 AGENT_BOM_ENTITLEMENT_FILE
 AGENT_BOM_OTEL_TRACES_ENDPOINT

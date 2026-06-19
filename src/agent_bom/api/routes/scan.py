@@ -516,6 +516,7 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
         "job_id": job.job_id,
         "tenant_id": job.tenant_id,
         "source_id": job.source_id,
+        "schedule_id": job.schedule_id,
         "status": job.status,
         "created_at": job.created_at,
         "completed_at": job.completed_at,

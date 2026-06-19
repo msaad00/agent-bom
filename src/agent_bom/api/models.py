@@ -135,6 +135,7 @@ class ScanJob(BaseModel):
     job_id: str
     tenant_id: str = "default"
     source_id: str | None = None
+    schedule_id: str | None = None
     triggered_by: str | None = None
     status: JobStatus = JobStatus.PENDING
     created_at: str

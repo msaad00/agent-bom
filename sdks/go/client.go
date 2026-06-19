@@ -290,6 +290,91 @@ func (c *Client) RuntimeProductionIndex(ctx context.Context, tenantID string) (J
 	return c.request(ctx, http.MethodGet, "/v1/runtime/production-index", values, nil)
 }
 
+// IngestRuntimeEventsRequest persists metadata-only runtime observations.
+type IngestRuntimeEventsRequest struct {
+	Events   []JSON
+	TenantID string
+}
+
+// IngestRuntimeEvents persists metadata-only runtime observations for event and session analysis.
+func (c *Client) IngestRuntimeEvents(ctx context.Context, req IngestRuntimeEventsRequest) (JSON, error) {
+	return c.request(ctx, http.MethodPost, "/v1/runtime/events", nil, compact(JSON{
+		"events":    req.Events,
+		"tenant_id": firstNonEmpty(req.TenantID, c.tenantID),
+	}))
+}
+
+// RuntimeSessionQuery filters tenant-scoped runtime sessions.
+type RuntimeSessionQuery struct {
+	Limit    *int
+	Offset   *int
+	TenantID string
+}
+
+// RuntimeSessions lists tenant-scoped runtime sessions with event, verdict, and tool summaries.
+func (c *Client) RuntimeSessions(ctx context.Context, query RuntimeSessionQuery) (JSON, error) {
+	values := url.Values{}
+	if tenantID := firstNonEmpty(query.TenantID, c.tenantID); tenantID != "" {
+		values.Set("tenant_id", tenantID)
+	}
+	if query.Limit != nil {
+		values.Set("limit", fmt.Sprint(*query.Limit))
+	}
+	if query.Offset != nil {
+		values.Set("offset", fmt.Sprint(*query.Offset))
+	}
+	return c.request(ctx, http.MethodGet, "/v1/runtime/sessions", values, nil)
+}
+
+// RuntimeObservationQuery filters tenant-scoped runtime observations.
+type RuntimeObservationQuery struct {
+	SessionID string
+	Limit     *int
+	Offset    *int
+	TenantID  string
+}
+
+// RuntimeObservations lists tenant-scoped metadata-only runtime observations.
+func (c *Client) RuntimeObservations(ctx context.Context, query RuntimeObservationQuery) (JSON, error) {
+	values := url.Values{}
+	if tenantID := firstNonEmpty(query.TenantID, c.tenantID); tenantID != "" {
+		values.Set("tenant_id", tenantID)
+	}
+	if query.SessionID != "" {
+		values.Set("session_id", query.SessionID)
+	}
+	if query.Limit != nil {
+		values.Set("limit", fmt.Sprint(*query.Limit))
+	}
+	if query.Offset != nil {
+		values.Set("offset", fmt.Sprint(*query.Offset))
+	}
+	return c.request(ctx, http.MethodGet, "/v1/runtime/observations", values, nil)
+}
+
+// RuntimeSessionObservationQuery paginates observations for one runtime session.
+type RuntimeSessionObservationQuery struct {
+	Limit    *int
+	Offset   *int
+	TenantID string
+}
+
+// RuntimeSessionObservations lists observations for one runtime session.
+func (c *Client) RuntimeSessionObservations(ctx context.Context, sessionID string, query RuntimeSessionObservationQuery) (JSON, error) {
+	values := url.Values{}
+	if tenantID := firstNonEmpty(query.TenantID, c.tenantID); tenantID != "" {
+		values.Set("tenant_id", tenantID)
+	}
+	if query.Limit != nil {
+		values.Set("limit", fmt.Sprint(*query.Limit))
+	}
+	if query.Offset != nil {
+		values.Set("offset", fmt.Sprint(*query.Offset))
+	}
+	path := "/v1/runtime/sessions/" + url.PathEscape(sessionID) + "/observations"
+	return c.request(ctx, http.MethodGet, path, values, nil)
+}
+
 // IntelLookup looks up one advisory by CVE, GHSA, or OSV identifier.
 func (c *Client) IntelLookup(ctx context.Context, advisoryID string) (JSON, error) {
 	return c.request(ctx, http.MethodGet, "/v1/intel/advisories/"+url.PathEscape(advisoryID), nil, nil)

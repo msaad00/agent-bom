@@ -264,6 +264,18 @@
       "default": null,
       "title": "Result"
     },
+    "schedule_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schedule Id"
+    },
     "source_id": {
       "anyOf": [
         {

@@ -90,6 +90,7 @@ class InMemoryJobStore:
                 {
                     "job_id": j.job_id,
                     "tenant_id": j.tenant_id,
+                    "schedule_id": j.schedule_id,
                     "triggered_by": j.triggered_by,
                     "status": j.status,
                     "created_at": j.created_at,
@@ -173,16 +174,20 @@ class SQLiteJobStore:
                     created_at TEXT NOT NULL,
                     completed_at TEXT,
                     tenant_id TEXT NOT NULL DEFAULT 'default',
+                    schedule_id TEXT,
                     triggered_by TEXT,
                     data TEXT NOT NULL
                 )
             """)
             columns = {row[1] for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()}
+            if "schedule_id" not in columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN schedule_id TEXT")
             if "triggered_by" not in columns:
                 self._conn.execute("ALTER TABLE jobs ADD COLUMN triggered_by TEXT")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_completed ON jobs(completed_at)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON jobs(tenant_id)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_schedule ON jobs(tenant_id, schedule_id, created_at DESC)")
             self._conn.commit()
         finally:
             self._shrink_connection_memory()
@@ -199,14 +204,15 @@ class SQLiteJobStore:
     def put(self, job: ScanJob) -> None:
         try:
             self._conn.execute(
-                """INSERT OR REPLACE INTO jobs (job_id, status, created_at, completed_at, tenant_id, triggered_by, data)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT OR REPLACE INTO jobs (job_id, status, created_at, completed_at, tenant_id, schedule_id, triggered_by, data)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     job.job_id,
                     job.status.value,
                     job.created_at,
                     job.completed_at,
                     job.tenant_id,
+                    job.schedule_id,
                     job.triggered_by,
                     self._serialize(job),
                 ),
@@ -265,11 +271,13 @@ class SQLiteJobStore:
         try:
             if tenant_id is None:
                 rows = self._conn.execute(
-                    "SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by FROM jobs ORDER BY created_at DESC"
+                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id
+                       FROM jobs
+                       ORDER BY created_at DESC"""
                 ).fetchall()
             else:
                 rows = self._conn.execute(
-                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by
+                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id
                        FROM jobs
                        WHERE tenant_id = ?
                        ORDER BY created_at DESC""",
@@ -282,6 +290,7 @@ class SQLiteJobStore:
                         "job_id": row[0],
                         "tenant_id": row[1],
                         "triggered_by": row[5],
+                        "schedule_id": row[6],
                         "status": row[2],
                         "created_at": row[3],
                         "completed_at": row[4],

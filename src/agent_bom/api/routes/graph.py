@@ -2146,6 +2146,96 @@ _SHAPE_TO_ICON: dict[str, str] = {
 }
 
 
+_RESERVED_GRAPH_NODE_KINDS: dict[str, tuple[list[str], str]] = {
+    EntityType.SOURCE_FILE.value: (
+        ["code_graph"],
+        "Reserved for source-code topology; static supply-chain scans do not emit file-level nodes yet.",
+    ),
+    EntityType.CODE_MODULE.value: (
+        ["code_graph"],
+        "Reserved for source-code topology; static supply-chain scans do not emit module-level nodes yet.",
+    ),
+    EntityType.CONFIG_FILE.value: (
+        ["code_graph"],
+        "Reserved for configuration topology; static supply-chain scans do not emit config-file nodes yet.",
+    ),
+    EntityType.EXTERNAL_IMPORT.value: (
+        ["code_graph"],
+        "Reserved for source-code import topology; static supply-chain scans do not emit import nodes yet.",
+    ),
+    EntityType.CI_JOB.value: (
+        ["ci_graph"],
+        "Reserved for CI/CD topology; scan jobs are tracked operationally but are not emitted as graph nodes yet.",
+    ),
+}
+
+
+_RESERVED_GRAPH_EDGE_KINDS: dict[str, tuple[list[str], str]] = {
+    RelationshipType.IMPORTS.value: (
+        ["code_graph"],
+        "Reserved for source-code topology linking files, modules, packages, and imports.",
+    ),
+    RelationshipType.DEFINES.value: (
+        ["code_graph"],
+        "Reserved for source-code topology linking source files to modules, tools, and CI jobs.",
+    ),
+    RelationshipType.RUNS.value: (
+        ["ci_graph"],
+        "Reserved for CI/CD topology linking workflow jobs to tools, servers, and agents.",
+    ),
+    RelationshipType.CONFIGURES.value: (
+        ["code_graph"],
+        "Reserved for configuration topology linking config files to agents, servers, CI jobs, and tools.",
+    ),
+    RelationshipType.OWNS.value: (
+        ["identity_graph"],
+        "Reserved for ownership imports from enterprise identity and cloud inventory sources.",
+    ),
+    RelationshipType.REMEDIATES.value: (
+        ["remediation_graph"],
+        "Reserved for fixed-version and remediation-plan graph edges.",
+    ),
+    RelationshipType.ACTED_AS.value: (
+        ["runtime_graph"],
+        "Reserved for explicit user/service-principal runtime delegation once traces carry that identity link.",
+    ),
+}
+
+
+_EMITTED_GRAPH_NODE_SURFACES: dict[str, list[str]] = {
+    EntityType.TOOL_CALL.value: ["runtime_proxy", "gateway_event_projection"],
+    EntityType.RESOURCE.value: ["runtime_proxy", "gateway_event_projection", "cnapp_overlay"],
+}
+
+
+_EMITTED_GRAPH_EDGE_SURFACES: dict[str, list[str]] = {
+    RelationshipType.CALLED.value: ["runtime_proxy", "gateway_event_projection"],
+    RelationshipType.USED_CREDENTIAL.value: ["runtime_proxy", "gateway_event_projection"],
+}
+
+
+def _graph_schema_emission_meta(
+    key: str,
+    *,
+    reserved: dict[str, tuple[list[str], str]],
+    emitted_surfaces: dict[str, list[str]],
+    default_surfaces: list[str],
+) -> dict[str, object]:
+    """Document whether a graph kind is emitted today or reserved vocabulary."""
+    if key in reserved:
+        surfaces, notes = reserved[key]
+        return {
+            "emission_status": "reserved",
+            "emission_surfaces": surfaces,
+            "emission_notes": notes,
+        }
+    return {
+        "emission_status": "emitted",
+        "emission_surfaces": emitted_surfaces.get(key, default_surfaces),
+        "emission_notes": "Emitted by at least one graph builder or runtime projection.",
+    }
+
+
 _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
     RelationshipType.HOSTS.value: {
         "category": "inventory",
@@ -2603,6 +2693,12 @@ async def get_graph_schema() -> dict:
                 "icon": _SHAPE_TO_ICON.get(shape, "circle"),
                 "category_uid": ENTITY_OCSF_MAP.get(entity.value, {}).get("category_uid", 0),
                 "class_uid": ENTITY_OCSF_MAP.get(entity.value, {}).get("class_uid", 0),
+                **_graph_schema_emission_meta(
+                    entity.value,
+                    reserved=_RESERVED_GRAPH_NODE_KINDS,
+                    emitted_surfaces=_EMITTED_GRAPH_NODE_SURFACES,
+                    default_surfaces=["static_scan", "graph_overlay"],
+                ),
             }
         )
 
@@ -2616,6 +2712,12 @@ async def get_graph_schema() -> dict:
                 "key": rel.value,
                 "label": label,
                 "color": color,
+                **_graph_schema_emission_meta(
+                    rel.value,
+                    reserved=_RESERVED_GRAPH_EDGE_KINDS,
+                    emitted_surfaces=_EMITTED_GRAPH_EDGE_SURFACES,
+                    default_surfaces=["static_scan", "graph_overlay", "computed_path"],
+                ),
                 **_RELATIONSHIP_SCHEMA_META.get(
                     rel.value,
                     {

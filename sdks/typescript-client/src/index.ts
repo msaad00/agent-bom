@@ -178,6 +178,26 @@ export interface EvaluationRunsQuery {
   offset?: number;
 }
 
+export interface IngestRuntimeEventsRequest {
+  events: Record<string, JsonValue>[];
+}
+
+export interface RuntimeSessionsQuery {
+  limit?: number;
+  offset?: number;
+}
+
+export interface RuntimeObservationsQuery {
+  sessionId?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface RuntimeSessionObservationsQuery {
+  limit?: number;
+  offset?: number;
+}
+
 export interface IntelMatchRequest {
   packages?: Record<string, JsonValue>[];
   purl?: string;
@@ -384,6 +404,80 @@ export class AgentBomClient {
     return this.request<Record<string, JsonValue>>(
       "GET",
       `/v1/runtime/production-index${formatSearch(search)}`,
+    );
+  }
+
+  ingestRuntimeEvents(
+    request: IngestRuntimeEventsRequest,
+  ): Promise<Record<string, JsonValue>> {
+    return this.request<Record<string, JsonValue>>(
+      "POST",
+      "/v1/runtime/events",
+      {
+        events: request.events,
+        tenant_id: this.tenantId,
+      },
+    );
+  }
+
+  runtimeSessions(
+    query: RuntimeSessionsQuery = {},
+  ): Promise<Record<string, JsonValue>> {
+    const search = new URLSearchParams();
+    if (this.tenantId) {
+      search.set("tenant_id", this.tenantId);
+    }
+    if (query.limit !== undefined) {
+      search.set("limit", String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      search.set("offset", String(query.offset));
+    }
+    return this.request<Record<string, JsonValue>>(
+      "GET",
+      `/v1/runtime/sessions${formatSearch(search)}`,
+    );
+  }
+
+  runtimeObservations(
+    query: RuntimeObservationsQuery = {},
+  ): Promise<Record<string, JsonValue>> {
+    const search = new URLSearchParams();
+    if (this.tenantId) {
+      search.set("tenant_id", this.tenantId);
+    }
+    if (query.sessionId) {
+      search.set("session_id", query.sessionId);
+    }
+    if (query.limit !== undefined) {
+      search.set("limit", String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      search.set("offset", String(query.offset));
+    }
+    return this.request<Record<string, JsonValue>>(
+      "GET",
+      `/v1/runtime/observations${formatSearch(search)}`,
+    );
+  }
+
+  runtimeSessionObservations(
+    sessionId: string,
+    query: RuntimeSessionObservationsQuery = {},
+  ): Promise<Record<string, JsonValue>> {
+    const search = new URLSearchParams();
+    if (this.tenantId) {
+      search.set("tenant_id", this.tenantId);
+    }
+    if (query.limit !== undefined) {
+      search.set("limit", String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      search.set("offset", String(query.offset));
+    }
+    return this.request<Record<string, JsonValue>>(
+      "GET",
+      `/v1/runtime/sessions/${encodeURIComponent(sessionId)}/observations${formatSearch(search)}`,
     );
   }
 

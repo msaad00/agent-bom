@@ -4,6 +4,24 @@ The Python SDK is the packaged `agent_bom.AgentBomClient` control-plane client.
 It talks to an existing agent-bom API deployment and keeps authentication and
 tenant scope explicit.
 
+The client ships inside the `agent-bom` wheel. Installing that wheel is enough:
+
+```python
+from agent_bom import AgentBomClient
+```
+
+The `agent-bom-sdk` package in this directory is a thin alias that re-exports
+the same class under `agent_bom_sdk`, mirroring the Go (`sdks/go`) and
+TypeScript (`@agent-bom/client`) packages for tooling that expects a dedicated
+SDK import path:
+
+```python
+from agent_bom_sdk import AgentBomClient
+```
+
+Both import paths resolve to `agent_bom.client.AgentBomClient`; there is no
+second implementation to drift.
+
 ```python
 from agent_bom import AgentBomClient
 

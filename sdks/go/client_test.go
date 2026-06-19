@@ -203,3 +203,54 @@ func TestClientRaisesAPIErrorWithBody(t *testing.T) {
 		t.Fatalf("unexpected APIError: %#v", apiErr)
 	}
 }
+
+func TestClientRuntimeEventsAndSessions(t *testing.T) {
+	var seen []string
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.RequestURI())
+		if r.URL.Path == "/v1/runtime/events" {
+			var body JSON
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("Decode body: %v", err)
+			}
+			if body["tenant_id"] != "tenant-a" {
+				t.Fatalf("tenant_id = %#v", body["tenant_id"])
+			}
+			if _, ok := body["events"]; !ok {
+				t.Fatalf("events missing: %#v", body)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"schema_version":"runtime.v1"}`))
+	})
+
+	ctx := context.Background()
+	limit := 5
+	if _, err := client.IngestRuntimeEvents(ctx, IngestRuntimeEventsRequest{Events: []JSON{{"kind": "tool_call"}}}); err != nil {
+		t.Fatalf("IngestRuntimeEvents: %v", err)
+	}
+	if _, err := client.RuntimeSessions(ctx, RuntimeSessionQuery{Limit: &limit}); err != nil {
+		t.Fatalf("RuntimeSessions: %v", err)
+	}
+	if _, err := client.RuntimeObservations(ctx, RuntimeObservationQuery{SessionID: "sess-1", Limit: &limit}); err != nil {
+		t.Fatalf("RuntimeObservations: %v", err)
+	}
+	if _, err := client.RuntimeSessionObservations(ctx, "sess/1", RuntimeSessionObservationQuery{Limit: &limit}); err != nil {
+		t.Fatalf("RuntimeSessionObservations: %v", err)
+	}
+
+	want := []string{
+		"POST /v1/runtime/events",
+		"GET /v1/runtime/sessions?limit=5&tenant_id=tenant-a",
+		"GET /v1/runtime/observations?limit=5&session_id=sess-1&tenant_id=tenant-a",
+		"GET /v1/runtime/sessions/sess%2F1/observations?limit=5&tenant_id=tenant-a",
+	}
+	if len(seen) != len(want) {
+		t.Fatalf("seen = %#v", seen)
+	}
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Fatalf("request %d = %q, want %q", i, seen[i], want[i])
+		}
+	}
+}

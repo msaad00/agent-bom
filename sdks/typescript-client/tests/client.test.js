@@ -288,6 +288,42 @@ test("reads manifest and runtime index with tenant query", async () => {
   ]);
 });
 
+test("ingests events and reads runtime sessions and observations", async () => {
+  const seen = [];
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    tenantId: "tenant-r",
+    fetch: async (url, init = {}) => {
+      seen.push({ url: String(url), body: init.body ? JSON.parse(init.body) : undefined });
+      return jsonResponse({ schema_version: "runtime.v1" });
+    },
+  });
+
+  await client.ingestRuntimeEvents({ events: [{ kind: "tool_call" }] });
+  await client.runtimeSessions({ limit: 10, offset: 0 });
+  await client.runtimeObservations({ sessionId: "sess-1", limit: 5 });
+  await client.runtimeSessionObservations("sess/1", { limit: 5 });
+
+  assert.deepEqual(seen, [
+    {
+      url: "https://agent-bom.example.com/v1/runtime/events",
+      body: { events: [{ kind: "tool_call" }], tenant_id: "tenant-r" },
+    },
+    {
+      url: "https://agent-bom.example.com/v1/runtime/sessions?tenant_id=tenant-r&limit=10&offset=0",
+      body: undefined,
+    },
+    {
+      url: "https://agent-bom.example.com/v1/runtime/observations?tenant_id=tenant-r&session_id=sess-1&limit=5",
+      body: undefined,
+    },
+    {
+      url: "https://agent-bom.example.com/v1/runtime/sessions/sess%2F1/observations?tenant_id=tenant-r&limit=5",
+      body: undefined,
+    },
+  ]);
+});
+
 test("wraps intel lookup match and sources", async () => {
   const seen = [];
   const client = new AgentBomClient({

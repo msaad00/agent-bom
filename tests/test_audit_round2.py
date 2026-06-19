@@ -180,9 +180,9 @@ def test_sqlite_schedule_store_has_index():
     with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
         SQLiteScheduleStore(tmp.name)
         conn = sqlite3.connect(tmp.name)
-        indexes = [r[1] for r in conn.execute("PRAGMA index_list('schedules')").fetchall()]
-        assert "idx_sched_due" in indexes
-        assert "idx_sched_tenant_due" in indexes
+        indexes = [r[1] for r in conn.execute("PRAGMA index_list('scan_schedules')").fetchall()]
+        assert "idx_scan_sched_due" in indexes
+        assert "idx_scan_sched_tenant_due" in indexes
         conn.close()
 
 

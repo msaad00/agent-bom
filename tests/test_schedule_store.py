@@ -147,6 +147,44 @@ class TestSQLiteScheduleStore:
         store2.put(_make_schedule())
         assert store2.get("sched-1") is not None
 
+    def test_uses_scan_schedules_table_name(self, tmp_path):
+        import sqlite3
+
+        db = tmp_path / "sched.db"
+        store = SQLiteScheduleStore(str(db))
+        store.put(_make_schedule())
+
+        with sqlite3.connect(db) as conn:
+            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        assert "scan_schedules" in tables
+        assert "schedules" not in tables
+
+    def test_migrates_legacy_schedules_table(self, tmp_path):
+        import sqlite3
+
+        db = tmp_path / "sched.db"
+        schedule = _make_schedule("legacy-sched", tenant_id="tenant-alpha")
+        with sqlite3.connect(db) as conn:
+            conn.execute(
+                """
+                CREATE TABLE schedules (
+                    schedule_id TEXT PRIMARY KEY,
+                    enabled INTEGER DEFAULT 1,
+                    next_run TEXT,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    data TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO schedules (schedule_id, enabled, next_run, tenant_id, data) VALUES (?, ?, ?, ?, ?)",
+                (schedule.schedule_id, int(schedule.enabled), schedule.next_run, schedule.tenant_id, schedule.model_dump_json()),
+            )
+
+        store = SQLiteScheduleStore(str(db))
+
+        assert store.get("legacy-sched", tenant_id="tenant-alpha") is not None
+
 
 # ─── parse_cron_next ──────────────────────────────────────────────────────────
 
@@ -201,6 +239,18 @@ class TestParseCronNext:
     def test_validation_accepts_basic_five_field_cron(self):
         assert validate_cron_expression("0 0 * * *") is True
 
+    def test_validation_accepts_lists_ranges_and_steps(self):
+        assert validate_cron_expression("5,35 1-6/2 * * 1-5") is True
+
+    def test_list_and_range_expression_finds_next_run(self):
+        after = datetime(2025, 1, 6, 0, 0, 0, tzinfo=timezone.utc)
+        result = parse_cron_next("5,35 1-6/2 * * 1-5", after)
+
+        assert result == datetime(2025, 1, 6, 1, 5, tzinfo=timezone.utc)
+
+    def test_validation_rejects_descending_ranges(self):
+        assert validate_cron_expression("0 5-1 * * *") is False
+
 
 # ─── scheduler_loop ───────────────────────────────────────────────────────────
 
@@ -215,8 +265,8 @@ class TestSchedulerLoop:
 
         triggered = []
 
-        def mock_scan(config):
-            triggered.append(config)
+        def mock_scan(config, **metadata):
+            triggered.append({"config": config, "metadata": metadata})
             return "job-123"
 
         async def _run():
@@ -241,8 +291,8 @@ class TestSchedulerLoop:
 
         triggered = []
 
-        def mock_scan(config):
-            triggered.append(config)
+        def mock_scan(config, **metadata):
+            triggered.append({"config": config, "metadata": metadata})
             return "job-123"
 
         async def _run():
@@ -276,8 +326,8 @@ class TestSchedulerLoop:
 
         triggered = []
 
-        def mock_scan(config):
-            triggered.append(config)
+        def mock_scan(config, **metadata):
+            triggered.append({"config": config, "metadata": metadata})
             return "job-123"
 
         async def _run():
@@ -301,8 +351,8 @@ class TestSchedulerLoop:
 
         triggered = []
 
-        def mock_scan(config):
-            triggered.append(config)
+        def mock_scan(config, **metadata):
+            triggered.append({"config": config, "metadata": metadata})
             return "job-123"
 
         async def _run():
@@ -323,8 +373,10 @@ class TestSchedulerLoop:
 
         store = InMemoryScheduleStore()
         store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+        triggered = []
 
-        def mock_scan(config):
+        def mock_scan(config, **metadata):
+            triggered.append({"config": config, "metadata": metadata})
             return "job-456"
 
         async def _run():
@@ -340,6 +392,8 @@ class TestSchedulerLoop:
         updated = store.get("s1")
         assert updated.last_run is not None
         assert updated.last_job_id == "job-456"
+        assert triggered[0]["metadata"]["schedule_id"] == "s1"
+        assert triggered[0]["metadata"]["tenant_id"] == "default"
 
     def test_skips_due_scans_without_postgres_leader_lock(self, monkeypatch):
         """Only the replica holding the advisory lock should trigger schedules."""
@@ -369,8 +423,8 @@ class TestSchedulerLoop:
             def putconn(self, conn):
                 return None
 
-        def mock_scan(config):
-            triggered.append(config)
+        def mock_scan(config, **metadata):
+            triggered.append({"config": config, "metadata": metadata})
             return "job-123"
 
         async def _run():

@@ -194,7 +194,7 @@ class MockConnection:
                 cursor.rows = [(r[-1],) for r in rows]
             elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at, triggered_by" in sql_lower:
                 rows = list(self._store.get("scan_jobs", {}).values())
-                cursor.rows = [(r[0], r[1], r[2], r[3], r[4], (r[5] if len(r) > 6 else None)) for r in rows]
+                cursor.rows = [(r[0], r[1], r[2], r[3], r[4], (r[5] if len(r) > 5 else None), (r[6] if len(r) > 6 else None)) for r in rows]
             elif "from fleet_agents" in sql_lower and "agent_id, canonical_id, name, lifecycle_state, trust_score" in sql_lower:
                 rows = list(self._store.get("fleet_agents", {}).values())
                 cursor.rows = [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
@@ -337,6 +337,7 @@ def test_job_store_persists_triggered_by(mock_pool):
     job = ScanJob(
         job_id="j-triggered",
         tenant_id="tenant-alpha",
+        schedule_id="sched-alpha",
         triggered_by="analyst@example.com",
         status=JobStatus.PENDING,
         created_at="2026-01-01T00:00:00Z",
@@ -346,7 +347,9 @@ def test_job_store_persists_triggered_by(mock_pool):
 
     insert_sql, insert_params = next((sql, params) for sql, params in reversed(mock_pool._conn.executed) if "INSERT INTO scan_jobs" in sql)
     assert "triggered_by" in insert_sql
-    assert insert_params[5] == "analyst@example.com"
+    assert "schedule_id" in insert_sql
+    assert insert_params[5] == "sched-alpha"
+    assert insert_params[6] == "analyst@example.com"
 
 
 def test_job_store_get_nonexistent(mock_pool):
@@ -399,11 +402,13 @@ def test_job_store_list_summary_includes_tenant(mock_pool):
         "2026-01-01T00:00:00Z",
         None,
         "scheduler",
+        "sched-alpha",
         "{}",
     )
     result = store.list_summary()
     assert result[0]["tenant_id"] == "tenant-alpha"
     assert result[0]["triggered_by"] == "scheduler"
+    assert result[0]["schedule_id"] == "sched-alpha"
 
 
 def test_job_store_cleanup(mock_pool):

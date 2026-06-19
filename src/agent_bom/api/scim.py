@@ -11,6 +11,7 @@ from json import JSONDecodeError
 from typing import Any
 
 from agent_bom.platform_invariants import ReservedTenantIdError, validate_customer_tenant_id
+from agent_bom.security import sanitize_error
 
 _SCIM_ROLE_VALUES = ("admin", "analyst", "viewer")
 _SCIM_ROLE_ALIASES = {
@@ -171,7 +172,7 @@ def _scim_token_binding_posture() -> dict[str, object]:
             "tenant_id": None,
             "tenant_ids": [],
             "tenant_id_source": None,
-            "message": str(exc),
+            "message": sanitize_error(exc),
         }
 
     sources = {binding.source for binding in bindings}

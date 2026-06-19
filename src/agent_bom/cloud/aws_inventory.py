@@ -59,18 +59,18 @@ _TRUTHY = {"1", "true", "yes", "on"}
 # Read-only IAM actions this scanner is allowed to exercise, by resource class.
 # Kept here so the per-run discovery envelope `permissions_used` stays honest:
 # the producer owns the catalog, not external docs.
-_S3_PERMISSIONS: tuple[str, ...] = (
+_AWS_S3_PERMISSIONS: tuple[str, ...] = (
     "s3:ListAllMyBuckets",
     "s3:GetBucketLocation",
     "s3:GetBucketPolicyStatus",
     "s3:GetBucketPublicAccessBlock",
     "s3:GetBucketTagging",
 )
-_EC2_PERMISSIONS: tuple[str, ...] = (
+_AWS_EC2_PERMISSIONS: tuple[str, ...] = (
     "ec2:DescribeInstances",
     "ec2:DescribeSecurityGroups",
 )
-_IAM_PERMISSIONS: tuple[str, ...] = (
+_AWS_IAM_PERMISSIONS: tuple[str, ...] = (
     "iam:ListRoles",
     "iam:ListUsers",
     "iam:ListAttachedRolePolicies",
@@ -78,7 +78,7 @@ _IAM_PERMISSIONS: tuple[str, ...] = (
     "iam:GetPolicy",
     "iam:GetPolicyVersion",
 )
-_BASELINE_PERMISSIONS: tuple[str, ...] = ("sts:GetCallerIdentity",)
+_AWS_BASELINE_PERMISSIONS: tuple[str, ...] = ("sts:GetCallerIdentity",)
 
 # Open-to-the-world CIDR / ipv6 ranges that mark a security-group ingress rule
 # as internet-facing. The CNAPP overlay keys off this `network_exposure` shape.
@@ -182,13 +182,13 @@ def discover_inventory(
             "warnings": ["AWS credentials not found. Configure via env vars, ~/.aws/credentials, IAM role, or SSO."],
         }
 
-    permissions_used: list[str] = list(_BASELINE_PERMISSIONS)
+    permissions_used: list[str] = list(_AWS_BASELINE_PERMISSIONS)
     if include_s3:
-        permissions_used.extend(_S3_PERMISSIONS)
+        permissions_used.extend(_AWS_S3_PERMISSIONS)
     if include_ec2:
-        permissions_used.extend(_EC2_PERMISSIONS)
+        permissions_used.extend(_AWS_EC2_PERMISSIONS)
     if include_iam:
-        permissions_used.extend(_IAM_PERMISSIONS)
+        permissions_used.extend(_AWS_IAM_PERMISSIONS)
 
     discovery_scope: list[str] = []
     if account_id:

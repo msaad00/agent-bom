@@ -33,6 +33,7 @@ from agent_bom.discovery_envelope import RedactionStatus, ScanMode
 # (module_path, declared_scan_mode, expected_redaction_status)
 PROVIDERS: list[tuple[str, ScanMode, RedactionStatus]] = [
     ("agent_bom.cloud.aws", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
+    ("agent_bom.cloud.aws_inventory", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.gcp", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.azure", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.coreweave", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),

@@ -80,6 +80,7 @@ Supported cloud / SaaS / local providers populate the envelope at the end of
 | Provider | `scan_mode` |
 |---|---|
 | `aws` | `cloud_read_only` |
+| `aws_inventory` | `cloud_read_only` |
 | `gcp` | `cloud_read_only` |
 | `azure` | `cloud_read_only` |
 | `coreweave` | `cloud_read_only` |

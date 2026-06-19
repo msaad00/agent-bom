@@ -33,9 +33,15 @@ export type LineageNodeType =
   | "dataset"
   | "container"
   | "cloudResource"
+  | "org"
+  | "account"
   | "user"
   | "group"
+  | "role"
+  | "policy"
   | "serviceAccount"
+  | "servicePrincipal"
+  | "federatedIdentity"
   | "environment"
   | "fleet"
   | "cluster"
@@ -177,9 +183,15 @@ const NODE_TYPE_BADGES: Record<LineageNodeType, string> = {
   dataset: "Dataset",
   container: "Container",
   cloudResource: "Cloud",
+  org: "Org",
+  account: "Account",
   user: "User",
   group: "Group",
+  role: "Role",
+  policy: "Policy",
   serviceAccount: "Service",
+  servicePrincipal: "Principal",
+  federatedIdentity: "Federated",
   environment: "Env",
   fleet: "Fleet",
   cluster: "Cluster",
@@ -766,7 +778,13 @@ const CLUSTER_BUBBLE_COLORS: Record<LineageNodeType, string> = {
   dataset: "#06b6d4",
   container: "#6366f1",
   cloudResource: "#0ea5e9",
+  org: "#115e59",
+  account: "#0f766e",
   misconfiguration: "#f97316",
+  role: "#ea580c",
+  policy: "#d97706",
+  servicePrincipal: "#0f766e",
+  federatedIdentity: "#0e7490",
   managedIdentity: "#0891b2",
   accessGrant: "#ca8a04",
   accessPolicy: "#a16207",
@@ -794,6 +812,12 @@ const DETAIL_RENDERERS: Record<LineageNodeType, ComponentType<{ data: LineageNod
   dataset: DatasetNode,
   container: ContainerNode,
   cloudResource: CloudResourceNode,
+  org: ProviderNode,
+  account: ProviderNode,
+  role: CredentialNode,
+  policy: CredentialNode,
+  servicePrincipal: ServiceAccountNode,
+  federatedIdentity: ServiceAccountNode,
   managedIdentity: ServiceAccountNode,
   accessGrant: CredentialNode,
   accessPolicy: CredentialNode,

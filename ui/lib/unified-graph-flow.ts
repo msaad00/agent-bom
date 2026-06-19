@@ -49,9 +49,15 @@ export interface UnifiedGraphFlowResult {
 const ENTITY_TO_NODE_TYPE: Partial<Record<EntityType | string, LineageNodeType>> = {
   [EntityType.PROVIDER]: "provider",
   [EntityType.AGENT]: "agent",
+  [EntityType.ORG]: "org",
+  [EntityType.ACCOUNT]: "account",
   [EntityType.USER]: "user",
   [EntityType.GROUP]: "group",
+  [EntityType.ROLE]: "role",
+  [EntityType.POLICY]: "policy",
   [EntityType.SERVICE_ACCOUNT]: "serviceAccount",
+  [EntityType.SERVICE_PRINCIPAL]: "servicePrincipal",
+  [EntityType.FEDERATED_IDENTITY]: "federatedIdentity",
   [EntityType.ENVIRONMENT]: "environment",
   [EntityType.FLEET]: "fleet",
   [EntityType.CLUSTER]: "cluster",
@@ -79,9 +85,15 @@ const ENTITY_TO_NODE_TYPE: Partial<Record<EntityType | string, LineageNodeType>>
 const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   provider: "providerNode",
   agent: "agentNode",
+  org: "providerNode",
+  account: "providerNode",
   user: "userNode",
   group: "groupNode",
+  role: "credentialNode",
+  policy: "credentialNode",
   serviceAccount: "serviceAccountNode",
+  servicePrincipal: "serviceAccountNode",
+  federatedIdentity: "serviceAccountNode",
   environment: "environmentNode",
   fleet: "fleetNode",
   cluster: "clusterNode",
@@ -106,9 +118,15 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
 const NODE_LABELS: Record<LineageNodeType, string> = {
   provider: "Provider",
   agent: "Agent",
+  org: "Organization",
+  account: "Account",
   user: "User",
   group: "Group",
+  role: "Role",
+  policy: "Policy",
   serviceAccount: "Service Account",
+  servicePrincipal: "Service Principal",
+  federatedIdentity: "Federated Identity",
   environment: "Environment",
   fleet: "Fleet",
   cluster: "Cluster",
@@ -133,9 +151,15 @@ const NODE_LABELS: Record<LineageNodeType, string> = {
 const NODE_COLORS: Record<LineageNodeType, string> = {
   provider: "#71717a",
   agent: "#10b981",
+  org: "#115e59",
+  account: "#0f766e",
   user: "#34d399",
   group: "#d946ef",
+  role: "#ea580c",
+  policy: "#d97706",
   serviceAccount: "#fbbf24",
+  servicePrincipal: "#0f766e",
+  federatedIdentity: "#0e7490",
   environment: "#14b8a6",
   fleet: "#22d3ee",
   cluster: "#38bdf8",
@@ -160,9 +184,15 @@ const NODE_COLORS: Record<LineageNodeType, string> = {
 const NODE_LAYERS: Record<LineageNodeType, string> = {
   provider: "infra",
   agent: "orchestration",
+  org: "identity",
+  account: "identity",
   user: "user",
   group: "identity",
+  role: "identity",
+  policy: "identity",
   serviceAccount: "identity",
+  servicePrincipal: "identity",
+  federatedIdentity: "identity",
   environment: "infra",
   fleet: "infra",
   cluster: "infra",
@@ -565,9 +595,15 @@ function legendForNodeTypes(nodeTypes: Set<LineageNodeType>): LegendItem[] {
   return [
     "provider",
     "agent",
+    "org",
+    "account",
     "user",
     "group",
+    "role",
+    "policy",
     "serviceAccount",
+    "servicePrincipal",
+    "federatedIdentity",
     "environment",
     "fleet",
     "cluster",
@@ -731,7 +767,16 @@ function addNeighbor(map: Map<string, Set<string>>, source: string, target: stri
 
 function legendShapeForNodeType(nodeType: LineageNodeType): LegendItem["shape"] {
   if (nodeType === "vulnerability" || nodeType === "misconfiguration") return "diamond";
-  if (nodeType === "server" || nodeType === "sharedServer" || nodeType === "container" || nodeType === "cloudResource") return "square";
+  if (nodeType === "role" || nodeType === "policy") return "diamond";
+  if (
+    nodeType === "server" ||
+    nodeType === "sharedServer" ||
+    nodeType === "container" ||
+    nodeType === "cloudResource" ||
+    nodeType === "account"
+  ) {
+    return "square";
+  }
   if (nodeType === "package" || nodeType === "tool" || nodeType === "model" || nodeType === "dataset") return "pill";
   return "dot";
 }

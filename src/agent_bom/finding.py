@@ -257,6 +257,25 @@ class Finding:
     # Risk
     risk_score: float = 0.0  # 0-10 unified risk score
 
+    # Suppression state (mirrors BlastRadius; preserved through the unified stream
+    # so a suppressed finding never appears unsuppressed downstream)
+    suppressed: bool = False
+    suppression_id: Optional[str] = None
+    suppression_state: Optional[str] = None
+    suppression_reason: Optional[str] = None
+    unsuppressed_risk_score: Optional[float] = None
+
+    # AI-native risk context (mirrors BlastRadius)
+    ai_risk_context: Optional[str] = None
+    ai_summary: Optional[str] = None
+    attack_vector_summary: Optional[str] = None
+
+    # Reach / blast-radius lists — kept structured rather than collapsed to counts
+    affected_servers: list[str] = field(default_factory=list)  # MCP server names on the impacted path
+    affected_agents: list[str] = field(default_factory=list)  # agent names reachable along the path
+    exposed_credentials: list[str] = field(default_factory=list)  # credential env-var names at risk
+    exposed_tools: list[str] = field(default_factory=list)  # tool names accessible through the path
+
     # Unique ID — deterministic UUID v5 based on content (computed in __post_init__)
     # Pass an explicit id= to override (e.g. when ingesting from external scanner)
     id: str = field(default="")
@@ -646,5 +665,17 @@ def blast_radius_to_finding(br: object) -> "Finding":
         pci_dss_tags=list(getattr(br, "pci_dss_tags", [])),
         evidence=evidence,
         risk_score=br.risk_score,
+        suppressed=bool(getattr(br, "suppressed", False)),
+        suppression_id=getattr(br, "suppression_id", None),
+        suppression_state=getattr(br, "suppression_state", None),
+        suppression_reason=getattr(br, "suppression_reason", None),
+        unsuppressed_risk_score=getattr(br, "unsuppressed_risk_score", None),
+        ai_risk_context=getattr(br, "ai_risk_context", None),
+        ai_summary=getattr(br, "ai_summary", None),
+        attack_vector_summary=getattr(br, "attack_vector_summary", None),
+        affected_servers=[s.name for s in br.affected_servers],
+        affected_agents=[getattr(a, "name", str(a)) for a in br.affected_agents],
+        exposed_credentials=list(br.exposed_credentials),
+        exposed_tools=[getattr(t, "name", str(t)) for t in br.exposed_tools],
     )
     return apply_hub_classification(finding)

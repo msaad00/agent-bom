@@ -131,6 +131,11 @@ function render(schema) {
     )
     .join("\n");
 
+  // emission_status / emission_surfaces / emission_notes are intentionally
+  // excluded from the client bundle: they are documentation metadata served by
+  // GET /v1/graph/schema for tooling, but the dashboard renders only from
+  // label/color/shape/layer/icon/uids. Baking the emission docs into every
+  // browser bundle blew the client-JS budget for no runtime benefit.
   const nodeMetadataObj = nodeKinds
     .map(
       (n) =>

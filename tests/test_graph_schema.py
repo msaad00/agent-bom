@@ -1164,11 +1164,26 @@ class TestGraphSchemaEndpoint:
         body = client.get("/v1/graph/schema").json()
         layer_keys = {entry["key"] for entry in body["semantic_layers"]}
         for entry in body["node_kinds"]:
-            assert {"key", "label", "color", "shape", "layer", "icon", "category_uid", "class_uid"} <= set(entry)
+            assert {
+                "key",
+                "label",
+                "color",
+                "shape",
+                "layer",
+                "icon",
+                "category_uid",
+                "class_uid",
+                "emission_status",
+                "emission_surfaces",
+                "emission_notes",
+            } <= set(entry)
             assert entry["color"].startswith("#")
             assert entry["layer"] in layer_keys
             assert isinstance(entry["category_uid"], int)
             assert isinstance(entry["class_uid"], int)
+            assert entry["emission_status"] in {"emitted", "reserved"}
+            assert isinstance(entry["emission_surfaces"], list) and entry["emission_surfaces"]
+            assert isinstance(entry["emission_notes"], str) and entry["emission_notes"]
         for entry in body["edge_kinds"]:
             assert {
                 "key",
@@ -1179,6 +1194,9 @@ class TestGraphSchemaEndpoint:
                 "source_types",
                 "target_types",
                 "traversable",
+                "emission_status",
+                "emission_surfaces",
+                "emission_notes",
             } <= set(entry)
             assert entry["color"].startswith("#")
             assert entry["category"]
@@ -1186,6 +1204,33 @@ class TestGraphSchemaEndpoint:
             assert isinstance(entry["source_types"], list)
             assert isinstance(entry["target_types"], list)
             assert isinstance(entry["traversable"], bool)
+            assert entry["emission_status"] in {"emitted", "reserved"}
+            assert isinstance(entry["emission_surfaces"], list) and entry["emission_surfaces"]
+            assert isinstance(entry["emission_notes"], str) and entry["emission_notes"]
+
+    def test_schema_documents_reserved_dead_vocabulary(self):
+        client = self._client()
+        body = client.get("/v1/graph/schema").json()
+        node_entries = {entry["key"]: entry for entry in body["node_kinds"]}
+        edge_entries = {entry["key"]: entry for entry in body["edge_kinds"]}
+
+        reserved_nodes = {"source_file", "code_module", "config_file", "external_import", "ci_job"}
+        reserved_edges = {"imports", "defines", "runs", "configures", "owns", "remediates", "acted_as"}
+        for key in reserved_nodes:
+            assert node_entries[key]["emission_status"] == "reserved"
+            assert "Reserved" in node_entries[key]["emission_notes"]
+        for key in reserved_edges:
+            assert edge_entries[key]["emission_status"] == "reserved"
+            assert "Reserved" in edge_entries[key]["emission_notes"]
+
+        runtime_nodes = {"tool_call", "resource"}
+        runtime_edges = {"called", "used_credential"}
+        for key in runtime_nodes:
+            assert node_entries[key]["emission_status"] == "emitted"
+            assert any("runtime" in surface for surface in node_entries[key]["emission_surfaces"])
+        for key in runtime_edges:
+            assert edge_entries[key]["emission_status"] == "emitted"
+            assert any("runtime" in surface for surface in edge_entries[key]["emission_surfaces"])
 
     def test_every_entity_type_has_semantic_layer(self):
         from agent_bom.graph import ENTITY_LEGEND, GraphSemanticLayer

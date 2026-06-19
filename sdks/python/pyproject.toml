@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-bom-sdk"
+version = "0.88.6"
+description = "Thin Python alias that re-exports the packaged agent-bom control-plane client."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = ["agent-bom"]
+
+[project.urls]
+Homepage = "https://github.com/msaad00/agent-bom"
+Source = "https://github.com/msaad00/agent-bom/tree/main/sdks/python"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_bom_sdk"]

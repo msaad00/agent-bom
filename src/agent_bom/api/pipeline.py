@@ -946,12 +946,17 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         # ── Output phase ──
         pipeline.start_step("output", "Building report...")
+        from agent_bom.a2a_auth_posture import evaluate_a2a_auth_posture
         from agent_bom.finding import blast_radius_to_finding
         from agent_bom.mcp_blocklist import blocklist_findings_for_agents
         from agent_bom.models import AIBOMReport
 
         report_findings = [blast_radius_to_finding(br) for br in blast_radii]
         report_findings.extend(blocklist_findings_for_agents(agents))
+        try:
+            report_findings.extend(evaluate_a2a_auth_posture(agents))
+        except Exception as a2a_exc:  # noqa: BLE001
+            _logger.warning("A2A auth posture evaluation skipped: %s", sanitize_error(a2a_exc))
         report = AIBOMReport(agents=agents, blast_radii=blast_radii, findings=report_findings, scan_id=job.job_id)
         report_json = to_json(report)
         report_json["warnings"] = warnings_all

@@ -39,6 +39,14 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_API_SCAN_WORKER_RECYCLE_JOBS` | `int` | `10` | — |
 | `AGENT_BOM_BODY_MIN_BPS` | `int` | `256` | Slowloris throughput floor (audit-5 PR-C): minimum sustained body bytes/second once a request body crosses the warmup threshold inside MaxBodySizeMiddleware. 0 disables the floor entirely (escape hatch for legitimate slow clients in restric |
 
+## Agent-to-Agent (A2A) auth posture
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_A2A_AUTH_MAX_BOUND_AGENTS` | `int` | `10` | — |
+| `AGENT_BOM_A2A_AUTH_MAX_DELEGATION_DEPTH` | `int` | `4` | Governance thresholds for the A2A auth posture evaluator (agent_bom.a2a_auth_posture). agent-bom does not broker A2A auth; it scans discovered agents + gateway/proxy policies + delegation chains and flags weak inter-agent authentication as  |
+| `AGENT_BOM_A2A_AUTH_REQUIRE_SIGNED_TOKENS` | `bool` | `True` | — |
+| `AGENT_BOM_A2A_AUTH_SHARED_TOKEN_MIN_AGENTS` | `int` | `2` | — |
+
 ## Blast Radius Risk Scoring
 | Env var | Type | Default | Description |
 |---|---|---|---|

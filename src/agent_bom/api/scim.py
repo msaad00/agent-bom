@@ -11,7 +11,6 @@ from json import JSONDecodeError
 from typing import Any
 
 from agent_bom.platform_invariants import ReservedTenantIdError, validate_customer_tenant_id
-from agent_bom.security import sanitize_error
 
 _SCIM_ROLE_VALUES = ("admin", "analyst", "viewer")
 _SCIM_ROLE_ALIASES = {
@@ -162,7 +161,7 @@ def _scim_token_binding_posture() -> dict[str, object]:
         }
     try:
         bindings = configured_scim_bearer_token_bindings()
-    except SCIMConfigurationError as exc:
+    except SCIMConfigurationError:
         return {
             "configured": True,
             "status": "misconfigured",
@@ -172,7 +171,7 @@ def _scim_token_binding_posture() -> dict[str, object]:
             "tenant_id": None,
             "tenant_ids": [],
             "tenant_id_source": None,
-            "message": sanitize_error(exc),
+            "message": "SCIM bearer token configuration is invalid. Check control-plane logs and SCIM environment settings.",
         }
 
     sources = {binding.source for binding in bindings}
@@ -362,7 +361,7 @@ def describe_scim_posture() -> dict[str, object]:
             },
         ],
         "message": (
-            "SCIM bearer token configuration is invalid; fix the tenant-token mapping before accepting provisioning traffic."
+            "SCIM bearer token configuration is invalid. Check control-plane logs and SCIM environment settings."
             if token_posture["status"] == "misconfigured"
             else (
                 (

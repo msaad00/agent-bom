@@ -20,6 +20,7 @@ def register_operator_tools(
     read_only,
     write_action,
     execute_tool_async,
+    execute_tool_sync_async,
     safe_path,
     run_scan_pipeline,
     truncate_response,
@@ -874,7 +875,9 @@ def register_operator_tools(
         ] = "",
     ) -> str:
         """Dry-run an inter-agent firewall decision without recording it to the control-plane tally."""
-        return await execute_tool_async(
+        # firewall_check_impl is a synchronous handler — route it through the
+        # sync executor (run in a thread) rather than awaiting its str return.
+        return await execute_tool_sync_async(
             "firewall_check",
             firewall_check_impl,
             source_agent=source_agent,

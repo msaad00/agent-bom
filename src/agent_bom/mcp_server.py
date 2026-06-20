@@ -942,6 +942,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         read_only=_READ_ONLY,
         write_action=_WRITE_ACTION,
         execute_tool_async=_execute_tool_async,
+        execute_tool_sync_async=_execute_tool_sync_async,
         safe_path=_safe_path,
         run_scan_pipeline=_run_scan_pipeline,
         truncate_response=_truncate_response,

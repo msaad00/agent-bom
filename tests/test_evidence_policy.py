@@ -468,3 +468,21 @@ def test_has_tier_b_fields_detects_unknown_keys():
     assert has_tier_b_fields({"agent_id": "a", "made_up_key": "b"}) is True
     assert has_tier_b_fields({"agent_id": "a", "tenant_id": "x"}) is False
     assert has_tier_b_fields({}) is False
+
+
+# ─── Email masking on persistence (sensitive PII) ──────────────────────────
+
+
+def test_redact_for_persistence_masks_email_in_retained_value():
+    """Emails surviving into a tier-A value (e.g. nested ``actor``) are masked."""
+    payload = {
+        "actor": "alice@example.com",
+        "details": {"reporter": "bob@acme.io"},
+        "package_name": "express",
+    }
+    out = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
+    flat = json.dumps(out)
+    assert "alice@example.com" not in flat
+    assert "bob@acme.io" not in flat
+    assert out["actor"] == "a***@e***.com"
+    assert out["package_name"] == "express"

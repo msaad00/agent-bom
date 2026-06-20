@@ -236,12 +236,12 @@ def test_jira_health_check_missing_creds():
 
 def test_servicenow_missing_instance():
     with pytest.raises(ConnectorError, match="instance URL required"):
-        discover_from_connector("servicenow", instance_url="", username="admin", password="pwd")
+        discover_from_connector("servicenow", instance_url="", token="tok")
 
 
-def test_servicenow_missing_creds():
-    with pytest.raises(ConnectorError, match="credentials required"):
-        discover_from_connector("servicenow", instance_url="https://dev.service-now.com", username="", password="")
+def test_servicenow_missing_token():
+    with pytest.raises(ConnectorError, match="token required"):
+        discover_from_connector("servicenow", instance_url="https://dev.service-now.com", token="")
 
 
 def test_servicenow_discover_flows(monkeypatch):
@@ -266,7 +266,7 @@ def test_servicenow_discover_flows(monkeypatch):
     monkeypatch.setattr("agent_bom.connectors.servicenow_connector.create_client", _mock_client_ctx)
     monkeypatch.setattr("agent_bom.connectors.servicenow_connector.request_with_retry", _fake_request)
 
-    agents, warnings = discover_from_connector("servicenow", instance_url="https://dev.service-now.com", username="admin", password="pwd")
+    agents, warnings = discover_from_connector("servicenow", instance_url="https://dev.service-now.com", token="tok")
     assert len(agents) == 1
     assert agents[0].source == "servicenow"
     assert "AI Ticket Router" in agents[0].name
@@ -295,7 +295,7 @@ def test_servicenow_discover_spokes(monkeypatch):
     monkeypatch.setattr("agent_bom.connectors.servicenow_connector.create_client", _mock_client_ctx)
     monkeypatch.setattr("agent_bom.connectors.servicenow_connector.request_with_retry", _fake_request)
 
-    agents, warnings = discover_from_connector("servicenow", instance_url="https://dev.service-now.com", username="admin", password="pwd")
+    agents, warnings = discover_from_connector("servicenow", instance_url="https://dev.service-now.com", token="tok")
     assert len(agents) == 2
     assert all(a.source == "servicenow" for a in agents)
     assert any("Slack Spoke" in a.name for a in agents)
@@ -310,7 +310,7 @@ def test_servicenow_discover_permission_error(monkeypatch):
     monkeypatch.setattr("agent_bom.connectors.servicenow_connector.create_client", _mock_client_ctx)
     monkeypatch.setattr("agent_bom.connectors.servicenow_connector.request_with_retry", _fake_request)
 
-    agents, warnings = discover_from_connector("servicenow", instance_url="https://dev.service-now.com", username="admin", password="pwd")
+    agents, warnings = discover_from_connector("servicenow", instance_url="https://dev.service-now.com", token="tok")
     assert len(agents) == 0
     assert len(warnings) >= 1
 
@@ -326,14 +326,14 @@ def test_servicenow_health_check_healthy(monkeypatch):
 
     from agent_bom.connectors.servicenow_connector import health_check
 
-    status = health_check(instance_url="https://dev.service-now.com", username="admin", password="pwd")
+    status = health_check(instance_url="https://dev.service-now.com", token="tok")
     assert status.state == ConnectorHealthState.HEALTHY
 
 
 def test_servicenow_health_check_missing_creds():
     from agent_bom.connectors.servicenow_connector import health_check
 
-    status = health_check(instance_url="", username="", password="")
+    status = health_check(instance_url="", token="")
     assert status.state == ConnectorHealthState.AUTH_FAILED
 
 
@@ -528,15 +528,34 @@ def test_connector_env_var_fallback_jira(monkeypatch):
 
 def test_connector_env_var_fallback_servicenow(monkeypatch):
     monkeypatch.setenv("SERVICENOW_INSTANCE", "https://env.service-now.com")
-    monkeypatch.setenv("SERVICENOW_USER", "admin")
-    monkeypatch.setenv("SERVICENOW_PASSWORD", "pwd123")
+    monkeypatch.setenv("AGENT_BOM_SERVICENOW_TOKEN", "tok-env")
 
     from agent_bom.connectors.servicenow_connector import _get_config
 
-    url, user, pwd = _get_config()
+    url, token = _get_config()
     assert url == "https://env.service-now.com"
-    assert user == "admin"
-    assert pwd == "pwd123"
+    assert token == "tok-env"
+
+
+def test_servicenow_uses_bearer_token_not_basic_auth(monkeypatch):
+    """ServiceNow must authenticate with a Bearer token, never basic auth."""
+    captured: dict = {}
+
+    async def _fake_request(client, method, url, **kwargs):
+        captured.setdefault("auth", kwargs.get("auth"))
+        captured.setdefault("headers", kwargs.get("headers"))
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"result": []}
+        return resp
+
+    monkeypatch.setattr("agent_bom.connectors.servicenow_connector.create_client", _mock_client_ctx)
+    monkeypatch.setattr("agent_bom.connectors.servicenow_connector.request_with_retry", _fake_request)
+
+    discover_from_connector("servicenow", instance_url="https://dev.service-now.com", token="tok-123")
+
+    assert captured["auth"] is None
+    assert captured["headers"]["Authorization"] == "Bearer tok-123"
 
 
 def test_connector_env_var_fallback_slack(monkeypatch):

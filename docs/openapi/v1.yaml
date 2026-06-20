@@ -9460,6 +9460,75 @@ paths:
       tags:
       - observability
       - finops
+  /v1/observability/costs/forecast:
+    get:
+      description: "Project LLM spend burn rate and budget runway for the active tenant.\n\
+        \nDerives a recent burn rate (trailing 24h / 7d) from ``observed_at`` on\n\
+        persisted cost records and extrapolates to the configured budget \u2014 returning\n\
+        projected period spend, days of runway, and an exhaustion date. Reference\n\
+        only: a forecast never blocks a call (enforcement stays in the relay) and\n\
+        returns a clear ``status`` with null projections on sparse/empty history."
+      operationId: get_llm_cost_forecast_v1_observability_costs_forecast_get
+      parameters:
+      - in: query
+        name: agent
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 10000
+          title: Limit
+          type: integer
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Llm Cost Forecast V1 Observability Costs Forecast
+                  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Llm Cost Forecast
+      tags:
+      - observability
+      - finops
   /v1/ocsf/ingest:
     post:
       description: Ingest OCSF events and normalize them onto the canonical runtime-event

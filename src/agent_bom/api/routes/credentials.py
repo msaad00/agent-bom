@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.audit_log import log_action
+from agent_bom.api.credential_rotation import build_credential_rotation_governance
 from agent_bom.api.models import (
     CredentialRefCreate,
     CredentialRefRecord,
@@ -49,6 +50,12 @@ def _apply_update(credential: CredentialRefRecord, body: CredentialRefUpdate) ->
         "description",
         "owner",
         "scopes",
+        "credential_class",
+        "last_rotated_at",
+        "expires_at",
+        "rotation_interval_days",
+        "max_age_days",
+        "expiry_warning_days",
         "enabled",
         "status",
     ):
@@ -80,6 +87,12 @@ async def create_credential_ref(request: Request, body: CredentialRefCreate) -> 
         description=body.description,
         owner=body.owner,
         scopes=body.scopes,
+        credential_class=body.credential_class,
+        last_rotated_at=body.last_rotated_at,
+        expires_at=body.expires_at,
+        rotation_interval_days=body.rotation_interval_days,
+        max_age_days=body.max_age_days,
+        expiry_warning_days=body.expiry_warning_days,
         enabled=body.enabled,
         status=CredentialRefStatus.CONFIGURED if body.enabled else CredentialRefStatus.DISABLED,
         created_at=now,
@@ -115,6 +128,13 @@ async def list_credential_refs(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.get("/v1/credentials/posture", tags=["credentials"])
+async def get_credential_rotation_posture(request: Request) -> dict:
+    tenant_id = _tenant_id(request)
+    credentials = _get_credential_ref_store().list_all(tenant_id=tenant_id)
+    return build_credential_rotation_governance(credentials, tenant_id=tenant_id)
 
 
 @router.get("/v1/credentials/{credential_ref_id}", tags=["credentials"])

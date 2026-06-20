@@ -13,6 +13,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any
 
 # Modified z-score (median + MAD) threshold. Robust to the outlier inflating its
@@ -21,6 +22,15 @@ from typing import Any
 DEFAULT_Z_THRESHOLD = 3.5
 _MIN_SAMPLES = 4
 _MAD_SCALE = 0.6745  # 0.75 quantile of the standard normal
+
+# Temporal (seasonal) baseline tuning (#2926). A spike is judged against the
+# agent's OWN history bucketed by (day-of-week, hour) so a predictable nightly
+# batch job is not flagged, while a slow creep above the agent's normal level
+# for that time slot is. EWMA gives recent buckets more weight; the seasonal
+# arm compares "this slot now" to "this slot historically".
+_TEMPORAL_MIN_BUCKETS = 6  # need some history before judging temporally
+_TEMPORAL_EWMA_ALPHA = 0.3  # weight of the newest bucket in the running mean
+_TEMPORAL_RATIO_THRESHOLD = 3.0  # latest >= 3x the seasonal baseline -> spike
 
 
 def _median(values: list[float]) -> float:
@@ -99,15 +109,139 @@ def detect_behavior_anomalies(calls_by_session: dict[str, int], *, z_threshold: 
     return sorted(out, key=lambda a: a["z_score"], reverse=True)
 
 
+def _parse_bucket(observed_at: str) -> tuple[int, int] | None:
+    """Return the (day-of-week, hour) seasonal bucket for an ISO timestamp.
+
+    Day-of-week is 0=Monday..6=Sunday; hour is 0..23 in UTC. Unparseable or
+    empty timestamps are skipped (return None) so they never corrupt a baseline.
+    """
+    raw = (observed_at or "").strip()
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt = dt.astimezone(timezone.utc)
+    return dt.weekday(), dt.hour
+
+
+def detect_temporal_cost_anomalies(
+    cost_series_by_agent: dict[str, list[tuple[str, float]]],
+    *,
+    ratio_threshold: float = _TEMPORAL_RATIO_THRESHOLD,
+) -> list[dict[str, Any]]:
+    """Flag agents spiking against their OWN seasonal history (#2926).
+
+    For each agent the per-call costs are bucketed by (day-of-week, hour) using
+    the call timestamp, then summed per chronological bucket. Two signals back
+    the verdict:
+
+    - **seasonal-naive**: the latest bucket vs the EWMA of *prior occurrences of
+      the same (day, hour) slot* — a predictable nightly peak has a high slot
+      baseline, so it stays quiet.
+    - **EWMA creep**: the latest bucket vs the EWMA of *all prior buckets* —
+      catches a slow upward drift that no single z-score flags.
+
+    A spike is reported only when the latest bucket exceeds ``ratio_threshold``x
+    a non-trivial baseline. No peer comparison here; this is purely temporal and
+    complements the cross-sectional :func:`detect_cost_anomalies`.
+    """
+    out: list[dict[str, Any]] = []
+    for agent, series in cost_series_by_agent.items():
+        if not agent:
+            continue
+        # Order by timestamp, drop unparseable rows, key each row to its slot.
+        rows: list[tuple[str, tuple[int, int], float]] = []
+        for observed_at, cost in series:
+            bucket = _parse_bucket(observed_at)
+            if bucket is None:
+                continue
+            rows.append((observed_at, bucket, float(cost)))
+        if len(rows) < _TEMPORAL_MIN_BUCKETS:
+            continue
+        rows.sort(key=lambda r: r[0])
+
+        # Collapse consecutive calls sharing one (timestamp-truncated) slot into
+        # per-occurrence totals so a busy hour reads as one observation.
+        occurrences: list[tuple[str, tuple[int, int], float]] = []
+        for observed_at, bucket, cost in rows:
+            slot_key = observed_at[:13]  # ISO hour granularity: YYYY-MM-DDTHH
+            if occurrences and occurrences[-1][0][:13] == slot_key and occurrences[-1][1] == bucket:
+                prev = occurrences[-1]
+                occurrences[-1] = (prev[0], prev[1], prev[2] + cost)
+            else:
+                occurrences.append((observed_at, bucket, cost))
+        if len(occurrences) < _TEMPORAL_MIN_BUCKETS:
+            continue
+
+        latest_ts, latest_bucket, latest_cost = occurrences[-1]
+        history = occurrences[:-1]
+
+        # Seasonal-naive baseline: EWMA over prior occurrences of the same slot.
+        same_slot = [c for _, b, c in history if b == latest_bucket]
+        seasonal_baseline = _ewma(same_slot) if same_slot else None
+        # A value in line with its own slot history is "predictable" (e.g. a
+        # nightly batch) — it must not be flagged even though it dwarfs the
+        # agent's overall average. The seasonal arm has authority over the
+        # cross-slot EWMA creep arm.
+        in_seasonal_pattern = seasonal_baseline is not None and seasonal_baseline > 0 and latest_cost < ratio_threshold * seasonal_baseline
+        # EWMA creep baseline: EWMA over every prior occurrence.
+        creep_baseline = _ewma([c for _, _, c in history])
+
+        signals: list[str] = []
+        ratios: dict[str, float] = {}
+        if seasonal_baseline is not None and seasonal_baseline > 0 and latest_cost >= ratio_threshold * seasonal_baseline:
+            signals.append("seasonal")
+            ratios["seasonal_ratio"] = round(latest_cost / seasonal_baseline, 2)
+        if not in_seasonal_pattern and creep_baseline > 0 and latest_cost >= ratio_threshold * creep_baseline:
+            signals.append("ewma_creep")
+            ratios["ewma_ratio"] = round(latest_cost / creep_baseline, 2)
+        if not signals:
+            continue
+        out.append(
+            {
+                "type": "temporal_cost_spike",
+                "severity": "high" if len(signals) == 2 else "medium",
+                "agent": agent,
+                "metric": "bucket_cost_usd",
+                "value": round(latest_cost, 6),
+                "bucket": {"day_of_week": latest_bucket[0], "hour": latest_bucket[1]},
+                "seasonal_baseline": round(seasonal_baseline, 6) if seasonal_baseline is not None else None,
+                "ewma_baseline": round(creep_baseline, 6),
+                "signals": signals,
+                **ratios,
+                "recommendation": "Spend is anomalous vs this agent's own time-of-day history; review for a creep or a one-off surge.",
+            }
+        )
+    return sorted(out, key=lambda a: a.get("ewma_ratio", a.get("seasonal_ratio", 0.0)), reverse=True)
+
+
+def _ewma(values: list[float], *, alpha: float = _TEMPORAL_EWMA_ALPHA) -> float:
+    """Exponentially weighted moving average; newest value weighted ``alpha``."""
+    if not values:
+        return 0.0
+    avg = values[0]
+    for v in values[1:]:
+        avg = alpha * v + (1 - alpha) * avg
+    return avg
+
+
 def scan_anomalies(tenant_id: str, *, z_threshold: float = DEFAULT_Z_THRESHOLD) -> dict[str, Any]:
     """Run cost + behavior anomaly detection for a tenant from persisted stores."""
     from agent_bom.api.cost_store import get_cost_store
     from agent_bom.api.runtime_event_store import get_runtime_event_store
 
     spend_by_agent: dict[str, float] = defaultdict(float)
+    cost_series_by_agent: dict[str, list[tuple[str, float]]] = defaultdict(list)
     for rec in get_cost_store().list_records(tenant_id, limit=10000):
         if rec.agent:
             spend_by_agent[rec.agent] += rec.cost_usd
+            cost_series_by_agent[rec.agent].append((rec.observed_at, rec.cost_usd))
 
     calls_by_session: dict[str, int] = {}
     for session in get_runtime_event_store().list_sessions(tenant_id, limit=1000):
@@ -118,13 +252,15 @@ def scan_anomalies(tenant_id: str, *, z_threshold: float = DEFAULT_Z_THRESHOLD) 
 
     cost = detect_cost_anomalies(dict(spend_by_agent), z_threshold=z_threshold)
     behavior = detect_behavior_anomalies(calls_by_session, z_threshold=z_threshold)
+    temporal = detect_temporal_cost_anomalies(dict(cost_series_by_agent))
     return {
         "schema_version": "observability.anomalies.v1",
         "tenant_id": tenant_id,
         "z_threshold": z_threshold,
         "cost_anomalies": cost,
+        "temporal_cost_anomalies": temporal,
         "behavior_anomalies": behavior,
-        "anomaly_count": len(cost) + len(behavior),
+        "anomaly_count": len(cost) + len(behavior) + len(temporal),
     }
 
 

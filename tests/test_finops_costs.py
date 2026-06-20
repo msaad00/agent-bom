@@ -59,7 +59,7 @@ def test_operator_override(monkeypatch):
 # ── store + aggregation ─────────────────────────────────────────────────────────
 
 
-def _rec(agent="agent-a", model="gpt-4o", provider="openai", cost=1.0, call_id="c1", priced=True):
+def _rec(agent="agent-a", model="gpt-4o", provider="openai", cost=1.0, call_id="c1", priced=True, cost_center="", allocation_tags=None):
     return LLMCostRecord(
         tenant_id="t1",
         call_id=call_id,
@@ -72,6 +72,8 @@ def _rec(agent="agent-a", model="gpt-4o", provider="openai", cost=1.0, call_id="
         cost_usd=cost,
         priced=priced,
         observed_at="2026-06-01T00:00:00Z",
+        cost_center=cost_center,
+        allocation_tags=allocation_tags or {},
     )
 
 
@@ -102,6 +104,97 @@ def test_summarize_rollups():
     assert report["unpriced_calls"] == 1
     top_agent = report["by_agent"][0]
     assert top_agent["key"] == "a" and top_agent["cost_usd"] == 3.0
+
+
+# ── chargeback / showback allocation (#2925) ────────────────────────────────────
+
+
+def test_by_cost_center_rollup():
+    records = [
+        _rec(call_id="1", cost=2.0, cost_center="team-search"),
+        _rec(call_id="2", cost=3.0, cost_center="team-search"),
+        _rec(call_id="3", cost=1.0, cost_center="team-rag"),
+        _rec(call_id="4", cost=0.5),  # unallocated
+    ]
+    report = summarize(records)
+    by_cc = {b["key"]: b["cost_usd"] for b in report["by_cost_center"]}
+    assert by_cc["team-search"] == 5.0
+    assert by_cc["team-rag"] == 1.0
+    assert by_cc["unallocated"] == 0.5
+    # top bucket sorts by spend
+    assert report["by_cost_center"][0]["key"] == "team-search"
+
+
+def test_summarize_by_tag():
+    from agent_bom.api.cost_store import summarize_by_tag
+
+    records = [
+        _rec(call_id="1", cost=2.0, allocation_tags={"env": "prod"}),
+        _rec(call_id="2", cost=4.0, allocation_tags={"env": "prod"}),
+        _rec(call_id="3", cost=1.0, allocation_tags={"env": "dev"}),
+        _rec(call_id="4", cost=0.5),  # no env tag -> unallocated
+    ]
+    report = summarize_by_tag(records, "env")
+    assert report["tag_key"] == "env"
+    by_tag = {b["key"]: b["cost_usd"] for b in report["by_tag"]}
+    assert by_tag == {"prod": 6.0, "dev": 1.0, "unallocated": 0.5}
+
+
+def test_total_spend_by_cost_center():
+    store = InMemoryCostStore()
+    store.record_cost(_rec(call_id="1", cost=2.0, cost_center="team-a"))
+    store.record_cost(_rec(call_id="2", cost=3.0, cost_center="team-a"))
+    store.record_cost(_rec(call_id="3", cost=9.0, cost_center="team-b"))
+    assert store.total_spend_by_cost_center("t1", "team-a") == 5.0
+    assert store.total_spend_by_cost_center("t1", "team-b") == 9.0
+    assert store.total_spend_by_cost_center("t1", "team-missing") == 0.0
+
+
+def test_cost_center_budget_keyed_independently_of_agent():
+    store = InMemoryCostStore()
+    store.set_budget(CostBudget("t1", "", 10.0, "2026-06-02", "enforce", cost_center="team-a"))
+    store.set_budget(CostBudget("t1", "agent-x", 99.0, "2026-06-02", "report"))
+    cc_budget = store.get_budget("t1", "", cost_center="team-a")
+    assert cc_budget is not None and cc_budget.limit_usd == 10.0 and cc_budget.cost_center == "team-a"
+    # agent budget is a different key, untouched by the cost-center budget
+    agent_budget = store.get_budget("t1", "agent-x")
+    assert agent_budget is not None and agent_budget.limit_usd == 99.0
+
+
+def test_check_cost_center_budget_enforcement():
+    from agent_bom.api.cost_store import check_cost_center_budget_enforcement
+
+    store = InMemoryCostStore()
+    store.record_cost(_rec(call_id="1", cost=8.0, cost_center="team-a"))
+    store.record_cost(_rec(call_id="2", cost=5.0, cost_center="team-a"))
+    # report mode never blocks
+    store.set_budget(CostBudget("t1", "", 10.0, "2026-06-02", "report", cost_center="team-a"))
+    assert check_cost_center_budget_enforcement(store, "t1", "team-a")[0] is False
+    # enforce + over limit (13 >= 10) blocks
+    store.set_budget(CostBudget("t1", "", 10.0, "2026-06-02", "enforce", cost_center="team-a"))
+    assert check_cost_center_budget_enforcement(store, "t1", "team-a")[0] is True
+    # enforce + under limit does not
+    store.set_budget(CostBudget("t1", "", 100.0, "2026-06-02", "enforce", cost_center="team-a"))
+    assert check_cost_center_budget_enforcement(store, "t1", "team-a")[0] is False
+    # no cost center -> never blocks
+    assert check_cost_center_budget_enforcement(store, "t1", "")[0] is False
+
+
+def test_sqlite_store_persists_allocation(tmp_path):
+    from agent_bom.api.cost_store import SQLiteCostStore
+
+    db = str(tmp_path / "alloc.db")
+    store = SQLiteCostStore(db)
+    store.record_cost(_rec(call_id="1", cost=2.0, cost_center="team-a", allocation_tags={"env": "prod", "team": "search"}))
+    store.set_budget(CostBudget("t1", "", 5.0, "2026-06-02", "enforce", cost_center="team-a"))
+    # reopen to prove durability + migration idempotency
+    store2 = SQLiteCostStore(db)
+    rec = store2.list_records("t1")[0]
+    assert rec.cost_center == "team-a"
+    assert rec.allocation_tags == {"env": "prod", "team": "search"}
+    assert store2.total_spend_by_cost_center("t1", "team-a") == 2.0
+    budget = store2.get_budget("t1", "", cost_center="team-a")
+    assert budget is not None and budget.limit_usd == 5.0 and budget.mode == "enforce"
 
 
 def test_budget_status_exceeded():
@@ -227,4 +320,48 @@ def test_set_budget_mode_via_api(client):
     assert put.status_code == 200, put.text
     assert put.json()["mode"] == "enforce"
     bad = client.put("/v1/observability/costs/budget", json={"limit_usd": 5.0, "mode": "bogus"})
+    assert bad.status_code == 400
+
+
+def _ml_otlp_payload_with_allocation():
+    payload = _ml_otlp_payload()
+    payload["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["attributes"].extend(
+        [
+            {"key": "agent.cost_center", "value": {"stringValue": "team-search"}},
+            {"key": "allocation.tag.env", "value": {"stringValue": "prod"}},
+        ]
+    )
+    return payload
+
+
+def test_ingest_maps_cost_center_and_tags(client):
+    resp = client.post("/v1/traces", json=_ml_otlp_payload_with_allocation())
+    assert resp.status_code == 200, resp.text
+
+    costs = client.get("/v1/observability/costs?tag=env").json()
+    by_cc = {b["key"]: b["cost_usd"] for b in costs["by_cost_center"]}
+    assert by_cc["team-search"] == 12.5
+    by_tag = {b["key"]: b["cost_usd"] for b in costs["tag_rollup"]["by_tag"]}
+    assert by_tag["prod"] == 12.5
+
+    scoped = client.get("/v1/observability/costs?cost_center=team-search").json()
+    assert scoped["total_cost_usd"] == 12.5
+
+
+def test_cost_center_budget_via_api(client):
+    client.post("/v1/traces", json=_ml_otlp_payload_with_allocation())  # $12.50 to team-search
+    put = client.put("/v1/observability/costs/budget", json={"limit_usd": 10.0, "cost_center": "team-search", "mode": "enforce"})
+    assert put.status_code == 200, put.text
+    body = put.json()
+    assert body["cost_center"] == "team-search"
+    assert body["exceeded"] is True
+    assert body["mode"] == "enforce"
+
+    status = client.get("/v1/observability/costs/budget?cost_center=team-search").json()
+    assert status["spend_usd"] == 12.5
+    assert status["exceeded"] is True
+
+
+def test_agent_and_cost_center_budget_mutually_exclusive(client):
+    bad = client.put("/v1/observability/costs/budget", json={"limit_usd": 5.0, "agent": "a", "cost_center": "team-x"})
     assert bad.status_code == 400

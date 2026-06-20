@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 from starlette.testclient import TestClient
 
-from agent_bom.api.anomaly import detect_behavior_anomalies, detect_cost_anomalies, scan_anomalies
+from agent_bom.api.anomaly import (
+    detect_behavior_anomalies,
+    detect_cost_anomalies,
+    detect_temporal_cost_anomalies,
+    scan_anomalies,
+)
 from agent_bom.api.cost_store import InMemoryCostStore, LLMCostRecord, set_cost_store
 from agent_bom.api.runtime_event_store import InMemoryRuntimeEventStore, set_runtime_event_store
 
@@ -30,6 +35,46 @@ def test_behavior_call_rate_spike():
     calls = {"s1": 5, "s2": 6, "s3": 4, "s4": 5, "s5": 500}
     anomalies = detect_behavior_anomalies(calls)
     assert any(x["session_id"] == "s5" and x["type"] == "call_rate_spike" for x in anomalies)
+
+
+# ── temporal / seasonal baselines (#2926) ────────────────────────────────────────
+
+
+def test_predictable_nightly_spike_is_not_flagged():
+    # Every night at 02:00 UTC the agent runs a big batch job (~$5), and during
+    # the day it is quiet (~$0.5). The latest night job is in-pattern, so the
+    # seasonal baseline absorbs it and it must NOT be flagged.
+    series = []
+    for day in range(1, 8):  # 7 days of history
+        series.append((f"2026-06-0{day}T02:00:00Z", 5.0))  # nightly batch
+        series.append((f"2026-06-0{day}T10:00:00Z", 0.5))  # daytime
+        series.append((f"2026-06-0{day}T14:00:00Z", 0.5))  # daytime
+    # latest occurrence is another in-pattern nightly batch
+    series.append(("2026-06-08T02:00:00Z", 5.2))
+    out = detect_temporal_cost_anomalies({"batch-agent": series})
+    assert out == []
+
+
+def test_slow_creep_is_flagged():
+    # Same 02:00 slot, but the latest run is a large surge over both the seasonal
+    # baseline for that slot AND the agent's overall EWMA -> flagged.
+    series = []
+    for day in range(1, 8):
+        series.append((f"2026-06-0{day}T02:00:00Z", 5.0))
+        series.append((f"2026-06-0{day}T10:00:00Z", 0.5))
+    series.append(("2026-06-08T02:00:00Z", 60.0))  # surge, ~12x the slot baseline
+    out = detect_temporal_cost_anomalies({"batch-agent": series})
+    assert len(out) == 1
+    spike = out[0]
+    assert spike["type"] == "temporal_cost_spike"
+    assert spike["agent"] == "batch-agent"
+    assert "seasonal" in spike["signals"]
+    assert spike["bucket"]["hour"] == 2
+
+
+def test_temporal_needs_minimum_history():
+    series = [("2026-06-01T02:00:00Z", 1.0), ("2026-06-01T03:00:00Z", 99.0)]
+    assert detect_temporal_cost_anomalies({"a": series}) == []
 
 
 @pytest.fixture()

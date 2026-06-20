@@ -54,8 +54,7 @@ def run_cloud_discovery(
     jira_token: Any = None,
     servicenow_flag: bool = False,
     servicenow_instance: Any = None,
-    servicenow_user: Any = None,
-    servicenow_password: Any = None,
+    servicenow_token: Any = None,
     slack_discover: bool = False,
     slack_bot_token: Any = None,
     **kwargs: Any,
@@ -157,9 +156,7 @@ def run_cloud_discovery(
     if not skill_only and jira_discover:
         saas_connectors.append(("jira", {"jira_url": jira_url, "email": jira_user, "api_token": jira_token}))
     if not skill_only and servicenow_flag:
-        saas_connectors.append(
-            ("servicenow", {"instance_url": servicenow_instance, "username": servicenow_user, "password": servicenow_password})
-        )
+        saas_connectors.append(("servicenow", {"instance_url": servicenow_instance, "token": servicenow_token}))
     if not skill_only and slack_discover:
         saas_connectors.append(("slack", {"bot_token": slack_bot_token}))
 

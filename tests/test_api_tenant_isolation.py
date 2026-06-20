@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from agent_bom.api import tenant_quota as tenant_quota_module
 from agent_bom.api.audit_log import InMemoryAuditLog, get_audit_log, set_audit_log
+from agent_bom.api.credential_store import InMemoryCredentialRefStore
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
@@ -28,6 +29,7 @@ from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.api.stores import (
     _jobs,
+    set_credential_ref_store,
     set_fleet_store,
     set_graph_store,
     set_job_store,
@@ -662,6 +664,7 @@ def test_sqlite_job_store_filters_by_tenant(tmp_path):
 async def test_compliance_routes_are_tenant_scoped():
     store = InMemoryJobStore()
     set_job_store(store)
+    set_credential_ref_store(InMemoryCredentialRefStore())
     alpha_job = ScanJob(
         job_id="job-alpha",
         tenant_id="tenant-alpha",

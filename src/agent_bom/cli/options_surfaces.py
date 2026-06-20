@@ -518,8 +518,13 @@ def integration_options(fn):
             click.option(
                 "--servicenow-instance", default=None, envvar="SERVICENOW_INSTANCE", metavar="URL", help="ServiceNow instance URL"
             ),
-            click.option("--servicenow-user", default=None, envvar="SERVICENOW_USER", metavar="USER", help="ServiceNow username"),
-            click.option("--servicenow-password", default=None, envvar="SERVICENOW_PASSWORD", metavar="PWD", help="ServiceNow password"),
+            click.option(
+                "--servicenow-token",
+                default=None,
+                envvar="AGENT_BOM_SERVICENOW_TOKEN",
+                metavar="TOKEN",
+                help="ServiceNow OAuth/API bearer token",
+            ),
             click.option("--slack-discover", is_flag=True, help="Discover installed Slack apps and bots in workspace"),
             click.option(
                 "--slack-bot-token", default=None, envvar="SLACK_BOT_TOKEN", metavar="TOKEN", help="Slack bot token for app discovery"

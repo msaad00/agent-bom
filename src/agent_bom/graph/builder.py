@@ -893,11 +893,14 @@ def build_unified_graph_from_report(
             vuln_node.attributes["actionable"] = br_dict.get("actionable", False)
 
     # ── General cloud-asset inventory (estate-wide, opt-in) ──────────
-    # Promote estate-wide cloud assets (S3 buckets, EC2 instances + security
-    # groups, IAM roles/users) into the graph so a resource with no CIS/IaC
-    # finding still becomes a node the CNAPP / effective-permissions overlays
-    # below can consume. Runs before those overlays so they see the inventory.
-    _add_cloud_inventory(graph, report_json.get("cloud_inventory"), data_source_tag)
+    # Promote estate-wide cloud assets (AWS S3/EC2/IAM, Azure storage/VM/NSG/
+    # managed-identity, GCP GCS/compute/firewall/service-account) into the graph
+    # so a resource with no CIS/IaC finding still becomes a node the CNAPP /
+    # effective-permissions overlays below can consume. Runs before those
+    # overlays so they see the inventory. Accepts one payload or a list of
+    # per-provider payloads.
+    for inventory_payload in _iter_cloud_inventories(report_json.get("cloud_inventory")):
+        _add_cloud_inventory(graph, inventory_payload, data_source_tag)
 
     # Cloud-CNAPP enrichment: derive internet exposure, data stores, and toxic
     # (exposed + vulnerable) chains from the CIS/IaC findings now in the graph.
@@ -1470,6 +1473,7 @@ _PRINCIPAL_TYPE_TO_ENTITY: dict[str, EntityType] = {
     "federated-user": EntityType.FEDERATED_IDENTITY,
     "group": EntityType.GROUP,
     "iam-role": EntityType.ROLE,
+    "managed-identity": EntityType.MANAGED_IDENTITY,
     "oidc": EntityType.FEDERATED_IDENTITY,
     "policy": EntityType.POLICY,
     "role": EntityType.ROLE,
@@ -1489,6 +1493,7 @@ _IDENTITY_NODE_PREFIX: dict[EntityType, str] = {
     EntityType.POLICY: "policy",
     EntityType.SERVICE_ACCOUNT: "service_account",
     EntityType.SERVICE_PRINCIPAL: "service_principal",
+    EntityType.MANAGED_IDENTITY: "managed_identity",
     EntityType.FEDERATED_IDENTITY: "federated_identity",
 }
 
@@ -1865,6 +1870,105 @@ def _add_agent_cloud_lineage(
     )
 
 
+def _iter_cloud_inventories(raw: Any) -> list[dict[str, Any]]:
+    """Yield each cloud-inventory payload from a single dict or a list.
+
+    The ``cloud_inventory`` report section may carry one provider's payload
+    (AWS, the original shape) or a list of per-provider payloads (AWS + Azure +
+    GCP). Non-dict entries are ignored.
+    """
+    if isinstance(raw, dict):
+        return [raw]
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    return []
+
+
+def _normalize_cloud_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
+    """Map a per-provider inventory payload onto the canonical builder shape.
+
+    AWS payloads already use the canonical keys (``buckets`` / ``instances`` /
+    ``security_groups`` / ``roles`` / ``users``). Azure and GCP payloads carry
+    provider-native keys (``storage_accounts`` / ``firewalls`` /
+    ``managed_identities`` / ``service_accounts`` …); this translates them into
+    the same lists, tagging each resource with ``_service`` / ``_kind`` /
+    ``_label`` / ``_resource_type`` so node IDs and the CNAPP data-store keyword
+    match stay provider-accurate. Unknown providers pass through untouched.
+    """
+    provider = _clean_graph_part(inventory.get("provider")).lower()
+    if provider == "azure":
+        return _normalize_azure_inventory(inventory)
+    if provider == "gcp":
+        return _normalize_gcp_inventory(inventory)
+    return inventory
+
+
+def _normalize_azure_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
+    """Translate an Azure inventory payload into the canonical builder shape."""
+    buckets: list[dict[str, Any]] = []
+    for account in inventory.get("storage_accounts", []) or []:
+        if not isinstance(account, dict):
+            continue
+        buckets.append(
+            {
+                **account,
+                "_service": "storage",
+                "_kind": "azure-storage-account",
+                # "storage account" is a CNAPP data-store keyword.
+                "_label": "storage account",
+            }
+        )
+    groups: list[dict[str, Any]] = []
+    for nsg in inventory.get("security_groups", []) or []:
+        if not isinstance(nsg, dict):
+            continue
+        groups.append({**nsg, "_service": "network", "_kind": "azure-nsg", "_resource_type": "network-security-group"})
+    instances: list[dict[str, Any]] = []
+    for vm in inventory.get("instances", []) or []:
+        if not isinstance(vm, dict):
+            continue
+        instances.append({**vm, "_service": "compute", "_kind": "azure-vm", "_label": "vm"})
+    principals = [p for p in inventory.get("managed_identities", []) or [] if isinstance(p, dict)]
+    principals.extend(p for p in inventory.get("service_principals", []) or [] if isinstance(p, dict))
+    return {
+        **inventory,
+        "buckets": buckets,
+        "security_groups": groups,
+        "instances": instances,
+        "roles": [],
+        "users": principals,
+    }
+
+
+def _normalize_gcp_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
+    """Translate a GCP inventory payload into the canonical builder shape."""
+    buckets: list[dict[str, Any]] = []
+    for bucket in inventory.get("buckets", []) or []:
+        if not isinstance(bucket, dict):
+            continue
+        # "bucket" is already a CNAPP data-store keyword; keep gcs service tag.
+        buckets.append({**bucket, "_service": "gcs", "_kind": "gcs-bucket", "_label": "gcs bucket"})
+    groups: list[dict[str, Any]] = []
+    for firewall in inventory.get("firewalls", []) or []:
+        if not isinstance(firewall, dict):
+            continue
+        groups.append({**firewall, "_service": "compute", "_kind": "gcp-firewall", "_resource_type": "firewall"})
+    instances: list[dict[str, Any]] = []
+    for instance in inventory.get("instances", []) or []:
+        if not isinstance(instance, dict):
+            continue
+        instances.append({**instance, "_service": "compute", "_kind": "gce-instance", "_label": "gce"})
+    principals = [p for p in inventory.get("service_accounts", []) or [] if isinstance(p, dict)]
+    return {
+        **inventory,
+        "buckets": buckets,
+        "security_groups": groups,
+        "instances": instances,
+        "roles": [],
+        "users": principals,
+    }
+
+
 def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) -> None:
     """Promote estate-wide cloud inventory into first-class graph nodes.
 
@@ -1889,6 +1993,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
     """
     if not isinstance(inventory, dict) or inventory.get("status") != "ok":
         return
+    inventory = _normalize_cloud_inventory(inventory)
     provider = _clean_graph_part(inventory.get("provider")) or "aws"
     account_id = _clean_graph_part(inventory.get("account_id"))
     region = _clean_graph_part(inventory.get("region"))
@@ -1927,21 +2032,25 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         name = _clean_graph_part(bucket.get("name"))
         if not name:
             continue
-        node_id = f"cloud_resource:{provider}:s3:bucket:{name}"
+        bucket_service = _clean_graph_part(bucket.get("_service")) or "s3"
+        bucket_kind = _clean_graph_part(bucket.get("_kind")) or "s3-bucket"
+        bucket_label = _clean_graph_part(bucket.get("_label")) or "s3 bucket"
+        node_id = f"cloud_resource:{provider}:{bucket_service}:bucket:{name}"
         graph.add_node(
             UnifiedNode(
                 id=node_id,
                 entity_type=EntityType.CLOUD_RESOURCE,
-                # Label carries "s3 bucket" so the CNAPP overlay's data-store
-                # keyword match fires and builds the DATA_STORE companion.
-                label=f"s3 bucket: {name}",
+                # Label carries a data-store keyword ("bucket"/"storage account")
+                # so the CNAPP overlay's data-store match fires and builds the
+                # DATA_STORE companion.
+                label=f"{bucket_label}: {name}",
                 attributes={
-                    "resource_id": bucket.get("arn") or name,
+                    "resource_id": bucket.get("arn") or bucket.get("id") or name,
                     "resource_name": name,
                     "resource_type": "bucket",
-                    "resource_kind": "s3-bucket",
+                    "resource_kind": bucket_kind,
                     "cloud_provider": provider,
-                    "cloud_service": "s3",
+                    "cloud_service": bucket_service,
                     "location": _clean_graph_part(bucket.get("location")) or region,
                     "internet_exposed": bool(bucket.get("publicly_accessible")),
                     "tags": bucket.get("tags", {}),
@@ -1967,20 +2076,23 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         group_id = _clean_graph_part(group.get("group_id"))
         if not group_id:
             continue
-        node_id = f"cloud_resource:{provider}:ec2:security-group:{group_id}"
+        sg_service = _clean_graph_part(group.get("_service")) or "ec2"
+        sg_kind = _clean_graph_part(group.get("_kind")) or "ec2-security-group"
+        sg_resource_type = _clean_graph_part(group.get("_resource_type")) or "security-group"
+        node_id = f"cloud_resource:{provider}:{sg_service}:{sg_resource_type}:{group_id}"
         sg_node_by_id[group_id] = node_id
         graph.add_node(
             UnifiedNode(
                 id=node_id,
                 entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"security-group: {group.get('name') or group_id}",
+                label=f"{sg_resource_type}: {group.get('name') or group_id}",
                 attributes={
                     "resource_id": group_id,
                     "resource_name": _clean_graph_part(group.get("name")) or group_id,
-                    "resource_type": "security-group",
-                    "resource_kind": "ec2-security-group",
+                    "resource_type": sg_resource_type,
+                    "resource_kind": sg_kind,
                     "cloud_provider": provider,
-                    "cloud_service": "ec2",
+                    "cloud_service": sg_service,
                     "location": region,
                     "vpc_id": _clean_graph_part(group.get("vpc_id")),
                     "internet_exposed": bool(group.get("internet_exposed")),
@@ -2000,20 +2112,23 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         instance_id = _clean_graph_part(instance.get("instance_id"))
         if not instance_id:
             continue
-        node_id = f"cloud_resource:{provider}:ec2:instance:{instance_id}"
+        inst_service = _clean_graph_part(instance.get("_service")) or "ec2"
+        inst_kind = _clean_graph_part(instance.get("_kind")) or "ec2-instance"
+        inst_label = _clean_graph_part(instance.get("_label")) or "ec2"
+        node_id = f"cloud_resource:{provider}:{inst_service}:instance:{instance_id}"
         public_ip = _clean_graph_part(instance.get("public_ip"))
         graph.add_node(
             UnifiedNode(
                 id=node_id,
                 entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"ec2: {instance.get('name') or instance_id}",
+                label=f"{inst_label}: {instance.get('name') or instance_id}",
                 attributes={
                     "resource_id": instance_id,
                     "resource_name": _clean_graph_part(instance.get("name")) or instance_id,
                     "resource_type": "instance",
-                    "resource_kind": "ec2-instance",
+                    "resource_kind": inst_kind,
                     "cloud_provider": provider,
-                    "cloud_service": "ec2",
+                    "cloud_service": inst_service,
                     "location": _clean_graph_part(instance.get("region")) or region,
                     "instance_type": _clean_graph_part(instance.get("instance_type")),
                     "image_id": _clean_graph_part(instance.get("image_id")),

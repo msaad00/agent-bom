@@ -19,6 +19,8 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Iterable
 
+from agent_bom.security import mask_email
+
 # ─── Tier definition ─────────────────────────────────────────────────────────
 
 
@@ -342,6 +344,11 @@ def redact_for_persistence(payload: Any, target_tier: EvidenceTier) -> Any:
         return [redact_for_persistence(item, target_tier) for item in payload]
     if isinstance(payload, tuple):
         return tuple(redact_for_persistence(item, target_tier) for item in payload)
+    # Email is sensitive PII: mask any address that survives into a persisted
+    # value (e.g. nested inside a retained tier-A container like ``actor`` or
+    # ``details``). Non-email strings pass through unchanged.
+    if isinstance(payload, str):
+        return mask_email(payload)
     return payload
 
 

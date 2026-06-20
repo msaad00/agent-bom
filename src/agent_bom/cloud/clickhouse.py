@@ -38,7 +38,7 @@ class ClickHouseClient:
         self,
         url: str | None = None,
         user: str | None = None,
-        password: str | None = None,
+        access_token: str | None = None,
         database: str = "agent_bom",
         timeout: int = _DEFAULT_TIMEOUT,
     ) -> None:
@@ -46,7 +46,10 @@ class ClickHouseClient:
         if not self.url:
             raise ClickHouseError("ClickHouse URL required. Set AGENT_BOM_CLICKHOUSE_URL or pass url=.")
         self.user: str = (user or os.environ.get("AGENT_BOM_CLICKHOUSE_USER")) or "default"
-        self.password: str = (password or os.environ.get("AGENT_BOM_CLICKHOUSE_PASSWORD")) or ""
+        # Policy: no passwords. The auth secret is a short-lived access token /
+        # API key, referenced from the OS environment only and never stored or
+        # logged. ClickHouse accepts a token in the X-ClickHouse-Key slot.
+        self.access_token: str = (access_token or os.environ.get("AGENT_BOM_CLICKHOUSE_ACCESS_TOKEN")) or ""
         self.database = database
         self.timeout = timeout
 
@@ -58,7 +61,7 @@ class ClickHouseClient:
         """Execute a query, return raw response text."""
         headers = {
             "X-ClickHouse-User": self.user,
-            "X-ClickHouse-Key": self.password,
+            "X-ClickHouse-Key": self.access_token,
             "X-ClickHouse-Database": self.database,
         }
         data = query.encode("utf-8")

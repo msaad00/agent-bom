@@ -51,10 +51,10 @@ class TestClickHouseClient:
     def test_init_from_args(self):
         from agent_bom.cloud.clickhouse import ClickHouseClient
 
-        c = ClickHouseClient(url="http://localhost:8123", user="admin", password="pw", database="test_db")
+        c = ClickHouseClient(url="http://localhost:8123", user="admin", access_token="tok", database="test_db")
         assert c.url == "http://localhost:8123"
         assert c.user == "admin"
-        assert c.password == "pw"
+        assert c.access_token == "tok"
         assert c.database == "test_db"
 
     def test_init_from_env(self):
@@ -63,13 +63,27 @@ class TestClickHouseClient:
         env = {
             "AGENT_BOM_CLICKHOUSE_URL": "http://ch.example.com:8123",
             "AGENT_BOM_CLICKHOUSE_USER": "myuser",
-            "AGENT_BOM_CLICKHOUSE_PASSWORD": "secret",
+            "AGENT_BOM_CLICKHOUSE_ACCESS_TOKEN": "env-token",
         }
         with patch.dict(os.environ, env, clear=False):
             c = ClickHouseClient()
             assert c.url == "http://ch.example.com:8123"
             assert c.user == "myuser"
-            assert c.password == "secret"
+            assert c.access_token == "env-token"
+
+    def test_no_password_kwarg(self):
+        """Policy: the client must not accept a password — only an access token."""
+        from agent_bom.cloud.clickhouse import ClickHouseClient
+
+        with pytest.raises(TypeError):
+            ClickHouseClient(url="http://localhost:8123", password="pw")  # type: ignore[call-arg]
+
+    def test_access_token_falls_back_to_empty(self):
+        from agent_bom.cloud.clickhouse import ClickHouseClient
+
+        with patch.dict(os.environ, {"AGENT_BOM_CLICKHOUSE_URL": "http://localhost:8123"}, clear=True):
+            c = ClickHouseClient()
+            assert c.access_token == ""
 
     def test_init_no_url_raises(self):
         from agent_bom.cloud.clickhouse import ClickHouseClient, ClickHouseError
@@ -88,14 +102,14 @@ class TestClickHouseClient:
         """Verify X-ClickHouse-User / X-ClickHouse-Key headers are set."""
         from agent_bom.cloud.clickhouse import ClickHouseClient
 
-        c = ClickHouseClient(url="http://localhost:8123", user="admin", password="pw")
+        c = ClickHouseClient(url="http://localhost:8123", user="admin", access_token="tok")
 
         with patch("agent_bom.http_client.sync_request_with_retry", return_value=_mock_response("OK")) as mock_req:
             c.execute("SELECT 1")
             _, kwargs = mock_req.call_args[0], mock_req.call_args[1]
             headers = kwargs.get("headers", {})
             assert headers["X-ClickHouse-User"] == "admin"
-            assert headers["X-ClickHouse-Key"] == "pw"
+            assert headers["X-ClickHouse-Key"] == "tok"
             assert headers["X-ClickHouse-Database"] == "agent_bom"
 
     def test_execute_sends_post(self):

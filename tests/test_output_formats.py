@@ -699,6 +699,7 @@ def test_spdx_vulnerability_annotations_preserve_enrichment_and_compliance_metad
     report = _make_report(agents=[_make_agent(servers=[_make_server(packages=[pkg])])], blast_radii=[br])
 
     spdx = to_spdx(report)
+    assert spdx["@context"] == "https://spdx.org/rdf/3.0.0/spdx-context.jsonl"
     vuln_element = next(element for element in spdx["elements"] if element.get("type") == "security/Vulnerability")
     statements = {annotation["statement"] for annotation in vuln_element["annotation"]}
 

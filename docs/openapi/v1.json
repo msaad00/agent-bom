@@ -12610,6 +12610,108 @@
         ]
       }
     },
+    "/v1/identities/discover": {
+      "post": {
+        "description": "Discover non-human identities (service accounts / principals) from IdPs.\n\nRead-only and reference-only: enumerates Okta service apps + API tokens and\nEntra service principals + app registrations and returns normalized metadata\n(id / name / owner / created / credential expiry / scope references) \u2014 never\nany secret material. Each provider is gated by its own ``*_DISCOVERY`` env\nflag and token; a disabled or unconfigured provider is reported in\n``providers`` rather than failing the request. Never runs a network call for\na provider whose flag is off.",
+        "operationId": "discover_non_human_identities_v1_identities_discover_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Discover Non Human Identities V1 Identities Discover Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Discover Non Human Identities",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/v1/identities/{identity_id}": {
       "get": {
         "description": "Return one agent identity's lifecycle status (metadata only).",

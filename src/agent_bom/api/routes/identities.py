@@ -521,6 +521,57 @@ async def get_conditional_access_policy(request: Request, policy_id: str) -> dic
     return {"schema_version": "agent.identity.conditional.v1", "policy": policy.to_public_dict()}
 
 
+@router.post("/v1/identities/discover", dependencies=[_dep("read")])
+async def discover_non_human_identities(request: Request, body: dict | None = None) -> dict[str, object]:
+    """Discover non-human identities (service accounts / principals) from IdPs.
+
+    Read-only and reference-only: enumerates Okta service apps + API tokens and
+    Entra service principals + app registrations and returns normalized metadata
+    (id / name / owner / created / credential expiry / scope references) — never
+    any secret material. Each provider is gated by its own ``*_DISCOVERY`` env
+    flag and token; a disabled or unconfigured provider is reported in
+    ``providers`` rather than failing the request. Never runs a network call for
+    a provider whose flag is off.
+    """
+    from agent_bom.graph.nhi_overlay import merge_discovery_results
+    from agent_bom.identity import (
+        discover_entra_non_human_identities,
+        discover_okta_non_human_identities,
+    )
+
+    payload = body or {}
+    requested = payload.get("providers")
+    if isinstance(requested, list) and requested:
+        selected = {str(p).strip().lower() for p in requested}
+    else:
+        selected = {"okta", "entra"}
+
+    results = []
+    if "okta" in selected:
+        results.append(discover_okta_non_human_identities())
+    if "entra" in selected:
+        results.append(discover_entra_non_human_identities())
+
+    merged = merge_discovery_results(results)
+    log_action(
+        "identity.nhi_discovered",
+        actor=_actor(request),
+        resource="identities/discover",
+        tenant_id=_tenant(request),
+        providers=[p.get("provider") for p in merged["providers"]],
+        count=len(merged["identities"]),
+    )
+    return {
+        "schema_version": "identity.nhi.discovery.v1",
+        "tenant_id": _tenant(request),
+        "status": merged["status"],
+        "providers": merged["providers"],
+        "count": len(merged["identities"]),
+        "identities": merged["identities"],
+        "warnings": merged["warnings"],
+    }
+
+
 @router.get("/v1/identities", dependencies=[_dep("read")])
 async def list_agent_identities(request: Request, include_inactive: bool = False, limit: int = 200) -> dict[str, object]:
     """List managed agent identities for the active tenant (metadata only)."""

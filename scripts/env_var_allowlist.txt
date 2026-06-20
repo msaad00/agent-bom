@@ -86,6 +86,9 @@ AGENT_BOM_DEPLOYMENT_ENV
 AGENT_BOM_DISABLE_DOCS
 AGENT_BOM_DISTRIBUTED_SCANS
 AGENT_BOM_ENABLE_LOCAL_PATH_SCANS
+AGENT_BOM_ENTRA_DISCOVERY  # opt-in flag (default OFF) gating read-only Entra ID (Azure AD) non-human-identity discovery; read in identity/entra_nhi.py
+AGENT_BOM_ENTRA_TENANT_ID  # Entra tenant id (informational) for read-only NHI discovery; read in identity/entra_nhi.py
+AGENT_BOM_ENTRA_TOKEN  # Microsoft Graph bearer token for read-only Entra NHI discovery (tokens-only, no passwords); never stored, read in identity/entra_nhi.py
 AGENT_BOM_ENV
 AGENT_BOM_EXTERNAL_SECRETS_ENABLED
 AGENT_BOM_GATEWAY_ALLOW_INSECURE_NO_AUTH

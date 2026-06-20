@@ -394,24 +394,26 @@ def test_scan_model_files_surfaces_manifests(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_sanitize_rejects_traversal():
+def test_sanitize_rejects_traversal(monkeypatch):
     """_sanitize_api_path rejects path traversal."""
     import pytest
 
     from agent_bom.api.server import _sanitize_api_path
     from agent_bom.security import SecurityError
 
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
     with pytest.raises(SecurityError, match="traversal"):
         _sanitize_api_path("subdir/../../etc/passwd")
 
 
-def test_sanitize_rejects_absolute_path():
+def test_sanitize_rejects_absolute_path(monkeypatch):
     """_sanitize_api_path rejects absolute paths."""
     import pytest
 
     from agent_bom.api.server import _sanitize_api_path
     from agent_bom.security import SecurityError
 
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
     with pytest.raises(SecurityError, match="Absolute paths"):
         _sanitize_api_path("/etc/passwd")
 
@@ -426,6 +428,7 @@ def test_sanitize_resolves_relative_to_home(tmp_path, monkeypatch):
     subdir = tmp_path / "projects"
     subdir.mkdir()
     monkeypatch.setattr("pathlib.Path.home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
 
     result = _sanitize_api_path("projects")
     assert result == os.path.realpath(str(subdir))
@@ -441,6 +444,7 @@ def test_sanitize_respects_configured_scan_root(tmp_path, monkeypatch):
     project = scan_root / "projects"
     project.mkdir(parents=True)
     monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(scan_root))
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
 
     result = _sanitize_api_path("projects")
 
@@ -460,9 +464,27 @@ def test_sanitize_rejects_symlink_leaf(tmp_path, monkeypatch):
     link = scan_root / "project-link"
     link.symlink_to(target, target_is_directory=True)
     monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(scan_root))
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
 
     with pytest.raises(SecurityError, match="Symlink"):
         _sanitize_api_path("project-link")
+
+
+def test_sanitize_disables_local_path_scans_by_default(tmp_path, monkeypatch):
+    """API-local filesystem scans require explicit opt-in."""
+    import pytest
+
+    from agent_bom.api.server import _sanitize_api_path
+    from agent_bom.security import SecurityError
+
+    scan_root = tmp_path / "tenant-workspace"
+    scan_root.mkdir()
+    monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(scan_root))
+    monkeypatch.delenv("AGENT_BOM_API_LOCAL_PATH_SCANS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_ENABLE_LOCAL_PATH_SCANS", raising=False)
+
+    with pytest.raises(SecurityError, match="disabled"):
+        _sanitize_api_path(".")
 
 
 def test_sanitize_can_disable_local_path_scans(tmp_path, monkeypatch):
@@ -487,6 +509,7 @@ def test_endpoint_returns_generic_invalid_scan_path(tmp_path, monkeypatch):
     scan_root = tmp_path / "tenant-workspace"
     scan_root.mkdir()
     monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(scan_root))
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
 
     resp = client.post("/v1/scan/dataset-cards", json={"directories": ["missing"]})
 

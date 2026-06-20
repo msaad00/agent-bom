@@ -362,13 +362,14 @@ control planes, `agent-bom` fails closed when a non-loopback listener is exposed
 without either trusted-proxy attestation or app-native mTLS.
 
 API-local filesystem scan endpoints are meant for workstation pilots. In EKS
-and other shared control planes, keep `AGENT_BOM_API_LOCAL_PATH_SCANS=disabled`
-and collect filesystem evidence through endpoint agents or mounted tenant
-workspaces. If a single-tenant deployment must enable API-local scans, set
-`AGENT_BOM_API_SCAN_ROOT` to the tenant workspace mount; paths are still
-relative-only, resolved through symlinks, confined to that root, and rejected
-when owned outside the API process unless `AGENT_BOM_API_SCAN_ALLOW_FOREIGN_OWNER=1`
-is explicitly set.
+and other shared control planes they are disabled by default; keep
+`AGENT_BOM_API_LOCAL_PATH_SCANS=disabled` and collect filesystem evidence
+through endpoint agents or mounted tenant workspaces. If a single-tenant
+deployment must enable API-local scans, set
+`AGENT_BOM_API_LOCAL_PATH_SCANS=enabled` and `AGENT_BOM_API_SCAN_ROOT` to the
+tenant workspace mount; paths are still relative-only, resolved through
+symlinks, confined to that root, and rejected when owned outside the API
+process unless `AGENT_BOM_API_SCAN_ALLOW_FOREIGN_OWNER=1` is explicitly set.
 
 For secret lifecycle posture, production deployments should declare the external
 secret authority and rotation metadata without exposing secret values:

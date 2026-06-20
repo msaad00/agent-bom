@@ -244,6 +244,20 @@ def test_check_incomplete_offline_scan_exits_two(monkeypatch):
     assert "populated local vulnerability DB" in result.output
 
 
+def test_check_accepts_offline_flag(monkeypatch):
+    seen = {}
+
+    async def _scan_packages(_pkgs, *, options=None, **_kwargs):
+        seen["offline"] = options.offline
+
+    monkeypatch.setattr("agent_bom.scanners.scan_packages", _scan_packages)
+
+    result = CliRunner().invoke(main, ["check", "django@4.1.0", "--ecosystem", "pypi", "--offline", "--quiet"])
+
+    assert result.exit_code == 0
+    assert seen == {"offline": True}
+
+
 class _DummyResponse:
     def __init__(self, status_code: int, payload: dict):
         self.status_code = status_code

@@ -1016,6 +1016,7 @@ class AIBOMReport:
     gpu_infra_data: Optional[dict] = None  # Serialized GPU/AI compute infra scan results
     iac_findings_data: Optional[dict] = None  # Serialized IaC misconfiguration findings (set by CLI)
     cloud_inventory_data: Optional[dict] = None  # Estate-wide cloud asset inventory (opt-in AGENT_BOM_CLOUD_INVENTORY)
+    identity_discovery_data: Optional[dict] = None  # Discovered non-human identities (opt-in AGENT_BOM_OKTA/ENTRA_DISCOVERY)
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
     delta_data: Optional[dict] = None  # Baseline/delta comparison metadata for CI gate outputs
     scan_performance_data: Optional[dict] = None  # Cache coverage / scan latency metadata

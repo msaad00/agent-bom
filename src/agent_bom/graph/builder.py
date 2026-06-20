@@ -899,6 +899,20 @@ def build_unified_graph_from_report(
     # below can consume. Runs before those overlays so they see the inventory.
     _add_cloud_inventory(graph, report_json.get("cloud_inventory"), data_source_tag)
 
+    # ── Discovered non-human identities (IdP service accounts, gated) ────
+    # Project NHIs enumerated by the identity connectors (Okta service apps /
+    # API tokens, Entra service principals / app registrations) into the graph
+    # as managed_identity nodes. Runs before the effective-permissions overlay
+    # so those principals feed assume/permission resolution. Gated upstream:
+    # the report only carries an "identity_discovery" block when an operator ran
+    # discovery, so this is a no-op on ordinary scans.
+    try:
+        from agent_bom.graph.nhi_overlay import apply_nhi_overlay_from_report
+
+        apply_nhi_overlay_from_report(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("NHI discovery overlay failed", exc_info=True)
+
     # Cloud-CNAPP enrichment: derive internet exposure, data stores, and toxic
     # (exposed + vulnerable) chains from the CIS/IaC findings now in the graph.
     try:

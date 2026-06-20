@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 
+from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.tenancy import require_request_tenant_id
 
 if TYPE_CHECKING:
@@ -140,8 +141,18 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
     source_id = body.source_id or "unknown"
     session_id = body.session_id or "default"
     analytics_events: list[dict] = []
+    request_hash = idempotency_request_fingerprint(body)
     if body.idempotency_key:
-        cached = _get_idempotency_store().get("/v1/proxy/audit", tenant_id, source_id, body.idempotency_key)
+        try:
+            cached = _get_idempotency_store().get(
+                "/v1/proxy/audit",
+                tenant_id,
+                source_id,
+                body.idempotency_key,
+                request_hash=request_hash,
+            )
+        except IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if cached is not None:
             cached["idempotent_replay"] = True
             return cached
@@ -250,7 +261,14 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         "has_summary": body.summary is not None,
     }
     if body.idempotency_key:
-        _get_idempotency_store().put("/v1/proxy/audit", tenant_id, source_id, body.idempotency_key, response)
+        _get_idempotency_store().put(
+            "/v1/proxy/audit",
+            tenant_id,
+            source_id,
+            body.idempotency_key,
+            response,
+            request_hash=request_hash,
+        )
     return response
 
 

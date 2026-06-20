@@ -35,7 +35,9 @@ PROVIDERS: list[tuple[str, ScanMode, RedactionStatus]] = [
     ("agent_bom.cloud.aws", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.aws_inventory", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.gcp", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
+    ("agent_bom.cloud.gcp_inventory", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.azure", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
+    ("agent_bom.cloud.azure_inventory", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.coreweave", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.nebius", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.snowflake", ScanMode.SAAS_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
@@ -64,7 +66,7 @@ _PERMISSION_PATTERN = re.compile(
     r"""
     ^(?:
         # GCP-style dotted permission: service.resource.verb
-        [a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+){2,}
+        [a-z][a-z0-9_-]*(?:\.[A-Za-z0-9_-]+){2,}
         |
         # Azure ARM: Microsoft.Service/path/verb
         Microsoft\.[A-Za-z0-9._/]+(?:/[a-z]+)+
@@ -202,9 +204,9 @@ def _parse_permissions_block(src: str) -> list[str]:
         block = match.group(1)
         for s in re.findall(r'"([^"]+)"', block):
             perms.add(s)
-    # AWS uses sorted/aggregated tuples; pull the per-job catalogs too.
+    # Some providers use sorted/aggregated tuples; pull the provider catalogs too.
     for match in re.finditer(
-        r"^_AWS_[A-Z_]+_PERMISSIONS\s*:\s*tuple.*?=\s*\(\s*((?:[^()]|\([^()]*\))*?)\s*\)",
+        r"^_[A-Z0-9_]+_PERMISSIONS\s*:\s*tuple.*?=\s*\(\s*((?:[^()]|\([^()]*\))*?)\s*\)",
         src,
         re.DOTALL | re.MULTILINE,
     ):

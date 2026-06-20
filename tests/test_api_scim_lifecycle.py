@@ -267,6 +267,22 @@ def test_scim_per_tenant_bearer_mapping_rejects_unsafe_config(
     assert posture["token_binding_count"] == 0
 
 
+def test_scim_posture_uses_fixed_message_for_invalid_token_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id = "tenant-secret"
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKENS_JSON", json.dumps({tenant_id: " "}))
+
+    posture = describe_scim_posture()
+    serialized = json.dumps(posture)
+
+    assert posture["status"] == "misconfigured"
+    assert posture["message"] == "SCIM bearer token configuration is invalid. Check control-plane logs and SCIM environment settings."
+    assert tenant_id not in serialized
+    assert "must not be blank" not in serialized
+    assert "SCIMConfigurationError" not in serialized
+    assert "Traceback" not in serialized
+
+
 def test_scim_group_create_patch_and_delete(scim_client: TestClient) -> None:
     user = scim_client.post(
         "/scim/v2/Users",

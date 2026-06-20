@@ -9,6 +9,7 @@ Covers:
 from __future__ import annotations
 
 import importlib
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -472,6 +473,27 @@ def test_auth_policy_redacts_oidc_config_errors(monkeypatch: pytest.MonkeyPatch)
     assert oidc["message"] == "OIDC configuration is invalid. Check control-plane logs and OIDC environment settings."
     assert "tenant-secret" not in oidc["message"]
     assert "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON" not in oidc["message"]
+
+
+def test_auth_policy_redacts_scim_config_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    tenant_id = "tenant-secret"
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKENS_JSON", json.dumps({tenant_id: " "}))
+
+    client = TestClient(app)
+    resp = client.get("/v1/auth/policy")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    scim = body["identity_provisioning"]["scim"]
+    serialized = json.dumps(body)
+    assert scim["status"] == "misconfigured"
+    assert scim["message"] == "SCIM bearer token configuration is invalid. Check control-plane logs and SCIM environment settings."
+    assert tenant_id not in serialized
+    assert "must not be blank" not in serialized
+    assert "SCIMConfigurationError" not in serialized
+    assert "Traceback" not in serialized
 
 
 def test_auth_policy_reports_secret_integrity_posture(monkeypatch: pytest.MonkeyPatch) -> None:

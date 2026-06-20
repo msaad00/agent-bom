@@ -69,6 +69,7 @@ def mcp_scan_cmd(server_spec: str, ecosystem: str | None, quiet: bool, no_color:
         output_path=None,
         exit_zero=exit_zero,
         enrich=False,
+        offline=False,
         fail_on_severity=None,
         nvd_api_key=None,
     )

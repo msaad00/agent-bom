@@ -109,8 +109,9 @@ Rate limiting also follows an explicit fail-closed contract for scaled control p
 
 API-local filesystem scans follow the same pilot-vs-control-plane split:
 
-- workstation pilot: relative paths under the API process home are allowed by default
-- EKS/shared control plane: Helm disables API-local filesystem scans by default with `AGENT_BOM_API_LOCAL_PATH_SCANS=disabled`
+- default posture: API-local filesystem scans are disabled unless `AGENT_BOM_API_LOCAL_PATH_SCANS=enabled` is set
+- workstation pilot: set `AGENT_BOM_API_LOCAL_PATH_SCANS=enabled`; relative paths resolve under the API process home unless `AGENT_BOM_API_SCAN_ROOT` is set
+- EKS/shared control plane: keep `AGENT_BOM_API_LOCAL_PATH_SCANS=disabled` and collect filesystem evidence through endpoint agents or mounted tenant workspaces
 - explicit single-tenant enablement: set `AGENT_BOM_API_SCAN_ROOT` to a mounted tenant workspace; the API still rejects absolute paths, traversal, symlink escapes, missing paths, and foreign-owned paths unless explicitly overridden
 
 Implementation source: `src/agent_bom/api/middleware.py`, `src/agent_bom/api/oidc.py`

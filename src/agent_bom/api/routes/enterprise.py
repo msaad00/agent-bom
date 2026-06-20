@@ -741,6 +741,14 @@ async def auth_secret_rotation_plan() -> dict:
     return build_secret_rotation_plan()
 
 
+@router.get("/v1/auth/secrets/credential-expiry", tags=["enterprise"])
+async def auth_secret_credential_expiry() -> dict:
+    """Return non-secret credential expiry/rotation governance for control-plane secrets."""
+    from agent_bom.api.credential_expiry import describe_credential_expiry_posture
+
+    return describe_credential_expiry_posture()
+
+
 @router.get("/v1/auth/scim/config", tags=["enterprise"])
 async def auth_scim_config() -> dict:
     """Return the operator-facing SCIM configuration posture."""

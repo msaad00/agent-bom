@@ -5192,6 +5192,30 @@
         ]
       }
     },
+    "/v1/auth/secrets/credential-expiry": {
+      "get": {
+        "description": "Return non-secret credential expiry/rotation governance for control-plane secrets.",
+        "operationId": "auth_secret_credential_expiry_v1_auth_secrets_credential_expiry_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Auth Secret Credential Expiry V1 Auth Secrets Credential Expiry Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Secret Credential Expiry",
+        "tags": [
+          "enterprise"
+        ]
+      }
+    },
     "/v1/auth/secrets/lifecycle": {
       "get": {
         "description": "Return non-secret lifecycle posture for configured control-plane secrets.",

@@ -79,6 +79,14 @@ def _tenant_jobs(request: Request) -> list:
     return _get_store().list_all(tenant_id=_tenant_id(request))
 
 
+def _credential_rotation_governance(tenant_id: str) -> dict[str, Any]:
+    try:
+        credentials = _get_credential_ref_store().list_all(tenant_id=tenant_id)
+    except RuntimeError:
+        credentials = []
+    return build_credential_rotation_governance(credentials, tenant_id=tenant_id)
+
+
 def _normalize_csv_filter(value: str | None) -> set[str]:
     if not value:
         return set()
@@ -1441,10 +1449,7 @@ async def get_credential_risk_ranking(request: Request) -> dict:
     associated vulnerability counts and affected agents.
     """
     tenant_id = _tenant_id(request)
-    rotation_governance = build_credential_rotation_governance(
-        _get_credential_ref_store().list_all(tenant_id=tenant_id),
-        tenant_id=tenant_id,
-    )
+    rotation_governance = _credential_rotation_governance(tenant_id)
     latest_result = None
     for job in _tenant_jobs(request):
         if job.status != JobStatus.DONE or not job.result:

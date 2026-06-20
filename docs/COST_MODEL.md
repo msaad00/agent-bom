@@ -53,11 +53,33 @@ Overrides win over the built-in table; model keys are matched as prefixes.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET`  | `/v1/observability/costs` | Spend by agent/model/provider + budget posture. Optional `?agent=` scope. |
+| `GET`  | `/v1/observability/costs` | Spend by agent/model/provider + budget posture + `forecast` block. Optional `?agent=` scope. |
 | `GET`  | `/v1/observability/costs/budget` | Configured cap + current utilization. |
 | `PUT`  | `/v1/observability/costs/budget` | Set a tenant or per-agent USD cap. Body: `{"limit_usd": 250.0, "agent": "optional"}`. |
+| `GET`  | `/v1/observability/costs/forecast` | Burn rate + projected period spend + budget runway. Optional `?agent=` scope. |
 
 The `cost_report` MCP tool exposes the same spend view to headless agents.
+
+## Forecasting
+
+`GET /v1/observability/costs/forecast` projects spend forward from the
+`observed_at` timestamps already on every cost record — no new dependency, math
+in `agent_bom.api.cost_forecast`. The same projection is embedded as a
+`forecast` block on the costs report.
+
+The burn rate is the higher of the trailing-24h and trailing-7d daily rates
+(conservative under acceleration). Fields:
+
+- `burn_rate_usd_per_day` / `burn_rate_basis` — recent daily spend rate and the
+  window it came from.
+- `projected_period_spend_usd` — extrapolated spend at the end of the current
+  calendar-month billing period.
+- `days_remaining` / `projected_exhaustion_at` — runway to the configured cap.
+- `status` — `ok`, `no_budget`, `budget_exceeded` (runway `0`), `stale`, or
+  `insufficient_history` (all projections null on sparse/empty history).
+
+A forecast is **reference only** — it never blocks a call. Enforcement stays in
+the relay (`mode: enforce`, above).
 
 ## Budgets
 

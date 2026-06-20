@@ -295,6 +295,27 @@ RATE_LIMIT_KEY_MAX_AGE_DAYS = _int("AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS", 90)
 RATE_LIMIT_KEY_LAST_ROTATED = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED") or "").strip()
 
 
+# ── Agent-to-Agent (A2A) auth posture ────────────────────────────────────
+# Governance thresholds for the A2A auth posture evaluator
+# (agent_bom.a2a_auth_posture). agent-bom does not broker A2A auth; it scans
+# discovered agents + gateway/proxy policies + delegation chains and flags
+# weak inter-agent authentication as findings.
+#
+# A2A_AUTH_MAX_DELEGATION_DEPTH: delegation chains deeper than this are flagged
+#   as over-broad/unbounded transitive delegation.
+# A2A_AUTH_MAX_BOUND_AGENTS: a policy that binds more than this many agents (and
+#   is therefore close to wildcard) is flagged as over-broad delegation scope.
+# A2A_AUTH_SHARED_TOKEN_MIN_AGENTS: an opaque token mapped to at least this many
+#   distinct agents is treated as a shared/long-lived credential.
+# A2A_AUTH_REQUIRE_SIGNED_TOKENS: when true, delegation crossing a trust
+#   boundary without a verifiable (signed/JWKS) actor token is flagged.
+
+A2A_AUTH_MAX_DELEGATION_DEPTH = _int("AGENT_BOM_A2A_AUTH_MAX_DELEGATION_DEPTH", 4)
+A2A_AUTH_MAX_BOUND_AGENTS = _int("AGENT_BOM_A2A_AUTH_MAX_BOUND_AGENTS", 10)
+A2A_AUTH_SHARED_TOKEN_MIN_AGENTS = _int("AGENT_BOM_A2A_AUTH_SHARED_TOKEN_MIN_AGENTS", 2)
+A2A_AUTH_REQUIRE_SIGNED_TOKENS = _bool("AGENT_BOM_A2A_AUTH_REQUIRE_SIGNED_TOKENS", True)
+
+
 # ── MCP Server Limits ────────────────────────────────────────────────────
 # Used by mcp_server.py for file-size and response-size guards, tool execution
 # governance, and lightweight in-process observability.

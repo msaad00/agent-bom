@@ -9362,13 +9362,19 @@ paths:
       - finops
   /v1/observability/costs:
     get:
-      description: 'Per-agent / per-model / per-provider LLM spend for the active
-        tenant.
+      description: 'Per-agent / per-model / per-provider / per-cost-center LLM spend.
 
 
         Spend is derived from token counts on ingested OTel GenAI spans priced via
 
-        the open cost model (agent_bom.cost_model). Includes budget posture.'
+        the open cost model (agent_bom.cost_model). Includes budget posture and the
+
+        chargeback/showback rollup ``by_cost_center`` (#2925). Pass ``cost_center``
+
+        to scope the report (and budget) to one allocation unit, or ``tag`` to add
+        a
+
+        ``by_tag`` showback slice for a freeform allocation tag.'
       operationId: get_llm_costs_v1_observability_costs_get
       parameters:
       - in: query
@@ -9379,6 +9385,22 @@ paths:
           - type: string
           - type: 'null'
           title: Agent
+      - in: query
+        name: cost_center
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cost Center
+      - in: query
+        name: tag
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tag
       - in: query
         name: limit
         required: false
@@ -9431,7 +9453,12 @@ paths:
       - finops
   /v1/observability/costs/budget:
     get:
-      description: Return the configured spend budget and current utilization.
+      description: 'Return the configured spend budget and current utilization.
+
+
+        Pass ``cost_center`` to read a chargeback budget scoped to one allocation
+
+        unit (#2925) instead of the per-agent / tenant-wide cap.'
       operationId: get_llm_cost_budget_v1_observability_costs_budget_get
       parameters:
       - in: query
@@ -9440,6 +9467,13 @@ paths:
         schema:
           default: ''
           title: Agent
+          type: string
+      - in: query
+        name: cost_center
+        required: false
+        schema:
+          default: ''
+          title: Cost Center
           type: string
       - in: header
         name: X-Agent-Bom-Role
@@ -9486,7 +9520,14 @@ paths:
       - observability
       - finops
     put:
-      description: 'Set a tenant (or per-agent) USD spend cap. Body: {limit_usd, agent?}.'
+      description: 'Set a USD spend cap. Body: {limit_usd, agent?, cost_center?, mode?}.
+
+
+        A ``cost_center`` scopes the cap to one chargeback unit (#2925); ``agent``
+
+        scopes it to one agent; neither means tenant-wide. ``agent`` and
+
+        ``cost_center`` are mutually exclusive.'
       operationId: set_llm_cost_budget_v1_observability_costs_budget_put
       parameters:
       - in: header

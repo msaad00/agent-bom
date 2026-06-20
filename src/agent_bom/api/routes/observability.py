@@ -290,11 +290,75 @@ def _persist_runtime_observations(events: list[dict[str, Any]], *, tenant_id: st
     return count
 
 
+# OTel attribute keys carrying the chargeback/showback allocation (#2925).
+# ``agent.cost_center`` / ``gen_ai.cost_center`` name the budget unit; any
+# ``allocation.tag.<name>`` attribute becomes a freeform showback tag.
+_COST_CENTER_KEYS = ("agent.cost_center", "gen_ai.cost_center", "cost_center")
+_ALLOCATION_TAG_PREFIX = "allocation.tag."
+_MAX_ALLOCATION_TAGS = 16
+
+
+def _attr_str(attr_value: Any) -> str:
+    if not isinstance(attr_value, dict):
+        return ""
+    return str(attr_value.get("stringValue") or attr_value.get("intValue") or attr_value.get("doubleValue") or "").strip()
+
+
+def _allocation_for_spans(body: dict) -> dict[str, tuple[str, dict[str, str]]]:
+    """Map ``trace_id:span_id`` -> (cost_center, allocation_tags) from OTLP attrs.
+
+    Span-level attributes win over resource-level ones, so a per-call override
+    beats a service-wide default. Tolerant of any non-OTLP shape (returns {}).
+    """
+    out: dict[str, tuple[str, dict[str, str]]] = {}
+    try:
+        resource_spans = body.get("resourceSpans") if isinstance(body, dict) else None
+        if not isinstance(resource_spans, list):
+            return out
+        for rs in resource_spans:
+            res_cc, res_tags = _read_allocation_attrs(rs.get("resource", {}).get("attributes", []) if isinstance(rs, dict) else [])
+            for ss in rs.get("scopeSpans", []) if isinstance(rs, dict) else []:
+                for span in ss.get("spans", []) if isinstance(ss, dict) else []:
+                    if not isinstance(span, dict):
+                        continue
+                    span_cc, span_tags = _read_allocation_attrs(span.get("attributes", []))
+                    merged_tags = {**res_tags, **span_tags}
+                    cost_center = span_cc or res_cc
+                    call_id = f"{span.get('traceId', '')}:{span.get('spanId', '')}"
+                    out[call_id] = (cost_center, merged_tags)
+    except Exception:  # noqa: BLE001
+        return {}
+    return out
+
+
+def _read_allocation_attrs(attributes: Any) -> tuple[str, dict[str, str]]:
+    cost_center = ""
+    tags: dict[str, str] = {}
+    if not isinstance(attributes, list):
+        return cost_center, tags
+    for attr in attributes:
+        if not isinstance(attr, dict):
+            continue
+        key = str(attr.get("key", "")).strip()
+        value = _attr_str(attr.get("value", {}))
+        if not key or not value:
+            continue
+        if key in _COST_CENTER_KEYS and not cost_center:
+            cost_center = _bounded(value, max_len=120)
+        elif key.startswith(_ALLOCATION_TAG_PREFIX) and len(tags) < _MAX_ALLOCATION_TAGS:
+            tag_name = _bounded(key[len(_ALLOCATION_TAG_PREFIX) :], max_len=60)
+            if tag_name:
+                tags[tag_name] = _bounded(value, max_len=120)
+    return cost_center, tags
+
+
 def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
     """Price GenAI spans in an OTLP payload and persist per-call cost records.
 
     Token counts come from OTel GenAI semantic conventions; cost is the open
-    price model in agent_bom.cost_model. Failures never block trace ingest.
+    price model in agent_bom.cost_model. Chargeback allocation (cost_center +
+    allocation tags) is read from span/resource attributes. Failures never
+    block trace ingest.
     """
     try:
         from agent_bom.api.cost_store import LLMCostRecord, get_cost_store
@@ -306,6 +370,7 @@ def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
         _logger.warning("LLM cost ingest skipped", exc_info=True)
         return {"calls": 0, "cost_usd": 0.0}
 
+    allocation = _allocation_for_spans(body)
     store = get_cost_store()
     total = 0.0
     observed = _now()
@@ -313,10 +378,12 @@ def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
         cost = compute_cost_usd(call.provider, call.model_name, call.input_tokens, call.output_tokens)
         total += cost
         agent = _bounded(getattr(call, "agent", "") or "", max_len=120)
+        call_id = f"{call.trace_id}:{call.span_id}"
+        cost_center, allocation_tags = allocation.get(call_id, ("", {}))
         store.record_cost(
             LLMCostRecord(
                 tenant_id=tenant_id,
-                call_id=f"{call.trace_id}:{call.span_id}",
+                call_id=call_id,
                 agent=agent,
                 session_id=call.trace_id,
                 provider=_bounded(call.provider, max_len=60),
@@ -326,6 +393,8 @@ def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
                 cost_usd=cost,
                 priced=is_priced(call.provider, call.model_name),
                 observed_at=observed,
+                cost_center=cost_center,
+                allocation_tags=allocation_tags,
             )
         )
     return {"calls": len(calls), "cost_usd": round(total, 6)}
@@ -678,13 +747,22 @@ async def prometheus_metrics(request: Request):
 
 
 @router.get("/v1/observability/costs", tags=["observability", "finops"], dependencies=[_dep("read")])
-async def get_llm_costs(request: Request, agent: str | None = None, limit: int = 1000) -> dict[str, object]:
-    """Per-agent / per-model / per-provider LLM spend for the active tenant.
+async def get_llm_costs(
+    request: Request,
+    agent: str | None = None,
+    cost_center: str | None = None,
+    tag: str | None = None,
+    limit: int = 1000,
+) -> dict[str, object]:
+    """Per-agent / per-model / per-provider / per-cost-center LLM spend.
 
     Spend is derived from token counts on ingested OTel GenAI spans priced via
-    the open cost model (agent_bom.cost_model). Includes budget posture.
+    the open cost model (agent_bom.cost_model). Includes budget posture and the
+    chargeback/showback rollup ``by_cost_center`` (#2925). Pass ``cost_center``
+    to scope the report (and budget) to one allocation unit, or ``tag`` to add a
+    ``by_tag`` showback slice for a freeform allocation tag.
     """
-    from agent_bom.api.cost_store import budget_status, get_cost_store, summarize
+    from agent_bom.api.cost_store import budget_status, get_cost_store, summarize, summarize_by_tag
 
     tenant_id = _tenant_id(request)
     store = get_cost_store()
@@ -692,11 +770,19 @@ async def get_llm_costs(request: Request, agent: str | None = None, limit: int =
     records = store.list_records(tenant_id, limit=bounded_limit)
     if agent:
         records = [r for r in records if r.agent == agent]
+    if cost_center:
+        records = [r for r in records if (r.cost_center or "") == cost_center]
     report = summarize(records)
-    spend = store.total_spend(tenant_id, agent=agent)
-    budget = store.get_budget(tenant_id, agent or "")
-    if budget is None and agent:
-        budget = store.get_budget(tenant_id, "")
+    if tag:
+        report["tag_rollup"] = summarize_by_tag(records, _bounded(tag, max_len=60))
+    if cost_center:
+        spend = store.total_spend_by_cost_center(tenant_id, cost_center)
+        budget = store.get_budget(tenant_id, "", cost_center=cost_center)
+    else:
+        spend = store.total_spend(tenant_id, agent=agent)
+        budget = store.get_budget(tenant_id, agent or "")
+        if budget is None and agent:
+            budget = store.get_budget(tenant_id, "")
     report["budget"] = budget_status(spend, budget)
     # Forward-looking companion to the point-in-time budget posture: burn rate +
     # projected runway derived from the same records. Reference only.
@@ -710,20 +796,33 @@ async def get_llm_costs(request: Request, agent: str | None = None, limit: int =
 
 
 @router.get("/v1/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("read")])
-async def get_llm_cost_budget(request: Request, agent: str = "") -> dict[str, object]:
-    """Return the configured spend budget and current utilization."""
+async def get_llm_cost_budget(request: Request, agent: str = "", cost_center: str = "") -> dict[str, object]:
+    """Return the configured spend budget and current utilization.
+
+    Pass ``cost_center`` to read a chargeback budget scoped to one allocation
+    unit (#2925) instead of the per-agent / tenant-wide cap.
+    """
     from agent_bom.api.cost_store import budget_status, get_cost_store
 
     tenant_id = _tenant_id(request)
     store = get_cost_store()
-    budget = store.get_budget(tenant_id, agent)
-    spend = store.total_spend(tenant_id, agent=agent or None)
+    if cost_center:
+        budget = store.get_budget(tenant_id, "", cost_center=cost_center)
+        spend = store.total_spend_by_cost_center(tenant_id, cost_center)
+    else:
+        budget = store.get_budget(tenant_id, agent)
+        spend = store.total_spend(tenant_id, agent=agent or None)
     return {"schema_version": "observability.costs.v1", "tenant_id": tenant_id, **budget_status(spend, budget)}
 
 
 @router.put("/v1/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("config")])
 async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]:
-    """Set a tenant (or per-agent) USD spend cap. Body: {limit_usd, agent?}."""
+    """Set a USD spend cap. Body: {limit_usd, agent?, cost_center?, mode?}.
+
+    A ``cost_center`` scopes the cap to one chargeback unit (#2925); ``agent``
+    scopes it to one agent; neither means tenant-wide. ``agent`` and
+    ``cost_center`` are mutually exclusive.
+    """
     from agent_bom.api.cost_store import CostBudget, budget_status, get_cost_store
 
     tenant_id = _tenant_id(request)
@@ -737,17 +836,27 @@ async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]
     if limit_usd < 0:
         raise HTTPException(status_code=400, detail="'limit_usd' must be non-negative")
     agent = _bounded(str(body.get("agent", "") or ""), max_len=120)
+    cost_center = _bounded(str(body.get("cost_center", "") or ""), max_len=120)
+    if agent and cost_center:
+        raise HTTPException(status_code=400, detail="'agent' and 'cost_center' budgets are mutually exclusive")
     mode = str(body.get("mode", "report") or "report").strip().lower()
     if mode not in ("report", "enforce"):
         raise HTTPException(status_code=400, detail="'mode' must be 'report' or 'enforce'")
     store = get_cost_store()
-    store.set_budget(CostBudget(tenant_id=tenant_id, agent=agent, limit_usd=limit_usd, updated_at=_now(), mode=mode))
-    spend = store.total_spend(tenant_id, agent=agent or None)
+    store.set_budget(
+        CostBudget(tenant_id=tenant_id, agent=agent, limit_usd=limit_usd, updated_at=_now(), mode=mode, cost_center=cost_center)
+    )
+    if cost_center:
+        spend = store.total_spend_by_cost_center(tenant_id, cost_center)
+        stored = store.get_budget(tenant_id, "", cost_center=cost_center)
+    else:
+        spend = store.total_spend(tenant_id, agent=agent or None)
+        stored = store.get_budget(tenant_id, agent)
     return {
         "schema_version": "observability.costs.v1",
         "tenant_id": tenant_id,
         "updated": True,
-        **budget_status(spend, store.get_budget(tenant_id, agent)),
+        **budget_status(spend, stored),
     }
 
 

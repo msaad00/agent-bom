@@ -9,11 +9,12 @@ accountability layer commercial agent-runtime products charge for, kept open.
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import threading
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
@@ -21,7 +22,14 @@ from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 
 @dataclass(frozen=True)
 class LLMCostRecord:
-    """One priced LLM API call."""
+    """One priced LLM API call.
+
+    ``cost_center`` and ``allocation_tags`` carry the showback/chargeback
+    dimension (#2925): which team / budget unit a call belongs to. Both are
+    optional and default empty so older ingest paths and pre-migration rows
+    stay valid — spend without an allocation simply rolls up under
+    ``"unallocated"``.
+    """
 
     tenant_id: str
     call_id: str
@@ -34,6 +42,8 @@ class LLMCostRecord:
     cost_usd: float
     priced: bool
     observed_at: str
+    cost_center: str = ""
+    allocation_tags: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -54,18 +64,66 @@ class CostBudget:
     limit_usd: float
     updated_at: str
     mode: str = "report"  # report | enforce
+    cost_center: str = ""  # "" means not scoped to a cost center (#2925)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
+_UNALLOCATED = "unallocated"
+
+
+def _decode_tags(raw: Any) -> dict[str, str]:
+    """Parse a stored allocation_tags JSON blob into a string->string dict.
+
+    Tolerant of NULL / malformed rows (pre-migration data) — those become {}.
+    """
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(k): str(v) for k, v in parsed.items()}
+
+
 def _rollup(records: list[LLMCostRecord], dimension: str) -> list[dict[str, Any]]:
-    """Aggregate spend + tokens by one dimension (agent/model/provider)."""
+    """Aggregate spend + tokens by one dimension (agent/model/provider/cost_center)."""
     buckets: dict[str, dict[str, Any]] = defaultdict(
         lambda: {"key": "", "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "unpriced_calls": 0}
     )
     for r in records:
-        key = {"agent": r.agent, "model": r.model, "provider": r.provider}.get(dimension, r.agent) or "unknown"
+        key = {
+            "agent": r.agent,
+            "model": r.model,
+            "provider": r.provider,
+            "cost_center": r.cost_center or _UNALLOCATED,
+        }.get(dimension, r.agent) or "unknown"
+        b = buckets[key]
+        b["key"] = key
+        b["calls"] += 1
+        b["input_tokens"] += r.input_tokens
+        b["output_tokens"] += r.output_tokens
+        b["cost_usd"] = round(b["cost_usd"] + r.cost_usd, 6)
+        if not r.priced:
+            b["unpriced_calls"] += 1
+    return sorted(buckets.values(), key=lambda b: b["cost_usd"], reverse=True)
+
+
+def _rollup_by_tag(records: list[LLMCostRecord], tag_key: str) -> list[dict[str, Any]]:
+    """Aggregate spend + tokens by the value of one allocation tag.
+
+    A call with no value for ``tag_key`` rolls up under ``"unallocated"``. Used
+    for freeform showback dimensions (``team``, ``project``, ``env`` …) beyond
+    the first-class ``cost_center``.
+    """
+    buckets: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"key": "", "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "unpriced_calls": 0}
+    )
+    for r in records:
+        key = (r.allocation_tags.get(tag_key) or "").strip() or _UNALLOCATED
         b = buckets[key]
         b["key"] = key
         b["calls"] += 1
@@ -84,9 +142,11 @@ class CostStore(Protocol):
 
     def total_spend(self, tenant_id: str, *, agent: str | None = None) -> float: ...
 
+    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str) -> float: ...
+
     def set_budget(self, budget: CostBudget) -> None: ...
 
-    def get_budget(self, tenant_id: str, agent: str = "") -> CostBudget | None: ...
+    def get_budget(self, tenant_id: str, agent: str = "", *, cost_center: str = "") -> CostBudget | None: ...
 
 
 def summarize(records: list[LLMCostRecord]) -> dict[str, Any]:
@@ -101,6 +161,16 @@ def summarize(records: list[LLMCostRecord]) -> dict[str, Any]:
         "by_agent": _rollup(records, "agent"),
         "by_model": _rollup(records, "model"),
         "by_provider": _rollup(records, "provider"),
+        "by_cost_center": _rollup(records, "cost_center"),
+    }
+
+
+def summarize_by_tag(records: list[LLMCostRecord], tag_key: str) -> dict[str, Any]:
+    """Showback report sliced by one freeform allocation tag (#2925)."""
+    return {
+        "tag_key": tag_key,
+        "total_cost_usd": round(sum(r.cost_usd for r in records), 6),
+        "by_tag": _rollup_by_tag(records, tag_key),
     }
 
 
@@ -119,6 +189,7 @@ def budget_status(spend: float, budget: CostBudget | None) -> dict[str, Any]:
     return {
         "configured": True,
         "agent": budget.agent or None,
+        "cost_center": budget.cost_center or None,
         "mode": budget.mode,
         "limit_usd": budget.limit_usd,
         "spend_usd": round(spend, 6),
@@ -134,7 +205,7 @@ class InMemoryCostStore:
     def __init__(self) -> None:
         self._records: dict[str, list[LLMCostRecord]] = defaultdict(list)
         self._seen: dict[str, set[str]] = defaultdict(set)
-        self._budgets: dict[tuple[str, str], CostBudget] = {}
+        self._budgets: dict[tuple[str, str, str], CostBudget] = {}
         self._lock = threading.Lock()
 
     def record_cost(self, record: LLMCostRecord) -> None:
@@ -155,13 +226,20 @@ class InMemoryCostStore:
                 6,
             )
 
+    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str) -> float:
+        with self._lock:
+            return round(
+                sum(r.cost_usd for r in self._records.get(tenant_id, []) if (r.cost_center or "") == cost_center),
+                6,
+            )
+
     def set_budget(self, budget: CostBudget) -> None:
         with self._lock:
-            self._budgets[(budget.tenant_id, budget.agent)] = budget
+            self._budgets[(budget.tenant_id, budget.agent, budget.cost_center)] = budget
 
-    def get_budget(self, tenant_id: str, agent: str = "") -> CostBudget | None:
+    def get_budget(self, tenant_id: str, agent: str = "", *, cost_center: str = "") -> CostBudget | None:
         with self._lock:
-            return self._budgets.get((tenant_id, agent))
+            return self._budgets.get((tenant_id, agent, cost_center))
 
 
 class SQLiteCostStore:
@@ -194,6 +272,8 @@ class SQLiteCostStore:
                 cost_usd REAL NOT NULL,
                 priced INTEGER NOT NULL,
                 observed_at TEXT NOT NULL,
+                cost_center TEXT NOT NULL DEFAULT '',
+                allocation_tags TEXT NOT NULL DEFAULT '{}',
                 PRIMARY KEY (tenant_id, call_id)
             )
             """
@@ -206,23 +286,35 @@ class SQLiteCostStore:
                 limit_usd REAL NOT NULL,
                 updated_at TEXT NOT NULL,
                 mode TEXT NOT NULL DEFAULT 'report',
-                PRIMARY KEY (tenant_id, agent)
+                cost_center TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (tenant_id, agent, cost_center)
             )
             """
         )
         # Backfill mode for databases created before enforcement existed.
-        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(llm_cost_budgets)").fetchall()]
-        if "mode" not in cols:
+        budget_cols = [r[1] for r in self._conn.execute("PRAGMA table_info(llm_cost_budgets)").fetchall()]
+        if "mode" not in budget_cols:
             self._conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN mode TEXT NOT NULL DEFAULT 'report'")
+        # Allocation columns (#2925) added additively; pre-migration rows keep
+        # an empty cost_center / '{}' tags and roll up under "unallocated".
+        if "cost_center" not in budget_cols:
+            self._conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN cost_center TEXT NOT NULL DEFAULT ''")
+        cost_cols = [r[1] for r in self._conn.execute("PRAGMA table_info(llm_costs)").fetchall()]
+        if "cost_center" not in cost_cols:
+            self._conn.execute("ALTER TABLE llm_costs ADD COLUMN cost_center TEXT NOT NULL DEFAULT ''")
+        if "allocation_tags" not in cost_cols:
+            self._conn.execute("ALTER TABLE llm_costs ADD COLUMN allocation_tags TEXT NOT NULL DEFAULT '{}'")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_agent ON llm_costs(tenant_id, agent)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_cost_center ON llm_costs(tenant_id, cost_center)")
         self._conn.commit()
 
     def record_cost(self, record: LLMCostRecord) -> None:
         self._conn.execute(
             """
             INSERT OR IGNORE INTO llm_costs
-                (tenant_id, call_id, agent, session_id, provider, model, input_tokens, output_tokens, cost_usd, priced, observed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (tenant_id, call_id, agent, session_id, provider, model, input_tokens, output_tokens,
+                 cost_usd, priced, observed_at, cost_center, allocation_tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.tenant_id,
@@ -236,17 +328,44 @@ class SQLiteCostStore:
                 record.cost_usd,
                 int(record.priced),
                 record.observed_at,
+                record.cost_center,
+                json.dumps(record.allocation_tags, sort_keys=True),
             ),
         )
         self._conn.commit()
 
     def list_records(self, tenant_id: str, *, limit: int = 1000) -> list[LLMCostRecord]:
         rows = self._conn.execute(
-            "SELECT tenant_id, call_id, agent, session_id, provider, model, input_tokens, output_tokens, cost_usd, priced, observed_at "
+            "SELECT tenant_id, call_id, agent, session_id, provider, model, input_tokens, output_tokens, "
+            "cost_usd, priced, observed_at, cost_center, allocation_tags "
             "FROM llm_costs WHERE tenant_id = ? ORDER BY observed_at DESC LIMIT ?",
             (tenant_id, limit),
         ).fetchall()
-        return [LLMCostRecord(r[0], r[1], r[2], r[3], r[4], r[5], int(r[6]), int(r[7]), float(r[8]), bool(r[9]), r[10]) for r in rows]
+        return [
+            LLMCostRecord(
+                r[0],
+                r[1],
+                r[2],
+                r[3],
+                r[4],
+                r[5],
+                int(r[6]),
+                int(r[7]),
+                float(r[8]),
+                bool(r[9]),
+                r[10],
+                r[11] if len(r) > 11 and r[11] is not None else "",
+                _decode_tags(r[12] if len(r) > 12 else None),
+            )
+            for r in rows
+        ]
+
+    def total_spend_by_cost_center(self, tenant_id: str, cost_center: str) -> float:
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0.0) FROM llm_costs WHERE tenant_id = ? AND cost_center = ?",
+            (tenant_id, cost_center),
+        ).fetchone()
+        return round(float(row[0]), 6)
 
     def total_spend(self, tenant_id: str, *, agent: str | None = None) -> float:
         if agent:
@@ -259,17 +378,28 @@ class SQLiteCostStore:
 
     def set_budget(self, budget: CostBudget) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO llm_cost_budgets (tenant_id, agent, limit_usd, updated_at, mode) VALUES (?, ?, ?, ?, ?)",
-            (budget.tenant_id, budget.agent, budget.limit_usd, budget.updated_at, budget.mode),
+            "INSERT OR REPLACE INTO llm_cost_budgets (tenant_id, agent, limit_usd, updated_at, mode, cost_center) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (budget.tenant_id, budget.agent, budget.limit_usd, budget.updated_at, budget.mode, budget.cost_center),
         )
         self._conn.commit()
 
-    def get_budget(self, tenant_id: str, agent: str = "") -> CostBudget | None:
+    def get_budget(self, tenant_id: str, agent: str = "", *, cost_center: str = "") -> CostBudget | None:
         row = self._conn.execute(
-            "SELECT tenant_id, agent, limit_usd, updated_at, mode FROM llm_cost_budgets WHERE tenant_id = ? AND agent = ?",
-            (tenant_id, agent),
+            "SELECT tenant_id, agent, limit_usd, updated_at, mode, cost_center "
+            "FROM llm_cost_budgets WHERE tenant_id = ? AND agent = ? AND cost_center = ?",
+            (tenant_id, agent, cost_center),
         ).fetchone()
-        return CostBudget(row[0], row[1], float(row[2]), row[3], row[4] if len(row) > 4 else "report") if row else None
+        if not row:
+            return None
+        return CostBudget(
+            row[0],
+            row[1],
+            float(row[2]),
+            row[3],
+            row[4] if len(row) > 4 and row[4] else "report",
+            row[5] if len(row) > 5 and row[5] is not None else "",
+        )
 
 
 def check_budget_enforcement(store: CostStore, tenant_id: str, agent: str) -> tuple[bool, CostBudget | None, float]:
@@ -290,6 +420,22 @@ def check_budget_enforcement(store: CostStore, tenant_id: str, agent: str) -> tu
             return False, budget, spend
     blocked = budget is not None and budget.mode == "enforce" and spend >= budget.limit_usd
     return blocked, budget, spend
+
+
+def check_cost_center_budget_enforcement(store: CostStore, tenant_id: str, cost_center: str) -> tuple[bool, CostBudget | None, float]:
+    """Decide whether a call should block for exceeding a cost-center budget (#2925).
+
+    A cost-center scoped enforce budget caps the aggregate spend of every call
+    tagged to that ``cost_center``, independent of the per-agent / tenant caps.
+    Report-mode and missing budgets never block.
+    """
+    if not cost_center:
+        return False, None, 0.0
+    budget = store.get_budget(tenant_id, "", cost_center=cost_center)
+    spend = store.total_spend_by_cost_center(tenant_id, cost_center)
+    if budget is None or budget.mode != "enforce":
+        return False, budget, spend
+    return spend >= budget.limit_usd, budget, spend
 
 
 _COST_STORE: CostStore | None = None

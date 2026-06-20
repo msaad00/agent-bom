@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
+from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
 from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store
@@ -271,8 +272,18 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
     now = datetime.now(timezone.utc).isoformat()
     source_id = (body.source_id if body else "") or _request_header(request, "X-Agent-Bom-Source-Id") or "server-discovery"
     idem_key = (body.idempotency_key if body else "") or _request_header(request, "Idempotency-Key")
+    request_hash = idempotency_request_fingerprint(body)
     if idem_key:
-        cached = _get_idempotency_store().get("/v1/fleet/sync", tenant_id, source_id, idem_key)
+        try:
+            cached = _get_idempotency_store().get(
+                "/v1/fleet/sync",
+                tenant_id,
+                source_id,
+                idem_key,
+                request_hash=request_hash,
+            )
+        except IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if cached is not None:
             cached["idempotent_replay"] = True
             return cached
@@ -433,7 +444,14 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
         source_id=source_id,
     )
     if idem_key:
-        _get_idempotency_store().put("/v1/fleet/sync", tenant_id, source_id, idem_key, response)
+        _get_idempotency_store().put(
+            "/v1/fleet/sync",
+            tenant_id,
+            source_id,
+            idem_key,
+            response,
+            request_hash=request_hash,
+        )
     return response
 
 

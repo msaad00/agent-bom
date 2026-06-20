@@ -13,11 +13,13 @@ import pytest
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from agent_bom.api.idempotency_store import InMemoryIdempotencyStore
 from agent_bom.api.server import (
     app,
     push_proxy_alert,
     push_proxy_metrics,
 )
+from agent_bom.api.stores import set_idempotency_store
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 # ── /v1/proxy/status ───────────────────────────────────────────────────────
@@ -630,6 +632,40 @@ def test_proxy_audit_ingest_is_idempotent():
 
     proxy_mod._proxy_alerts.clear()
     proxy_mod._proxy_metrics = None
+    set_idempotency_store(InMemoryIdempotencyStore())
+
+
+def test_proxy_audit_rejects_idempotency_key_payload_mismatch():
+    import agent_bom.api.routes.proxy as proxy_mod
+
+    proxy_mod._reset_audit_dedupe_for_tests()
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+    set_idempotency_store(InMemoryIdempotencyStore())
+
+    client = TestClient(app, raise_server_exceptions=False)
+    payload = {
+        "source_id": "laptop-1",
+        "session_id": "sess-1",
+        "idempotency_key": "proxy-audit-conflict",
+        "alerts": [{"type": "runtime_alert", "detector": "credential_leak", "severity": "critical", "message": "AWS key"}],
+        "summary": {"type": "proxy_summary", "total_tool_calls": 7, "total_blocked": 2},
+    }
+
+    first = client.post("/v1/proxy/audit", json=payload)
+    assert first.status_code == 200
+
+    payload["summary"]["total_tool_calls"] = 8
+    second = client.post("/v1/proxy/audit", json=payload)
+
+    assert second.status_code == 409
+    body = second.json()
+    assert body["error"]["code"] == "CONFLICT"
+    assert "different request payload" in body["error"]["message"]
+    assert second.headers.get("X-Request-ID") == body["error"]["correlation_id"]
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
 
 
 @pytest.mark.asyncio
@@ -684,6 +720,7 @@ async def test_proxy_audit_ingest_records_analytics_with_session_trace_context(m
 
     proxy_mod._proxy_alerts.clear()
     proxy_mod._proxy_metrics = None
+    set_idempotency_store(InMemoryIdempotencyStore())
 
     client = TestClient(app)
     payload = {

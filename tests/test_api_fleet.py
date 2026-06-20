@@ -11,7 +11,9 @@ from agent_bom.api.fleet_store import (
     FleetLifecycleState,
     InMemoryFleetStore,
 )
+from agent_bom.api.idempotency_store import InMemoryIdempotencyStore
 from agent_bom.api.server import app, set_fleet_store
+from agent_bom.api.stores import set_idempotency_store
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package
 
 
@@ -42,6 +44,7 @@ def _make(
 def _fresh_client() -> tuple[TestClient, InMemoryFleetStore]:
     store = InMemoryFleetStore()
     set_fleet_store(store)
+    set_idempotency_store(InMemoryIdempotencyStore())
     return TestClient(app), store
 
 
@@ -380,6 +383,34 @@ def test_sync_endpoint_push_is_idempotent():
     assert first.status_code == 200
     assert second.status_code == 200
     assert second.json()["idempotent_replay"] is True
+    assert len(store.list_all()) == 1
+
+
+def test_sync_endpoint_rejects_idempotency_key_payload_mismatch():
+    client, store = _fresh_client()
+    payload = {
+        "source_id": "laptop-a",
+        "idempotency_key": "fleet-sync-conflict",
+        "agents": [
+            {
+                "name": "cursor",
+                "agent_type": "cursor",
+                "trust_score": 82.5,
+                "mcp_servers": [],
+            }
+        ],
+    }
+    first = client.post("/v1/fleet/sync", json=payload)
+    assert first.status_code == 200
+
+    payload["agents"][0]["name"] = "different-agent"
+    second = client.post("/v1/fleet/sync", json=payload)
+
+    assert second.status_code == 409
+    body = second.json()
+    assert body["error"]["code"] == "CONFLICT"
+    assert "different request payload" in body["error"]["message"]
+    assert second.headers.get("X-Request-ID") == body["error"]["correlation_id"]
     assert len(store.list_all()) == 1
 
 

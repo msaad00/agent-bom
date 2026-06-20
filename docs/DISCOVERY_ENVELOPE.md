@@ -82,7 +82,9 @@ Supported cloud / SaaS / local providers populate the envelope at the end of
 | `aws` | `cloud_read_only` |
 | `aws_inventory` | `cloud_read_only` |
 | `gcp` | `cloud_read_only` |
+| `gcp_inventory` | `cloud_read_only` |
 | `azure` | `cloud_read_only` |
+| `azure_inventory` | `cloud_read_only` |
 | `coreweave` | `cloud_read_only` |
 | `nebius` | `cloud_read_only` |
 | `lambda_labs` | `cloud_read_only` |

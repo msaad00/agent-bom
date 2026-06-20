@@ -74,17 +74,16 @@ _BULK_FINDINGS_SOURCE_MAX_LENGTH = 128
 
 
 def _api_local_scans_enabled() -> bool:
-    configured = os.getenv("AGENT_BOM_API_LOCAL_PATH_SCANS", os.getenv("AGENT_BOM_ENABLE_LOCAL_PATH_SCANS", "enabled"))
+    configured = os.getenv("AGENT_BOM_API_LOCAL_PATH_SCANS", os.getenv("AGENT_BOM_ENABLE_LOCAL_PATH_SCANS", "disabled"))
     return configured.strip().lower() not in _LOCAL_SCAN_DISABLE_VALUES
 
 
 def _api_scan_root() -> Path:
     """Return the configured API filesystem scan root.
 
-    Workstation pilots keep the historical default of ``$HOME``. Shared
-    control-plane deployments should set ``AGENT_BOM_API_SCAN_ROOT`` to a
-    tenant workspace mount, or disable these endpoints and scan via endpoint
-    agents instead.
+    API-local path scans are disabled unless explicitly enabled. Workstation
+    pilots can set ``AGENT_BOM_API_LOCAL_PATH_SCANS=enabled`` and optionally
+    scope ``AGENT_BOM_API_SCAN_ROOT`` to a tenant workspace mount.
     """
     configured = os.getenv("AGENT_BOM_API_SCAN_ROOT", "").strip()
     root = Path(configured).expanduser() if configured else Path.home()

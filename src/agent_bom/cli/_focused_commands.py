@@ -35,6 +35,13 @@ def _validate_json_or_console_format(command_name: str, output_format: str) -> s
 _FOCUSED_GATE_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
 
+def _focused_default_output(output_format: str, output_path: Optional[str]) -> Optional[str]:
+    """Focused scan JSON/SARIF modes stream by default instead of creating a report file."""
+    if output_path is None and output_format.lower() in {"json", "sarif"}:
+        return "-"
+    return output_path
+
+
 def _has_finding_at_or_above(findings, threshold: str = "high") -> bool:
     """Return True when focused findings should fail CI by default."""
     threshold_rank = _FOCUSED_GATE_ORDER.get(threshold.lower(), 1)
@@ -135,7 +142,7 @@ def fs_cmd(
         scan,
         filesystem_paths=(path,),
         output_format=output_format,
-        output=output_path,
+        output=_focused_default_output(output_format, output_path),
         fail_on_severity=fail_on_severity,
         enrich=enrich,
         offline=offline,

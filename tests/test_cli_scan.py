@@ -669,6 +669,15 @@ def test_focused_secrets_and_skills_scan_expose_logging_flags():
         assert "--log-file" in result.output
 
 
+def test_focused_fs_json_and_sarif_default_to_stdout():
+    from agent_bom.cli._focused_commands import _focused_default_output
+
+    assert _focused_default_output("json", None) == "-"
+    assert _focused_default_output("sarif", None) == "-"
+    assert _focused_default_output("console", None) is None
+    assert _focused_default_output("json", "report.json") == "report.json"
+
+
 def test_scan_bad_baseline_json_exits_before_rendering(tmp_path):
     baseline = tmp_path / "baseline.json"
     baseline.write_text("{bad json", encoding="utf-8")

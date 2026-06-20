@@ -11,6 +11,8 @@ from agent_bom.asset_provenance import package_version_provenance
 from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
 from agent_bom.models import AIBOMReport
 
+SPDX_3_CONTEXT = "https://spdx.org/rdf/3.0.0/spdx-context.jsonl"
+
 
 def to_spdx(report: AIBOMReport) -> dict:
     """Build an SPDX 3.0 (JSON-LD) dict from report.
@@ -213,6 +215,7 @@ def to_spdx(report: AIBOMReport) -> dict:
                     relationships.append(assessment)
 
     return {
+        "@context": SPDX_3_CONTEXT,
         "spdxVersion": "SPDX-3.0",
         "dataLicense": "CC0-1.0",
         "SPDXID": document_id,

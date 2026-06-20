@@ -539,6 +539,7 @@ def _exit_model_verification(
     help="Exit 0 even when vulnerabilities are found (useful for exploratory or parallel checks)",
 )
 @click.option("--enrich", is_flag=True, help="Add NVD CVSS, EPSS, and CISA KEV enrichment to matched vulnerabilities.")
+@click.option("--offline", is_flag=True, help="Scan against the local vulnerability database only.")
 @click.option(
     "--fail-on-severity",
     type=click.Choice(["critical", "high", "medium", "low"], case_sensitive=False),
@@ -557,6 +558,7 @@ def check(
     output_path: str | None,
     exit_zero: bool,
     enrich: bool,
+    offline: bool,
     fail_on_severity: str | None,
     nvd_api_key: str | None,
 ):
@@ -700,7 +702,7 @@ def check(
         from agent_bom.scanners import IncompleteScanError, ScanOptions, consume_scan_warnings, scan_packages
 
         try:
-            asyncio.run(scan_packages(pkgs, options=ScanOptions(offline=False)))
+            asyncio.run(scan_packages(pkgs, options=ScanOptions(offline=offline)))
         except IncompleteScanError as exc:
             if structured_output:
                 _write_check_output(

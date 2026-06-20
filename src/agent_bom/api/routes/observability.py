@@ -698,6 +698,11 @@ async def get_llm_costs(request: Request, agent: str | None = None, limit: int =
     if budget is None and agent:
         budget = store.get_budget(tenant_id, "")
     report["budget"] = budget_status(spend, budget)
+    # Forward-looking companion to the point-in-time budget posture: burn rate +
+    # projected runway derived from the same records. Reference only.
+    from agent_bom.api.cost_forecast import forecast_spend
+
+    report["forecast"] = forecast_spend(records, budget=budget)
     report["schema_version"] = "observability.costs.v1"
     report["tenant_id"] = tenant_id
     report["price_model_captured"] = __import__("agent_bom.cost_model", fromlist=["PRICE_TABLE_CAPTURED"]).PRICE_TABLE_CAPTURED
@@ -744,6 +749,23 @@ async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]
         "updated": True,
         **budget_status(spend, store.get_budget(tenant_id, agent)),
     }
+
+
+@router.get("/v1/observability/costs/forecast", tags=["observability", "finops"], dependencies=[_dep("read")])
+async def get_llm_cost_forecast(request: Request, agent: str | None = None, limit: int = 10000) -> dict[str, object]:
+    """Project LLM spend burn rate and budget runway for the active tenant.
+
+    Derives a recent burn rate (trailing 24h / 7d) from ``observed_at`` on
+    persisted cost records and extrapolates to the configured budget — returning
+    projected period spend, days of runway, and an exhaustion date. Reference
+    only: a forecast never blocks a call (enforcement stays in the relay) and
+    returns a clear ``status`` with null projections on sparse/empty history.
+    """
+    from agent_bom.api.cost_forecast import forecast_for_tenant
+
+    bounded_limit = max(1, min(limit, 10000))
+    scoped_agent = _bounded(agent, max_len=120) if agent else None
+    return forecast_for_tenant(_tenant_id(request), agent=scoped_agent, limit=bounded_limit)
 
 
 @router.get("/v1/observability/anomalies", tags=["observability", "finops"], dependencies=[_dep("read")])

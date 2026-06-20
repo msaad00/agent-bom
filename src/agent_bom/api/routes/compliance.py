@@ -26,8 +26,15 @@ from typing import TYPE_CHECKING, Any, cast
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
+from agent_bom.api.credential_rotation import build_credential_rotation_governance
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
-from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_policy_store, _get_store
+from agent_bom.api.stores import (
+    _get_analytics_store,
+    _get_credential_ref_store,
+    _get_fleet_store,
+    _get_policy_store,
+    _get_store,
+)
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.rbac import require_authenticated_permission
@@ -1433,6 +1440,11 @@ async def get_credential_risk_ranking(request: Request) -> dict:
     Returns credentials sorted by risk tier (critical to low) with
     associated vulnerability counts and affected agents.
     """
+    tenant_id = _tenant_id(request)
+    rotation_governance = build_credential_rotation_governance(
+        _get_credential_ref_store().list_all(tenant_id=tenant_id),
+        tenant_id=tenant_id,
+    )
     latest_result = None
     for job in _tenant_jobs(request):
         if job.status != JobStatus.DONE or not job.result:
@@ -1441,10 +1453,10 @@ async def get_credential_risk_ranking(request: Request) -> dict:
         break
 
     if latest_result is None:
-        return {"credentials": [], "count": 0}
+        return {"credentials": [], "count": 0, "rotation_governance": rotation_governance}
 
     ranking = latest_result.get("credential_risk_ranking", [])
-    return {"credentials": ranking, "count": len(ranking)}
+    return {"credentials": ranking, "count": len(ranking), "rotation_governance": rotation_governance}
 
 
 @router.get("/v1/posture/incidents", tags=["compliance"])

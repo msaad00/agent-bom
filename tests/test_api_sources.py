@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -149,6 +151,91 @@ def test_credential_reference_crud_and_tenant_isolation(source_client: TestClien
     deleted = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
     assert deleted.status_code == 204
     assert source_client.get("/v1/credentials", headers=VIEWER_HEADERS).json()["count"] == 0
+
+
+def test_credential_rotation_posture_flags_stale_and_expiring_refs(source_client: TestClient) -> None:
+    stale = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "AWS stale automation key",
+            "provider": "aws",
+            "mode": "secret_manager",
+            "external_ref": "aws-secretsmanager://prod/agent-bom/stale",
+            "owner": "platform-security",
+            "credential_class": "api_key",
+            "last_rotated_at": "2026-01-01T00:00:00+00:00",
+            "rotation_interval_days": 30,
+            "max_age_days": 60,
+        },
+    )
+    assert stale.status_code == 201
+
+    near_expiry_at = (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()
+    expiring = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "ServiceNow near-expiry token",
+            "provider": "servicenow",
+            "mode": "secret_manager",
+            "external_ref": "vault://servicenow/token",
+            "owner": "it-operations",
+            "credential_class": "service_account",
+            "last_rotated_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": near_expiry_at,
+            "expiry_warning_days": 14,
+        },
+    )
+    assert expiring.status_code == 201
+
+    posture = source_client.get("/v1/credentials/posture", headers=VIEWER_HEADERS)
+    assert posture.status_code == 200
+    body = posture.json()
+    assert body["schema_version"] == "credential.rotation_governance.v1"
+    assert body["tenant_id"] == "tenant-alpha"
+    assert body["summary"]["total"] == 2
+    assert body["summary"]["max_age_exceeded"] == 1
+    assert body["summary"]["near_expiry"] == 1
+    assert body["summary"]["findings"] == 2
+
+    statuses = {row["display_name"]: row["rotation_status"] for row in body["credentials"]}
+    assert statuses == {
+        "AWS stale automation key": "max_age_exceeded",
+        "ServiceNow near-expiry token": "near_expiry",
+    }
+    assert all("external_ref" not in row for row in body["credentials"])
+    assert "aws-secretsmanager://prod/agent-bom/stale" not in posture.text
+    assert "vault://servicenow/token" not in posture.text
+    assert all(finding["type"] == "credential_rotation" for finding in body["findings"])
+
+    other_tenant = source_client.get("/v1/credentials/posture", headers=OTHER_TENANT_HEADERS)
+    assert other_tenant.status_code == 200
+    assert other_tenant.json()["summary"]["total"] == 0
+
+
+def test_posture_credentials_includes_rotation_governance_without_scan(source_client: TestClient) -> None:
+    created = source_client.post(
+        "/v1/credentials",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Unknown rotation ref",
+            "provider": "azure",
+            "mode": "secret_manager",
+            "external_ref": "keyvault://agent-bom/prod",
+            "credential_class": "service_account",
+        },
+    )
+    assert created.status_code == 201
+
+    posture = source_client.get("/v1/posture/credentials", headers=VIEWER_HEADERS)
+    assert posture.status_code == 200
+    body = posture.json()
+    assert body["credentials"] == []
+    assert body["count"] == 0
+    assert body["rotation_governance"]["summary"]["unknown_age"] == 1
+    assert body["rotation_governance"]["findings"][0]["status"] == "unknown_age"
+    assert "keyvault://agent-bom/prod" not in posture.text
 
 
 def test_credential_reference_rejects_secret_material(source_client: TestClient) -> None:

@@ -935,6 +935,18 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("effective-permissions overlay failed", exc_info=True)
 
+    # Multi-hop attack-path fusion: now that both the CNAPP exposure overlay and
+    # the effective-permissions overlay have enriched the single graph, walk true
+    # end-to-end kill-chains (internet entry → vuln/credential/permission/
+    # escalation → crown-jewel data store) and materialise them as first-class
+    # attack paths. Runs last so it sees every flag/edge the overlays wrote.
+    try:
+        from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion
+
+        apply_attack_path_fusion(graph)
+    except Exception:  # noqa: BLE001
+        _logger.warning("attack-path fusion failed", exc_info=True)
+
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)
         span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")

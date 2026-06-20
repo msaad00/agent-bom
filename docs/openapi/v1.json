@@ -507,6 +507,11 @@
       "CredentialRefCreate": {
         "additionalProperties": false,
         "properties": {
+          "credential_class": {
+            "default": "generic",
+            "title": "Credential Class",
+            "type": "string"
+          },
           "description": {
             "default": "",
             "title": "Description",
@@ -521,9 +526,55 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "expiry_warning_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry Warning Days"
+          },
           "external_ref": {
             "title": "External Ref",
             "type": "string"
+          },
+          "last_rotated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Rotated At"
+          },
+          "max_age_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Age Days"
           },
           "mode": {
             "default": "external_ref",
@@ -538,6 +589,18 @@
           "provider": {
             "title": "Provider",
             "type": "string"
+          },
+          "rotation_interval_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotation Interval Days"
           },
           "scopes": {
             "items": {
@@ -574,6 +637,17 @@
       "CredentialRefUpdate": {
         "additionalProperties": false,
         "properties": {
+          "credential_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Class"
+          },
           "description": {
             "anyOf": [
               {
@@ -607,6 +681,29 @@
             ],
             "title": "Enabled"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "expiry_warning_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry Warning Days"
+          },
           "external_ref": {
             "anyOf": [
               {
@@ -617,6 +714,29 @@
               }
             ],
             "title": "External Ref"
+          },
+          "last_rotated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Rotated At"
+          },
+          "max_age_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Age Days"
           },
           "mode": {
             "anyOf": [
@@ -650,6 +770,18 @@
               }
             ],
             "title": "Provider"
+          },
+          "rotation_interval_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotation Interval Days"
           },
           "scopes": {
             "anyOf": [
@@ -7378,6 +7510,29 @@
           }
         },
         "summary": "Create Credential Ref",
+        "tags": [
+          "credentials"
+        ]
+      }
+    },
+    "/v1/credentials/posture": {
+      "get": {
+        "operationId": "get_credential_rotation_posture_v1_credentials_posture_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Credential Rotation Posture V1 Credentials Posture Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Credential Rotation Posture",
         "tags": [
           "credentials"
         ]

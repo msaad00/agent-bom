@@ -476,6 +476,12 @@ class CredentialRefRecord(BaseModel):
     description: str = ""
     owner: str = ""
     scopes: list[str] = Field(default_factory=list)
+    credential_class: str = "generic"
+    last_rotated_at: str | None = None
+    expires_at: str | None = None
+    rotation_interval_days: int | None = Field(default=None, ge=1)
+    max_age_days: int | None = Field(default=None, ge=1)
+    expiry_warning_days: int | None = Field(default=None, ge=1)
     enabled: bool = True
     status: CredentialRefStatus = CredentialRefStatus.CONFIGURED
     last_validated_at: str | None = None
@@ -495,6 +501,12 @@ class CredentialRefCreate(BaseModel):
     description: str = ""
     owner: str = ""
     scopes: list[str] = Field(default_factory=list)
+    credential_class: str = "generic"
+    last_rotated_at: str | None = None
+    expires_at: str | None = None
+    rotation_interval_days: int | None = Field(default=None, ge=1)
+    max_age_days: int | None = Field(default=None, ge=1)
+    expiry_warning_days: int | None = Field(default=None, ge=1)
     enabled: bool = True
     tenant_id: str = "default"
 
@@ -509,6 +521,12 @@ class CredentialRefUpdate(BaseModel):
     description: str | None = None
     owner: str | None = None
     scopes: list[str] | None = None
+    credential_class: str | None = None
+    last_rotated_at: str | None = None
+    expires_at: str | None = None
+    rotation_interval_days: int | None = Field(default=None, ge=1)
+    max_age_days: int | None = Field(default=None, ge=1)
+    expiry_warning_days: int | None = Field(default=None, ge=1)
     enabled: bool | None = None
     status: CredentialRefStatus | None = None
 

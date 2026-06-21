@@ -141,6 +141,13 @@ AGENT_BOM_MCP_SANDBOX_CPUS
 AGENT_BOM_MCP_SANDBOX_EGRESS
 AGENT_BOM_MCP_SANDBOX_IMAGE
 AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY
+# Deploy-only server/production posture toggle for the MCP proxy sandbox; read
+# at proxy start to auto-escalate the 'warn' image-pin default to 'enforce' for
+# mutable (non-digest) images.
+AGENT_BOM_MCP_SANDBOX_SERVER_MODE
+# Generic deploy-time server/production posture fallback honored by the MCP
+# sandbox image-pin hardening when the sandbox-specific toggle is unset.
+AGENT_BOM_SERVER_MODE
 AGENT_BOM_MCP_SANDBOX_MEMORY
 AGENT_BOM_MCP_SANDBOX_MOUNTS
 AGENT_BOM_MCP_SANDBOX_PIDS_LIMIT
@@ -149,6 +156,10 @@ AGENT_BOM_MCP_SANDBOX_RUNTIME
 AGENT_BOM_MCP_SANDBOX_TIMEOUT_SECONDS
 AGENT_BOM_MCP_SANDBOX_TMPFS_SIZE
 AGENT_BOM_MCP_SANDBOX_USER
+# Safe-disassembly pickle scanner DoS bounds (max opcodes walked / max bytes
+# read per pickle stream); read on demand in model_pickle_scan.py.
+AGENT_BOM_PICKLE_MAX_OPCODES
+AGENT_BOM_PICKLE_MAX_BYTES
 AGENT_BOM_METRICS_TOKEN
 AGENT_BOM_ATLAS_CATALOG_MODE
 AGENT_BOM_ATLAS_CATALOG_PATH

@@ -36,7 +36,10 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "should_i_deploy",
-        "description": "Return allow/warn/block deployment guidance from ExposurePath risk",
+        "description": (
+            "Pre-deployment gate: resolves a candidate (package, CVE, resource, or graph node) against the"
+            " latest security-graph snapshot and returns an allow/warn/block decision from its top ExposurePath risk score"
+        ),
         "annotations": {"readOnlyHint": True},
     },
     {
@@ -81,7 +84,10 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "tool_risk_assessment",
-        "description": "Use live tools/list introspection to score MCP tool capabilities and server risk",
+        "description": (
+            "Live-introspect configured MCP servers via tools/list and score each exposed tool by capability"
+            " (filesystem, network, code execution, credential access) to rate per-tool and per-server blast radius"
+        ),
         "annotations": {"readOnlyHint": True},
     },
     {
@@ -223,7 +229,10 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "audit_query",
-        "description": "Read tenant-scoped control-plane audit records with action, resource, time, and pagination filters",
+        "description": (
+            "Read the immutable hash-chained control-plane audit log for one tenant — filter identity/shield/firewall/policy"
+            " actions by action, resource, and time with pagination; read-only and never mutates enforcement state"
+        ),
         "annotations": {"readOnlyHint": True},
     },
     {
@@ -268,7 +277,10 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "prompt_scan",
-        "description": "Scan prompt template files for injection risks and unsafe variable interpolation",
+        "description": (
+            "Statically scan prompt template files (.prompt, system_prompt.*, prompts/) for prompt-injection patterns"
+            " and unsafe variable interpolation; returns per-file findings with rule id, severity, and line"
+        ),
         "annotations": {"readOnlyHint": True},
     },
     {
@@ -284,8 +296,9 @@ _SERVER_CARD_TOOLS = [
     {
         "name": "license_compliance_scan",
         "description": (
-            "Evaluate package licenses against SPDX compliance policy"
-            " — 2,500+ licenses, network-copyleft detection, deprecated ID normalization"
+            "Classify each package license as allowed/warn/blocked against an SPDX policy"
+            " — 2,500+ licenses, network-copyleft detection, deprecated ID normalization; takes a prior scan"
+            " result or an explicit package array and returns per-package verdicts with counts"
         ),
         "annotations": {"readOnlyHint": True},
     },

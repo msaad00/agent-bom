@@ -1667,6 +1667,35 @@ async def get_graph_governance(
     }
 
 
+@router.get("/v1/graph/nhi/governance", tags=["graph"])
+async def get_nhi_governance(
+    request: Request,
+    scan_id: Optional[str] = Query(None, description="Scan ID"),
+) -> dict:
+    """Return the non-human-identity governance posture for the latest graph.
+
+    Loads the latest unified graph, projects the live governance control plane
+    and resolves effective permissions, then computes the three Natoma-parity
+    analytics — usage-based right-sizing, dormant/orphaned detection, and the
+    0-100 per-identity risk score — and returns a non-secret posture ranked
+    worst risk first. Right-sizing here uses the durable `last_used_at` markers
+    in the graph (no caller usage map is accepted over the API).
+    """
+    from agent_bom.graph.effective_permissions import apply_effective_permissions
+    from agent_bom.graph.governance_overlay import apply_governance_overlay
+    from agent_bom.graph.nhi_governance import describe_nhi_governance_posture
+
+    tenant = _tenant(request)
+    graph_store = _get_graph_store_or_503()
+    graph = await _graph_store_call(graph_store.load_graph, scan_id=scan_id or "", tenant_id=tenant)
+    apply_governance_overlay(graph, tenant_id=tenant)
+    apply_effective_permissions(graph)
+    posture = describe_nhi_governance_posture(graph)
+    posture["scan_id"] = graph.scan_id
+    posture["tenant_id"] = tenant
+    return posture
+
+
 @router.get("/v1/graph/exposure-paths", tags=["graph"])
 async def get_graph_exposure_paths(
     request: Request,

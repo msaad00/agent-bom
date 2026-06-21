@@ -1,0 +1,119 @@
+name: Surface Freshness
+
+# Cross-channel version-freshness monitor. Compares the repo version against
+# EVERY published distribution surface (PyPI, Docker/ghcr, Glama, Smithery) and
+# maintains ONE consolidated tracking issue so a stale surface can never sit
+# unnoticed for months. Closes the gap that let the Smithery listing drift for
+# three months without an alert.
+#
+# Optional repo variables (Settings -> Secrets and variables -> Actions -> Variables):
+#   SMITHERY_MCP_URL   — public unauthenticated MCP endpoint (enables Smithery probe)
+#   GLAMA_LISTING_URL  — Glama public listing JSON endpoint (enables Glama probe)
+#   DOCKER_IMAGE       — override default ghcr.io/msaad00/agent-bom
+
+on:
+  schedule:
+    - cron: "30 8 * * *"  # daily at 08:30 UTC (after deployment-freshness at 08:00)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5db1cf9a59fb97c40a68accab29236f0da7e94db # v6.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Probe every distribution surface
+        id: probe
+        env:
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
+          GLAMA_LISTING_URL: ${{ vars.GLAMA_LISTING_URL }}
+          DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
+        run: |
+          PYTHONPATH=src python3 scripts/check_surface_freshness.py --out surface-freshness.json
+          echo "report<<EOF" >> "$GITHUB_OUTPUT"
+          cat surface-freshness.json >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Open, refresh, or close consolidated freshness issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          REPORT: ${{ steps.probe.outputs.report }}
+        with:
+          script: |
+            const report = JSON.parse(process.env.REPORT);
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const title = "supply-chain-drift: distribution surfaces out of sync";
+            const labels = ["supply-chain-drift", "security-preventive", "automated"];
+
+            const emoji = (s) => ({
+              fresh: "✅ fresh",
+              stale: "⚠️ STALE",
+              not_configured: "❓ unmonitored (misconfigured)",
+              unreachable: "🔌 unreachable",
+            }[s] || s);
+
+            const rows = report.surfaces
+              .map((s) => `| ${s.surface} | ${s.version} | ${s.expected} | ${emoji(s.status)} | ${s.error || "—"} |`)
+              .join("\n");
+
+            const body = [
+              `## Distribution surface freshness — expected \`${report.expected}\``,
+              "",
+              "| Surface | Published | Expected | Status | Detail |",
+              "|---------|-----------|----------|--------|--------|",
+              rows,
+              "",
+              "**Statuses**",
+              "- `stale` — surface published a different version; re-run the publish workflow.",
+              "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
+              "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
+              "",
+              "Required repo variables for full coverage: `SMITHERY_MCP_URL`, `GLAMA_LISTING_URL`. PyPI and Docker need no configuration.",
+              "",
+              "_Maintained automatically by the surface-freshness workflow. Self-closes when every surface is fresh and monitored._",
+            ].join("\n");
+
+            for (const name of labels) {
+              try {
+                await github.rest.issues.createLabel({ owner, repo, name });
+              } catch (e) { /* already exists */ }
+            }
+
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              labels: "supply-chain-drift",
+              per_page: 100,
+            });
+            const match = existing.find((issue) => issue.title === title);
+
+            if (report.all_fresh) {
+              if (match) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: match.number,
+                  body: "All distribution surfaces are fresh and monitored again; closing.",
+                });
+                await github.rest.issues.update({ owner, repo, issue_number: match.number, state: "closed" });
+              }
+              return;
+            }
+
+            if (match) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: match.number, body });
+              return;
+            }
+            await github.rest.issues.create({ owner, repo, title, body, labels });

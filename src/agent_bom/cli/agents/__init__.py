@@ -250,6 +250,7 @@ def _reproducible_generated_at(enabled: bool):
 @scan_options
 def scan(
     project: Optional[str],
+    repo_url: Optional[str],
     config_dir: Optional[str],
     inventory: Optional[str],
     no_discover: bool,
@@ -565,6 +566,28 @@ def scan(
         iac_paths=iac_paths,
     )
     validate_skill_mode(no_skill=no_skill, skill_only=skill_only)
+
+    # ── Public-repo clone-and-scan (--repo) ──────────────────────────────────
+    # Shallow-clone the URL into a temp dir, point the local-directory scan path
+    # at it, and remove the temp dir when the command finishes. Static only —
+    # the repository's code is never executed.
+    if repo_url:
+        if project:
+            raise click.ClickException("--repo and --project/-p are mutually exclusive.")
+        from contextlib import ExitStack
+
+        from agent_bom.repo_scan import RepoScanError, clone_repository
+
+        _repo_cleanup = ExitStack()
+        click_ctx = click.get_current_context(silent=True)
+        if click_ctx is not None:
+            click_ctx.call_on_close(_repo_cleanup.close)
+        try:
+            cloned_dir = _repo_cleanup.enter_context(clone_repository(repo_url, token_env="AGENT_BOM_REPO_SCAN_TOKEN"))
+        except RepoScanError as exc:
+            _repo_cleanup.close()
+            raise click.ClickException(str(exc)) from exc
+        project = str(cloned_dir)
 
     # Route console output based on flags
     is_stdout = output == "-"

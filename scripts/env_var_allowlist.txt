@@ -229,6 +229,10 @@ AGENT_BOM_RATE_LIMIT_KEY
 AGENT_BOM_REGISTRY_AIRGAPPED
 # tier-B replay-log TTL in days — issue #2261 (default 7)
 AGENT_BOM_REPLAY_TTL_DAYS
+# optional comma-separated host allowlist for --repo / repo_url clone targets; empty = any host.
+AGENT_BOM_REPO_SCAN_ALLOWED_HOSTS
+# reference-only private-repo token name for --repo / repo_url clones; never logged or emitted.
+AGENT_BOM_REPO_SCAN_TOKEN
 AGENT_BOM_REGISTRY_PASS
 AGENT_BOM_REGISTRY_USER
 AGENT_BOM_REQUIRE_AUDIT_HMAC

@@ -418,7 +418,29 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
 
     @mcp.tool(annotations=_READ_ONLY, title="Security Scan")
     async def scan(
-        config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
+        repo_url: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Public git repository URL to clone and scan, e.g. "
+                    "'https://github.com/org/repo'. Maps the repo's dependencies, project "
+                    "structure, secrets, IaC, and AI/MCP usage into an AI-BOM. Static and "
+                    "read-only: the repository is shallow-cloned into a temporary directory, "
+                    "scanned without ever executing its code, then deleted. The fastest way "
+                    "to point this tool at a target — no local checkout required."
+                )
+            ),
+        ] = None,
+        config_path: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Local directory to scan — a project root or an MCP client config "
+                    "directory. Auto-discovers all installed MCP clients if omitted. "
+                    "Mutually exclusive with repo_url."
+                )
+            ),
+        ] = None,
         image: Annotated[str | None, Field(description="Docker image to scan (e.g. 'nginx:1.25', 'ghcr.io/org/app:v1').")] = None,
         sbom_path: Annotated[str | None, Field(description="Path to existing CycloneDX or SPDX JSON SBOM file to ingest.")] = None,
         package: Annotated[
@@ -476,12 +498,21 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             ),
         ] = None,
     ) -> str:
-        """Run a full AI supply chain security scan.
+        """Run a full AI supply chain security scan and return an AI-BOM.
 
-        Discovers local MCP configurations (Claude Desktop, Cursor, Windsurf,
-        VS Code Copilot, OpenClaw, etc.), extracts package dependencies, queries
-        OSV.dev for CVEs, assesses config security (credential exposure, tool access),
-        computes blast radius, and returns structured results.
+        Point it at a target with one of:
+          • repo_url     — a public git repo URL (cloned + scanned, no checkout)
+          • config_path  — a local project / MCP-config directory
+          • image        — a Docker image
+          • sbom_path    — an existing CycloneDX/SPDX SBOM
+          • package      — a single package or MCP launch command
+        With none of these, it auto-discovers local MCP clients (Claude Desktop,
+        Cursor, Windsurf, VS Code Copilot, OpenClaw, etc.).
+
+        It extracts package dependencies, queries OSV.dev for CVEs, assesses
+        config security (credential exposure, tool access), computes blast
+        radius, and returns structured results. Scanning is fully static and
+        read-only — repository and image contents are parsed, never executed.
 
         Returns:
             JSON with the complete AI-BOM report including agents, packages,
@@ -491,6 +522,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             "scan",
             scan_impl,
             config_path=config_path,
+            repo_url=repo_url,
             image=image,
             sbom_path=sbom_path,
             package=package,

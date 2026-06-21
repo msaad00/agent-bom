@@ -27,6 +27,15 @@ def _call(token: str | None = None) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}
 
 
+def _call_with_cost_center(token: str, cost_center: str) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "name": "read_file",
+        "arguments": {"path": "/etc/hosts"},
+        "_meta": {"agent_identity": token, "cost_center": cost_center},
+    }
+    return {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}
+
+
 async def _ok_caller(upstream, message, extra_headers):
     return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
 
@@ -109,5 +118,78 @@ def test_gateway_enforces_spend_budget():
         # agent-b has no budget -> relays normally.
         allowed = client.post("/mcp/filesystem", json=_call("token-b"))
         assert allowed.status_code == 200 and allowed.json()["result"] == {"ok": True}
+    finally:
+        set_cost_store(None)
+
+
+def test_gateway_enforces_cost_center_budget():
+    """A cost-center enforce budget blocks a call allocated to it via _meta."""
+    from agent_bom.api.cost_store import CostBudget, InMemoryCostStore, LLMCostRecord, set_cost_store
+
+    store = InMemoryCostStore()
+    # platform cost-center has burned its $5 enforce budget; agent-a itself has
+    # no per-agent budget so the only thing that can block is the cost-center cap.
+    store.record_cost(
+        LLMCostRecord(
+            "default", "c1", "agent-a", "s", "openai", "gpt-4o", 1_000_000, 1_000_000, 6.0, True, "2026-06-02", cost_center="platform"
+        )
+    )
+    store.set_budget(CostBudget("default", "", 5.0, "2026-06-02", "enforce", cost_center="platform"))
+    set_cost_store(store)
+    try:
+        client = TestClient(create_gateway_app(_settings([])))
+        # Allocated to "platform" -> over the cost-center cap -> blocked.
+        blocked = client.post("/mcp/filesystem", json=_call_with_cost_center("token-a", "platform"))
+        assert _is_blocked(blocked), blocked.text
+        assert "cost-center" in blocked.json()["error"]["message"].lower()
+        assert blocked.json()["error"]["data"]["cost_center"] == "platform"
+        # Same agent, but allocated to an unbudgeted cost-center -> relays normally.
+        other = client.post("/mcp/filesystem", json=_call_with_cost_center("token-a", "research"))
+        assert other.status_code == 200 and other.json()["result"] == {"ok": True}
+        # Same agent, no cost-center declared -> existing per-agent/tenant
+        # semantics unchanged (no per-agent budget here) -> relays normally.
+        none = client.post("/mcp/filesystem", json=_call("token-a"))
+        assert none.status_code == 200 and none.json()["result"] == {"ok": True}
+    finally:
+        set_cost_store(None)
+
+
+def test_cost_center_budget_via_header():
+    """The x-cost-center header is an equivalent allocation signal to _meta."""
+    from agent_bom.api.cost_store import CostBudget, InMemoryCostStore, LLMCostRecord, set_cost_store
+
+    store = InMemoryCostStore()
+    store.record_cost(
+        LLMCostRecord(
+            "default", "c1", "agent-a", "s", "openai", "gpt-4o", 1_000_000, 1_000_000, 9.0, True, "2026-06-02", cost_center="platform"
+        )
+    )
+    store.set_budget(CostBudget("default", "", 5.0, "2026-06-02", "enforce", cost_center="platform"))
+    set_cost_store(store)
+    try:
+        client = TestClient(create_gateway_app(_settings([])))
+        blocked = client.post("/mcp/filesystem", json=_call("token-a"), headers={"x-cost-center": "platform"})
+        assert _is_blocked(blocked), blocked.text
+        assert "cost-center" in blocked.json()["error"]["message"].lower()
+    finally:
+        set_cost_store(None)
+
+
+def test_cost_center_report_mode_does_not_block():
+    """A report-mode cost-center budget never blocks (parity with agent/tenant)."""
+    from agent_bom.api.cost_store import CostBudget, InMemoryCostStore, LLMCostRecord, set_cost_store
+
+    store = InMemoryCostStore()
+    store.record_cost(
+        LLMCostRecord(
+            "default", "c1", "agent-a", "s", "openai", "gpt-4o", 1_000_000, 1_000_000, 9.0, True, "2026-06-02", cost_center="platform"
+        )
+    )
+    store.set_budget(CostBudget("default", "", 5.0, "2026-06-02", "report", cost_center="platform"))
+    set_cost_store(store)
+    try:
+        client = TestClient(create_gateway_app(_settings([])))
+        resp = client.post("/mcp/filesystem", json=_call_with_cost_center("token-a", "platform"))
+        assert resp.status_code == 200 and resp.json()["result"] == {"ok": True}
     finally:
         set_cost_store(None)

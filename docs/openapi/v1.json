@@ -5194,7 +5194,7 @@
     },
     "/v1/auth/secrets/credential-expiry": {
       "get": {
-        "description": "Return non-secret credential expiry/rotation governance for control-plane secrets.",
+        "description": "Return non-secret credential expiry/rotation governance.\n\nFolds in any discovered non-human-identity (NHI) credentials so an\noperator's expiring Okta/Entra service-app / service-principal secrets are\ngoverned alongside control-plane secrets. NHI discovery is gated by its own\n``*_DISCOVERY`` env flags and is a no-op (no network) when they are off, so\nthis stays control-plane-only by default.",
         "operationId": "auth_secret_credential_expiry_v1_auth_secrets_credential_expiry_get",
         "responses": {
           "200": {

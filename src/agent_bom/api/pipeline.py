@@ -958,6 +958,17 @@ def _run_scan_sync(job: ScanJob) -> None:
         except Exception as a2a_exc:  # noqa: BLE001
             _logger.warning("A2A auth posture evaluation skipped: %s", sanitize_error(a2a_exc))
         report = AIBOMReport(agents=agents, blast_radii=blast_radii, findings=report_findings, scan_id=job.job_id)
+
+        # Opt-in estate enrichment (cloud inventory + NHI discovery). Default
+        # OFF: no-op and no network I/O unless the per-provider env flags are
+        # set; the graph builder consumes the attached blocks. Never raises.
+        try:
+            from agent_bom.scan_enrichment import enrich_report_with_estate_discovery
+
+            enrich_report_with_estate_discovery(report)
+        except Exception as enrich_exc:  # noqa: BLE001
+            _logger.warning("Estate enrichment skipped: %s", sanitize_error(enrich_exc))
+
         report_json = to_json(report)
         report_json["warnings"] = warnings_all
         with lock:

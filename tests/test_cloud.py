@@ -31,6 +31,53 @@ from agent_bom.models import (
 
 _CLOUD_FIXTURES = Path(__file__).parent / "fixtures" / "cloud"
 
+# Provider SDKs that tests inject as mocks (or patch to None) in sys.modules.
+# The cloud submodules import these at module level, so reloading a submodule
+# while its SDK is mocked/absent rebinds the submodule against that transient
+# state. Left in place, that leaks into the next test on the same worker —
+# e.g. `_install_mock_snowflake()` uses setdefault and silently no-ops once a
+# prior mock persists, so discover() finds zero agents.
+_MOCK_PROVIDER_SDK_MODULES = (
+    "boto3",
+    "botocore",
+    "botocore.exceptions",
+    "databricks",
+    "databricks.sdk",
+    "databricks.sdk.errors",
+    "snowflake",
+    "snowflake.connector",
+    "snowflake.connector.errors",
+)
+_CLOUD_SUBMODULES = (
+    "agent_bom.cloud.aws",
+    "agent_bom.cloud.databricks",
+    "agent_bom.cloud.snowflake",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cloud_provider_imports():
+    """Keep provider-SDK mocking order-independent within this module.
+
+    After each test, drop any injected mock SDK modules from sys.modules and
+    reload the cloud submodules from a clean state so the next test starts with
+    real (or genuinely absent) imports — not a leftover mock or a submodule
+    stuck in its "SDK missing" reloaded form.
+    """
+    yield
+    for name in _MOCK_PROVIDER_SDK_MODULES:
+        mod = sys.modules.get(name)
+        if mod is not None and getattr(mod, "__file__", None) is None:
+            # Synthetic mock module (no backing file) — remove it.
+            sys.modules.pop(name, None)
+    for name in _CLOUD_SUBMODULES:
+        submod = sys.modules.get(name)
+        if submod is not None:
+            try:
+                importlib.reload(submod)
+            except Exception:
+                pass
+
 
 def _load_cloud_fixture(name: str) -> dict:
     return json.loads((_CLOUD_FIXTURES / name).read_text())

@@ -250,7 +250,12 @@ def provider_contracts() -> dict[str, Any]:
 def _reset_provider_registry_for_tests() -> None:
     _PROVIDER_REGISTRY.clear()
     _PROVIDER_REGISTRY_WARNINGS.clear()
+    # Restore the static name->module map to its built-in baseline rather than
+    # leaving it empty. Reads of _PROVIDERS that do not first trigger a lazy
+    # registry load (e.g. direct membership checks) would otherwise observe an
+    # empty map after a reset, making them order-dependent across tests.
     _PROVIDERS.clear()
+    _PROVIDERS.update(_BUILTIN_PROVIDERS)
     global _PROVIDER_REGISTRY_LOADED
     _PROVIDER_REGISTRY_LOADED = False
 

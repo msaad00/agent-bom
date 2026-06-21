@@ -533,9 +533,12 @@ jobs:
 
       - name: Run tests
         run: |
-          # -p no:randomly: pytest-randomly is installed but disabled here until a
-          # fast-follow PR fixes the 2 order-coupled tests it surfaces. xdist
-          # (-n auto, isolated worker processes) gives the speed win safely now.
+          # -n auto --dist loadscope: spread tests across worker processes,
+          # grouping same-module tests on one worker so module-scoped fixtures
+          # behave. -p no:randomly keeps CI in deterministic order (reproducible
+          # failures); it is redundant with the pytest addopts default but kept
+          # explicit. The suite is order-independent — run `pytest -p randomly`
+          # locally to verify.
           if [ "${{ matrix.python-version }}" = "3.11" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
             uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network" -n auto --dist loadscope -p no:randomly
           else

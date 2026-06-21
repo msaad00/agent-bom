@@ -232,10 +232,13 @@ server = "agent_bom.mcp_server:create_smithery_server"
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 pythonpath = ["src"]
-# pytest-randomly is installed as a dev dep but globally DISABLED for now: it
-# surfaces 2 order-coupled tests that a fast-follow PR will fix. Disabling here
-# (not per-CI-command) covers every job — main matrix, Alpine/musl, Postgres —
-# and local runs. The fast-follow removes this line + fixes the coupling.
+# pytest-randomly is installed as a dev dep but kept OFF by default so CI runs
+# in deterministic order — a failing job is then reproducible without hunting
+# for the shuffle seed. The suite is genuinely order-independent (all known
+# coupling was fixed via the global-state resets in tests/conftest.py and the
+# per-module fixtures); contributors can prove it locally by overriding this
+# with `pytest -p randomly`. Disabling here (not per-CI-command) covers every
+# job — main matrix, Alpine/musl, Postgres — and local runs alike.
 addopts = "-p no:randomly"
 markers = [
     "network: tests that require network access (OSV API)",

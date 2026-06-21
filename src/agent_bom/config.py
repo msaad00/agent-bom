@@ -316,6 +316,34 @@ A2A_AUTH_SHARED_TOKEN_MIN_AGENTS = _int("AGENT_BOM_A2A_AUTH_SHARED_TOKEN_MIN_AGE
 A2A_AUTH_REQUIRE_SIGNED_TOKENS = _bool("AGENT_BOM_A2A_AUTH_REQUIRE_SIGNED_TOKENS", True)
 
 
+# ── MCP / agent→MCP auth posture ──────────────────────────────────────────
+# Governance thresholds for the MCP server auth posture evaluator
+# (agent_bom.mcp_auth_posture). This is the complement of the A2A evaluator:
+# A2A covers inter-AGENT auth, this covers MCP SERVER auth + the agent→MCP edge
+# per the MCP authorization spec (OAuth 2.1 for remote MCP servers, 2025).
+# agent-bom does not broker MCP auth; it scans discovered MCP servers, their
+# transports/config, and proxy bound_agents policies and flags weak or missing
+# authentication as findings. Reference-only — never emits secret values.
+#
+# MCP_AUTH_FLAG_LOCAL_STDIO: when true, also flag local stdio servers that ship
+#   static credentials (lower risk than network transports; off by default so
+#   the default run focuses on the high-risk network surface).
+# MCP_AUTH_REQUIRE_TLS: when true, remote MCP reached over plaintext http://
+#   (no TLS) is flagged as weak transport security.
+# MCP_AUTH_REQUIRE_NETWORK_AUTH: when true, a network-reachable MCP server with
+#   no auth required is flagged as an unauthenticated server.
+# MCP_AUTH_STATIC_CRED_ALLOWLIST: comma-separated env-var substrings whose
+#   presence is treated as acceptable static credentials (e.g. a documented
+#   break-glass key), suppressing the over-broad-static-credential finding.
+
+MCP_AUTH_FLAG_LOCAL_STDIO = _bool("AGENT_BOM_MCP_AUTH_FLAG_LOCAL_STDIO", False)
+MCP_AUTH_REQUIRE_TLS = _bool("AGENT_BOM_MCP_AUTH_REQUIRE_TLS", True)
+MCP_AUTH_REQUIRE_NETWORK_AUTH = _bool("AGENT_BOM_MCP_AUTH_REQUIRE_NETWORK_AUTH", True)
+MCP_AUTH_STATIC_CRED_ALLOWLIST = [
+    item.strip().lower() for item in _str("AGENT_BOM_MCP_AUTH_STATIC_CRED_ALLOWLIST", "").split(",") if item.strip()
+]
+
+
 # ── MCP Server Limits ────────────────────────────────────────────────────
 # Used by mcp_server.py for file-size and response-size guards, tool execution
 # governance, and lightweight in-process observability.

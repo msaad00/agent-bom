@@ -1732,6 +1732,13 @@ def scan(
     if ctx.iac_findings_data:
         report.iac_findings_data = ctx.iac_findings_data
 
+    # Opt-in estate enrichment (cloud inventory + NHI discovery). Default OFF:
+    # no-op and no network I/O unless AGENT_BOM_CLOUD_INVENTORY / *_INVENTORY /
+    # *_DISCOVERY flags are set. The graph builder consumes the attached blocks.
+    from agent_bom.scan_enrichment import enrich_report_with_estate_discovery
+
+    enrich_report_with_estate_discovery(report)
+
     # Attach introspection / health check results so they're in JSON/BOM exports
     if _intro_report is not None:
         report.introspection_data = {

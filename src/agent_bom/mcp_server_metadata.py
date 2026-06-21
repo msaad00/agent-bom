@@ -294,6 +294,36 @@ _SERVER_CARD_TOOLS = [
         "description": "Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis",
         "annotations": {"readOnlyHint": True},
     },
+    {
+        "name": "cost_forecast",
+        "description": "Project LLM spend burn rate and budget runway (reference-only forecast)",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "cost_allocation",
+        "description": "Chargeback / showback LLM spend rollups by cost-center and allocation tag",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "credential_expiry",
+        "description": "Expiring / overdue credential and rotation posture for control-plane secrets (no secret values)",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "nhi_discover",
+        "description": "Discover non-human identities (Okta / Entra) — reference-only metadata, gated per provider",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "cloud_inventory",
+        "description": "Estate-wide cloud asset inventory summary (resource + identity counts), opt-in per provider",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "access_review",
+        "description": "List or get NHI access-review / recertification campaigns and their status (read-only)",
+        "annotations": {"readOnlyHint": True},
+    },
 ]
 
 _TOOL_CAPABILITY_CLASSES = {

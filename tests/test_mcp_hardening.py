@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_bom.mcp_hardening import build_mcp_hardening_catalog
+from agent_bom.mcp_hardening import build_mcp_hardening_catalog, strict_args_tool_count
 
 
 def test_mcp_hardening_catalog_maps_nsa_security_themes() -> None:
@@ -24,7 +24,7 @@ def test_mcp_hardening_catalog_maps_nsa_security_themes() -> None:
     }.issubset(control_ids)
 
     validation = next(control for control in catalog["controls"] if control["id"] == "strict_parameter_validation")
-    assert "55 strict-args MCP tools" in validation["agent_bom_surfaces"]
+    assert f"{strict_args_tool_count()} strict-args MCP tools" in validation["agent_bom_surfaces"]
     assert "additionalProperties=false" in " ".join(validation["agent_bom_surfaces"])
 
     audit = next(control for control in catalog["controls"] if control["id"] == "audit_logging_and_detection")

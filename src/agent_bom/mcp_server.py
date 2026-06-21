@@ -5,7 +5,7 @@ Start with:
     agent-bom mcp server --transport sse          # SSE transport (for remote clients)
     agent-bom mcp server --transport streamable-http
 
-Tools (63):
+Tools (69):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     blast_radius        — Look up blast radius for a specific CVE
@@ -60,6 +60,12 @@ Tools (63):
     ai_inventory_scan   — Scan source code for AI SDK imports, model references, shadow AI
     license_compliance_scan — Evaluate package licenses against SPDX compliance policy
     ingest_external_scan   — Ingest Trivy, Grype, or Syft JSON output with blast radius analysis
+    cost_forecast       — Project LLM spend burn rate and budget runway
+    cost_allocation     — Chargeback / showback spend rollups by cost-center and tag
+    credential_expiry   — Expiring / overdue credential and rotation posture
+    nhi_discover        — Discover non-human identities (Okta / Entra), reference-only
+    cloud_inventory     — Estate-wide cloud asset inventory summary, opt-in per provider
+    access_review       — List or get NHI access-review / recertification campaigns
 
 Resources (6):
     registry://servers  — Browse 427+ server security metadata registry

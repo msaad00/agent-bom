@@ -1134,5 +1134,110 @@
         "desc": "Scanner format: trivy, grype, syft (auto-detected if omitted)"
       }
     ]
+  },
+  {
+    "name": "cost_forecast",
+    "description": "Project LLM spend burn rate and budget runway for the active tenant \u2014 reference-only forecast with projected period spend, days of runway, and exhaustion date.",
+    "arguments": [
+      {
+        "name": "agent",
+        "type": "string",
+        "desc": "Optional agent name to scope the forecast to a single agent"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope to forecast (default: default)"
+      }
+    ]
+  },
+  {
+    "name": "cost_allocation",
+    "description": "Chargeback / showback LLM spend rollups by cost-center and allocation tag, with budget posture and forecast. No prompts or responses are read.",
+    "arguments": [
+      {
+        "name": "cost_center",
+        "type": "string",
+        "desc": "Optional cost-center / allocation unit to scope the chargeback report and budget"
+      },
+      {
+        "name": "tag",
+        "type": "string",
+        "desc": "Optional allocation tag to add a showback slice (by_tag rollup)"
+      },
+      {
+        "name": "agent",
+        "type": "string",
+        "desc": "Optional agent name to scope spend to a single agent"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope to summarize (default: default)"
+      }
+    ]
+  },
+  {
+    "name": "credential_expiry",
+    "description": "Expiring / overdue credential and rotation posture for control-plane secrets, with an overall verdict. Never returns secret values.",
+    "arguments": []
+  },
+  {
+    "name": "nhi_discover",
+    "description": "Discover non-human identities (Okta service apps / Entra service principals) \u2014 reference-only metadata, never secret material; each provider is gated by its own discovery env flag and token.",
+    "arguments": [
+      {
+        "name": "providers",
+        "type": "string",
+        "desc": "Comma-separated IdP providers to query: okta, entra (default: both)"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope for the response envelope (default: default)"
+      }
+    ]
+  },
+  {
+    "name": "cloud_inventory",
+    "description": "Summarize the estate-wide cloud asset inventory (resource + identity counts and node summary). Opt-in per provider via AGENT_BOM_*_INVENTORY; reference-only, never resource secrets.",
+    "arguments": [
+      {
+        "name": "providers",
+        "type": "string",
+        "desc": "Comma-separated cloud providers to summarize: aws, azure, gcp (default: all enabled)"
+      },
+      {
+        "name": "region",
+        "type": "string",
+        "desc": "Optional AWS region for AWS inventory (e.g. us-east-1)"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope for the response envelope (default: default)"
+      }
+    ]
+  },
+  {
+    "name": "access_review",
+    "description": "List or get NHI access-review / recertification campaigns and their status (read-only). Creating a campaign or submitting a decision is a write action and is not exposed here.",
+    "arguments": [
+      {
+        "name": "campaign_id",
+        "type": "string",
+        "desc": "Optional campaign id to fetch one campaign with its review items (default: list campaigns)"
+      },
+      {
+        "name": "tenant_id",
+        "type": "string",
+        "desc": "Tenant scope to read (default: default)"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "desc": "Maximum campaigns to list when campaign_id is omitted (default: 200)"
+      }
+    ]
   }
 ]

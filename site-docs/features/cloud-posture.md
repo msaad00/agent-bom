@@ -51,7 +51,7 @@ Run cloud benchmark checks against the actual environment when credentials are
 available:
 
 ```bash
-agent-bom cis-benchmark --provider aws
+agent-bom cloud aws --cis
 agent-bom cis-benchmark --provider azure
 agent-bom cis-benchmark --provider gcp
 agent-bom cis-benchmark --provider snowflake

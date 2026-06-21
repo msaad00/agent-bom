@@ -14,7 +14,8 @@ const BUDGETS = {
   // Allows measured framework/runtime drift from the June 2026 UI dependency refresh.
   // Includes the parity governance cockpits for cost, identity, and drift.
   // Includes the Gateway Live Feed tab for tool-call auth, DLP, and LLM-call events.
-  totalClientJsBytes: 2_970_000,
+  // Includes cost forecast/chargeback and NHI governance console panels.
+  totalClientJsBytes: 3_020_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

@@ -86,7 +86,26 @@ def register_runtime_catalog_tools(
         config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
         timeout: Annotated[float, Field(description="Per-server introspection timeout in seconds.")] = 10.0,
     ) -> str:
-        """Score live-introspected MCP tool capabilities and server risk."""
+        """Live-introspect MCP servers and score each tool's capability risk.
+
+        Discovers configured MCP clients, connects to their servers, calls
+        ``tools/list``, and classifies every exposed tool by capability
+        (filesystem, network, code execution, credential access) to produce a
+        per-tool and per-server risk score from what the servers actually
+        advertise at runtime.
+
+        Args:
+            config_path: MCP client config directory to read; auto-discovers all
+                supported clients when omitted.
+            timeout: Per-server introspection timeout in seconds.
+
+        Returns:
+            JSON with per-server tool inventories, per-tool capability classes
+            and risk levels, and an aggregate server risk rating.
+
+        Use this to assess the blast radius of MCP servers an agent can reach
+        before granting or trusting their tools.
+        """
         return await execute_tool_sync_async(
             "tool_risk_assessment",
             tool_risk_assessment_impl,

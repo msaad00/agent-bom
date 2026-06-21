@@ -725,7 +725,28 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         warn_risk: Annotated[float, Field(ge=0, le=100, description="Risk score at or above which the decision becomes warn.")] = 40.0,
         block_risk: Annotated[float, Field(ge=0, le=100, description="Risk score at or above which the decision becomes block.")] = 80.0,
     ) -> str:
-        """Return an agent-native deploy gate decision from graph risk."""
+        """Return an allow / warn / block deploy decision from graph exposure risk.
+
+        Resolves a deployment candidate against the latest security-graph
+        snapshot, ranks its reachable ExposurePaths by risk score, and maps the
+        top score to a gate decision using the warn/block thresholds.
+
+        Args:
+            candidate: Package, resource, CVE, graph node ID, or deployment
+                label to evaluate.
+            tenant_id: Tenant whose graph snapshot to read (default ``default``).
+            scan_id: Specific graph scan ID; omit to use the latest snapshot.
+            limit: Maximum matched exposure paths to return (1-25).
+            warn_risk: Risk score at or above which the decision becomes warn.
+            block_risk: Risk score at or above which the decision becomes block.
+
+        Returns:
+            JSON with the ``decision`` (allow/warn/block), the driving risk
+            score, and the ranked exposure paths behind it.
+
+        Call this as a pre-deployment gate to get a single machine-readable
+        verdict instead of interpreting raw findings.
+        """
         return await _execute_tool_async(
             "should_i_deploy",
             deploy_decision_impl,

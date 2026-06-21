@@ -1,0 +1,56 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": [
+    "msaad00"
+  ],
+  "name": "agent-bom",
+  "title": "agent-bom",
+  "description": "Open security scanner and self-hosted control plane for AI/MCP infrastructure. Discovers agents, MCP servers, models, and runtime traffic; scans for vulnerable packages, prompt-injection, license violations, and risky tool capabilities; and maps blast radius across a security graph. Exposes 69 read-first MCP tools for headless security agents.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/msaad00/agent-bom"
+  },
+  "homepage": "https://github.com/msaad00/agent-bom",
+  "transport": "stdio",
+  "command": "agent-bom",
+  "args": [
+    "mcp",
+    "server"
+  ],
+  "dockerfile": "integrations/glama/Dockerfile",
+  "environmentVariables": {
+    "NVD_API_KEY": {
+      "description": "NVD API key for higher rate limits on vulnerability enrichment",
+      "required": false
+    }
+  },
+  "categories": [
+    "security",
+    "developer-tools"
+  ],
+  "tags": [
+    "security",
+    "sbom",
+    "supply-chain",
+    "ai-security",
+    "mcp",
+    "cloud-security",
+    "vulnerability-scanning",
+    "prompt-injection",
+    "compliance",
+    "license-compliance"
+  ],
+  "relatedServers": [
+    {
+      "name": "filesystem",
+      "url": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+      "reason": "Reference MCP server commonly paired for local artifact access during scans."
+    },
+    {
+      "name": "git",
+      "url": "https://github.com/modelcontextprotocol/servers/tree/main/src/git",
+      "reason": "Reference MCP server for repository inspection alongside dependency and SBOM scanning."
+    }
+  ]
+}

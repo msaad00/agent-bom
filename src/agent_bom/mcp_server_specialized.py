@@ -162,7 +162,24 @@ def register_specialized_ai_tools(
             Field(description="Directory path to scan for prompt template files (.prompt, system_prompt.*, prompts/ directories)."),
         ],
     ) -> str:
-        """Scan prompt template files for injection risks and security issues."""
+        """Scan prompt template files for prompt-injection and unsafe-interpolation risks.
+
+        Walks the given directory for prompt assets (``.prompt`` files,
+        ``system_prompt.*``, and ``prompts/`` directories), then statically
+        inspects each template for injection-prone patterns and unsafe variable
+        interpolation (untrusted input concatenated into instructions, missing
+        delimiters, tool/role-confusion phrasing).
+
+        Args:
+            directory: Directory path to scan for prompt template files.
+
+        Returns:
+            JSON with the scanned files, per-file findings (rule id, severity,
+            line, message), and a summary count by severity.
+
+        Use this before shipping or registering agent prompts to catch
+        injection exposure that package and CVE scans do not cover.
+        """
         return await execute_tool_async(
             "prompt_scan",
             prompt_scan_impl,
@@ -223,7 +240,28 @@ def register_specialized_ai_tools(
             ),
         ] = "",
     ) -> str:
-        """Evaluate package licenses against compliance policy."""
+        """Evaluate package licenses against an SPDX compliance policy.
+
+        Takes packages (either a prior ``scan`` result JSON or an explicit array
+        of ``{name, version, ecosystem, license}`` objects) and classifies each
+        license as allowed, warn, or blocked. Normalizes 2,500+ SPDX IDs
+        (including deprecated identifiers) and flags network-copyleft licenses
+        (AGPL/SSPL/BUSL and similar).
+
+        Args:
+            scan_json: JSON of a previous scan result, or a JSON array of
+                package objects with license metadata.
+            policy_json: Optional JSON policy with ``license_block`` /
+                ``license_warn`` glob lists. Falls back to the built-in policy
+                (block strong/network copyleft, warn weak copyleft) when empty.
+
+        Returns:
+            JSON with per-package license verdicts, the matched policy rule,
+            and counts of blocked / warned / allowed packages.
+
+        Call this in release or procurement gates to enforce license policy on
+        an agent's dependency set without running a full scan.
+        """
         return await execute_tool_async(
             "license_compliance_scan",
             license_compliance_scan_impl,

@@ -922,7 +922,28 @@ def register_operator_tools(
             Field(ge=0, description="Pagination offset."),
         ] = 0,
     ) -> str:
-        """Read tenant-scoped control-plane audit records."""
+        """Read tenant-scoped control-plane audit records with filters and paging.
+
+        Returns the immutable, hash-chained audit log of control-plane actions
+        (identity, shield, firewall, and policy changes) for one tenant, with
+        optional filtering by action, resource, and start time. Read-only: it
+        never mutates enforcement state.
+
+        Args:
+            tenant_id: Tenant scope to read (default control-plane tenant).
+            action: Optional audit action filter (exact match).
+            resource: Optional audit resource filter (exact match).
+            since: Optional ISO-8601 timestamp lower bound.
+            limit: Maximum audit records to return (1-1000).
+            offset: Pagination offset.
+
+        Returns:
+            JSON with the matched audit records (actor, action, resource,
+            timestamp, chain position) and pagination metadata.
+
+        Call this to review who changed what in the control plane; pair with
+        ``audit_integrity`` to verify the chain has not been tampered with.
+        """
         return await execute_tool_async(
             "audit_query",
             audit_query_impl,

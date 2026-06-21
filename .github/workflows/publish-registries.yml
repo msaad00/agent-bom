@@ -154,12 +154,14 @@ jobs:
       contents: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
       - name: Trigger Glama rebuild
         env:
           GLAMA_WEBHOOK_URL: ${{ vars.GLAMA_WEBHOOK_URL }}
         run: |
           if [ -z "$GLAMA_WEBHOOK_URL" ]; then
-            echo "::notice::GLAMA_WEBHOOK_URL not configured — Glama will rebuild on next auto-sync from PyPI"
+            echo "::warning::GLAMA_WEBHOOK_URL not configured — verifying Glama auto-sync freshness instead"
             echo "To enable instant rebuild, set GLAMA_WEBHOOK_URL in repo variables"
             exit 0
           fi
@@ -171,6 +173,9 @@ jobs:
           else
             echo "::warning::Glama rebuild trigger returned HTTP ${HTTP_STATUS} — may need manual rebuild"
           fi
+
+      - name: Verify Glama listing freshness
+        run: python scripts/check_glama_listing.py --retries 6 --delay-seconds 30
 
   clawhub:
     name: Publish to ClawHub

@@ -346,6 +346,28 @@ def main() -> int:
             for marker in stale_path_markers:
                 if marker in text:
                     _fail(f"{file.relative_to(ROOT)} contains stale toy runtime path: {marker}")
+    stale_public_markers = [
+        "agent-bom cis-benchmark --provider aws",
+        "uses: msaad00/agent-bom@v0.88.4",
+        "MCP server mode advertises 55 MCP tools",
+        "18 tools for CVE scanning",
+    ]
+    public_surface_roots = [
+        ROOT / "README.md",
+        ROOT / "PYPI_README.md",
+        ROOT / "site-docs",
+        ROOT / "docs" / "PRODUCT_BRIEF.md",
+        ROOT / "docs" / "MCP_SECURITY_MODEL.md",
+    ]
+    for root in public_surface_roots:
+        files = [root] if root.is_file() else [p for p in root.rglob("*") if p.is_file()]
+        for file in files:
+            if file.suffix.lower() in {".gif", ".png", ".jpg", ".jpeg", ".svg", ".ico"}:
+                continue
+            text = file.read_text(errors="ignore")
+            for marker in stale_public_markers:
+                if marker in text:
+                    _fail(f"{file.relative_to(ROOT)} contains stale public registry marker: {marker}")
 
     if len(description) > 100:
         _fail("pyproject.toml description must be <=100 chars for Docker Hub short-description publishing")

@@ -945,6 +945,17 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("A2A auth posture overlay failed", exc_info=True)
 
+    # MCP server + agent→MCP auth posture: flag MCP-server nodes named by weak
+    # MCP-auth findings (unauthenticated network server, weak transport, static
+    # credentials, agent→MCP gap). Reference-only; no-op when no MCP-auth
+    # findings exist.
+    try:
+        from agent_bom.mcp_auth_posture import annotate_graph_mcp_auth_from_report
+
+        annotate_graph_mcp_auth_from_report(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("MCP auth posture overlay failed", exc_info=True)
+
     # Multi-hop attack-path fusion: now that both the CNAPP exposure overlay and
     # the effective-permissions overlay have enriched the single graph, walk true
     # end-to-end kill-chains (internet entry → vuln/credential/permission/

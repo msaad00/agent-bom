@@ -185,3 +185,43 @@ def test_admin_shield_write_emits_audit(impl: Any, action: str, extra: dict[str,
     emitted = audit_calls[0]
     assert emitted["actor"] == "admin", emitted
     assert emitted.get("reason"), emitted
+
+
+def test_break_glass_inactive_session_still_audits() -> None:
+    """A break-glass ATTEMPT on an inactive Shield session must still audit.
+
+    Regression guard: the real ``break_glass`` route used to return
+    ``not_active`` *before* its audit emission when no Shield engine was
+    running, so a privileged break-glass attempt produced no audit trail.
+    The attempt + ``not_active`` outcome must now always land an event.
+    """
+    from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+    from agent_bom.api.routes import proxy as proxy_routes
+
+    store = InMemoryAuditLog()
+    set_audit_log(store)
+    # No shield_start -> no engine registered for this session.
+    proxy_routes._shield_engines.clear()
+
+    result = _run(
+        runtime_tools.shield_break_glass_impl(
+            session_id="never-started",
+            operator_role="admin",
+            operator_scopes="shield:write",
+            reason="emergency override on inactive session",
+            tenant_id="tenant-omega",
+            _truncate_response=_passthrough,
+        )
+    )
+
+    # Behaviour otherwise unchanged: still reports the session is not active.
+    assert result["status"] == "not_active", result
+
+    entries = store.list_entries(tenant_id="tenant-omega", limit=10)
+    actions = [entry.action for entry in entries]
+    assert "break_glass" in actions, f"inactive break-glass attempt emitted no audit event: {actions}"
+    glass = next(entry for entry in entries if entry.action == "break_glass")
+    assert glass.actor == "admin", glass
+    assert glass.details.get("outcome") == "not_active", glass.details
+
+    proxy_routes._shield_engines.clear()

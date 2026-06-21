@@ -65,3 +65,9 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: release-surface-consistency
+        name: release surface and generated atlas consistency
+        entry: python3 scripts/check_release_consistency.py
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|README\.md|PYPI_README\.md|DOCKER_HUB_README\.md|CHANGELOG\.md|docs/(DATA_MODEL\.md|openapi/v1\.(json|yaml)|PRODUCT_|RELEASE_|PUBLISHING|MCP_SECURITY_MODEL|AI_INFRASTRUCTURE_SCANNING|ENTERPRISE_DEPLOYMENT)|site-docs/|src/agent_bom/(api/|mcp_registry\.json)|integrations/(mcp-registry|glama|openclaw)/|deploy/|Dockerfile|uv\.lock|scripts/(check_release_consistency|regenerate_data_model_atlas)\.py)

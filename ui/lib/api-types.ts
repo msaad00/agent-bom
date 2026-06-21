@@ -2099,6 +2099,42 @@ export interface CostBreakdownRow {
   unpriced_calls: number;
 }
 
+/** Forward-looking burn-rate + budget-runway projection (#2925).
+ *
+ * Mirrors `agent_bom.api.cost_forecast.forecast_spend`. Reference-only — a
+ * forecast never blocks a call. Every projection field is nullable: a sparse or
+ * empty history yields a clear `status` and `null` projections. */
+export type CostForecastStatus =
+  | "insufficient_history"
+  | "budget_exceeded"
+  | "no_budget"
+  | "stale"
+  | "ok";
+
+export interface CostForecast {
+  schema_version: string;
+  agent: string | null;
+  now: string;
+  status: CostForecastStatus | string;
+  current_spend_usd: number | null;
+  budget_limit_usd: number | null;
+  burn_rate_usd_per_day: number | null;
+  burn_rate_basis: "trailing_24h" | "trailing_7d" | string | null;
+  projected_period_spend_usd: number | null;
+  period_start: string | null;
+  period_end: string | null;
+  days_remaining: number | null;
+  projected_exhaustion_at: string | null;
+  tenant_id?: string | undefined;
+}
+
+/** One freeform allocation-tag showback slice (returned when `tag` is passed). */
+export interface CostTagRollup {
+  tag_key: string;
+  total_cost_usd: number;
+  by_tag: CostBreakdownRow[];
+}
+
 export interface CostReport {
   schema_version: string;
   tenant_id: string;
@@ -2111,6 +2147,13 @@ export interface CostReport {
   by_agent: CostBreakdownRow[];
   by_model: CostBreakdownRow[];
   by_provider: CostBreakdownRow[];
+  /** Chargeback/showback rollup by cost-center (#2925). Unallocated spend
+   *  rolls up under the `"unallocated"` key. */
+  by_cost_center?: CostBreakdownRow[] | undefined;
+  /** Present only when a `tag` query param was supplied. */
+  tag_rollup?: CostTagRollup | undefined;
+  /** Forward-looking burn-rate + runway projection embedded on the report. */
+  forecast?: CostForecast | undefined;
   budget: CostBudgetStatus;
 }
 
@@ -2242,4 +2285,113 @@ export interface DriftIncidentsResponse {
   count: number;
   open_count: number;
   incidents: DriftIncident[];
+}
+
+// ── NHI / identity governance: credential expiry, access reviews, discovery ──
+//
+// Mirrors `GET /v1/auth/secrets/credential-expiry`,
+// `GET /v1/identities/access-reviews`, and `POST /v1/identities/discover`.
+// All three are reference-only and never carry secret values.
+
+export type CredentialExpiryState =
+  | "overdue"
+  | "expired"
+  | "rotation_due"
+  | "near_expiry"
+  | "unknown_age"
+  | "ok";
+
+export interface CredentialExpiryItem {
+  id: string | null;
+  name: string | null;
+  provider: string | null;
+  identity_type: string | null;
+  state: CredentialExpiryState | string;
+  priority: number;
+  blocking: boolean;
+  age_days: number | null;
+  days_until_expiry: number | null;
+  credential_expires_at: string | null;
+  last_rotated: string | null;
+  near_expiry_days: number;
+  rotation_days: number | null;
+  max_age_days: number | null;
+  reasons: string[];
+}
+
+export interface CredentialExpiryReport {
+  status: "ok" | "attention_required" | "blocked" | string;
+  secret_values_included: boolean;
+  evaluated: number;
+  counts: Record<string, number>;
+  blockers: Array<string | null>;
+  warnings: Array<string | null>;
+  thresholds: {
+    near_expiry_days: number;
+    rotation_days: number | null;
+    max_age_days: number | null;
+  };
+  credentials: CredentialExpiryItem[];
+  action_required: CredentialExpiryItem[];
+  message: string;
+  generated_from: string;
+  control_plane_included: boolean;
+  discovered_credential_count: number;
+}
+
+export type AccessReviewStatus =
+  | "open"
+  | "in_progress"
+  | "completed"
+  | "overdue";
+
+export interface AccessReviewCampaign {
+  campaign_id: string;
+  tenant_id: string;
+  name: string;
+  status: AccessReviewStatus | string;
+  created_at: string;
+  created_by: string;
+  due_at: string;
+  completed_at: string;
+  description: string;
+  item_count: number;
+  decided_count: number;
+}
+
+export interface AccessReviewsResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  campaigns: AccessReviewCampaign[];
+}
+
+export interface NhiDiscoveryProvider {
+  provider: string | null;
+  status: string | null;
+  count: number;
+}
+
+export interface DiscoveredNonHumanIdentity {
+  identity_id: string;
+  name: string;
+  identity_type: string;
+  provider: string;
+  status: string;
+  owner?: string | null | undefined;
+  created_at?: string | null | undefined;
+  last_used_at?: string | null | undefined;
+  credential_expires_at?: string | null | undefined;
+  scopes: string[];
+  raw_identity?: Record<string, unknown> | undefined;
+}
+
+export interface NhiDiscoveryResponse {
+  schema_version: string;
+  tenant_id: string;
+  status: "ok" | "empty" | string;
+  providers: NhiDiscoveryProvider[];
+  count: number;
+  identities: DiscoveredNonHumanIdentity[];
+  warnings: string[];
 }

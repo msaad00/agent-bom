@@ -93,7 +93,11 @@ import type {
   IdentitiesResponse,
   JITGrantsResponse,
   ConditionalAccessResponse,
-  DriftIncidentsResponse
+  DriftIncidentsResponse,
+  CostForecast,
+  CredentialExpiryReport,
+  AccessReviewsResponse,
+  NhiDiscoveryResponse
 } from "./api-types";
 export type {
   JobStatus,
@@ -253,6 +257,18 @@ export type {
   JITGrantsResponse,
   ConditionalAccessResponse,
   DriftIncidentsResponse,
+  CostForecast,
+  CostForecastStatus,
+  CostTagRollup,
+  CredentialExpiryState,
+  CredentialExpiryItem,
+  CredentialExpiryReport,
+  AccessReviewStatus,
+  AccessReviewCampaign,
+  AccessReviewsResponse,
+  NhiDiscoveryProvider,
+  DiscoveredNonHumanIdentity,
+  NhiDiscoveryResponse,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 
@@ -877,10 +893,19 @@ export const api = {
   getAuditLog: (limit?: number) => get<{ entries: AuditEntry[] }>(`/v1/audit?limit=${limit ?? 10}`),
 
   // ── Cost / FinOps cockpit ──
-  getCostReport: (agent?: string) =>
-    get<CostReport>(`/v1/observability/costs${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`),
+  getCostReport: (filters?: { agent?: string; costCenter?: string; tag?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.agent) params.set("agent", filters.agent);
+    if (filters?.costCenter) params.set("cost_center", filters.costCenter);
+    if (filters?.tag) params.set("tag", filters.tag);
+    const qs = params.toString();
+    return get<CostReport>(`/v1/observability/costs${qs ? `?${qs}` : ""}`);
+  },
   getCostBudget: (agent?: string) =>
     get<CostBudgetStatus>(`/v1/observability/costs/budget${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`),
+  /** Forward-looking burn-rate + budget-runway projection (reference only) */
+  getCostForecast: (agent?: string) =>
+    get<CostForecast>(`/v1/observability/costs/forecast${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`),
   getCostAnomalies: (zThreshold?: number) =>
     get<AnomaliesReport>(`/v1/observability/anomalies${zThreshold ? `?z_threshold=${zThreshold}` : ""}`),
 
@@ -891,6 +916,17 @@ export const api = {
     get<JITGrantsResponse>(`/v1/identity-jit-grants?include_inactive=${includeInactive}&limit=${limit}`),
   listConditionalAccessPolicies: (includeDisabled = false, limit = 200) =>
     get<ConditionalAccessResponse>(`/v1/conditional-access-policies?include_disabled=${includeDisabled}&limit=${limit}`),
+
+  // ── NHI / identity governance: credential expiry, access reviews, discovery ──
+  /** Non-secret credential expiry / rotation governance posture */
+  getCredentialExpiry: () =>
+    get<CredentialExpiryReport>("/v1/auth/secrets/credential-expiry"),
+  /** Access-review / recertification campaigns over discovered NHIs */
+  listAccessReviews: (limit = 200) =>
+    get<AccessReviewsResponse>(`/v1/identities/access-reviews?limit=${limit}`),
+  /** Read-only NHI discovery summary (gated by *_DISCOVERY env flags) */
+  discoverNonHumanIdentities: (providers?: string[]) =>
+    post<NhiDiscoveryResponse>("/v1/identities/discover", providers ? { providers } : {}),
 
   // ── Drift / behavior-incident cockpit ──
   listDriftIncidents: (includeResolved = false, limit = 200) =>

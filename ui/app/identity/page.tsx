@@ -1,12 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Fingerprint, KeyRound, Clock, ShieldCheck, Ban } from "lucide-react";
+import {
+  Fingerprint,
+  KeyRound,
+  Clock,
+  ShieldCheck,
+  Ban,
+  CalendarCheck,
+  Radar,
+  AlertCircle,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import type {
   AgentIdentitySummary,
   JITGrant,
   ConditionalAccessPolicy,
+  CredentialExpiryReport,
+  CredentialExpiryItem,
+  AccessReviewCampaign,
+  NhiDiscoveryResponse,
 } from "@/lib/api-types";
 import { formatDate } from "@/lib/api";
 import {
@@ -119,10 +132,282 @@ function scopeSummary(p: ConditionalAccessPolicy): string {
   return parts.length ? parts.join(" · ") : "any agent / identity / tool";
 }
 
+function credStateTone(
+  state: string,
+): "red" | "amber" | "green" | "zinc" {
+  if (state === "expired" || state === "overdue") return "red";
+  if (state === "rotation_due" || state === "near_expiry") return "amber";
+  if (state === "ok") return "green";
+  return "zinc";
+}
+
+function campaignTone(status: string): "green" | "blue" | "amber" | "red" | "zinc" {
+  if (status === "completed") return "green";
+  if (status === "in_progress") return "blue";
+  if (status === "overdue") return "red";
+  if (status === "open") return "amber";
+  return "zinc";
+}
+
+function CredentialExpiryPanel({ report }: { report: CredentialExpiryReport }) {
+  const expiringStates = new Set([
+    "near_expiry",
+    "rotation_due",
+    "expired",
+    "overdue",
+  ]);
+  const overdue =
+    (report.counts.overdue ?? 0) + (report.counts.expired ?? 0);
+  const expiring =
+    (report.counts.near_expiry ?? 0) + (report.counts.rotation_due ?? 0);
+  // Show the credentials needing attention first; the API already sorts
+  // action_required worst-first.
+  const rows: CredentialExpiryItem[] =
+    report.action_required.length > 0
+      ? report.action_required
+      : report.credentials.filter((c) => expiringStates.has(c.state));
+
+  const statusTone =
+    report.status === "blocked"
+      ? "red"
+      : report.status === "attention_required"
+        ? "amber"
+        : "green";
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <KeyRound className="h-4 w-4 text-amber-400" />
+        <h3 className="text-sm font-semibold text-zinc-300">
+          Credential expiry &amp; rotation
+        </h3>
+        <Badge tone={statusTone}>{report.status.replace(/_/g, " ")}</Badge>
+        <span className="ml-auto text-xs text-zinc-600">
+          {report.evaluated} evaluated · reference-only, no secret values
+        </span>
+      </div>
+      <div className="mb-3 grid grid-cols-3 gap-3">
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+          <span className="text-xs text-zinc-500">Expired / overdue</span>
+          <p
+            className={`text-xl font-bold ${overdue > 0 ? "text-red-400" : "text-zinc-100"}`}
+          >
+            {overdue.toLocaleString()}
+          </p>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+          <span className="text-xs text-zinc-500">Expiring / rotation due</span>
+          <p
+            className={`text-xl font-bold ${expiring > 0 ? "text-amber-400" : "text-zinc-100"}`}
+          >
+            {expiring.toLocaleString()}
+          </p>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+          <span className="text-xs text-zinc-500">Healthy</span>
+          <p className="text-xl font-bold text-zinc-100">
+            {(report.counts.ok ?? 0).toLocaleString()}
+          </p>
+        </div>
+      </div>
+      {report.evaluated === 0 ? (
+        <p className="text-sm text-zinc-500">
+          No control-plane secrets or discovered NHI credentials carry an age or
+          expiry signal yet.
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          All evaluated credentials are within rotation and expiry bounds.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                <th className="pb-2 font-medium">Credential</th>
+                <th className="pb-2 font-medium">Provider</th>
+                <th className="pb-2 font-medium">State</th>
+                <th className="pb-2 text-right font-medium">Age</th>
+                <th className="pb-2 text-right font-medium">Expires in</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c, i) => (
+                <tr
+                  key={`${c.id ?? c.name ?? "cred"}-${i}`}
+                  className="border-b border-zinc-900 last:border-0"
+                >
+                  <td className="py-2 font-medium text-zinc-200">
+                    {c.name ?? c.id ?? "—"}
+                  </td>
+                  <td className="py-2 text-zinc-400">{c.provider ?? "—"}</td>
+                  <td className="py-2">
+                    <Badge tone={credStateTone(c.state)}>
+                      {c.state.replace(/_/g, " ")}
+                    </Badge>
+                  </td>
+                  <td className="py-2 text-right text-zinc-400">
+                    {c.age_days != null ? `${c.age_days}d` : "—"}
+                  </td>
+                  <td className="py-2 text-right text-zinc-400">
+                    {c.days_until_expiry != null
+                      ? `${c.days_until_expiry}d`
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccessReviewPanel({
+  campaigns,
+}: {
+  campaigns: AccessReviewCampaign[];
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <CalendarCheck className="h-4 w-4 text-emerald-400" />
+        <h3 className="text-sm font-semibold text-zinc-300">
+          Access-review campaigns
+        </h3>
+      </div>
+      {campaigns.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          No recertification campaigns. Create one via{" "}
+          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
+            POST /v1/identities/access-reviews
+          </code>{" "}
+          to schedule a review of non-human identities and their effective
+          permissions.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                <th className="pb-2 font-medium">Campaign</th>
+                <th className="pb-2 font-medium">Status</th>
+                <th className="pb-2 text-right font-medium">Reviewed</th>
+                <th className="pb-2 font-medium">Due</th>
+              </tr>
+            </thead>
+            <tbody>
+              {campaigns.map((c) => (
+                <tr
+                  key={c.campaign_id}
+                  className="border-b border-zinc-900 last:border-0"
+                >
+                  <td className="py-2 font-medium text-zinc-200">{c.name}</td>
+                  <td className="py-2">
+                    <Badge tone={campaignTone(c.status)}>
+                      {c.status.replace(/_/g, " ")}
+                    </Badge>
+                  </td>
+                  <td className="py-2 text-right text-zinc-400">
+                    {c.decided_count} / {c.item_count}
+                  </td>
+                  <td className="py-2 text-zinc-500">
+                    {c.due_at ? formatDate(c.due_at) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NhiDiscoveryPanel({
+  discovery,
+}: {
+  discovery: NhiDiscoveryResponse | null;
+}) {
+  // No provider gated on → discovery disabled. The merge layer reports
+  // status "empty" with each provider's own gated status.
+  const enabledProviders = (discovery?.providers ?? []).filter(
+    (p) => (p.status ?? "").toLowerCase() === "ok",
+  );
+  const disabled =
+    discovery == null ||
+    (discovery.count === 0 && enabledProviders.length === 0);
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <Radar className="h-4 w-4 text-sky-400" />
+        <h3 className="text-sm font-semibold text-zinc-300">
+          Discovered non-human identities
+        </h3>
+      </div>
+      {disabled ? (
+        <div className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-400">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+          <span>
+            NHI discovery is disabled. Enable an IdP connector (Okta / Entra) via
+            its <code className="text-zinc-300">*_DISCOVERY</code> environment
+            flag and token to enumerate service accounts and service principals.
+            Discovery is read-only and reference-only — it never reads secret
+            material.
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+              <span className="text-xs text-zinc-500">Identities</span>
+              <p className="text-xl font-bold text-zinc-100">
+                {discovery.count.toLocaleString()}
+              </p>
+            </div>
+            {discovery.providers.map((p) => (
+              <div
+                key={p.provider ?? "provider"}
+                className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3"
+              >
+                <span className="text-xs capitalize text-zinc-500">
+                  {p.provider ?? "provider"}
+                </span>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-xl font-bold text-zinc-100">
+                    {p.count.toLocaleString()}
+                  </p>
+                  <Badge tone={p.status === "ok" ? "green" : "zinc"}>
+                    {p.status ?? "—"}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+          {discovery.warnings.length > 0 && (
+            <ul className="space-y-1 text-xs text-zinc-500">
+              {discovery.warnings.map((w, i) => (
+                <li key={i}>· {w}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function IdentityPage() {
   const [identities, setIdentities] = useState<AgentIdentitySummary[]>([]);
   const [grants, setGrants] = useState<JITGrant[]>([]);
   const [policies, setPolicies] = useState<ConditionalAccessPolicy[]>([]);
+  const [credExpiry, setCredExpiry] = useState<CredentialExpiryReport | null>(
+    null,
+  );
+  const [campaigns, setCampaigns] = useState<AccessReviewCampaign[]>([]);
+  const [discovery, setDiscovery] = useState<NhiDiscoveryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<ApiOfflineKind>("network");
@@ -132,18 +417,37 @@ export default function IdentityPage() {
       api.listIdentities(true),
       api.listJitGrants(true),
       api.listConditionalAccessPolicies(true),
+      api.getCredentialExpiry(),
+      api.listAccessReviews(),
+      api.discoverNonHumanIdentities(),
     ])
-      .then(([idResult, jitResult, polResult]) => {
-        if (idResult.status === "fulfilled") {
-          setIdentities(idResult.value.identities);
-        } else {
-          setError(idResult.reason?.message ?? "Failed to load identities");
-          setErrorKind(classifyApiErrorKind(idResult.reason));
-        }
-        if (jitResult.status === "fulfilled") setGrants(jitResult.value.grants);
-        if (polResult.status === "fulfilled")
-          setPolicies(polResult.value.policies);
-      })
+      .then(
+        ([
+          idResult,
+          jitResult,
+          polResult,
+          credResult,
+          reviewResult,
+          discoverResult,
+        ]) => {
+          if (idResult.status === "fulfilled") {
+            setIdentities(idResult.value.identities);
+          } else {
+            setError(idResult.reason?.message ?? "Failed to load identities");
+            setErrorKind(classifyApiErrorKind(idResult.reason));
+          }
+          if (jitResult.status === "fulfilled")
+            setGrants(jitResult.value.grants);
+          if (polResult.status === "fulfilled")
+            setPolicies(polResult.value.policies);
+          if (credResult.status === "fulfilled")
+            setCredExpiry(credResult.value);
+          if (reviewResult.status === "fulfilled")
+            setCampaigns(reviewResult.value.campaigns);
+          if (discoverResult.status === "fulfilled")
+            setDiscovery(discoverResult.value);
+        },
+      )
       .finally(() => setLoading(false));
   }, []);
 
@@ -172,8 +476,15 @@ export default function IdentityPage() {
     (i) => i.status === "revoked" || i.status === "expired",
   ).length;
 
+  const hasGovernanceData =
+    (credExpiry?.evaluated ?? 0) > 0 ||
+    campaigns.length > 0 ||
+    (discovery?.count ?? 0) > 0;
   const isEmpty =
-    identities.length === 0 && grants.length === 0 && policies.length === 0;
+    identities.length === 0 &&
+    grants.length === 0 &&
+    policies.length === 0 &&
+    !hasGovernanceData;
 
   return (
     <div className="space-y-6">
@@ -222,6 +533,12 @@ export default function IdentityPage() {
           icon={Fingerprint}
         />
       )}
+
+      {credExpiry && <CredentialExpiryPanel report={credExpiry} />}
+
+      <AccessReviewPanel campaigns={campaigns} />
+
+      <NhiDiscoveryPanel discovery={discovery} />
 
       {identities.length > 0 && (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +168,65 @@ def _taxonomies_as_tool_extensions(taxonomies: list[dict]) -> list[dict]:
     return extensions
 
 
+_GUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
+
+# Map agent-bom suppression states onto the SARIF 2.1.0 suppression.status enum.
+_SARIF_SUPPRESSION_STATUS = {
+    "accepted": "accepted",
+    "acknowledged": "accepted",
+    "resolved": "accepted",
+    "approved": "accepted",
+    "risk_accepted": "accepted",
+    "under_review": "underReview",
+    "pending": "underReview",
+    "open": "underReview",
+    "rejected": "rejected",
+    "denied": "rejected",
+}
+
+
+def _suppression_entries(source: object) -> list[dict]:
+    """Build a SARIF 2.1.0 ``suppressions[]`` array from a suppressed finding/BlastRadius.
+
+    Emitting ``result.suppressions`` is the standard signal SARIF consumers
+    (GitHub Code Scanning, IDEs) use to hide a result. Suppressions persisted
+    in an external tenant store are ``kind: "external"``. The agent-bom-specific
+    ``suppression_id`` / ``suppression_state`` / ``suppression_reason`` ride in
+    the suppression ``properties`` bag (a free-form propertyBag in the schema)
+    so no information is lost while staying schema-valid.
+    """
+    if not getattr(source, "suppressed", False):
+        return []
+    suppression_id = getattr(source, "suppression_id", None)
+    suppression_state = getattr(source, "suppression_state", None)
+    suppression_reason = getattr(source, "suppression_reason", None)
+    unsuppressed_risk_score = getattr(source, "unsuppressed_risk_score", None)
+
+    entry: dict[str, Any] = {"kind": "external"}
+    if isinstance(suppression_id, str) and _GUID_RE.match(suppression_id):
+        entry["guid"] = suppression_id
+    status = _SARIF_SUPPRESSION_STATUS.get(str(suppression_state or "").lower())
+    if status:
+        entry["status"] = status
+    if suppression_reason:
+        # A tenant-authored suppression justification is structural metadata, not
+        # free-text scanner output — keep it (with secret/PII scrubbing) rather
+        # than dropping it through the replay-only persistence tier.
+        justification = sanitize_sensitive_payload(str(suppression_reason), key="justification", max_str_len=1000)
+        if isinstance(justification, str) and justification:
+            entry["justification"] = justification
+    properties: dict[str, Any] = {}
+    if suppression_id is not None:
+        properties["suppression_id"] = sanitize_sensitive_payload(str(suppression_id), key="suppression_id", max_str_len=200)
+    if suppression_state is not None:
+        properties["suppression_state"] = sanitize_sensitive_payload(str(suppression_state), key="suppression_state", max_str_len=200)
+    if unsuppressed_risk_score is not None:
+        properties["unsuppressed_risk_score"] = unsuppressed_risk_score
+    if properties:
+        entry["properties"] = properties
+    return [entry]
+
+
 def _framework_taxa_references(properties: dict[str, Any]) -> list[dict]:
     """Build result-level SARIF taxa references for declared framework taxonomies."""
     refs: list[dict] = []
@@ -291,6 +351,13 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             "impact_category": getattr(br, "impact_category", "code-execution"),
             "attack_vector_summary": getattr(br, "attack_vector_summary", None),
             "reachability": br.reachability,
+            # Structured reach lists + AI-native context (unified Finding parity).
+            "affected_servers": [s.name for s in br.affected_servers],
+            "affected_agents": [a.name for a in br.affected_agents],
+            "exposed_tools": [t.name for t in br.exposed_tools],
+            "ai_risk_context": getattr(br, "ai_risk_context", None),
+            "ai_summary": getattr(br, "ai_summary", None),
+            "suppressed": bool(getattr(br, "suppressed", False)),
         }
         package_provenance = package_discovery_provenance(br.package)
         if package_provenance:
@@ -347,6 +414,9 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 }
             )
         result["properties"] = result_properties
+        suppressions = _suppression_entries(br)
+        if suppressions:
+            result["suppressions"] = suppressions
         taxa_refs = _framework_taxa_references(result_properties)
         if taxa_refs:
             result["taxa"] = taxa_refs
@@ -386,36 +456,47 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
         file_path = _to_relative_path(finding.asset.location or "agent-bom-report.json")
         fp_input = f"{finding.id}:{file_path}:{finding.asset.stable_id}"
         fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
-        results.append(
-            {
-                "ruleId": rule_id,
-                "level": level,
-                "kind": "fail" if level in {"error", "warning"} else "informational",
-                "message": {
-                    "text": _sanitize_sarif_text(
-                        "title",
-                        finding.title,
-                        fallback=_sanitize_sarif_text("description", finding.description, fallback=finding.finding_type.value),
-                    )
-                },
-                "fingerprints": {"agent-bom/v1": fingerprint},
-                "locations": [
-                    {
-                        "physicalLocation": {
-                            "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
-                            "region": {"startLine": 1, "startColumn": 1},
-                        },
-                    }
-                ],
-                "properties": {
-                    "risk_score": finding.risk_score,
-                    "asset_type": finding.asset.asset_type,
-                    "asset_name": _sanitize_sarif_text("title", finding.asset.name, fallback=finding.asset.asset_type),
-                    "evidence": _sanitize_sarif_property(finding.evidence),
-                    "remediation_guidance": _sanitize_sarif_property(finding.remediation_guidance),
-                },
-            }
-        )
+        finding_result: dict = {
+            "ruleId": rule_id,
+            "level": level,
+            "kind": "fail" if level in {"error", "warning"} else "informational",
+            "message": {
+                "text": _sanitize_sarif_text(
+                    "title",
+                    finding.title,
+                    fallback=_sanitize_sarif_text("description", finding.description, fallback=finding.finding_type.value),
+                )
+            },
+            "fingerprints": {"agent-bom/v1": fingerprint},
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
+                        "region": {"startLine": 1, "startColumn": 1},
+                    },
+                }
+            ],
+            "properties": {
+                "risk_score": finding.risk_score,
+                "asset_type": finding.asset.asset_type,
+                "asset_name": _sanitize_sarif_text("title", finding.asset.name, fallback=finding.asset.asset_type),
+                "evidence": _sanitize_sarif_property(finding.evidence),
+                "remediation_guidance": _sanitize_sarif_property(finding.remediation_guidance),
+                # Structured reach lists + AI-native context (unified Finding parity).
+                "affected_servers": list(finding.affected_servers),
+                "affected_agents": list(finding.affected_agents),
+                "exposed_credentials": list(finding.exposed_credentials),
+                "exposed_tools": list(finding.exposed_tools),
+                "ai_risk_context": finding.ai_risk_context,
+                "ai_summary": finding.ai_summary,
+                "attack_vector_summary": finding.attack_vector_summary,
+                "suppressed": finding.suppressed,
+            },
+        }
+        suppressions = _suppression_entries(finding)
+        if suppressions:
+            finding_result["suppressions"] = suppressions
+        results.append(finding_result)
 
     # IaC misconfiguration findings (Dockerfile, K8s, Terraform, CloudFormation)
     iac_data = getattr(report, "iac_findings_data", None)

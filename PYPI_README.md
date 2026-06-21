@@ -21,7 +21,7 @@ better-sqlite3@9.0.0  (npm package)
 
 Blast radius is the core idea: `package -> vulnerability finding -> MCP server (tools + credential env names) -> connected agents`. This schematic explains the model; emitted findings are backed by the configured advisory sources.
 
-Scan local agent configs, MCP servers, instruction files, lockfiles, containers, cloud posture, GPU surfaces, and runtime evidence.
+Scan local agent configs, MCP servers, instruction files, lockfiles, containers, cloud estate, AI models/datasets, non-human identities, LLM cost, GPU surfaces, and runtime evidence.
 
 Try the built-in demo first:
 
@@ -101,18 +101,21 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 
 - **Agents + MCP** — MCP clients, servers, tools, transports, trust posture
 - **Skills + instructions** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `skills/*`
-- **Package risk** — software supply chain scanning with enrichment and blast radius
+- **Package risk** — supply-chain scanning across 15 package ecosystems with OSV/GHSA enrichment and blast radius
+- **AI models + datasets** — malicious-model detection via safe pickle-opcode disassembly (no execution), model/dataset cards, and PII/PHI dataset scanning
 - **Container images + IaC** — native OCI parsing plus Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes coverage
-- **Cloud AI** — cloud and AI infrastructure posture across major supported providers
-- **Secrets + runtime** — MCP proxy, Shield SDK, secrets, and redaction surfaces
+- **Cloud estate** — read-only, gated asset inventory across AWS/Azure/GCP plus AI/GPU posture and CIS benchmarks
+- **Identity (NHI)** — non-human identity discovery (Okta/Entra), credential-expiry posture, and access-review campaigns
+- **LLM cost** — spend forecasting, budget runway, chargeback/allocation, and seasonal-aware spend-anomaly detection
+- **Secrets + runtime** — MCP proxy/gateway, inline firewall enforcement, A2A/MCP auth posture, Shield SDK, secrets, and redaction surfaces
 - **Compliance + evidence** — mapped governance plus ZIP evidence bundles for auditors
 
 ## Key features
 
-- **Blast radius mapping** — package → vulnerability finding → MCP server (tools + credential env names) → connected agents
+- **Blast radius + attack-path fusion** — multi-hop exposure paths over one unified `ContextGraph`, from package → finding → MCP server → credentials → connected agents
 - **CWE-aware impact** — RCE shows credential exposure, DoS does not
-- **Portable outputs** — SARIF, CycloneDX, SPDX, HTML, graph, JSON, ZIP evidence bundles, and more
-- **MCP server mode** — expose `agent-bom` capabilities directly to MCP clients like Claude, Cursor, Windsurf, and Cortex CoCo / Cortex Code
+- **Portable outputs** — SARIF, CycloneDX, SPDX, OCSF, HTML, graph, JSON, ZIP evidence bundles, and more
+- **MCP server mode** — 69 MCP tools, 6 resources, and 6 workflow prompts exposed to MCP clients like Claude, Cursor, Windsurf, and Cortex CoCo / Cortex Code
 - **Skill bundle identity** — stable bundle hashes for skill and instruction file review
 - **Dependency confusion detection** — flags internal naming patterns
 - **VEX generation** — auto-triage with CWE-aware reachability

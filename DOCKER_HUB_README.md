@@ -2,9 +2,9 @@
 
 **Open security scanner and self-hosted control plane for AI/MCP infrastructure.**
 
-`agent-bom` follows package, agent, MCP, credential-name, cloud, runtime, and
-skill evidence into one reachability-backed AI BOM, then tells humans and AI
-agents which exposure path to fix first.
+`agent-bom` follows package, agent, MCP, credential-name, cloud estate,
+non-human identity, runtime, and skill evidence into one reachability-backed AI
+BOM, then tells humans and AI agents which multi-hop exposure path to fix first.
 
 Blast radius is the core idea:
 
@@ -103,22 +103,29 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
 ## What You Get
 
 - Blast radius from package to server to agent to credentials and tools
-- AI/MCP coverage across agents, MCP, skills, runtime, containers, cloud, IaC,
-  and GPU
-- One evidence model across CLI, CI, API, dashboard, reports, and MCP tools
-- ExposurePath-driven graph investigation for humans and headless agent
-  workflows
-- Runtime MCP protection plus broader review and tamper-evident evidence exports
+- AI/MCP coverage across agents, MCP, skills, AI models/datasets, runtime,
+  containers, cloud, IaC, and GPU
+- Supply-chain scanning across 15 package ecosystems with OSV/GHSA enrichment
+- Cloud estate inventory (AWS/Azure/GCP, read-only), non-human identity
+  governance (NHI discovery, credential-expiry, access review), and LLM cost
+  forecasting with chargeback and spend-anomaly detection
+- Malicious-model detection via safe pickle-opcode disassembly (no execution)
+- One unified `Finding` model and `ContextGraph` across CLI, CI, API,
+  dashboard, reports, and MCP tools
+- Multi-hop attack-path fusion for humans and headless agent workflows
+- Runtime MCP protection — inline firewall enforcement, secure-by-default
+  gateway, A2A/MCP auth-posture checks — plus tamper-evident evidence exports
 
 ## Product Surfaces
 
 The promoted self-hosted rollout is a scoped operator stack, not one forced
 runtime monolith. Teams typically deploy only the surfaces they need:
 
-- **scan**: discovery, inventory, CVE, image, IaC, Kubernetes, and cloud analysis
+- **scan**: discovery, inventory, CVE, image, IaC, Kubernetes, cloud estate, AI model/dataset, and supply-chain analysis
 - **fleet**: endpoint and collector inventory pushed into the control plane
-- **proxy / runtime**: inline MCP enforcement near selected workloads
-- **gateway**: central policy management for those runtime paths
+- **identity / cost**: non-human identity governance and LLM spend forecasting, chargeback, and anomaly detection
+- **proxy / runtime**: inline MCP firewall enforcement near selected workloads
+- **gateway**: secure-by-default central policy management for those runtime paths
 - **API + UI**: the operator plane for findings, graph, remediation, audit, and policy workflows
 
 ## Control-Plane Contract

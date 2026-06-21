@@ -1764,6 +1764,46 @@ export interface GatewayStatsResponse {
   firewall_runtime: FirewallRuntimeStats;
 }
 
+// ─── Gateway Live Feed (unified fleet event stream) ─────────────────────
+
+export type GatewayFeedActionType =
+  | "tool_call_authorized"
+  | "tool_call_blocked"
+  | "data_filter_applied"
+  | "llm_call";
+
+export interface GatewayFeedEvent {
+  ts: string;
+  agent: string;
+  action_type: GatewayFeedActionType;
+  target: string;
+  detail: string;
+  tenant: string;
+  shadow: boolean;
+  source: string;
+}
+
+export interface GatewayFeedResponse {
+  schema_version: string;
+  tenant_id: string;
+  generated_at: string;
+  count: number;
+  events: GatewayFeedEvent[];
+}
+
+export interface GatewayFeedKpis {
+  schema_version: string;
+  tenant_id: string;
+  generated_at: string;
+  calls_today: number;
+  blocked_today: number;
+  shadow_ai_blocked: number;
+  data_filters_applied: number;
+  tool_calls_authorized: number;
+  llm_calls: number;
+  uptime_seconds?: number;
+}
+
 // ─── Inter-agent firewall (#982) ────────────────────────────────────────
 
 export interface FirewallPairTally {

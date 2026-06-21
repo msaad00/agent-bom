@@ -765,6 +765,7 @@ from agent_bom.api.routes.evaluations import router as _evaluations_router  # no
 from agent_bom.api.routes.fleet import router as _fleet_router  # noqa: E402
 from agent_bom.api.routes.frameworks import router as _frameworks_router  # noqa: E402
 from agent_bom.api.routes.gateway import router as _gateway_router  # noqa: E402
+from agent_bom.api.routes.gateway_feed import router as _gateway_feed_router  # noqa: E402
 from agent_bom.api.routes.governance import router as _governance_router  # noqa: E402
 from agent_bom.api.routes.graph import router as _graph_router  # noqa: E402
 from agent_bom.api.routes.identities import router as _identities_router  # noqa: E402
@@ -794,6 +795,7 @@ app.include_router(_fleet_router)
 app.include_router(_evaluations_router)
 app.include_router(_frameworks_router)
 app.include_router(_gateway_router)
+app.include_router(_gateway_feed_router)
 app.include_router(_governance_router)
 app.include_router(_graph_router)
 app.include_router(_identities_router)

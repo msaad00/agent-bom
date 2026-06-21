@@ -6397,6 +6397,125 @@ paths:
       summary: Evaluate Gateway
       tags:
       - gateway
+  /v1/gateway/feed:
+    get:
+      description: 'Unified, time-ordered fleet event feed for the active tenant.
+
+
+        Fuses tool-call authorization decisions (allowed / blocked), data-filter /
+
+        DLP redaction events, and recent LLM calls into one normalized stream with
+
+        per-agent attribution. Reference-only and redaction-safe: every event is
+
+        metadata (timestamp, agent, action class, target, short non-secret detail);
+
+        no raw arguments, responses, or credential values are returned.'
+      operationId: gateway_feed_v1_gateway_feed_get
+      parameters:
+      - description: Max fused events to return (1-500)
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 100
+          description: Max fused events to return (1-500)
+          maximum: 500
+          minimum: 1
+          title: Limit
+          type: integer
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Gateway Feed V1 Gateway Feed Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Gateway Feed
+      tags:
+      - gateway
+  /v1/gateway/feed/kpis:
+    get:
+      description: "KPI header rollup for the gateway live feed.\n\nReturns ``calls_today``,\
+        \ ``blocked_today``, ``shadow_ai_blocked`` (shadow /\nundeclared-agent + shadow-MCP-server\
+        \ blocks), ``data_filters_applied``, and\n``uptime_seconds`` (only when the\
+        \ proxy reports it \u2014 never fabricated)."
+      operationId: gateway_feed_kpis_v1_gateway_feed_kpis_get
+      parameters:
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Gateway Feed Kpis V1 Gateway Feed Kpis Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Gateway Feed Kpis
+      tags:
+      - gateway
   /v1/gateway/policies:
     get:
       description: List all gateway policies.

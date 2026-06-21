@@ -10,6 +10,9 @@ import {
   TrendingUp,
   ShieldAlert,
   Gauge,
+  Flame,
+  CalendarClock,
+  Building2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -21,12 +24,13 @@ import {
   CartesianGrid,
   Cell,
 } from "recharts";
-import { api } from "@/lib/api";
+import { api, formatDate } from "@/lib/api";
 import type {
   CostReport,
   AnomaliesReport,
   CostBreakdownRow,
   CostAnomaly,
+  CostForecast,
 } from "@/lib/api-types";
 import {
   PageLoadingState,
@@ -194,6 +198,197 @@ function BreakdownTable({
   );
 }
 
+const FORECAST_STATUS: Record<
+  string,
+  { label: string; tone: "ok" | "warn" | "danger" | "muted" }
+> = {
+  ok: { label: "on track", tone: "ok" },
+  no_budget: { label: "no budget", tone: "muted" },
+  budget_exceeded: { label: "exceeded", tone: "danger" },
+  stale: { label: "stale", tone: "muted" },
+  insufficient_history: { label: "insufficient history", tone: "muted" },
+};
+
+function fmtDays(n: number): string {
+  if (n >= 365) return `${(n / 365).toFixed(1)}y`;
+  if (n >= 1) return `${Math.round(n)}d`;
+  return `${(n * 24).toFixed(1)}h`;
+}
+
+function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
+  const status = forecast?.status ?? "insufficient_history";
+  const meta = FORECAST_STATUS[status] ?? {
+    label: status.replace(/_/g, " "),
+    tone: "muted" as const,
+  };
+  const toneClass = {
+    ok: "bg-emerald-900/60 text-emerald-300",
+    warn: "bg-amber-900/60 text-amber-300",
+    danger: "bg-red-900/60 text-red-300",
+    muted: "bg-zinc-800 text-zinc-400",
+  }[meta.tone];
+
+  const hasRate = forecast?.burn_rate_usd_per_day != null;
+  const hasRunway = forecast?.days_remaining != null;
+  // At-risk when a budgeted forecast projects exhaustion within 14 days.
+  const atRisk =
+    status === "ok" &&
+    forecast?.days_remaining != null &&
+    forecast.days_remaining <= 14;
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <CalendarClock className="h-4 w-4 text-sky-400" />
+        <h3 className="text-sm font-semibold text-zinc-300">
+          Forecast &amp; runway
+        </h3>
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${atRisk ? "bg-amber-900/60 text-amber-300" : toneClass}`}
+        >
+          {atRisk ? "at risk" : meta.label}
+        </span>
+      </div>
+      {!hasRate && !hasRunway ? (
+        <p className="text-sm text-zinc-500">
+          {status === "insufficient_history"
+            ? "Not enough timestamped spend yet to project a burn rate. A forecast appears once at least two priced LLM calls are recorded."
+            : status === "no_budget"
+              ? "A burn rate is available, but no spend budget is configured — there is nothing to project a runway against."
+              : status === "stale"
+                ? "Recorded spend falls outside the trailing windows, so no current burn rate can be derived."
+                : "No forecast data available."}
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+              <div className="mb-1 flex items-center gap-1.5">
+                <Flame className="h-3.5 w-3.5 text-orange-400" />
+                <span className="text-xs text-zinc-500">Burn / day</span>
+              </div>
+              <p className="text-lg font-bold text-zinc-100">
+                {forecast?.burn_rate_usd_per_day != null
+                  ? fmtUsd(forecast.burn_rate_usd_per_day)
+                  : "—"}
+              </p>
+              {forecast?.burn_rate_basis && (
+                <p className="mt-0.5 text-[11px] text-zinc-600">
+                  {forecast.burn_rate_basis.replace(/_/g, " ")}
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+              <div className="mb-1 flex items-center gap-1.5">
+                <Gauge className="h-3.5 w-3.5 text-zinc-400" />
+                <span className="text-xs text-zinc-500">Runway</span>
+              </div>
+              <p
+                className={`text-lg font-bold ${atRisk ? "text-amber-300" : "text-zinc-100"}`}
+              >
+                {forecast?.days_remaining != null
+                  ? fmtDays(forecast.days_remaining)
+                  : "—"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+              <div className="mb-1 flex items-center gap-1.5">
+                <CalendarClock className="h-3.5 w-3.5 text-zinc-400" />
+                <span className="text-xs text-zinc-500">Exhaustion</span>
+              </div>
+              <p className="text-sm font-medium text-zinc-200">
+                {forecast?.projected_exhaustion_at
+                  ? formatDate(forecast.projected_exhaustion_at)
+                  : "—"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+              <div className="mb-1 flex items-center gap-1.5">
+                <TrendingUp className="h-3.5 w-3.5 text-zinc-400" />
+                <span className="text-xs text-zinc-500">Projected period</span>
+              </div>
+              <p className="text-sm font-medium text-zinc-200">
+                {forecast?.projected_period_spend_usd != null
+                  ? fmtUsd(forecast.projected_period_spend_usd)
+                  : "—"}
+              </p>
+              {forecast?.budget_limit_usd != null && (
+                <p className="mt-0.5 text-[11px] text-zinc-600">
+                  of {fmtUsd(forecast.budget_limit_usd)} cap
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-zinc-600">
+            Reference only — a forecast never blocks a call; enforcement stays at
+            the gateway.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ChargebackPanel({ rows }: { rows: CostBreakdownRow[] }) {
+  const top = [...rows].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 12);
+  const total = rows.reduce((sum, r) => sum + r.cost_usd, 0);
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <Building2 className="h-4 w-4 text-violet-400" />
+        <h3 className="text-sm font-semibold text-zinc-300">
+          Chargeback by cost-center
+        </h3>
+      </div>
+      {top.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          No chargeback allocation recorded. Tag GenAI spans with{" "}
+          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
+            agent.cost_center
+          </code>{" "}
+          (or <code className="text-zinc-300">allocation.tag.*</code>) to attribute
+          spend to a budget unit.
+        </p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+              <th className="pb-2 font-medium">Cost center</th>
+              <th className="pb-2 text-right font-medium">Calls</th>
+              <th className="pb-2 text-right font-medium">Share</th>
+              <th className="pb-2 text-right font-medium">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {top.map((r) => {
+              const share = total > 0 ? r.cost_usd / total : 0;
+              return (
+                <tr
+                  key={r.key}
+                  className="border-b border-zinc-900 last:border-0"
+                >
+                  <td className="py-2 font-mono text-xs text-zinc-300">
+                    {r.key || "unallocated"}
+                  </td>
+                  <td className="py-2 text-right text-zinc-400">
+                    {fmtInt(r.calls)}
+                  </td>
+                  <td className="py-2 text-right text-zinc-500">
+                    {(share * 100).toFixed(1)}%
+                  </td>
+                  <td className="py-2 text-right font-medium text-zinc-200">
+                    {fmtUsd(r.cost_usd)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function AnomalyRow({ a }: { a: CostAnomaly }) {
   const high = a.severity === "high";
   return (
@@ -232,13 +427,18 @@ function AnomalyRow({ a }: { a: CostAnomaly }) {
 export default function CostPage() {
   const [report, setReport] = useState<CostReport | null>(null);
   const [anomalies, setAnomalies] = useState<AnomaliesReport | null>(null);
+  const [forecast, setForecast] = useState<CostForecast | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<ApiOfflineKind>("network");
 
   useEffect(() => {
-    void Promise.allSettled([api.getCostReport(), api.getCostAnomalies()])
-      .then(([reportResult, anomalyResult]) => {
+    void Promise.allSettled([
+      api.getCostReport(),
+      api.getCostAnomalies(),
+      api.getCostForecast(),
+    ])
+      .then(([reportResult, anomalyResult, forecastResult]) => {
         if (reportResult.status === "fulfilled") {
           setReport(reportResult.value);
         } else {
@@ -249,6 +449,17 @@ export default function CostPage() {
         }
         if (anomalyResult.status === "fulfilled")
           setAnomalies(anomalyResult.value);
+        // Prefer the dedicated forecast endpoint; fall back to the block
+        // embedded on the cost report so the panel still renders if the
+        // standalone call is unavailable.
+        if (forecastResult.status === "fulfilled") {
+          setForecast(forecastResult.value);
+        } else if (
+          reportResult.status === "fulfilled" &&
+          reportResult.value.forecast
+        ) {
+          setForecast(reportResult.value.forecast);
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -290,6 +501,8 @@ export default function CostPage() {
       </div>
 
       <BudgetBanner budget={report.budget} />
+
+      <ForecastPanel forecast={forecast} />
 
       {!hasData ? (
         <PageEmptyState
@@ -374,6 +587,8 @@ export default function CostPage() {
             <BreakdownTable title="By model" rows={report.by_model} />
             <BreakdownTable title="By provider" rows={report.by_provider} />
           </div>
+
+          <ChargebackPanel rows={report.by_cost_center ?? []} />
         </>
       )}
 

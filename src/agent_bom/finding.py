@@ -417,6 +417,22 @@ class Finding:
             "related_findings": self.related_findings,
             "evidence": self.evidence,
             "risk_score": self.risk_score,
+            # Suppression state — a suppressed finding must never surface as
+            # unsuppressed downstream (mirrors BlastRadius / SARIF suppressions[]).
+            "suppressed": self.suppressed,
+            "suppression_id": self.suppression_id,
+            "suppression_state": self.suppression_state,
+            "suppression_reason": self.suppression_reason,
+            "unsuppressed_risk_score": self.unsuppressed_risk_score,
+            # AI-native risk context
+            "ai_risk_context": self.ai_risk_context,
+            "ai_summary": self.ai_summary,
+            "attack_vector_summary": self.attack_vector_summary,
+            # Structured reach / blast-radius lists (not collapsed to counts)
+            "affected_servers": list(self.affected_servers),
+            "affected_agents": list(self.affected_agents),
+            "exposed_credentials": list(self.exposed_credentials),
+            "exposed_tools": list(self.exposed_tools),
         }
 
 

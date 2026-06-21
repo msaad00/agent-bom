@@ -9,6 +9,12 @@ import pytest
 
 os.environ.setdefault("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
 
+# Force a wide, deterministic console width. Under pytest-xdist there is no TTY,
+# so Rich defaults to 80 cols and wraps long output (e.g. file paths) across
+# lines — breaking substring assertions on CLI output. Pin it so tests render
+# identically whether run serially or in parallel workers.
+os.environ.setdefault("COLUMNS", "200")
+
 # Isolate persistent runtime state (e.g. the protection-engine kill-switch
 # file, default ~/.agent-bom/killswitch.json) into a throwaway per-process
 # directory. Without this, a test that trips the kill-switch persists a blocked

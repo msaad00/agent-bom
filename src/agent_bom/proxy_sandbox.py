@@ -183,6 +183,7 @@ def sandbox_config_from_env(
     requested_image_pin_policy = (image_pin_policy or os.environ.get("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY") or "warn").strip().lower()
     if requested_image_pin_policy not in {"off", "warn", "enforce"}:
         raise ValueError("sandbox image pin policy must be off, warn, or enforce")
+    requested_image_pin_policy = _harden_image_pin_policy(requested_image_pin_policy, requested_image)
     env_mounts = tuple(item.strip() for item in os.environ.get("AGENT_BOM_MCP_SANDBOX_MOUNTS", "").split(",") if item.strip())
     parsed_mounts = tuple(parse_sandbox_mount(item) for item in (*mounts, *env_mounts))
     requested_user = user or os.environ.get("AGENT_BOM_MCP_SANDBOX_USER")
@@ -389,6 +390,36 @@ def _image_reference_has_digest(image: str | None) -> bool:
     return len(digest) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in digest)
 
 
+_SERVER_MODE_VALUES = {"1", "true", "yes", "on", "server", "production", "prod"}
+
+
+def _is_server_mode() -> bool:
+    """True when the proxy runs in server/production posture.
+
+    Resolved from ``AGENT_BOM_MCP_SANDBOX_SERVER_MODE`` (explicit), falling back
+    to the generic ``AGENT_BOM_SERVER_MODE`` deploy toggle. In this posture an
+    unpinned (mutable-tag) sandbox image is auto-escalated from ``warn`` to
+    ``enforce`` so a non-reproducible image cannot start a proxied server.
+    """
+    for name in ("AGENT_BOM_MCP_SANDBOX_SERVER_MODE", "AGENT_BOM_SERVER_MODE"):
+        raw = os.environ.get(name)
+        if raw is not None:
+            return raw.strip().lower() in _SERVER_MODE_VALUES
+    return False
+
+
+def _harden_image_pin_policy(policy: str, image: str | None) -> str:
+    """Escalate ``warn`` → ``enforce`` for mutable images in server mode.
+
+    Only the implicit default (``warn``) is hardened, and only when the image
+    is a mutable tag (no ``@sha256:`` digest). Explicit ``off`` / ``enforce``
+    are honored unchanged so operators retain control.
+    """
+    if policy == "warn" and _is_server_mode() and not _image_reference_has_digest(image):
+        return "enforce"
+    return policy
+
+
 def _image_pin_warning(image: str | None, policy: SandboxImagePinPolicy) -> str | None:
     if policy != "warn" or _image_reference_has_digest(image):
         return None
@@ -427,13 +458,19 @@ def describe_proxy_sandbox_posture() -> dict[str, object]:
     """
     raw = (os.environ.get("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY") or "warn").strip().lower()
     default_policy: SandboxImagePinPolicy = raw if raw in {"off", "warn", "enforce"} else "warn"  # type: ignore[assignment]
+    server_mode = _is_server_mode()
+    effective_default: SandboxImagePinPolicy = "enforce" if (default_policy == "warn" and server_mode) else default_policy
     return {
         "image_pin_policy_default": default_policy,
+        "image_pin_policy_effective_default": effective_default,
         "image_pin_policy_env": "AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY",
+        "server_mode": server_mode,
+        "server_mode_env": "AGENT_BOM_MCP_SANDBOX_SERVER_MODE",
         "production_recommendation": "enforce",
         "notes": (
             "Default 'warn' surfaces a non-blocking warning when a sandbox image is not pinned to a digest. "
-            "Set the env to 'enforce' in production so unpinned image references are rejected at proxy start. "
-            "Per-server SandboxConfig.image_pin_policy overrides this process-wide default."
+            "In server mode (AGENT_BOM_MCP_SANDBOX_SERVER_MODE / AGENT_BOM_SERVER_MODE) the 'warn' default "
+            "auto-escalates to 'enforce' for mutable image references, so an unpinned image is rejected at "
+            "proxy start. Explicit 'off'/'enforce' and per-server SandboxConfig.image_pin_policy override this."
         ),
     }

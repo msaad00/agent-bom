@@ -33,7 +33,9 @@ import {
   Play,
   FileText,
   AlertTriangle,
+  Activity,
 } from "lucide-react";
+import { GatewayFeedPanel } from "./GatewayFeedPanel";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -59,7 +61,7 @@ export default function GatewayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<"policies" | "audit" | "evaluate">("policies");
+  const [tab, setTab] = useState<"feed" | "policies" | "audit" | "evaluate">("feed");
 
   // Evaluate form state
   const [evalTool, setEvalTool] = useState("");
@@ -187,30 +189,40 @@ export default function GatewayPage() {
 
       {/* Tabs */}
       <div className="flex gap-1.5">
-        {(["policies", "audit", "evaluate"] as const).map((t) => (
+        {(["feed", "policies", "audit", "evaluate"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 ${
               tab === t
                 ? "bg-zinc-800 text-zinc-100"
                 : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900"
             }`}
           >
-            {t === "policies" ? "Policies" : t === "audit" ? "Audit Log" : "Evaluate"}
+            {t === "feed" && <Activity className="w-3.5 h-3.5" />}
+            {t === "feed"
+              ? "Live Feed"
+              : t === "policies"
+                ? "Policies"
+                : t === "audit"
+                  ? "Audit Log"
+                  : "Evaluate"}
           </button>
         ))}
       </div>
 
+      {/* Live Feed tab — self-contained, has its own data + WebSocket lifecycle */}
+      {tab === "feed" && <GatewayFeedPanel />}
+
       {/* Loading */}
-      {loading && (
+      {loading && tab !== "feed" && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
         </div>
       )}
 
       {/* Error state */}
-      {error && !loading && (
+      {error && !loading && tab !== "feed" && (
         <div className="text-center py-10 border border-dashed border-red-900/50 rounded-xl space-y-3">
           <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
           <p className="text-red-400 text-sm">Failed to load gateway data</p>

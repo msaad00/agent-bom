@@ -935,6 +935,17 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("effective-permissions overlay failed", exc_info=True)
 
+    # NHI governance: usage-based right-sizing, dormant/orphaned detection, and a
+    # 0-100 per-identity risk score, written back onto the managed_identity nodes.
+    # Runs after effective-permissions + CNAPP so it sees HAS_PERMISSION edges,
+    # escalation flags, and internet-exposure markers. No-op when no NHIs exist.
+    try:
+        from agent_bom.graph.nhi_governance import apply_nhi_governance
+
+        apply_nhi_governance(graph)
+    except Exception:  # noqa: BLE001
+        _logger.warning("NHI governance overlay failed", exc_info=True)
+
     # A2A auth posture: flag agent/identity nodes named by weak inter-agent
     # auth findings (shared tokens, missing mutual auth, over-broad delegation,
     # unverified actor tokens). Reference-only; no-op when no A2A findings exist.
@@ -944,6 +955,17 @@ def build_unified_graph_from_report(
         annotate_graph_a2a_auth_from_report(graph, report_json)
     except Exception:  # noqa: BLE001
         _logger.warning("A2A auth posture overlay failed", exc_info=True)
+
+    # MCP server + agent→MCP auth posture: flag MCP-server nodes named by weak
+    # MCP-auth findings (unauthenticated network server, weak transport, static
+    # credentials, agent→MCP gap). Reference-only; no-op when no MCP-auth
+    # findings exist.
+    try:
+        from agent_bom.mcp_auth_posture import annotate_graph_mcp_auth_from_report
+
+        annotate_graph_mcp_auth_from_report(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("MCP auth posture overlay failed", exc_info=True)
 
     # Multi-hop attack-path fusion: now that both the CNAPP exposure overlay and
     # the effective-permissions overlay have enriched the single graph, walk true

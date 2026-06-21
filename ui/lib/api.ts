@@ -71,6 +71,8 @@ import type {
   GatewayPolicyResponse,
   GatewayAuditResponse,
   GatewayStatsResponse,
+  GatewayFeedResponse,
+  GatewayFeedKpis,
   FirewallRuntimeStats,
   EvaluateResult,
   PostureResponse,
@@ -220,6 +222,10 @@ export type {
   PolicyAuditEntry,
   GatewayAuditResponse,
   GatewayStatsResponse,
+  GatewayFeedResponse,
+  GatewayFeedKpis,
+  GatewayFeedEvent,
+  GatewayFeedActionType,
   GatewayPolicyRuntimeSummary,
   FirewallRuntimeStats,
   FirewallPairTally,
@@ -750,6 +756,8 @@ export const api = {
     post<EvaluateResult>("/v1/gateway/evaluate", body),
   listGatewayAudit: () => get<GatewayAuditResponse>("/v1/gateway/audit"),
   getGatewayStats: () => get<GatewayStatsResponse>("/v1/gateway/stats"),
+  getGatewayFeed: (limit = 100) => get<GatewayFeedResponse>(`/v1/gateway/feed?limit=${limit}`),
+  getGatewayFeedKpis: () => get<GatewayFeedKpis>("/v1/gateway/feed/kpis"),
   getFirewallStats: () => get<FirewallRuntimeStats>("/v1/firewall/stats"),
 
   // Governance

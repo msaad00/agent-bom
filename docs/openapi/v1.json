@@ -9804,6 +9804,188 @@
         ]
       }
     },
+    "/v1/gateway/feed": {
+      "get": {
+        "description": "Unified, time-ordered fleet event feed for the active tenant.\n\nFuses tool-call authorization decisions (allowed / blocked), data-filter /\nDLP redaction events, and recent LLM calls into one normalized stream with\nper-agent attribution. Reference-only and redaction-safe: every event is\nmetadata (timestamp, agent, action class, target, short non-secret detail);\nno raw arguments, responses, or credential values are returned.",
+        "operationId": "gateway_feed_v1_gateway_feed_get",
+        "parameters": [
+          {
+            "description": "Max fused events to return (1-500)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "description": "Max fused events to return (1-500)",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Gateway Feed V1 Gateway Feed Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Gateway Feed",
+        "tags": [
+          "gateway"
+        ]
+      }
+    },
+    "/v1/gateway/feed/kpis": {
+      "get": {
+        "description": "KPI header rollup for the gateway live feed.\n\nReturns ``calls_today``, ``blocked_today``, ``shadow_ai_blocked`` (shadow /\nundeclared-agent + shadow-MCP-server blocks), ``data_filters_applied``, and\n``uptime_seconds`` (only when the proxy reports it \u2014 never fabricated).",
+        "operationId": "gateway_feed_kpis_v1_gateway_feed_kpis_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Gateway Feed Kpis V1 Gateway Feed Kpis Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Gateway Feed Kpis",
+        "tags": [
+          "gateway"
+        ]
+      }
+    },
     "/v1/gateway/policies": {
       "get": {
         "description": "List all gateway policies.",
@@ -11704,6 +11886,60 @@
           }
         },
         "summary": "Get Graph Legend",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/nhi/governance": {
+      "get": {
+        "description": "Return the non-human-identity governance posture for the latest graph.\n\nLoads the latest unified graph, projects the live governance control plane\nand resolves effective permissions, then computes the three Natoma-parity\nanalytics \u2014 usage-based right-sizing, dormant/orphaned detection, and the\n0-100 per-identity risk score \u2014 and returns a non-secret posture ranked\nworst risk first. Right-sizing here uses the durable `last_used_at` markers\nin the graph (no caller usage map is accepted over the API).",
+        "operationId": "get_nhi_governance_v1_graph_nhi_governance_get",
+        "parameters": [
+          {
+            "description": "Scan ID",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Scan ID",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Nhi Governance V1 Graph Nhi Governance Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Nhi Governance",
         "tags": [
           "graph"
         ]

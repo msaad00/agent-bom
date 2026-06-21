@@ -948,6 +948,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         pipeline.start_step("output", "Building report...")
         from agent_bom.a2a_auth_posture import evaluate_a2a_auth_posture
         from agent_bom.finding import blast_radius_to_finding
+        from agent_bom.mcp_auth_posture import evaluate_mcp_auth_posture
         from agent_bom.mcp_blocklist import blocklist_findings_for_agents
         from agent_bom.models import AIBOMReport
 
@@ -957,6 +958,10 @@ def _run_scan_sync(job: ScanJob) -> None:
             report_findings.extend(evaluate_a2a_auth_posture(agents))
         except Exception as a2a_exc:  # noqa: BLE001
             _logger.warning("A2A auth posture evaluation skipped: %s", sanitize_error(a2a_exc))
+        try:
+            report_findings.extend(evaluate_mcp_auth_posture(agents))
+        except Exception as mcp_auth_exc:  # noqa: BLE001
+            _logger.warning("MCP auth posture evaluation skipped: %s", sanitize_error(mcp_auth_exc))
         report = AIBOMReport(agents=agents, blast_radii=blast_radii, findings=report_findings, scan_id=job.job_id)
 
         # Opt-in estate enrichment (cloud inventory + NHI discovery). Default

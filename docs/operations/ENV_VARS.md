@@ -111,6 +111,13 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_LOCAL_ANALYTICS_DB` | `str` | `''` | Optional path override for the local scan analytics SQL mirror. Empty string means use ~/.agent-bom/local-analytics.sqlite. |
 
+## MCP / agent→MCP auth posture
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_MCP_AUTH_FLAG_LOCAL_STDIO` | `bool` | `False` | Governance thresholds for the MCP server auth posture evaluator (agent_bom.mcp_auth_posture). This is the complement of the A2A evaluator: A2A covers inter-AGENT auth, this covers MCP SERVER auth + the agent→MCP edge per the MCP authorizati |
+| `AGENT_BOM_MCP_AUTH_REQUIRE_NETWORK_AUTH` | `bool` | `True` | — |
+| `AGENT_BOM_MCP_AUTH_REQUIRE_TLS` | `bool` | `True` | — |
+
 ## MCP Server Limits
 | Env var | Type | Default | Description |
 |---|---|---|---|

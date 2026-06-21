@@ -586,6 +586,211 @@ async def list_agent_identities(request: Request, include_inactive: bool = False
     }
 
 
+# ── Access-review / recertification campaigns (NHI governance) ──────────────────
+#
+# These static ``/v1/identities/access-reviews...`` routes are declared before
+# the ``/v1/identities/{identity_id}`` catch-all so FastAPI's in-order matching
+# does not route "access-reviews" into the single-identity lookup.
+
+
+def _discover_nhi_subjects() -> list[dict[str, object]]:
+    """Run read-only NHI discovery and return reference-only subject dicts.
+
+    Reuses the same Okta/Entra discovery used by ``/v1/identities/discover`` —
+    never reads secret material; each provider is gated by its own env flag.
+    """
+    from agent_bom.graph.nhi_overlay import merge_discovery_results
+    from agent_bom.identity import (
+        discover_entra_non_human_identities,
+        discover_okta_non_human_identities,
+    )
+
+    merged = merge_discovery_results([discover_okta_non_human_identities(), discover_entra_non_human_identities()])
+    return list(merged.get("identities", []))
+
+
+@router.post("/v1/identities/access-reviews", status_code=201, dependencies=[_dep("config")])
+async def create_access_review(request: Request, body: dict | None = None) -> dict[str, object]:
+    """Create a scheduled access-review / recertification campaign over NHIs.
+
+    Scope defaults to the tenant's discovered non-human identities (Okta/Entra
+    service accounts / service principals) and their effective-permission
+    references. The caller may instead pass an explicit reference-only
+    ``subjects`` list. Reference-only — never reads or stores secret material,
+    and never executes any revocation.
+    """
+    from agent_bom.api.access_review import (
+        create_campaign,
+        create_campaign_from_discovery,
+        get_access_review_store,
+    )
+
+    payload = body or {}
+    name = str(payload.get("name", "") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="'name' is required")
+    try:
+        due_days = int(payload.get("due_days", 14))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="'due_days' must be an integer") from exc
+    if due_days < 1 or due_days > 365:
+        raise HTTPException(status_code=400, detail="'due_days' must be between 1 and 365")
+    description = str(payload.get("description", "") or "")
+    tenant_id = _tenant(request)
+    store = get_access_review_store()
+
+    raw_subjects = payload.get("subjects")
+    if isinstance(raw_subjects, list) and raw_subjects:
+        subjects = [s for s in raw_subjects if isinstance(s, dict)]
+        campaign, items = create_campaign(
+            store,
+            tenant_id=tenant_id,
+            name=name,
+            subjects=subjects,
+            created_by=_actor(request),
+            due_days=due_days,
+            description=description,
+        )
+    else:
+        discovered = _discover_nhi_subjects()
+        campaign, items = create_campaign_from_discovery(
+            store,
+            tenant_id=tenant_id,
+            name=name,
+            discovered=discovered,
+            created_by=_actor(request),
+            due_days=due_days,
+            description=description,
+        )
+
+    log_action(
+        "identity.access_review_created",
+        actor=_actor(request),
+        resource=f"access-review/{campaign.campaign_id}",
+        tenant_id=tenant_id,
+        name=campaign.name,
+        item_count=campaign.item_count,
+        due_at=campaign.due_at,
+    )
+    _emit(
+        "identity.access_review_created",
+        tenant_id=tenant_id,
+        subject_id=campaign.campaign_id,
+        item_count=campaign.item_count,
+        due_at=campaign.due_at,
+    )
+    return {
+        "schema_version": "identity.access_review.v1",
+        "campaign": campaign.to_public_dict(),
+        "items": [i.to_public_dict() for i in items],
+    }
+
+
+@router.get("/v1/identities/access-reviews", dependencies=[_dep("read")])
+async def list_access_reviews(request: Request, limit: int = 200) -> dict[str, object]:
+    """List access-review campaigns for the active tenant (overdue refreshed)."""
+    from agent_bom.api.access_review import get_access_review_store, refresh_campaign_status
+
+    tenant_id = _tenant(request)
+    bounded = max(1, min(limit, 1000))
+    store = get_access_review_store()
+    campaigns = store.list_campaigns(tenant_id, limit=bounded)
+    refreshed = [refresh_campaign_status(store, tenant_id=tenant_id, campaign_id=c.campaign_id) or c for c in campaigns]
+    return {
+        "schema_version": "identity.access_review.v1",
+        "tenant_id": tenant_id,
+        "count": len(refreshed),
+        "campaigns": [c.to_public_dict() for c in refreshed],
+    }
+
+
+@router.get("/v1/identities/access-reviews/{campaign_id}", dependencies=[_dep("read")])
+async def get_access_review(request: Request, campaign_id: str) -> dict[str, object]:
+    """Return one access-review campaign and its review items."""
+    from agent_bom.api.access_review import get_access_review_store, refresh_campaign_status
+
+    tenant_id = _tenant(request)
+    store = get_access_review_store()
+    campaign = refresh_campaign_status(store, tenant_id=tenant_id, campaign_id=campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Access-review campaign not found")
+    items = store.list_items(campaign_id, tenant_id)
+    return {
+        "schema_version": "identity.access_review.v1",
+        "campaign": campaign.to_public_dict(),
+        "count": len(items),
+        "items": [i.to_public_dict() for i in items],
+    }
+
+
+@router.post("/v1/identities/access-reviews/{campaign_id}/items/{item_id}/decision", dependencies=[_dep("config")])
+async def submit_access_review_decision(request: Request, campaign_id: str, item_id: str, body: dict) -> dict[str, object]:
+    """Record a reviewer decision (attest / revoke_recommended / flag) on one item.
+
+    Reference-only: a ``revoke_recommended`` decision records the recommendation
+    as audited evidence and (when blocking) emits a governance event; it never
+    executes a revocation on Okta/Entra or any external system.
+    """
+    from agent_bom.api.access_review import _VALID_DECISIONS, get_access_review_store, record_decision
+
+    decision = str(body.get("decision", "") or "").strip()
+    if decision not in _VALID_DECISIONS:
+        raise HTTPException(status_code=400, detail=f"'decision' must be one of {sorted(_VALID_DECISIONS)}")
+    note = str(body.get("note", "") or "")
+    tenant_id = _tenant(request)
+    store = get_access_review_store()
+
+    campaign = store.get_campaign(campaign_id, tenant_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Access-review campaign not found")
+    result = record_decision(
+        store,
+        tenant_id=tenant_id,
+        item_id=item_id,
+        decision=decision,
+        decided_by=_actor(request),
+        note=note,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Access-review item not found")
+    item, campaign = result
+    log_action(
+        "identity.access_review_decided",
+        actor=_actor(request),
+        resource=f"access-review/{campaign_id}/item/{item_id}",
+        tenant_id=tenant_id,
+        decision=item.decision,
+        subject_id=item.subject_id,
+        campaign_status=campaign.status,
+    )
+    if item.decision == "revoke_recommended":
+        _emit(
+            "identity.access_review_revoke_recommended",
+            tenant_id=tenant_id,
+            subject_id=item.subject_id,
+            campaign_id=campaign_id,
+        )
+    return {
+        "schema_version": "identity.access_review.v1",
+        "item": item.to_public_dict(),
+        "campaign": campaign.to_public_dict(),
+    }
+
+
+@router.get("/v1/identities/access-reviews/{campaign_id}/evidence", dependencies=[_dep("read")])
+async def export_access_review_evidence(request: Request, campaign_id: str) -> dict[str, object]:
+    """Export a non-secret, signable evidence bundle for one campaign."""
+    from agent_bom.api.access_review import export_evidence, get_access_review_store
+
+    tenant_id = _tenant(request)
+    bundle = export_evidence(get_access_review_store(), tenant_id=tenant_id, campaign_id=campaign_id)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="Access-review campaign not found")
+    return bundle
+
+
+# Declared last so the ``access-reviews`` static routes above take precedence
+# over this single-identity catch-all.
 @router.get("/v1/identities/{identity_id}", dependencies=[_dep("read")])
 async def get_agent_identity(request: Request, identity_id: str) -> dict[str, object]:
     """Return one agent identity's lifecycle status (metadata only)."""

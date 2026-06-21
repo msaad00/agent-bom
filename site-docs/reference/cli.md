@@ -128,6 +128,9 @@ agent-bom agents --compliance owasp-llm,eu-ai-act,all
 agent-bom agents -f cyclonedx -o bom.json
 agent-bom agents -f spdx -o bom.spdx.json
 
+# Scan a public repo by URL (shallow clone, static, read-only, auto-cleaned)
+agent-bom agents --repo https://github.com/org/repo
+
 # Image scanning
 agent-bom agents --image python:3.12-slim
 
@@ -152,6 +155,8 @@ agent-bom agents --self-scan
 ```
 
 The `--self-scan` flag is on the `agents` subcommand (not top-level). It walks the active Python environment via `importlib.metadata.distributions()` and emits a CVE report against agent-bom's own runtime so you can audit the tool with the tool.
+
+The `--repo <URL>` flag scans a public git repository by link without a local checkout. The repo is shallow-cloned (`git clone --depth 1 --single-branch`, no submodules, no credential prompt) into a temporary directory, scanned **statically** (its code is never executed), and the temp directory is always removed afterwards. Clones are bounded by a wall-clock timeout, a total-size cap, and a file-count cap (`AGENT_BOM_REPO_SCAN_*`). Only well-formed `http(s)` URLs are accepted; ssh/scp-style and local paths are rejected. For private repos, set `AGENT_BOM_REPO_SCAN_TOKEN` (reference-only; never logged or emitted). `--repo` is mutually exclusive with `--project/-p`. The same option is exposed on the MCP `scan` tool as `repo_url`.
 
 ## Troubleshooting
 

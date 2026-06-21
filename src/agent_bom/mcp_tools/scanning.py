@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 async def scan_impl(
     *,
     config_path: str | None = None,
+    repo_url: str | None = None,
     image: str | None = None,
     sbom_path: str | None = None,
     package: str | None = None,
@@ -32,7 +33,71 @@ async def scan_impl(
     _run_scan_pipeline,
     _truncate_response,
 ) -> str:
-    """Implementation of the scan tool."""
+    """Implementation of the scan tool.
+
+    When ``repo_url`` is supplied, the public repository is shallow-cloned into
+    a bounded temp directory, scanned statically (no repo code is executed),
+    and the temp directory is always removed afterwards. ``repo_url`` and
+    ``config_path`` are mutually exclusive.
+    """
+    from contextlib import ExitStack
+
+    with ExitStack() as _repo_cleanup:
+        if repo_url is not None and str(repo_url).strip():
+            if config_path is not None and str(config_path).strip():
+                raise ToolError("Provide either repo_url or config_path, not both")
+            from agent_bom.repo_scan import RepoScanError, clone_repository
+
+            try:
+                cloned_dir = _repo_cleanup.enter_context(clone_repository(repo_url, token_env="AGENT_BOM_REPO_SCAN_TOKEN"))
+            except RepoScanError as exc:
+                raise ToolError(sanitize_error(exc)) from exc
+            # Route the cloned working tree through the existing local-directory
+            # discovery path. The temp dir is removed when this block exits.
+            config_path = str(cloned_dir)
+
+        return await _scan_impl_inner(
+            config_path=config_path,
+            image=image,
+            sbom_path=sbom_path,
+            package=package,
+            enrich=enrich,
+            offline=offline,
+            scorecard=scorecard,
+            transitive=transitive,
+            verify_integrity=verify_integrity,
+            fail_severity=fail_severity,
+            warn_severity=warn_severity,
+            auto_update_db=auto_update_db,
+            db_sources=db_sources,
+            output_format=output_format,
+            policy=policy,
+            _run_scan_pipeline=_run_scan_pipeline,
+            _truncate_response=_truncate_response,
+        )
+
+
+async def _scan_impl_inner(
+    *,
+    config_path: str | None = None,
+    image: str | None = None,
+    sbom_path: str | None = None,
+    package: str | None = None,
+    enrich: bool = False,
+    offline: bool = True,
+    scorecard: bool = False,
+    transitive: bool = False,
+    verify_integrity: bool = False,
+    fail_severity: str | None = None,
+    warn_severity: str | None = None,
+    auto_update_db: bool = False,
+    db_sources: str | None = None,
+    output_format: str = "json",
+    policy: dict | None = None,
+    _run_scan_pipeline,
+    _truncate_response,
+) -> str:
+    """Run the scan pipeline against an already-resolved local target."""
     try:
         from agent_bom.models import AIBOMReport
         from agent_bom.output import to_json

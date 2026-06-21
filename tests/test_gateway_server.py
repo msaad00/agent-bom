@@ -1426,3 +1426,154 @@ def test_visual_leak_detection_timeout_fails_open_without_blocking_response(monk
         assert resp.json()["result"]["content"][0]["data"] == "CLEAN"
     finally:
         gw._visual_detector_singleton = None
+
+
+# ─── Caller-identity fail-closed posture (#982 PR 2) ──────────────────────────
+
+
+def _no_key_store(monkeypatch) -> None:
+    class _NoKeyStore:
+        def has_keys(self) -> bool:
+            return False
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _NoKeyStore())
+
+
+def _assert_identity_blocked(resp) -> None:
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "result" not in body
+    assert body["error"]["message"] == "Blocked by agent-bom gateway identity policy"
+    assert body["error"]["data"]["reason"] == "Identity validation failed"
+
+
+def test_relay_loopback_allows_anonymous_caller() -> None:
+    # Default loopback bind keeps the permissive local-dev path: a fully-missing
+    # identity relays as anonymous.
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(registry=_simple_registry(), policy={}, upstream_caller=fake_caller)
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read_file", arguments={}))
+    assert resp.status_code == 200
+    assert resp.json()["result"] == {"ok": True}
+
+
+def test_relay_non_loopback_denies_anonymous_by_default(monkeypatch) -> None:
+    _no_key_store(monkeypatch)
+
+    async def fake_caller(upstream, message, extra_headers):
+        raise AssertionError("anonymous caller must not relay upstream on a non-loopback bind")
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        listener_host="0.0.0.0",
+        allow_insecure_no_auth=True,  # isolate the identity dimension from transport auth
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read_file", arguments={}))
+    _assert_identity_blocked(resp)
+
+
+def test_relay_non_loopback_allows_anonymous_with_opt_out_flag(monkeypatch) -> None:
+    _no_key_store(monkeypatch)
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        listener_host="0.0.0.0",
+        allow_insecure_no_auth=True,
+        allow_anonymous_agents=True,
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read_file", arguments={}))
+    assert resp.status_code == 200
+    assert resp.json()["result"] == {"ok": True}
+
+
+def test_relay_non_loopback_allows_anonymous_with_opt_out_env(monkeypatch) -> None:
+    _no_key_store(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS", "1")
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        listener_host="0.0.0.0",
+        allow_insecure_no_auth=True,
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read_file", arguments={}))
+    assert resp.status_code == 200
+    assert resp.json()["result"] == {"ok": True}
+
+
+def test_relay_invalid_token_always_fails_closed_on_loopback(monkeypatch) -> None:
+    # An unrecognised/invalid token must NEVER degrade to anonymous, even on a
+    # permissive loopback bind with no require_agent_identity and the opt-out on.
+    async def fake_caller(upstream, message, extra_headers):
+        raise AssertionError("invalid-token caller must not relay upstream")
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={"agent_tokens": {"good-token": "agent-a"}},
+        upstream_caller=fake_caller,
+        allow_anonymous_agents=True,  # opt-out only governs MISSING identity, not invalid
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post(
+        "/mcp/filesystem",
+        json=_json_rpc("tools/call", name="read_file", arguments={}, _meta={"agent_identity": "forged-token"}),
+    )
+    _assert_identity_blocked(resp)
+
+
+def test_relay_valid_token_relays_on_non_loopback(monkeypatch) -> None:
+    _no_key_store(monkeypatch)
+    upstream_calls: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        upstream_calls.append(message)
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={"agent_tokens": {"good-token": "agent-a"}},
+        upstream_caller=fake_caller,
+        listener_host="0.0.0.0",
+        allow_insecure_no_auth=True,
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post(
+        "/mcp/filesystem",
+        json=_json_rpc("tools/call", name="read_file", arguments={}, _meta={"agent_identity": "good-token"}),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["result"] == {"ok": True}
+    assert len(upstream_calls) == 1
+
+
+def test_relay_require_agent_identity_still_blocks_missing_on_loopback() -> None:
+    # The legacy require_agent_identity policy path is preserved: even on loopback
+    # a missing identity is blocked when the policy demands one.
+    async def fake_caller(upstream, message, extra_headers):
+        raise AssertionError("must not relay when identity required and missing")
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={"require_agent_identity": True},
+        upstream_caller=fake_caller,
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read_file", arguments={}))
+    _assert_identity_blocked(resp)

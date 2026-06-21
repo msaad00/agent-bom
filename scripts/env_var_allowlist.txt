@@ -99,6 +99,7 @@ AGENT_BOM_ENTRA_TENANT_ID  # Entra tenant id (informational) for read-only NHI d
 AGENT_BOM_ENTRA_TOKEN  # Microsoft Graph bearer token for read-only Entra NHI discovery (tokens-only, no passwords); never stored, read in identity/entra_nhi.py
 AGENT_BOM_ENV
 AGENT_BOM_EXTERNAL_SECRETS_ENABLED
+AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS  # explicit opt-out (default OFF): allow callers with a MISSING agent_identity token to relay on a non-loopback gateway listener; invalid/revoked tokens always fail closed; read in gateway_server.py
 AGENT_BOM_GATEWAY_ALLOW_INSECURE_NO_AUTH
 AGENT_BOM_GATEWAY_BEARER_TOKEN
 AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS

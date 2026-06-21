@@ -343,10 +343,92 @@ class TestDashboardStats:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Live tool-count + registry-header freshness lock (CI gate)
+#
+# The advertised MCP tool count drifted repeatedly across the CLI help,
+# Dockerfile, docstring, server card, and docker tools.json because nothing
+# tied them to the LIVE registered tool count. The registry ``_total_servers``
+# header likewise undercounted the bundled ``servers`` map. These tests derive
+# the truth from the running server / the registry file and assert every
+# advertised surface matches, so a future capability wave can never silently
+# leave a stale number behind.
+# ---------------------------------------------------------------------------
+
+
+def _live_mcp_tool_count() -> int:
+    """Number of tools the MCP server actually registers at runtime."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    return len(server._tool_manager._tools)
+
+
+LIVE_MCP_TOOLS = _live_mcp_tool_count()
+
+
+class TestToolCountFreshness:
+    """Tie every advertised MCP tool count to the LIVE registered count."""
+
+    def test_live_count_matches_decorator_count(self):
+        # The @mcp.tool decorator scan and the live registration must agree.
+        assert LIVE_MCP_TOOLS == ACTUAL_MCP_TOOLS, f"live tool count ({LIVE_MCP_TOOLS}) != @mcp.tool decorator count ({ACTUAL_MCP_TOOLS})"
+
+    def test_live_count_matches_server_card(self):
+        assert LIVE_MCP_TOOLS == ACTUAL_CARD_TOOLS, f"live tool count ({LIVE_MCP_TOOLS}) != _SERVER_CARD_TOOLS count ({ACTUAL_CARD_TOOLS})"
+
+    def test_mcp_server_docstring_count_matches_live(self):
+        text = (SRC / "mcp_server.py").read_text()
+        match = re.search(r"^Tools \((\d+)\):", text, re.MULTILINE)
+        assert match, "mcp_server.py module docstring missing 'Tools (N):'"
+        assert int(match.group(1)) == LIVE_MCP_TOOLS, f"mcp_server.py docstring advertises {match.group(1)} tools, live is {LIVE_MCP_TOOLS}"
+
+    def test_cli_help_count_matches_live(self):
+        text = (SRC / "cli" / "_server.py").read_text()
+        match = re.search(r"Exposes (\d+) security tools via MCP protocol", text)
+        assert match, "cli/_server.py missing 'Exposes N security tools via MCP protocol'"
+        assert int(match.group(1)) == LIVE_MCP_TOOLS, f"cli/_server.py advertises {match.group(1)} tools, live is {LIVE_MCP_TOOLS}"
+
+    def test_dockerfile_sse_count_matches_live(self):
+        path = ROOT / "deploy" / "docker" / "Dockerfile.sse"
+        if not path.exists():
+            pytest.skip("Dockerfile.sse not found")
+        text = path.read_text()
+        match = re.search(r"(\d+) MCP tools", text)
+        assert match, "Dockerfile.sse missing 'N MCP tools'"
+        assert int(match.group(1)) == LIVE_MCP_TOOLS, f"Dockerfile.sse advertises {match.group(1)} MCP tools, live is {LIVE_MCP_TOOLS}"
+
+    def test_docker_mcp_tools_json_count_matches_live(self):
+        path = ROOT / "integrations" / "docker-mcp-registry" / "tools.json"
+        if not path.exists():
+            pytest.skip("Docker MCP tools.json not found")
+        data = json.loads(path.read_text())
+        assert len(data) == LIVE_MCP_TOOLS, f"docker tools.json lists {len(data)} tools, live is {LIVE_MCP_TOOLS}"
+
+    def test_hardening_strict_args_surface_matches_live(self):
+        from agent_bom.mcp_hardening import strict_args_tool_count
+
+        assert strict_args_tool_count() == LIVE_MCP_TOOLS, (
+            f"mcp_hardening strict-args surface counts {strict_args_tool_count()}, live is {LIVE_MCP_TOOLS}"
+        )
+
+
+class TestRegistryHeaderFreshness:
+    """Tie the registry ``_total_servers`` header to the bundled servers map."""
+
+    def test_total_servers_header_matches_bundled_map(self):
+        data = json.loads((SRC / "mcp_registry.json").read_text())
+        servers = data.get("servers", {})
+        actual = len(servers)
+        header = data.get("_total_servers")
+        assert header == actual, f"mcp_registry.json _total_servers={header} but bundled servers map has {actual} entries"
+
+
 def test_print_actual_counts(capsys):
     """Print actual counts for reference (always passes)."""
     print("\n--- Actual Code Counts ---")
     print(f"MCP tools (@mcp.tool):    {ACTUAL_MCP_TOOLS}")
+    print(f"MCP tools (live):         {LIVE_MCP_TOOLS}")
     print(f"_SERVER_CARD_TOOLS:       {ACTUAL_CARD_TOOLS}")
     print(f"CONFIG_LOCATIONS:         {ACTUAL_CONFIG_LOCATIONS}")
     print(f"Runtime detectors:        {ACTUAL_DETECTORS}")

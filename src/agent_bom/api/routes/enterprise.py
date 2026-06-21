@@ -743,10 +743,53 @@ async def auth_secret_rotation_plan() -> dict:
 
 @router.get("/v1/auth/secrets/credential-expiry", tags=["enterprise"])
 async def auth_secret_credential_expiry() -> dict:
-    """Return non-secret credential expiry/rotation governance for control-plane secrets."""
+    """Return non-secret credential expiry/rotation governance.
+
+    Folds in any discovered non-human-identity (NHI) credentials so an
+    operator's expiring Okta/Entra service-app / service-principal secrets are
+    governed alongside control-plane secrets. NHI discovery is gated by its own
+    ``*_DISCOVERY`` env flags and is a no-op (no network) when they are off, so
+    this stays control-plane-only by default.
+    """
     from agent_bom.api.credential_expiry import describe_credential_expiry_posture
 
-    return describe_credential_expiry_posture()
+    discovered = _discover_nhi_credentials()
+    return describe_credential_expiry_posture(discovered or None)
+
+
+def _discover_nhi_credentials() -> list[dict]:
+    """Run gated NHI discovery and return reference-only credential records.
+
+    Each record carries ``{id, name, credential_expires_at}`` for the expiry
+    classifier — never secret material. Both providers self-gate on their
+    ``*_DISCOVERY`` flag, so this returns an empty list (and makes no network
+    call) when discovery is disabled. Never raises into the request path.
+    """
+    try:
+        from agent_bom.graph.nhi_overlay import merge_discovery_results
+        from agent_bom.identity import (
+            discover_entra_non_human_identities,
+            discover_okta_non_human_identities,
+        )
+
+        merged = merge_discovery_results([discover_okta_non_human_identities(), discover_entra_non_human_identities()])
+        records: list[dict] = []
+        for identity in merged.get("identities", []):
+            if not isinstance(identity, dict):
+                continue
+            if not identity.get("credential_expires_at"):
+                continue
+            records.append(
+                {
+                    "id": identity.get("identity_id"),
+                    "name": identity.get("name"),
+                    "credential_expires_at": identity.get("credential_expires_at"),
+                    "last_rotated": identity.get("last_rotated"),
+                }
+            )
+        return records
+    except Exception:  # noqa: BLE001 — credential-expiry posture must never fail on discovery
+        return []
 
 
 @router.get("/v1/auth/scim/config", tags=["enterprise"])

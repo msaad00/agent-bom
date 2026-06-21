@@ -212,6 +212,61 @@ def test_endpoint_requires_no_secret_values(monkeypatch: pytest.MonkeyPatch) -> 
     assert body["status"] in {"ok", "attention_required", "blocked"}
 
 
+def test_endpoint_folds_in_discovered_nhi_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With NHI discovery enabled, the endpoint governs discovered-NHI expiry.
+
+    Previously the endpoint called describe_credential_expiry_posture() with no
+    args, so discovered_credentials was always None. The wire now runs gated NHI
+    discovery and folds the (expiry-bearing) records in.
+    """
+    _clear_cred_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_OKTA_DISCOVERY", "1")
+    monkeypatch.delenv("AGENT_BOM_ENTRA_DISCOVERY", raising=False)
+
+    from agent_bom.identity.okta_nhi import (
+        DiscoveredNonHumanIdentity,
+        NHIDiscoveryResult,
+        NHIDiscoveryStatus,
+    )
+
+    expired = DiscoveredNonHumanIdentity(
+        identity_id="okta:app:expired",
+        provider="okta",
+        identity_type="api_token",
+        name="legacy-ci-token",
+        credential_expires_at=_iso(-3),  # already expired
+    )
+    result = NHIDiscoveryResult(status=NHIDiscoveryStatus.OK, identities=(expired,))
+
+    import agent_bom.identity as identity_pkg
+
+    monkeypatch.setattr(identity_pkg, "discover_okta_non_human_identities", lambda *a, **k: result)
+    # Entra flag off, but the helper calls both connectors; its result is empty
+    # (DISABLED) so it contributes nothing — keep the real disabled path.
+
+    client = TestClient(app)
+    resp = client.get("/v1/auth/secrets/credential-expiry")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["discovered_credential_count"] >= 1
+    assert body["status"] == "blocked"  # an expired NHI credential is a blocking finding
+    assert any("legacy-ci-token" in str(c) for c in body["credentials"])
+
+
+def test_endpoint_no_discovered_credentials_when_discovery_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default path unchanged: discovery off -> zero discovered records, control-plane only."""
+    _clear_cred_env(monkeypatch)
+    monkeypatch.delenv("AGENT_BOM_OKTA_DISCOVERY", raising=False)
+    monkeypatch.delenv("AGENT_BOM_ENTRA_DISCOVERY", raising=False)
+
+    client = TestClient(app)
+    resp = client.get("/v1/auth/secrets/credential-expiry")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["discovered_credential_count"] == 0
+    assert body["control_plane_included"] is True
+
+
 def test_endpoint_rbac_role_and_scope() -> None:
     from agent_bom.api.middleware import APIKeyMiddleware
 

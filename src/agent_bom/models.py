@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
     from agent_bom.finding import Finding
@@ -1015,7 +1015,8 @@ class AIBOMReport:
     vector_db_scan_data: Optional[list] = None  # Serialized vector DB security assessments
     gpu_infra_data: Optional[dict] = None  # Serialized GPU/AI compute infra scan results
     iac_findings_data: Optional[dict] = None  # Serialized IaC misconfiguration findings (set by CLI)
-    cloud_inventory_data: Optional[dict] = None  # Estate-wide cloud asset inventory (opt-in AGENT_BOM_CLOUD_INVENTORY)
+    # Estate-wide cloud asset inventory; one provider payload or a per-provider list (opt-in AGENT_BOM_CLOUD_INVENTORY)
+    cloud_inventory_data: Optional[Union[dict, list]] = None
     identity_discovery_data: Optional[dict] = None  # Discovered non-human identities (opt-in AGENT_BOM_OKTA/ENTRA_DISCOVERY)
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
     delta_data: Optional[dict] = None  # Baseline/delta comparison metadata for CI gate outputs

@@ -305,6 +305,34 @@ def _request_environment(request: Request) -> str:
     return (request.headers.get("x-agent-environment", "") or "").strip()[:60]
 
 
+def _request_cost_center(request: Request, message: dict[str, Any]) -> str:
+    """Resolve the chargeback cost-center this call is allocated to.
+
+    Mirrors how cost-center flows elsewhere (OTLP span attrs / allocation tags):
+    the caller declares it via the ``x-cost-center`` header or the JSON-RPC
+    ``_meta.cost_center`` field. Empty when unset, in which case cost-center
+    budget enforcement is a no-op and existing per-agent/tenant semantics are
+    untouched.
+    """
+    header_cc = (request.headers.get("x-cost-center", "") or "").strip()
+    if header_cc:
+        return header_cc[:120]
+    # The caller declares allocation in the MCP ``_meta`` block (the same place
+    # ``agent_identity`` lives, under ``params``); also accept a top-level
+    # ``_meta`` for callers that flatten it.
+    params = message.get("params")
+    metas = []
+    if isinstance(params, dict) and isinstance(params.get("_meta"), dict):
+        metas.append(params["_meta"])
+    if isinstance(message.get("_meta"), dict):
+        metas.append(message["_meta"])
+    for meta in metas:
+        meta_cc = meta.get("cost_center")
+        if isinstance(meta_cc, str) and meta_cc.strip():
+            return meta_cc.strip()[:120]
+    return ""
+
+
 def _emit_gateway_governance_event(event_type: str, *, tenant_id: str, subject_id: str, payload: dict[str, Any]) -> None:
     """Fan a gateway governance event to subscribed webhooks (best-effort).
 
@@ -1320,6 +1348,66 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 status_code=200,
                 headers=rate_limit_headers or None,
             )
+
+        # Cost-center (chargeback) budget enforcement: when the call is allocated
+        # to a cost-center that has an enforce-mode budget already burned, block
+        # it too — independent of the per-agent/tenant caps above (#2925). A call
+        # with no declared cost-center, or a cost-center with no enforce budget,
+        # is a no-op so existing per-agent/tenant semantics are unchanged.
+        cost_center = _request_cost_center(request, message)
+        if cost_center:
+            try:
+                from agent_bom.api.cost_store import check_cost_center_budget_enforcement, get_cost_store
+
+                cc_blocked, cc_budget, cc_spend = check_cost_center_budget_enforcement(get_cost_store(), tenant_id, cost_center)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("gateway cost-center budget check failed: %s", _sanitize_for_log(exc))
+                cc_blocked, cc_budget, cc_spend = False, None, 0.0
+            if cc_blocked and cc_budget is not None:
+                record_gateway_relay(upstream.name, "blocked")
+                if settings.audit_sink is not None:
+                    await settings.audit_sink(
+                        {
+                            "action": "gateway.budget_exceeded",
+                            "upstream": upstream.name,
+                            "tenant_id": tenant_id,
+                            "source_agent": source_agent,
+                            "cost_center": cost_center,
+                            "limit_usd": cc_budget.limit_usd,
+                            "spend_usd": round(cc_spend, 6),
+                            "budget_scope": "cost_center",
+                            "reason": "budget_enforced",
+                        }
+                    )
+                _emit_gateway_governance_event(
+                    "budget.exceeded",
+                    tenant_id=tenant_id,
+                    subject_id=source_agent,
+                    payload={
+                        "source_agent": source_agent,
+                        "cost_center": cost_center,
+                        "limit_usd": cc_budget.limit_usd,
+                        "spend_usd": round(cc_spend, 6),
+                        "budget_scope": "cost_center",
+                    },
+                )
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message.get("id"),
+                        "error": {
+                            "code": -32001,
+                            "message": "Blocked by agent-bom gateway: cost-center spend budget exceeded",
+                            "data": {
+                                "cost_center": cost_center,
+                                "limit_usd": cc_budget.limit_usd,
+                                "spend_usd": round(cc_spend, 6),
+                            },
+                        },
+                    },
+                    status_code=200,
+                    headers=rate_limit_headers or None,
+                )
 
         # Anomaly-triggered enforcement: a runaway agent (spend outlier vs the
         # fleet) is blocked/flagged before its next call, even while it is still

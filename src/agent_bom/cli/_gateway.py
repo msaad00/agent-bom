@@ -223,6 +223,16 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     help="Allow unauthenticated non-loopback gateway exposure. Unsafe outside local development.",
 )
 @click.option(
+    "--allow-anonymous-agents",
+    is_flag=True,
+    envvar="AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS",
+    default=False,
+    help=(
+        "Allow callers without an agent_identity token to relay on a non-loopback listener. "
+        "Invalid/revoked tokens are always denied. Unsafe outside local development."
+    ),
+)
+@click.option(
     "--detect-visual-leaks",
     is_flag=True,
     envvar="AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS",
@@ -279,6 +289,7 @@ def serve_cmd(
     require_shared_rate_limit: bool,
     bearer_token: str | None,
     allow_insecure_no_auth: bool,
+    allow_anonymous_agents: bool,
     detect_visual_leaks: bool,
     drift_enforcement: str,
     anomaly_enforcement: str,
@@ -406,6 +417,7 @@ def serve_cmd(
         firewall_policy_reload_interval_seconds=max(firewall_policy_reload_seconds, 0),
         listener_host=host,
         allow_insecure_no_auth=allow_insecure_no_auth,
+        allow_anonymous_agents=allow_anonymous_agents,
         drift_enforcement_mode=drift_enforcement,
         anomaly_enforcement_mode=anomaly_enforcement,
         fleet_enforcement_mode=fleet_enforcement,

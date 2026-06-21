@@ -33,10 +33,15 @@ from agent_bom.api.agent_identity_store import (
 def store():
     s = InMemoryAgentIdentityStore()
     set_agent_identity_store(s)
+    # The gateway/proxy resolve abi_ lifecycle tokens through the local identity
+    # verifier; production wires it via register_local_identity_verifier(). Wire
+    # it here so issued tokens resolve (and revoked ones fail closed) the same way.
+    agent_identity.set_local_identity_verifier(lambda tok: verify_token(s, tok))
     try:
         yield s
     finally:
         set_agent_identity_store(None)
+        agent_identity.set_local_identity_verifier(None)
 
 
 # ── core lifecycle ──────────────────────────────────────────────────────────────

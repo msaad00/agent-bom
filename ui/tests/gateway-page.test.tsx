@@ -12,6 +12,8 @@ const { apiMock } = vi.hoisted(() => ({
     deleteGatewayPolicy: vi.fn(),
     updateGatewayPolicy: vi.fn(),
     evaluateGateway: vi.fn(),
+    getGatewayFeed: vi.fn(),
+    getGatewayFeedKpis: vi.fn(),
   },
 }));
 
@@ -28,6 +30,16 @@ describe("GatewayPage", () => {
     Object.values(apiMock).forEach((mockFn) => mockFn.mockReset());
     apiMock.listGatewayPolicies.mockResolvedValue({ policies: [], count: 0 });
     apiMock.listGatewayAudit.mockResolvedValue({ entries: [], count: 0 });
+    apiMock.getGatewayFeed.mockResolvedValue({ events: [], count: 0, limit: 200 });
+    apiMock.getGatewayFeedKpis.mockResolvedValue({
+      calls_today: 0,
+      blocked_today: 0,
+      shadow_ai_blocked: 0,
+      data_filters_applied: 0,
+      uptime_seconds: 0,
+      by_action_type: {},
+      by_source: {},
+    });
     apiMock.getGatewayStats.mockResolvedValue({
       total_policies: 2,
       enforce_count: 1,

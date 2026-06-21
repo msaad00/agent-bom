@@ -1115,6 +1115,10 @@ async def break_glass(request: Request, session_id: str = "default", reason: str
 
     engine = _get_engine(session_id)
     if engine is None or not engine.active:
+        # A break-glass ATTEMPT is a privileged action and must always be
+        # audited — including when there is no active Shield session to
+        # override. Record the attempt + outcome before short-circuiting.
+        _audit_break_glass(request, role, session_id, reason, was_blocked=False, outcome="not_active")
         return {"status": "not_active", "session_id": session_id}
 
     was_blocked = engine.is_blocked
@@ -1122,6 +1126,31 @@ async def break_glass(request: Request, session_id: str = "default", reason: str
         engine.unblock()
 
     # Audit log the break-glass event
+    _audit_break_glass(request, role, session_id, reason, was_blocked=was_blocked, outcome="break_glass_activated")
+
+    return {
+        "status": "break_glass_activated",
+        "session_id": session_id,
+        "was_blocked": was_blocked,
+        "reason": reason,
+        **engine.status(),
+    }
+
+
+def _audit_break_glass(
+    request: Request,
+    role: str,
+    session_id: str,
+    reason: str,
+    *,
+    was_blocked: bool,
+    outcome: str,
+) -> None:
+    """Emit an audit event for a break-glass attempt (success or not).
+
+    Audit-log failures must never block an emergency override, so emission is
+    best-effort and swallows exceptions.
+    """
     try:
         from agent_bom.api.audit_log import log_action
 
@@ -1133,14 +1162,7 @@ async def break_glass(request: Request, session_id: str = "default", reason: str
             tenant_id=tenant_id,
             reason=reason,
             was_blocked=was_blocked,
+            outcome=outcome,
         )
     except Exception:  # noqa: BLE001
         pass  # audit log failure must not block emergency override
-
-    return {
-        "status": "break_glass_activated",
-        "session_id": session_id,
-        "was_blocked": was_blocked,
-        "reason": reason,
-        **engine.status(),
-    }

@@ -248,7 +248,7 @@ def test_only_git_is_executed_never_repo_code(monkeypatch: pytest.MonkeyPatch) -
         dest = Path(cmd[-1])
         # Simulate a repo that ships an executable payload — it must never run.
         (dest / "evil.sh").write_text("#!/bin/sh\ntouch /tmp/abom_pwned\n")
-        os.chmod(dest / "evil.sh", 0o755)
+        os.chmod(dest / "evil.sh", 0o700)  # owner-only; payload must never run regardless
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", _run)

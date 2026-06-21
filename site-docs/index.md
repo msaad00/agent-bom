@@ -7,9 +7,11 @@ model.
 
 `agent-bom` is also an open security data plane. It generates a
 reachability-backed AI BOM across agents, MCP servers, tools, packages,
-credential environment names, cloud, runtime, and skill surfaces, then exposes
-the same evidence to humans and AI agents through CLI/CI, API/UI, MCP tools,
-and selected runtime controls. For source-by-source boundaries, see the
+credential environment names, cloud estate, non-human identities, runtime, and
+skill surfaces, then exposes the same evidence — findings, compliance, LLM cost
+posture, and multi-hop attack paths — to humans and AI agents through CLI/CI,
+API/UI, MCP tools, and selected runtime controls. For source-by-source
+boundaries, see the
 [AI infrastructure coverage matrix](architecture/ai-infrastructure.md#coverage-matrix).
 
 ## What it does

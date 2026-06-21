@@ -27,12 +27,14 @@
 </p>
 
 `agent-bom` scans local and fleet AI infrastructure, builds an AI BOM across
-agents, MCP servers, tools, packages, credential environment names, cloud,
-runtime, and skills, then turns that inventory into findings, compliance
-evidence, and graph-backed exposure paths.
+agents, MCP servers, tools, packages, credential environment names, cloud
+estate, non-human identities, runtime, and skills, then turns that inventory
+into findings, compliance evidence, LLM cost posture, and graph-backed
+multi-hop exposure paths.
 
 The same evidence is available through CLI/CI, REST API, MCP tools, and a
-self-hosted dashboard. Runtime proxy/gateway controls are optional and scoped
+self-hosted dashboard. Runtime proxy/gateway controls — including inline
+firewall enforcement and a secure-by-default gateway — are optional and scoped
 to environments where enforcement is worth the operational cost.
 
 <p align="center">
@@ -53,6 +55,24 @@ package
 Blast radius is the core idea. A vulnerable package is not just a CVE row; it
 is linked to the MCP server that loads it, the tools exposed by that server,
 the credential environment names in reach, and the agents that can call it.
+
+## What It Scans
+
+| Domain | Coverage |
+|---|---|
+| Supply chain | 15 package ecosystems (npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, conda, Hex, Pub, Swift, plus OS packages apk/deb/rpm) with OSV/GHSA enrichment, transitive resolution, and dependency-confusion detection |
+| Agents + MCP | MCP clients, servers, tools, transports, trust posture, and live introspection across 29 first-class client types |
+| AI models + datasets | Malicious-model detection via safe pickle-opcode disassembly (no deserialization), model/dataset cards, and PII/PHI dataset scanning |
+| Cloud estate | Read-only, gated asset inventory across AWS, Azure, and GCP plus AI/GPU provider posture and CIS benchmarks |
+| Identity (NHI) | Non-human identity discovery (Okta/Entra, gated), credential-expiry posture, and access-review recertification campaigns |
+| LLM cost | Spend forecasting, budget runway, chargeback/allocation, and seasonal-aware spend-anomaly detection |
+| Containers + IaC | Native OCI image parsing plus Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes |
+| Secrets + runtime | Secret detection, MCP proxy/gateway, A2A and MCP auth-posture checks, inline firewall enforcement, and redaction surfaces |
+| Compliance | Mapped governance frameworks plus ZIP evidence bundles for auditors |
+
+Findings converge on one unified `Finding` model and a unified `ContextGraph`,
+so multi-hop attack-path fusion, blast radius, and exposure scoring all read
+from the same evidence.
 
 <p align="center">
   <picture>
@@ -201,6 +221,9 @@ Screenshot capture rules and the full manifest live in
 | Container image scan | `agent-bom image nginx:latest` | image findings and remediation |
 | IaC scan | `agent-bom iac Dockerfile k8s/ infra/main.tf` | IaC findings and policy context |
 | Cloud posture check | `agent-bom cloud aws --cis` | runtime CIS posture evidence |
+| Cloud estate inventory | `agent-bom cloud inventory --provider aws` | read-only, gated asset inventory (AWS/Azure/GCP) |
+| LLM cost forecast | `agent-bom cost forecast` | spend burn-rate, budget runway, and chargeback posture |
+| Non-human identity posture | `agent-bom identity credential-expiry` | expiring/overdue NHI credentials and access reviews |
 | CI gate | `uses: msaad00/agent-bom@v0.88.6` | SARIF, PR summary, optional code-scanning upload |
 | MCP tools | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict-args security tools for MCP clients |
 | Local API/UI | `pip install 'agent-bom[ui]' && agent-bom serve` | API plus bundled dashboard |
@@ -271,7 +294,7 @@ boundaries are documented in [docs/PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIE
 - No mandatory telemetry.
 - Credential values are redacted; credential environment names are preserved as
   evidence so exposure paths stay explainable.
-- Findings can export as JSON, SARIF, CycloneDX, SPDX, Markdown, HTML, and
+- Findings can export as JSON, SARIF, CycloneDX, SPDX, OCSF, Markdown, HTML, and
   compliance evidence bundles.
 - API and runtime paths are designed for tenant scope, auth boundaries, and
   audit evidence.

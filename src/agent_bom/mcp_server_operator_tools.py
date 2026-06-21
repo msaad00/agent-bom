@@ -38,6 +38,14 @@ def register_operator_tools(
         identity_revoke_jit_impl,
         identity_rotate_impl,
     )
+    from agent_bom.mcp_tools.posture import (
+        access_review_impl,
+        cloud_inventory_impl,
+        cost_allocation_impl,
+        cost_forecast_impl,
+        credential_expiry_impl,
+        nhi_discover_impl,
+    )
     from agent_bom.mcp_tools.registry import fleet_scan_impl, marketplace_check_impl
     from agent_bom.mcp_tools.runtime import (
         anomaly_scan_impl,
@@ -949,5 +957,169 @@ def register_operator_tools(
             tenant_id=tenant_id,
             limit=limit,
             include_runtime=include_runtime,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Cost Forecast")
+    async def cost_forecast(
+        agent: Annotated[
+            str,
+            Field(description="Optional agent name to scope the forecast to a single agent."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to forecast. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Project LLM spend burn rate and budget runway for the active tenant.
+
+        Derives a recent burn rate from persisted cost records and extrapolates
+        to the configured budget, returning projected period spend, days of
+        runway, and an exhaustion date. Reference only: a forecast never blocks a
+        call and returns a clear status with null projections on sparse history.
+        """
+        return await execute_tool_async(
+            "cost_forecast",
+            cost_forecast_impl,
+            agent=agent,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Cost Allocation")
+    async def cost_allocation(
+        cost_center: Annotated[
+            str,
+            Field(description="Optional cost-center / allocation unit to scope the chargeback report and budget."),
+        ] = "",
+        tag: Annotated[
+            str,
+            Field(description="Optional allocation tag to add a showback slice (by_tag rollup)."),
+        ] = "",
+        agent: Annotated[
+            str,
+            Field(description="Optional agent name to scope spend to a single agent."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to summarize. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Return chargeback / showback LLM spend rollups by cost-center and allocation tag.
+
+        Spend is derived from token counts on ingested OpenTelemetry GenAI spans
+        priced via the open cost model. Includes per-cost-center allocation,
+        budget posture, and forecast. No prompts or responses are read.
+        """
+        return await execute_tool_async(
+            "cost_allocation",
+            cost_allocation_impl,
+            cost_center=cost_center,
+            tag=tag,
+            agent=agent,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Credential Expiry")
+    async def credential_expiry() -> str:
+        """Return expiring / overdue credential posture for control-plane secrets.
+
+        Surfaces non-secret credential-expiry and rotation governance: which
+        secrets are near expiry, overdue for rotation, or past max age, with an
+        overall verdict. Never returns secret values.
+        """
+        return await execute_tool_async(
+            "credential_expiry",
+            credential_expiry_impl,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="NHI Discover")
+    async def nhi_discover(
+        providers: Annotated[
+            str,
+            Field(description="Comma-separated IdP providers to query: okta, entra. Omit to query both."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope for the response envelope. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Discover non-human identities (Okta service apps / Entra service principals).
+
+        Read-only and reference-only: returns normalized identity metadata (id,
+        name, owner, created, credential expiry, scope references) — never secret
+        material. Each provider is gated by its own discovery env flag and token;
+        a disabled or unconfigured provider is reported in ``providers`` with a
+        clear status rather than failing the request.
+        """
+        return await execute_tool_async(
+            "nhi_discover",
+            nhi_discover_impl,
+            providers=providers,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Cloud Inventory")
+    async def cloud_inventory(
+        providers: Annotated[
+            str,
+            Field(description="Comma-separated cloud providers to summarize: aws, azure, gcp. Omit to query all enabled."),
+        ] = "",
+        region: Annotated[
+            str,
+            Field(description="Optional AWS region for AWS inventory (e.g. us-east-1)."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope for the response envelope. Defaults to the control-plane default tenant."),
+        ] = "default",
+    ) -> str:
+        """Summarize the estate-wide cloud asset inventory (resource + identity counts).
+
+        Each provider is opt-in via its own ``AGENT_BOM_*_INVENTORY`` env flag and
+        credentials; a disabled or unconfigured provider returns a clear status
+        and contributes zero nodes. Returns resource/identity counts and a node
+        summary only — reference-only, never resource secrets.
+        """
+        return await execute_tool_async(
+            "cloud_inventory",
+            cloud_inventory_impl,
+            providers=providers,
+            region=region,
+            tenant_id=tenant_id,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Access Review")
+    async def access_review(
+        campaign_id: Annotated[
+            str,
+            Field(description="Optional campaign id to fetch one campaign with its review items. Omit to list campaigns."),
+        ] = "",
+        tenant_id: Annotated[
+            str,
+            Field(description="Tenant scope to read. Defaults to the control-plane default tenant."),
+        ] = "default",
+        limit: Annotated[
+            int,
+            Field(ge=1, le=1000, description="Maximum campaigns to list when campaign_id is omitted."),
+        ] = 200,
+    ) -> str:
+        """List or get NHI access-review / recertification campaigns and their status.
+
+        Read-only: pass ``campaign_id`` to fetch one campaign with its review
+        items, or omit it to list campaigns (overdue statuses refreshed).
+        Creating a campaign or submitting a reviewer decision is a write action
+        and is intentionally not exposed through this read-only tool.
+        """
+        return await execute_tool_async(
+            "access_review",
+            access_review_impl,
+            campaign_id=campaign_id,
+            tenant_id=tenant_id,
+            limit=limit,
             _truncate_response=truncate_response,
         )

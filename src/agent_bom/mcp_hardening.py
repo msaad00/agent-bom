@@ -5,6 +5,18 @@ from typing import Any
 NSA_MCP_SECURITY_REPORT_URL = "https://www.nsa.gov/Portals/75/documents/Cybersecurity/CSI_MCP_SECURITY.pdf"
 
 
+def strict_args_tool_count() -> int:
+    """Return the number of strict-args MCP tools, derived from the server card.
+
+    Every registered ``@mcp.tool`` is hardened with ``additionalProperties=false``
+    and listed in ``_SERVER_CARD_TOOLS``; counting the card keeps the hardening
+    surface honest as new tools land (no hand-maintained literal to drift).
+    """
+    from agent_bom.mcp_server_metadata import _SERVER_CARD_TOOLS
+
+    return len(_SERVER_CARD_TOOLS)
+
+
 def build_mcp_hardening_catalog() -> dict[str, Any]:
     """Return operator-facing MCP hardening controls and agent-bom evidence.
 
@@ -48,7 +60,7 @@ def build_mcp_hardening_catalog() -> dict[str, Any]:
             "nsa_theme": "Validate parameters",
             "risk": "Malformed, oversized, or context-confused tool parameters can trigger injection, DoS, or data leakage.",
             "agent_bom_surfaces": [
-                "55 strict-args MCP tools",
+                f"{strict_args_tool_count()} strict-args MCP tools",
                 "MCP wrapper additionalProperties=false",
                 "API VALIDATION_ERROR responses",
                 "policy_check",

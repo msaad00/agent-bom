@@ -93,6 +93,67 @@ def test_sandbox_config_from_env_parses_operator_values(monkeypatch, tmp_path):
     assert config.mounts[0].target == "/workspace"
 
 
+def test_server_mode_escalates_mutable_image_to_enforce(monkeypatch):
+    """In server mode, the implicit 'warn' default hardens to 'enforce' for a mutable tag."""
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY", raising=False)
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_SERVER_MODE", "true")
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_IMAGE", "ghcr.io/acme/mcp-sandbox:1")
+
+    config = sandbox_config_from_env()
+    assert config.image_pin_policy == "enforce"
+
+
+def test_server_mode_keeps_warn_for_pinned_image(monkeypatch):
+    """A digest-pinned image needs no escalation even in server mode."""
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY", raising=False)
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_SERVER_MODE", "true")
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_IMAGE", PINNED_IMAGE)
+
+    config = sandbox_config_from_env()
+    assert config.image_pin_policy == "warn"
+
+
+def test_server_mode_respects_explicit_off(monkeypatch):
+    """An explicit 'off' is never silently escalated."""
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY", "off")
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_SERVER_MODE", "true")
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_IMAGE", "ghcr.io/acme/mcp-sandbox:1")
+
+    config = sandbox_config_from_env()
+    assert config.image_pin_policy == "off"
+
+
+def test_non_server_mode_keeps_warn(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY", raising=False)
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_SERVER_MODE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SERVER_MODE", raising=False)
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_IMAGE", "ghcr.io/acme/mcp-sandbox:1")
+
+    config = sandbox_config_from_env()
+    assert config.image_pin_policy == "warn"
+
+
+def test_generic_server_mode_fallback_escalates(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY", raising=False)
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_SERVER_MODE", raising=False)
+    monkeypatch.setenv("AGENT_BOM_SERVER_MODE", "production")
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_IMAGE", "ghcr.io/acme/mcp-sandbox:1")
+
+    config = sandbox_config_from_env()
+    assert config.image_pin_policy == "enforce"
+
+
+def test_posture_surfaces_server_mode_effective_default(monkeypatch):
+    from agent_bom.proxy_sandbox import describe_proxy_sandbox_posture
+
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY", raising=False)
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_SERVER_MODE", "true")
+    posture = describe_proxy_sandbox_posture()
+    assert posture["image_pin_policy_default"] == "warn"
+    assert posture["image_pin_policy_effective_default"] == "enforce"
+    assert posture["server_mode"] is True
+
+
 def test_sandbox_config_defaults_to_enabled(monkeypatch):
     monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX", raising=False)
 

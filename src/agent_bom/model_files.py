@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from agent_bom.floating_refs import classify_model_revision, is_hex_digest
+from agent_bom.model_pickle_scan import PICKLE_BEARING_EXTENSIONS, scan_pickle_file_flags
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,21 @@ def scan_model_files(
                 flag = _SECURITY_FLAGS[ext].copy()
                 security_flags.append(flag)
                 warnings.append(f"Model file {file_path.name}: {flag['severity']} — {flag['type']}. {flag['description']}")
+
+            # Disassembly-based malicious-pickle detection. This walks the
+            # pickle opcode stream via pickletools.genops WITHOUT ever
+            # deserializing the model (no pickle.load / torch.load / joblib.load),
+            # so the no-execution guarantee is preserved while upgrading the
+            # signal from extension-only to content-aware.
+            if ext in PICKLE_BEARING_EXTENSIONS:
+                try:
+                    pickle_flags, _ = scan_pickle_file_flags(file_path)
+                except Exception as exc:  # noqa: BLE001 — scanner must never break a scan
+                    logger.debug("Pickle opcode scan skipped for %s: %s", file_path, exc)
+                    pickle_flags = []
+                for pflag in pickle_flags:
+                    security_flags.append(pflag)
+                    warnings.append(f"Model file {file_path.name}: {pflag['severity']} — {pflag['type']}. {pflag['description']}")
 
             results.append(
                 {

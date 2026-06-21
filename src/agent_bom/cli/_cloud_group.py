@@ -226,3 +226,107 @@ def resilience_cmd(output_format: str) -> None:
 
 
 cloud_group.add_command(resilience_cmd, "resilience")
+
+
+@click.command("inventory")
+@click.option(
+    "--provider",
+    type=click.Choice(["aws", "azure", "gcp", "all"]),
+    default="all",
+    show_default=True,
+    help="Restrict the estate inventory to one cloud provider.",
+)
+@click.option("--region", default=None, help="AWS region (aws only).")
+@click.option("--profile", default=None, help="AWS credential profile (aws only).")
+@click.option("--subscription", default=None, help="Azure subscription id (azure only).")
+@click.option("--project", default=None, help="GCP project id (gcp only).")
+@click.option("-f", "--format", "output_format", type=click.Choice(["console", "json"]), default="console")
+def inventory_cmd(
+    provider: str,
+    region: Optional[str],
+    profile: Optional[str],
+    subscription: Optional[str],
+    project: Optional[str],
+    output_format: str,
+) -> None:
+    """Show an estate-wide AWS / Azure / GCP asset summary (read-only).
+
+    Gated by ``AGENT_BOM_CLOUD_INVENTORY`` (AWS), ``AGENT_BOM_AZURE_INVENTORY``
+    (Azure), and ``AGENT_BOM_GCP_INVENTORY`` (GCP). A disabled provider reports a
+    ``disabled`` status and runs no network call. Reference only.
+    """
+    import json as _json
+
+    from agent_bom.cloud import aws_inventory, azure_inventory, gcp_inventory
+
+    reports: list[dict] = []
+    if provider in ("aws", "all"):
+        reports.append(aws_inventory.discover_inventory(region=region, profile=profile))
+    if provider in ("azure", "all"):
+        reports.append(azure_inventory.discover_inventory(subscription_id=subscription))
+    if provider in ("gcp", "all"):
+        reports.append(gcp_inventory.discover_inventory(project_id=project))
+
+    if output_format == "json":
+        click.echo(_json.dumps({"providers": reports}, indent=2, sort_keys=True, default=str))
+        return
+
+    from rich.console import Console
+    from rich.table import Table
+
+    con = Console()
+    con.print("\n  [bold]Cloud estate inventory[/bold] [dim]· read-only[/dim]")
+
+    table = Table()
+    table.add_column("Provider")
+    table.add_column("Status")
+    table.add_column("Assets")
+    table.add_column("Warnings", justify="right")
+    any_disabled = False
+    for rep in reports:
+        status = str(rep.get("status", "unknown"))
+        if status == "disabled":
+            any_disabled = True
+        style = {"ok": "green", "disabled": "yellow"}.get(status, "dim")
+        table.add_row(
+            str(rep.get("provider", "—")),
+            f"[{style}]{status}[/{style}]",
+            _asset_summary(rep),
+            str(len(rep.get("warnings") or [])),
+        )
+    con.print(table)
+    if any_disabled:
+        con.print(
+            "  [dim]Disabled providers run no network call. Enable with[/dim] "
+            "[cyan]AGENT_BOM_CLOUD_INVENTORY=1[/cyan] [dim]·[/dim] "
+            "[cyan]AGENT_BOM_AZURE_INVENTORY=1[/cyan] [dim]·[/dim] [cyan]AGENT_BOM_GCP_INVENTORY=1[/cyan]"
+        )
+    con.print()
+
+
+# Per-provider asset collections to count in the compact estate summary.
+_INVENTORY_ASSET_KEYS = (
+    "buckets",
+    "instances",
+    "security_groups",
+    "roles",
+    "users",
+    "storage_accounts",
+    "managed_identities",
+    "service_principals",
+    "service_accounts",
+    "firewalls",
+)
+
+
+def _asset_summary(report: dict) -> str:
+    """Compact ``key=N`` summary of the non-empty asset collections in a report."""
+    bits = []
+    for key in _INVENTORY_ASSET_KEYS:
+        value = report.get(key)
+        if isinstance(value, list) and value:
+            bits.append(f"{key}={len(value)}")
+    return ", ".join(bits) if bits else "[dim]none[/dim]"
+
+
+cloud_group.add_command(inventory_cmd, "inventory")

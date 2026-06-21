@@ -60,6 +60,14 @@
 | `firewall` | Inter-agent firewall policy validate / list / check |
 | `trust` | Show data access, network, auth, and storage boundaries |
 | `fleet` | Manage AI agent fleet discovery, lifecycle, and posture |
+| `cost` | LLM FinOps posture — spend forecast and chargeback rollups (read-only) |
+| `cost forecast` | Project LLM burn rate and budget runway (read-only FinOps) |
+| `cost allocation` | Roll up LLM spend by cost-center / allocation tag (alias: `cost chargeback`) |
+| `identity` | Non-human identity governance — credentials, discovery, access reviews (read-only) |
+| `identity credential-expiry` | Show expiring, overdue, and rotation-due credentials (never secret values) |
+| `identity discover` | Discover Okta / Entra non-human identities (gated, reference-only) |
+| `identity access-review` | List or get NHI recertification campaigns and their status |
+| `cloud inventory` | Estate-wide AWS / Azure / GCP asset summary (gated by `AGENT_BOM_*_INVENTORY`) |
 | `serve` | Start the API server and dashboard |
 | `api` | Start the REST API server |
 | `schedule` | Manage recurring scan schedules |
@@ -171,3 +179,5 @@ Contract](remediate-output.md).
 | `AGENT_BOM_CLICKHOUSE_URL` | Analytics storage | No |
 | `AWS_PROFILE` | AWS CIS benchmark | Only for `cis-benchmark --provider aws` |
 | `SNOWFLAKE_ACCOUNT` | Snowflake CIS benchmark | Only for `cis-benchmark --provider snowflake` |
+| `AGENT_BOM_OKTA_DISCOVERY` / `AGENT_BOM_ENTRA_DISCOVERY` | Gate `identity discover` and discovered-NHI credential expiry | Only for NHI discovery |
+| `AGENT_BOM_CLOUD_INVENTORY` / `AGENT_BOM_AZURE_INVENTORY` / `AGENT_BOM_GCP_INVENTORY` | Gate `cloud inventory` per provider | Only for estate inventory |

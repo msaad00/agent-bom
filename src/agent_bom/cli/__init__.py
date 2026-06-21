@@ -362,6 +362,20 @@ from agent_bom.cli._cloud_group import cloud_group  # noqa: E402
 main.add_command(cloud_group)
 
 # ---------------------------------------------------------------------------
+# Cost (FinOps) command group — `agent-bom cost [forecast|allocation]`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._cost_group import cost_group  # noqa: E402
+
+main.add_command(cost_group)
+
+# ---------------------------------------------------------------------------
+# Identity (NHI governance) group — `agent-bom identity [credential-expiry|discover|access-review]`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._identity_group import identity_group  # noqa: E402
+
+main.add_command(identity_group)
+
+# ---------------------------------------------------------------------------
 # Fleet command group — `agent-bom fleet [sync|list|stats]`
 # ---------------------------------------------------------------------------
 from agent_bom.cli.claw import fleet_group  # noqa: E402

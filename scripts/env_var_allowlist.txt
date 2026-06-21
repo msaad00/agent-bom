@@ -82,6 +82,8 @@ AGENT_BOM_CRED_MAX_AGE_DAYS
 AGENT_BOM_CRED_NEAR_EXPIRY_DAYS
 # Default rotation interval (days) for credentials without a per-secret interval; read in api/credential_expiry.py (#2923).
 AGENT_BOM_CRED_ROTATION_DAYS
+# Dormancy window (days, default 90) before a non-human identity with no recent usage is flagged dormant; read in graph/nhi_governance.py.
+AGENT_BOM_NHI_DORMANT_DAYS
 AGENT_BOM_CORS_ALL
 AGENT_BOM_DASHBOARD_CSP_HASH_MANIFEST
 AGENT_BOM_DB

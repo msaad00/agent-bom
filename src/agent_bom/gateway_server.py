@@ -43,7 +43,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from agent_bom.agent_identity import ANONYMOUS, check_identity, extract_identity_token
+from agent_bom.agent_identity import ANONYMOUS, check_caller_identity, extract_identity_token
 from agent_bom.api.auth import Role, get_key_store
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
@@ -94,6 +94,7 @@ def _public_gateway_block_reason(policy_source: str) -> str:
         "fleet_quarantine": "Agent is quarantined in the fleet roster",
         "identity_scope": "Identity scope blocked this tool",
         "identity_jit": "Gateway policy blocked this request",
+        "firewall": "Inter-agent firewall blocked this request",
     }.get(policy_source, "Gateway policy blocked this request")
 
 
@@ -139,6 +140,13 @@ class GatewaySettings:
     upstream_http_max_keepalive_connections: int = 20
     listener_host: str = "127.0.0.1"
     allow_insecure_no_auth: bool = False
+    # Caller-identity fail-closed posture (mirrors ``allow_insecure_no_auth``
+    # for incoming transport auth). An INVALID or REVOKED agent-identity token
+    # ALWAYS fails closed regardless of this flag. A fully-MISSING identity is
+    # only permitted when the listener is loopback OR this opt-out is set (via
+    # this field or AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS). On a non-loopback
+    # bind without the opt-out, a missing identity fails closed by default.
+    allow_anonymous_agents: bool = False
     # Control-plane GatewayPolicy bundle (raw dicts with bound_agents /
     # bound_agent_types / bound_environments). The flattened ``policy`` dict
     # above is agent-agnostic; this bundle lets the relay enforce per-agent
@@ -548,6 +556,35 @@ def _enforce_gateway_auth_posture(settings: GatewaySettings) -> None:
     )
 
 
+def _gateway_allows_anonymous_agents(settings: GatewaySettings) -> bool:
+    """Return True when a fully-MISSING agent identity may proceed.
+
+    Permissive on a loopback listener (local development), and on a non-loopback
+    listener only when the operator sets the explicit opt-out — mirroring the
+    ``allow_insecure_no_auth`` precedent for incoming transport auth. An invalid
+    or revoked token is NEVER governed by this function; it always fails closed.
+    """
+    if _is_loopback_host(settings.listener_host):
+        return True
+    return settings.allow_anonymous_agents or _env_flag_enabled("AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS")
+
+
+def _enforce_gateway_anonymous_agents_posture(settings: GatewaySettings) -> None:
+    """Emit a loud startup warning when anonymous callers are permitted on a
+    non-loopback listener via the explicit opt-out, paralleling the transport
+    auth posture warning."""
+    if _is_loopback_host(settings.listener_host):
+        return
+    if settings.allow_anonymous_agents or _env_flag_enabled("AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS"):
+        logger.warning(
+            "SECURITY: gateway relay accepting anonymous (unidentified) agent callers on non-loopback "
+            "listener %s due to explicit opt-out (AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS / "
+            "--allow-anonymous-agents). Invalid/revoked tokens are still denied. Use only when an "
+            "upstream trust boundary already authenticates callers.",
+            _sanitize_for_log(settings.listener_host),
+        )
+
+
 def _role_allows_gateway_relay(role: object) -> bool:
     try:
         normalized = role if isinstance(role, Role) else Role(str(role).lower())
@@ -709,6 +746,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
         require_visual_leak_runtime()
     _enforce_gateway_auth_posture(settings)
+    _enforce_gateway_anonymous_agents_posture(settings)
 
     managed_upstream_relay = GatewayUpstreamRelay(settings) if settings.upstream_caller is None else None
     upstream_caller = settings.upstream_caller or managed_upstream_relay
@@ -1059,8 +1097,34 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         async with policy_lock:
             current_policy = dict(policy_state["policy"])
 
-        source_agent, identity_block_reason = check_identity(message, current_policy)
+        # Caller-identity resolution with secure-by-default fail-closed posture.
+        #
+        # ``check_caller_identity`` preserves the token-present signal that the
+        # legacy ``check_identity`` collapsed, so three cases are distinct:
+        #   1. invalid/revoked token (token present, did not resolve) — ALWAYS
+        #      fail closed, regardless of ``require_agent_identity`` or bind.
+        #      This closes the fail-open hole where a forged/revoked token
+        #      previously degraded to ANONYMOUS and forwarded.
+        #   2. ``require_agent_identity`` set + missing token — fail closed
+        #      (unchanged policy-driven behavior).
+        #   3. fully-missing token — permitted on a loopback bind (local dev)
+        #      or with the explicit opt-out, else fail closed by default on a
+        #      non-loopback bind (mirrors the transport-auth opt-out precedent).
+        source_agent, token_present, identity_invalid_reason = check_caller_identity(message, current_policy)
         source_agent = source_agent or ANONYMOUS
+
+        identity_block_reason: str | None = None
+        if identity_invalid_reason is not None:
+            identity_block_reason = f"Identity invalid: {identity_invalid_reason}"
+        elif not token_present:
+            if current_policy.get("require_agent_identity"):
+                identity_block_reason = "Identity required: no agent_identity token in _meta"
+            elif not _gateway_allows_anonymous_agents(settings):
+                identity_block_reason = (
+                    "Anonymous agent caller denied on non-loopback listener; supply an agent_identity "
+                    "token or set AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS for local development only"
+                )
+
         if identity_block_reason is not None:
             record_gateway_relay(upstream.name, "blocked")
             logger.info(
@@ -1092,6 +1156,82 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 },
                 status_code=200,
             )
+
+        # Inter-agent firewall enforcement in the data path (#982 PR 2). The
+        # firewall is only consulted when an operator actually configured a
+        # policy file — no firewall_policy_path means default-allow and zero
+        # behavior change. The resolved source_agent → target upstream pair is
+        # evaluated; an effective DENY fails the relay closed (audited +
+        # governance event), converting the previously advisory /v1/firewall/
+        # check evaluator into a real in-path control. WARN is advisory: it is
+        # audited but does not block (matching enforcement_mode dry-run).
+        if settings.firewall_policy_path is not None:
+            async with firewall_lock:
+                fw_policy: AgentFirewallPolicy = firewall_state["policy"]
+            fw_result = evaluate_firewall_policy(
+                fw_policy,
+                source_agent=source_agent,
+                target_agent=upstream.name,
+            )
+            if fw_result.effective_decision != FirewallDecision.ALLOW:
+                fw_audit: dict[str, Any] = {
+                    "action": "gateway.firewall_blocked"
+                    if fw_result.effective_decision == FirewallDecision.DENY
+                    else "gateway.firewall_warned",
+                    "upstream": upstream.name,
+                    "tenant_id": tenant_id,
+                    "source_agent": source_agent,
+                    "target_agent": upstream.name,
+                    "decision": fw_result.decision.value,
+                    "effective_decision": fw_result.effective_decision.value,
+                    "matched_rule": (
+                        {
+                            "source": fw_result.matched_rule.source,
+                            "target": fw_result.matched_rule.target,
+                            "decision": fw_result.matched_rule.decision.value,
+                            "description": fw_result.matched_rule.description,
+                        }
+                        if fw_result.matched_rule is not None
+                        else None
+                    ),
+                    "enforcement_mode": fw_policy.enforcement_mode.value,
+                }
+                if settings.audit_sink is not None:
+                    await settings.audit_sink(fw_audit)
+                if fw_result.effective_decision == FirewallDecision.DENY:
+                    record_gateway_relay(upstream.name, "blocked")
+                    _emit_gateway_governance_event(
+                        "firewall.blocked",
+                        tenant_id=tenant_id,
+                        subject_id=source_agent,
+                        payload={
+                            "source_agent": source_agent,
+                            "target_agent": upstream.name,
+                            "decision": fw_result.decision.value,
+                            "matched_rule": fw_audit["matched_rule"],
+                        },
+                    )
+                    logger.info(
+                        "Gateway firewall blocked request source_agent=%s target=%s tenant_id=%s",
+                        _sanitize_for_log(source_agent),
+                        _sanitize_for_log(upstream.name),
+                        tenant_id,
+                    )
+                    return JSONResponse(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": message.get("id"),
+                            "error": {
+                                "code": -32001,
+                                "message": "Blocked by agent-bom gateway inter-agent firewall",
+                                "data": {
+                                    "reason": _public_gateway_block_reason("firewall"),
+                                    "policy_source": "firewall",
+                                },
+                            },
+                        },
+                        status_code=200,
+                    )
 
         rate_limit_headers: dict[str, str] = {}
         if rate_limit_store is not None:

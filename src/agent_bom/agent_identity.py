@@ -333,3 +333,36 @@ def check_identity(
         return ANONYMOUS, None
 
     return agent_id, None
+
+
+def check_caller_identity(
+    msg: dict,
+    policy: dict,
+) -> tuple[str, bool, str | None]:
+    """Resolve caller identity while preserving the token-present signal.
+
+    Unlike :func:`check_identity` — which collapses a present-but-invalid token
+    and a fully-absent token to the same ``(ANONYMOUS, None)`` result when
+    ``require_agent_identity`` is unset — this returns enough information for a
+    caller (e.g. the gateway relay) to fail closed on an invalid/revoked token
+    while still treating a fully-missing identity as a separate, configurable
+    case.
+
+    Returns:
+        ``(agent_id, token_present, invalid_reason)`` where:
+        - ``token_present`` is True when a structurally-present identity token
+          was supplied in ``_meta.agent_identity`` (whether or not it resolved).
+        - ``invalid_reason`` is a sanitized string when a token *was* present
+          but failed to resolve (malformed / expired / unsigned / unknown /
+          revoked); None when no token was present or the token resolved
+          cleanly. A non-None ``invalid_reason`` means the caller must fail
+          closed regardless of ``require_agent_identity``.
+    """
+    token = extract_identity_token(msg)
+    if token is None:
+        return ANONYMOUS, False, None
+
+    agent_id, error = resolve_agent_id(token, policy)
+    if error is not None:
+        return ANONYMOUS, True, _sanitize_identity_error(error)
+    return agent_id, True, None

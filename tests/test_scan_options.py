@@ -29,6 +29,7 @@ def test_scan_packages_explicit_offline_option_ignores_global_online_state(monke
 
     with (
         patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()),
         patch("agent_bom.scanners.query_osv_batch") as mock_osv,
     ):
         with pytest.raises(IncompleteScanError, match="populated local vulnerability DB"):

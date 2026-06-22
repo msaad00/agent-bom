@@ -699,7 +699,7 @@ jobs:
 
   self-scan-gate:
     name: Self-scan release gate
-    needs: build
+    needs: [version-guard, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

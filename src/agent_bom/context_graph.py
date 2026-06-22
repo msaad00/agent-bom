@@ -241,32 +241,38 @@ def build_context_graph(
             # Track shared server detection
             server_to_agents[srv_name].append(agent_name)
 
-            # Credentials from env keys
-            env_dict = srv_dict.get("env", {})
-            for env_key in env_dict:
-                if _is_credential_key(env_key):
-                    cred_id = f"cred:{env_key}"
-                    if cred_id not in graph.nodes:
-                        graph.add_node(
-                            GraphNode(
-                                id=cred_id,
-                                kind=NodeKind.CREDENTIAL,
-                                label=env_key,
-                                metadata={"servers": []},
-                            )
-                        )
-                    # Track which servers expose this credential
-                    if srv_id not in graph.nodes[cred_id].metadata["servers"]:
-                        graph.nodes[cred_id].metadata["servers"].append(srv_id)
-                    graph.add_edge(
-                        GraphEdge(
-                            source=srv_id,
-                            target=cred_id,
-                            kind=EdgeKind.EXPOSES,
-                            weight=2.0,
+            # Credentials. The serialized scan contract surfaces credential env
+            # var names via ``credential_env_vars`` (the canonical builder writes
+            # them there and leaves ``env`` empty/redacted in output), so reading
+            # only ``env`` produced zero credential nodes — and zero
+            # SHARES_CREDENTIAL lateral edges — on real scan JSON. Read both:
+            # the explicit credential list plus any credential-looking inline env
+            # keys, deduped.
+            cred_keys = list(srv_dict.get("credential_env_vars", []))
+            cred_keys += [k for k in srv_dict.get("env", {}) if _is_credential_key(k)]
+            for env_key in dict.fromkeys(cred_keys):
+                cred_id = f"cred:{env_key}"
+                if cred_id not in graph.nodes:
+                    graph.add_node(
+                        GraphNode(
+                            id=cred_id,
+                            kind=NodeKind.CREDENTIAL,
+                            label=env_key,
+                            metadata={"servers": []},
                         )
                     )
-                    cred_to_agents[env_key].append(agent_name)
+                # Track which servers expose this credential
+                if srv_id not in graph.nodes[cred_id].metadata["servers"]:
+                    graph.nodes[cred_id].metadata["servers"].append(srv_id)
+                graph.add_edge(
+                    GraphEdge(
+                        source=srv_id,
+                        target=cred_id,
+                        kind=EdgeKind.EXPOSES,
+                        weight=2.0,
+                    )
+                )
+                cred_to_agents[env_key].append(agent_name)
 
             # Tools
             for tool_dict in srv_dict.get("tools", []):

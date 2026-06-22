@@ -82,6 +82,48 @@ WHERE old_nodes.id IS NULL
    OR old_nodes.attributes <> new_nodes.attributes
 LIMIT 500;
 """.strip(),
+        "graph_history": f"""
+{prefix}
+SELECT scan_id, created_at, node_count, edge_count,
+       LAG(scan_id) OVER (ORDER BY created_at ASC, scan_id ASC) AS diff_baseline_scan_id
+FROM graph_snapshots
+WHERE tenant_id = {tenant}
+ORDER BY created_at DESC, scan_id DESC
+LIMIT 50;
+""".strip(),
+        "graph_evidence_manifest_digest": f"""
+{prefix}
+WITH node_digest AS (
+  SELECT COUNT(*) AS node_count,
+         md5(COALESCE(string_agg(id || ':' || entity_type || ':' || label || ':' ||
+             COALESCE(severity, '') || ':' || COALESCE(risk_score::text, '0'), '|' ORDER BY id), '')) AS digest
+  FROM graph_nodes
+  WHERE tenant_id = {tenant} AND scan_id = {scan}
+),
+edge_digest AS (
+  SELECT COUNT(*) AS edge_count,
+         md5(COALESCE(string_agg(source_id || '>' || target_id || ':' || relationship || ':' ||
+             COALESCE(weight::text, '0') || ':' || COALESCE(confidence::text, '1'), '|'
+             ORDER BY source_id, target_id, relationship), '')) AS digest
+  FROM graph_edges
+  WHERE tenant_id = {tenant} AND scan_id = {scan}
+),
+finding_digest AS (
+  SELECT COUNT(*) AS finding_count,
+         md5(COALESCE(string_agg(id || ':' || entity_type || ':' || COALESCE(severity, ''), '|' ORDER BY id), '')) AS digest
+  FROM graph_nodes
+  WHERE tenant_id = {tenant}
+    AND scan_id = {scan}
+    AND entity_type IN ('vulnerability', 'misconfiguration', 'drift_incident')
+)
+SELECT {scan} AS scan_id,
+       node_digest.node_count,
+       edge_digest.edge_count,
+       finding_digest.finding_count,
+       md5(node_digest.digest || ':' || edge_digest.digest) AS graph_digest,
+       finding_digest.digest AS findings_digest
+FROM node_digest, edge_digest, finding_digest;
+""".strip(),
         "bounded_traversal_edges": f"""
 {prefix}
 WITH RECURSIVE walk(node_id, depth) AS (

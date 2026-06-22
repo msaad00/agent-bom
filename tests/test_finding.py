@@ -571,6 +571,29 @@ def test_report_to_findings_converts_blast_radii():
     assert all(f.finding_type == FindingType.CVE for f in findings)
 
 
+def test_blast_radius_to_finding_preserves_reachability_and_vulnerability_metadata():
+    br = _make_blast_radius()
+    br.impact_category = "availability"
+    br.vulnerability.published_at = "2026-01-02T00:00:00Z"
+    br.vulnerability.modified_at = "2026-01-03T00:00:00Z"
+    br.vulnerability.severity_source = "nvd:cvss_v3"
+    br.vulnerability.epss_percentile = 97.5
+    br.vulnerability.kev_date_added = "2026-01-04"
+    br.vulnerability.kev_due_date = "2026-02-04"
+    br.vulnerability.compliance_tags = {"nist_csf": ["ID.RA-01"]}
+
+    finding = AIBOMReport(agents=[], blast_radii=[br]).to_findings()[0]
+
+    assert finding.reachability == br.reachability
+    assert finding.is_actionable == br.is_actionable
+    assert finding.impact_category == "availability"
+    assert finding.evidence["published_at"] == "2026-01-02T00:00:00Z"
+    assert finding.evidence["severity_source"] == "nvd:cvss_v3"
+    assert finding.evidence["epss_percentile"] == 97.5
+    assert finding.evidence["kev_date_added"] == "2026-01-04"
+    assert finding.evidence["vulnerability_compliance_tags"] == {"nist_csf": ["ID.RA-01"]}
+
+
 def test_report_to_findings_returns_existing_when_populated():
     """If findings already populated (dual-write path), return as-is."""
     pre_existing = [

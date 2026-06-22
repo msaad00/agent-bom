@@ -33,11 +33,21 @@ def test_api_request_plan_covers_issue_2145_hot_paths() -> None:
     )
 
     names = {operation["name"] for operation in operations}
-    assert names == {"graph_search", "node_detail", "attack_path_drilldown", "graph_diff", "bounded_traversal"}
+    assert names == {
+        "graph_search",
+        "node_detail",
+        "attack_path_drilldown",
+        "graph_diff",
+        "graph_history",
+        "graph_evidence_manifest",
+        "bounded_traversal",
+    }
     assert any(operation["path"] == "/v1/graph/search" for operation in operations)
     assert any(operation["path"].startswith("/v1/graph/node/") for operation in operations)
     assert any(operation["path"] == "/v1/graph/paths" for operation in operations)
     assert any(operation["path"] == "/v1/graph/diff" for operation in operations)
+    assert any(operation["path"] == "/v1/graph/history" for operation in operations)
+    assert any(operation["path"] == "/v1/graph/evidence-manifest" for operation in operations)
     assert any(operation["method"] == "POST" and operation["path"] == "/v1/graph/query" for operation in operations)
 
 
@@ -50,11 +60,21 @@ def test_postgres_explain_queries_cover_graph_hot_paths() -> None:
         detail_node="package:langchain",
     )
 
-    assert set(queries) == {"node_search", "node_detail", "attack_path_drilldown", "graph_diff_nodes", "bounded_traversal_edges"}
+    assert set(queries) == {
+        "node_search",
+        "node_detail",
+        "attack_path_drilldown",
+        "graph_diff_nodes",
+        "graph_history",
+        "graph_evidence_manifest_digest",
+        "bounded_traversal_edges",
+    }
     assert all("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)" in sql for sql in queries.values())
     assert "graph_node_search" in queries["node_search"]
     assert "attack_paths" in queries["attack_path_drilldown"]
     assert "FULL OUTER JOIN" in queries["graph_diff_nodes"]
+    assert "graph_snapshots" in queries["graph_history"]
+    assert "graph_edges" in queries["graph_evidence_manifest_digest"]
     assert "WITH RECURSIVE" in queries["bounded_traversal_edges"]
 
 
@@ -67,11 +87,21 @@ def test_postgres_latency_queries_cover_non_explain_hot_paths() -> None:
         detail_node="package:langchain",
     )
 
-    assert set(queries) == {"node_search", "node_detail", "attack_path_drilldown", "graph_diff_nodes", "bounded_traversal_edges"}
+    assert set(queries) == {
+        "node_search",
+        "node_detail",
+        "attack_path_drilldown",
+        "graph_diff_nodes",
+        "graph_history",
+        "graph_evidence_manifest_digest",
+        "bounded_traversal_edges",
+    }
     assert all("EXPLAIN" not in sql for sql in queries.values())
     assert "graph_node_search" in queries["node_search"]
     assert "attack_paths" in queries["attack_path_drilldown"]
     assert "FULL OUTER JOIN" in queries["graph_diff_nodes"]
+    assert "graph_snapshots" in queries["graph_history"]
+    assert "graph_edges" in queries["graph_evidence_manifest_digest"]
     assert "WITH RECURSIVE" in queries["bounded_traversal_edges"]
 
 

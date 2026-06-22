@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from agent_bom.asset_provenance import package_version_provenance
-from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
+from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
+from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version
 
 SPDX_3_CONTEXT = "https://spdx.org/rdf/3.0.0/spdx-context.jsonl"
 
@@ -53,7 +54,7 @@ def to_spdx(report: AIBOMReport) -> dict:
     }
 
     pkg_ref_map: dict[str, str] = {}
-    vuln_compliance_tags = _blast_radius_compliance_tags(report)
+    vuln_compliance_tags = _finding_compliance_tags(report)
 
     for agent in report.agents:
         agent_id = _next_id("SPDXRef-Agent")
@@ -283,13 +284,14 @@ def _vulnerability_compliance_tags(vuln: Any) -> list[str]:
     return []
 
 
-def _blast_radius_compliance_tags(report: AIBOMReport) -> dict[tuple[str, str, str | None, str], list[str]]:
-    """Return framework-qualified compliance tags keyed by package vulnerability."""
+def _finding_compliance_tags(report: AIBOMReport) -> dict[tuple[str, str, str | None, str], list[str]]:
+    """Return framework-qualified Finding tags keyed by package vulnerability."""
     by_vuln: dict[tuple[str, str, str | None, str], list[str]] = {}
-    for br in report.blast_radii:
-        tags = framework_qualified_blast_radius_tags(br)
+    for finding in cve_findings(report):
+        vuln_id = finding.cve_id or finding.id
+        tags = framework_qualified_finding_tags(finding)
         if tags:
-            by_vuln[_vulnerability_key(br.package, br.vulnerability)] = tags
+            by_vuln[(package_ecosystem(finding), package_name(finding), package_version(finding), vuln_id)] = tags
     return by_vuln
 
 

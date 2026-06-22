@@ -22,6 +22,14 @@ from pathlib import Path
 from typing import Optional
 
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
+from agent_bom.output.finding_views import (
+    cve_findings,
+    package_ecosystem,
+    package_name,
+    package_version,
+    severity_counts,
+    severity_value,
+)
 
 # ─── Metric name constants ─────────────────────────────────────────────────
 
@@ -72,7 +80,7 @@ def to_prometheus(
     agent_bom_credentials_exposed_total    Gauge  Creds exposed, per agent
     agent_bom_agent_vulnerabilities_total  Gauge  Per-agent, per-severity counts
     """
-    brs = blast_radii or []
+    findings = cve_findings(report, blast_radii)
     lines: list[str] = []
 
     def header(name: str, help_text: str, metric_type: str = "gauge") -> None:
@@ -105,77 +113,70 @@ def to_prometheus(
 
     # ── Vulnerability counts by severity ─────────────────────────────────
     header("vulnerabilities_total", "Total vulnerabilities found, broken down by severity")
-    sev_counts: dict[str, int] = {s.value: 0 for s in Severity if s != Severity.NONE}
-    for br in brs:
-        sev = br.vulnerability.severity.value
-        if sev in sev_counts:
-            sev_counts[sev] += 1
+    sev_counts = severity_counts(findings)
     for sev, count in sev_counts.items():
         lines.append(_metric("vulnerabilities_total", count, ("severity", sev)))
     lines.append("")
 
     # ── CISA KEV count ────────────────────────────────────────────────────
     header("kev_findings_total", "Number of findings in the CISA Known Exploited Vulnerabilities catalog")
-    kev_count = sum(1 for br in brs if br.vulnerability.is_kev)
+    kev_count = sum(1 for finding in findings if finding.is_kev)
     lines.append(_metric("kev_findings_total", kev_count))
     lines.append("")
 
     # ── Fixable vulns ─────────────────────────────────────────────────────
     header("fixable_vulnerabilities_total", "Number of vulnerabilities that have a known fixed version available")
-    fixable = sum(1 for br in brs if br.vulnerability.fixed_version)
+    fixable = sum(1 for finding in findings if finding.fixed_version)
     lines.append(_metric("fixable_vulnerabilities_total", fixable))
     lines.append("")
 
     # ── Per-vulnerability blast radius scores ─────────────────────────────
-    if brs:
+    if findings:
         header("blast_radius_score", "Blast radius risk score per vulnerability (0-10 scale)")
-        for br in brs:
-            v = br.vulnerability
+        for finding in findings:
             lines.append(
                 _metric(
                     "blast_radius_score",
-                    round(br.risk_score, 3),
-                    ("vuln_id", v.id),
-                    ("package", br.package.name),
-                    ("version", br.package.version),
-                    ("severity", v.severity.value),
-                    ("ecosystem", br.package.ecosystem),
-                    ("fixable", "1" if v.fixed_version else "0"),
-                    ("kev", "1" if v.is_kev else "0"),
+                    round(finding.risk_score, 3),
+                    ("vuln_id", finding.cve_id or finding.id),
+                    ("package", package_name(finding)),
+                    ("version", package_version(finding)),
+                    ("severity", severity_value(finding)),
+                    ("ecosystem", package_ecosystem(finding)),
+                    ("fixable", "1" if finding.fixed_version else "0"),
+                    ("kev", "1" if finding.is_kev else "0"),
                 )
             )
         lines.append("")
 
         # ── EPSS scores ───────────────────────────────────────────────────
-        epss_brs = [br for br in brs if br.vulnerability.epss_score is not None]
-        if epss_brs:
+        epss_findings = [finding for finding in findings if finding.epss_score is not None]
+        if epss_findings:
             header("vulnerability_epss_score", "EPSS exploit probability score (0.0-1.0) per vulnerability")
-            for br in epss_brs:
-                v = br.vulnerability
+            for finding in epss_findings:
                 lines.append(
                     _metric(
                         "vulnerability_epss_score",
-                        round(v.epss_score, 5),  # type: ignore[arg-type]
-                        ("vuln_id", v.id),
-                        ("package", br.package.name),
-                        ("severity", v.severity.value),
+                        round(finding.epss_score, 5),  # type: ignore[arg-type]
+                        ("vuln_id", finding.cve_id or finding.id),
+                        ("package", package_name(finding)),
+                        ("severity", severity_value(finding)),
                     )
                 )
             lines.append("")
 
         # ── CVSS scores ───────────────────────────────────────────────────
-        cvss_brs = [br for br in brs if br.vulnerability.cvss_score is not None]
-        if cvss_brs:
+        cvss_findings = [finding for finding in findings if finding.cvss_score is not None]
+        if cvss_findings:
             header("vulnerability_cvss_score", "CVSS base score (0.0-10.0) per vulnerability")
-            for br in cvss_brs:
-                v = br.vulnerability
+            for finding in cvss_findings:
                 lines.append(
                     _metric(
                         "vulnerability_cvss_score",
-                        round(v.cvss_score, 2),  # type: ignore[arg-type]
-                        ("vuln_id", v.id),
-                        ("package", br.package.name),
-                        ("severity", v.severity.value),
+                        round(finding.cvss_score, 2),  # type: ignore[arg-type]
+                        ("vuln_id", finding.cve_id or finding.id),
+                        ("package", package_name(finding)),
+                        ("severity", severity_value(finding)),
                     )
                 )
             lines.append("")
@@ -184,13 +185,13 @@ def to_prometheus(
     header("agent_vulnerabilities_total", "Number of vulnerabilities per agent, broken down by severity")
     # Build agent→severity→count
     agent_sev: dict[str, dict[str, int]] = {}
-    for br in brs:
-        for agent in br.affected_agents:
-            if agent.name not in agent_sev:
-                agent_sev[agent.name] = {s.value: 0 for s in Severity if s != Severity.NONE}
-            sev = br.vulnerability.severity.value
-            if sev in agent_sev[agent.name]:
-                agent_sev[agent.name][sev] += 1
+    for finding in findings:
+        for agent_name in finding.affected_agents:
+            if agent_name not in agent_sev:
+                agent_sev[agent_name] = {s.value: 0 for s in Severity if s != Severity.NONE}
+            sev = severity_value(finding)
+            if sev in agent_sev[agent_name]:
+                agent_sev[agent_name][sev] += 1
     # Also emit 0-counts for agents with no vulns
     for agent in report.agents:
         if agent.name not in agent_sev:
@@ -328,7 +329,7 @@ def push_otlp(
             "opentelemetry-exporter-otlp-proto-http)"
         ) from exc
 
-    brs = blast_radii or []
+    findings = cve_findings(report, blast_radii)
 
     resource = Resource(
         attributes={
@@ -363,7 +364,7 @@ def push_otlp(
         yield otel_metrics.Observation(report.total_packages)
 
     def _kev_cb(options):
-        yield otel_metrics.Observation(sum(1 for br in brs if br.vulnerability.is_kev))
+        yield otel_metrics.Observation(sum(1 for finding in findings if finding.is_kev))
 
     meter.create_observable_gauge("agent_bom.agents_total", callbacks=[_agents_cb], description="Total AI agents discovered")
     meter.create_observable_gauge("agent_bom.mcp_servers_total", callbacks=[_servers_cb], description="Total MCP servers")
@@ -371,11 +372,7 @@ def push_otlp(
     meter.create_observable_gauge("agent_bom.kev_findings_total", callbacks=[_kev_cb], description="CISA KEV findings")
 
     # Severity breakdown via ObservableGauge per severity
-    sev_counts: dict[str, int] = {s.value: 0 for s in Severity if s != Severity.NONE}
-    for br in brs:
-        sev = br.vulnerability.severity.value
-        if sev in sev_counts:
-            sev_counts[sev] += 1
+    sev_counts = severity_counts(findings)
 
     for sev_value, count in sev_counts.items():
         _count = count  # capture

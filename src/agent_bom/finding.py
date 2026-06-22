@@ -256,6 +256,9 @@ class Finding:
 
     # Risk
     risk_score: float = 0.0  # 0-10 unified risk score
+    reachability: Optional[str] = None
+    is_actionable: Optional[bool] = None
+    impact_category: Optional[str] = None
 
     # Suppression state (mirrors BlastRadius; preserved through the unified stream
     # so a suppressed finding never appears unsuppressed downstream)
@@ -417,6 +420,9 @@ class Finding:
             "related_findings": self.related_findings,
             "evidence": self.evidence,
             "risk_score": self.risk_score,
+            "reachability": self.reachability,
+            "is_actionable": self.is_actionable,
+            "impact_category": self.impact_category,
             # Suppression state — a suppressed finding must never surface as
             # unsuppressed downstream (mirrors BlastRadius / SARIF suppressions[]).
             "suppressed": self.suppressed,
@@ -636,6 +642,13 @@ def blast_radius_to_finding(br: object) -> "Finding":
         "graph_min_hop_distance": getattr(br, "graph_min_hop_distance", None),
         "graph_reachable_from_agents": _sanitized_evidence_field(getattr(br, "graph_reachable_from_agents", [])),
         "layer_attribution": _sanitized_evidence_field([_package_occurrence_evidence(occ) for occ in br.layer_attribution]),
+        "published_at": getattr(vuln, "published_at", None),
+        "modified_at": getattr(vuln, "modified_at", None),
+        "severity_source": getattr(vuln, "severity_source", None),
+        "epss_percentile": getattr(vuln, "epss_percentile", None),
+        "kev_date_added": getattr(vuln, "kev_date_added", None),
+        "kev_due_date": getattr(vuln, "kev_due_date", None),
+        "vulnerability_compliance_tags": _sanitized_evidence_field(getattr(vuln, "compliance_tags", {}) or {}),
     }
     package_provenance = package_discovery_provenance(pkg)
     if package_provenance:
@@ -681,6 +694,9 @@ def blast_radius_to_finding(br: object) -> "Finding":
         pci_dss_tags=list(getattr(br, "pci_dss_tags", [])),
         evidence=evidence,
         risk_score=br.risk_score,
+        reachability=getattr(br, "reachability", None),
+        is_actionable=getattr(br, "is_actionable", None),
+        impact_category=getattr(br, "impact_category", None),
         suppressed=bool(getattr(br, "suppressed", False)),
         suppression_id=getattr(br, "suppression_id", None),
         suppression_state=getattr(br, "suppression_state", None),

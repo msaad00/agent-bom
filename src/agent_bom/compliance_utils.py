@@ -71,3 +71,36 @@ def framework_qualified_blast_radius_tags(br: BlastRadius) -> list[str]:
         framework = _FIELD_TO_VULN_KEY.get(field, field.removesuffix("_tags"))
         tags.extend(f"{framework}:{value}" for value in values)
     return tags
+
+
+def framework_qualified_finding_tags(finding: object) -> list[str]:
+    """Return unified Finding tags as stable framework:control strings."""
+    tags: list[str] = []
+    seen: set[str] = set()
+
+    def add(framework: object, control: object) -> None:
+        framework_text = str(framework or "").strip()
+        control_text = str(control or "").strip()
+        if not control_text:
+            return
+        value = control_text if ":" in control_text else f"{framework_text or 'generic'}:{control_text}"
+        if value not in seen:
+            seen.add(value)
+            tags.append(value)
+
+    for control in getattr(finding, "normalized_controls", lambda: [])():
+        add(getattr(control, "framework", "generic"), getattr(control, "control", ""))
+
+    for value in getattr(finding, "compliance_tags", []) or []:
+        add("generic", value)
+
+    evidence = getattr(finding, "evidence", {}) or {}
+    raw_vuln_tags = evidence.get("vulnerability_compliance_tags", {}) if isinstance(evidence, dict) else {}
+    if isinstance(raw_vuln_tags, dict):
+        for framework, values in sorted(raw_vuln_tags.items()):
+            if isinstance(values, str):
+                values = [values]
+            for value in values or []:
+                add(framework, value)
+
+    return sorted(tags)

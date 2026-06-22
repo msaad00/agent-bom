@@ -8,6 +8,7 @@ preserves per-scan history so ``load_graph(scan_id=...)`` and
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -39,6 +40,25 @@ logger = logging.getLogger(__name__)
 DEFAULT_GRAPH_TENANT_ID = "default"
 _GRAPH_SCHEMA_VERSION = 3
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
+_DEFAULT_GRAPH_RETENTION_DAYS = 180
+_FINDING_ENTITY_TYPES = {
+    EntityType.VULNERABILITY.value,
+    EntityType.MISCONFIGURATION.value,
+    EntityType.DRIFT_INCIDENT.value,
+}
+_GRAPH_EVIDENCE_INCLUDED_TABLES = [
+    "graph_snapshots",
+    "graph_nodes",
+    "graph_edges",
+    "attack_paths",
+    "interaction_risks",
+]
+_GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS = [
+    "graph_nodes.attributes",
+    "graph_edges.provenance",
+    "graph_edges.evidence",
+    "attack_paths.credential_exposure",
+]
 _GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "graph_nodes": ("id", "scan_id"),
     "graph_edges": ("source_id", "target_id", "relationship", "scan_id"),
@@ -269,6 +289,23 @@ def _graph_write_batch_size() -> int:
         return _DEFAULT_GRAPH_WRITE_BATCH_SIZE
 
 
+def _graph_retention_days() -> int:
+    raw = os.environ.get("AGENT_BOM_GRAPH_RETENTION_DAYS", str(_DEFAULT_GRAPH_RETENTION_DAYS))
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_GRAPH_RETENTION_DAYS
+
+
+def graph_retention_policy() -> dict[str, Any]:
+    return {
+        "retention_days": _graph_retention_days(),
+        "mode": "queryable_snapshot_history",
+        "deletion_state": "active",
+        "legal_hold": False,
+    }
+
+
 def _batched_rows(rows: Iterable[Sequence[Any]], batch_size: int) -> Iterator[list[Sequence[Any]]]:
     batch: list[Sequence[Any]] = []
     for row in rows:
@@ -362,6 +399,11 @@ def _resolve_snapshot(
         (effective_scan_id, tenant_id),
     ).fetchone()
     return effective_scan_id, (str(row["created_at"]) if row else "")
+
+
+def _digest_payload(payload: Any) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -870,3 +912,175 @@ def list_snapshots(
         }
         for r in rows
     ]
+
+
+def _diff_summary_counts(diff: dict[str, Any]) -> dict[str, int]:
+    return {
+        "nodes_added": len(diff.get("nodes_added") or []),
+        "nodes_removed": len(diff.get("nodes_removed") or []),
+        "nodes_changed": len(diff.get("nodes_changed") or []),
+        "edges_added": len(diff.get("edges_added") or []),
+        "edges_removed": len(diff.get("edges_removed") or []),
+        "edges_changed": len(diff.get("edges_changed") or []),
+    }
+
+
+def _snapshot_digests(conn: sqlite3.Connection, *, tenant_id: str, scan_id: str) -> tuple[str, str, dict[str, int]]:
+    graph_rows: dict[str, list[dict[str, Any]]] = {"nodes": [], "edges": []}
+    finding_rows: dict[str, list[dict[str, Any]]] = {"findings": [], "attack_paths": [], "compliance": []}
+
+    for row in conn.execute(
+        """
+        SELECT id, entity_type, label, status, severity, severity_id, risk_score,
+               compliance_tags, data_sources
+        FROM graph_nodes
+        WHERE tenant_id = ? AND scan_id = ?
+        ORDER BY id
+        """,
+        (tenant_id, scan_id),
+    ):
+        node = {
+            "id": row["id"],
+            "entity_type": row["entity_type"],
+            "label": row["label"],
+            "status": row["status"],
+            "severity": row["severity"] or "",
+            "severity_id": int(row["severity_id"] or 0),
+            "risk_score": float(row["risk_score"] or 0.0),
+            "compliance_tags": json.loads(row["compliance_tags"] or "[]"),
+            "data_sources": json.loads(row["data_sources"] or "[]"),
+        }
+        graph_rows["nodes"].append(node)
+        if row["entity_type"] in _FINDING_ENTITY_TYPES:
+            finding_rows["findings"].append(node)
+        for tag in node["compliance_tags"]:
+            finding_rows["compliance"].append({"node_id": row["id"], "tag": tag})
+
+    for row in conn.execute(
+        """
+        SELECT source_id, target_id, relationship, direction, weight, traversable,
+               valid_from, valid_to, confidence, activity_id
+        FROM graph_edges
+        WHERE tenant_id = ? AND scan_id = ?
+        ORDER BY source_id, target_id, relationship
+        """,
+        (tenant_id, scan_id),
+    ):
+        graph_rows["edges"].append(
+            {
+                "source_id": row["source_id"],
+                "target_id": row["target_id"],
+                "relationship": row["relationship"],
+                "direction": row["direction"],
+                "weight": float(row["weight"] or 0.0),
+                "traversable": bool(row["traversable"]),
+                "valid_from": row["valid_from"] or "",
+                "valid_to": row["valid_to"] or "",
+                "confidence": float(row["confidence"] if row["confidence"] is not None else 1.0),
+                "activity_id": int(row["activity_id"] or 1),
+            }
+        )
+
+    for row in conn.execute(
+        """
+        SELECT source_node, target_node, hop_count, composite_risk, summary,
+               path_nodes, path_edges, tool_exposure, vuln_ids
+        FROM attack_paths
+        WHERE tenant_id = ? AND scan_id = ?
+        ORDER BY source_node, target_node
+        """,
+        (tenant_id, scan_id),
+    ):
+        finding_rows["attack_paths"].append(
+            {
+                "source_node": row["source_node"],
+                "target_node": row["target_node"],
+                "hop_count": int(row["hop_count"] or 0),
+                "composite_risk": float(row["composite_risk"] or 0.0),
+                "summary": row["summary"] or "",
+                "path_nodes": json.loads(row["path_nodes"] or "[]"),
+                "path_edges": json.loads(row["path_edges"] or "[]"),
+                "tool_exposure": json.loads(row["tool_exposure"] or "[]"),
+                "vuln_ids": json.loads(row["vuln_ids"] or "[]"),
+            }
+        )
+
+    counts = {
+        "nodes": len(graph_rows["nodes"]),
+        "edges": len(graph_rows["edges"]),
+        "findings": len(finding_rows["findings"]),
+        "attack_paths": len(finding_rows["attack_paths"]),
+        "compliance_tags": len(finding_rows["compliance"]),
+    }
+    return _digest_payload(graph_rows), _digest_payload(finding_rows), counts
+
+
+def graph_evidence_manifest(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str = "",
+    scan_id: str = "",
+    baseline_scan_id: str = "",
+) -> dict[str, Any]:
+    """Build a redaction-aware evidence manifest for one retained graph snapshot."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
+    effective_scan_id, created_at = _resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+    if not effective_scan_id:
+        return {
+            "schema_version": "agent-bom.graph_evidence_manifest/v1",
+            "tenant_id": tenant_id,
+            "scan_id": "",
+            "generated_at": _now_iso(),
+            "retention_policy": graph_retention_policy(),
+            "included_tables": list(_GRAPH_EVIDENCE_INCLUDED_TABLES),
+            "excluded_private_fields": list(_GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS),
+        }
+
+    baseline = baseline_scan_id or previous_snapshot_id(conn, tenant_id=tenant_id, before_scan_id=effective_scan_id)
+    graph_digest, findings_digest, counts = _snapshot_digests(conn, tenant_id=tenant_id, scan_id=effective_scan_id)
+    diff_summary = _diff_summary_counts(diff_snapshots(conn, baseline, effective_scan_id, tenant_id=tenant_id)) if baseline else {}
+
+    return {
+        "schema_version": "agent-bom.graph_evidence_manifest/v1",
+        "tenant_id": tenant_id,
+        "scan_id": effective_scan_id,
+        "generated_at": _now_iso(),
+        "scan_created_at": created_at,
+        "graph_digest": graph_digest,
+        "findings_digest": findings_digest,
+        "diff_baseline_scan_id": baseline,
+        "diff_summary": diff_summary,
+        "counts": counts,
+        "included_tables": list(_GRAPH_EVIDENCE_INCLUDED_TABLES),
+        "excluded_private_fields": list(_GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS),
+        "retention_policy": graph_retention_policy(),
+    }
+
+
+def graph_history(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str = "",
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Return retained graph snapshot history with adjacent diff summaries."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
+    snapshots = list_snapshots(conn, tenant_id=tenant_id, limit=limit)
+    history: list[dict[str, Any]] = []
+    for snapshot in snapshots:
+        scan_id = snapshot["scan_id"]
+        baseline = previous_snapshot_id(conn, tenant_id=tenant_id, before_scan_id=scan_id)
+        diff_summary = _diff_summary_counts(diff_snapshots(conn, baseline, scan_id, tenant_id=tenant_id)) if baseline else {}
+        history.append(
+            {
+                **snapshot,
+                "diff_baseline_scan_id": baseline,
+                "diff_summary": diff_summary,
+            }
+        )
+    return {
+        "schema_version": "agent-bom.graph_history/v1",
+        "tenant_id": tenant_id,
+        "retention_policy": graph_retention_policy(),
+        "snapshots": history,
+    }

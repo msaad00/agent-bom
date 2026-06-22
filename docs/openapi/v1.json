@@ -11664,6 +11664,78 @@
         ]
       }
     },
+    "/v1/graph/evidence-manifest": {
+      "get": {
+        "description": "Return a redaction-aware reviewer manifest for a retained graph snapshot.",
+        "operationId": "get_graph_evidence_manifest_v1_graph_evidence_manifest_get",
+        "parameters": [
+          {
+            "description": "Scan snapshot ID; latest if omitted",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Scan snapshot ID; latest if omitted",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "description": "Optional diff baseline scan ID",
+            "in": "query",
+            "name": "baseline_scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional diff baseline scan ID",
+              "title": "Baseline Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Graph Evidence Manifest V1 Graph Evidence Manifest Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Graph Evidence Manifest",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
     "/v1/graph/exposure-paths": {
       "get": {
         "description": "Return the MCP-compatible ExposurePath queue over REST for SDK consumers.",
@@ -11809,6 +11881,56 @@
           }
         },
         "summary": "Get Graph Governance",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/history": {
+      "get": {
+        "description": "Return retained graph history and adjacent diff summaries for the request tenant.",
+        "operationId": "get_graph_history_v1_graph_history_get",
+        "parameters": [
+          {
+            "description": "Max snapshots",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Max snapshots",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Graph History V1 Graph History Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Graph History",
         "tags": [
           "graph"
         ]

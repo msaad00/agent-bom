@@ -2,6 +2,7 @@
 
 Evidence status: measured local API + Postgres EXPLAIN artifacts
 Owner issue: #2145
+Related evidence-lake issue: #2929
 Raw result artifacts:
 
 - `docs/perf/results/graph-benchmark-estate-sample.json`
@@ -47,6 +48,8 @@ Covered by the checked-in evidence:
   search, node detail, attack-path drilldown, graph diff, and bounded traversal
 - repeatable Postgres latency scaffold for the same query families, producing
   p50/p95/p99 client wall-clock summaries when run against a loaded database
+- retained graph history and redaction-aware evidence-manifest API/CLI surfaces
+  backed by the same tenant-scoped snapshot store
 
 Excluded from these local artifacts:
 
@@ -55,6 +58,8 @@ Excluded from these local artifacts:
 - Snowflake or managed-operator deployment timings
 - browser/UI interaction timing
 - 50k / 100k edge Postgres runs
+- six-month hosted lake retention jobs, audit-chain bundle persistence,
+  compliance bundle persistence, and legal-hold/deletion workflows
 
 ## Environment
 
@@ -130,6 +135,32 @@ uv run python scripts/run_graph_api_benchmark.py \
   --detail-node pkg:go:langchain@1.0.0 \
   --repeat 10 \
   --output docs/perf/results/graph-api-benchmark-live-2026-05-13.json
+```
+
+Export retained graph evidence from the local graph store without a running API:
+
+```bash
+agent-bom graph-evidence --mode history \
+  --graph-db /tmp/agent-bom-graph-benchmark.db \
+  --tenant default \
+  --limit 50
+
+agent-bom graph-evidence --mode manifest \
+  --graph-db /tmp/agent-bom-graph-benchmark.db \
+  --tenant default \
+  --scan-id graph-benchmark-estate-current \
+  --baseline-scan-id graph-benchmark-estate-old \
+  --output docs/perf/results/graph-evidence-manifest-local.json
+```
+
+Query the same evidence through the API:
+
+```bash
+curl -H 'X-Agent-Bom-Tenant-ID: default' \
+  'http://127.0.0.1:8429/v1/graph/history?limit=50'
+
+curl -H 'X-Agent-Bom-Tenant-ID: default' \
+  'http://127.0.0.1:8429/v1/graph/evidence-manifest?scan_id=graph-benchmark-estate-current&baseline_scan_id=graph-benchmark-estate-old'
 ```
 
 Generate Postgres EXPLAIN SQL artifacts without measuring:
@@ -218,9 +249,9 @@ uv run python scripts/run_graph_postgres_latency.py \
 | Artifact | Status | What it supports |
 |---|---|---|
 | `graph-benchmark-estate-sample.json` | scaffold | deterministic skewed estate shape and source mix |
-| `graph-api-benchmark-sample.json` | dry-run | API benchmark request coverage only |
+| `graph-api-benchmark-sample.json` | dry-run | API benchmark request coverage, including graph history and evidence manifest |
 | `postgres-graph-explain-sample.json` | dry-run | Postgres EXPLAIN artifact paths only |
-| `postgres-graph-latency-sample.json` | dry-run | Postgres repeated-latency SQL paths only |
+| `postgres-graph-latency-sample.json` | dry-run | Postgres repeated-latency SQL paths, including graph history and evidence-manifest digest queries |
 | `graph-benchmark-estate-live-2026-05-13.json` | generated | 250-agent estate with 604 servers, 3,475 tools, and 5,958 package instances |
 | `graph-benchmark-store-load-live-2026-05-13.json` | measured load | SQLite graph store loaded old/current snapshots; current has 10,479 nodes, 11,242 edges, 291 attack paths |
 | `graph-api-benchmark-live-2026-05-13.json` | measured API | loopback API p50/p95/p99 client timings across five graph hot paths |
@@ -247,6 +278,33 @@ Top-level Postgres plan times from
 | attack-path drilldown | 0.177 ms |
 | graph diff nodes | 38.421 ms |
 | bounded traversal edges | 8.903 ms |
+
+## Retained Graph Evidence Slice
+
+The retained-history slice for #2929 is limited to the graph snapshot store.
+Every response is scoped by the request tenant or the
+`agent-bom graph-evidence --tenant` value.
+
+Shipped in this slice:
+
+- `GET /v1/graph/history` lists retained snapshots and adjacent diff summaries
+  from `graph_snapshots`, `graph_nodes`, and `graph_edges`.
+- `GET /v1/graph/evidence-manifest` returns `tenant_id`, `scan_id`,
+  `scan_created_at`, `graph_digest`, `findings_digest`,
+  `diff_baseline_scan_id`, counts, included tables, excluded private fields,
+  and retention policy metadata.
+- `agent-bom graph-evidence` exports the same history or manifest JSON from the
+  local SQLite graph store for demos and CI evidence capture.
+- API and Postgres benchmark scaffolds include graph history and
+  evidence-manifest digest paths.
+
+Not shipped by this slice:
+
+- Hosted ClickHouse/Snowflake lake retention jobs.
+- Durable audit-chain and compliance bundle tables outside the graph store.
+- Legal-hold/deletion state transitions beyond the explicit manifest fields.
+- Six-month remote hosted evidence proving tenant history across operational
+  lake backends.
 
 ## Plan-Driven Hardening
 
@@ -278,3 +336,5 @@ resource sizing before making an operator or enterprise-pilot latency claim.
   p50/p95/p99 artifacts in addition to single `EXPLAIN ANALYZE` plans.
 - Add 50k / 100k edge Postgres artifacts.
 - Add browser interaction timing separately if UI scale claims are needed.
+- Add hosted evidence-lake retention jobs and measured six-month history
+  evidence before closing #2929.

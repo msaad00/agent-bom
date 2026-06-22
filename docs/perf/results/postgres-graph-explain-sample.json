@@ -9,13 +9,16 @@
     "Dry-run writes EXPLAIN SQL only; it does not seed Postgres or execute EXPLAIN ANALYZE.",
     "Measured artifacts must be captured from a database loaded with the matching synthetic estate snapshots."
   ],
-  "generated_at": "2026-05-13T05:59:51.330122+00:00",
+  "generated_at": "2026-06-22T20:27:27.771407+00:00",
   "old_scan_id": "graph-benchmark-estate-old",
   "owner_issue": 2145,
+  "psql_bin": "psql",
   "query_artifacts": {
     "attack_path_drilldown": "docs/perf/results/postgres-graph-explain-sample/attack_path_drilldown.sql",
     "bounded_traversal_edges": "docs/perf/results/postgres-graph-explain-sample/bounded_traversal_edges.sql",
     "graph_diff_nodes": "docs/perf/results/postgres-graph-explain-sample/graph_diff_nodes.sql",
+    "graph_evidence_manifest_digest": "docs/perf/results/postgres-graph-explain-sample/graph_evidence_manifest_digest.sql",
+    "graph_history": "docs/perf/results/postgres-graph-explain-sample/graph_history.sql",
     "node_detail": "docs/perf/results/postgres-graph-explain-sample/node_detail.sql",
     "node_search": "docs/perf/results/postgres-graph-explain-sample/node_search.sql"
   },

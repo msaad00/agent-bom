@@ -151,6 +151,16 @@ class GraphStoreProtocol(Protocol):
 
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]: ...
 
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict[str, Any]: ...
+
+    def evidence_manifest(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        baseline_scan_id: str = "",
+    ) -> dict[str, Any]: ...
+
     def delete_tenant(self, *, tenant_id: str = "") -> int: ...
 
     def snapshot_stats(
@@ -1159,6 +1169,61 @@ class SQLiteGraphStore:
             return []
         try:
             return sqlite_graph_store.list_snapshots(conn, tenant_id=tenant_id, limit=limit)
+        finally:
+            conn.close()
+
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict[str, Any]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return {
+                "schema_version": "agent-bom.graph_history/v1",
+                "tenant_id": tenant_id,
+                "retention_policy": sqlite_graph_store.graph_retention_policy(),
+                "snapshots": [],
+            }
+        try:
+            return sqlite_graph_store.graph_history(conn, tenant_id=tenant_id, limit=limit)
+        finally:
+            conn.close()
+
+    def evidence_manifest(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        baseline_scan_id: str = "",
+    ) -> dict[str, Any]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return {
+                "schema_version": "agent-bom.graph_evidence_manifest/v1",
+                "tenant_id": tenant_id,
+                "scan_id": "",
+                "generated_at": "",
+                "retention_policy": sqlite_graph_store.graph_retention_policy(),
+                "included_tables": [
+                    "graph_snapshots",
+                    "graph_nodes",
+                    "graph_edges",
+                    "attack_paths",
+                    "interaction_risks",
+                ],
+                "excluded_private_fields": [
+                    "graph_nodes.attributes",
+                    "graph_edges.provenance",
+                    "graph_edges.evidence",
+                    "attack_paths.credential_exposure",
+                ],
+            }
+        try:
+            return sqlite_graph_store.graph_evidence_manifest(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                baseline_scan_id=baseline_scan_id,
+            )
         finally:
             conn.close()
 

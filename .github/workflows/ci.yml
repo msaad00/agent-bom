@@ -20,6 +20,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  release-workflow-lint:
+    name: Release workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Static guard against the two release-workflow startup_failure classes
+      # that GitHub reports with no logs and actionlint does not model:
+      #   1. a needs.<job> reference to a job not declared in needs:
+      #   2. a reusable-workflow call whose effective permissions are less than
+      #      the union the callee's jobs request (under a deny-all top-level)
+      # Network-free and dependency-free so it can be a hard required check.
+      - name: Validate release call-graph (needs + reusable-workflow permissions)
+        run: python3 scripts/lint_release_workflow.py .github/workflows/release.yml
+
   changes:
     name: PR Path Classifier
     runs-on: ubuntu-latest

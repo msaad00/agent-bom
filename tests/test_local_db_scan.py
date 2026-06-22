@@ -355,24 +355,53 @@ def test_scan_packages_only_skips_exact_db_covered_version():
 
 
 def test_scan_packages_offline_requires_local_db(monkeypatch):
-    """Offline mode must fail closed when no local DB coverage exists."""
+    """Offline mode must fail closed when the local DB is genuinely empty/missing."""
     from agent_bom.scanners import IncompleteScanError, scan_packages
 
     pkg = _make_pkg("requests", "2.28.0")
     monkeypatch.setattr("agent_bom.scanners.offline_mode", True)
 
-    with patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())):
+    with (
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()),
+    ):
         with pytest.raises(IncompleteScanError, match="populated local vulnerability DB"):
             asyncio.run(scan_packages([pkg]))
 
 
-def test_scan_packages_offline_partial_db_raises(monkeypatch):
-    """Offline mode must fail when any package is missing from the local DB."""
-    from agent_bom.scanners import IncompleteScanError, scan_packages
+def test_scan_packages_offline_clean_pkg_in_covered_ecosystem_does_not_raise(monkeypatch):
+    """A package with no DB rows whose ecosystem the DB covers is CLEAN, not a gap.
 
-    pkg = _make_pkg("requests", "2.28.0")
+    An advisory DB only stores vulnerable versions, so a covered-ecosystem
+    package with no advisory rows is genuinely clean — it must not raise or
+    discard the report (the old behaviour failed closed on every such package).
+    """
+    from agent_bom.scanners import scan_packages
+
+    pkg = _make_pkg("requests", "2.28.0")  # pypi, no advisory rows
     monkeypatch.setattr("agent_bom.scanners.offline_mode", True)
 
-    with patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, {"pypi:other@1.0.0"})):
-        with pytest.raises(IncompleteScanError, match="missing from the local vulnerability DB"):
-            asyncio.run(scan_packages([pkg]))
+    with (
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value={"pypi"}),
+    ):
+        # Must complete without raising IncompleteScanError.
+        asyncio.run(scan_packages([pkg]))
+
+
+def test_scan_packages_offline_uncovered_ecosystem_warns_without_discarding(monkeypatch):
+    """A package in an ecosystem the DB has zero advisories for warns, not raises."""
+    from agent_bom.scanners import scan_packages
+
+    pkg = _make_pkg("serde", "1.0.0", eco="cargo")  # crates.io not covered
+    monkeypatch.setattr("agent_bom.scanners.offline_mode", True)
+
+    warnings: list[str] = []
+    with (
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(0, set())),
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value={"pypi", "npm"}),
+        patch("agent_bom.scanners.record_scan_warning", side_effect=warnings.append),
+    ):
+        # Must complete without raising; emits a coverage-gap warning instead.
+        asyncio.run(scan_packages([pkg]))
+    assert any("offline coverage gap" in w for w in warnings), warnings

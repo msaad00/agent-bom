@@ -233,6 +233,37 @@ def _db_ecosystems_for_package(pkg: Package) -> list[str]:
     return [eco.lower() for eco in _osv_ecosystems_for_package(pkg)]
 
 
+def _db_covered_ecosystems() -> set[str]:
+    """Return the lowercased ecosystems the local vulnerability DB has advisories for.
+
+    An advisory DB only stores *vulnerable* package-versions, so it cannot
+    distinguish a genuinely-clean package (queried, no advisories) from one it
+    has no data for — both have zero rows. Coverage is therefore meaningful only
+    at the ecosystem level: if the DB holds any advisories for an ecosystem, a
+    package in that ecosystem with no rows is clean; an ecosystem with zero
+    advisories is a real coverage gap. Returns an empty set when the DB is
+    missing/unreadable (callers treat that as "no offline coverage at all").
+    """
+    try:
+        from agent_bom.db.schema import (
+            DB_PATH,
+            db_freshness_days,
+            open_existing_db_readonly,
+        )
+
+        if db_freshness_days() is None or not DB_PATH.exists():
+            return set()
+        conn = open_existing_db_readonly(DB_PATH)
+        try:
+            rows = conn.execute("SELECT DISTINCT ecosystem FROM affected").fetchall()
+        finally:
+            conn.close()
+        return {str(r[0]).lower() for r in rows if r[0]}
+    except Exception as exc:  # noqa: BLE001
+        _logger.debug("Could not read local DB ecosystem coverage: %s", exc)
+        return set()
+
+
 # ── Scan cache (optional, lazy-initialised) ────────────────────────────────
 
 _scan_cache_instance: "ScanCache | object | None" = None
@@ -910,19 +941,39 @@ async def scan_packages(
     osv_targets = [p for p in scannable if _db_key(p) not in db_covered]
 
     if scan_offline or (scan_prefer_local_db and not osv_targets):
-        if scan_offline and not db_covered:
-            raise IncompleteScanError(
-                "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update` before using `--offline`."
-            )
-        if osv_targets and scan_offline:
-            _logger.info("Offline mode: skipping OSV API for %d package(s) not in local DB", len(osv_targets))
-            skipped_names = ", ".join(f"{pkg.name}@{pkg.version}" for pkg in osv_targets[:5])
-            suffix = f" (+{len(osv_targets) - 5} more)" if len(osv_targets) > 5 else ""
-            raise IncompleteScanError(
-                "Offline mode cannot produce a trustworthy verdict because "
-                f"{len(osv_targets)} package(s) are missing from the local vulnerability DB: "
-                f"{skipped_names}{suffix}. Run `agent-bom db update` before using `--offline`."
-            )
+        if scan_offline:
+            covered_ecos = _db_covered_ecosystems()
+            if not covered_ecos:
+                # Genuinely empty/missing DB — nothing can be scanned offline.
+                raise IncompleteScanError(
+                    "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update` before using `--offline`."
+                )
+            # A package with no DB rows whose ECOSYSTEM the DB covers is clean,
+            # not a gap — the advisory DB simply has no advisory for it. Only
+            # packages in an ecosystem the DB holds zero advisories for are a
+            # real coverage gap. Warn loudly about those, but never discard the
+            # vulnerabilities already found for covered packages (the previous
+            # behaviour raised and dropped the whole report when a single
+            # package — even a clean one — was "uncovered").
+            uncovered = [p for p in osv_targets if not any(eco in covered_ecos for eco in _db_ecosystems_for_package(p))]
+            if uncovered:
+                gap_ecos = sorted({eco for p in uncovered for eco in _db_ecosystems_for_package(p)})
+                skipped_names = ", ".join(f"{pkg.name}@{pkg.version}" for pkg in uncovered[:5])
+                suffix = f" (+{len(uncovered) - 5} more)" if len(uncovered) > 5 else ""
+                _logger.warning(
+                    "Offline mode: %d package(s) in ecosystem(s) with no local DB advisories (%s) skipped",
+                    len(uncovered),
+                    ", ".join(gap_ecos),
+                )
+                console.print(
+                    f"  [yellow]⚠[/yellow] Offline coverage gap: {len(uncovered)} package(s) in "
+                    f"ecosystem(s) the local DB has no advisories for ({', '.join(gap_ecos)}): "
+                    f"{skipped_names}{suffix}. Run `agent-bom db update` for full coverage."
+                )
+                record_scan_warning(
+                    f"offline coverage gap: {len(uncovered)} package(s) in ecosystem(s) "
+                    f"{', '.join(gap_ecos)} have no advisories in the local vulnerability DB"
+                )
         results = {}
     elif scan_prefer_local_db and osv_targets:
         # DB is fresh — only query OSV for packages genuinely missing from DB

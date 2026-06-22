@@ -824,3 +824,29 @@ class TestDimensionScore:
         assert d["score"] == 50.0
         assert d["weight"] == 0.1
         assert d["details"] == "test detail"
+
+
+class TestCredentialRiskDiscoveryOnly:
+    def test_discovery_only_credential_ranked_without_cve(self):
+        """A credential on an MCP server with no CVE is still ranked (not dropped)."""
+        from agent_bom.posture import compute_credential_risk_ranking
+
+        srv = _make_server(name="db", env={"AWS_SECRET_ACCESS_KEY": "x", "PATH": "y"})
+        agent = _make_agent(name="prod-agent", servers=[srv])
+        report = _make_report(agents=[agent])
+        ranking = compute_credential_risk_ranking(report)
+        creds = {r["credential"]: r for r in ranking}
+        assert "AWS_SECRET_ACCESS_KEY" in creds
+        assert creds["AWS_SECRET_ACCESS_KEY"]["basis"] == "discovery"
+        assert creds["AWS_SECRET_ACCESS_KEY"]["risk_tier"] in {"low", "medium"}
+        assert "prod-agent" in creds["AWS_SECRET_ACCESS_KEY"]["agents"]
+        assert "PATH" not in creds  # non-sensitive env var excluded
+
+    def test_cve_backed_credential_keeps_vulnerability_basis(self):
+        from agent_bom.posture import compute_credential_risk_ranking
+
+        br = _make_blast_radius(vuln=_make_vuln(severity="CRITICAL"), creds=["API_KEY"])
+        report = _make_report(blast_radii=[br])
+        ranking = compute_credential_risk_ranking(report)
+        assert ranking[0]["basis"] == "vulnerability"
+        assert ranking[0]["risk_tier"] == "critical"

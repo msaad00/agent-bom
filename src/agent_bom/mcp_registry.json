@@ -2757,7 +2757,20 @@
         "ANTHROPIC_API_KEY"
       ],
       "source_url": "https://github.com/openclaw/openclaw",
-      "known_cves": [],
+      "known_cves": [
+        "CVE-2026-27001",
+        "CVE-2026-27002",
+        "CVE-2026-27003",
+        "CVE-2026-27004",
+        "CVE-2026-27007",
+        "CVE-2026-27008",
+        "CVE-2026-27009",
+        "CVE-2026-26321",
+        "CVE-2026-27484",
+        "CVE-2026-27485",
+        "CVE-2026-27486",
+        "CVE-2026-27487"
+      ],
       "version_source": "npm",
       "cve_summary": {}
     },

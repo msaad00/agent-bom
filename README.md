@@ -11,6 +11,7 @@
   <a href="https://hub.docker.com/r/agentbom/agent-bom"><img src="https://img.shields.io/docker/pulls/agentbom/agent-bom?style=flat&label=Docker%20pulls" alt="Docker"></a>
   <a href="https://github.com/msaad00/agent-bom/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
   <a href="https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom"><img src="https://img.shields.io/ossf-scorecard/github.com/msaad00/agent-bom?style=flat&label=OpenSSF%20scorecard" alt="OpenSSF Scorecard"></a>
+  <a href="https://glama.ai/mcp/servers/msaad00/agent-bom"><img src="https://glama.ai/mcp/servers/msaad00/agent-bom/badge.svg" alt="agent-bom MCP server"></a>
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
@@ -224,7 +225,7 @@ Screenshot capture rules and the full manifest live in
 | Cloud estate inventory | `agent-bom cloud inventory --provider aws` | read-only, gated asset inventory (AWS/Azure/GCP) |
 | LLM cost forecast | `agent-bom cost forecast` | spend burn-rate, budget runway, and chargeback posture |
 | Non-human identity posture | `agent-bom identity credential-expiry` | expiring/overdue NHI credentials and access reviews |
-| CI gate | `uses: msaad00/agent-bom@v0.88.6` | SARIF, PR summary, optional code-scanning upload |
+| CI gate | `uses: msaad00/agent-bom@v0.89.0` | SARIF, PR summary, optional code-scanning upload |
 | MCP tools | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict-args security tools for MCP clients |
 | Local API/UI | `pip install 'agent-bom[ui]' && agent-bom serve` | API plus bundled dashboard |
 | First-run extras | `pip install 'agent-bom[all]'` | supported onboarding extras; MLflow remains separately installed |

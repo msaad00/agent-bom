@@ -33,6 +33,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -89,6 +90,31 @@ def _classify(name: str, published: str | None, expected: str, *, error: str | N
     return {"surface": name, "status": status, "version": published, "expected": expected}
 
 
+def _parse_image_reference(image: str) -> tuple[str, str]:
+    """Return (registry, repository) for supported container image references."""
+    raw = image.strip()
+    if not raw:
+        raise ValueError("empty image reference")
+    if "://" in raw:
+        raise ValueError("image reference must not be a URL")
+    without_digest = raw.split("@", 1)[0]
+    parts = without_digest.split("/")
+    if ":" in parts[-1]:
+        parts[-1] = parts[-1].split(":", 1)[0]
+
+    first = parts[0].lower()
+    has_registry = len(parts) > 1 and ("." in first or ":" in first or first == "localhost")
+    registry = first if has_registry else "docker.io"
+    repo_parts = parts[1:] if has_registry else parts
+    if registry in {"docker.io", "index.docker.io"} and len(repo_parts) == 1:
+        repo_parts = ["library", repo_parts[0]]
+
+    repo = "/".join(p.strip() for p in repo_parts if p.strip())
+    if not repo or not re.fullmatch(r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+", repo):
+        raise ValueError(f"unsupported image repository: {image!r}")
+    return registry, repo
+
+
 def probe_pypi(expected: str, **kw: Any) -> dict[str, Any]:
     try:
         data = _http_json("https://pypi.org/pypi/agent-bom/json", **kw)
@@ -107,22 +133,23 @@ def probe_docker(expected: str, image: str, **kw: Any) -> dict[str, Any]:
     """
     image = image.strip()
     try:
-        if image.startswith("ghcr.io/"):
+        registry, repo = _parse_image_reference(image)
+        if registry == "ghcr.io":
             # ghcr public images: token from anonymous auth, then registry tags list.
-            repo = image[len("ghcr.io/") :]
+            scope_repo = urllib.parse.quote(repo, safe="")
+            path_repo = urllib.parse.quote(repo, safe="/")
             token_data = _http_json(
-                f"https://ghcr.io/token?scope=repository:{repo}:pull&service=ghcr.io",
+                f"https://ghcr.io/token?scope=repository:{scope_repo}:pull&service=ghcr.io",
                 **kw,
             )
             token = token_data.get("token", "")
             tags_data = _http_json(
-                f"https://ghcr.io/v2/{repo}/tags/list",
+                f"https://ghcr.io/v2/{path_repo}/tags/list",
                 headers={"Authorization": f"Bearer {token}"} if token else None,
                 **kw,
             )
             tags = set(tags_data.get("tags") or [])
         else:
-            repo = image if "/" in image else f"library/{image}"
             tags: set[str] = set()
             url = f"https://hub.docker.com/v2/repositories/{repo}/tags?page_size=100"
             data = _http_json(url, **kw)
@@ -142,6 +169,8 @@ def probe_docker(expected: str, image: str, **kw: Any) -> dict[str, Any]:
         )
         return _classify("Docker", semver[-1] if semver else None, expected)
     except RuntimeError as exc:
+        return _classify("Docker", None, expected, error=str(exc))
+    except ValueError as exc:
         return _classify("Docker", None, expected, error=str(exc))
 
 

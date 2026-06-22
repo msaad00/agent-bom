@@ -225,7 +225,7 @@ Screenshot capture rules and the full manifest live in
 | Cloud estate inventory | `agent-bom cloud inventory --provider aws` | read-only, gated asset inventory (AWS/Azure/GCP) |
 | LLM cost forecast | `agent-bom cost forecast` | spend burn-rate, budget runway, and chargeback posture |
 | Non-human identity posture | `agent-bom identity credential-expiry` | expiring/overdue NHI credentials and access reviews |
-| CI gate | `uses: msaad00/agent-bom@v0.89.1` | SARIF, PR summary, optional code-scanning upload |
+| CI gate | `uses: msaad00/agent-bom@v0.89.2` | SARIF, PR summary, optional code-scanning upload |
 | MCP tools | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict-args security tools for MCP clients |
 | Local API/UI | `pip install 'agent-bom[ui]' && agent-bom serve` | API plus bundled dashboard |
 | First-run extras | `pip install 'agent-bom[all]'` | supported onboarding extras; MLflow remains separately installed |

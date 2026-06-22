@@ -14,7 +14,6 @@ import builtins
 import hashlib
 import ipaddress
 import json
-import os
 import secrets
 import sqlite3
 import threading
@@ -892,13 +891,32 @@ _AGENT_IDENTITY_STORE: AgentIdentityStore | None = None
 
 
 def get_agent_identity_store() -> AgentIdentityStore:
+    """Return the process agent-identity store, durable by default.
+
+    Selection (highest precedence first), via :mod:`agent_bom.api.durable_store`:
+    - Postgres (``AGENT_BOM_POSTGRES_URL`` / ``AGENT_BOM_DB`` Postgres URL):
+      multi-replica, tenant RLS — issued tokens, JIT grants, and conditional
+      policies stay consistent across every replica.
+    - in-memory (``AGENT_BOM_EPHEMERAL_STORE=1``): explicit opt-out; issued
+      identities and grants are lost on restart.
+    - SQLite (default, or ``AGENT_BOM_DB`` file path): single-node durable —
+      identities and grants survive a restart. This is the default; a control
+      plane must not drop issued tokens on a single-replica restart.
+    """
     global _AGENT_IDENTITY_STORE
     if _AGENT_IDENTITY_STORE is not None:
         return _AGENT_IDENTITY_STORE
-    if os.environ.get("AGENT_BOM_DB"):
-        _AGENT_IDENTITY_STORE = SQLiteAgentIdentityStore(os.environ["AGENT_BOM_DB"])
-    else:
+    from agent_bom.api.durable_store import select_backend, sqlite_path
+
+    backend = select_backend()
+    if backend == "postgres":
+        from agent_bom.api.postgres_agent_identity import PostgresAgentIdentityStore
+
+        _AGENT_IDENTITY_STORE = PostgresAgentIdentityStore()
+    elif backend == "memory":
         _AGENT_IDENTITY_STORE = InMemoryAgentIdentityStore()
+    else:
+        _AGENT_IDENTITY_STORE = SQLiteAgentIdentityStore(sqlite_path())
     return _AGENT_IDENTITY_STORE
 
 

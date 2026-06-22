@@ -1,0 +1,244 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" fill="none" role="img" aria-labelledby="abom-archl-title abom-archl-desc">
+  <title id="abom-archl-title">agent-bom architecture and data flow</title>
+  <desc id="abom-archl-desc">Left-to-right flow: evidence sources are scanned and ingested into one unified Finding and ContextGraph, served through the control plane (API, Gateway, MCP server) to human and headless-agent consumers, emitting SARIF, CycloneDX, SPDX, and OCSF artifacts.</desc>
+  <defs>
+    <linearGradient id="abom-accent-l" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <marker id="abom-arrow-l" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="9" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 4 L0 8 Z" fill="#94a3b8"/>
+    </marker>
+    <marker id="abom-arrow-accent-l" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="9" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 4 L0 8 Z" fill="#6366f1"/>
+    </marker>
+    <style>
+      text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .title { font-size: 21px; font-weight: 800; fill: #0f172a; }
+      .subtitle { font-size: 11.5px; font-weight: 400; fill: #475569; }
+      .lane-label { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; }
+      .node-title { font-size: 12.5px; font-weight: 700; fill: #1e293b; }
+      .node-sub { font-size: 9px; font-weight: 400; fill: #64748b; }
+      .pill { font-size: 9px; font-weight: 600; fill: #475569; }
+      .flow-label { font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em; fill: #94a3b8; }
+      .footer { font-size: 9px; font-weight: 600; letter-spacing: 0.05em; fill: #64748b; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="660" rx="14" fill="#ffffff"/>
+
+  <!-- Header -->
+  <text x="40" y="42" class="title">agent-bom <tspan fill="url(#abom-accent-l)">architecture</tspan></text>
+  <text x="40" y="63" class="subtitle">One evidence model, left to right: collect from every AI-supply-chain surface, normalize into one Finding and ContextGraph, serve through the control plane, deliver to humans and headless agents.</text>
+
+  <!-- Lane connector arrows -->
+  <line x1="246" y1="360" x2="270" y2="360" stroke="#94a3b8" stroke-width="2" marker-end="url(#abom-arrow-l)"/>
+  <text x="258" y="350" text-anchor="middle" class="flow-label">SCAN</text>
+  <line x1="486" y1="360" x2="510" y2="360" stroke="#94a3b8" stroke-width="2" marker-end="url(#abom-arrow-l)"/>
+  <text x="498" y="350" text-anchor="middle" class="flow-label">NORMALIZE</text>
+  <line x1="726" y1="360" x2="750" y2="360" stroke="#6366f1" stroke-width="2" marker-end="url(#abom-arrow-accent-l)"/>
+  <text x="738" y="350" text-anchor="middle" class="flow-label" fill="#6366f1">SERVE</text>
+  <line x1="966" y1="360" x2="990" y2="360" stroke="#94a3b8" stroke-width="2" marker-end="url(#abom-arrow-l)"/>
+  <text x="978" y="350" text-anchor="middle" class="flow-label">DELIVER</text>
+
+  <!-- ════════ LANE 1 — SOURCES ════════ -->
+  <rect x="40" y="92" width="206" height="500" rx="12" fill="#f1f5fd" stroke="#dbeafe" stroke-width="1"/>
+  <text x="52" y="116" class="lane-label" fill="#2563eb">SOURCES</text>
+  <text x="52" y="132" class="node-sub">Read-only · no writes · no secrets stored</text>
+
+  <g>
+    <rect x="52" y="146" width="182" height="50" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="66" y="168" class="node-title">Supply chain</text>
+    <text x="66" y="184" class="node-sub">15 ecosystem parsers · npm/pip/go/maven + OS pkgs</text>
+  </g>
+  <g>
+    <rect x="52" y="204" width="182" height="50" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="66" y="226" class="node-title">AI agents &amp; MCP</text>
+    <text x="66" y="242" class="node-sub">29 client configs · servers · tools · registry</text>
+  </g>
+  <g>
+    <rect x="52" y="262" width="182" height="50" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="66" y="284" class="node-title">Cloud inventory</text>
+    <text x="66" y="300" class="node-sub">AWS · Azure · GCP + 13 AI/data providers</text>
+  </g>
+  <g>
+    <rect x="52" y="320" width="182" height="50" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="66" y="342" class="node-title">IaC &amp; containers</text>
+    <text x="66" y="358" class="node-sub">Terraform · CFN · Helm · K8s · OCI images</text>
+  </g>
+  <g>
+    <rect x="52" y="378" width="182" height="50" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="66" y="400" class="node-title">Secrets</text>
+    <text x="66" y="416" class="node-sub">credential refs · env names · token leak patterns</text>
+  </g>
+  <g>
+    <rect x="52" y="436" width="182" height="50" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="66" y="458" class="node-title">Models &amp; datasets</text>
+    <text x="66" y="474" class="node-sub">weight formats · dataset cards · PII/PHI scan</text>
+  </g>
+  <g>
+    <rect x="52" y="494" width="182" height="50" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="66" y="516" class="node-title">SBOM ingest</text>
+    <text x="66" y="532" class="node-sub">CycloneDX + SPDX import · re-scan inventory</text>
+  </g>
+
+  <!-- ════════ LANE 2 — SCAN / INGEST ════════ -->
+  <rect x="280" y="92" width="206" height="500" rx="12" fill="#fdf6e9" stroke="#fde9c4" stroke-width="1"/>
+  <text x="292" y="116" class="lane-label" fill="#b45309">SCAN / INGEST</text>
+  <text x="292" y="132" class="node-sub">Parallel enrichment, local-only</text>
+
+  <g>
+    <rect x="292" y="146" width="182" height="58" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="306" y="168" class="node-title">Vulnerability scan</text>
+    <text x="306" y="184" class="node-sub">OSV.dev batch lookup across</text>
+    <text x="306" y="197" class="node-sub">all discovered packages</text>
+  </g>
+  <g>
+    <rect x="292" y="212" width="182" height="72" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="306" y="234" class="node-title">Threat enrichment</text>
+    <text x="306" y="250" class="node-sub">NVD CVSS v3.1/v4.0 · EPSS</text>
+    <text x="306" y="263" class="node-sub">CISA KEV · GHSA · CSAF</text>
+    <text x="306" y="276" class="node-sub">exploit + known-exploited signals</text>
+  </g>
+  <g>
+    <rect x="292" y="292" width="182" height="58" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="306" y="314" class="node-title">Posture checks</text>
+    <text x="306" y="330" class="node-sub">MCP / A2A auth posture · NHI</text>
+    <text x="306" y="343" class="node-sub">identity · IaC misconfig · CIS</text>
+  </g>
+  <g>
+    <rect x="292" y="358" width="182" height="58" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="306" y="380" class="node-title">Cost / FinOps</text>
+    <text x="306" y="396" class="node-sub">model + cloud spend signals</text>
+    <text x="306" y="409" class="node-sub">budget context per workload</text>
+  </g>
+  <g>
+    <rect x="292" y="424" width="182" height="58" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="306" y="446" class="node-title">Policy engine</text>
+    <text x="306" y="462" class="node-sub">policy-as-code conditions</text>
+    <text x="306" y="475" class="node-sub">compliance + framework tagging</text>
+  </g>
+  <g>
+    <rect x="292" y="490" width="182" height="54" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="306" y="512" class="node-title">Blast-radius scoring</text>
+    <text x="306" y="528" class="node-sub">pkg → finding → server →</text>
+    <text x="306" y="541" class="node-sub">agent → creds → tools fusion</text>
+  </g>
+
+  <!-- ════════ LANE 3 — CORE MODEL ════════ -->
+  <rect x="520" y="92" width="206" height="500" rx="12" fill="#fdf2f6" stroke="#fbd5e2" stroke-width="1"/>
+  <text x="532" y="116" class="lane-label" fill="#be123c">CORE MODEL</text>
+  <text x="532" y="132" class="node-sub">One normalized truth</text>
+
+  <g>
+    <rect x="532" y="150" width="182" height="92" rx="8" fill="#ffffff" stroke="#fbd5e2"/>
+    <text x="546" y="174" class="node-title">Unified Finding</text>
+    <text x="546" y="191" class="node-sub">one schema for every modality:</text>
+    <text x="546" y="204" class="node-sub">CVE · misconfig · secret · auth</text>
+    <text x="546" y="217" class="node-sub">+ severity, CVSS, EPSS, KEV,</text>
+    <text x="546" y="230" class="node-sub">compliance controls, provenance</text>
+  </g>
+  <g>
+    <rect x="532" y="252" width="182" height="98" rx="8" fill="#ffffff" stroke="#fbd5e2"/>
+    <text x="546" y="276" class="node-title">ContextGraph</text>
+    <text x="546" y="293" class="node-sub">entities + edges across env,</text>
+    <text x="546" y="306" class="node-sub">identity, MCP, package, cred,</text>
+    <text x="546" y="319" class="node-sub">model, dataset, finding</text>
+    <text x="546" y="337" class="pill" fill="#be123c">multi-hop attack-path fusion</text>
+  </g>
+  <g>
+    <rect x="532" y="360" width="182" height="62" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="546" y="382" class="node-title">Asset tracker</text>
+    <text x="546" y="398" class="node-sub">first_seen · resolved · MTTR</text>
+    <text x="546" y="411" class="node-sub">drift over time per asset</text>
+  </g>
+  <g>
+    <rect x="532" y="432" width="182" height="62" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="546" y="454" class="node-title">Audit &amp; provenance</text>
+    <text x="546" y="470" class="node-sub">signed evidence · hash chain</text>
+    <text x="546" y="483" class="node-sub">tenant scope · replay</text>
+  </g>
+  <g>
+    <rect x="532" y="504" width="182" height="40" rx="8" fill="#fdf2f6" stroke="#fbd5e2"/>
+    <text x="546" y="527" class="node-sub" fill="#475569">Postgres / SQLite store · tenant-isolated, cluster-safe</text>
+  </g>
+
+  <!-- ════════ LANE 4 — CONTROL PLANE ════════ -->
+  <rect x="760" y="92" width="206" height="500" rx="12" fill="#ecfdfa" stroke="#bbf3ea" stroke-width="1.5"/>
+  <text x="772" y="116" class="lane-label" fill="#0f766e">CONTROL PLANE</text>
+  <text x="772" y="132" class="node-sub">Self-hosted · tenant-scoped auth</text>
+
+  <g>
+    <rect x="772" y="150" width="182" height="100" rx="8" fill="#ffffff" stroke="#99e6da"/>
+    <text x="786" y="174" class="node-title" fill="#0f766e">REST API</text>
+    <text x="786" y="191" class="node-sub">272 routes · scans, findings,</text>
+    <text x="786" y="204" class="node-sub">graph, fleet, compliance,</text>
+    <text x="786" y="217" class="node-sub">identity, cost, audit</text>
+    <text x="786" y="237" class="pill" fill="#0f766e">OIDC / SAML / SCIM · RBAC · keys</text>
+  </g>
+  <g>
+    <rect x="772" y="260" width="182" height="98" rx="8" fill="#ffffff" stroke="#99e6da"/>
+    <text x="786" y="284" class="node-title" fill="#0f766e">Gateway / Proxy</text>
+    <text x="786" y="301" class="node-sub">enforce firewall + budget +</text>
+    <text x="786" y="314" class="node-sub">identity inline in the relay</text>
+    <text x="786" y="327" class="node-sub">inspect · block · sign · audit</text>
+    <text x="786" y="346" class="pill" fill="#0f766e">runtime MCP traffic enforcement</text>
+  </g>
+  <g>
+    <rect x="772" y="368" width="182" height="88" rx="8" fill="#ffffff" stroke="#99e6da"/>
+    <text x="786" y="392" class="node-title" fill="#0f766e">MCP server</text>
+    <text x="786" y="409" class="node-sub">69 tools · scan, intel, graph,</text>
+    <text x="786" y="422" class="node-sub">remediate, identity, shield</text>
+    <text x="786" y="441" class="pill" fill="#0f766e">stdio · SSE · streamable-HTTP</text>
+  </g>
+  <g>
+    <rect x="772" y="466" width="182" height="78" rx="8" fill="#ffffff" stroke="#99e6da"/>
+    <text x="786" y="490" class="node-title" fill="#0f766e">Fleet &amp; scheduling</text>
+    <text x="786" y="507" class="node-sub">multi-replica scan dispatch</text>
+    <text x="786" y="520" class="node-sub">lifecycle review · quarantine</text>
+    <text x="786" y="536" class="node-sub">Helm / EKS deployable</text>
+  </g>
+
+  <!-- ════════ LANE 5 — CONSUMERS ════════ -->
+  <rect x="1000" y="92" width="160" height="500" rx="12" fill="#f6f2fd" stroke="#e4d9f8" stroke-width="1"/>
+  <text x="1012" y="116" class="lane-label" fill="#7c3aed">CONSUMERS</text>
+  <text x="1012" y="132" class="node-sub">Humans + agents</text>
+
+  <text x="1012" y="160" class="pill" fill="#7c3aed" letter-spacing="0.1em">HUMANS</text>
+  <g>
+    <rect x="1012" y="168" width="136" height="48" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="1026" y="189" class="node-title">CLI</text>
+    <text x="1026" y="205" class="node-sub">terminal · CI gate · Docker</text>
+  </g>
+  <g>
+    <rect x="1012" y="222" width="136" height="48" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="1026" y="243" class="node-title">Web UI</text>
+    <text x="1026" y="259" class="node-sub">dashboard · graph · fleet</text>
+  </g>
+
+  <text x="1012" y="296" class="pill" fill="#7c3aed" letter-spacing="0.1em">HEADLESS AGENTS</text>
+  <g>
+    <rect x="1012" y="304" width="136" height="48" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="1026" y="325" class="node-title">MCP clients</text>
+    <text x="1026" y="341" class="node-sub">tool calls over MCP</text>
+  </g>
+  <g>
+    <rect x="1012" y="358" width="136" height="48" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="1026" y="379" class="node-title">API / SDK</text>
+    <text x="1026" y="395" class="node-sub">programmatic automation</text>
+  </g>
+
+  <text x="1012" y="432" class="pill" fill="#7c3aed" letter-spacing="0.1em">ARTIFACTS</text>
+  <g>
+    <rect x="1012" y="440" width="136" height="104" rx="8" fill="#f6f2fd" stroke="#e4d9f8"/>
+    <text x="1026" y="461" class="node-sub" fill="#475569">SARIF · GitHub Security</text>
+    <text x="1026" y="479" class="node-sub" fill="#475569">CycloneDX SBOM</text>
+    <text x="1026" y="497" class="node-sub" fill="#475569">SPDX SBOM</text>
+    <text x="1026" y="515" class="node-sub" fill="#475569">OCSF events → SIEM</text>
+    <text x="1026" y="533" class="node-sub" fill="#475569">HTML · JSON · webhooks</text>
+  </g>
+
+  <!-- Footer guarantee bar -->
+  <rect x="40" y="608" width="1120" height="30" rx="8" fill="#f1f5fd" stroke="#dbeafe"/>
+  <text x="600" y="627" text-anchor="middle" class="footer">READ-ONLY BY DEFAULT · never writes target configs · never runs servers · never stores secret values · self-hosted · evidence signed end-to-end</text>
+</svg>

@@ -1,0 +1,89 @@
+"""Regression tests for public marketplace freshness automation."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+from types import ModuleType
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_script(name: str) -> ModuleType:
+    path = ROOT / "scripts" / name
+    spec = importlib.util.spec_from_file_location(name.removesuffix(".py"), path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_glama_listing_json_contract_reports_stale_listing(monkeypatch, capsys):
+    script = _load_script("check_glama_listing.py")
+    stale_page = """
+    uses: msaad00/agent-bom@v0.88.4
+    MCP server mode advertises 55 MCP tools
+    18 tools for CVE scanning
+    """
+
+    monkeypatch.setattr(script, "_load_readme_tool_count", lambda: "69")
+    monkeypatch.setattr(script, "_fetch", lambda _url, _timeout: stale_page)
+
+    assert script.main(["--expected", "0.89.2", "--json", "--retries", "1"]) == 1
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out.strip().splitlines()[-1])
+
+    assert payload["surface"] == "Glama"
+    assert payload["status"] == "stale"
+    assert payload["expected"] == "0.89.2"
+    assert payload["listing_version"] == "0.88.4"
+    assert "missing current Glama listing token" in payload["error"]
+
+
+def test_surface_freshness_classifies_smithery_proxy_url_as_misconfigured():
+    script = _load_script("check_surface_freshness.py")
+
+    result = script.probe_smithery("0.89.2", "https://server.smithery.ai/@agent-bom/agent-bom/mcp")
+
+    assert result["surface"] == "Smithery"
+    assert result["status"] == "not_configured"
+    assert result["version"] == "—"
+    assert "hosted MCP proxy" in result["error"]
+    assert "exposes /health" in result["error"]
+
+
+def test_surface_freshness_reads_paginated_ghcr_tags(monkeypatch):
+    script = _load_script("check_surface_freshness.py")
+
+    class Headers(dict):
+        def get(self, key, default=None):
+            return super().get(key, default)
+
+    def fake_http_json(url, **_kwargs):
+        assert url.startswith("https://ghcr.io/token?")
+        return {"token": "token"}
+
+    pages = iter(
+        [
+            (
+                {"tags": ["v0.81.1"]},
+                Headers({"Link": '</v2/msaad00/agent-bom/tags/list?last=v0.81.1&n=100>; rel="next"'}),
+            ),
+            ({"tags": ["v0.89.2"]}, Headers({})),
+        ]
+    )
+
+    def fake_http_json_response(url, **kwargs):
+        assert kwargs["headers"] == {"Authorization": "Bearer token"}
+        assert url.startswith("https://ghcr.io/v2/msaad00/agent-bom/tags/list")
+        return next(pages)
+
+    monkeypatch.setattr(script, "_http_json", fake_http_json)
+    monkeypatch.setattr(script, "_http_json_response", fake_http_json_response)
+
+    result = script.probe_docker("0.89.2", "ghcr.io/msaad00/agent-bom", timeout=1, attempts=1, backoff=0)
+
+    assert result["surface"] == "Docker"
+    assert result["status"] == "fresh"
+    assert result["version"] == "0.89.2"

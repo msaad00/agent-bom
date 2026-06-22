@@ -420,11 +420,18 @@ def test_security_scan_npm_installs_use_network_retries():
     assert workflow.count("npm config set fetch-retry-maxtimeout 120000") >= 3
 
 
-def test_publish_registries_workflow_requires_public_smithery_surface_and_curated_clawhub_set():
-    """Registry publishing should fail fast on auth-gated Smithery URLs and avoid omnibus ClawHub skills."""
+def test_publish_registries_workflow_validates_smithery_best_effort_and_curated_clawhub_set():
+    """Smithery's hosted endpoint is reached through Smithery's own authenticated
+    proxy (direct access is auth-gated) and is rebuilt asynchronously, so the
+    post-publish liveness probe must be best-effort (non-blocking), not a gate
+    that forbids auth. ClawHub must still publish the curated skill set, not an
+    omnibus skill."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()
     assert "SMITHERY_MCP_URL" in workflow
-    assert "--forbid-auth-required" in workflow
+    # The Smithery probe no longer forbids auth (auth-gated is the correct,
+    # secure posture) and no longer hard-fails the publish on async rebuild lag.
+    assert "--forbid-auth-required" not in workflow
+    assert "continue-on-error: true" in workflow
     assert "integrations/openclaw/scan" in workflow
     assert "integrations/openclaw/compliance" in workflow
     assert "integrations/openclaw/registry" in workflow

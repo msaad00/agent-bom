@@ -363,26 +363,32 @@ def compute_credential_risk_ranking(report: "AIBOMReport") -> list[dict]:
     - risk tier (critical, high, medium, low)
     """
     cred_data: dict[str, dict] = {}
-    active_findings = active_blast_radii(report.blast_radii)
 
-    for br in active_findings:
+    def _entry(cred: str) -> dict:
+        if cred not in cred_data:
+            cred_data[cred] = {
+                "credential": cred,
+                "server_count": 0,
+                "agents": set(),
+                "servers": set(),
+                "reachable_tools": set(),
+                "vuln_critical": 0,
+                "vuln_high": 0,
+                "vuln_total": 0,
+                "max_risk_score": 0.0,
+            }
+        return cred_data[cred]
+
+    # ── Phase 1: CVE-backed exposure ──
+    # Credentials reachable from an active (non-VEX-suppressed) blast radius.
+    for br in active_blast_radii(report.blast_radii):
         for cred in br.exposed_credentials:
-            if cred not in cred_data:
-                cred_data[cred] = {
-                    "credential": cred,
-                    "server_count": 0,
-                    "agents": set(),
-                    "vuln_critical": 0,
-                    "vuln_high": 0,
-                    "vuln_total": 0,
-                    "max_risk_score": 0.0,
-                    "servers": set(),
-                }
-            entry = cred_data[cred]
+            entry = _entry(cred)
             for a in br.affected_agents:
                 entry["agents"].add(a.name)
             for s in br.affected_servers:
                 entry["servers"].add(s.name)
+                entry["reachable_tools"].update(t.name for t in s.tools)
             sev = br.vulnerability.severity.value.upper()
             if sev == "CRITICAL":
                 entry["vuln_critical"] += 1
@@ -391,27 +397,52 @@ def compute_credential_risk_ranking(report: "AIBOMReport") -> list[dict]:
             entry["vuln_total"] += 1
             entry["max_risk_score"] = max(entry["max_risk_score"], br.risk_score)
 
+    # ── Phase 2: discovery-only exposure ──
+    # A credential on an MCP server with no CVE-backed blast radius is still a
+    # standing exposure — a long-lived secret reachable by the agent's tools.
+    # Rank it by breadth instead of dropping it from the report (previously it
+    # was invisible whenever no vulnerability matched). Credentials already
+    # ranked in Phase 1 are enriched in place (servers/agents/tools merge via
+    # sets); their CVE-derived tier is preserved.
+    for agent in report.agents:
+        for server in agent.mcp_servers:
+            for cred in server.credential_names:
+                entry = _entry(cred)
+                entry["agents"].add(agent.name)
+                entry["servers"].add(server.name)
+                entry["reachable_tools"].update(t.name for t in server.tools)
+
     results = []
     for cred, data in cred_data.items():
         server_count = len(data["servers"])
-        agents = sorted(data["agents"])
+        reachable_tools = sorted(data["reachable_tools"])
         risk_score = data["max_risk_score"]
 
-        if data["vuln_critical"] > 0 or risk_score >= 8.0:
-            risk_tier = "critical"
-        elif data["vuln_high"] > 0 or risk_score >= 6.0:
-            risk_tier = "high"
-        elif data["vuln_total"] > 3:
-            risk_tier = "medium"
+        if data["vuln_total"] > 0:
+            basis = "vulnerability"
+            if data["vuln_critical"] > 0 or risk_score >= 8.0:
+                risk_tier = "critical"
+            elif data["vuln_high"] > 0 or risk_score >= 6.0:
+                risk_tier = "high"
+            elif data["vuln_total"] > 3:
+                risk_tier = "medium"
+            else:
+                risk_tier = "low"
         else:
-            risk_tier = "low"
+            # Discovery-only: no proven exploit path, so cap at medium. A secret
+            # reachable by tools or shared across servers has a broader standing
+            # blast radius than one isolated to a single tool-less server.
+            basis = "discovery"
+            risk_tier = "medium" if (server_count > 1 or reachable_tools) else "low"
 
         results.append(
             {
                 "credential": cred,
                 "risk_tier": risk_tier,
+                "basis": basis,
                 "server_count": server_count,
-                "agents": agents,
+                "agents": sorted(data["agents"]),
+                "reachable_tools": reachable_tools,
                 "vuln_critical": data["vuln_critical"],
                 "vuln_high": data["vuln_high"],
                 "vuln_total": data["vuln_total"],
@@ -419,9 +450,17 @@ def compute_credential_risk_ranking(report: "AIBOMReport") -> list[dict]:
             }
         )
 
-    # Sort by risk: critical first, then by max_risk_score descending
+    # Sort: tier first, then proven (vulnerability) before discovery at the same
+    # tier, then by max_risk_score descending.
     tier_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    results.sort(key=lambda x: (tier_order.get(x["risk_tier"], 4), -x["max_risk_score"]))
+    basis_order = {"vulnerability": 0, "discovery": 1}
+    results.sort(
+        key=lambda x: (
+            tier_order.get(x["risk_tier"], 4),
+            basis_order.get(x["basis"], 9),
+            -x["max_risk_score"],
+        )
+    )
     return results
 
 

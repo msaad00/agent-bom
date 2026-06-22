@@ -89,6 +89,7 @@ nav:
       - Registry: features/registry.md
       - Runtime Proxy: features/runtime-proxy.md
       - SBOM Generation: features/sbom.md
+      - Hardware/Firmware Evidence Ingest: features/hardware-evidence.md
       - Policy Engine: features/policy.md
   - Deployment:
       - Overview: deployment/overview.md

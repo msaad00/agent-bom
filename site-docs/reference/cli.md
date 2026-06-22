@@ -14,6 +14,8 @@
 | `fs` | Scan a filesystem directory or mounted VM disk snapshot |
 | `iac` | Scan Dockerfile, Kubernetes, Terraform, CloudFormation, and live Kubernetes posture |
 | `sbom` | Ingest an existing CycloneDX or SPDX SBOM and scan it |
+| `ingest` | Ingest operator-provided evidence (e.g. hardware/firmware attestation) into the unified graph |
+| `ingest hardware` | Map a hardware/firmware attestation evidence file onto host / GPU / firmware / advisory graph nodes |
 | `cloud` | Scan AWS, Azure, or GCP infrastructure posture |
 | `check` | Check one package before install or approval |
 | `verify` | Verify package integrity / provenance or self-verify `agent-bom` |

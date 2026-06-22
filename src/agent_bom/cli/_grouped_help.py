@@ -13,7 +13,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
     [
         (
             "Scanning",
-            ["agents", "skills", "image", "fs", "iac", "sbom", "cloud", "check", "verify", "secrets", "code"],
+            ["agents", "skills", "image", "fs", "iac", "sbom", "ingest", "cloud", "check", "verify", "secrets", "code"],
         ),
         (
             "Runtime",

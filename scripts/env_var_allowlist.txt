@@ -38,6 +38,10 @@ AGENT_BOM_AUDIT_DB
 AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC
 # tier-B (replay-only) capture toggle — issue #2261
 AGENT_BOM_CAPTURE_REPLAY
+# explicit opt-out from durable-by-default control-plane lifecycle stores
+# (agent identity, JIT grants, runtime sessions); reverts to in-memory (state
+# lost on restart) for ephemeral CI jobs and tests
+AGENT_BOM_EPHEMERAL_STORE
 AGENT_BOM_AUDIT_HMAC_KEY
 AGENT_BOM_AUDIT_HMAC_KEY_ID
 AGENT_BOM_AUDIT_HMAC_LAST_ROTATED

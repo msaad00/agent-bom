@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as api_stores
-from agent_bom.api.server import app
+from agent_bom.api.server import app, configure_api
 
 
 def _mock_cursor(fetchone_val=None, fetchall_val=None, rowcount=0):
@@ -82,11 +82,14 @@ def test_supported_snowflake_routes_remain_wired(mock_connect, monkeypatch):
     monkeypatch.setattr("agent_bom.api.server._cleanup_loop", lambda: _async_noop())
     monkeypatch.setattr("agent_bom.api.scheduler.scheduler_loop", lambda store, fn: _async_noop())
 
+    api_key = "snowflake-contract-test-key"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    configure_api(api_key=api_key)
     _clear_store_globals()
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
-            schedules = client.get("/v1/schedules")
-            exceptions = client.get("/v1/exceptions")
+            schedules = client.get("/v1/schedules", headers=headers)
+            exceptions = client.get("/v1/exceptions", headers=headers)
 
             assert schedules.status_code == 200
             assert schedules.json() == []
@@ -101,6 +104,7 @@ def test_supported_snowflake_routes_remain_wired(mock_connect, monkeypatch):
             }
     finally:
         _clear_store_globals()
+        configure_api(api_key=None)
 
 
 async def _async_noop() -> None:

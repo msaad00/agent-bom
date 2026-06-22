@@ -80,6 +80,17 @@ jobs:
           fi
 
           DEPLOY_URL="${SMITHERY_MCP_URL}"
+          case "$DEPLOY_URL" in
+            https://server.smithery.ai/*|http://server.smithery.ai/*)
+              echo "public_version=invalid_smithery_proxy" >> "$GITHUB_OUTPUT"
+              echo "tool_count=unknown" >> "$GITHUB_OUTPUT"
+              echo "auth_required=unknown" >> "$GITHUB_OUTPUT"
+              echo "probe_failed=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::SMITHERY_MCP_URL points at Smithery's hosted MCP proxy (${DEPLOY_URL}), which is OAuth-gated and does not expose agent-bom /health. Set SMITHERY_MCP_URL to the upstream public unauthenticated endpoint that serves /health."
+              exit 0
+              ;;
+          esac
+
           RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
             --base-url "$DEPLOY_URL" \
             --attempts 3 \

@@ -60,7 +60,14 @@ def _expected_version() -> str:
     return m.group(1)
 
 
-def _http_json(url: str, *, timeout: float, attempts: int, backoff: float, headers: dict[str, str] | None = None) -> Any:
+def _http_json_response(
+    url: str,
+    *,
+    timeout: float,
+    attempts: int,
+    backoff: float,
+    headers: dict[str, str] | None = None,
+) -> tuple[Any, Any]:
     last = "unknown error"
     hdrs = {"Accept": "application/json", "User-Agent": "agent-bom-freshness-probe"}
     if headers:
@@ -68,9 +75,9 @@ def _http_json(url: str, *, timeout: float, attempts: int, backoff: float, heade
     for attempt in range(1, attempts + 1):
         try:
             req = urllib.request.Request(url, headers=hdrs)
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
-                return json.loads(resp.read().decode("utf-8", errors="replace"))
-        except urllib.error.HTTPError as exc:  # noqa: PERF203
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8", errors="replace")), resp.headers
+        except urllib.error.HTTPError as exc:
             last = f"HTTP {exc.code}"
         except (urllib.error.URLError, TimeoutError) as exc:
             last = f"network error: {exc}"
@@ -81,6 +88,11 @@ def _http_json(url: str, *, timeout: float, attempts: int, backoff: float, heade
     raise RuntimeError(last)
 
 
+def _http_json(url: str, *, timeout: float, attempts: int, backoff: float, headers: dict[str, str] | None = None) -> Any:
+    data, _headers = _http_json_response(url, timeout=timeout, attempts=attempts, backoff=backoff, headers=headers)
+    return data
+
+
 def _classify(name: str, published: str | None, expected: str, *, error: str | None = None) -> dict[str, Any]:
     if error:
         return {"surface": name, "status": "unreachable", "version": published or "—", "expected": expected, "error": error}
@@ -88,6 +100,19 @@ def _classify(name: str, published: str | None, expected: str, *, error: str | N
         return {"surface": name, "status": "unreachable", "version": "—", "expected": expected, "error": "no version found"}
     status = "fresh" if published == expected else "stale"
     return {"surface": name, "status": status, "version": published, "expected": expected}
+
+
+def _smithery_proxy_error(url: str) -> str | None:
+    """Return an actionable error when the configured URL is Smithery's proxy."""
+
+    parsed = urllib.parse.urlsplit(url.strip())
+    if parsed.netloc.lower() == "server.smithery.ai":
+        return (
+            "SMITHERY_MCP_URL points at Smithery's hosted MCP proxy. Set it to "
+            "the upstream public unauthenticated endpoint that exposes /health, "
+            "not https://server.smithery.ai/.../mcp."
+        )
+    return None
 
 
 def _parse_image_reference(image: str) -> tuple[str, str]:
@@ -143,12 +168,17 @@ def probe_docker(expected: str, image: str, **kw: Any) -> dict[str, Any]:
                 **kw,
             )
             token = token_data.get("token", "")
-            tags_data = _http_json(
-                f"https://ghcr.io/v2/{path_repo}/tags/list",
-                headers={"Authorization": f"Bearer {token}"} if token else None,
-                **kw,
-            )
-            tags = set(tags_data.get("tags") or [])
+            tags = set()
+            next_url = f"https://ghcr.io/v2/{path_repo}/tags/list?n=100"
+            auth_headers = {"Authorization": f"Bearer {token}"} if token else None
+            for _page in range(20):
+                tags_data, response_headers = _http_json_response(next_url, headers=auth_headers, **kw)
+                tags.update(tags_data.get("tags") or [])
+                link = response_headers.get("Link", "")
+                match = re.search(r'<([^>]+)>;\s*rel="next"', link)
+                if not match:
+                    break
+                next_url = urllib.parse.urljoin("https://ghcr.io", match.group(1))
         else:
             tags: set[str] = set()
             url = f"https://hub.docker.com/v2/repositories/{repo}/tags?page_size=100"
@@ -176,7 +206,7 @@ def probe_docker(expected: str, image: str, **kw: Any) -> dict[str, Any]:
 
 def probe_glama(expected: str, **kw: Any) -> dict[str, Any]:
     """Delegate to check_glama_listing.py so the probe logic stays in one place."""
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(
         [sys.executable, str(GLAMA_SCRIPT), "--expected", expected, "--json"],
         capture_output=True,
         text=True,
@@ -209,8 +239,17 @@ def probe_smithery(expected: str, url: str, **kw: Any) -> dict[str, Any]:
             "expected": expected,
             "error": "no SMITHERY_MCP_URL — set the repo variable to monitor this surface",
         }
+    proxy_error = _smithery_proxy_error(url)
+    if proxy_error:
+        return {
+            "surface": "Smithery",
+            "status": "not_configured",
+            "version": "—",
+            "expected": expected,
+            "error": proxy_error,
+        }
     try:
-        proc = subprocess.run(  # noqa: S603
+        proc = subprocess.run(
             [
                 sys.executable,
                 "-m",
@@ -228,6 +267,9 @@ def probe_smithery(expected: str, url: str, **kw: Any) -> dict[str, Any]:
             text=True,
             env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
         )
+        if proc.returncode != 0:
+            error = (proc.stderr or proc.stdout or f"deployment_probe exited {proc.returncode}").strip()
+            return _classify("Smithery", None, expected, error=error)
         data = json.loads(proc.stdout or "{}")
         version = data.get("version")
         return _classify("Smithery", version, expected)

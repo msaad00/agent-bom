@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import re
 import sys
 import time
@@ -40,45 +42,72 @@ def _fetch(url: str, timeout: int) -> str:
 
 
 def _check(page: str, version: str, tool_count: str) -> list[str]:
-    failures: list[str] = []
     expected_tokens = [
         f"v{version}",
         f"MCP server mode advertises {tool_count} MCP tools",
     ]
-    for token in expected_tokens:
-        if token not in page:
-            failures.append(f"missing current Glama listing token: {token!r}")
+    failures = [f"missing current Glama listing token: {token!r}" for token in expected_tokens if token not in page]
 
     stale_patterns = [
         r"uses:\s*msaad00/agent-bom@v0\.88\.4",
         r"MCP server mode advertises\s+55\s+MCP tools",
         r"18 tools for CVE scanning",
     ]
-    for pattern in stale_patterns:
-        if re.search(pattern, page):
-            failures.append(f"stale Glama listing pattern still present: {pattern}")
+    failures.extend(f"stale Glama listing pattern still present: {pattern}" for pattern in stale_patterns if re.search(pattern, page))
     return failures
 
 
-def main() -> int:
+def _extract_listing_version(page: str) -> str:
+    """Best-effort version extraction from Glama's rendered listing."""
+
+    patterns = [
+        r"uses:\s*msaad00/agent-bom@v([0-9]+\.[0-9]+\.[0-9]+)",
+        r"\bv([0-9]+\.[0-9]+\.[0-9]+)\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, page)
+        if match:
+            return match.group(1)
+    return "unknown"
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default=DEFAULT_URL)
+    parser.add_argument("--url", default=os.environ.get("GLAMA_LISTING_URL", DEFAULT_URL))
+    parser.add_argument("--expected", default=None, help="Expected version; defaults to pyproject.toml.")
+    parser.add_argument("--json", action="store_true", help="Emit a machine-readable freshness result.")
     parser.add_argument("--timeout", type=int, default=20)
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--delay-seconds", type=int, default=30)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    version = _load_version()
+    version = (args.expected or _load_version()).lstrip("v").strip()
     tool_count = _load_readme_tool_count()
     last_error = ""
+    listing_version = "unknown"
     for attempt in range(1, max(1, args.retries) + 1):
         try:
             page = _fetch(args.url, args.timeout)
         except (urllib.error.URLError, TimeoutError) as exc:
             last_error = f"failed to fetch Glama listing: {exc}"
         else:
+            listing_version = _extract_listing_version(page)
             failures = _check(page, version, tool_count)
             if not failures:
+                if args.json:
+                    print(
+                        json.dumps(
+                            {
+                                "surface": "Glama",
+                                "status": "fresh",
+                                "expected": version,
+                                "listing_version": listing_version,
+                                "tool_count": tool_count,
+                            },
+                            separators=(",", ":"),
+                        )
+                    )
+                    return 0
                 print(f"Glama listing is fresh for agent-bom v{version} with {tool_count} MCP tools")
                 return 0
             last_error = "\n".join(failures)
@@ -87,6 +116,20 @@ def main() -> int:
             print(f"Glama listing freshness check failed on attempt {attempt}/{args.retries}: {last_error}")
             time.sleep(args.delay_seconds)
 
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "surface": "Glama",
+                    "status": "stale" if listing_version != "unknown" else "unreachable",
+                    "expected": version,
+                    "listing_version": listing_version,
+                    "tool_count": tool_count,
+                    "error": last_error,
+                },
+                separators=(",", ":"),
+            )
+        )
     print(f"ERROR: Glama listing is stale or unreachable:\n{last_error}", file=sys.stderr)
     return 1
 

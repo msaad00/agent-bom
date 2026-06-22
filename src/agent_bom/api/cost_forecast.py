@@ -212,7 +212,13 @@ def _best_daily_rate(timed: Sequence[tuple[datetime, float]], now: datetime) -> 
     return max(candidates, key=lambda c: c[0])
 
 
-def forecast_for_tenant(tenant_id: str, *, agent: str | None = None, limit: int = 10000) -> dict[str, Any]:
+def forecast_for_tenant(
+    tenant_id: str,
+    *,
+    agent: str | None = None,
+    limit: int = 10000,
+    now: datetime | None = None,
+) -> dict[str, Any]:
     """Build a spend forecast for a tenant (optionally one agent) from the store.
 
     Resolves an agent-scoped budget first, falling back to the tenant-wide cap —
@@ -228,6 +234,6 @@ def forecast_for_tenant(tenant_id: str, *, agent: str | None = None, limit: int 
     budget = store.get_budget(tenant_id, agent or "")
     if budget is None and agent:
         budget = store.get_budget(tenant_id, "")
-    result = forecast_spend(records, budget=budget)
+    result = forecast_spend(records, budget=budget, now=now)
     result["tenant_id"] = tenant_id
     return result

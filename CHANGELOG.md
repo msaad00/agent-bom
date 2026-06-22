@@ -11,6 +11,104 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.89.0] - 2026-06-22
+
+This release extends agent-bom from AI/MCP supply-chain scanning into estate-wide
+cloud, non-human-identity, and FinOps governance, all converging into the unified
+security graph. New value is reachable from every surface: CLI, MCP tools, REST
+API, SDKs, and the dashboard.
+
+### Cloud / CNAPP
+- **Estate-wide cloud asset inventory.** New AWS, Azure, and GCP inventory
+  scanners enumerate the cloud estate and wire discovered assets into the unified
+  security graph, so cloud resources participate in attack-path and exposure
+  analysis instead of being scanned in isolation.
+- **Network placement for reachability.** Cloud assets now capture network
+  placement metadata (subnet/exposure context) that feeds reachability analysis.
+- **Regulatory-regime data classification.** Data stores are classified by
+  regulatory regime rather than a binary sensitive/not-sensitive flag, giving
+  exposure paths jurisdiction-aware severity.
+- **Crown-jewel and toxic-combination attack paths.** The graph derives
+  crown-jewel exposure and toxic-combination paths, plus pure broad-scope-identity
+  paths, surfaced as first-class attack paths.
+- **Dormant cloud-inventory, NHI-discovery, cost-center, and credential-expiry
+  scan paths are now wired into the scan pipeline** instead of remaining inert.
+
+### Identity / NHI
+- **Non-human identity discovery.** agent-bom discovers non-human identities from
+  Okta and Microsoft Entra into the graph, with discovery endpoints and graph
+  wiring.
+- **NHI usage right-sizing and risk scoring.** Per-identity dormancy/orphan
+  detection, usage right-sizing recommendations, and a per-identity risk score.
+- **Access-review / recertification campaigns.** NHI access-review and
+  recertification campaign workflows for periodic attestation.
+- **Credential expiry and rotation governance** across the API and auth layers,
+  surfacing soon-to-expire and unrotated credentials.
+
+### Cost / FinOps
+- **Cluster-safe Postgres cost store** for multi-replica budget enforcement, so
+  budgets hold across a horizontally scaled control plane.
+- **LLM spend burn-rate forecasting** with budget-runway projection.
+- **Cost chargeback / allocation tags** and seasonal anomaly baselines for
+  per-team and per-workload cost attribution.
+
+### Gateway / Runtime
+- **Unified Gateway Live Feed** consolidating tool-call authorization, DLP, and
+  LLM-call visibility into a single real-time stream.
+- **Firewall enforcement in the relay** with secure-by-default caller
+  authentication.
+- **Detection-to-enforcement actions:** quarantined fleet agents are isolated,
+  behavioral-drift incidents and cost-spike anomalies are acted on (not just
+  reported), with policy block reasons redacted in caller-facing responses.
+- **Break-glass attempts are always audited** and the proxy locks in a
+  fail-closed sandbox posture.
+
+### Supply-chain
+- **Malicious model-pickle detection** via safe opcode disassembly, flagging
+  dangerous pickle opcodes without executing the artifact.
+- **Opt-in entropy detection** for novel/unknown secrets beyond fixed patterns.
+- **Corrected npm caret/tilde semver bounds** for `0.x` ranges in transitive
+  resolution.
+- **Data-quality confidence** is now computed on native findings.
+
+### AI / MCP security
+- **Agent->MCP and agent-to-agent (A2A) auth-posture scanning**, including a
+  dedicated governance MCP server.
+- **New governance and cost capabilities exposed as MCP tools** with surface-count
+  freshness locking, plus unified-Finding suppression / AI-context / reachability
+  fields surfaced in JSON, SARIF, and OCSF output.
+- **Scan a public repository by URL** (`scan --repo`, `repo_url` MCP argument).
+
+### Infra / DX
+- **Distributed scan execution** via a Postgres dispatch queue for horizontal
+  scale, and **hardened enterprise tenant boundaries** across the control plane.
+- **New CLI commands for cost and identity governance** so operators reach the new
+  value without the API.
+- **Cost-forecast / chargeback and NHI-governance console panels** in the
+  dashboard, with governance lineage colors mapped in the graph.
+- **Committed OpenAPI contract and codegen-parity Go/Python/TypeScript SDK
+  clients**, with route parity derived from the OpenAPI schema for FastAPI
+  forward-compatibility.
+- **Multi-hop attack-path fusion** and a graph **evaluation harness** for
+  regression-testing derived paths.
+- CI test runs are parallelized with pytest-xdist (~12min to ~5min), and Docker
+  builds use a stable Python runtime.
+
+### Security
+- **Token-only auth for ClickHouse and ServiceNow integrations** with email PII
+  masking.
+- SCIM posture and misconfiguration messages are sanitized so internal exception
+  detail is not disclosed in the posture surface.
+- API idempotency keys are bound to their request payloads to prevent cross-payload
+  replay.
+
+### Docs
+- README, Docker Hub, and PyPI descriptions aligned with current capabilities.
+- New repo map, clean architecture data-flow diagrams (dark/light), and a
+  start-here guide; root `glama.json` added with improved MCP tool descriptions.
+
+---
+
 ## [0.88.6] - 2026-06-05
 
 ### Added
@@ -1511,7 +1609,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.88.6...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.89.0...HEAD
+[0.89.0]: https://github.com/msaad00/agent-bom/compare/v0.88.6...v0.89.0
 [0.88.6]: https://github.com/msaad00/agent-bom/compare/v0.88.5...v0.88.6
 [0.88.5]: https://github.com/msaad00/agent-bom/compare/v0.88.4...v0.88.5
 [0.88.4]: https://github.com/msaad00/agent-bom/compare/v0.88.3...v0.88.4

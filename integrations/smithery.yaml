@@ -1,3 +1,11 @@
+# Smithery listing metadata. Keep this aligned with integrations/glama/server.json
+# and pyproject.toml so the next successful deploy carries current information.
+# The startCommand / configSchema / commandFunction block below is the runtime
+# contract Smithery executes — do not change its shape.
+name: agent-bom
+description: "Open security scanner and self-hosted control plane for AI/MCP infrastructure — agents, MCP servers, runtime, and blast radius. Exposes 69 MCP tools for scanning, compliance, and graph analysis."
+homepage: "https://github.com/msaad00/agent-bom"
+
 runtime: "python"
 startCommand:
   type: stdio

@@ -142,7 +142,18 @@ def _run_quickstart(
     # --context-graph triggers persistence of the unified graph to the local
     # control-plane store (~/.agent-bom/db/graph.db) that `agent-bom serve` reads,
     # so the security-graph cockpit is populated on first run.
-    scan_args = [executable, "agents", "--inventory", str(inventory_path), "-p", str(sample_dir), "--context-graph"]
+    report_path = sample_dir / "agent-bom-report.json"
+    scan_args = [
+        executable,
+        "agents",
+        "--inventory",
+        str(inventory_path),
+        "-p",
+        str(sample_dir),
+        "--context-graph",
+        "-o",
+        str(report_path),
+    ]
     scan_args.append("--offline" if offline else "--enrich")
     click.echo(f"[2/3] Scanning sample stack: {' '.join(scan_args[1:])}")
     result = subprocess.run(  # noqa: S603 - args built from validated inputs

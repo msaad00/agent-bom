@@ -563,6 +563,7 @@ _api_key: str | None = None
 DEFAULT_RATE_LIMIT_RPM = DEFAULT_SCAN_RATE_LIMIT_RPM
 _rate_limit_rpm: int = DEFAULT_RATE_LIMIT_RPM
 _env_api_keys_seeded = False
+_runtime_api_key_seeded = False
 
 
 def _env_truthy(name: str) -> bool:
@@ -603,6 +604,21 @@ def _seed_api_key_store_from_env() -> bool:
 
     _env_api_keys_seeded = True
     return store.has_keys()
+
+
+def _seed_runtime_api_key(raw_key: str | None) -> bool:
+    """Seed the process-local key store from ``configure_api(api_key=...)``."""
+    global _runtime_api_key_seeded
+
+    value = (raw_key or "").strip()
+    if not value:
+        return False
+    if _runtime_api_key_seeded:
+        return get_key_store().has_keys()
+
+    get_key_store().add(create_api_key_record(value, "runtime:admin", Role.ADMIN))
+    _runtime_api_key_seeded = True
+    return True
 
 
 def _apply_cors_middleware(origins: list[str]) -> None:
@@ -676,6 +692,7 @@ def configure_api(
     _rate_limit_rpm = validated_rate_limit_rpm
 
     env_key_store_configured = _seed_api_key_store_from_env()
+    runtime_key_store_configured = _seed_runtime_api_key(api_key)
 
     from agent_bom.api.oidc import oidc_enabled_from_env
     from agent_bom.api.scim import scim_enabled_from_env
@@ -683,12 +700,14 @@ def configure_api(
     oidc_enabled = oidc_enabled_from_env()
     scim_enabled = scim_enabled_from_env()
     trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
-    auth_configured = bool(api_key or env_key_store_configured or oidc_enabled or trusted_proxy_enabled or scim_enabled)
+    auth_configured = bool(
+        api_key or env_key_store_configured or runtime_key_store_configured or oidc_enabled or trusted_proxy_enabled or scim_enabled
+    )
     if allow_unauthenticated is None:
         allow_unauthenticated = _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API")
     auth_required = auth_configured or not allow_unauthenticated
     configure_auth_runtime(
-        api_key_configured=bool(api_key or env_key_store_configured),
+        api_key_configured=bool(api_key or env_key_store_configured or runtime_key_store_configured),
         oidc_enabled=oidc_enabled,
         trusted_proxy_enabled=trusted_proxy_enabled,
         scim_enabled=scim_enabled,

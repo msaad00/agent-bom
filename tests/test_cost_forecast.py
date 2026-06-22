@@ -148,7 +148,7 @@ def test_forecast_for_tenant_prefers_agent_budget():
             store.record_cost(_rec(1.0, hours_ago=h, agent="agent-a", call_id=f"a-{h}"))
         store.set_budget(_budget(50.0, agent=""))  # tenant-wide
         store.set_budget(_budget(120.0, agent="agent-a"))  # agent-scoped wins
-        fc = forecast_for_tenant("t1", agent="agent-a")
+        fc = forecast_for_tenant("t1", agent="agent-a", now=_NOW)
         assert fc["tenant_id"] == "t1"
         assert fc["budget_limit_usd"] == 120.0
         assert fc["status"] == "ok"

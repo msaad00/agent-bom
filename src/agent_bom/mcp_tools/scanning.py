@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from mcp.server.fastmcp.exceptions import ToolError
 
@@ -287,8 +288,16 @@ async def check_impl(
         from agent_bom.parsers.os_parsers import enrich_os_package_context
         from agent_bom.scanners import ScanOptions, scan_packages
 
-        # Parse name@version
+        # Parse name@version. Accept pip/PEP 440 specifiers (pkg==1.0, pkg>=1.0)
+        # as well as the universal pkg@1.0 form — agents routinely paste pip
+        # syntax, and without this the operator stayed glued to the name, which
+        # then failed to resolve (read as an error) or scanned the wrong thing
+        # (read as clean). Mirrors the CLI check parser.
         spec = package.strip()
+        if "@" not in spec:
+            _specifier = re.split(r"(===|==|~=|!=|>=|<=|>|<)", spec, maxsplit=1)
+            if len(_specifier) == 3:
+                spec = f"{_specifier[0].strip()}@{_specifier[2].strip()}"
         if "@" in spec and not spec.startswith("@"):
             name, version = spec.rsplit("@", 1)
         elif spec.startswith("@") and spec.count("@") > 1:
@@ -311,6 +320,7 @@ async def check_impl(
                 {
                     "package": name,
                     "ecosystem": eco,
+                    "status": "error",
                     "error": f"Explicit version required for {eco} packages",
                 }
             )
@@ -329,7 +339,12 @@ async def check_impl(
                     {
                         "package": name,
                         "ecosystem": eco,
-                        "error": f"Could not resolve latest version for {name}",
+                        "status": "error",
+                        "error": (
+                            f"Could not resolve a version for {name}. Provide an explicit "
+                            f"version (e.g. {name}@1.2.3 or {name}==1.2.3) and confirm the "
+                            f"ecosystem (got '{eco}')."
+                        ),
                     }
                 )
 

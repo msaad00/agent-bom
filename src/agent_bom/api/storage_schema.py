@@ -39,6 +39,16 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     StorageSchemaComponent("fleet", "sqlite/postgres/clickhouse", ("fleet_agents",)),
     StorageSchemaComponent("graph", "sqlite/postgres", ("graph_nodes", "graph_edges", "graph_node_search")),
     StorageSchemaComponent("identity_scim", "sqlite/postgres", ("scim_users", "scim_groups")),
+    # Agent-identity lifecycle is durable by default (SQLite single-node) and
+    # upgrades to shared Postgres (tenant RLS) for multi-replica deployments;
+    # in-memory is an explicit AGENT_BOM_EPHEMERAL_STORE opt-out.
+    StorageSchemaComponent(
+        "agent_identities",
+        "sqlite/postgres",
+        ("agent_identities", "agent_identity_jit_grants", "agent_conditional_access_policies"),
+    ),
+    # Runtime session/observation timeline is durable by default (same tiering).
+    StorageSchemaComponent("runtime_sessions", "sqlite/postgres", ("runtime_observations", "runtime_sessions")),
     StorageSchemaComponent("tenant_quotas", "sqlite/postgres", ("tenant_quota_overrides",)),
     StorageSchemaComponent("sources", "sqlite/postgres", ("sources", "control_plane_sources")),
     StorageSchemaComponent("schedules", "sqlite/postgres", ("scan_schedules",)),

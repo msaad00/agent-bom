@@ -74,7 +74,7 @@ jobs:
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
         run: |
           if [ -z "${SMITHERY_MCP_URL:-}" ]; then
-            echo "::notice::SMITHERY_MCP_URL not configured — skipping public marketplace freshness checks"
+            echo "::warning::SMITHERY_MCP_URL not configured — the public marketplace (Smithery) surface is UNMONITORED. A misconfiguration tracking issue will be opened."
             echo "not_configured=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -177,13 +177,67 @@ jobs:
           EOF
           )"
 
-      - name: Close supply-chain drift issue when deployment is fresh
-        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true' && (steps.public.outputs.not_configured == 'true' || (steps.public.outputs.stale != 'true' && steps.public.outputs.probe_failed != 'true' && steps.public.outputs.auth_gate != 'true'))
+      - name: Open or update misconfiguration issue for unmonitored surfaces
+        if: steps.public.outputs.not_configured == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const title = "deployment-monitoring: a deployment surface is UNMONITORED (missing config)";
+            const labels = ["supply-chain-drift", "security-preventive", "automated"];
+
+            const unmonitored = [
+              "**Smithery / public marketplace** — set repo variable `SMITHERY_MCP_URL` (public unauthenticated MCP endpoint). Without it the public surface is never freshness-checked, which is how the listing drifted for three months unnoticed.",
+            ];
+
+            const body = [
+              "## Deployment surface is unmonitored",
+              "",
+              "One or more deployment surfaces have no monitoring configuration, so drift on them is invisible. This issue replaces the old silent `::notice:: skipping` behavior.",
+              "",
+              ...unmonitored.map((u) => `- ${u}`),
+              "",
+              "Set the named repo variable(s) under **Settings → Secrets and variables → Actions → Variables**, then re-run the **Deployment Freshness** workflow. This issue auto-closes once every surface is monitored.",
+            ].join("\n");
+
+            for (const name of labels) {
+              try { await github.rest.issues.createLabel({ owner, repo, name }); } catch (e) {}
+            }
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", labels: "supply-chain-drift", per_page: 100,
+            });
+            const match = existing.find((issue) => issue.title === title);
+            if (match) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: match.number, body });
+              return;
+            }
+            await github.rest.issues.create({ owner, repo, title, body, labels });
+
+      - name: Close misconfiguration issue when every surface is monitored
+        if: steps.public.outputs.not_configured != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          EXISTING=$(gh issue list --label "supply-chain-drift" --state open --json number --jq '.[0].number // empty')
+          TITLE="deployment-monitoring: a deployment surface is UNMONITORED (missing config)"
+          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --comment "All deployment surfaces are now configured for monitoring; closing the misconfiguration alert."
+          fi
+
+      - name: Close supply-chain drift issue when deployment is fresh
+        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true' && steps.public.outputs.not_configured != 'true' && steps.public.outputs.stale != 'true' && steps.public.outputs.probe_failed != 'true' && steps.public.outputs.auth_gate != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          EXPECTED="${{ steps.expected.outputs.version }}"
+          TITLE="supply-chain-drift: deployment surfaces out of sync with $EXPECTED"
+          # Match by title (not just label) so we never close the separate
+          # surface-freshness or unmonitored-surface tracking issues that share
+          # the supply-chain-drift label.
+          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
           if [ -n "$EXISTING" ]; then
             gh issue close "$EXISTING" --comment "Deployment freshness check is clean again; closing the automated supply-chain drift alert."
           fi

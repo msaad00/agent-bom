@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
 from collections import Counter
@@ -358,13 +357,31 @@ _RUNTIME_EVENT_STORE: RuntimeEventStore | None = None
 
 
 def get_runtime_event_store() -> RuntimeEventStore:
+    """Return the process runtime session/event store, durable by default.
+
+    Selection (highest precedence first), via :mod:`agent_bom.api.durable_store`:
+    - Postgres (``AGENT_BOM_POSTGRES_URL`` / ``AGENT_BOM_DB`` Postgres URL):
+      multi-replica, tenant RLS — the runtime session timeline stays consistent
+      across replicas.
+    - in-memory (``AGENT_BOM_EPHEMERAL_STORE=1``): explicit opt-out; sessions
+      and observations are lost on restart.
+    - SQLite (default, or ``AGENT_BOM_DB`` file path): single-node durable —
+      sessions survive a restart. This is the default.
+    """
     global _RUNTIME_EVENT_STORE
     if _RUNTIME_EVENT_STORE is not None:
         return _RUNTIME_EVENT_STORE
-    if os.environ.get("AGENT_BOM_DB"):
-        _RUNTIME_EVENT_STORE = SQLiteRuntimeEventStore(os.environ["AGENT_BOM_DB"])
-    else:
+    from agent_bom.api.durable_store import select_backend, sqlite_path
+
+    backend = select_backend()
+    if backend == "postgres":
+        from agent_bom.api.postgres_runtime_event import PostgresRuntimeEventStore
+
+        _RUNTIME_EVENT_STORE = PostgresRuntimeEventStore()
+    elif backend == "memory":
         _RUNTIME_EVENT_STORE = InMemoryRuntimeEventStore()
+    else:
+        _RUNTIME_EVENT_STORE = SQLiteRuntimeEventStore(sqlite_path())
     return _RUNTIME_EVENT_STORE
 
 

@@ -15,9 +15,28 @@ from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
 from agent_bom.mcp_errors import (
     CODE_VALIDATION_INVALID_IMAGE_REF,
     CODE_VALIDATION_INVALID_PATH,
-    mcp_error_json,
 )
 from agent_bom.security import sanitize_error  # noqa: F401 — kept for downstream importers
+
+
+class McpScanValidationError(ValueError):
+    """A scan input failed validation (e.g. a path outside the sandbox).
+
+    Raised by :func:`run_scan_pipeline` instead of returning an error payload so
+    the many call-sites that unpack a 4-tuple do not crash with "too many values
+    to unpack (expected 4)" and tools surface a clean, structured error. It
+    subclasses ``ValueError`` so existing ``except ValueError`` / ``except
+    Exception`` handlers still catch it; ``code`` carries the machine-readable
+    validation code.
+    """
+
+    def __init__(self, code: str, message: Exception | str, *, argument: str | None = None) -> None:
+        self.code = code
+        self.argument = argument
+        text = message if isinstance(message, str) else sanitize_error(message)
+        suffix = f" (argument: {argument})" if argument else ""
+        super().__init__(f"{code}: {text}{suffix}")
+
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +101,13 @@ async def run_scan_pipeline(
         try:
             config_path = str(safe_path(config_path))
         except ValueError as exc:
-            return mcp_error_json(CODE_VALIDATION_INVALID_PATH, exc, details={"argument": "config_path"})
+            raise McpScanValidationError(CODE_VALIDATION_INVALID_PATH, exc, argument="config_path") from exc
 
     if sbom_path:
         try:
             sbom_path = str(safe_path(sbom_path))
         except ValueError as exc:
-            return mcp_error_json(CODE_VALIDATION_INVALID_PATH, exc, details={"argument": "sbom_path"})
+            raise McpScanValidationError(CODE_VALIDATION_INVALID_PATH, exc, argument="sbom_path") from exc
 
     if image:
         try:
@@ -96,7 +115,7 @@ async def run_scan_pipeline(
 
             validate_image_ref(image)
         except Exception as exc:
-            return mcp_error_json(CODE_VALIDATION_INVALID_IMAGE_REF, exc, details={"argument": "image"})
+            raise McpScanValidationError(CODE_VALIDATION_INVALID_IMAGE_REF, exc, argument="image") from exc
 
     agents = discover_all(project_dir=config_path)
     if agents:
@@ -107,7 +126,7 @@ async def run_scan_pipeline(
             agents.append(_package_spec_agent(package))
             scan_sources.append("mcp_package")
         except ValueError as exc:
-            return mcp_error_json(CODE_VALIDATION_INVALID_PATH, exc, details={"argument": "package"})
+            raise McpScanValidationError(CODE_VALIDATION_INVALID_PATH, exc, argument="package") from exc
 
     if image:
         try:

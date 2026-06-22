@@ -239,6 +239,22 @@ class TestParseGoModRequires:
         assert "github.com/pkg/errors" in direct
         assert "github.com/sirupsen/logrus" in indirect
 
+    def test_block_require_does_not_emit_phantom_paren_package(self, tmp_path):
+        """The block opener ``require (`` must not be parsed as a module named ``(``.
+
+        Regression: the single-line regex used ``\\s+`` (which matches newlines),
+        so it matched ``require (`` + the first dependency line, emitting a phantom
+        package ``(`` whose version was the next module path. Offline, that
+        DB-uncovered phantom discarded the whole report.
+        """
+        (tmp_path / "go.mod").write_text(
+            "module example.com/m\ngo 1.21\nrequire (\n\tgithub.com/gin-gonic/gin v1.6.0\n\tgopkg.in/yaml.v2 v2.2.2 // indirect\n)\n"
+        )
+        direct, indirect, _ = _parse_go_mod_requires(tmp_path / "go.mod")
+        assert "(" not in direct and "(" not in indirect
+        assert direct == {"github.com/gin-gonic/gin": "v1.6.0"}
+        assert indirect == {"gopkg.in/yaml.v2": "v2.2.2"}
+
 
 # ── parse_go_packages ─────────────────────────────────────────────────────────
 

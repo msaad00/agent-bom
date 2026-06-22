@@ -53,6 +53,13 @@ def test_run_red_team_reports_detection_and_false_positive_rates(monkeypatch):
                 "openai_key",
                 "aws_access_key_id",
                 "ssn:",
+                # AI-safety attack markers (bias / toxicity / hallucination)
+                "inherently",
+                "because he is",
+                "worthless",
+                "kill yourself",
+                "citation needed",
+                "made up",
             )
             if "\u200b" in payload:
                 return [{"rule": "detected"}]
@@ -62,8 +69,8 @@ def test_run_red_team_reports_detection_and_false_positive_rates(monkeypatch):
 
     report = run_red_team()
 
-    assert report["attacks"] == 17
-    assert report["detected"] == 17
+    assert report["attacks"] == 23
+    assert report["detected"] == 23
     assert report["missed"] == 0
     assert report["false_positives"] == 0
     assert report["detection_rate"] == 100.0

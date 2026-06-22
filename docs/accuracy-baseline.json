@@ -15,11 +15,16 @@
     "uv run python scripts/generate_accuracy_baseline.py --check"
   ],
   "runtime_red_team": {
-    "attack_cases": 17,
+    "attack_cases": 23,
     "benign_cases": 2,
     "by_category": {
       "benign": {
         "detected": 0,
+        "passed": 2,
+        "total": 2
+      },
+      "bias": {
+        "detected": 2,
         "passed": 2,
         "total": 2
       },
@@ -32,6 +37,11 @@
         "detected": 1,
         "passed": 1,
         "total": 1
+      },
+      "hallucination": {
+        "detected": 2,
+        "passed": 2,
+        "total": 2
       },
       "prompt_injection": {
         "detected": 5,
@@ -47,14 +57,19 @@
         "detected": 5,
         "passed": 5,
         "total": 5
+      },
+      "toxicity": {
+        "detected": 2,
+        "passed": 2,
+        "total": 2
       }
     },
-    "detected_attacks": 17,
+    "detected_attacks": 23,
     "detection_rate": 100.0,
     "false_positive_rate": 0.0,
     "false_positives": 0,
     "missed_attacks": 0,
-    "total_cases": 19
+    "total_cases": 25
   },
   "scanner_corpus": {
     "demo_inventory": {

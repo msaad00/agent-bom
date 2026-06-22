@@ -11,6 +11,21 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.89.1] - 2026-06-22
+
+Patch release. Supersedes 0.89.0, which was tagged but never published: a release
+workflow defect aborted the run at startup before any artifacts were built.
+
+### Fixed
+- **Release workflow startup failure.** The `self-scan-gate` job referenced a
+  `needs.version-guard` output without declaring `version-guard` in its `needs`,
+  which GitHub rejects at workflow startup — failing the entire release run with
+  no jobs created. The job now declares both dependencies. No product code
+  changed from 0.89.0; this release carries the identical feature set documented
+  below.
+
+---
+
 ## [0.89.0] - 2026-06-22
 
 This release extends agent-bom from AI/MCP supply-chain scanning into estate-wide
@@ -1609,7 +1624,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.89.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.89.1...HEAD
+[0.89.1]: https://github.com/msaad00/agent-bom/compare/v0.89.0...v0.89.1
 [0.89.0]: https://github.com/msaad00/agent-bom/compare/v0.88.6...v0.89.0
 [0.88.6]: https://github.com/msaad00/agent-bom/compare/v0.88.5...v0.88.6
 [0.88.5]: https://github.com/msaad00/agent-bom/compare/v0.88.4...v0.88.5

@@ -331,12 +331,11 @@ def describe_secret_lifecycle_posture() -> dict[str, Any]:
     """Return a consolidated, non-secret lifecycle posture surface."""
     from agent_bom.api.audit_log import describe_audit_hmac_status
     from agent_bom.api.compliance_signing import describe_signing_posture
-    from agent_bom.api.middleware import get_rate_limit_key_status
 
     secrets = {
         "audit_hmac": describe_audit_hmac_status(),
         "compliance_signing": describe_signing_posture(),
-        "rate_limit_key": get_rate_limit_key_status(),
+        "rate_limit_key": _rate_limit_key_status(),
         "browser_session_signing": _browser_session_signing_posture(),
         "scim_bearer": _env_secret_posture(
             name="scim_bearer",
@@ -380,4 +379,86 @@ def describe_secret_lifecycle_posture() -> dict[str, Any]:
             if warnings
             else "Secret lifecycle posture is configured and rotation timestamps are current."
         ),
+    }
+
+
+def _rate_limit_key_status() -> dict[str, Any]:
+    """Return rate-limit key posture without forcing API extras into base CLI."""
+    try:
+        from agent_bom.api.middleware import get_rate_limit_key_status
+    except ModuleNotFoundError as exc:
+        if exc.name != "starlette":
+            raise
+        return _env_rate_limit_key_status()
+    return get_rate_limit_key_status()
+
+
+def _env_rate_limit_key_status() -> dict[str, Any]:
+    from agent_bom.config import (
+        RATE_LIMIT_KEY_LAST_ROTATED,
+        RATE_LIMIT_KEY_MAX_AGE_DAYS,
+        RATE_LIMIT_KEY_ROTATION_DAYS,
+    )
+
+    raw_key = os.environ.get("AGENT_BOM_RATE_LIMIT_KEY", "").strip()
+    last_rotated = RATE_LIMIT_KEY_LAST_ROTATED or None
+    rotation_days = RATE_LIMIT_KEY_ROTATION_DAYS
+    max_age_days = RATE_LIMIT_KEY_MAX_AGE_DAYS
+
+    if not raw_key:
+        return {
+            "status": "ephemeral",
+            "severity": "info",
+            "production_or_clustered": _configured_api_replicas() > 1 or _env_enabled("AGENT_BOM_ENV"),
+            "rotation_days": rotation_days,
+            "max_age_days": max_age_days,
+            "fallback_source": None,
+            "last_rotated": None,
+            "age_days": None,
+            "message": (
+                "No AGENT_BOM_RATE_LIMIT_KEY configured. Rate-limit fingerprints use a process-local random key that resets on restart."
+            ),
+        }
+
+    if last_rotated is None:
+        return {
+            "status": "unknown_age",
+            "rotation_days": rotation_days,
+            "max_age_days": max_age_days,
+            "fallback_source": None,
+            "last_rotated": None,
+            "age_days": None,
+            "message": "Rate-limit key is configured but AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED is unset.",
+        }
+
+    try:
+        rotated = datetime.fromisoformat(last_rotated)
+    except ValueError:
+        return {
+            "status": "unknown_age",
+            "rotation_days": rotation_days,
+            "max_age_days": max_age_days,
+            "fallback_source": None,
+            "last_rotated": last_rotated,
+            "age_days": None,
+            "message": "AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED is not a valid ISO-8601 timestamp.",
+        }
+
+    if rotated.tzinfo is None:
+        rotated = rotated.replace(tzinfo=timezone.utc)
+    age_days = max(0, int((datetime.now(timezone.utc) - rotated).total_seconds() // 86400))
+    if age_days >= max_age_days:
+        status = "max_age_exceeded"
+    elif age_days >= rotation_days:
+        status = "rotation_due"
+    else:
+        status = "ok"
+    return {
+        "status": status,
+        "rotation_days": rotation_days,
+        "max_age_days": max_age_days,
+        "fallback_source": None,
+        "last_rotated": rotated.isoformat(),
+        "age_days": age_days,
+        "message": f"Rate-limit key is {age_days} days old; rotation interval is {rotation_days} days.",
     }

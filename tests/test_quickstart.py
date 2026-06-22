@@ -80,6 +80,8 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     assert scan_args[1] == "agents"
     assert "--context-graph" in scan_args
     assert "--offline" in scan_args
+    assert "-o" in scan_args
+    assert str(sample_dir / "agent-bom-report.json") in scan_args
     assert str(sample_dir / "inventory.json") in scan_args
     # secure-by-default gateway baseline seeded and valid
     policy_path = sample_dir / "gateway-baseline-policy.json"

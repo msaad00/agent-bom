@@ -85,3 +85,27 @@ def test_auth_me_never_leaks_raw_key_or_token() -> None:
     body = asyncio.run(auth_me(_FakeRequest()))  # type: ignore[arg-type]
     serialized = json.dumps(body)
     assert secret not in serialized
+
+
+def test_browser_session_accepts_runtime_configured_api_key(monkeypatch) -> None:
+    from agent_bom.api import server as api_server
+    from agent_bom.api.auth import KeyStore, get_key_store, set_key_store
+
+    original_store = get_key_store()
+    set_key_store(KeyStore())
+    monkeypatch.setattr(api_server, "_runtime_api_key_seeded", False)
+
+    try:
+        api_server.configure_api(api_key="abk_runtime_test_key")
+        client = TestClient(app)
+
+        response = client.post("/v1/auth/session", json={"api_key": "abk_runtime_test_key"})
+        assert response.status_code == 204
+
+        session = client.get("/v1/auth/me").json()
+        assert session["authenticated"] is True
+        assert session["auth_method"] == "browser_session"
+        assert session["subject"] == "runtime:admin"
+        assert session["role"] == "admin"
+    finally:
+        set_key_store(original_store)

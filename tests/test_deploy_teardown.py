@@ -71,7 +71,8 @@ def test_cli_teardown_dry_run_writes_summary(tmp_path: Path):
     assert result.exit_code == 0
     assert "agent-bom teardown plan" in result.output
     assert "+ helm uninstall agent-bom --namespace agent-bom" in result.output
-    assert "+ terraform" in result.output
+    assert "terraform" in result.output
+    assert "destroy -auto-approve" in result.output
     assert (tmp_path / "corp-ai" / "generated" / "teardown-summary.txt").exists()
 
 

@@ -498,8 +498,10 @@ class TestAPIContextGraph:
         """GET /v1/scan/{id}/context-graph returns valid graph structure."""
         import asyncio
 
-        from agent_bom.api.server import _get_store, app
+        from agent_bom.api.server import _get_store, app, configure_api
 
+        api_key = "context-graph-test-key"
+        configure_api(api_key=api_key)
         store = _get_store()
         job_id = "test-cg-api"
         job = self._make_job(
@@ -516,7 +518,10 @@ class TestAPIContextGraph:
         async def _call():
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                return await client.get(f"/v1/scan/{job_id}/context-graph")
+                return await client.get(
+                    f"/v1/scan/{job_id}/context-graph",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
 
         resp = asyncio.run(_call())
         assert resp.status_code == 200
@@ -536,8 +541,10 @@ class TestAPIContextGraph:
         """GET /v1/scan/{id}/context-graph?agent=a1 filters lateral paths."""
         import asyncio
 
-        from agent_bom.api.server import _get_store, app
+        from agent_bom.api.server import _get_store, app, configure_api
 
+        api_key = "context-graph-test-key"
+        configure_api(api_key=api_key)
         store = _get_store()
         job_id = "test-cg-filter"
         job = self._make_job(
@@ -554,7 +561,10 @@ class TestAPIContextGraph:
         async def _call():
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                return await client.get(f"/v1/scan/{job_id}/context-graph?agent=a1")
+                return await client.get(
+                    f"/v1/scan/{job_id}/context-graph?agent=a1",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
 
         resp = asyncio.run(_call())
         assert resp.status_code == 200

@@ -11,6 +11,7 @@
       "type": "string"
     }
   },
+  "additionalProperties": false,
   "properties": {
     "config": {
       "anyOf": [

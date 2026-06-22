@@ -12,86 +12,102 @@ from __future__ import annotations
 
 from xml.etree.ElementTree import Element, SubElement, indent, tostring
 
+from agent_bom.finding import Finding
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
+from agent_bom.output.finding_views import (
+    cve_findings,
+    evidence,
+    has_high_or_critical,
+    is_medium,
+    package_ecosystem,
+    package_name,
+    package_version,
+    severity_value,
+)
 
 
 def to_junit(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
     """Convert an AIBOMReport to JUnit XML string."""
-    brs = blast_radii or report.blast_radii
+    findings = cve_findings(report, blast_radii)
 
     testsuites = Element("testsuites")
     testsuites.set("name", "agent-bom")
-    testsuites.set("tests", str(len(brs)))
-    testsuites.set("failures", str(sum(1 for br in brs if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH))))
-    testsuites.set("errors", str(sum(1 for br in brs if br.vulnerability.severity == Severity.MEDIUM)))
+    testsuites.set("tests", str(len(findings)))
+    testsuites.set("failures", str(sum(1 for finding in findings if has_high_or_critical(finding))))
+    testsuites.set("errors", str(sum(1 for finding in findings if is_medium(finding))))
     testsuites.set("time", "0")
 
     # Group by ecosystem
-    eco_map: dict[str, list[BlastRadius]] = {}
-    for br in brs:
-        eco = br.package.ecosystem or "unknown"
-        eco_map.setdefault(eco, []).append(br)
+    eco_map: dict[str, list[Finding]] = {}
+    for finding in findings:
+        eco = package_ecosystem(finding) or "unknown"
+        eco_map.setdefault(eco, []).append(finding)
 
-    for eco, eco_brs in sorted(eco_map.items()):
+    for eco, eco_findings in sorted(eco_map.items()):
         suite = SubElement(testsuites, "testsuite")
         suite.set("name", eco)
-        suite.set("tests", str(len(eco_brs)))
-        suite.set("failures", str(sum(1 for br in eco_brs if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH))))
-        suite.set("errors", str(sum(1 for br in eco_brs if br.vulnerability.severity == Severity.MEDIUM)))
+        suite.set("tests", str(len(eco_findings)))
+        suite.set("failures", str(sum(1 for finding in eco_findings if has_high_or_critical(finding))))
+        suite.set("errors", str(sum(1 for finding in eco_findings if is_medium(finding))))
         suite.set("time", "0")
 
-        for br in eco_brs:
-            v = br.vulnerability
+        for finding in eco_findings:
+            pkg_name = package_name(finding)
+            pkg_version = package_version(finding)
+            vuln_id = finding.cve_id or finding.id
+            sev = severity_value(finding)
+            summary = finding.description or vuln_id
             tc = SubElement(suite, "testcase")
-            tc.set("classname", f"{eco}.{br.package.name}")
-            tc.set("name", f"{v.id} ({br.package.name}@{br.package.version})")
+            tc.set("classname", f"{eco}.{pkg_name}")
+            tc.set("name", f"{vuln_id} ({pkg_name}@{pkg_version})")
             tc.set("time", "0")
 
-            sev = v.severity
-            detail = _build_detail(br)
+            detail = _build_detail(finding)
 
-            if sev in (Severity.CRITICAL, Severity.HIGH):
+            if sev in (Severity.CRITICAL.value, Severity.HIGH.value):
                 fail = SubElement(tc, "failure")
-                fail.set("message", f"{sev.value.upper()}: {v.summary or v.id}")
-                fail.set("type", sev.value)
+                fail.set("message", f"{sev.upper()}: {summary}")
+                fail.set("type", sev)
                 fail.text = detail
-            elif sev == Severity.MEDIUM:
+            elif sev == Severity.MEDIUM.value:
                 err = SubElement(tc, "error")
-                err.set("message", f"MEDIUM: {v.summary or v.id}")
+                err.set("message", f"MEDIUM: {summary}")
                 err.set("type", "medium")
                 err.text = detail
             else:
                 skipped = SubElement(tc, "skipped")
-                skipped.set("message", f"{sev.value.upper()}: {v.summary or v.id}")
+                skipped.set("message", f"{sev.upper()}: {summary}")
                 skipped.text = detail
 
     indent(testsuites, space="  ")
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(testsuites, encoding="unicode")
 
 
-def _build_detail(br: BlastRadius) -> str:
+def _build_detail(finding: Finding) -> str:
     """Build detail text for a JUnit test case."""
-    v = br.vulnerability
+    vuln_id = finding.cve_id or finding.id
     lines = [
-        f"CVE: {v.id}",
-        f"Package: {br.package.name}@{br.package.version}",
-        f"Ecosystem: {br.package.ecosystem or 'unknown'}",
-        f"Severity: {v.severity.value}",
+        f"CVE: {vuln_id}",
+        f"Package: {package_name(finding)}@{package_version(finding)}",
+        f"Ecosystem: {package_ecosystem(finding) or 'unknown'}",
+        f"Severity: {severity_value(finding)}",
     ]
-    if v.cvss_score is not None:
-        lines.append(f"CVSS: {v.cvss_score}")
-    if v.epss_score is not None:
-        lines.append(f"EPSS: {v.epss_score:.4f}")
-    if v.fixed_version:
-        lines.append(f"Fix: {v.fixed_version}")
-    if v.cwe_ids:
-        lines.append(f"CWE: {', '.join(v.cwe_ids)}")
-    if br.affected_agents:
-        lines.append(f"Affected agents: {', '.join(a.name for a in br.affected_agents)}")
-    if br.exposed_credentials:
-        lines.append(f"Exposed credentials: {len(br.exposed_credentials)}")
-    if v.summary:
-        lines.append(f"Summary: {v.summary}")
+    if finding.cvss_score is not None:
+        lines.append(f"CVSS: {finding.cvss_score}")
+    if finding.epss_score is not None:
+        lines.append(f"EPSS: {finding.epss_score:.4f}")
+    if finding.fixed_version:
+        lines.append(f"Fix: {finding.fixed_version}")
+    if finding.cwe_ids:
+        lines.append(f"CWE: {', '.join(finding.cwe_ids)}")
+    if finding.affected_agents:
+        lines.append(f"Affected agents: {', '.join(finding.affected_agents)}")
+    if finding.exposed_credentials:
+        lines.append(f"Exposed credentials: {len(finding.exposed_credentials)}")
+    if evidence(finding, "published_at", ""):
+        lines.append(f"Published: {evidence(finding, 'published_at')}")
+    if finding.description:
+        lines.append(f"Summary: {finding.description}")
     return "\n".join(lines)
 
 

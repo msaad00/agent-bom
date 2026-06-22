@@ -9,8 +9,9 @@ from __future__ import annotations
 import csv
 import io
 
-from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
+from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport, BlastRadius
+from agent_bom.output.finding_views import cve_findings, evidence, package_ecosystem, package_name, package_version, severity_value
 
 _COLUMNS = [
     "cve_id",
@@ -39,7 +40,7 @@ _COLUMNS = [
 
 def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
     """Convert an AIBOMReport to CSV string with UTF-8 BOM."""
-    brs = blast_radii or report.blast_radii
+    findings = cve_findings(report, blast_radii)
 
     buf = io.StringIO()
     # UTF-8 BOM for Excel auto-detection
@@ -48,40 +49,50 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
     writer = csv.DictWriter(buf, fieldnames=_COLUMNS, quoting=csv.QUOTE_MINIMAL)
     writer.writeheader()
 
-    for br in brs:
-        v = br.vulnerability
+    for finding in findings:
         writer.writerow(
             {
-                "cve_id": v.id,
-                "package": br.package.name,
-                "version": br.package.version or "",
-                "ecosystem": br.package.ecosystem or "",
-                "severity": v.severity.value,
-                "cvss_score": v.cvss_score if v.cvss_score is not None else "",
-                "epss_score": f"{v.epss_score:.4f}" if v.epss_score is not None else "",
-                "is_kev": "yes" if v.is_kev else "no",
-                "published_at": v.published_at or "",
-                "modified_at": v.modified_at or "",
-                "fixed_version": v.fixed_version or "",
-                "cwe_ids": ";".join(v.cwe_ids) if v.cwe_ids else "",
-                "affected_agents": ";".join(a.name for a in br.affected_agents),
-                "affected_servers": ";".join(s.name for s in br.affected_servers),
-                "exposed_credentials": str(len(br.exposed_credentials)),
-                "summary": v.summary or "",
-                "severity_source": v.severity_source or "",
-                "epss_percentile": f"{v.epss_percentile:.4f}" if v.epss_percentile is not None else "",
-                "kev_date_added": v.kev_date_added or "",
-                "kev_due_date": v.kev_due_date or "",
-                "compliance_tags": _compliance_tags_cell(br),
+                "cve_id": finding.cve_id or finding.id,
+                "package": package_name(finding),
+                "version": package_version(finding),
+                "ecosystem": package_ecosystem(finding),
+                "severity": severity_value(finding),
+                "cvss_score": finding.cvss_score if finding.cvss_score is not None else "",
+                "epss_score": f"{finding.epss_score:.4f}" if finding.epss_score is not None else "",
+                "is_kev": "yes" if finding.is_kev else "no",
+                "published_at": evidence(finding, "published_at", ""),
+                "modified_at": evidence(finding, "modified_at", ""),
+                "fixed_version": finding.fixed_version or "",
+                "cwe_ids": ";".join(finding.cwe_ids) if finding.cwe_ids else "",
+                "affected_agents": ";".join(finding.affected_agents),
+                "affected_servers": ";".join(finding.affected_servers),
+                "exposed_credentials": str(len(finding.exposed_credentials)),
+                "summary": finding.description or "",
+                "severity_source": evidence(finding, "severity_source", ""),
+                "epss_percentile": _format_optional_float(evidence(finding, "epss_percentile", None)),
+                "kev_date_added": evidence(finding, "kev_date_added", ""),
+                "kev_due_date": evidence(finding, "kev_due_date", ""),
+                "compliance_tags": _compliance_tags_cell(finding),
             }
         )
 
     return buf.getvalue()
 
 
-def _compliance_tags_cell(br: BlastRadius) -> str:
+def _format_optional_float(value: object) -> str:
+    if value is None or value == "":
+        return ""
+    if not isinstance(value, (int, float, str)):
+        return str(value)
+    try:
+        return f"{float(value):.4f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _compliance_tags_cell(finding: object) -> str:
     """Return framework-qualified tags for one spreadsheet cell."""
-    return ";".join(framework_qualified_blast_radius_tags(br))
+    return ";".join(framework_qualified_finding_tags(finding))
 
 
 def export_csv(report: AIBOMReport, output_path: str, blast_radii: list[BlastRadius] | None = None) -> None:

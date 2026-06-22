@@ -240,6 +240,18 @@ class NeptuneGraphStore:
         )
         return [self._snapshot_from_record(row) for row in rows]
 
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict[str, Any]:
+        self._unsupported("graph_history")
+
+    def evidence_manifest(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        baseline_scan_id: str = "",
+    ) -> dict[str, Any]:
+        self._unsupported("evidence_manifest")
+
     def load_graph(
         self,
         *,

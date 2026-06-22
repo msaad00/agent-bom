@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from types import SimpleNamespace
@@ -14,7 +15,16 @@ from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.routes import graph as graph_routes
 from agent_bom.api.server import app
 from agent_bom.api.stores import set_graph_store
-from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, _init_db, active_edges_at, changed_edges_between_scans, load_graph, save_graph
+from agent_bom.db.graph_store import (
+    DEFAULT_GRAPH_TENANT_ID,
+    _init_db,
+    active_edges_at,
+    changed_edges_between_scans,
+    graph_evidence_manifest,
+    graph_history,
+    load_graph,
+    save_graph,
+)
 from agent_bom.graph import (
     AttackPath,
     EntityType,
@@ -474,6 +484,55 @@ class TestGraphEndpointLogic:
         assert len(snaps) == 1
         assert snaps[0]["scan_id"] == "test-scan-001"
         assert snaps[0]["node_count"] == 4
+
+    def test_graph_history_and_manifest_are_tenant_scoped_and_redacted(self, graph_db):
+        g1 = UnifiedGraph(scan_id="tenant-a-old", tenant_id="tenant-a", created_at="2026-06-01T00:00:00Z")
+        g1.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
+        g1.add_node(
+            UnifiedNode(
+                id="vuln:CVE-2026-0001",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-0001",
+                severity="high",
+                risk_score=8.7,
+                compliance_tags=["OWASP-A06"],
+                attributes={"raw_secret_like_context": "do-not-export"},
+            )
+        )
+        g1.add_edge(
+            UnifiedEdge(
+                source="agent:a",
+                target="vuln:CVE-2026-0001",
+                relationship=RelationshipType.VULNERABLE_TO,
+                evidence={"raw": "do-not-export"},
+                provenance={"collector": "fixture"},
+            )
+        )
+        save_graph(graph_db, g1)
+
+        g2 = UnifiedGraph(scan_id="tenant-a-new", tenant_id="tenant-a", created_at="2026-06-02T00:00:00Z")
+        g2.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
+        g2.add_node(UnifiedNode(id="agent:b", entity_type=EntityType.AGENT, label="Agent B"))
+        save_graph(graph_db, g2)
+
+        other = UnifiedGraph(scan_id="tenant-b-new", tenant_id="tenant-b", created_at="2026-06-03T00:00:00Z")
+        other.add_node(UnifiedNode(id="agent:other", entity_type=EntityType.AGENT, label="Other Tenant"))
+        save_graph(graph_db, other)
+
+        history = graph_history(graph_db, tenant_id="tenant-a", limit=10)
+        manifest = graph_evidence_manifest(graph_db, tenant_id="tenant-a", scan_id="tenant-a-new")
+        encoded_manifest = json.dumps(manifest, sort_keys=True)
+
+        assert [snapshot["scan_id"] for snapshot in history["snapshots"]] == ["tenant-a-new", "tenant-a-old"]
+        assert history["snapshots"][0]["diff_baseline_scan_id"] == "tenant-a-old"
+        assert history["snapshots"][0]["diff_summary"]["nodes_added"] == 1
+        assert "tenant-b-new" not in json.dumps(history)
+        assert manifest["diff_baseline_scan_id"] == "tenant-a-old"
+        assert manifest["counts"]["nodes"] == 2
+        assert manifest["graph_digest"].startswith("sha256:")
+        assert manifest["findings_digest"].startswith("sha256:")
+        assert "graph_nodes.attributes" in manifest["excluded_private_fields"]
+        assert "do-not-export" not in encoded_manifest
 
     def test_sqlite_graph_store_search_is_server_side(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
@@ -1177,6 +1236,40 @@ class _RecordingGraphStore:
         self.calls.append(("list_snapshots", tenant_id, limit))
         return [{"scan_id": self.graph.scan_id, "created_at": self.graph.created_at, "node_count": 1, "edge_count": 0, "risk_summary": {}}]
 
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict:
+        self.calls.append(("graph_history", tenant_id, limit))
+        return {
+            "schema_version": "agent-bom.graph_history/v1",
+            "tenant_id": tenant_id,
+            "retention_policy": {"retention_days": 180, "mode": "queryable_snapshot_history"},
+            "snapshots": [
+                {
+                    "scan_id": self.graph.scan_id,
+                    "created_at": self.graph.created_at,
+                    "node_count": len(self.graph.nodes),
+                    "edge_count": len(self.graph.edges),
+                    "risk_summary": {},
+                    "diff_baseline_scan_id": "",
+                    "diff_summary": {},
+                }
+            ],
+        }
+
+    def evidence_manifest(self, *, tenant_id: str = "", scan_id: str = "", baseline_scan_id: str = "") -> dict:
+        self.calls.append(("evidence_manifest", tenant_id, scan_id, baseline_scan_id))
+        effective_scan = scan_id or self.graph.scan_id
+        return {
+            "schema_version": "agent-bom.graph_evidence_manifest/v1",
+            "tenant_id": tenant_id,
+            "scan_id": effective_scan,
+            "graph_digest": "sha256:test",
+            "findings_digest": "sha256:test",
+            "diff_baseline_scan_id": baseline_scan_id,
+            "included_tables": ["graph_snapshots", "graph_nodes", "graph_edges", "attack_paths", "interaction_risks"],
+            "excluded_private_fields": ["graph_nodes.attributes", "graph_edges.evidence"],
+            "retention_policy": {"retention_days": 180, "mode": "queryable_snapshot_history"},
+        }
+
     def snapshot_stats(self, *, tenant_id: str = "", scan_id: str = "", entity_types=None, min_severity_rank: int = 0) -> dict:
         self.calls.append(("snapshot_stats", tenant_id, scan_id, entity_types, min_severity_rank))
         return self.graph.stats()
@@ -1523,6 +1616,24 @@ class TestGraphStoreBackendSelection:
         assert changes_response.json()["summary"] == {"added": 0, "removed": 0, "changed": 0, "unchanged": 0}
         assert ("active_edges_at", "default", "2026-05-13T00:00:00Z") in recording_graph_store.calls
         assert ("changed_edges_between_scans", "default", "s1", "s2") in recording_graph_store.calls
+
+    def test_graph_history_and_manifest_routes_use_pluggable_store(self, recording_graph_store):
+        client = TestClient(app)
+
+        history = client.get("/v1/graph/history", params={"limit": 10})
+        manifest = client.get(
+            "/v1/graph/evidence-manifest",
+            params={"scan_id": "store-scan", "baseline_scan_id": "baseline-scan"},
+        )
+
+        assert history.status_code == 200
+        assert history.json()["schema_version"] == "agent-bom.graph_history/v1"
+        assert history.json()["snapshots"][0]["scan_id"] == "store-scan"
+        assert manifest.status_code == 200
+        assert manifest.json()["graph_digest"] == "sha256:test"
+        assert "graph_nodes.attributes" in manifest.json()["excluded_private_fields"]
+        assert ("graph_history", "default", 10) in recording_graph_store.calls
+        assert ("evidence_manifest", "default", "store-scan", "baseline-scan") in recording_graph_store.calls
 
     def test_fix_first_graph_view_returns_ranked_operator_cards(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))

@@ -71,6 +71,18 @@ def request_plan(*, scan_id: str, old_scan_id: str, new_scan_id: str, source_nod
             "query": {"old": old_scan_id, "new": new_scan_id},
         },
         {
+            "name": "graph_history",
+            "method": "GET",
+            "path": "/v1/graph/history",
+            "query": {"limit": "50"},
+        },
+        {
+            "name": "graph_evidence_manifest",
+            "method": "GET",
+            "path": "/v1/graph/evidence-manifest",
+            "query": {"scan_id": scan_id, "baseline_scan_id": old_scan_id},
+        },
+        {
             "name": "bounded_traversal",
             "method": "POST",
             "path": "/v1/graph/query",

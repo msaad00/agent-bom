@@ -47,6 +47,7 @@ components:
       title: AuditExportVerifyRequest
       type: object
     BrowserExtensionsRequest:
+      additionalProperties: false
       description: Request body for POST /v1/scan/browser-extensions.
       properties:
         include_low_risk:
@@ -323,6 +324,7 @@ components:
       title: ComplianceThreatModel
       type: object
     CreateKeyRequest:
+      additionalProperties: false
       properties:
         expires_at:
           anyOf:
@@ -514,6 +516,7 @@ components:
       title: CredentialRefUpdate
       type: object
     DatasetCardsRequest:
+      additionalProperties: false
       description: Request body for POST /v1/scan/dataset-cards.
       properties:
         directories:
@@ -600,6 +603,7 @@ components:
       title: EntitlementHealth
       type: object
     EvaluateRequest:
+      additionalProperties: false
       properties:
         agent_name:
           default: ''
@@ -752,6 +756,7 @@ components:
       title: EvaluationRunCreate
       type: object
     ExceptionRequest:
+      additionalProperties: false
       properties:
         expires_at:
           default: ''
@@ -785,6 +790,7 @@ components:
       title: ExceptionRequest
       type: object
     FalsePositiveRequest:
+      additionalProperties: false
       description: Request body for POST /v1/findings/false-positive.
       properties:
         marked_by:
@@ -807,6 +813,7 @@ components:
       title: FalsePositiveRequest
       type: object
     FindingFeedbackRequest:
+      additionalProperties: false
       description: Request body for POST /v1/findings/feedback.
       properties:
         expires_at:
@@ -851,6 +858,7 @@ components:
       title: FindingFeedbackRequest
       type: object
     FindingTriageDecisionRequest:
+      additionalProperties: false
       description: Request body for PUT /v1/findings/triage/{triage_id}/decision.
       properties:
         assignee:
@@ -893,6 +901,7 @@ components:
       title: FindingTriageDecisionRequest
       type: object
     FindingTriageRequest:
+      additionalProperties: false
       description: Request body for POST /v1/findings/triage.
       properties:
         assignee:
@@ -959,6 +968,7 @@ components:
       title: FindingTriageRequest
       type: object
     FleetAgentUpdate:
+      additionalProperties: false
       properties:
         environment:
           anyOf:
@@ -1256,6 +1266,7 @@ components:
       title: IntelPackageMatchRequest
       type: object
     IssueStatusUpdateRequest:
+      additionalProperties: false
       properties:
         status:
           maxLength: 64
@@ -1267,6 +1278,7 @@ components:
       title: IssueStatusUpdateRequest
       type: object
     JiraTicketRequest:
+      additionalProperties: false
       description: Request body for POST /v1/findings/jira.
       properties:
         email:
@@ -1309,6 +1321,7 @@ components:
       title: JobStatus
       type: string
     ModelFilesRequest:
+      additionalProperties: false
       description: Request body for POST /v1/scan/model-files.
       properties:
         directories:
@@ -1325,6 +1338,7 @@ components:
       title: ModelFilesRequest
       type: object
     ModelProvenanceRequest:
+      additionalProperties: false
       description: Request body for POST /v1/scan/model-provenance.
       properties:
         hf_models:
@@ -1340,6 +1354,7 @@ components:
       title: ModelProvenanceRequest
       type: object
     PolicyCreate:
+      additionalProperties: false
       properties:
         bound_agent_types:
           items:
@@ -1382,6 +1397,7 @@ components:
       title: PolicyCreate
       type: object
     PolicyUpdate:
+      additionalProperties: false
       properties:
         bound_agent_types:
           anyOf:
@@ -1453,6 +1469,7 @@ components:
       title: PresetCreate
       type: object
     PromptScanRequest:
+      additionalProperties: false
       description: Request body for POST /v1/scan/prompt-scan.
       properties:
         directories:
@@ -1468,6 +1485,7 @@ components:
       title: PromptScanRequest
       type: object
     ProxyAuditIngestRequest:
+      additionalProperties: false
       properties:
         alerts:
           items:
@@ -1529,6 +1547,7 @@ components:
       title: PushPayload
       type: object
     RotateKeyRequest:
+      additionalProperties: false
       properties:
         expires_at:
           anyOf:
@@ -1548,6 +1567,7 @@ components:
       title: RotateKeyRequest
       type: object
     SAMLLoginRequest:
+      additionalProperties: false
       properties:
         relay_state:
           anyOf:
@@ -1750,6 +1770,7 @@ components:
       title: ScanRequest
       type: object
     ScheduleCreate:
+      additionalProperties: false
       properties:
         cron_expression:
           title: Cron Expression
@@ -1775,6 +1796,7 @@ components:
       title: ScheduleCreate
       type: object
     SourceCreate:
+      additionalProperties: false
       properties:
         config:
           additionalProperties: true
@@ -1847,6 +1869,7 @@ components:
       title: SourceStatus
       type: string
     SourceUpdate:
+      additionalProperties: false
       properties:
         config:
           anyOf:
@@ -1896,6 +1919,7 @@ components:
       title: SourceUpdate
       type: object
     StateUpdate:
+      additionalProperties: false
       properties:
         reason:
           default: ''
@@ -1961,6 +1985,7 @@ components:
       title: StorageHealth
       type: object
     TenantQuotaUpdateRequest:
+      additionalProperties: false
       properties:
         active_scan_jobs:
           anyOf:
@@ -2017,6 +2042,7 @@ components:
       title: TracingHealth
       type: object
     TrainingPipelinesRequest:
+      additionalProperties: false
       description: Request body for POST /v1/scan/training-pipelines.
       properties:
         directories:
@@ -7590,6 +7616,51 @@ paths:
       summary: Get Graph Edge Changes
       tags:
       - graph
+  /v1/graph/evidence-manifest:
+    get:
+      description: Return a redaction-aware reviewer manifest for a retained graph
+        snapshot.
+      operationId: get_graph_evidence_manifest_v1_graph_evidence_manifest_get
+      parameters:
+      - description: Scan snapshot ID; latest if omitted
+        in: query
+        name: scan_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Scan snapshot ID; latest if omitted
+          title: Scan Id
+      - description: Optional diff baseline scan ID
+        in: query
+        name: baseline_scan_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Optional diff baseline scan ID
+          title: Baseline Scan Id
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Graph Evidence Manifest V1 Graph Evidence Manifest
+                  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Graph Evidence Manifest
+      tags:
+      - graph
   /v1/graph/exposure-paths:
     get:
       description: Return the MCP-compatible ExposurePath queue over REST for SDK
@@ -7694,6 +7765,41 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Get Graph Governance
+      tags:
+      - graph
+  /v1/graph/history:
+    get:
+      description: Return retained graph history and adjacent diff summaries for the
+        request tenant.
+      operationId: get_graph_history_v1_graph_history_get
+      parameters:
+      - description: Max snapshots
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 50
+          description: Max snapshots
+          maximum: 500
+          minimum: 1
+          title: Limit
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Graph History V1 Graph History Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Graph History
       tags:
       - graph
   /v1/graph/impact:

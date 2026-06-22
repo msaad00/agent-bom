@@ -9,7 +9,7 @@
     "Dry-run does not start the API, authenticate, or measure network/server latency.",
     "Live results must record the API auth mode, tenant, graph backend, and scan IDs used."
   ],
-  "generated_at": "2026-05-13T05:57:22.330599+00:00",
+  "generated_at": "2026-06-22T20:27:27.707780+00:00",
   "owner_issue": 2145,
   "repeat": 20,
   "request_plan": [
@@ -50,6 +50,23 @@
       "query": {
         "new": "graph-benchmark-estate-current",
         "old": "graph-benchmark-estate-old"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_history",
+      "path": "/v1/graph/history",
+      "query": {
+        "limit": "50"
+      }
+    },
+    {
+      "method": "GET",
+      "name": "graph_evidence_manifest",
+      "path": "/v1/graph/evidence-manifest",
+      "query": {
+        "baseline_scan_id": "graph-benchmark-estate-old",
+        "scan_id": "graph-benchmark-estate-current"
       }
     },
     {

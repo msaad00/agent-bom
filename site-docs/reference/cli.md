@@ -51,6 +51,7 @@
 | Command | Description |
 |---------|-------------|
 | `graph` | Export the transitive dependency graph from a scan report |
+| `graph-evidence` | Export retained graph snapshot history or a signed evidence manifest digest |
 | `mesh` | Show lightweight agent/MCP topology without CVE scanning |
 | `report` | History, diff, pipeline-event artifacts, local queries, analytics, dashboard, and compliance narrative workflows |
 

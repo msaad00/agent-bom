@@ -267,11 +267,13 @@ from agent_bom.cli._analysis import (  # noqa: E402
     analytics_cmd,
     dashboard_cmd,
     graph_cmd,
+    graph_evidence_cmd,
     introspect_cmd,
     mesh_cmd,
 )
 
 main.add_command(graph_cmd, "graph")
+main.add_command(graph_evidence_cmd, "graph-evidence")
 main.add_command(mesh_cmd, "mesh")
 # introspect is under `mcp introspect` — no top-level duplicate
 

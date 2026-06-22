@@ -188,6 +188,26 @@ def _reset_durable_store_singletons() -> None:
         pass
 
 
+# Auth-influencing env vars. ``configure_api`` re-derives whether the API key
+# middleware is installed from these on every call (server.py auth_configured),
+# so any one of them left set makes an otherwise-open endpoint return 401. A
+# test that sets one directly (tests/auth_helpers.py, or a setup_module block)
+# and then errors before its own cleanup runs would leak it to the next test on
+# the same xdist worker — the root of the intermittent ``assert 401 == 200``
+# flake. We snapshot these before each test and restore them after; see below.
+_AUTH_ENV_VARS = (
+    "AGENT_BOM_API_KEY",
+    "AGENT_BOM_API_KEYS",
+    "AGENT_BOM_TRUST_PROXY_AUTH",
+    "AGENT_BOM_TRUST_PROXY_AUTH_SECRET",
+    "AGENT_BOM_TRUST_PROXY_AUTH_ISSUER",
+    "AGENT_BOM_OIDC_ISSUER",
+    "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+    "AGENT_BOM_SCIM_BEARER_TOKEN",
+    "AGENT_BOM_SCIM_BEARER_TOKENS_JSON",
+)
+
+
 @pytest.fixture(autouse=True)
 def reset_global_test_state():
     """Reset process-global caches so test order does not affect outcomes."""
@@ -197,7 +217,23 @@ def reset_global_test_state():
     _reset_api_runtime_state()
     _reset_durable_store_singletons()
     _reset_runtime_state()
+
+    # Snapshot auth env AFTER module-scoped setup has run (setup_module fires
+    # before this function-scoped fixture), so module-level auth env is captured
+    # and preserved across the module's tests. Anything a *test body* sets is not
+    # in the snapshot and is reverted on teardown below — so a test that enables
+    # auth and skips its own cleanup (e.g. on an assertion error) cannot leak a
+    # 401-inducing env var into the next test on the same worker.
+    auth_env_snapshot = {var: os.environ.get(var) for var in _AUTH_ENV_VARS}
+
     yield
+
+    for var, value in auth_env_snapshot.items():
+        if value is None:
+            os.environ.pop(var, None)
+        else:
+            os.environ[var] = value
+
     _reset_resolver_state()
     _reset_registry_state()
     _reset_identity_cache_state()

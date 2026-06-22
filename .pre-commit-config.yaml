@@ -65,6 +65,16 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: release-workflow-lint
+        name: release workflow call-graph (needs + reusable-workflow permissions)
+        # Catches the two release startup_failure classes (undeclared needs.<job>
+        # refs; reusable-workflow permission under-grant under a deny-all
+        # top-level) before they reach a tag push. actionlint misses the
+        # permission case. Network-free, dependency-free.
+        entry: python3 scripts/lint_release_workflow.py .github/workflows/release.yml
+        language: system
+        pass_filenames: false
+        files: ^\.github/workflows/(release|docs|deploy-mcp-sse)\.yml$
       - id: release-surface-consistency
         name: release surface and generated atlas consistency
         entry: python3 scripts/check_release_consistency.py

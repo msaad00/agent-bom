@@ -80,7 +80,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom|policy)\.json$)'; then
             action=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/actions/setup-python/)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/actions/setup-python/|\.github/workflows/ci\.yml$)'; then
             alpine=true
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/|\.github/workflows/ci\.yml$)'; then

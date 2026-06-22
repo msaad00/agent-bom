@@ -96,7 +96,7 @@ async def generate_attack_variants(
         except Exception as exc:  # noqa: BLE001 — generation is best-effort
             logger.warning("LLM red-team: variant generation failed for %s: %s", category, exc)
             continue
-        if not result:
+        if not isinstance(result, _GeneratedVariants):
             continue
         for i, v in enumerate(result.variants):
             if not v.payload.strip():

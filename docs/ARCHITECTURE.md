@@ -51,6 +51,160 @@ flowchart TB
 | Control plane | `agent-bom agents -p . --push-url ...` | fleet inventory, scan jobs, graph state | Helm/EKS with Postgres and tenant auth |
 | Runtime enforcement | `agent-bom proxy ...` or `agent-bom mcp server` | audit JSONL, policy decisions, blocks | gateway/proxy sidecars and Shield SDK |
 
+For a repo-level map of where each layer lives in `src/agent_bom/`, see
+[`PROJECT_STRUCTURE.md`](../PROJECT_STRUCTURE.md). For role-based entry paths,
+see [`START_HERE.md`](START_HERE.md).
+
+---
+
+## 1a. Layered Stack
+
+The product reads top to bottom: inputs are normalized into one `Finding` and
+one `ContextGraph`, the control plane serves and enforces over that evidence,
+and outputs flow to both humans and headless agents. Each layer carries a single
+**value** line — what it buys you, not just what it is.
+
+```mermaid
+flowchart TB
+    subgraph L1["Inputs - meet teams where their evidence already lives"]
+        IN["Repos · lockfiles · SBOMs\nContainer images · IaC\nMCP configs · repo URLs\nCloud accounts · runtime events"]
+    end
+    subgraph L2["Scanners - breadth without standing up agents"]
+        SC["Discovery · parsers (15 ecosystems)\nOSV/advisory scanners · cloud · IaC · SAST · secrets"]
+    end
+    subgraph L3["Unified Finding - one model, so triage never forks per source"]
+        FD["Finding + enrichment\nNVD CVSS · EPSS · KEV · GHSA · compliance tags"]
+    end
+    subgraph L4["ContextGraph - turn a CVE row into a reachable blast radius"]
+        GR["UnifiedGraph\nattack-path fusion · blast reach · exposure scoring"]
+    end
+    subgraph L5["Control plane - same evidence, multi-tenant + audited"]
+        direction TB
+        MW["Middleware: auth · RBAC · tenant scope · rate-limit · audit"]
+        API["REST API (271 ops)"]
+        GW["Gateway / MCP server / proxy"]
+        MW --> API
+        MW --> GW
+    end
+    subgraph L6["Outputs - decisions in the format each consumer already trusts"]
+        OUT["SARIF · CycloneDX · SPDX · OCSF\nHTML · PDF · JSON · CSV · webhooks"]
+    end
+    subgraph L7["Consumers - one model, two audiences"]
+        HUM["Humans: CLI · UI cockpit"]
+        AG["Headless: MCP tools · REST API"]
+    end
+
+    L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7
+```
+
+---
+
+## 1b. Data Flow - one scan request
+
+A single scan request walks discovery → extraction → scan → finding → graph →
+outputs. The same lower libraries serve the CLI and the API.
+
+```mermaid
+flowchart LR
+    REQ["Scan request\n(repo / path / image /\nSBOM / MCP config / URL / cloud)"]
+    DISC["Discovery\nfind agents, MCP servers, targets"]
+    EXT["Extraction\nparse packages, manifests, configs"]
+    SCAN["Scan\nOSV batch + advisories"]
+    ENR["Enrichment\nCVSS · EPSS · KEV · GHSA · compliance"]
+    FIND["Unified Finding\nnormalized, deduped, scored"]
+    GRAPH["ContextGraph\npackage → finding → server → tool → cred → agent"]
+    OUT["Outputs\nconsole · SARIF · SBOM · HTML · graph export · webhooks"]
+
+    REQ --> DISC --> EXT --> SCAN --> ENR --> FIND --> GRAPH --> OUT
+```
+
+**Value at each hop:** discovery finds shadow AI you did not know to ask about ·
+extraction reads 15 ecosystems with one command · enrichment ranks by real-world
+exploitability, not just CVSS · the graph makes "which agent does this reach?"
+answerable · outputs land in the gate, ticket, or SIEM you already run.
+
+---
+
+## 1c. Frontend · Backend · Middleware
+
+The dashboard is one door into the product, not the only one. The Next.js UI and
+every headless caller hit the same FastAPI surface, behind the same middleware,
+over the same stores.
+
+```mermaid
+flowchart TB
+    subgraph FE["Frontend - human cockpit"]
+        UI["Next.js 16 · React 19 · Tailwind 4\ninventory · findings · graph · compliance · runtime"]
+    end
+    subgraph MW["Middleware - one enforcement seam for every caller"]
+        M1["TrustHeaders"]
+        M2["API key · auth · RBAC · tenant scope"]
+        M3["Rate limit"]
+        M4["Max body size"]
+    end
+    subgraph BE["Backend - FastAPI"]
+        R["271 REST operations across 30 route modules\nplus 2 WebSocket routes"]
+    end
+    subgraph ST["Stores - start on SQLite, scale to a cluster without rewrites"]
+        S1["SQLite (default / single node)"]
+        S2["Postgres (multi-replica)"]
+        S3["Graph store · optional Snowflake / ClickHouse"]
+    end
+
+    EXTAGENT["Headless: MCP server · REST API · SDK clients"]
+
+    UI -->|HTTPS| MW
+    EXTAGENT -->|HTTPS| MW
+    MW --> BE --> ST
+```
+
+**Value:** the middleware seam means auth, tenant isolation, and audit are
+enforced once for the UI, agents, and SDKs alike — there is no privileged
+"UI-only" backdoor.
+
+---
+
+## 1d. Input / Output Formats
+
+agent-bom is format-agnostic on both ends: ingest whatever evidence exists,
+emit whatever the next tool consumes.
+
+```mermaid
+flowchart LR
+    subgraph INPUTS["Inputs - no pre-instrumentation required"]
+        I1["Repo / path"]
+        I2["Container image"]
+        I3["SBOM"]
+        I4["MCP config"]
+        I5["Repo URL"]
+        I6["Cloud account"]
+        I7["IaC files"]
+    end
+    CORE["Unified Finding\nplus ContextGraph"]
+    subgraph OUTPUTS["Outputs - drop into the tool you already run"]
+        O1["SARIF - code scanning"]
+        O2["CycloneDX - SBOM"]
+        O3["SPDX - SBOM"]
+        O4["OCSF - SIEM"]
+        O5["HTML / PDF - review"]
+        O6["JSON / CSV - automation"]
+        O7["Webhooks - alerting"]
+    end
+
+    I1 & I2 & I3 & I4 & I5 & I6 & I7 --> CORE
+    CORE --> O1 & O2 & O3 & O4 & O5 & O6 & O7
+```
+
+| Input | Value | Output | Value |
+|---|---|---|---|
+| Repo / path | scan source where it lives | SARIF | native code-scanning ingest |
+| Container image | catch base-image + layer risk | CycloneDX / SPDX | portable SBOM for downstream tooling |
+| SBOM | re-score an existing inventory | OCSF | normalized SIEM events |
+| MCP config | map the agent ↔ server ↔ tool mesh | HTML / PDF | human-reviewable evidence |
+| Repo URL | scan code you have not cloned | JSON / CSV | machine-readable for pipelines |
+| Cloud account | read-only estate + CIS posture | Webhooks | push to alerting / ticketing |
+| IaC files | block unsafe infra pre-deploy | | |
+
 ---
 
 ## 2. Scan Pipeline

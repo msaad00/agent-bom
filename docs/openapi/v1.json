@@ -71,6 +71,7 @@
         "type": "object"
       },
       "BrowserExtensionsRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/scan/browser-extensions.",
         "properties": {
           "include_low_risk": {
@@ -469,6 +470,7 @@
         "type": "object"
       },
       "CreateKeyRequest": {
+        "additionalProperties": false,
         "properties": {
           "expires_at": {
             "anyOf": [
@@ -812,6 +814,7 @@
         "type": "object"
       },
       "DatasetCardsRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/scan/dataset-cards.",
         "properties": {
           "directories": {
@@ -940,6 +943,7 @@
         "type": "object"
       },
       "EvaluateRequest": {
+        "additionalProperties": false,
         "properties": {
           "agent_name": {
             "default": "",
@@ -1189,6 +1193,7 @@
         "type": "object"
       },
       "ExceptionRequest": {
+        "additionalProperties": false,
         "properties": {
           "expires_at": {
             "default": "",
@@ -1232,6 +1237,7 @@
         "type": "object"
       },
       "FalsePositiveRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/findings/false-positive.",
         "properties": {
           "marked_by": {
@@ -1261,6 +1267,7 @@
         "type": "object"
       },
       "FindingFeedbackRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/findings/feedback.",
         "properties": {
           "expires_at": {
@@ -1315,6 +1322,7 @@
         "type": "object"
       },
       "FindingTriageDecisionRequest": {
+        "additionalProperties": false,
         "description": "Request body for PUT /v1/findings/triage/{triage_id}/decision.",
         "properties": {
           "assignee": {
@@ -1382,6 +1390,7 @@
         "type": "object"
       },
       "FindingTriageRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/findings/triage.",
         "properties": {
           "assignee": {
@@ -1468,6 +1477,7 @@
         "type": "object"
       },
       "FleetAgentUpdate": {
+        "additionalProperties": false,
         "properties": {
           "environment": {
             "anyOf": [
@@ -1881,6 +1891,7 @@
         "type": "object"
       },
       "IssueStatusUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "status": {
             "maxLength": 64,
@@ -1896,6 +1907,7 @@
         "type": "object"
       },
       "JiraTicketRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/findings/jira.",
         "properties": {
           "email": {
@@ -1949,6 +1961,7 @@
         "type": "string"
       },
       "ModelFilesRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/scan/model-files.",
         "properties": {
           "directories": {
@@ -1971,6 +1984,7 @@
         "type": "object"
       },
       "ModelProvenanceRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/scan/model-provenance.",
         "properties": {
           "hf_models": {
@@ -1992,6 +2006,7 @@
         "type": "object"
       },
       "PolicyCreate": {
+        "additionalProperties": false,
         "properties": {
           "bound_agent_types": {
             "items": {
@@ -2049,6 +2064,7 @@
         "type": "object"
       },
       "PolicyUpdate": {
+        "additionalProperties": false,
         "properties": {
           "bound_agent_types": {
             "anyOf": [
@@ -2180,6 +2196,7 @@
         "type": "object"
       },
       "PromptScanRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/scan/prompt-scan.",
         "properties": {
           "directories": {
@@ -2201,6 +2218,7 @@
         "type": "object"
       },
       "ProxyAuditIngestRequest": {
+        "additionalProperties": false,
         "properties": {
           "alerts": {
             "items": {
@@ -2290,6 +2308,7 @@
         "type": "object"
       },
       "RotateKeyRequest": {
+        "additionalProperties": false,
         "properties": {
           "expires_at": {
             "anyOf": [
@@ -2329,6 +2348,7 @@
         "type": "object"
       },
       "SAMLLoginRequest": {
+        "additionalProperties": false,
         "properties": {
           "relay_state": {
             "anyOf": [
@@ -2659,6 +2679,7 @@
         "type": "object"
       },
       "ScheduleCreate": {
+        "additionalProperties": false,
         "properties": {
           "cron_expression": {
             "title": "Cron Expression",
@@ -2692,6 +2713,7 @@
         "type": "object"
       },
       "SourceCreate": {
+        "additionalProperties": false,
         "properties": {
           "config": {
             "additionalProperties": true,
@@ -2791,6 +2813,7 @@
         "type": "string"
       },
       "SourceUpdate": {
+        "additionalProperties": false,
         "properties": {
           "config": {
             "anyOf": [
@@ -2896,6 +2919,7 @@
         "type": "object"
       },
       "StateUpdate": {
+        "additionalProperties": false,
         "properties": {
           "reason": {
             "default": "",
@@ -2980,6 +3004,7 @@
         "type": "object"
       },
       "TenantQuotaUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "active_scan_jobs": {
             "anyOf": [
@@ -3070,6 +3095,7 @@
         "type": "object"
       },
       "TrainingPipelinesRequest": {
+        "additionalProperties": false,
         "description": "Request body for POST /v1/scan/training-pipelines.",
         "properties": {
           "directories": {

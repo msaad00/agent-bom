@@ -304,11 +304,13 @@ class ComplianceReportBundle(BaseModel):
 
 
 class StateUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     state: str
     reason: str = ""
 
 
 class FleetAgentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     owner: str | None = None
     environment: str | None = None
     tags: list[str] | None = None
@@ -319,6 +321,7 @@ class FleetAgentUpdate(BaseModel):
 
 
 class PolicyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str
     description: str = ""
     mode: str = "audit"
@@ -330,6 +333,7 @@ class PolicyCreate(BaseModel):
 
 
 class PolicyUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str | None = None
     description: str | None = None
     mode: str | None = None
@@ -341,12 +345,14 @@ class PolicyUpdate(BaseModel):
 
 
 class EvaluateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     agent_name: str = ""
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProxyAuditIngestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     source_id: str = ""
     session_id: str = ""
     idempotency_key: str = ""
@@ -355,6 +361,7 @@ class ProxyAuditIngestRequest(BaseModel):
 
 
 class SAMLLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     saml_response: str
     relay_state: str | None = None
 
@@ -365,12 +372,16 @@ class SAMLLoginRequest(BaseModel):
 class DatasetCardsRequest(BaseModel):
     """Request body for POST /v1/scan/dataset-cards."""
 
+    model_config = ConfigDict(extra="forbid")
+
     directories: list[str]
     """Directories to scan for dataset cards (dataset_info.json, README.md, .dvc)."""
 
 
 class TrainingPipelinesRequest(BaseModel):
     """Request body for POST /v1/scan/training-pipelines."""
+
+    model_config = ConfigDict(extra="forbid")
 
     directories: list[str]
     """Directories to scan for ML training artifacts (MLflow, W&B, Kubeflow)."""
@@ -379,12 +390,16 @@ class TrainingPipelinesRequest(BaseModel):
 class BrowserExtensionsRequest(BaseModel):
     """Request body for POST /v1/scan/browser-extensions."""
 
+    model_config = ConfigDict(extra="forbid")
+
     include_low_risk: bool = False
     """Include low-risk extensions (default: only medium+ risk)."""
 
 
 class ModelProvenanceRequest(BaseModel):
     """Request body for POST /v1/scan/model-provenance."""
+
+    model_config = ConfigDict(extra="forbid")
 
     hf_models: list[str] = Field(default_factory=list)
     """HuggingFace model IDs to check (e.g. ['meta-llama/Llama-2-7b-hf'])."""
@@ -396,6 +411,8 @@ class ModelProvenanceRequest(BaseModel):
 class PromptScanRequest(BaseModel):
     """Request body for POST /v1/scan/prompt-scan."""
 
+    model_config = ConfigDict(extra="forbid")
+
     directories: list[str] = Field(default_factory=list)
     """Directories to scan for prompt files (.prompt, prompt.yaml, etc.)."""
 
@@ -405,6 +422,8 @@ class PromptScanRequest(BaseModel):
 
 class ModelFilesRequest(BaseModel):
     """Request body for POST /v1/scan/model-files."""
+
+    model_config = ConfigDict(extra="forbid")
 
     directories: list[str]
     """Directories to scan for ML model files (.pt, .pkl, .safetensors, .gguf, etc.)."""
@@ -427,6 +446,7 @@ class PushPayload(BaseModel):
 
 
 class ScheduleCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str
     cron_expression: str
     scan_config: dict[str, Any] = Field(default_factory=dict)
@@ -555,6 +575,7 @@ class SourceRecord(BaseModel):
 
 
 class SourceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     display_name: str
     kind: SourceKind
     description: str = ""
@@ -568,6 +589,7 @@ class SourceCreate(BaseModel):
 
 
 class SourceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     display_name: str | None = None
     description: str | None = None
     owner: str | None = None
@@ -580,6 +602,7 @@ class SourceUpdate(BaseModel):
 
 
 class CreateKeyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str
     role: str = "viewer"
     expires_at: str | None = None
@@ -587,12 +610,14 @@ class CreateKeyRequest(BaseModel):
 
 
 class RotateKeyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str | None = None
     expires_at: str | None = None
     overlap_seconds: int | None = None
 
 
 class TenantQuotaUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     active_scan_jobs: int | None = Field(default=None, ge=0)
     retained_scan_jobs: int | None = Field(default=None, ge=0)
     fleet_agents: int | None = Field(default=None, ge=0)
@@ -600,6 +625,7 @@ class TenantQuotaUpdateRequest(BaseModel):
 
 
 class ExceptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     vuln_id: str
     package_name: str
     server_name: str = ""
@@ -612,6 +638,8 @@ class ExceptionRequest(BaseModel):
 class JiraTicketRequest(BaseModel):
     """Request body for POST /v1/findings/jira."""
 
+    model_config = ConfigDict(extra="forbid")
+
     jira_url: str
     email: str
     project_key: str
@@ -621,11 +649,14 @@ class JiraTicketRequest(BaseModel):
 
 
 class IssueStatusUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     status: str = Field(..., min_length=1, max_length=64)
 
 
 class FalsePositiveRequest(BaseModel):
     """Request body for POST /v1/findings/false-positive."""
+
+    model_config = ConfigDict(extra="forbid")
 
     vulnerability_id: str
     package: str
@@ -648,6 +679,8 @@ FindingTriageJustification = Literal[
 class FindingFeedbackRequest(BaseModel):
     """Request body for POST /v1/findings/feedback."""
 
+    model_config = ConfigDict(extra="forbid")
+
     vulnerability_id: str = Field(..., min_length=1, max_length=128)
     package: str = Field("*", min_length=1, max_length=256)
     state: FindingFeedbackState = "false_positive"
@@ -658,6 +691,8 @@ class FindingFeedbackRequest(BaseModel):
 
 class FindingTriageRequest(BaseModel):
     """Request body for POST /v1/findings/triage."""
+
+    model_config = ConfigDict(extra="forbid")
 
     vulnerability_id: str = Field(..., min_length=1, max_length=128)
     package: str = Field("*", min_length=1, max_length=256)
@@ -672,6 +707,8 @@ class FindingTriageRequest(BaseModel):
 
 class FindingTriageDecisionRequest(BaseModel):
     """Request body for PUT /v1/findings/triage/{triage_id}/decision."""
+
+    model_config = ConfigDict(extra="forbid")
 
     decision: FindingTriageDecision
     justification: FindingTriageJustification | None = None

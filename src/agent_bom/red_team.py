@@ -236,35 +236,29 @@ _ATTACKS: list[RedTeamAttack] = [
 # ── Runner ───────────────────────────────────────────────────────────────────
 
 
-def run_red_team() -> dict:
-    """Run all red team attacks against Shield and report results.
+def run_attacks(attacks: list[RedTeamAttack]) -> list[RedTeamResult]:
+    """Run a list of attacks against Shield and return per-attack results.
 
-    Returns:
-        Dict with total, detected, missed, false_positives, detection_rate,
-        and per-attack results.
+    Shared by the static baseline runner and the LLM-harnessed runner so both
+    score identically against the same guardrail engine.
     """
     from agent_bom.shield import Shield
 
     shield = Shield()
     results: list[RedTeamResult] = []
-
-    for attack in _ATTACKS:
+    for attack in attacks:
         if attack.attack_type == "tool_call":
-            assert isinstance(attack.payload, dict)
-            alerts = shield.check_tool_call(attack.tool_name, attack.payload)
+            payload = attack.payload if isinstance(attack.payload, dict) else {"value": attack.payload}
+            alerts = shield.check_tool_call(attack.tool_name, payload)
         else:
-            assert isinstance(attack.payload, str)
-            alerts = shield.check_response(attack.tool_name, attack.payload)
+            payload_text = attack.payload if isinstance(attack.payload, str) else str(attack.payload)
+            alerts = shield.check_response(attack.tool_name, payload_text)
+        results.append(RedTeamResult(attack=attack, detected=len(alerts) > 0, alerts=alerts))
+    return results
 
-        detected = len(alerts) > 0
-        results.append(
-            RedTeamResult(
-                attack=attack,
-                detected=detected,
-                alerts=alerts,
-            )
-        )
 
+def build_report(results: list[RedTeamResult]) -> dict:
+    """Build the coverage report (detection rate, FP rate, per-category) from results."""
     total = len(results)
     attacks_expected = [r for r in results if r.attack.expected_detection]
     benign = [r for r in results if not r.attack.expected_detection]
@@ -296,6 +290,16 @@ def run_red_team() -> dict:
         ],
         "by_category": _category_stats(results),
     }
+
+
+def run_red_team() -> dict:
+    """Run the static curated attack baseline against Shield and report coverage.
+
+    Deterministic, offline, no LLM. This is the stable baseline; see
+    ``red_team_llm.run_red_team_llm`` for the opt-in LLM-harnessed variant
+    expansion layered on top of these same attacks.
+    """
+    return build_report(run_attacks(_ATTACKS))
 
 
 def _category_stats(results: list[RedTeamResult]) -> dict[str, dict]:

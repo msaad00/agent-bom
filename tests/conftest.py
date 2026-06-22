@@ -26,6 +26,16 @@ os.environ.setdefault(
     tempfile.mkdtemp(prefix="agent-bom-test-state-"),
 )
 
+# The control-plane lifecycle stores (agent identity, JIT grants, runtime
+# session/event) are durable-by-default in production: without config they now
+# persist to a SQLite file under AGENT_BOM_STATE_DIR instead of memory. In the
+# test suite that shared on-disk file would leak rows between tests that rely on
+# the implicit default on the same xdist worker. Opt into the explicit ephemeral
+# (in-memory) tier for the suite so those tests stay isolated; the durable
+# default and the SQLite/Postgres tiers are exercised directly by the stores'
+# own tests, which construct the backends explicitly. Production never sets this.
+os.environ.setdefault("AGENT_BOM_EPHEMERAL_STORE", "1")
+
 
 def _reset_runtime_state() -> None:
     # Remove the kill-switch state file between tests so a blocked/CRITICAL
@@ -149,6 +159,35 @@ def _reset_api_runtime_state() -> None:
         pass
 
 
+def _reset_durable_store_singletons() -> None:
+    # The agent-identity, JIT-grant, and runtime session/event stores are now
+    # durable by default (SQLite under AGENT_BOM_STATE_DIR — the isolated temp
+    # dir set above — instead of in-memory). Their selectors memoize a
+    # process-global singleton on first use, so a store created (and the rows
+    # written) by one test would otherwise persist into the next test on the
+    # same xdist worker via the singleton AND the on-disk file. Reset the
+    # singletons to None so each test reselects a fresh store, and the per-test
+    # AGENT_BOM_DB-free default reads/writes only the isolated state dir.
+    try:
+        from agent_bom.api.agent_identity_store import set_agent_identity_store
+
+        set_agent_identity_store(None)
+    except Exception:
+        pass
+    try:
+        from agent_bom.api.runtime_event_store import set_runtime_event_store
+
+        set_runtime_event_store(None)
+    except Exception:
+        pass
+    try:
+        from agent_bom.api.cost_store import set_cost_store
+
+        set_cost_store(None)
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def reset_global_test_state():
     """Reset process-global caches so test order does not affect outcomes."""
@@ -156,10 +195,12 @@ def reset_global_test_state():
     _reset_registry_state()
     _reset_identity_cache_state()
     _reset_api_runtime_state()
+    _reset_durable_store_singletons()
     _reset_runtime_state()
     yield
     _reset_resolver_state()
     _reset_registry_state()
     _reset_identity_cache_state()
     _reset_api_runtime_state()
+    _reset_durable_store_singletons()
     _reset_runtime_state()

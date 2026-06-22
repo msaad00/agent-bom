@@ -289,6 +289,28 @@ floor on the lightweight 1k-estate set.
 
 For horizontally scaled SCIM, shared identity storage is also mandatory. Set `AGENT_BOM_POSTGRES_URL` for EKS or any multi-replica control plane, and keep `AGENT_BOM_REQUIRE_SHARED_SCIM_STORE=1` enabled in production values. SQLite is acceptable only for a single-node pilot.
 
+#### Durable-by-default lifecycle state
+
+The agent-identity store (issued tokens, rotation/revocation state), JIT grants,
+conditional-access policies, and the runtime session/observation timeline are
+**durable by default** — a control plane must not drop issued tokens, grants, or
+sessions on a single-replica restart. Backend selection, with no extra wiring:
+
+| Configuration | Backend | Durability |
+|---|---|---|
+| `AGENT_BOM_POSTGRES_URL` set (or `AGENT_BOM_DB` is a Postgres URL) | PostgreSQL with tenant `FORCE ROW LEVEL SECURITY` | Multi-replica — state is consistent across every control-plane replica |
+| `AGENT_BOM_DB` set to a file path | SQLite at that path | Single-node durable (survives restart) |
+| _nothing set_ (default) | SQLite at `${AGENT_BOM_STATE_DIR:-~/.agent-bom}/control-plane.db` | Single-node durable (survives restart) |
+| `AGENT_BOM_EPHEMERAL_STORE=1` | In-memory | **Not durable** — state is lost on restart |
+
+Tokens are stored only as SHA-256 hashes at rest, sessions stay signed with
+expiry and revocation, and tenant isolation holds across all three tiers — the
+durable default does not weaken any of these. Use `AGENT_BOM_EPHEMERAL_STORE=1`
+only for throwaway CI jobs or tests that explicitly want in-memory state; never
+in production. For any multi-replica deployment set `AGENT_BOM_POSTGRES_URL` so
+identity, JIT, and session state stay consistent across replicas instead of
+diverging on node-local SQLite.
+
 Production deployments must keep cryptographic keys separated by purpose:
 
 - `AGENT_BOM_AUDIT_HMAC_KEY` signs the tamper-evident audit chain and audit exports.

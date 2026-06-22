@@ -410,7 +410,12 @@ def _parse_go_mod_requires(
         return direct, indirect, replace_map
 
     block_re = re.compile(r"require\s*\(([^)]+)\)", re.DOTALL)
-    single_re = re.compile(r"^require\s+(\S+)\s+(\S+)(.*)", re.MULTILINE)
+    # Horizontal-whitespace only between tokens: ``\s`` also matches newlines, so
+    # the old pattern matched the block opener ``require (`` and captured ``(`` as
+    # the module + the next dependency line as its version — a phantom package
+    # that, offline, was treated as DB-uncovered and silently dropped the whole
+    # report. ``[ \t]+`` keeps the match on one line and skips the block opener.
+    single_re = re.compile(r"^require[ \t]+(\S+)[ \t]+(\S+)([^\n]*)$", re.MULTILINE)
     replace_re = re.compile(r"^replace\s+(\S+)(?:\s+\S+)?\s+=>\s+(\S+)\s+(\S+)", re.MULTILINE)
 
     # Block-style: require ( ... )

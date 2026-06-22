@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -11,12 +12,30 @@ from typing import Any, Iterable, Iterator, Sequence
 from agent_bom.api.graph_store import _escape_like_query, _node_search_text, decode_graph_cursor, encode_graph_cursor
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS
-from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, normalize_graph_tenant_id
+from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, graph_retention_policy, normalize_graph_tenant_id
 from agent_bom.graph import EntityType
 
 from .postgres_common import _apply_tenant_session, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
 
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
+_FINDING_ENTITY_TYPES = {
+    EntityType.VULNERABILITY.value,
+    EntityType.MISCONFIGURATION.value,
+    EntityType.DRIFT_INCIDENT.value,
+}
+_GRAPH_EVIDENCE_INCLUDED_TABLES = [
+    "graph_snapshots",
+    "graph_nodes",
+    "graph_edges",
+    "attack_paths",
+    "interaction_risks",
+]
+_GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS = [
+    "graph_nodes.attributes",
+    "graph_edges.provenance",
+    "graph_edges.evidence",
+    "attack_paths.credential_exposure",
+]
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
 _GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "graph_nodes": ("id", "scan_id"),
@@ -95,6 +114,22 @@ def _assert_allowed_entity_types(entity_types: set[str] | None) -> None:
     invalid = sorted(entity_types - _ALLOWED_ENTITY_TYPES)
     if invalid:
         raise ValueError(f"Unsupported graph entity type: {invalid[0]}")
+
+
+def _digest_payload(payload: Any) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _diff_summary_counts(diff: dict[str, Any]) -> dict[str, int]:
+    return {
+        "nodes_added": len(diff.get("nodes_added") or []),
+        "nodes_removed": len(diff.get("nodes_removed") or []),
+        "nodes_changed": len(diff.get("nodes_changed") or []),
+        "edges_added": len(diff.get("edges_added") or []),
+        "edges_removed": len(diff.get("edges_removed") or []),
+        "edges_changed": len(diff.get("edges_changed") or []),
+    }
 
 
 def _backfill_empty_tenant_ids(conn) -> None:
@@ -1300,6 +1335,176 @@ class PostgresGraphStore:
                 }
                 for row in rows
             ]
+
+    def _snapshot_digests(self, conn, *, tenant_id: str, scan_id: str) -> tuple[str, str, dict[str, int]]:
+        graph_rows: dict[str, list[dict[str, Any]]] = {"nodes": [], "edges": []}
+        finding_rows: dict[str, list[dict[str, Any]]] = {"findings": [], "attack_paths": [], "compliance": []}
+
+        for row in conn.execute(
+            """
+            SELECT id, entity_type, label, status, severity, severity_id, risk_score,
+                   compliance_tags, data_sources
+            FROM graph_nodes
+            WHERE tenant_id = %s AND scan_id = %s
+            ORDER BY id
+            """,
+            (tenant_id, scan_id),
+        ).fetchall():
+            node = {
+                "id": row[0],
+                "entity_type": row[1],
+                "label": row[2],
+                "status": row[3],
+                "severity": row[4] or "",
+                "severity_id": int(row[5] or 0),
+                "risk_score": float(row[6] or 0.0),
+                "compliance_tags": json.loads(row[7] or "[]"),
+                "data_sources": json.loads(row[8] or "[]"),
+            }
+            graph_rows["nodes"].append(node)
+            if row[1] in _FINDING_ENTITY_TYPES:
+                finding_rows["findings"].append(node)
+            for tag in node["compliance_tags"]:
+                finding_rows["compliance"].append({"node_id": row[0], "tag": tag})
+
+        for row in conn.execute(
+            """
+            SELECT source_id, target_id, relationship, direction, weight, traversable,
+                   valid_from, valid_to, confidence, activity_id
+            FROM graph_edges
+            WHERE tenant_id = %s AND scan_id = %s
+            ORDER BY source_id, target_id, relationship
+            """,
+            (tenant_id, scan_id),
+        ).fetchall():
+            graph_rows["edges"].append(
+                {
+                    "source_id": row[0],
+                    "target_id": row[1],
+                    "relationship": row[2],
+                    "direction": row[3],
+                    "weight": float(row[4] or 0.0),
+                    "traversable": bool(row[5]),
+                    "valid_from": row[6] or "",
+                    "valid_to": row[7] or "",
+                    "confidence": float(row[8] if row[8] is not None else 1.0),
+                    "activity_id": int(row[9] or 1),
+                }
+            )
+
+        for row in conn.execute(
+            """
+            SELECT source_node, target_node, hop_count, composite_risk, summary,
+                   path_nodes, path_edges, tool_exposure, vuln_ids
+            FROM attack_paths
+            WHERE tenant_id = %s AND scan_id = %s
+            ORDER BY source_node, target_node
+            """,
+            (tenant_id, scan_id),
+        ).fetchall():
+            finding_rows["attack_paths"].append(
+                {
+                    "source_node": row[0],
+                    "target_node": row[1],
+                    "hop_count": int(row[2] or 0),
+                    "composite_risk": float(row[3] or 0.0),
+                    "summary": row[4] or "",
+                    "path_nodes": json.loads(row[5] or "[]"),
+                    "path_edges": json.loads(row[6] or "[]"),
+                    "tool_exposure": json.loads(row[7] or "[]"),
+                    "vuln_ids": json.loads(row[8] or "[]"),
+                }
+            )
+
+        counts = {
+            "nodes": len(graph_rows["nodes"]),
+            "edges": len(graph_rows["edges"]),
+            "findings": len(finding_rows["findings"]),
+            "attack_paths": len(finding_rows["attack_paths"]),
+            "compliance_tags": len(finding_rows["compliance"]),
+        }
+        return _digest_payload(graph_rows), _digest_payload(finding_rows), counts
+
+    def graph_history(self, *, tenant_id: str = "", limit: int = 50) -> dict[str, Any]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        snapshots = self.list_snapshots(tenant_id=tenant_id, limit=limit)
+        history: list[dict[str, Any]] = []
+        for snapshot in snapshots:
+            scan_id = snapshot["scan_id"]
+            baseline = self.previous_snapshot_id(tenant_id=tenant_id, before_scan_id=scan_id)
+            diff_summary = _diff_summary_counts(self.diff_snapshots(baseline, scan_id, tenant_id=tenant_id)) if baseline else {}
+            history.append(
+                {
+                    **snapshot,
+                    "diff_baseline_scan_id": baseline,
+                    "diff_summary": diff_summary,
+                }
+            )
+        return {
+            "schema_version": "agent-bom.graph_history/v1",
+            "tenant_id": tenant_id,
+            "retention_policy": graph_retention_policy(),
+            "snapshots": history,
+        }
+
+    def evidence_manifest(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        baseline_scan_id: str = "",
+    ) -> dict[str, Any]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        generated_at = datetime.now(timezone.utc).isoformat()
+        if not effective_scan_id:
+            return {
+                "schema_version": "agent-bom.graph_evidence_manifest/v1",
+                "tenant_id": tenant_id,
+                "scan_id": "",
+                "generated_at": generated_at,
+                "retention_policy": graph_retention_policy(),
+                "included_tables": list(_GRAPH_EVIDENCE_INCLUDED_TABLES),
+                "excluded_private_fields": list(_GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS),
+            }
+        baseline = baseline_scan_id or self.previous_snapshot_id(tenant_id=tenant_id, before_scan_id=effective_scan_id)
+        with _tenant_connection(self._pool) as conn:
+            snapshot_row = conn.execute(
+                "SELECT created_at FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s",
+                (tenant_id, effective_scan_id),
+            ).fetchone()
+            if not snapshot_row:
+                return {
+                    "schema_version": "agent-bom.graph_evidence_manifest/v1",
+                    "tenant_id": tenant_id,
+                    "scan_id": "",
+                    "generated_at": generated_at,
+                    "retention_policy": graph_retention_policy(),
+                    "included_tables": list(_GRAPH_EVIDENCE_INCLUDED_TABLES),
+                    "excluded_private_fields": list(_GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS),
+                }
+            graph_digest, findings_digest, counts = self._snapshot_digests(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=effective_scan_id,
+            )
+
+        diff_summary = _diff_summary_counts(self.diff_snapshots(baseline, effective_scan_id, tenant_id=tenant_id)) if baseline else {}
+        return {
+            "schema_version": "agent-bom.graph_evidence_manifest/v1",
+            "tenant_id": tenant_id,
+            "scan_id": effective_scan_id,
+            "generated_at": generated_at,
+            "scan_created_at": str(snapshot_row[0]),
+            "graph_digest": graph_digest,
+            "findings_digest": findings_digest,
+            "diff_baseline_scan_id": baseline,
+            "diff_summary": diff_summary,
+            "counts": counts,
+            "included_tables": list(_GRAPH_EVIDENCE_INCLUDED_TABLES),
+            "excluded_private_fields": list(_GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS),
+            "retention_policy": graph_retention_policy(),
+        }
 
     @staticmethod
     def _space_token_filter(column: str, token: str) -> tuple[str, list[str]]:

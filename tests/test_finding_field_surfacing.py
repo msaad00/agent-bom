@@ -39,6 +39,9 @@ _NEW_JSON_FINDING_KEYS = {
     "affected_agents",
     "exposed_credentials",
     "exposed_tools",
+    "reachability",
+    "is_actionable",
+    "impact_category",
 }
 _NEW_SARIF_RESULT_PROPERTY_KEYS = {
     "affected_servers",

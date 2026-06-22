@@ -360,6 +360,59 @@ def graph_cmd(
             raise SystemExit(1)
 
 
+@click.command("graph-evidence")
+@click.option(
+    "--mode",
+    type=click.Choice(["history", "manifest"]),
+    default="manifest",
+    show_default=True,
+    help="Evidence view to export.",
+)
+@click.option("--graph-db", type=click.Path(dir_okay=False), default=None, help="SQLite graph DB path. Defaults to active graph config.")
+@click.option("--tenant", "tenant_id", default="default", show_default=True, help="Tenant to scope graph evidence to.")
+@click.option("--scan-id", default="", help="Snapshot ID for manifest mode. Defaults to latest.")
+@click.option("--baseline-scan-id", default="", help="Optional diff baseline snapshot for manifest mode.")
+@click.option("--limit", type=click.IntRange(min=1, max=500), default=50, show_default=True, help="Snapshot history limit.")
+@click.option("--output", "-o", "output_path", default=None, help="Write JSON to file instead of stdout.")
+def graph_evidence_cmd(
+    mode: str,
+    graph_db: Optional[str],
+    tenant_id: str,
+    scan_id: str,
+    baseline_scan_id: str,
+    limit: int,
+    output_path: Optional[str],
+) -> None:
+    """Export retained graph history or a redaction-aware evidence manifest.
+
+    \b
+    Examples:
+      agent-bom graph-evidence --mode history
+      agent-bom graph-evidence --mode manifest --scan-id scan-2026-06-22 -o manifest.json
+    """
+    from agent_bom.db.graph_store import default_graph_db_path, graph_evidence_manifest, graph_history, open_graph_db
+
+    db_path = Path(graph_db).expanduser() if graph_db else default_graph_db_path()
+    with open_graph_db(db_path) as conn:
+        if mode == "history":
+            payload = graph_history(conn, tenant_id=tenant_id, limit=limit)
+        else:
+            payload = graph_evidence_manifest(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                baseline_scan_id=baseline_scan_id,
+            )
+            if not payload.get("scan_id"):
+                raise click.ClickException("Graph snapshot not found for tenant.")
+
+    output = json.dumps(payload, indent=2, sort_keys=True)
+    if output_path:
+        Path(output_path).write_text(output + "\n", encoding="utf-8")
+    else:
+        click.echo(output)
+
+
 @click.command("mesh")
 @click.argument("scan_file", required=False, type=click.Path(exists=True))
 @click.option(

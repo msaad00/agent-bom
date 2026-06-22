@@ -7,6 +7,7 @@ import zipfile
 
 from agent_bom.models import AIBOMReport
 from agent_bom.output.cyclonedx_fmt import to_cyclonedx
+from agent_bom.output.finding_views import cve_findings, package_name, package_version, severity_value
 
 
 def export_compliance_bundle(
@@ -31,17 +32,18 @@ def export_compliance_bundle(
 
     # Build vulnerability report
     vuln_entries = []
-    for br in report.blast_radii:
+    cve_rows = cve_findings(report)
+    for finding in cve_rows:
         vuln_entries.append(
             {
-                "id": br.vulnerability.id,
-                "severity": br.vulnerability.severity.value,
-                "package": br.package.name,
-                "version": br.package.version,
-                "fixed_version": br.vulnerability.fixed_version,
-                "risk_score": br.risk_score,
-                "affected_agents": [a.name for a in br.affected_agents],
-                "affected_servers": [s.name for s in br.affected_servers],
+                "id": finding.cve_id or finding.id,
+                "severity": severity_value(finding),
+                "package": package_name(finding),
+                "version": package_version(finding),
+                "fixed_version": finding.fixed_version,
+                "risk_score": finding.risk_score,
+                "affected_agents": list(finding.affected_agents),
+                "affected_servers": list(finding.affected_servers),
             }
         )
 
@@ -68,7 +70,7 @@ def export_compliance_bundle(
         elif ctrl_id == "SR-3":
             findings = [{"type": "supply_chain", "servers": report.total_servers}]
         elif ctrl_id == "RA-3":
-            findings = [{"type": "risk_assessment", "blast_radii": len(report.blast_radii)}]
+            findings = [{"type": "risk_assessment", "findings": len(cve_rows), "blast_radii": len(cve_rows)}]
         elif ctrl_id == "AU-2":
             findings = [{"type": "audit_trail", "scan_date": report.generated_at.isoformat()}]
         control_mapping[ctrl_id] = {

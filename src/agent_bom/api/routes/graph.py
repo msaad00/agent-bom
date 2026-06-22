@@ -16,6 +16,8 @@ Endpoints:
   POST /v1/graph/query          — programmable traversal query
   GET  /v1/graph/node/{id}      — single node detail with edges + impact
   GET  /v1/graph/snapshots      — list persisted scan snapshots
+  GET  /v1/graph/history        — retained snapshot history with adjacent diffs
+  GET  /v1/graph/evidence-manifest — reviewer manifest for one graph snapshot
   GET  /v1/graph/legend         — entity + relationship legends
   GET  /v1/graph/schema         — canonical entity/edge taxonomy (codegen source)
   POST /v1/graph/presets        — save a filter preset
@@ -2131,6 +2133,33 @@ async def get_graph_snapshots(
 ) -> list[dict]:
     """List persisted scan snapshots ordered by creation time."""
     return await _graph_store_call(_get_graph_store_or_503().list_snapshots, tenant_id=_tenant(request), limit=limit)
+
+
+@router.get("/v1/graph/history", tags=["graph"])
+async def get_graph_history(
+    request: Request,
+    limit: int = Query(50, ge=1, le=500, description="Max snapshots"),
+) -> dict:
+    """Return retained graph history and adjacent diff summaries for the request tenant."""
+    return await _graph_store_call(_get_graph_store_or_503().graph_history, tenant_id=_tenant(request), limit=limit)
+
+
+@router.get("/v1/graph/evidence-manifest", tags=["graph"])
+async def get_graph_evidence_manifest(
+    request: Request,
+    scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
+    baseline_scan_id: Optional[str] = Query(None, description="Optional diff baseline scan ID"),
+) -> dict:
+    """Return a redaction-aware reviewer manifest for a retained graph snapshot."""
+    manifest = await _graph_store_call(
+        _get_graph_store_or_503().evidence_manifest,
+        tenant_id=_tenant(request),
+        scan_id=scan_id or "",
+        baseline_scan_id=baseline_scan_id or "",
+    )
+    if not manifest.get("scan_id"):
+        raise HTTPException(status_code=404, detail="Graph snapshot not found")
+    return manifest
 
 
 @router.get("/v1/graph/compliance", tags=["graph"])

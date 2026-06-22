@@ -4,6 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
+from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import (
     Agent,
     AgentType,
@@ -92,3 +93,39 @@ def test_summary_text(tmp_path: Path):
         summary = zf.read("summary.txt").decode()
     assert "NIST-AI-RMF" in summary
     assert "Vulnerabilities found:" in summary
+
+
+def test_unified_findings_populate_vulnerability_report(tmp_path: Path):
+    report = _make_report(with_vulns=False)
+    report.findings = [
+        Finding(
+            finding_type=FindingType.CVE,
+            source=FindingSource.SBOM,
+            asset=Asset(name="openai", asset_type="package", identifier="pkg:pypi/openai@1.0"),
+            severity="high",
+            cve_id="CVE-2026-0001",
+            fixed_version="2.0",
+            risk_score=6.0,
+            affected_agents=["claude"],
+            affected_servers=["s1"],
+            evidence={"package_name": "openai", "package_version": "1.0", "ecosystem": "pypi"},
+        )
+    ]
+    out = tmp_path / "evidence.zip"
+
+    export_compliance_bundle(report, "cmmc", str(out))
+
+    with zipfile.ZipFile(str(out)) as zf:
+        vulns = json.loads(zf.read("vulnerability_report.json"))
+    assert vulns == [
+        {
+            "id": "CVE-2026-0001",
+            "severity": "high",
+            "package": "openai",
+            "version": "1.0",
+            "fixed_version": "2.0",
+            "risk_score": 6.0,
+            "affected_agents": ["claude"],
+            "affected_servers": ["s1"],
+        }
+    ]

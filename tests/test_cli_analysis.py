@@ -11,6 +11,7 @@ from agent_bom.cli._analysis import (
     analytics_cmd,
     dashboard_cmd,
     graph_cmd,
+    graph_evidence_cmd,
     introspect_cmd,
     mesh_cmd,
 )
@@ -213,6 +214,33 @@ def test_graph_cmd_load_error(tmp_path):
     with patch("agent_bom.output.graph_export.load_graph_from_scan", side_effect=ValueError("bad scan")):
         result = runner.invoke(graph_cmd, [str(scan_file)])
         assert result.exit_code == 1
+
+
+def test_graph_evidence_cmd_exports_manifest_from_local_graph_db(tmp_path):
+    from agent_bom.db.graph_store import open_graph_db, save_graph
+    from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+    db_path = tmp_path / "graph.db"
+    old_graph = UnifiedGraph(scan_id="old-scan", tenant_id="tenant-a", created_at="2026-06-01T00:00:00Z")
+    old_graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
+    new_graph = UnifiedGraph(scan_id="new-scan", tenant_id="tenant-a", created_at="2026-06-02T00:00:00Z")
+    new_graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
+    new_graph.add_node(UnifiedNode(id="agent:b", entity_type=EntityType.AGENT, label="Agent B"))
+    with open_graph_db(db_path) as conn:
+        save_graph(conn, old_graph)
+        save_graph(conn, new_graph)
+
+    result = CliRunner().invoke(
+        graph_evidence_cmd,
+        ["--graph-db", str(db_path), "--tenant", "tenant-a", "--mode", "manifest", "--scan-id", "new-scan"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["scan_id"] == "new-scan"
+    assert payload["diff_baseline_scan_id"] == "old-scan"
+    assert payload["diff_summary"]["nodes_added"] == 1
+    assert payload["graph_digest"].startswith("sha256:")
 
 
 # ---------------------------------------------------------------------------

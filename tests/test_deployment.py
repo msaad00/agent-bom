@@ -360,6 +360,8 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     assert "tool_count" in workflow
     assert "auth_required" in workflow
     assert "probe_failed=true" in workflow
+    assert "server.smithery.ai" in workflow
+    assert "invalid_smithery_proxy" in workflow
     assert "steps.railway.outputs.probe_failed != 'true'" in workflow
     assert "--resolve-only" in workflow
 

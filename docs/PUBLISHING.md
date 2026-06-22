@@ -24,7 +24,10 @@ ingress or platform edge.
 If you need a public unauthenticated registry/demo endpoint, treat that as a separate,
 explicitly less-trusted deployment surface rather than weakening the primary service.
 Release automation now requires that public endpoint to be set explicitly via
-`SMITHERY_MCP_URL`. It does not fall back to the protected Railway URL.
+`SMITHERY_MCP_URL`. It does not fall back to the protected Railway URL, and it
+must not be the Smithery hosted proxy URL (`https://server.smithery.ai/.../mcp`).
+The variable should be the upstream public origin whose `/health` response is
+agent-bom JSON with `version`, `auth_required=false`, and `tool_count`.
 
 ### Step 2: Publish to Smithery
 
@@ -40,7 +43,9 @@ The `publish-registries.yml` workflow auto-publishes to Smithery on each release
 - `SMITHERY_API_TOKEN`
 - `SMITHERY_MCP_URL`
 
-Before publish, CI probes the public endpoint and fails if:
+The release publish workflow probes the public endpoint as best-effort context
+because Smithery rebuilds asynchronously. The daily deployment and surface
+freshness workflows own drift detection and open issues when:
 - the endpoint is unreachable
 - the endpoint reports `auth_required=true`
 - the endpoint is otherwise unsuitable for public registry publishing

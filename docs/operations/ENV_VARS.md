@@ -140,6 +140,13 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_POSTGRES_POOL_MIN_SIZE` | `int` | `5` | Used by api/postgres_store.py and shared Postgres-backed control-plane services such as the distributed rate limiter.  Defaults target multi-replica self-hosted control planes rather than a single local developer process. |
 | `AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS` | `int` | `15000` | — |
 
+## Public-repo clone-and-scan bounds
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_REPO_SCAN_CLONE_TIMEOUT_SECONDS` | `float` | `120.0` | Max wall-clock seconds for the `git clone` step before it is aborted. |
+| `AGENT_BOM_REPO_SCAN_MAX_FILES` | `int` | `100000` | Max number of files in the cloned working tree. |
+| `AGENT_BOM_REPO_SCAN_MAX_SIZE_BYTES` | `int` | `1024 * 1024 * 1024` | Max total on-disk size (bytes) of the cloned working tree. Default 1 GiB. |
+
 ## Rate-limit fingerprint key rotation policy
 | Env var | Type | Default | Description |
 |---|---|---|---|

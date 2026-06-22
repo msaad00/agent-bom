@@ -12,6 +12,19 @@ def input_options(fn):
     return _apply(
         [
             click.option("--project", "-p", type=click.Path(exists=True), help="Project directory to scan"),
+            click.option(
+                "--repo",
+                "repo_url",
+                type=str,
+                default=None,
+                metavar="URL",
+                help=(
+                    "Public git repository URL to clone and scan (e.g. "
+                    "https://github.com/org/repo). Shallow, static, read-only: the repo is "
+                    "cloned to a temp dir, scanned without executing its code, then deleted. "
+                    "Mutually exclusive with --project/-p."
+                ),
+            ),
             click.option("--config-dir", type=click.Path(exists=True), help="Custom agent config directory to scan"),
             click.option("--inventory", type=str, default=None, help="Inventory file (JSON or CSV). Use '-' for stdin."),
             click.option(

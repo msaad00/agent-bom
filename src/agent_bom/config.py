@@ -371,3 +371,18 @@ MCP_MAX_REQUEST_TRACES = _int("AGENT_BOM_MCP_MAX_REQUEST_TRACES", 256)
 # executor per call.
 
 SHIELD_ASYNC_BRIDGE_MAX_WORKERS = _int("AGENT_BOM_SHIELD_ASYNC_BRIDGE_MAX_WORKERS", 4)
+
+
+# ── Public-repo clone-and-scan bounds ────────────────────────────────────
+# Cloning untrusted public repositories by URL is bounded to keep the
+# operation safe and predictable: shallow single-branch clones only, with a
+# wall-clock timeout, a total on-disk size cap, and a file-count cap. The scan
+# itself is static (no repo code is ever executed), so these bounds guard
+# against resource exhaustion (huge repos / clone bombs), not code execution.
+
+# Max wall-clock seconds for the `git clone` step before it is aborted.
+REPO_SCAN_CLONE_TIMEOUT_SECONDS = _float("AGENT_BOM_REPO_SCAN_CLONE_TIMEOUT_SECONDS", 120.0)
+# Max total on-disk size (bytes) of the cloned working tree. Default 1 GiB.
+REPO_SCAN_MAX_SIZE_BYTES = _int("AGENT_BOM_REPO_SCAN_MAX_SIZE_BYTES", 1024 * 1024 * 1024)
+# Max number of files in the cloned working tree.
+REPO_SCAN_MAX_FILES = _int("AGENT_BOM_REPO_SCAN_MAX_FILES", 100_000)

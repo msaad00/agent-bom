@@ -67,30 +67,44 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
+      # Post-publish liveness probe of the Smithery-hosted endpoint. Best-effort
+      # confirmation, NOT a gate: Smithery rebuilds the server asynchronously
+      # (the new version may not be live for minutes) and the hosted endpoint is
+      # auth-gated with no public /health — both the correct secure posture, not
+      # a failure. A hard failure here previously red-failed the whole publish
+      # even though the catalog push (next step) succeeded. Warn instead so
+      # staleness stays visible without burning the run.
       - name: Validate Smithery public endpoint
         if: steps.smithery_config.outputs.enabled == 'true'
+        continue-on-error: true
         env:
           SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
         run: |
-          RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
-            --base-url "$SMITHERY_MCP_URL" \
-            --attempts 3 \
-            --backoff-seconds 5 \
-            --timeout 15 \
-            --forbid-auth-required)
-
-          PUBLIC_VERSION=$(echo "$RESPONSE" | python3 -c "
+          if RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
+              --base-url "$SMITHERY_MCP_URL" \
+              --attempts 3 \
+              --backoff-seconds 5 \
+              --timeout 15 2>&1); then
+            PUBLIC_VERSION=$(echo "$RESPONSE" | python3 -c "
           import json, sys
-          data = json.load(sys.stdin)
-          print(data.get('version', 'unknown'))
+          try:
+              print(json.load(sys.stdin).get('version', 'unknown'))
+          except Exception:
+              print('unknown')
           ")
-          PUBLIC_TOOLS=$(echo "$RESPONSE" | python3 -c "
+            PUBLIC_TOOLS=$(echo "$RESPONSE" | python3 -c "
           import json, sys
-          data = json.load(sys.stdin)
-          print(data.get('tool_count', data.get('mcp_metrics', {}).get('tool_count', 'unknown')))
+          try:
+              data = json.load(sys.stdin)
+              print(data.get('tool_count', data.get('mcp_metrics', {}).get('tool_count', 'unknown')))
+          except Exception:
+              print('unknown')
           ")
-          echo "Smithery public endpoint version: ${PUBLIC_VERSION}"
-          echo "Smithery public endpoint tool count: ${PUBLIC_TOOLS}"
+            echo "Smithery hosted endpoint version: ${PUBLIC_VERSION}"
+            echo "Smithery hosted endpoint tool count: ${PUBLIC_TOOLS}"
+          else
+            echo "::warning::Could not read version from the Smithery hosted endpoint (${SMITHERY_MCP_URL}). Expected while Smithery is still rebuilding (async) or because the endpoint is auth-gated / has no public /health. The catalog publish below still runs; confirm at https://smithery.ai/server/@agent-bom/agent-bom"
+          fi
 
       - name: Publish to Smithery
         if: steps.smithery_config.outputs.enabled == 'true'
@@ -174,8 +188,16 @@ jobs:
             echo "::warning::Glama rebuild trigger returned HTTP ${HTTP_STATUS} — may need manual rebuild"
           fi
 
+      # Glama re-crawls listings on its own cadence (can be hours), so a tight
+      # post-trigger freshness window legitimately fails on release day even
+      # though the rebuild was triggered. Warn instead of red-failing the
+      # publish; the listing self-resolves once Glama re-crawls.
       - name: Verify Glama listing freshness
-        run: python scripts/check_glama_listing.py --retries 6 --delay-seconds 30
+        continue-on-error: true
+        run: |
+          if ! python scripts/check_glama_listing.py --retries 6 --delay-seconds 30; then
+            echo "::warning::Glama listing not yet refreshed to the new version. Glama re-crawls asynchronously (can take hours); the rebuild was already triggered, so this self-resolves. Listing: https://glama.ai/mcp/servers/msaad00/agent-bom"
+          fi
 
   clawhub:
     name: Publish to ClawHub

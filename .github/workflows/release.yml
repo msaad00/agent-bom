@@ -1027,5 +1027,7 @@ jobs:
     name: Deploy MCP SSE
     needs: github-release
     if: ${{ vars.DEPLOY_TARGET == 'railway' }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/deploy-mcp-sse.yml
     secrets: inherit

@@ -11,6 +11,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.89.2] - 2026-06-22
+
+Patch release. Supersedes 0.89.1, which was tagged but never published: a second
+release-workflow startup failure (distinct from the 0.89.0 cause). Same feature
+set as 0.89.0.
+
+### Fixed
+- **Release workflow startup failure (reusable-workflow permissions).** The
+  `deploy-mcp-sse` job called a reusable workflow without declaring job-level
+  `permissions`, so it inherited the top-level deny-all default while the called
+  workflow requested `contents: read`. A reusable workflow cannot request more
+  than its caller grants, so GitHub aborted the entire release run at startup.
+  The job now declares `permissions: contents: read`, matching the pattern the
+  `docs-site` reusable call already uses.
+
+---
+
 ## [0.89.1] - 2026-06-22
 
 Patch release. Supersedes 0.89.0, which was tagged but never published: a release
@@ -1624,7 +1641,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.89.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.89.2...HEAD
+[0.89.2]: https://github.com/msaad00/agent-bom/compare/v0.89.1...v0.89.2
 [0.89.1]: https://github.com/msaad00/agent-bom/compare/v0.89.0...v0.89.1
 [0.89.0]: https://github.com/msaad00/agent-bom/compare/v0.88.6...v0.89.0
 [0.88.6]: https://github.com/msaad00/agent-bom/compare/v0.88.5...v0.88.6

@@ -65,3 +65,9 @@ deploy/helm/agent-bom/**/* [0-9].yaml
 # Local working screenshots dropped at the repo root (graph/console captures);
 # real docs imagery lives under docs/images/.
 /*.png
+
+# Working-copy hygiene — Finder/iCloud duplicate copies, scan-output, macOS cruft
+* 2.*
+*-report.json
+agent-bom-report.json
+.DS_Store

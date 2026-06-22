@@ -1,5 +1,13 @@
 # agent-bom
 
+!!! info "Canonical docs tree"
+    This MkDocs site is the source of truth for **getting-started and narrative
+    documentation**. The **engineering/operator reference** lives in the
+    repository's [`docs/`](https://github.com/msaad00/agent-bom/tree/main/docs)
+    tree (architecture, threat model, deployment, graph contract, repo map).
+    When a topic appears in both, this site is canonical for onboarding and
+    `docs/` is canonical for the reference detail.
+
 **Open security scanner and self-hosted control plane for AI/MCP infrastructure.**
 
 Headless agent primitives and human cockpit surfaces use the same evidence

@@ -112,6 +112,38 @@ class TestBuildGraph:
         exposes = [e for e in graph.edges if e.kind == EdgeKind.EXPOSES]
         assert len(exposes) == 1
 
+    def test_credential_nodes_from_credential_env_vars(self):
+        # The serialized scan contract surfaces credentials via
+        # ``credential_env_vars`` with ``env`` often empty/redacted. The legacy
+        # reader previously looked only at ``env`` and emitted zero credential
+        # nodes on real scan JSON — regression guard for that.
+        server = {
+            **_server(name="aws-ops"),
+            "env": {},
+            "credential_env_vars": ["AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN"],
+        }
+        graph = build_context_graph([_agent(servers=[server])], [])
+        assert "cred:AWS_SECRET_ACCESS_KEY" in graph.nodes
+        assert "cred:GITHUB_TOKEN" in graph.nodes
+        assert graph.nodes["cred:AWS_SECRET_ACCESS_KEY"].kind == NodeKind.CREDENTIAL
+        exposes = [e for e in graph.edges if e.kind == EdgeKind.EXPOSES]
+        assert len(exposes) == 2
+
+    def test_shares_credential_edge_from_credential_env_vars(self):
+        # Two agents whose servers expose the same credential (surfaced via
+        # credential_env_vars) must yield a SHARES_CREDENTIAL lateral edge —
+        # previously lost because no credential nodes were built from output JSON.
+        def _cred_server(name):
+            return {**_server(name=name), "env": {}, "credential_env_vars": ["DATABASE_URL"]}
+
+        agents = [
+            _agent(name="a1", servers=[_cred_server("s1")]),
+            _agent(name="a2", servers=[_cred_server("s2")]),
+        ]
+        graph = build_context_graph(agents, [])
+        shares = [e for e in graph.edges if e.kind == EdgeKind.SHARES_CREDENTIAL]
+        assert len(shares) >= 1
+
     def test_tool_nodes_with_capability(self):
         agents = [_agent(servers=[_server(tools=[_tool("execute_code", "Run arbitrary code")])])]
         graph = build_context_graph(agents, [])

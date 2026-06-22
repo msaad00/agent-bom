@@ -376,6 +376,13 @@ from agent_bom.cli._identity_group import identity_group  # noqa: E402
 main.add_command(identity_group)
 
 # ---------------------------------------------------------------------------
+# Ingest command group — `agent-bom ingest [hardware]`
+# ---------------------------------------------------------------------------
+from agent_bom.cli._ingest_group import ingest_group  # noqa: E402
+
+main.add_command(ingest_group)
+
+# ---------------------------------------------------------------------------
 # Fleet command group — `agent-bom fleet [sync|list|stats]`
 # ---------------------------------------------------------------------------
 from agent_bom.cli.claw import fleet_group  # noqa: E402

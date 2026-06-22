@@ -1,29 +1,59 @@
 # Docs Index
 
-Keep top-level `docs/` focused on operator-facing and externally useful material.
+> **Canonical docs tree.** `docs/` is the source of truth for **engineering and
+> operator reference** material. The **getting-started / narrative** version of
+> the docs is the MkDocs site under [`../site-docs/`](../site-docs/index.md),
+> published at <https://msaad00.github.io/agent-bom/>. When a topic appears in
+> both, `docs/` is canonical for the reference detail and `site-docs/` is
+> canonical for the onboarding walkthrough. See
+> [`../PROJECT_STRUCTURE.md#documentation-map`](../PROJECT_STRUCTURE.md#documentation-map).
 
-Canonical docs here:
+New here? Start with [`START_HERE.md`](START_HERE.md) (role-based entry paths)
+and [`../PROJECT_STRUCTURE.md`](../PROJECT_STRUCTURE.md) (repo map).
 
-- `ARCHITECTURE.md`
-- `CONTROL_MAPPING.md`
-- `DATABASE_EVIDENCE.md`
-- `DEPLOYMENT.md`
-- `ENTERPRISE.md`
-- `ENTERPRISE_DEPLOYMENT.md`
-- `ENTERPRISE_SECURITY_POSTURE.md`
-- `MCP_CLIENT_GUIDES.md`
-- `MCP_SERVER.md`
-- `PERMISSIONS.md`
-- `RELEASE_VERIFICATION.md`
-- `SECURITY_ARCHITECTURE.md`
-- `SUPPLY_CHAIN.md`
-- `THREAT_MODEL.md`
+Keep top-level `docs/` focused on operator-facing and externally useful
+material. The index below groups the canonical docs by audience.
 
-Graph docs:
+---
 
-- `graph/CONTRACT.md` — graph coverage, accuracy guarantees, scaling
-  boundaries, non-promises, and known gaps
-- `graph/SECURITY_GRAPH_UX_RUBRIC.md` — review rubric for
-  fix-first security graph usability and actionability
+## Orientation (start here)
+
+- [`START_HERE.md`](START_HERE.md) — role-based entry paths (security engineer / platform-SRE / AI-agent developer)
+- [`../PROJECT_STRUCTURE.md`](../PROJECT_STRUCTURE.md) — repo map: where everything lives, which trees are canonical
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — layered stack, data flow, scan pipeline, blast radius, compliance tagging (mermaid)
+- [`CLI_MAP.md`](CLI_MAP.md) — all 48 top-level commands grouped by domain + intentional aliases
+
+## Security engineers (scan · gate · export)
+
+- [`SUPPLY_CHAIN.md`](SUPPLY_CHAIN.md) — supply-chain scanning model
+- [`CONTROL_MAPPING.md`](CONTROL_MAPPING.md) — compliance framework mapping
+- [`SECURITY_ARCHITECTURE.md`](SECURITY_ARCHITECTURE.md) — security architecture
+- [`THREAT_MODEL.md`](THREAT_MODEL.md) — threat model
+- [`PENTEST_READINESS.md`](PENTEST_READINESS.md) — pentest readiness
+
+## Platform / SRE (self-host · deploy · operate)
+
+- [`DEPLOYMENT.md`](DEPLOYMENT.md) — deployment reference
+- [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md) — enterprise deployment
+- [`ENTERPRISE.md`](ENTERPRISE.md) — enterprise capabilities
+- [`ENTERPRISE_SECURITY_POSTURE.md`](ENTERPRISE_SECURITY_POSTURE.md) — security posture
+- [`PERMISSIONS.md`](PERMISSIONS.md) — RBAC roles and permissions
+- [`DATABASE_EVIDENCE.md`](DATABASE_EVIDENCE.md) — persistence and evidence stores
+- [`RELEASE_VERIFICATION.md`](RELEASE_VERIFICATION.md) — release verification
+- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (230 paths / 271 operations)
+
+## AI / agent developers (MCP · clients · tools)
+
+- [`MCP_SERVER.md`](MCP_SERVER.md) — run the MCP server, 69 tools
+- [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md) — connect MCP clients
+- [`PYTHON_API.md`](PYTHON_API.md) — Python control-plane client
+
+## Graph subsystem
+
+- [`graph/CONTRACT.md`](graph/CONTRACT.md) — graph coverage, accuracy guarantees, scaling boundaries, non-promises, known gaps
+- [`graph/SECURITY_GRAPH_UX_RUBRIC.md`](graph/SECURITY_GRAPH_UX_RUBRIC.md) — review rubric for fix-first security graph usability
+- [`GRAPH_MIGRATION.md`](GRAPH_MIGRATION.md) — `context_graph.py` (legacy bridge) → `graph/builder.py` (canonical) consolidation note
+
+---
 
 Archived or historical writeups live under [`docs/archive`](archive/README.md).

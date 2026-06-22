@@ -233,6 +233,10 @@ Screenshot capture rules and the full manifest live in
 The base wheel is the scanner and CLI path. Optional runtime surfaces fail fast
 with install hints when their extras are missing.
 
+New to the repo? [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) is the repo map,
+[docs/START_HERE.md](docs/START_HERE.md) routes you by role, and
+[docs/CLI_MAP.md](docs/CLI_MAP.md) groups every command by domain.
+
 MCP registry publishing is tracked through the committed Smithery manifest and
 other registry metadata; install and liveness checks stay in the linked
 integration docs instead of this front door.

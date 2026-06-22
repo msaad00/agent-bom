@@ -50,6 +50,7 @@ jobs:
     outputs:
       action: ${{ steps.classify.outputs.action }}
       alpine: ${{ steps.classify.outputs.alpine }}
+      alpine_full: ${{ steps.classify.outputs.alpine_full }}
       endpoint: ${{ steps.classify.outputs.endpoint }}
       postgres: ${{ steps.classify.outputs.postgres }}
       ui: ${{ steps.classify.outputs.ui }}
@@ -66,6 +67,7 @@ jobs:
           changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
           action=false
           alpine=false
+          alpine_full=false
           endpoint=false
           postgres=false
           # UI Validate boots a real Next.js standalone container and runs a
@@ -78,8 +80,11 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom|policy)\.json$)'; then
             action=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/actions/setup-python/)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/actions/setup-python/|\.github/workflows/ci\.yml$)'; then
             alpine=true
+          fi
+          if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/|\.github/workflows/ci\.yml$)'; then
+            alpine_full=true
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_|\.github/workflows/ci\.yml$)'; then
             postgres=true
@@ -90,16 +95,20 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py|\.github/workflows/ci\.yml$)'; then
             ui=true
           fi
-          echo "action=${action}" >> "$GITHUB_OUTPUT"
-          echo "alpine=${alpine}" >> "$GITHUB_OUTPUT"
-          echo "endpoint=${endpoint}" >> "$GITHUB_OUTPUT"
-          echo "postgres=${postgres}" >> "$GITHUB_OUTPUT"
-          echo "ui=${ui}" >> "$GITHUB_OUTPUT"
+          {
+            echo "action=${action}"
+            echo "alpine=${alpine}"
+            echo "alpine_full=${alpine_full}"
+            echo "endpoint=${endpoint}"
+            echo "postgres=${postgres}"
+            echo "ui=${ui}"
+          } >> "$GITHUB_OUTPUT"
           {
             echo "### PR path classification"
             echo ""
             echo "- GitHub Action dogfood required: \`${action}\`"
             echo "- Alpine/musl compatibility required: \`${alpine}\`"
+            echo "- Alpine/musl full-suite required: \`${alpine_full}\`"
             echo "- Endpoint packaging required: \`${endpoint}\`"
             echo "- Real Postgres integration required: \`${postgres}\`"
             echo "- UI Validate (lint + test + build + e2e) required: \`${ui}\`"
@@ -737,8 +746,21 @@ jobs:
           uv sync --frozen --extra dev --extra api --extra mcp-server --extra snowflake
 
       - name: Run tests (musl)
+        env:
+          ALPINE_FULL: ${{ needs.changes.outputs.alpine_full }}
         run: |
-          uv run pytest tests/ -q --tb=short -m "not network" -x
+          set -euxo pipefail
+          if [ "${ALPINE_FULL}" = "true" ]; then
+            uv run pytest tests/ -q --tb=short -m "not network" -x --durations=20
+          else
+            uv run pytest -q --tb=short -m "not network" --durations=20 \
+              tests/test_api_auth_me.py \
+              tests/test_quickstart.py \
+              tests/test_deploy_teardown.py \
+              tests/test_api_compliance_auth.py::test_posture_accepts_trusted_proxy_headers \
+              tests/test_context_graph.py::TestAPIContextGraph::test_api_endpoint_returns_graph \
+              tests/test_context_graph.py::TestAPIContextGraph::test_api_agent_filter
+          fi
 
   # 3c. PR Base Branch Guard — prevent stacked PRs targeting feature branches
   base-branch-check:
@@ -986,7 +1008,9 @@ jobs:
           uv run agent-bom sbom /tmp/agent-bom-self-scan.cdx.json \
             -f sarif -o results.sarif || true
           if [ ! -f results.sarif ]; then
-            echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"agent-bom"}},"results":[]}]}' > results.sarif
+            cat > results.sarif <<'JSON'
+          {"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"agent-bom"}},"results":[]}]}
+          JSON
           fi
           # Print summary so it's visible in workflow output
           echo "=== agent-bom self-scan summary ==="

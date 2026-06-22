@@ -533,10 +533,16 @@ jobs:
 
       - name: Run tests
         run: |
+          # -n auto --dist loadscope: spread tests across worker processes,
+          # grouping same-module tests on one worker so module-scoped fixtures
+          # behave. -p no:randomly keeps CI in deterministic order (reproducible
+          # failures); it is redundant with the pytest addopts default but kept
+          # explicit. The suite is order-independent — run `pytest -p randomly`
+          # locally to verify.
           if [ "${{ matrix.python-version }}" = "3.11" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network"
+            uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network" -n auto --dist loadscope -p no:randomly
           else
-            uv run pytest tests/ -q --tb=short -m "not network"
+            uv run pytest tests/ -q --tb=short -m "not network" -n auto --dist loadscope -p no:randomly
           fi
 
       - name: Graph accuracy guards (#2259 — round-trip + edge-count + visual-diff)
@@ -701,6 +707,10 @@ jobs:
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "0.7.12"
+          # Cache ~/.cache/uv keyed on uv.lock — frozen lockfile means a stale
+          # cache can never mask drift (uv sync --frozen would fail first).
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install project dependencies
         run: |

@@ -1087,18 +1087,38 @@ class AIBOMReport:
 
         return [br for br in active_blast_radii(self.blast_radii) if br.vulnerability.severity == Severity.CRITICAL]
 
+    def _secret_findings(self) -> "list[Finding]":
+        """Hardcoded-secret findings, lifted from ``ai_inventory_data['secrets']``.
+
+        The secret scanner stores its results in a side block; surface them in the
+        unified stream so they reach JSON/SARIF/CSV — redacted, never the value.
+        """
+        block = (self.ai_inventory_data or {}).get("secrets") if self.ai_inventory_data else None
+        if not isinstance(block, dict):
+            return []
+        from agent_bom.finding import secret_dict_to_finding
+
+        return [secret_dict_to_finding(s) for s in block.get("findings", []) if isinstance(s, dict)]
+
     def to_findings(self) -> "list[Finding]":
         """Return the unified findings list, auto-populating from blast_radii if empty.
 
         Phase 1 shim: if ``self.findings`` is already populated (dual-write path),
-        return it directly.  Otherwise convert ``blast_radii`` on the fly so callers
-        can always work with the unified model.
+        use it directly.  Otherwise convert ``blast_radii`` on the fly. Hardcoded-
+        secret findings are always appended so machine consumers (JSON/SARIF/CSV)
+        see them, not just the console.
         """
         if self.findings:
-            return self.findings
-        from agent_bom.finding import blast_radius_to_finding
+            base = list(self.findings)
+        else:
+            from agent_bom.finding import blast_radius_to_finding
 
-        return [blast_radius_to_finding(br) for br in self.blast_radii]
+            base = [blast_radius_to_finding(br) for br in self.blast_radii]
+        # Avoid double-counting if a dual-write path ever adds the same secret
+        # finding, but do not suppress unrelated secret findings in the side block.
+        existing_ids = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._secret_findings() if finding.id not in existing_ids)
+        return base
 
     def cve_findings(self) -> "list[Finding]":
         """Return only CVE-type findings from the unified stream."""

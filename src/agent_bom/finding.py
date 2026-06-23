@@ -63,6 +63,7 @@ class FindingSource(str, Enum):
     EXTERNAL = "EXTERNAL"  # ingested from external scanner (Trivy/Grype/Syft JSON)
     FILESYSTEM = "FILESYSTEM"  # filesystem mount scan
     PROMPT_SCAN = "PROMPT_SCAN"  # prompt template/content scanner
+    SECRET_SCAN = "SECRET_SCAN"  # hardcoded secret / PII scanner
 
 
 @dataclass(frozen=True)
@@ -582,6 +583,62 @@ def _remediation_guidance_for_vulnerability(vuln: object, pkg: object) -> str:
     if references:
         return "Review the linked advisory references and apply the vendor-recommended mitigation or upgrade path."
     return "Review the advisory and apply the vendor-recommended mitigation, upgrade path, or compensating control."
+
+
+def _safe_secret_preview(value: object) -> str:
+    """Return a display-only secret preview that cannot carry raw secret bytes."""
+    from agent_bom.security import sanitize_text
+
+    preview = sanitize_text(value, max_len=160).strip()
+    if not preview:
+        return "***REDACTED***"
+    lowered = preview.lower()
+    if "redact" in lowered or "***" in preview or "[secret_" in lowered or "[credential_" in lowered or "[pii_" in lowered:
+        return preview
+    return "***REDACTED***"
+
+
+def secret_dict_to_finding(secret: dict) -> "Finding":
+    """Convert a secret_scanner result dict into a unified CREDENTIAL_EXPOSURE Finding.
+
+    The secret *value* is never carried — only the already-redacted preview,
+    type, category, and file:line — so a machine consumer (JSON / SARIF) sees
+    that a secret is hardcoded and where, without the secret bytes ever leaking.
+    """
+    from agent_bom.security import sanitize_text
+
+    file_path = sanitize_text(secret.get("file", "") or "", max_len=500)
+    raw_line = secret.get("line")
+    line = raw_line if isinstance(raw_line, int) else sanitize_text(raw_line, max_len=40) if raw_line is not None else None
+    secret_type = sanitize_text(secret.get("type", "secret") or "secret", max_len=120)
+    category = sanitize_text(secret.get("category", "secret") or "secret", max_len=120)
+    severity = sanitize_text(secret.get("severity", "medium") or "medium", max_len=40).upper()
+    loc = f"{file_path}:{line}" if line else file_path
+    return Finding(
+        finding_type=FindingType.CREDENTIAL_EXPOSURE,
+        source=FindingSource.SECRET_SCAN,
+        asset=Asset(
+            name=f"{secret_type} in {file_path}" if file_path else secret_type,
+            asset_type="file",
+            identifier=loc or None,
+            location=file_path or None,
+        ),
+        severity=severity,
+        title=f"Hardcoded {category}: {secret_type}",
+        description=(
+            f"A {category} ({secret_type}) was found hardcoded at {loc}. "
+            "Secrets must live only as OS/shell environment variables or in a "
+            "secret manager — never committed in code."
+        ),
+        remediation_guidance=("Remove the hardcoded value, rotate it, and load it from an environment variable or secret manager."),
+        evidence={
+            "file": file_path,
+            "line": line,
+            "secret_type": secret_type,
+            "category": category,
+            "redacted_preview": _safe_secret_preview(secret.get("preview")),
+        },
+    )
 
 
 def blast_radius_to_finding(br: object) -> "Finding":

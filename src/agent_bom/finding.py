@@ -63,6 +63,7 @@ class FindingSource(str, Enum):
     EXTERNAL = "EXTERNAL"  # ingested from external scanner (Trivy/Grype/Syft JSON)
     FILESYSTEM = "FILESYSTEM"  # filesystem mount scan
     PROMPT_SCAN = "PROMPT_SCAN"  # prompt template/content scanner
+    SECRET_SCAN = "SECRET_SCAN"  # hardcoded secret / PII scanner
 
 
 @dataclass(frozen=True)
@@ -582,6 +583,46 @@ def _remediation_guidance_for_vulnerability(vuln: object, pkg: object) -> str:
     if references:
         return "Review the linked advisory references and apply the vendor-recommended mitigation or upgrade path."
     return "Review the advisory and apply the vendor-recommended mitigation, upgrade path, or compensating control."
+
+
+def secret_dict_to_finding(secret: dict) -> "Finding":
+    """Convert a secret_scanner result dict into a unified CREDENTIAL_EXPOSURE Finding.
+
+    The secret *value* is never carried — only the already-redacted preview,
+    type, category, and file:line — so a machine consumer (JSON / SARIF) sees
+    that a secret is hardcoded and where, without the secret bytes ever leaking.
+    """
+    file_path = str(secret.get("file", "") or "")
+    line = secret.get("line")
+    secret_type = str(secret.get("type", "secret") or "secret")
+    category = str(secret.get("category", "secret") or "secret")
+    severity = str(secret.get("severity", "medium") or "medium").upper()
+    loc = f"{file_path}:{line}" if line else file_path
+    return Finding(
+        finding_type=FindingType.CREDENTIAL_EXPOSURE,
+        source=FindingSource.SECRET_SCAN,
+        asset=Asset(
+            name=f"{secret_type} in {file_path}" if file_path else secret_type,
+            asset_type="file",
+            identifier=loc or None,
+            location=file_path or None,
+        ),
+        severity=severity,
+        title=f"Hardcoded {category}: {secret_type}",
+        description=(
+            f"A {category} ({secret_type}) was found hardcoded at {loc}. "
+            "Secrets must live only as OS/shell environment variables or in a "
+            "secret manager — never committed in code."
+        ),
+        remediation_guidance=("Remove the hardcoded value, rotate it, and load it from an environment variable or secret manager."),
+        evidence={
+            "file": file_path,
+            "line": line,
+            "secret_type": secret_type,
+            "category": category,
+            "redacted_preview": secret.get("preview"),
+        },
+    )
 
 
 def blast_radius_to_finding(br: object) -> "Finding":

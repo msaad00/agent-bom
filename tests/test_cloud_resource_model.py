@@ -82,3 +82,17 @@ def test_data_services_normalize_to_shared_types() -> None:
     assert by_type[CloudResourceType.CONTAINER_REGISTRY].native_type == "Microsoft.ContainerRegistry/registries"
     # item-level native_type wins for the shared databases collection
     assert by_type[CloudResourceType.DATABASE].native_type == "Microsoft.DocumentDB/databaseAccounts"
+
+
+def test_network_topology_normalizes_to_shared_types() -> None:
+    inv = {
+        "provider": "azure",
+        "subscription_id": "s",
+        "virtual_networks": [{"name": "vnet", "id": "/.../vnet"}],
+        "public_ips": [{"name": "pip", "id": "/.../pip", "ip_address": "1.2.3.4"}],
+        "load_balancers": [{"name": "lb", "id": "/.../lb"}],
+    }
+    by_type = {r.resource_type: r for r in normalize_azure_inventory(inv)}
+    assert by_type[CloudResourceType.VIRTUAL_NETWORK].native_type == "Microsoft.Network/virtualNetworks"
+    assert by_type[CloudResourceType.PUBLIC_IP].raw["ip_address"] == "1.2.3.4"
+    assert by_type[CloudResourceType.LOAD_BALANCER].native_type == "Microsoft.Network/loadBalancers"

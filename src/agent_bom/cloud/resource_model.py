@@ -98,6 +98,9 @@ _AZURE_COLLECTION_MAP: dict[str, tuple[CloudResourceType, str]] = {
     "key_vaults": (CloudResourceType.SECRET_STORE, "Microsoft.KeyVault/vaults"),
     "container_registries": (CloudResourceType.CONTAINER_REGISTRY, "Microsoft.ContainerRegistry/registries"),
     "databases": (CloudResourceType.DATABASE, "Microsoft.DocumentDB/databaseAccounts"),
+    "virtual_networks": (CloudResourceType.VIRTUAL_NETWORK, "Microsoft.Network/virtualNetworks"),
+    "public_ips": (CloudResourceType.PUBLIC_IP, "Microsoft.Network/publicIPAddresses"),
+    "load_balancers": (CloudResourceType.LOAD_BALANCER, "Microsoft.Network/loadBalancers"),
 }
 
 

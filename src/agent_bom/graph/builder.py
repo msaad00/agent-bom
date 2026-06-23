@@ -2309,6 +2309,8 @@ def _add_normalized_cloud_resources(
         CloudResourceType.PUBLIC_IP: ("public ip", "network", False),
         CloudResourceType.LOAD_BALANCER: ("load balancer", "network", False),
     }
+    pip_node_by_arm_id: dict[str, str] = {}
+    load_balancer_nodes: list[tuple[str, dict[str, Any]]] = []
     for res in normalize_cloud_inventory(inventory):
         meta = type_meta.get(res.resource_type)
         if meta is None:
@@ -2320,6 +2322,10 @@ def _add_normalized_cloud_resources(
         node_id = f"cloud_resource:{provider}:{res.resource_type.value}:{name}"
         raw = res.raw or {}
         internet_exposed = bool(raw.get("ip_address")) or bool(raw.get("internet_facing"))
+        if res.resource_type is CloudResourceType.PUBLIC_IP and res.resource_id:
+            pip_node_by_arm_id[res.resource_id] = node_id
+        if res.resource_type is CloudResourceType.LOAD_BALANCER:
+            load_balancer_nodes.append((node_id, raw))
         graph.add_node(
             UnifiedNode(
                 id=node_id,
@@ -2351,6 +2357,24 @@ def _add_normalized_cloud_resources(
                     evidence={"source": "cloud-inventory"},
                 )
             )
+
+    # ── Internet exposure path: public IP → load balancer it fronts ──
+    # The public IP is the internet entry point; the load balancer (and its
+    # backends) sit behind it. EXPOSED_TO from the IP to the LB lets blast-radius
+    # and attack-path analysis start at the internet edge.
+    for lb_node_id, lb_raw in load_balancer_nodes:
+        for pip_arm_id in lb_raw.get("public_ip_ids", []) or []:
+            pip_node_id = pip_node_by_arm_id.get(pip_arm_id)
+            if pip_node_id:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=pip_node_id,
+                        target=lb_node_id,
+                        relationship=RelationshipType.EXPOSED_TO,
+                        weight=6.0,
+                        evidence={"source": "cloud-inventory", "reason": "public_ip_frontend"},
+                    )
+                )
 
 
 def _add_inventory_principal(

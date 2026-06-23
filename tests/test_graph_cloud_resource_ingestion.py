@@ -63,3 +63,26 @@ def test_exposure_and_datastore_flags() -> None:
     assert by_name["lb"].attributes["internet_exposed"] is True
     assert by_name["kv"].attributes["is_data_store"] is True
     assert by_name["cos"].attributes["is_data_store"] is True
+
+
+def test_public_ip_exposed_to_load_balancer_edge() -> None:
+    """A public IP fronting a load balancer becomes an EXPOSED_TO edge."""
+    pip_arm = "/subscriptions/s/.../publicIPAddresses/pip"
+    report = {
+        "cloud_inventory": [
+            {
+                "provider": "azure",
+                "status": "ok",
+                "subscription_id": "sub-1",
+                "account_id": "sub-1",
+                "public_ips": [{"name": "pip", "id": pip_arm, "ip_address": "20.1.2.3"}],
+                "load_balancers": [{"name": "lb", "id": "/.../lb", "internet_facing": True, "public_ip_ids": [pip_arm]}],
+            }
+        ]
+    }
+    g = build_unified_graph_from_report(report)
+    edges = list(g.edges.values()) if isinstance(g.edges, dict) else list(g.edges)
+    pip_node = "cloud_resource:azure:public_ip:pip"
+    lb_node = "cloud_resource:azure:load_balancer:lb"
+    exposed = [e for e in edges if e.relationship.value == "exposed_to" and e.source == pip_node and e.target == lb_node]
+    assert exposed, "no EXPOSED_TO edge from public IP to the load balancer it fronts"

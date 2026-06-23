@@ -677,7 +677,12 @@ def _discover_load_balancers(credential: Any, subscription_id: str, *, warnings:
                 continue
             sku = getattr(lb, "sku", None)
             frontends = getattr(lb, "frontend_ip_configurations", None) or []
-            internet_facing = any(getattr(fe, "public_ip_address", None) is not None for fe in frontends)
+            public_ip_ids = [
+                str(getattr(getattr(fe, "public_ip_address", None), "id", "") or "")
+                for fe in frontends
+                if getattr(fe, "public_ip_address", None) is not None
+            ]
+            public_ip_ids = [pid for pid in public_ip_ids if pid]
             load_balancers.append(
                 {
                     "name": name,
@@ -686,7 +691,8 @@ def _discover_load_balancers(credential: Any, subscription_id: str, *, warnings:
                     "resource_group": _resource_group_from_id(lb_id),
                     "tags": _clean_tags(getattr(lb, "tags", None)),
                     "sku": str(getattr(sku, "name", "") or "") if sku else "",
-                    "internet_facing": internet_facing,
+                    "internet_facing": bool(public_ip_ids),
+                    "public_ip_ids": public_ip_ids,
                 }
             )
     except Exception as exc:  # noqa: BLE001

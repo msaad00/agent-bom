@@ -91,6 +91,9 @@ azure = [
     "azure-mgmt-containerregistry>=10.3",
     "azure-mgmt-cosmosdb>=9.5",
     "azure-mgmt-managementgroups>=1.0",
+    "azure-mgmt-eventhub>=11.0",
+    "azure-mgmt-servicebus>=8.2",
+    "azure-mgmt-redis>=14.3",
     "six>=1.16",
 ]
 gcp = [

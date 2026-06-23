@@ -37,6 +37,11 @@ _SERVICES = [
     "_discover_virtual_networks",
     "_discover_public_ips",
     "_discover_load_balancers",
+    "_discover_managed_disks",
+    "_discover_app_services",
+    "_discover_event_hubs",
+    "_discover_service_bus",
+    "_discover_redis_caches",
 ]
 
 
@@ -55,7 +60,7 @@ def test_discovery_runs_concurrently(monkeypatch) -> None:
     start = time.time()
     inv = azinv.discover_inventory("sub-1", credential=object(), include_hierarchy=False, force=True)
     elapsed = time.time() - start
-    # 11 × 0.15s sequential = 1.65s; concurrent should be well under half that.
+    # 16 × 0.15s sequential = 2.4s; concurrent should be well under half that.
     assert elapsed < 0.75, f"discovery not parallel (took {elapsed:.2f}s)"
     assert inv["status"] == "ok"
     for collection in ("storage_accounts", "container_clusters", "key_vaults", "databases", "public_ips", "load_balancers"):

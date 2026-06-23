@@ -64,6 +64,7 @@ all = [
     { name = "azure-mgmt-containerregistry" },
     { name = "azure-mgmt-containerservice" },
     { name = "azure-mgmt-cosmosdb" },
+    { name = "azure-mgmt-eventhub" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-machinelearningservices" },
     { name = "azure-mgmt-managementgroups" },
@@ -71,8 +72,10 @@ all = [
     { name = "azure-mgmt-msi" },
     { name = "azure-mgmt-network" },
     { name = "azure-mgmt-rdbms" },
+    { name = "azure-mgmt-redis" },
     { name = "azure-mgmt-resource" },
     { name = "azure-mgmt-security" },
+    { name = "azure-mgmt-servicebus" },
     { name = "azure-mgmt-sql" },
     { name = "azure-mgmt-storage" },
     { name = "azure-mgmt-web" },
@@ -136,6 +139,7 @@ azure = [
     { name = "azure-mgmt-containerregistry" },
     { name = "azure-mgmt-containerservice" },
     { name = "azure-mgmt-cosmosdb" },
+    { name = "azure-mgmt-eventhub" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-machinelearningservices" },
     { name = "azure-mgmt-managementgroups" },
@@ -143,8 +147,10 @@ azure = [
     { name = "azure-mgmt-msi" },
     { name = "azure-mgmt-network" },
     { name = "azure-mgmt-rdbms" },
+    { name = "azure-mgmt-redis" },
     { name = "azure-mgmt-resource" },
     { name = "azure-mgmt-security" },
+    { name = "azure-mgmt-servicebus" },
     { name = "azure-mgmt-sql" },
     { name = "azure-mgmt-storage" },
     { name = "azure-mgmt-web" },
@@ -160,6 +166,7 @@ cloud = [
     { name = "azure-mgmt-containerregistry" },
     { name = "azure-mgmt-containerservice" },
     { name = "azure-mgmt-cosmosdb" },
+    { name = "azure-mgmt-eventhub" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-machinelearningservices" },
     { name = "azure-mgmt-managementgroups" },
@@ -167,8 +174,10 @@ cloud = [
     { name = "azure-mgmt-msi" },
     { name = "azure-mgmt-network" },
     { name = "azure-mgmt-rdbms" },
+    { name = "azure-mgmt-redis" },
     { name = "azure-mgmt-resource" },
     { name = "azure-mgmt-security" },
+    { name = "azure-mgmt-servicebus" },
     { name = "azure-mgmt-sql" },
     { name = "azure-mgmt-storage" },
     { name = "azure-mgmt-web" },
@@ -348,6 +357,7 @@ requires-dist = [
     { name = "azure-mgmt-containerregistry", marker = "extra == 'azure'", specifier = ">=10.3" },
     { name = "azure-mgmt-containerservice", marker = "extra == 'azure'", specifier = ">=30.0" },
     { name = "azure-mgmt-cosmosdb", marker = "extra == 'azure'", specifier = ">=9.5" },
+    { name = "azure-mgmt-eventhub", marker = "extra == 'azure'", specifier = ">=11.0" },
     { name = "azure-mgmt-keyvault", marker = "extra == 'azure'", specifier = ">=10.3" },
     { name = "azure-mgmt-machinelearningservices", marker = "extra == 'azure'", specifier = ">=1.0" },
     { name = "azure-mgmt-managementgroups", marker = "extra == 'azure'", specifier = ">=1.0" },
@@ -355,8 +365,10 @@ requires-dist = [
     { name = "azure-mgmt-msi", marker = "extra == 'azure'", specifier = ">=7.0" },
     { name = "azure-mgmt-network", marker = "extra == 'azure'", specifier = ">=25.0" },
     { name = "azure-mgmt-rdbms", marker = "extra == 'azure'", specifier = ">=10.1" },
+    { name = "azure-mgmt-redis", marker = "extra == 'azure'", specifier = ">=14.3" },
     { name = "azure-mgmt-resource", marker = "extra == 'azure'", specifier = ">=23.0" },
     { name = "azure-mgmt-security", marker = "extra == 'azure'", specifier = ">=7.0" },
+    { name = "azure-mgmt-servicebus", marker = "extra == 'azure'", specifier = ">=8.2" },
     { name = "azure-mgmt-sql", marker = "extra == 'azure'", specifier = ">=3.0" },
     { name = "azure-mgmt-storage", marker = "extra == 'azure'", specifier = ">=21.0" },
     { name = "azure-mgmt-web", marker = "extra == 'azure'", specifier = ">=7.2" },
@@ -851,6 +863,21 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-mgmt-eventhub"
+version = "11.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-common" },
+    { name = "azure-mgmt-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/41/5080742de3a0c7a2c579fcf6995c531d48a83f9c588b52334b41bd84d666/azure_mgmt_eventhub-11.2.0.tar.gz", hash = "sha256:31c47f18f73d2d83345cde5909568e28858c2548a35b10e23194b4767a9ce7e3", size = 626966, upload-time = "2025-01-21T07:06:47.256Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f8/a0/1142295958af5531f394662adda09ec49f0583f04475b977b4b22373336a/azure_mgmt_eventhub-11.2.0-py3-none-any.whl", hash = "sha256:a7e2618eca58d8e52c7ff7d4a04a4fae12685351746e6d01b933b43e7ea3b906", size = 1054754, upload-time = "2025-01-21T07:06:49.056Z" },
+]
+
+[[package]]
 name = "azure-mgmt-keyvault"
 version = "14.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -951,6 +978,21 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-mgmt-redis"
+version = "14.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-common" },
+    { name = "azure-mgmt-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7c/e2/7e4895296df120458af54186d788cb43abb95676e0a075c154606b8772ab/azure_mgmt_redis-14.5.0.tar.gz", hash = "sha256:5c3434c82492688e25b93aaf5113ecff0b92b7ad6da2a4fd4695530f82b152fa", size = 87997, upload-time = "2025-01-20T09:10:41.814Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/64/ac/8631a3eb30892252b5476c0e8a59c5819c6831e59f1ee769a2f8914baa86/azure_mgmt_redis-14.5.0-py3-none-any.whl", hash = "sha256:d98fe771a4478920bc520687ae158eb3c0e68faa073e5a27c2b6c65898572028", size = 128516, upload-time = "2025-01-20T09:10:43.765Z" },
+]
+
+[[package]]
 name = "azure-mgmt-resource"
 version = "25.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -976,6 +1018,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3d/90/13186657355452bdce44f27db6b194b99f78f8c185301b47624fff6d9531/azure-mgmt-security-7.0.0.tar.gz", hash = "sha256:5912eed7e9d3758fdca8d26e1dc26b41943dc4703208a1184266e2c252e1ad66", size = 684730, upload-time = "2024-05-20T05:23:17.392Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f5/d3/9541d871294dbc7c1eba3ffc9d4eb54cb651005ddbb1513a17f2a795bdfe/azure_mgmt_security-7.0.0-py3-none-any.whl", hash = "sha256:85a6d8b7a5cd74884a548ed53fed034449f54a9989edd64e9020c5837db96933", size = 1397437, upload-time = "2024-05-20T05:23:19.991Z" },
+]
+
+[[package]]
+name = "azure-mgmt-servicebus"
+version = "9.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-common" },
+    { name = "azure-mgmt-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/7d/748f8e5cbb6d1ac159c194f44597b859c5aa734d219b9fba647dd9c942e6/azure_mgmt_servicebus-9.0.0.tar.gz", hash = "sha256:1613d7e416304d6b5f4908f9622355c402614ac27ef49e56438c5c6f50f200e1", size = 172433, upload-time = "2025-04-22T09:24:45.51Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/98/e6ae212a859f8a6895e92c4889b5ee90df0aefbef9452ab7203f5d83d7be/azure_mgmt_servicebus-9.0.0-py3-none-any.whl", hash = "sha256:45c6832c68c197dcaa38dab9d58e1ca9f0f0b36a94d9d95e62520fb3eea7f003", size = 260006, upload-time = "2025-04-22T09:24:47.431Z" },
 ]
 
 [[package]]

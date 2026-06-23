@@ -31,6 +31,7 @@ _SERVICES = [
     "_discover_aks_clusters",
     "_discover_nsgs",
     "_discover_managed_identities",
+    "_discover_role_assignments",
     "_discover_key_vaults",
     "_discover_container_registries",
     "_discover_databases",

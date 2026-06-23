@@ -63,7 +63,11 @@ _AZURE_COMPUTE_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.Web/sites/read",
     "Microsoft.Network/networkSecurityGroups/read",
 )
-_AZURE_IDENTITY_PERMISSIONS: tuple[str, ...] = ("Microsoft.ManagedIdentity/userAssignedIdentities/read",)
+_AZURE_IDENTITY_PERMISSIONS: tuple[str, ...] = (
+    "Microsoft.ManagedIdentity/userAssignedIdentities/read",
+    "Microsoft.Authorization/roleAssignments/read",
+    "Microsoft.Authorization/roleDefinitions/read",
+)
 _AZURE_DATA_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.KeyVault/vaults/read",
     "Microsoft.ContainerRegistry/registries/read",
@@ -144,6 +148,7 @@ def discover_inventory(
         "container_clusters": [],
         "security_groups": [],
         "managed_identities": [],
+        "role_assignments": [],
         "service_principals": [],
         "key_vaults": [],
         "container_registries": [],
@@ -206,6 +211,7 @@ def discover_inventory(
         discovery_tasks.append(("security_groups", _discover_nsgs))
     if include_identity:
         discovery_tasks.append(("managed_identities", _discover_managed_identities))
+        discovery_tasks.append(("role_assignments", _discover_role_assignments))
     if include_data:
         discovery_tasks.append(("key_vaults", _discover_key_vaults))
         discovery_tasks.append(("container_registries", _discover_container_registries))
@@ -597,6 +603,55 @@ def _discover_managed_identities(credential: Any, subscription_id: str, *, warni
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list Azure managed identities: {sanitize_discovery_warning(exc)}")
     return identities
+
+
+def _discover_role_assignments(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate Azure RBAC role assignments in the subscription (read-only).
+
+    Each assignment links a principal (managed identity / service principal /
+    user / group) to a scope (subscription, resource group, or a specific
+    resource) via a role. The graph turns these into ``HAS_PERMISSION`` edges so
+    effective-access / privilege-escalation analysis can run on real RBAC rather
+    than guessed privilege. Role-definition ids are resolved to names once and
+    cached. Requires ``Microsoft.Authorization/roleAssignments/read`` +
+    ``roleDefinitions/read`` (both included in Reader).
+    """
+    try:
+        from azure.mgmt.authorization import AuthorizationManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-authorization not installed. Skipping role-assignment inventory.")
+        return []
+
+    assignments: list[dict[str, Any]] = []
+    role_name_cache: dict[str, str] = {}
+    try:
+        client = AuthorizationManagementClient(credential, subscription_id)
+        for assignment in client.role_assignments.list_for_subscription():
+            principal_id = str(getattr(assignment, "principal_id", "") or "")
+            scope = str(getattr(assignment, "scope", "") or "")
+            role_def_id = str(getattr(assignment, "role_definition_id", "") or "")
+            if not principal_id or not scope:
+                continue
+            role_name = role_name_cache.get(role_def_id)
+            if role_name is None:
+                try:
+                    role_def = client.role_definitions.get_by_id(role_def_id)
+                    role_name = str(getattr(role_def, "role_name", "") or "")
+                except Exception:  # noqa: BLE001 — fall back to the id's GUID suffix
+                    role_name = role_def_id.rsplit("/", 1)[-1] if role_def_id else ""
+                role_name_cache[role_def_id] = role_name
+            assignments.append(
+                {
+                    "principal_id": principal_id,
+                    "principal_type": str(getattr(assignment, "principal_type", "") or "").lower(),
+                    "role_name": role_name,
+                    "scope": scope,
+                    "account_id": subscription_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure role assignments: {sanitize_discovery_warning(exc)}")
+    return assignments
 
 
 # ---------------------------------------------------------------------------

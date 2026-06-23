@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
@@ -134,7 +135,8 @@ class TestLoadAuditLog:
         ]
         log.write_text("\n".join(json.dumps(record) for record in [*invalid_records, valid]) + "\n")
 
-        records = load_audit_log(log)
+        with caplog.at_level(logging.WARNING, logger="agent_bom.runtime_correlation"):
+            records = load_audit_log(log)
 
         assert len(records) == 1
         assert records[0].tool_name == "read_file"

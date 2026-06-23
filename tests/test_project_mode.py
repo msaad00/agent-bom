@@ -496,3 +496,32 @@ def test_sbom_auto_detects_name(tmp_path):
         result = runner.invoke(main, ["scan", "--sbom", str(sbom), "--no-scan"])
     assert result.exit_code == 0
     assert "nginx:1.25" in result.output
+
+
+def test_cargo_toml_manifest_fallback_when_no_lockfile(tmp_path):
+    """A Rust project with only Cargo.toml (no lockfile) must not silently yield 0 packages."""
+    from agent_bom.parsers.compiled_parsers import parse_cargo_packages
+
+    (tmp_path / "Cargo.toml").write_text(
+        '[package]\nname = "app"\n'
+        "[dependencies]\n"
+        'time = "0.1.42"\n'
+        'smallvec = { version = "1.6.0", features = ["serde"] }\n'
+        'local-dep = { path = "../local" }\n'
+        "[dev-dependencies]\n"
+        'criterion = "0.3"\n'
+    )
+    pkgs = parse_cargo_packages(tmp_path)
+    names = {p.name for p in pkgs}
+    assert names == {"time", "smallvec", "criterion"}, names
+    assert "local-dep" not in names  # path dep has no version
+    assert all(p.version_source == "manifest" for p in pkgs)
+
+
+def test_cargo_lockfile_preferred_over_manifest(tmp_path):
+    from agent_bom.parsers.compiled_parsers import parse_cargo_packages
+
+    (tmp_path / "Cargo.toml").write_text('[dependencies]\ntime = "0.1.42"\n')
+    (tmp_path / "Cargo.lock").write_text('[[package]]\nname = "time"\nversion = "0.1.45"\n')
+    pkgs = parse_cargo_packages(tmp_path)
+    assert len(pkgs) == 1 and pkgs[0].version == "0.1.45"  # exact lockfile pin wins

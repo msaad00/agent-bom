@@ -778,11 +778,64 @@ def parse_maven_packages(directory: Path, *, resolve_versions: bool = False) -> 
     return unique
 
 
+def _cargo_dep_version(spec: object) -> Optional[str]:
+    """Extract the declared version from a Cargo.toml dependency spec.
+
+    Accepts the short form (``serde = "1.0"``) and the table form
+    (``serde = { version = "1.0", features = [...] }``). Returns None for
+    path/git/workspace deps that carry no concrete version requirement.
+    """
+    if isinstance(spec, str):
+        return spec or None
+    if isinstance(spec, dict):
+        version = spec.get("version")
+        return version if isinstance(version, str) and version else None
+    return None
+
+
+def _parse_cargo_toml(cargo_toml: Path) -> list[Package]:
+    """Parse declared dependencies from Cargo.toml (manifest-only fallback).
+
+    Used when a Rust project has no Cargo.lock. Versions are SemVer *requirements*
+    (e.g. ``"1.0"``, ``"^1.2"``) rather than the exact pins a lockfile carries, so
+    coverage is approximate — but vastly better than the previous silent zero.
+    """
+    try:
+        import tomllib
+
+        data = tomllib.loads(cargo_toml.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return []
+
+    pkgs: list[Package] = []
+    seen: set[str] = set()
+    for table, direct in (("dependencies", True), ("dev-dependencies", False), ("build-dependencies", False)):
+        deps = data.get(table)
+        if not isinstance(deps, dict):
+            continue
+        for name, spec in deps.items():
+            version = _cargo_dep_version(spec)
+            if not version or name in seen:
+                continue
+            seen.add(name)
+            pkgs.append(
+                Package(
+                    name=name,
+                    version=version,
+                    ecosystem="cargo",
+                    purl=f"pkg:cargo/{name}@{version}",
+                    is_direct=direct,
+                    version_source="manifest",
+                )
+            )
+    return pkgs
+
+
 def parse_cargo_packages(directory: Path, *, resolve_versions: bool = False) -> list[Package]:
-    """Parse packages from Cargo.lock.
+    """Parse packages from Cargo.lock, falling back to Cargo.toml.
 
     Args:
-        directory: Project directory containing ``Cargo.lock``.
+        directory: Project directory containing ``Cargo.lock`` and/or ``Cargo.toml``.
         resolve_versions: When ``True``, packages with unresolved versions
             (``"*"``, ``""``, ``"latest"`` or ``"unknown"``) are queried
             against the crates.io REST API to obtain their latest stable
@@ -812,6 +865,10 @@ def parse_cargo_packages(directory: Path, *, resolve_versions: bool = False) -> 
                 )
                 current_name = None
                 current_version = None
+    elif (directory / "Cargo.toml").exists():
+        # Manifest-only project (no lockfile): parse declared deps so the whole
+        # cargo ecosystem isn't silently missed.
+        cargo_packages = _parse_cargo_toml(directory / "Cargo.toml")
 
     if resolve_versions:
         for pkg in cargo_packages:

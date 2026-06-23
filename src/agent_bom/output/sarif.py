@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from agent_bom.asset_provenance import (
     agent_discovery_provenance,
@@ -67,18 +67,51 @@ _FRAMEWORK_TAXONOMY_META: dict[str, tuple[str, str, str]] = {
 }
 
 
-def _to_relative_path(path: str) -> str:
+# Per-ecosystem manifest candidates, checked in order. Lets a SARIF result for
+# a maven/go/cargo finding point at pom.xml/go.mod/Cargo.toml instead of all
+# findings collapsing onto the first manifest in the directory.
+_ECOSYSTEM_MANIFESTS: dict[str, tuple[str, ...]] = {
+    "pypi": ("requirements.txt", "pyproject.toml", "setup.py", "Pipfile"),
+    "npm": ("package.json",),
+    "maven": ("pom.xml", "build.gradle", "build.gradle.kts"),
+    "gradle": ("build.gradle", "build.gradle.kts", "pom.xml"),
+    "go": ("go.mod",),
+    "cargo": ("Cargo.toml", "Cargo.lock"),
+    "rubygems": ("Gemfile", "Gemfile.lock"),
+    "composer": ("composer.json",),
+    "nuget": ("packages.config",),
+    "hex": ("mix.exs",),
+    "pub": ("pubspec.yaml",),
+    "conda": ("environment.yml", "environment.yaml"),
+}
+
+
+def _ecosystem_from_purl(identifier: Optional[str]) -> Optional[str]:
+    """Extract the ecosystem from a purl identifier (``pkg:pypi/...`` → ``pypi``)."""
+    if identifier and identifier.startswith("pkg:"):
+        rest = identifier[4:]
+        return rest.split("/", 1)[0].split("@", 1)[0].lower() or None
+    return None
+
+
+def _to_relative_path(path: str, ecosystem: Optional[str] = None) -> str:
     """Convert an absolute path to a relative path suitable for SARIF.
 
     GitHub Code Scanning requires relative paths from the repo root.
     Absolute paths cause "No summary of scanned files" in the Security tab.
-    For dependency findings, points to the most likely manifest file.
+    For dependency findings on a directory, points to the manifest of the
+    finding's own ecosystem (so maven/go/cargo findings don't all collapse onto
+    the first manifest), falling back to any present manifest.
     """
 
     p = Path(path)
     # If it's a directory (e.g., project root from --self-scan), point to manifest
     if p.is_dir():
-        for manifest in ("pyproject.toml", "package.json", "go.mod", "Cargo.toml", "requirements.txt"):
+        if ecosystem:
+            for manifest in _ECOSYSTEM_MANIFESTS.get(ecosystem.lower(), ()):
+                if (p / manifest).exists():
+                    return manifest
+        for manifest in ("pyproject.toml", "package.json", "go.mod", "Cargo.toml", "requirements.txt", "pom.xml"):
             if (p / manifest).exists():
                 return manifest
         return "pyproject.toml"  # default fallback for Python projects
@@ -453,7 +486,10 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 }
             )
 
-        file_path = _to_relative_path(finding.asset.location or "agent-bom-report.json")
+        file_path = _to_relative_path(
+            finding.asset.location or "agent-bom-report.json",
+            _ecosystem_from_purl(finding.asset.identifier),
+        )
         fp_input = f"{finding.id}:{file_path}:{finding.asset.stable_id}"
         fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
         finding_result: dict = {

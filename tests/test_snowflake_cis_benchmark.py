@@ -130,12 +130,12 @@ class TestCheck11:
 
 class TestCheck12:
     def test_pass_strong_policy(self):
-        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_min_length": 14}])
+        cursor = _mock_cursor([{"name": "DEFAULT", "password_min_length": 14}])
         result = _check_1_2(cursor)
         assert result.status == CheckStatus.PASS
 
     def test_fail_weak_policy(self):
-        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_min_length": 8}])
+        cursor = _mock_cursor([{"name": "DEFAULT", "password_min_length": 8}])
         result = _check_1_2(cursor)
         assert result.status == CheckStatus.FAIL
 
@@ -197,12 +197,12 @@ class TestCheck14:
 
 class TestCheck15:
     def test_pass_history_strong(self):
-        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_history": 24}])
+        cursor = _mock_cursor([{"name": "DEFAULT", "password_history": 24}])
         result = _check_1_5(cursor)
         assert result.status == CheckStatus.PASS
 
     def test_fail_history_weak(self):
-        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_history": 5}])
+        cursor = _mock_cursor([{"name": "DEFAULT", "password_history": 5}])
         result = _check_1_5(cursor)
         assert result.status == CheckStatus.FAIL
 
@@ -219,17 +219,17 @@ class TestCheck15:
 
 class TestCheck16:
     def test_pass_max_age_strong(self):
-        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_max_age_days": 90}])
+        cursor = _mock_cursor([{"name": "DEFAULT", "password_max_age_days": 90}])
         result = _check_1_6(cursor)
         assert result.status == CheckStatus.PASS
 
     def test_fail_max_age_too_high(self):
-        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_max_age_days": 180}])
+        cursor = _mock_cursor([{"name": "DEFAULT", "password_max_age_days": 180}])
         result = _check_1_6(cursor)
         assert result.status == CheckStatus.FAIL
 
     def test_fail_max_age_zero(self):
-        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_max_age_days": 0}])
+        cursor = _mock_cursor([{"name": "DEFAULT", "password_max_age_days": 0}])
         result = _check_1_6(cursor)
         assert result.status == CheckStatus.FAIL
 
@@ -307,7 +307,7 @@ class TestCheck32:
         assert result.status == CheckStatus.PASS
 
     def test_informational_with_shares(self):
-        cursor = _mock_cursor([{"database_name": "DB1", "name": "SHARE1", "kind": "OUTBOUND"}])
+        cursor = _mock_cursor([{"name": "SHARE1", "database_name": "DB1", "target_accounts": "ORG.CONSUMER"}])
         result = _check_3_2(cursor)
         # 3.2 is informational — doesn't auto-fail
         assert result.status == CheckStatus.PASS

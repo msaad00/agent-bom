@@ -2500,6 +2500,10 @@ def _add_normalized_cloud_resources(
         CloudResourceType.VIRTUAL_NETWORK: ("virtual network", "network", False),
         CloudResourceType.PUBLIC_IP: ("public ip", "network", False),
         CloudResourceType.LOAD_BALANCER: ("load balancer", "network", False),
+        CloudResourceType.MESSAGING: ("messaging", "messaging", False),
+        CloudResourceType.CACHE: ("redis cache", "cache", False),
+        CloudResourceType.BLOCK_STORAGE: ("managed disk", "storage", True),
+        CloudResourceType.SERVERLESS_FUNCTION: ("app service", "compute", False),
     }
     pip_node_by_arm_id: dict[str, str] = {}
     load_balancer_nodes: list[tuple[str, dict[str, Any]]] = []

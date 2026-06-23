@@ -92,8 +92,9 @@ agent-bom quickstart --run --offline        # write sample, scan, seed gateway p
 agent-bom agents --demo --offline
 ```
 
-The demo uses real OSV/GHSA advisories against intentionally vulnerable sample
-packages and produces graph-ready inventory without touching your source tree.
+The demo uses bundled advisory-backed OSV/GHSA ranges against intentionally
+vulnerable sample packages and produces graph-ready inventory without touching
+your source tree.
 For a real local scan:
 
 ```bash

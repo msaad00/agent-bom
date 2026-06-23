@@ -657,7 +657,8 @@ def scan(
         deps_dev = False
         snyk_flag = False
         if not quiet:
-            con.print("[dim]Offline mode — local vulnerability DB only[/dim]")
+            offline_source = "bundled demo advisory DB" if demo else "local vulnerability DB"
+            con.print(f"[dim]Offline mode — {offline_source} only[/dim]")
 
     # ── Auto-offline: use local DB if synced recently (saves ~10s network) ──
     prefer_local_db = False
@@ -1339,6 +1340,7 @@ def scan(
                             show_scan_banner=False,
                             offline=offline,
                             prefer_local_db=prefer_local_db,
+                            demo_advisories=demo,
                         )
                     except IncompleteScanError as exc:
                         _exit_incomplete_scan_with_partial_summary(
@@ -1376,6 +1378,7 @@ def scan(
                         resolve_transitive=transitive,
                         offline=offline,
                         prefer_local_db=prefer_local_db,
+                        demo_advisories=demo,
                     )
                 except IncompleteScanError as exc:
                     _exit_incomplete_scan_with_partial_summary(

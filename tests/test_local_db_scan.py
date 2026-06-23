@@ -369,6 +369,34 @@ def test_scan_packages_offline_requires_local_db(monkeypatch):
             asyncio.run(scan_packages([pkg]))
 
 
+def test_scan_packages_demo_offline_uses_curated_advisories_without_local_db():
+    """Demo offline scans are deterministic and do not depend on ~/.agent-bom."""
+    from agent_bom.scanners import ScanOptions, scan_packages
+
+    vulnerable_npm = _make_pkg("express", "4.17.1", "npm")
+    vulnerable_pypi = _make_pkg("pillow", "9.0.0", "pypi")
+    intentionally_clean = _make_pkg("semver", "7.5.2", "npm")
+
+    with (
+        patch("agent_bom.scanners._scan_packages_local_db") as mock_local_db,
+        patch("agent_bom.scanners._db_covered_ecosystems", return_value=set()),
+        patch("agent_bom.scanners.query_osv_batch") as mock_osv,
+    ):
+        count = asyncio.run(
+            scan_packages(
+                [vulnerable_npm, vulnerable_pypi, intentionally_clean],
+                options=ScanOptions(offline=True, demo_advisories=True),
+            )
+        )
+
+    assert count >= 2
+    assert vulnerable_npm.vulnerabilities
+    assert vulnerable_pypi.vulnerabilities
+    assert intentionally_clean.vulnerabilities == []
+    mock_local_db.assert_not_called()
+    mock_osv.assert_not_called()
+
+
 def test_scan_packages_offline_clean_pkg_in_covered_ecosystem_does_not_raise(monkeypatch):
     """A package with no DB rows whose ecosystem the DB covers is CLEAN, not a gap.
 

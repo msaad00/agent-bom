@@ -89,7 +89,8 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
         set_offline_mode(True)
         enrich = False
         if not cfg.quiet:
-            con.print("[dim]Offline mode — local vulnerability DB only[/dim]")
+            offline_source = "bundled demo advisory DB" if cfg.demo else "local vulnerability DB"
+            con.print(f"[dim]Offline mode — {offline_source} only[/dim]")
 
     def _restore_offline_mode() -> None:
         if previous_offline_mode is not None:
@@ -190,6 +191,7 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
                     compliance_enabled=compliance,
                     resolve_transitive=cfg.resolve_transitive,
                     offline=cfg.offline,
+                    demo_advisories=cfg.demo,
                 )
             except IncompleteScanError as exc:
                 con.print(f"  [yellow]Warning:[/yellow] {exc}")

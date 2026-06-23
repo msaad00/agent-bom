@@ -2255,6 +2255,25 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     )
                 )
 
+        # A user-assigned managed identity is assumed by the VM: the identity's
+        # permissions become the VM's blast radius. ASSUMES from the VM node to
+        # each managed-identity node (those nodes are added by the principal pass
+        # below; edges may reference them ahead of creation).
+        for mi_arm_id in instance.get("user_assigned_identity_ids", []) or []:
+            mi_clean = _clean_graph_part(mi_arm_id)
+            if not mi_clean:
+                continue
+            mi_node_id = _identity_node_id(EntityType.MANAGED_IDENTITY, provider, mi_clean)
+            graph.add_edge(
+                UnifiedEdge(
+                    source=node_id,
+                    target=mi_node_id,
+                    relationship=RelationshipType.ASSUMES,
+                    weight=5.0,
+                    evidence={"source": "cloud-inventory", "reason": "vm_user_assigned_identity"},
+                )
+            )
+
     # ── Data / secret / registry / network resources (normalized model) ──
     _add_normalized_cloud_resources(
         graph,

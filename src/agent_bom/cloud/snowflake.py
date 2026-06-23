@@ -68,6 +68,19 @@ def _env_or_value(value: str | None, env_var: str, default: str = "") -> str:
     return os.environ.get(env_var) or default
 
 
+def _sf_truthy(value: Any) -> bool:
+    """Coerce a Snowflake cell (bool / 'true'/'false' string / None) to bool.
+
+    ACCOUNT_USAGE views return mixed bool and string-boolean values; a plain
+    ``bool(value)`` would treat the string ``"false"`` as truthy.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in ("true", "t", "yes", "y", "1")
+
+
 def _snowflake_cloud_origin(
     *,
     account: str,
@@ -2292,6 +2305,175 @@ def discover_login_anomalies(
                     "severity": "medium",
                     "title": "Failed-login burst",
                     "detail": f"User {b['user']} had {b['failed']} failed logins (brute-force / stuffing pressure).",
+                }
+            )
+        result["status"] = "ok"
+    finally:
+        conn.close()
+    return result
+
+
+def discover_auth_posture(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> dict[str, Any]:
+    """Inventory Snowflake authentication posture (read-only).
+
+    The preventive complement to :func:`discover_login_anomalies` (which is
+    detective). Two surfaces:
+
+    * **Per-user auth matrix** — for each enabled user, which credential types
+      exist (password / key-pair / federated SSO), whether MFA is enrolled
+      (``ext_authn_duo``), and whether a network policy is bound
+      (`ACCOUNT_USAGE.USERS`).
+    * **Network policies** — IP allow/block lists and whether one is applied at
+      the account level (`SHOW NETWORK POLICIES` + the ``NETWORK_POLICY``
+      account parameter).
+
+    Surfaces concrete exposures: password users without MFA, human users not
+    behind any network policy, and an account with no default network policy.
+
+    Returns ``status``, ``account``, ``users``, ``network_policies``,
+    ``account_network_policy``, ``findings``, ``warnings``. Never leaks
+    credential material — only boolean capability flags.
+
+    Raises:
+        CloudDiscoveryError: if snowflake-connector-python is not installed.
+    """
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake auth-posture discovery. Install with: pip install 'agent-bom[snowflake]'"
+        )
+
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "account": resolved_account,
+        "users": [],
+        "network_policies": [],
+        "account_network_policy": None,
+        "findings": [],
+        "warnings": [],
+    }
+    warnings: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "no_account"
+        warnings.append("SNOWFLAKE_ACCOUNT not set.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator, database, schema)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+        return result
+
+    try:
+        # Account-level default network policy.
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW PARAMETERS LIKE 'NETWORK_POLICY' IN ACCOUNT")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                val = str(r.get("value", "") or "")
+                if val:
+                    result["account_network_policy"] = val
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not read account network policy: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        # Network policies (allow/block IP ranges).
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW NETWORK POLICIES")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                result["network_policies"].append(
+                    {
+                        "name": str(r.get("name", "")),
+                        "allowed_ip_count": int(r.get("entries_in_allowed_ip_list", 0) or 0),
+                        "blocked_ip_count": int(r.get("entries_in_blocked_ip_list", 0) or 0),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list network policies: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        # Per-user auth matrix.
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT name, disabled, has_password, has_rsa_public_key, ext_authn_duo, "
+                "       default_role, type, has_mfa "
+                "FROM SNOWFLAKE.ACCOUNT_USAGE.USERS "
+                "WHERE deleted_on IS NULL LIMIT 10000"
+            )
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                if not name:
+                    continue
+                disabled = _sf_truthy(r.get("disabled"))
+                has_password = _sf_truthy(r.get("has_password"))
+                has_key_pair = _sf_truthy(r.get("has_rsa_public_key"))
+                # MFA: ext_authn_duo (Duo) or the newer has_mfa column when present.
+                has_mfa = _sf_truthy(r.get("ext_authn_duo")) or _sf_truthy(r.get("has_mfa"))
+                user_type = str(r.get("type", "") or "").upper()  # PERSON / SERVICE / LEGACY_SERVICE / NULL
+                auth_methods = []
+                if has_password:
+                    auth_methods.append("password")
+                if has_key_pair:
+                    auth_methods.append("key_pair")
+                if not auth_methods:
+                    auth_methods.append("federated_or_none")
+                result["users"].append(
+                    {
+                        "name": name,
+                        "disabled": disabled,
+                        "auth_methods": auth_methods,
+                        "has_mfa": has_mfa,
+                        "user_type": user_type or "unknown",
+                        "default_role": str(r.get("default_role", "") or ""),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not query USERS auth matrix: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        # Findings.
+        if result["users"] and not result["account_network_policy"]:
+            result["findings"].append(
+                {
+                    "severity": "medium",
+                    "title": "No account-level network policy",
+                    "detail": "No default NETWORK_POLICY is set at the account level; logins are not IP-restricted by default.",
+                }
+            )
+        # Password users without MFA (skip disabled + non-person service identities,
+        # which legitimately use key-pair/OAuth and cannot enroll interactive MFA).
+        weak = [
+            u["name"]
+            for u in result["users"]
+            if not u["disabled"] and "password" in u["auth_methods"] and not u["has_mfa"] and u["user_type"] in ("PERSON", "UNKNOWN", "")
+        ]
+        if weak:
+            result["findings"].append(
+                {
+                    "severity": "high",
+                    "title": "Password users without MFA",
+                    "detail": f"{len(weak)} enabled human user(s) authenticate with a password and have no MFA enrolled.",
                 }
             )
         result["status"] = "ok"

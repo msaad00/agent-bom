@@ -60,6 +60,13 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          case "$SMITHERY_MCP_URL" in
+            https://server.smithery.ai/*|http://server.smithery.ai/*)
+              echo "::warning::SMITHERY_MCP_URL points at Smithery's hosted proxy, not agent-bom's upstream MCP origin. Skipping Smithery publish to avoid publishing the proxy back to itself."
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
           if [ -z "${SMITHERY_API_TOKEN:-}" ]; then
             echo "::notice::SMITHERY_API_TOKEN not configured — skipping Smithery publish"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -67,13 +74,12 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
-      # Post-publish liveness probe of the Smithery-hosted endpoint. Best-effort
+      # Post-publish liveness probe of the configured upstream endpoint. Best-effort
       # confirmation, NOT a gate: Smithery rebuilds the server asynchronously
-      # (the new version may not be live for minutes) and the hosted endpoint is
-      # auth-gated with no public /health — both the correct secure posture, not
-      # a failure. A hard failure here previously red-failed the whole publish
-      # even though the catalog push (next step) succeeded. Warn instead so
-      # staleness stays visible without burning the run.
+      # (the new version may not be live for minutes). A hard failure here
+      # previously red-failed the whole publish even though the catalog push
+      # (next step) succeeded. Warn instead so staleness stays visible without
+      # burning the run.
       - name: Validate Smithery public endpoint
         if: steps.smithery_config.outputs.enabled == 'true'
         continue-on-error: true
@@ -100,10 +106,10 @@ jobs:
           except Exception:
               print('unknown')
           ")
-            echo "Smithery hosted endpoint version: ${PUBLIC_VERSION}"
-            echo "Smithery hosted endpoint tool count: ${PUBLIC_TOOLS}"
+            echo "Smithery upstream endpoint version: ${PUBLIC_VERSION}"
+            echo "Smithery upstream endpoint tool count: ${PUBLIC_TOOLS}"
           else
-            echo "::warning::Could not read version from the Smithery hosted endpoint (${SMITHERY_MCP_URL}). Expected while Smithery is still rebuilding (async) or because the endpoint is auth-gated / has no public /health. The catalog publish below still runs; confirm at https://smithery.ai/server/@agent-bom/agent-bom"
+            echo "::warning::Could not read version from the configured Smithery upstream endpoint (${SMITHERY_MCP_URL}). Expected while Smithery is still rebuilding (async). The catalog publish below still runs; deployment-freshness owns hard drift detection."
           fi
 
       - name: Publish to Smithery

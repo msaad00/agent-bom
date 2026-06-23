@@ -1743,6 +1743,17 @@ def scan(
         report.cis_benchmark_data = ctx.cis_benchmark_report.to_dict()
     if ctx.sf_cis_benchmark_report is not None:
         report.snowflake_cis_benchmark_data = ctx.sf_cis_benchmark_report.to_dict()
+    if snowflake_flag:
+        # Object + dependency graph: tables/views → DATA_STORE nodes,
+        # OBJECT_DEPENDENCIES → DEPENDS_ON lineage edges. Best-effort.
+        try:
+            from agent_bom.cloud.snowflake import discover_object_dependencies
+
+            _sf_object_graph = discover_object_dependencies()
+            if _sf_object_graph.get("status") == "ok" and (_sf_object_graph.get("objects") or _sf_object_graph.get("dependencies")):
+                report.snowflake_object_graph_data = _sf_object_graph
+        except Exception:  # noqa: BLE001 — object graph is supplementary; never fail the scan
+            pass
     if ctx.azure_cis_benchmark_report is not None:
         report.azure_cis_benchmark_data = ctx.azure_cis_benchmark_report.to_dict()
     if ctx.gcp_cis_benchmark_report is not None:

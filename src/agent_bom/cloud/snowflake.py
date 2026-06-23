@@ -1756,6 +1756,140 @@ _AGENT_QUERY_PATTERNS: list[tuple[str, str]] = [
 _COMPILED_PATTERNS = [(re.compile(p, re.IGNORECASE), label) for p, label in _AGENT_QUERY_PATTERNS]
 
 
+def _discover_sf_objects(conn: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate tables + views from ACCOUNT_USAGE as data-store objects (read-only).
+
+    Control-plane metadata only — fully-qualified name, type, and (for tables)
+    row/byte counts. Never reads row data.
+    """
+    objects: list[dict[str, Any]] = []
+    for object_type, view in (("table", "TABLES"), ("view", "VIEWS")):
+        cursor = conn.cursor()
+        try:
+            cols = "table_catalog, table_schema, table_name" + (", row_count, bytes" if view == "TABLES" else "")
+            cursor.execute(
+                f"SELECT {cols} FROM SNOWFLAKE.ACCOUNT_USAGE.{view} "  # nosec B608 — static view name + column list
+                "WHERE deleted IS NULL ORDER BY table_catalog, table_schema, table_name LIMIT 50000"
+            )
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                db, sch, nm = str(r.get("table_catalog", "")), str(r.get("table_schema", "")), str(r.get("table_name", ""))
+                if not nm:
+                    continue
+                objects.append(
+                    {
+                        "fqn": f"{db}.{sch}.{nm}",
+                        "database": db,
+                        "schema": sch,
+                        "name": nm,
+                        "object_type": object_type,
+                        "row_count": int(r["row_count"]) if r.get("row_count") is not None else None,
+                        "bytes": int(r["bytes"]) if r.get("bytes") is not None else None,
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list {view}: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+    return objects
+
+
+def _discover_sf_dependencies(conn: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate object lineage from ACCOUNT_USAGE.OBJECT_DEPENDENCIES (read-only).
+
+    The referencing object depends on the referenced object (e.g. a view depends
+    on its base table) — this is the data-lineage / dependency graph.
+    """
+    dependencies: list[dict[str, Any]] = []
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT referencing_database, referencing_schema, referencing_object_name, referencing_object_domain, "
+            "       referenced_database, referenced_schema, referenced_object_name, referenced_object_domain, "
+            "       dependency_type "
+            "FROM SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES LIMIT 50000"
+        )
+        keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+        for row in cursor.fetchall():
+            r = dict(zip(keys, row))
+            ring = ".".join(str(r.get(k, "")) for k in ("referencing_database", "referencing_schema", "referencing_object_name"))
+            red = ".".join(str(r.get(k, "")) for k in ("referenced_database", "referenced_schema", "referenced_object_name"))
+            if not r.get("referencing_object_name") or not r.get("referenced_object_name"):
+                continue
+            dependencies.append(
+                {
+                    "referencing_fqn": ring,
+                    "referencing_domain": str(r.get("referencing_object_domain", "")),
+                    "referenced_fqn": red,
+                    "referenced_domain": str(r.get("referenced_object_domain", "")),
+                    "dependency_type": str(r.get("dependency_type", "")),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not query OBJECT_DEPENDENCIES: {sanitize_error(exc)}")
+    finally:
+        cursor.close()
+    return dependencies
+
+
+def discover_object_dependencies(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> dict[str, Any]:
+    """Discover the Snowflake object + dependency graph (read-only).
+
+    Tables and views become DATA_STORE graph nodes; OBJECT_DEPENDENCIES become
+    DEPENDS_ON edges (referencing object → referenced object). Read-only,
+    control-plane metadata only — object names/types/counts, never row data.
+
+    Returns a payload with ``status`` (``"ok"`` / ``"disabled"`` /
+    ``"no_account"``), ``objects``, ``dependencies``, and ``warnings``.
+
+    Raises:
+        CloudDiscoveryError: if snowflake-connector-python is not installed.
+    """
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake object discovery. Install with: pip install 'agent-bom[snowflake]'"
+        )
+
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "account": resolved_account,
+        "objects": [],
+        "dependencies": [],
+        "warnings": [],
+    }
+    warnings: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "no_account"
+        warnings.append("SNOWFLAKE_ACCOUNT not set.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator, database, schema)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+        return result
+
+    try:
+        result["objects"] = _discover_sf_objects(conn, warnings)
+        result["dependencies"] = _discover_sf_dependencies(conn, warnings)
+        result["status"] = "ok"
+    finally:
+        conn.close()
+    return result
+
+
 def discover_activity(
     account: str | None = None,
     user: str | None = None,

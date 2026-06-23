@@ -13,6 +13,27 @@ from agent_bom.security import sanitize_error
 logger = logging.getLogger(__name__)
 
 
+async def _version_published(name: str, version: str, ecosystem: str, client) -> bool:
+    """Return True if an exact package version is published (404 → not published).
+
+    Fails open (returns True) on network/other errors and for ecosystems without
+    a cheap per-version endpoint, so a transient failure never turns a genuine
+    clean result into a false "unknown".
+    """
+    from urllib.parse import quote
+
+    try:
+        if ecosystem == "pypi":
+            resp = await client.get(f"https://pypi.org/pypi/{quote(name)}/{quote(version)}/json")
+        elif ecosystem == "npm":
+            resp = await client.get(f"https://registry.npmjs.org/{quote(name, safe='@/')}/{quote(version)}")
+        else:
+            return True
+        return resp.status_code == 200
+    except Exception:  # noqa: BLE001 — best-effort existence check; fail open
+        return True
+
+
 async def scan_impl(
     *,
     config_path: str | None = None,
@@ -364,6 +385,29 @@ async def check_impl(
                     "distro_version": pkg.distro_version,
                 }
             )
+
+        # An explicit pinned version that found no vulns might simply not exist
+        # (a typo'd or hallucinated pin). Confirm it is published before calling
+        # it clean, so a fake pin can't read as safe.
+        if not pkg.vulnerabilities and version not in ("latest", "") and eco in ("npm", "pypi"):
+            from agent_bom.http_client import create_client
+
+            async with create_client(timeout=15.0) as client:
+                published = await _version_published(name, version, eco, client)
+            if not published:
+                return json.dumps(
+                    {
+                        "package": name,
+                        "version": version,
+                        "ecosystem": eco,
+                        "status": "unknown",
+                        "message": (
+                            f"Version {version} of {name} was not found in the {eco} registry — "
+                            f"cannot confirm it is free of vulnerabilities (typo or unpublished "
+                            f"version?). agent-bom only verifies published versions."
+                        ),
+                    }
+                )
 
         if not pkg.vulnerabilities:
             return json.dumps(

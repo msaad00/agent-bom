@@ -60,6 +60,11 @@ _AZURE_COMPUTE_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.Network/networkSecurityGroups/read",
 )
 _AZURE_IDENTITY_PERMISSIONS: tuple[str, ...] = ("Microsoft.ManagedIdentity/userAssignedIdentities/read",)
+_AZURE_DATA_PERMISSIONS: tuple[str, ...] = (
+    "Microsoft.KeyVault/vaults/read",
+    "Microsoft.ContainerRegistry/registries/read",
+    "Microsoft.DocumentDB/databaseAccounts/read",
+)
 
 # Open-to-the-world source-address ranges that mark an NSG inbound rule as
 # internet-facing. The CNAPP overlay keys off this `network_exposure` shape.
@@ -82,6 +87,7 @@ def discover_inventory(
     include_storage: bool = True,
     include_compute: bool = True,
     include_identity: bool = True,
+    include_data: bool = True,
     force: bool = False,
 ) -> dict[str, Any]:
     """Enumerate the general Azure estate (storage, VMs + NSGs, identities).
@@ -118,6 +124,9 @@ def discover_inventory(
         "security_groups": [],
         "managed_identities": [],
         "service_principals": [],
+        "key_vaults": [],
+        "container_registries": [],
+        "databases": [],
         "warnings": [],
         "discovery_envelope": None,
     }
@@ -152,6 +161,9 @@ def discover_inventory(
     instances: list[dict[str, Any]] = []
     security_groups: list[dict[str, Any]] = []
     managed_identities: list[dict[str, Any]] = []
+    key_vaults: list[dict[str, Any]] = []
+    container_registries: list[dict[str, Any]] = []
+    databases: list[dict[str, Any]] = []
 
     if include_storage:
         storage_accounts = _discover_storage_accounts(credential, resolved_sub, warnings=warnings)
@@ -160,6 +172,10 @@ def discover_inventory(
         security_groups = _discover_nsgs(credential, resolved_sub, warnings=warnings)
     if include_identity:
         managed_identities = _discover_managed_identities(credential, resolved_sub, warnings=warnings)
+    if include_data:
+        key_vaults = _discover_key_vaults(credential, resolved_sub, warnings=warnings)
+        container_registries = _discover_container_registries(credential, resolved_sub, warnings=warnings)
+        databases = _discover_databases(credential, resolved_sub, warnings=warnings)
 
     permissions_used: list[str] = []
     if include_storage:
@@ -168,6 +184,8 @@ def discover_inventory(
         permissions_used.extend(_AZURE_COMPUTE_PERMISSIONS)
     if include_identity:
         permissions_used.extend(_AZURE_IDENTITY_PERMISSIONS)
+    if include_data:
+        permissions_used.extend(_AZURE_DATA_PERMISSIONS)
 
     envelope = DiscoveryEnvelope(
         scan_mode=ScanMode.CLOUD_READ_ONLY,
@@ -187,6 +205,9 @@ def discover_inventory(
         "security_groups": security_groups,
         "managed_identities": managed_identities,
         "service_principals": [],
+        "key_vaults": key_vaults,
+        "container_registries": container_registries,
+        "databases": databases,
         "warnings": warnings,
         "discovery_envelope": envelope.to_dict(),
     }
@@ -426,6 +447,123 @@ def _discover_managed_identities(credential: Any, subscription_id: str, *, warni
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list Azure managed identities: {sanitize_discovery_warning(exc)}")
     return identities
+
+
+# ---------------------------------------------------------------------------
+# Data / secrets / registry (subscription-wide list)
+# ---------------------------------------------------------------------------
+
+
+def _discover_key_vaults(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every Key Vault in the subscription (read-only).
+
+    Reads only control-plane metadata (URI, RBAC mode, public-network posture);
+    never reads secret/key/certificate material.
+    """
+    try:
+        from azure.mgmt.keyvault import KeyVaultManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-keyvault not installed. Skipping Key Vault inventory.")
+        return []
+
+    vaults: list[dict[str, Any]] = []
+    try:
+        client = KeyVaultManagementClient(credential, subscription_id)
+        for vault in client.vaults.list_by_subscription():
+            vault_id = str(getattr(vault, "id", "") or "")
+            name = str(getattr(vault, "name", "") or "").strip()
+            if not name:
+                continue
+            props = getattr(vault, "properties", None)
+            vaults.append(
+                {
+                    "name": name,
+                    "id": vault_id,
+                    "location": str(getattr(vault, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(vault_id),
+                    "tags": _clean_tags(getattr(vault, "tags", None)),
+                    "uri": str(getattr(props, "vault_uri", "") or "") if props else "",
+                    "rbac_authorization": bool(getattr(props, "enable_rbac_authorization", False)) if props else False,
+                    "public_network_access": str(getattr(props, "public_network_access", "") or "") if props else "",
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure Key Vaults: {sanitize_discovery_warning(exc)}")
+    return vaults
+
+
+def _discover_container_registries(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every Container Registry in the subscription (read-only)."""
+    try:
+        from azure.mgmt.containerregistry import ContainerRegistryManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-containerregistry not installed. Skipping Container Registry inventory.")
+        return []
+
+    registries: list[dict[str, Any]] = []
+    try:
+        client = ContainerRegistryManagementClient(credential, subscription_id)
+        for registry in client.registries.list():
+            registry_id = str(getattr(registry, "id", "") or "")
+            name = str(getattr(registry, "name", "") or "").strip()
+            if not name:
+                continue
+            sku = getattr(registry, "sku", None)
+            registries.append(
+                {
+                    "name": name,
+                    "id": registry_id,
+                    "location": str(getattr(registry, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(registry_id),
+                    "tags": _clean_tags(getattr(registry, "tags", None)),
+                    "login_server": str(getattr(registry, "login_server", "") or ""),
+                    "sku": str(getattr(sku, "name", "") or "") if sku else "",
+                    "admin_user_enabled": bool(getattr(registry, "admin_user_enabled", False)),
+                    "public_network_access": str(getattr(registry, "public_network_access", "") or ""),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure Container Registries: {sanitize_discovery_warning(exc)}")
+    return registries
+
+
+def _discover_databases(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate Cosmos DB accounts in the subscription (read-only).
+
+    SQL/PostgreSQL/MySQL extend this collection later; each item carries its own
+    ``native_type`` so the normalized model maps them to ``DATABASE`` without
+    losing the provider-native type.
+    """
+    try:
+        from azure.mgmt.cosmosdb import CosmosDBManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-cosmosdb not installed. Skipping database inventory.")
+        return []
+
+    databases: list[dict[str, Any]] = []
+    try:
+        client = CosmosDBManagementClient(credential, subscription_id)
+        for account in client.database_accounts.list():
+            account_id = str(getattr(account, "id", "") or "")
+            name = str(getattr(account, "name", "") or "").strip()
+            if not name:
+                continue
+            databases.append(
+                {
+                    "name": name,
+                    "id": account_id,
+                    "native_type": "Microsoft.DocumentDB/databaseAccounts",
+                    "engine": "cosmosdb",
+                    "location": str(getattr(account, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(account_id),
+                    "tags": _clean_tags(getattr(account, "tags", None)),
+                    "public_network_access": str(getattr(account, "public_network_access", "") or ""),
+                    "is_virtual_network_filter_enabled": bool(getattr(account, "is_virtual_network_filter_enabled", False)),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure database accounts: {sanitize_discovery_warning(exc)}")
+    return databases
 
 
 # ---------------------------------------------------------------------------

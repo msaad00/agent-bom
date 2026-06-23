@@ -95,6 +95,9 @@ _AZURE_COLLECTION_MAP: dict[str, tuple[CloudResourceType, str]] = {
     "instances": (CloudResourceType.COMPUTE_INSTANCE, "Microsoft.Compute/virtualMachines"),
     "security_groups": (CloudResourceType.NETWORK_SECURITY_GROUP, "Microsoft.Network/networkSecurityGroups"),
     "managed_identities": (CloudResourceType.MANAGED_IDENTITY, "Microsoft.ManagedIdentity/userAssignedIdentities"),
+    "key_vaults": (CloudResourceType.SECRET_STORE, "Microsoft.KeyVault/vaults"),
+    "container_registries": (CloudResourceType.CONTAINER_REGISTRY, "Microsoft.ContainerRegistry/registries"),
+    "databases": (CloudResourceType.DATABASE, "Microsoft.DocumentDB/databaseAccounts"),
 }
 
 
@@ -120,7 +123,10 @@ def normalize_azure_inventory(inventory: dict[str, Any]) -> list[CloudResource]:
                 CloudResource(
                     provider="azure",
                     resource_type=rtype,
-                    native_type=native_type,
+                    # items may carry their own native_type (e.g. a SQL vs Cosmos
+                    # database in the shared "databases" collection); fall back
+                    # to the collection default otherwise.
+                    native_type=str(item.get("native_type") or native_type),
                     resource_id=resource_id,
                     name=name,
                     account=account,

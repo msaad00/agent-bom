@@ -2,7 +2,25 @@
 
 from __future__ import annotations
 
+import sys
+import types
+
+import pytest
+
 import agent_bom.cloud.snowflake as sf
+
+
+@pytest.fixture(autouse=True)
+def _stub_snowflake_connector(monkeypatch):
+    """Let ``discover_login_anomalies`` past its ``import snowflake.connector`` gate.
+
+    CI's base env doesn't install the optional ``snowflake`` extra; the
+    connection is mocked via ``_get_connection``, so a stub module is enough.
+    """
+    sf_pkg = sys.modules.get("snowflake") or types.ModuleType("snowflake")
+    connector = sys.modules.get("snowflake.connector") or types.ModuleType("snowflake.connector")
+    monkeypatch.setitem(sys.modules, "snowflake", sf_pkg)
+    monkeypatch.setitem(sys.modules, "snowflake.connector", connector)
 
 
 class _FakeCursor:

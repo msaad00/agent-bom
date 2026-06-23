@@ -2286,11 +2286,78 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         resource_ids=resource_ids,
     )
 
+    # ── Management-group hierarchy (org → subscription CONTAINS tree) ──
+    _add_management_group_hierarchy(graph, original_inventory, provider=provider, data_sources=data_sources)
+
     # ── IAM roles + users → identity principals (CAN_ACCESS resources) ──
     for principal in [*(inventory.get("roles", []) or []), *(inventory.get("users", []) or [])]:
         if isinstance(principal, dict):
             _add_inventory_principal(
                 graph, principal, provider=provider, account_node_id=account_node_id, resource_ids=resource_ids, data_sources=data_sources
+            )
+
+
+def _add_management_group_hierarchy(graph: UnifiedGraph, inventory: dict[str, Any], *, provider: str, data_sources: list[str]) -> None:
+    """Build the management-group → subscription hierarchy as ORG nodes + CONTAINS edges.
+
+    Management groups are the tenant tier above subscriptions. Each becomes an
+    ``ORG`` node; its children (nested management groups and subscriptions) are
+    linked with ``CONTAINS``, so the graph carries the multi-subscription
+    hierarchy and blast-radius can reason across the whole tenant. Subscription
+    account nodes are created here if a per-subscription scan hasn't already.
+    """
+    for mg in inventory.get("management_groups", []) or []:
+        if not isinstance(mg, dict):
+            continue
+        name = _clean_graph_part(mg.get("name"))
+        if not name:
+            continue
+        org_node_id = _identity_node_id(EntityType.ORG, provider, name)
+        graph.add_node(
+            UnifiedNode(
+                id=org_node_id,
+                entity_type=EntityType.ORG,
+                label=_clean_graph_part(mg.get("display_name")) or name,
+                attributes={
+                    "management_group_id": _clean_graph_part(mg.get("id")),
+                    "cloud_provider": provider,
+                    "source": "cloud-inventory",
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+            )
+        )
+        for child in mg.get("children", []) or []:
+            if not isinstance(child, dict):
+                continue
+            child_name = _clean_graph_part(child.get("name"))
+            if not child_name:
+                continue
+            child_type = str(child.get("type") or "").lower()
+            if "managementgroups" in child_type:
+                # The child ORG node is created when its own entry is processed.
+                child_node_id = _identity_node_id(EntityType.ORG, provider, child_name)
+            elif "subscriptions" in child_type:
+                child_node_id = _identity_node_id(EntityType.ACCOUNT, provider, child_name)
+                graph.add_node(
+                    UnifiedNode(
+                        id=child_node_id,
+                        entity_type=EntityType.ACCOUNT,
+                        label=_clean_graph_part(child.get("display_name")) or child_name,
+                        attributes={"account_id": child_name, "cloud_provider": provider, "source": "cloud-inventory"},
+                        data_sources=data_sources,
+                        dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+                    )
+                )
+            else:
+                continue
+            graph.add_edge(
+                UnifiedEdge(
+                    source=org_node_id,
+                    target=child_node_id,
+                    relationship=RelationshipType.CONTAINS,
+                    evidence={"source": "cloud-inventory"},
+                )
             )
 
 

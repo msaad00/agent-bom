@@ -98,6 +98,7 @@ def discover_inventory(
     include_identity: bool = True,
     include_data: bool = True,
     include_network: bool = True,
+    include_hierarchy: bool = True,
     force: bool = False,
 ) -> dict[str, Any]:
     """Enumerate the general Azure estate (storage, VMs + NSGs, identities).
@@ -140,6 +141,7 @@ def discover_inventory(
         "virtual_networks": [],
         "public_ips": [],
         "load_balancers": [],
+        "management_groups": [],
         "warnings": [],
         "discovery_envelope": None,
     }
@@ -218,6 +220,13 @@ def discover_inventory(
     public_ips = collected.get("public_ips", [])
     load_balancers = collected.get("load_balancers", [])
 
+    # Management groups are tenant-scoped (above the subscription), so they are
+    # discovered with a single call rather than the per-subscription thread pool.
+    management_groups: list[dict[str, Any]] = []
+    if include_hierarchy:
+        management_groups, mg_warnings = _discover_management_groups(credential)
+        warnings.extend(mg_warnings)
+
     permissions_used: list[str] = []
     if include_storage:
         permissions_used.extend(_AZURE_STORAGE_PERMISSIONS)
@@ -229,6 +238,8 @@ def discover_inventory(
         permissions_used.extend(_AZURE_DATA_PERMISSIONS)
     if include_network:
         permissions_used.extend(_AZURE_NETWORK_PERMISSIONS)
+    if include_hierarchy:
+        permissions_used.append("Microsoft.Management/managementGroups/read")
 
     envelope = DiscoveryEnvelope(
         scan_mode=ScanMode.CLOUD_READ_ONLY,
@@ -254,6 +265,7 @@ def discover_inventory(
         "virtual_networks": virtual_networks,
         "public_ips": public_ips,
         "load_balancers": load_balancers,
+        "management_groups": management_groups,
         "warnings": warnings,
         "discovery_envelope": envelope.to_dict(),
     }
@@ -790,6 +802,61 @@ def _discover_load_balancers(credential: Any, subscription_id: str, *, warnings:
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list Azure load balancers: {sanitize_discovery_warning(exc)}")
     return load_balancers
+
+
+# ---------------------------------------------------------------------------
+# Management-group hierarchy (tenant-scoped)
+# ---------------------------------------------------------------------------
+
+
+def _discover_management_groups(credential: Any) -> tuple[list[dict[str, Any]], list[str]]:
+    """Enumerate the tenant's management-group hierarchy (read-only, tenant-scoped).
+
+    Management groups sit above subscriptions and organize them into a tree.
+    Each entry carries its direct children (nested management groups and
+    subscriptions) so the graph can build the CONTAINS hierarchy across
+    subscriptions. Requires the Management Group Reader role at the tenant root;
+    absent that, this degrades to an empty list plus a warning.
+    """
+    try:
+        from azure.mgmt.managementgroups import ManagementGroupsAPI
+    except ImportError:
+        return [], ["azure-mgmt-managementgroups not installed. Skipping management-group hierarchy."]
+
+    groups: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    try:
+        client = ManagementGroupsAPI(credential)
+        for mg in client.management_groups.list():
+            name = str(getattr(mg, "name", "") or "").strip()
+            if not name:
+                continue
+            children: list[dict[str, Any]] = []
+            try:
+                detail = client.management_groups.get(group_id=name, expand="children", recurse=False)
+                for child in getattr(detail, "children", None) or []:
+                    children.append(
+                        {
+                            "id": str(getattr(child, "id", "") or ""),
+                            "name": str(getattr(child, "name", "") or ""),
+                            # ".../managementGroups" (nested group) or "/subscriptions" (a subscription)
+                            "type": str(getattr(child, "type", "") or ""),
+                            "display_name": str(getattr(child, "display_name", "") or ""),
+                        }
+                    )
+            except Exception as exc:  # noqa: BLE001 — child expansion is best-effort
+                warnings.append(f"Could not expand management group {name}: {sanitize_discovery_warning(exc)}")
+            groups.append(
+                {
+                    "id": str(getattr(mg, "id", "") or ""),
+                    "name": name,
+                    "display_name": str(getattr(mg, "display_name", "") or ""),
+                    "children": children,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure management groups: {sanitize_discovery_warning(exc)}")
+    return groups, warnings
 
 
 # ---------------------------------------------------------------------------

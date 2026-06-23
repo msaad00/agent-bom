@@ -95,6 +95,7 @@ _AZURE_COLLECTION_MAP: dict[str, tuple[CloudResourceType, str]] = {
     "instances": (CloudResourceType.COMPUTE_INSTANCE, "Microsoft.Compute/virtualMachines"),
     "security_groups": (CloudResourceType.NETWORK_SECURITY_GROUP, "Microsoft.Network/networkSecurityGroups"),
     "managed_identities": (CloudResourceType.MANAGED_IDENTITY, "Microsoft.ManagedIdentity/userAssignedIdentities"),
+    "container_clusters": (CloudResourceType.CONTAINER_CLUSTER, "Microsoft.ContainerService/managedClusters"),
     "key_vaults": (CloudResourceType.SECRET_STORE, "Microsoft.KeyVault/vaults"),
     "container_registries": (CloudResourceType.CONTAINER_REGISTRY, "Microsoft.ContainerRegistry/registries"),
     "databases": (CloudResourceType.DATABASE, "Microsoft.DocumentDB/databaseAccounts"),

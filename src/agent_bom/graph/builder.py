@@ -928,6 +928,8 @@ def build_unified_graph_from_report(
     for inventory_payload in _iter_cloud_inventories(report_json.get("cloud_inventory")):
         _add_cloud_inventory(graph, inventory_payload, data_source_tag)
 
+    _add_snowflake_object_graph(graph, report_json.get("snowflake_object_graph"), data_source_tag)
+
     # ── Discovered non-human identities (IdP service accounts, gated) ────
     # Project NHIs enumerated by the identity connectors (Okta service apps /
     # API tokens, Entra service principals / app registrations) into the graph
@@ -2051,6 +2053,176 @@ def _normalize_gcp_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
         "roles": [],
         "users": principals,
     }
+
+
+def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote Snowflake tables/views + their lineage into the graph.
+
+    Each table/view becomes a ``DATA_STORE`` node owned by the Snowflake
+    account; ``OBJECT_DEPENDENCIES`` become ``DEPENDS_ON`` edges (the referencing
+    object depends on the referenced one — e.g. a view on its base table). This
+    is the data-lineage layer: blast-radius and exfil analysis can walk from a
+    table to everything derived from it. Never raises; a missing/empty payload
+    is a no-op.
+    """
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return
+    account = _clean_graph_part(payload.get("account"))
+    data_sources = sorted({data_source, "snowflake-objects"} - {""})
+
+    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
+    if account_node_id:
+        graph.add_node(
+            UnifiedNode(
+                id=account_node_id,
+                entity_type=EntityType.ACCOUNT,
+                label=account or "snowflake",
+                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-objects"},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+            )
+        )
+
+    def _obj_node_id(fqn: str) -> str:
+        return f"data_store:snowflake:{fqn}"
+
+    seen: set[str] = set()
+
+    def _ensure_object(fqn: str, *, object_type: str = "object", attributes: dict[str, Any] | None = None) -> str:
+        node_id = _obj_node_id(fqn)
+        if node_id in seen:
+            return node_id
+        seen.add(node_id)
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.DATA_STORE,
+                label=f"{object_type}: {fqn}",
+                attributes={
+                    "fqn": fqn,
+                    "object_type": object_type,
+                    "cloud_provider": "snowflake",
+                    "is_data_store": True,
+                    **(attributes or {}),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+            )
+        )
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id,
+                    target=node_id,
+                    relationship=RelationshipType.OWNS,
+                    evidence={"source": "snowflake-objects"},
+                )
+            )
+        return node_id
+
+    for obj in payload.get("objects", []) or []:
+        if not isinstance(obj, dict):
+            continue
+        fqn = _clean_graph_part(obj.get("fqn"))
+        if not fqn:
+            continue
+        _ensure_object(
+            fqn,
+            object_type=str(obj.get("object_type") or "object"),
+            attributes={
+                "database": obj.get("database"),
+                "schema": obj.get("schema"),
+                "row_count": obj.get("row_count"),
+                "bytes": obj.get("bytes"),
+            },
+        )
+
+    for dep in payload.get("dependencies", []) or []:
+        if not isinstance(dep, dict):
+            continue
+        referencing = _clean_graph_part(dep.get("referencing_fqn"))
+        referenced = _clean_graph_part(dep.get("referenced_fqn"))
+        if not referencing or not referenced:
+            continue
+        # Dependency endpoints may not be in the objects list (e.g. SNOWFLAKE
+        # system objects) — create thin nodes so the lineage edge still lands.
+        src = _ensure_object(referencing, object_type=str(dep.get("referencing_domain") or "object").lower())
+        tgt = _ensure_object(referenced, object_type=str(dep.get("referenced_domain") or "object").lower())
+        graph.add_edge(
+            UnifiedEdge(
+                source=src,
+                target=tgt,
+                relationship=RelationshipType.DEPENDS_ON,
+                evidence={"source": "snowflake-objects", "dependency_type": dep.get("dependency_type", "")},
+            )
+        )
+
+    # ── Roles + users (CIEM access layer) ──────────────────────────────
+    seen_roles: set[str] = set()
+
+    def _ensure_role(name: str) -> str:
+        node_id = f"role:snowflake:{name}"
+        if node_id not in seen_roles:
+            seen_roles.add(node_id)
+            graph.add_node(
+                UnifiedNode(
+                    id=node_id,
+                    entity_type=EntityType.ROLE,
+                    label=f"role: {name}",
+                    attributes={"role_name": name, "cloud_provider": "snowflake", "source": "snowflake-objects"},
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+                )
+            )
+        return node_id
+
+    # Object-level grants: role HAS_PERMISSION on the object (data store).
+    for grant in payload.get("grants", []) or []:
+        if not isinstance(grant, dict):
+            continue
+        role = _clean_graph_part(grant.get("role"))
+        object_fqn = _clean_graph_part(grant.get("object_fqn"))
+        if not role or not object_fqn:
+            continue
+        graph.add_edge(
+            UnifiedEdge(
+                source=_ensure_role(role),
+                target=_ensure_object(object_fqn, object_type=str(grant.get("object_type") or "object").lower()),
+                relationship=RelationshipType.HAS_PERMISSION,
+                evidence={"source": "snowflake-objects", "privilege": grant.get("privilege", "")},
+            )
+        )
+
+    # User → role memberships: the user ASSUMES the role's privileges.
+    seen_users: set[str] = set()
+    for membership in payload.get("role_memberships", []) or []:
+        if not isinstance(membership, dict):
+            continue
+        user_name = _clean_graph_part(membership.get("user"))
+        role = _clean_graph_part(membership.get("role"))
+        if not user_name or not role:
+            continue
+        user_node_id = f"user:snowflake:{user_name}"
+        if user_node_id not in seen_users:
+            seen_users.add(user_node_id)
+            graph.add_node(
+                UnifiedNode(
+                    id=user_node_id,
+                    entity_type=EntityType.USER,
+                    label=f"user: {user_name}",
+                    attributes={"user_name": user_name, "cloud_provider": "snowflake", "source": "snowflake-objects"},
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+                )
+            )
+        graph.add_edge(
+            UnifiedEdge(
+                source=user_node_id,
+                target=_ensure_role(role),
+                relationship=RelationshipType.ASSUMES,
+                evidence={"source": "snowflake-objects"},
+            )
+        )
 
 
 def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) -> None:

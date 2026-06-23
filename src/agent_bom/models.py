@@ -1008,6 +1008,7 @@ class AIBOMReport:
     sast_data: Optional[dict] = None  # Serialized SAST scan results (Semgrep)
     cis_benchmark_data: Optional[dict] = None  # Serialized CIS AWS Benchmark results
     snowflake_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Snowflake Benchmark results
+    snowflake_object_graph_data: Optional[dict] = None  # Snowflake tables/views + OBJECT_DEPENDENCIES lineage
     azure_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Azure Benchmark results
     gcp_cis_benchmark_data: Optional[dict] = None  # Serialized CIS GCP Benchmark results
     databricks_cis_benchmark_data: Optional[dict] = None  # Serialized Databricks Security Best Practices results

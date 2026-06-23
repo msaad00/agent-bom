@@ -27,6 +27,7 @@ _MODULE_TO_DIST = {
     "compute": "azure-mgmt-compute",
     "containerinstance": "azure-mgmt-containerinstance",
     "containerregistry": "azure-mgmt-containerregistry",
+    "containerservice": "azure-mgmt-containerservice",
     "cosmosdb": "azure-mgmt-cosmosdb",
     "keyvault": "azure-mgmt-keyvault",
     "machinelearningservices": "azure-mgmt-machinelearningservices",

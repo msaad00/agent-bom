@@ -599,6 +599,7 @@ def build_unified_graph_from_report(
         if not cis_data:
             continue
         checks = cis_data.get("checks", [])
+        cloud_account_id = _clean_graph_part(cis_data.get("subscription_id") or cis_data.get("account_id"))
         for check in checks:
             if str(check.get("status", "")).upper() != "FAIL":
                 continue
@@ -645,6 +646,31 @@ def build_unified_graph_from_report(
                     UnifiedEdge(
                         source=misconfig_id,
                         target=resource_node_id,
+                        relationship=RelationshipType.AFFECTS,
+                    )
+                )
+
+            # Subscription/tenant-scoped controls (Defender plans, Activity
+            # Log alerts, Network Watcher, security contacts) carry no
+            # ``resource_ids``. Anchor them to the cloud account node so they
+            # are reachable by blast-radius / attack-path analysis instead of
+            # floating as orphan nodes that never surface to the user.
+            if not resource_ids and cloud_provider and cloud_account_id:
+                account_node_id = _identity_node_id(EntityType.ACCOUNT, cloud_provider, cloud_account_id)
+                graph.add_node(
+                    UnifiedNode(
+                        id=account_node_id,
+                        entity_type=EntityType.ACCOUNT,
+                        label=cloud_account_id,
+                        attributes={"account_id": cloud_account_id, "cloud_provider": cloud_provider},
+                        data_sources=[section_key],
+                        dimensions=NodeDimensions(cloud_provider=cloud_provider),
+                    )
+                )
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=misconfig_id,
+                        target=account_node_id,
                         relationship=RelationshipType.AFFECTS,
                     )
                 )

@@ -2077,6 +2077,10 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
     """
     if not isinstance(inventory, dict) or inventory.get("status") != "ok":
         return
+    # The provider translation below rebuilds an AWS-shaped dict and drops the
+    # data/secret/registry/network collections; keep the original to ingest them
+    # through the normalized resource model.
+    original_inventory = inventory
     inventory = _normalize_cloud_inventory(inventory)
     provider = _clean_graph_part(inventory.get("provider")) or "aws"
     account_id = _clean_graph_part(inventory.get("account_id"))
@@ -2251,11 +2255,101 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     )
                 )
 
+    # ── Data / secret / registry / network resources (normalized model) ──
+    _add_normalized_cloud_resources(
+        graph,
+        original_inventory,
+        provider=provider,
+        account_id=account_id,
+        account_node_id=account_node_id,
+        region=region,
+        data_sources=data_sources,
+        resource_ids=resource_ids,
+    )
+
     # ── IAM roles + users → identity principals (CAN_ACCESS resources) ──
     for principal in [*(inventory.get("roles", []) or []), *(inventory.get("users", []) or [])]:
         if isinstance(principal, dict):
             _add_inventory_principal(
                 graph, principal, provider=provider, account_node_id=account_node_id, resource_ids=resource_ids, data_sources=data_sources
+            )
+
+
+def _add_normalized_cloud_resources(
+    graph: UnifiedGraph,
+    inventory: dict[str, Any],
+    *,
+    provider: str,
+    account_id: str,
+    account_node_id: str,
+    region: str,
+    data_sources: list[str],
+    resource_ids: list[str],
+) -> None:
+    """Promote normalized data / secret / registry / network resources into nodes.
+
+    Covers the resource classes the AWS-shaped loops above do not: secret stores
+    (Key Vault), container registries, databases, virtual networks, public IPs,
+    and load balancers. Each becomes a ``CLOUD_RESOURCE`` owned by the account so
+    it shows up in the environment graph and is reachable by blast-radius. Data
+    stores and secret stores carry a data-store keyword in their label so the
+    CNAPP/DSPM overlay can attach its companion; resources with a public IP or an
+    internet-facing frontend are flagged ``internet_exposed`` for exposure
+    analysis. Identity / EXPOSED_TO edges between these and compute/identity nodes
+    are added by the overlays once richer relations are available.
+    """
+    from agent_bom.cloud.resource_model import CloudResourceType, normalize_cloud_inventory
+
+    # normalized type -> (label keyword, graph surface, signals a data store)
+    type_meta = {
+        CloudResourceType.SECRET_STORE: ("key vault", "secret-store", True),
+        CloudResourceType.CONTAINER_REGISTRY: ("container registry", "registry", False),
+        CloudResourceType.DATABASE: ("database", "database", True),
+        CloudResourceType.VIRTUAL_NETWORK: ("virtual network", "network", False),
+        CloudResourceType.PUBLIC_IP: ("public ip", "network", False),
+        CloudResourceType.LOAD_BALANCER: ("load balancer", "network", False),
+    }
+    for res in normalize_cloud_inventory(inventory):
+        meta = type_meta.get(res.resource_type)
+        if meta is None:
+            continue  # storage / compute / identity handled by the dedicated loops
+        label_keyword, surface, is_data_store = meta
+        name = _clean_graph_part(res.name)
+        if not name:
+            continue
+        node_id = f"cloud_resource:{provider}:{res.resource_type.value}:{name}"
+        raw = res.raw or {}
+        internet_exposed = bool(raw.get("ip_address")) or bool(raw.get("internet_facing"))
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"{label_keyword}: {name}",
+                attributes={
+                    "resource_id": res.resource_id or name,
+                    "resource_name": name,
+                    "resource_type": res.resource_type.value,
+                    "resource_kind": res.native_type,
+                    "cloud_provider": provider,
+                    "location": res.region or region,
+                    "internet_exposed": internet_exposed,
+                    "is_data_store": is_data_store,
+                    "tags": dict(res.tags),
+                    "account_id": account_id,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface=surface),
+            )
+        )
+        resource_ids.append(node_id)
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id,
+                    target=node_id,
+                    relationship=RelationshipType.OWNS,
+                    evidence={"source": "cloud-inventory"},
+                )
             )
 
 

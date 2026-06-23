@@ -1114,9 +1114,10 @@ class AIBOMReport:
             from agent_bom.finding import blast_radius_to_finding
 
             base = [blast_radius_to_finding(br) for br in self.blast_radii]
-        # Avoid double-counting if a dual-write path ever adds secrets to findings.
-        if not any(getattr(f, "source", None) and str(f.source).endswith("SECRET_SCAN") for f in base):
-            base.extend(self._secret_findings())
+        # Avoid double-counting if a dual-write path ever adds the same secret
+        # finding, but do not suppress unrelated secret findings in the side block.
+        existing_ids = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._secret_findings() if finding.id not in existing_ids)
         return base
 
     def cve_findings(self) -> "list[Finding]":

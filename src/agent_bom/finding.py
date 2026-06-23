@@ -585,6 +585,19 @@ def _remediation_guidance_for_vulnerability(vuln: object, pkg: object) -> str:
     return "Review the advisory and apply the vendor-recommended mitigation, upgrade path, or compensating control."
 
 
+def _safe_secret_preview(value: object) -> str:
+    """Return a display-only secret preview that cannot carry raw secret bytes."""
+    from agent_bom.security import sanitize_text
+
+    preview = sanitize_text(value, max_len=160).strip()
+    if not preview:
+        return "***REDACTED***"
+    lowered = preview.lower()
+    if "redact" in lowered or "***" in preview or "[secret_" in lowered or "[credential_" in lowered or "[pii_" in lowered:
+        return preview
+    return "***REDACTED***"
+
+
 def secret_dict_to_finding(secret: dict) -> "Finding":
     """Convert a secret_scanner result dict into a unified CREDENTIAL_EXPOSURE Finding.
 
@@ -592,11 +605,14 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
     type, category, and file:line — so a machine consumer (JSON / SARIF) sees
     that a secret is hardcoded and where, without the secret bytes ever leaking.
     """
-    file_path = str(secret.get("file", "") or "")
-    line = secret.get("line")
-    secret_type = str(secret.get("type", "secret") or "secret")
-    category = str(secret.get("category", "secret") or "secret")
-    severity = str(secret.get("severity", "medium") or "medium").upper()
+    from agent_bom.security import sanitize_text
+
+    file_path = sanitize_text(secret.get("file", "") or "", max_len=500)
+    raw_line = secret.get("line")
+    line = raw_line if isinstance(raw_line, int) else sanitize_text(raw_line, max_len=40) if raw_line is not None else None
+    secret_type = sanitize_text(secret.get("type", "secret") or "secret", max_len=120)
+    category = sanitize_text(secret.get("category", "secret") or "secret", max_len=120)
+    severity = sanitize_text(secret.get("severity", "medium") or "medium", max_len=40).upper()
     loc = f"{file_path}:{line}" if line else file_path
     return Finding(
         finding_type=FindingType.CREDENTIAL_EXPOSURE,
@@ -620,7 +636,7 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
             "line": line,
             "secret_type": secret_type,
             "category": category,
-            "redacted_preview": secret.get("preview"),
+            "redacted_preview": _safe_secret_preview(secret.get("preview")),
         },
     )
 

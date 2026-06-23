@@ -937,6 +937,7 @@ def build_unified_graph_from_report(
         data_source_tag,
     )
     _add_snowflake_services(graph, report_json.get("snowflake_services"), data_source_tag)
+    _add_snowflake_pipeline(graph, report_json.get("snowflake_pipeline"), data_source_tag)
 
     # ── Discovered non-human identities (IdP service accounts, gated) ────
     # Project NHIs enumerated by the identity connectors (Okta service apps /
@@ -2391,6 +2392,183 @@ def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str)
                         evidence={"source": "snowflake-services"},
                     )
                 )
+
+
+def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote Snowflake data-pipeline + automation objects into the graph.
+
+    * **Tasks** → ``CLOUD_RESOURCE`` (automation); ``DEPENDS_ON`` the warehouse
+      it runs on, ``ASSUMES`` the owner role (privilege surface).
+    * **Streams** → ``DATA_STORE``; ``DEPENDS_ON`` the source table it tracks.
+    * **Pipes** → ``CLOUD_RESOURCE`` (ingestion); ``DEPENDS_ON`` the stage it
+      reads from — which the exfil layer links onward to the actual cloud bucket,
+      so the ingress path is traversable end to end.
+
+    Endpoints (warehouse/table/stage) may already exist from other layers; a thin
+    node is created only when absent. Never raises; non-ok payload is a no-op.
+    """
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return
+    account = _clean_graph_part(payload.get("account"))
+    data_sources = sorted({data_source, "snowflake-pipeline"} - {""})
+    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
+    if account_node_id:
+        graph.add_node(
+            UnifiedNode(
+                id=account_node_id,
+                entity_type=EntityType.ACCOUNT,
+                label=account or "snowflake",
+                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-pipeline"},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+            )
+        )
+
+    def _own(node: UnifiedNode) -> str:
+        graph.add_node(node)
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id,
+                    target=node.id,
+                    relationship=RelationshipType.OWNS,
+                    evidence={"source": "snowflake-pipeline"},
+                )
+            )
+        return node.id
+
+    def _thin(node_id: str, entity_type: EntityType, label: str, surface: str) -> None:
+        if node_id not in graph.nodes:
+            graph.add_node(
+                UnifiedNode(
+                    id=node_id,
+                    entity_type=entity_type,
+                    label=label,
+                    attributes={"cloud_provider": "snowflake"},
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider="snowflake", surface=surface),
+                )
+            )
+
+    for task in payload.get("tasks", []) or []:
+        if not isinstance(task, dict):
+            continue
+        fqn = _clean_graph_part(task.get("fqn")) or _clean_graph_part(task.get("name"))
+        if not fqn:
+            continue
+        task_id = _own(
+            UnifiedNode(
+                id=f"cloud_resource:snowflake:task:{fqn}",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"task: {fqn}",
+                attributes={
+                    "resource_name": fqn,
+                    "resource_type": "task",
+                    "resource_kind": "snowflake-task",
+                    "cloud_provider": "snowflake",
+                    "schedule": task.get("schedule"),
+                    "state": task.get("state"),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="compute"),
+            )
+        )
+        warehouse = _clean_graph_part(task.get("warehouse"))
+        if warehouse:
+            wh_id = f"cloud_resource:snowflake:warehouse:{warehouse}"
+            _thin(wh_id, EntityType.CLOUD_RESOURCE, f"warehouse: {warehouse}", "compute")
+            graph.add_edge(
+                UnifiedEdge(
+                    source=task_id,
+                    target=wh_id,
+                    relationship=RelationshipType.DEPENDS_ON,
+                    evidence={"source": "snowflake-pipeline", "via": "warehouse"},
+                )
+            )
+        owner = _clean_graph_part(task.get("owner"))
+        if owner:
+            role_id = f"role:snowflake:{owner}"
+            _thin(role_id, EntityType.ROLE, f"role: {owner}", "identity")
+            graph.add_edge(
+                UnifiedEdge(
+                    source=task_id,
+                    target=role_id,
+                    relationship=RelationshipType.ASSUMES,
+                    evidence={"source": "snowflake-pipeline", "runs_as": owner},
+                )
+            )
+
+    for stream in payload.get("streams", []) or []:
+        if not isinstance(stream, dict):
+            continue
+        fqn = _clean_graph_part(stream.get("fqn")) or _clean_graph_part(stream.get("name"))
+        if not fqn:
+            continue
+        stream_id = _own(
+            UnifiedNode(
+                id=f"data_store:snowflake:stream:{fqn}",
+                entity_type=EntityType.DATA_STORE,
+                label=f"stream: {fqn}",
+                attributes={
+                    "fqn": fqn,
+                    "object_type": "stream",
+                    "cloud_provider": "snowflake",
+                    "is_data_store": True,
+                    "stale": bool(stream.get("stale")),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+            )
+        )
+        source = _clean_graph_part(stream.get("source_fqn"))
+        if source:
+            src_id = f"data_store:snowflake:{source}"
+            _thin(src_id, EntityType.DATA_STORE, f"object: {source}", "data")
+            graph.add_edge(
+                UnifiedEdge(
+                    source=stream_id,
+                    target=src_id,
+                    relationship=RelationshipType.DEPENDS_ON,
+                    evidence={"source": "snowflake-pipeline", "via": "cdc-source"},
+                )
+            )
+
+    for pipe in payload.get("pipes", []) or []:
+        if not isinstance(pipe, dict):
+            continue
+        fqn = _clean_graph_part(pipe.get("fqn")) or _clean_graph_part(pipe.get("name"))
+        if not fqn:
+            continue
+        pipe_id = _own(
+            UnifiedNode(
+                id=f"cloud_resource:snowflake:pipe:{fqn}",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"pipe: {fqn}",
+                attributes={
+                    "resource_name": fqn,
+                    "resource_type": "pipe",
+                    "resource_kind": "snowflake-pipe",
+                    "cloud_provider": "snowflake",
+                    "auto_ingest": bool(pipe.get("auto_ingest")),
+                    "integration": pipe.get("integration"),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+            )
+        )
+        stage = _clean_graph_part(pipe.get("stage"))
+        if stage:
+            stage_name = stage.split(".")[-1]
+            stage_id = f"cloud_resource:snowflake:stage:{stage_name}"
+            _thin(stage_id, EntityType.CLOUD_RESOURCE, f"external stage: {stage_name}", "data")
+            graph.add_edge(
+                UnifiedEdge(
+                    source=pipe_id,
+                    target=stage_id,
+                    relationship=RelationshipType.DEPENDS_ON,
+                    evidence={"source": "snowflake-pipeline", "via": "ingest-stage"},
+                )
+            )
 
 
 def _add_snowflake_identity(graph: UnifiedGraph, login_payload: Any, auth_payload: Any, data_source: str) -> None:

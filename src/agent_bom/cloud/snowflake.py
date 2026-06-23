@@ -2637,6 +2637,178 @@ def discover_snowflake_services(
     return result
 
 
+def _split_fqn_parts(name: str, database: str, schema: str) -> str:
+    """Build a DB.SCHEMA.NAME fqn from SHOW-command columns, tolerating blanks."""
+    parts = [p for p in (database, schema, name) if p]
+    return ".".join(parts)
+
+
+def discover_snowflake_pipeline(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> dict[str, Any]:
+    """Inventory Snowflake data-pipeline + automation objects (read-only).
+
+    The data-movement layer the object graph was missing:
+
+    * **Tasks** (`SHOW TASKS IN ACCOUNT`) — scheduled SQL. Carries the warehouse
+      it runs on and the role it runs as (a privilege surface), plus schedule
+      and predecessor wiring.
+    * **Streams** (`SHOW STREAMS IN ACCOUNT`) — change-data-capture on a source
+      table/view; staleness signals an unconsumed CDC backlog.
+    * **Pipes** (`SHOW PIPES IN ACCOUNT`) — Snowpipe continuous ingestion;
+      reads from a stage (the data-ingress path), optionally auto-ingest via a
+      notification integration.
+
+    Returns ``status``, ``account``, ``tasks``, ``streams``, ``pipes``,
+    ``findings``, ``warnings``. Definitions are summarized, never the data they
+    move.
+
+    Raises:
+        CloudDiscoveryError: if snowflake-connector-python is not installed.
+    """
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake pipeline discovery. Install with: pip install 'agent-bom[snowflake]'"
+        )
+
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "account": resolved_account,
+        "tasks": [],
+        "streams": [],
+        "pipes": [],
+        "findings": [],
+        "warnings": [],
+    }
+    warnings: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "no_account"
+        warnings.append("SNOWFLAKE_ACCOUNT not set.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator, database, schema)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+        return result
+
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW TASKS IN ACCOUNT")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                db = str(r.get("database_name", "") or "")
+                sch = str(r.get("schema_name", "") or "")
+                if not name:
+                    continue
+                result["tasks"].append(
+                    {
+                        "name": name,
+                        "fqn": _split_fqn_parts(name, db, sch),
+                        "warehouse": str(r.get("warehouse", "") or ""),
+                        "schedule": str(r.get("schedule", "") or ""),
+                        "state": str(r.get("state", "") or ""),
+                        "owner": str(r.get("owner", "") or ""),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list tasks: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW STREAMS IN ACCOUNT")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                db = str(r.get("database_name", "") or "")
+                sch = str(r.get("schema_name", "") or "")
+                if not name:
+                    continue
+                source = str(r.get("table_name", "") or "")
+                result["streams"].append(
+                    {
+                        "name": name,
+                        "fqn": _split_fqn_parts(name, db, sch),
+                        "source_fqn": source,
+                        "stale": _sf_truthy(r.get("stale")),
+                        "type": str(r.get("type", "") or ""),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list streams: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW PIPES IN ACCOUNT")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                db = str(r.get("database_name", "") or "")
+                sch = str(r.get("schema_name", "") or "")
+                if not name:
+                    continue
+                # The COPY INTO definition references the source stage (@db.schema.stage).
+                definition = str(r.get("definition", "") or "")
+                stage = ""
+                m = re.search(r"FROM\s+@([A-Za-z0-9_$.\"]+)", definition, re.IGNORECASE)
+                if m:
+                    stage = m.group(1).replace('"', "")
+                result["pipes"].append(
+                    {
+                        "name": name,
+                        "fqn": _split_fqn_parts(name, db, sch),
+                        "stage": stage,
+                        "auto_ingest": bool(str(r.get("notification_channel", "") or "") or str(r.get("integration", "") or "")),
+                        "integration": str(r.get("integration", "") or ""),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list pipes: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        suspended = [t["name"] for t in result["tasks"] if t["state"].upper() == "SUSPENDED"]
+        if suspended:
+            result["findings"].append(
+                {
+                    "severity": "low",
+                    "title": "Suspended scheduled tasks",
+                    "detail": f"{len(suspended)} task(s) are suspended; scheduled automation is not running.",
+                }
+            )
+        stale_streams = [s["name"] for s in result["streams"] if s["stale"]]
+        if stale_streams:
+            result["findings"].append(
+                {
+                    "severity": "medium",
+                    "title": "Stale change-data-capture streams",
+                    "detail": f"{len(stale_streams)} stream(s) are stale; unconsumed CDC may be permanently lost.",
+                }
+            )
+        result["status"] = "ok"
+    finally:
+        conn.close()
+    return result
+
+
 def discover_activity(
     account: str | None = None,
     user: str | None = None,

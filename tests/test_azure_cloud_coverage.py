@@ -30,6 +30,7 @@ _MODULE_TO_DIST = {
     "containerservice": "azure-mgmt-containerservice",
     "cosmosdb": "azure-mgmt-cosmosdb",
     "keyvault": "azure-mgmt-keyvault",
+    "managementgroups": "azure-mgmt-managementgroups",
     "machinelearningservices": "azure-mgmt-machinelearningservices",
     "monitor": "azure-mgmt-monitor",
     "msi": "azure-mgmt-msi",

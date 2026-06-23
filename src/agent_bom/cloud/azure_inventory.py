@@ -339,6 +339,7 @@ def _discover_vms(credential: Any, subscription_id: str, *, warnings: list[str])
                     "location": str(getattr(vm, "location", "") or ""),
                     "resource_group": _resource_group_from_id(vm_id),
                     "managed_identity": _vm_identity(vm),
+                    "user_assigned_identity_ids": _vm_user_assigned_identity_ids(vm),
                     "tags": _clean_tags(getattr(vm, "tags", None)),
                     "subscription_id": subscription_id,
                 }
@@ -732,6 +733,22 @@ def _vm_identity(vm: Any) -> str:
     if identity is None:
         return ""
     return str(getattr(identity, "principal_id", "") or getattr(identity, "type", "") or "")
+
+
+def _vm_user_assigned_identity_ids(vm: Any) -> list[str]:
+    """ARM IDs of the user-assigned managed identities attached to a VM.
+
+    The VM assumes each of these identities' permissions, so they drive the
+    VM → managed-identity privilege edge in the graph. Returns the resource IDs
+    only (the dict keys) — never any credential material.
+    """
+    identity = getattr(vm, "identity", None)
+    if identity is None:
+        return []
+    user_assigned = getattr(identity, "user_assigned_identities", None)
+    if not isinstance(user_assigned, dict):
+        return []
+    return [str(arm_id) for arm_id in user_assigned if arm_id]
 
 
 def _resource_group_from_id(resource_id: str) -> str:

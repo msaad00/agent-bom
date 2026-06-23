@@ -778,7 +778,7 @@ def parse_maven_packages(directory: Path, *, resolve_versions: bool = False) -> 
     return unique
 
 
-def _cargo_dep_version(spec: object) -> Optional[str]:
+def _cargo_dep_version(spec: object, workspace_spec: object | None = None) -> Optional[str]:
     """Extract the declared version from a Cargo.toml dependency spec.
 
     Accepts the short form (``serde = "1.0"``) and the table form
@@ -788,9 +788,34 @@ def _cargo_dep_version(spec: object) -> Optional[str]:
     if isinstance(spec, str):
         return spec or None
     if isinstance(spec, dict):
+        if spec.get("workspace") is True:
+            return _cargo_dep_version(workspace_spec)
+        if "path" in spec or "git" in spec:
+            return None
         version = spec.get("version")
         return version if isinstance(version, str) and version else None
     return None
+
+
+def _cargo_dependency_tables(data: dict) -> list[tuple[dict, bool]]:
+    """Return Cargo dependency tables with direct/development attribution."""
+
+    tables: list[tuple[dict, bool]] = []
+    for table, direct in (("dependencies", True), ("dev-dependencies", False), ("build-dependencies", False)):
+        deps = data.get(table)
+        if isinstance(deps, dict):
+            tables.append((deps, direct))
+
+    targets = data.get("target")
+    if isinstance(targets, dict):
+        for target_cfg in targets.values():
+            if not isinstance(target_cfg, dict):
+                continue
+            for table, direct in (("dependencies", True), ("dev-dependencies", False), ("build-dependencies", False)):
+                deps = target_cfg.get(table)
+                if isinstance(deps, dict):
+                    tables.append((deps, direct))
+    return tables
 
 
 def _parse_cargo_toml(cargo_toml: Path) -> list[Package]:
@@ -809,12 +834,14 @@ def _parse_cargo_toml(cargo_toml: Path) -> list[Package]:
 
     pkgs: list[Package] = []
     seen: set[str] = set()
-    for table, direct in (("dependencies", True), ("dev-dependencies", False), ("build-dependencies", False)):
-        deps = data.get(table)
-        if not isinstance(deps, dict):
-            continue
+    workspace = data.get("workspace")
+    workspace_deps = workspace.get("dependencies") if isinstance(workspace, dict) else None
+    if not isinstance(workspace_deps, dict):
+        workspace_deps = {}
+
+    for deps, direct in _cargo_dependency_tables(data):
         for name, spec in deps.items():
-            version = _cargo_dep_version(spec)
+            version = _cargo_dep_version(spec, workspace_deps.get(name))
             if not version or name in seen:
                 continue
             seen.add(name)

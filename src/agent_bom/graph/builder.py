@@ -938,6 +938,7 @@ def build_unified_graph_from_report(
     )
     _add_snowflake_services(graph, report_json.get("snowflake_services"), data_source_tag)
     _add_snowflake_pipeline(graph, report_json.get("snowflake_pipeline"), data_source_tag)
+    _add_snowflake_integrations(graph, report_json.get("snowflake_integrations"), data_source_tag)
 
     # ── Discovered non-human identities (IdP service accounts, gated) ────
     # Project NHIs enumerated by the identity connectors (Okta service apps /
@@ -2392,6 +2393,74 @@ def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str)
                         evidence={"source": "snowflake-services"},
                     )
                 )
+
+
+def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote Snowflake account integrations into the graph (external-trust layer).
+
+    Each integration is the account's connection to the outside world. They
+    become ``CLOUD_RESOURCE`` nodes owned by the account, carrying the category
+    (STORAGE / API / EXTERNAL_ACCESS / SECURITY / NOTIFICATION / CATALOG) and an
+    ``internet_exposed`` flag for the egress-bearing kinds, so blast-radius and
+    the visual surface the account's outbound/federation surface. Never raises;
+    a non-ok payload is a no-op.
+    """
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return
+    account = _clean_graph_part(payload.get("account"))
+    data_sources = sorted({data_source, "snowflake-integrations"} - {""})
+    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
+    if account_node_id:
+        graph.add_node(
+            UnifiedNode(
+                id=account_node_id,
+                entity_type=EntityType.ACCOUNT,
+                label=account or "snowflake",
+                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-integrations"},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+            )
+        )
+
+    egress_categories = {"STORAGE", "API", "EXTERNAL_ACCESS", "NOTIFICATION", "CATALOG"}
+    for integ in payload.get("integrations", []) or []:
+        if not isinstance(integ, dict):
+            continue
+        name = _clean_graph_part(integ.get("name"))
+        if not name:
+            continue
+        category = str(integ.get("category", "") or "").upper()
+        node_id = f"cloud_resource:snowflake:integration:{name}"
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"integration: {name}",
+                attributes={
+                    "resource_name": name,
+                    "resource_type": "integration",
+                    "resource_kind": "snowflake-integration",
+                    "cloud_provider": "snowflake",
+                    "integration_type": integ.get("type"),
+                    "integration_category": category,
+                    "enabled": bool(integ.get("enabled")),
+                    "internet_exposed": bool(integ.get("enabled")) and category in egress_categories,
+                    "external_access": category == "EXTERNAL_ACCESS",
+                    "identity_federation": category == "SECURITY",
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="network"),
+            )
+        )
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id,
+                    target=node_id,
+                    relationship=RelationshipType.OWNS,
+                    evidence={"source": "snowflake-integrations"},
+                )
+            )
 
 
 def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str) -> None:

@@ -2809,6 +2809,122 @@ def discover_snowflake_pipeline(
     return result
 
 
+_SF_INTEGRATION_EGRESS = {"EXTERNAL_ACCESS", "API", "NOTIFICATION", "STORAGE", "CATALOG"}
+
+
+def discover_snowflake_integrations(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> dict[str, Any]:
+    """Inventory Snowflake account integrations (read-only).
+
+    Integrations are the account's connections to the outside world — every one
+    is an egress / federation / external-trust surface:
+
+    * **STORAGE** — external cloud buckets backing stages (S3 / Azure / GCS).
+    * **API** — external-function endpoints (API Gateway / Functions).
+    * **EXTERNAL ACCESS** — outbound network access from UDFs/procedures
+      (allowed network rules + secrets).
+    * **SECURITY** — external OAuth / SAML / SCIM federation.
+    * **NOTIFICATION** — SNS / SQS / Event Grid auto-ingest channels.
+    * **CATALOG** — external Iceberg / Polaris (Open Catalog) REST catalogs.
+
+    Discovered via ``SHOW INTEGRATIONS`` (name / type / category / enabled).
+    Returns ``status``, ``account``, ``integrations``, ``findings``,
+    ``warnings``. No secret material is read.
+
+    Raises:
+        CloudDiscoveryError: if snowflake-connector-python is not installed.
+    """
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake integration discovery. Install with: pip install 'agent-bom[snowflake]'"
+        )
+
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "account": resolved_account,
+        "integrations": [],
+        "findings": [],
+        "warnings": [],
+    }
+    warnings: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "no_account"
+        warnings.append("SNOWFLAKE_ACCOUNT not set.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator, database, schema)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+        return result
+
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW INTEGRATIONS")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                if not name:
+                    continue
+                # SHOW INTEGRATIONS returns a high-level "category"
+                # (SECURITY / STORAGE / API / EXTERNAL_ACCESS / NOTIFICATION /
+                # CATALOG) plus a "type" subtype (SAML2, EXTERNAL_OAUTH, S3, …).
+                # Prefer the category column; fall back to the type prefix.
+                itype = str(r.get("type", "") or "").upper()
+                category = str(r.get("category", "") or "").upper().replace(" ", "_")
+                if not category:
+                    category = itype.split("-")[0].split(" ")[0].strip()
+                result["integrations"].append(
+                    {
+                        "name": name,
+                        "type": itype,
+                        "category": category,
+                        "enabled": _sf_truthy(r.get("enabled")),
+                        "comment": str(r.get("comment", "") or "")[:200],
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list integrations: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        enabled_egress = [i for i in result["integrations"] if i["enabled"] and i["category"] in _SF_INTEGRATION_EGRESS]
+        ext_access = [i["name"] for i in enabled_egress if i["category"] == "EXTERNAL_ACCESS"]
+        if ext_access:
+            result["findings"].append(
+                {
+                    "severity": "medium",
+                    "title": "External-access integrations enabled",
+                    "detail": f"{len(ext_access)} external-access integration(s) let UDFs/procedures make outbound network calls.",
+                }
+            )
+        security = [i["name"] for i in result["integrations"] if i["enabled"] and i["category"] == "SECURITY"]
+        if security:
+            result["findings"].append(
+                {
+                    "severity": "low",
+                    "title": "External identity federation configured",
+                    "detail": f"{len(security)} security integration(s) federate identity to an external IdP/OAuth provider.",
+                }
+            )
+        result["status"] = "ok"
+    finally:
+        conn.close()
+    return result
+
+
 def discover_activity(
     account: str | None = None,
     user: str | None = None,

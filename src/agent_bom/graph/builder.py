@@ -936,6 +936,7 @@ def build_unified_graph_from_report(
         report_json.get("snowflake_auth_posture"),
         data_source_tag,
     )
+    _add_snowflake_services(graph, report_json.get("snowflake_services"), data_source_tag)
 
     # ── Discovered non-human identities (IdP service accounts, gated) ────
     # Project NHIs enumerated by the identity connectors (Okta service apps /
@@ -2233,6 +2234,163 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
 
 
 _EXFIL_STAGE_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}
+
+
+def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote Snowflake compute + the database/schema containment tree into the graph.
+
+    Completes the object catalog beyond tables/views:
+
+    * **Warehouses** → ``CLOUD_RESOURCE`` (compute) owned by the account.
+    * **Databases** → ``DATA_STORE`` container owned by the account.
+    * **Schemas** → ``DATA_STORE`` container; the database ``CONTAINS`` the schema.
+    * Existing table/view nodes (``data_store:snowflake:DB.SCHEMA.OBJ`` from the
+      object graph) are linked under their schema via ``CONTAINS``, so the graph
+      renders a navigable DB → schema → table tree instead of a flat owned-by-account list.
+
+    Never raises; missing/empty/non-ok payload is a no-op.
+    """
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return
+    account = _clean_graph_part(payload.get("account"))
+    data_sources = sorted({data_source, "snowflake-services"} - {""})
+    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
+    if account_node_id:
+        graph.add_node(
+            UnifiedNode(
+                id=account_node_id,
+                entity_type=EntityType.ACCOUNT,
+                label=account or "snowflake",
+                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-services"},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+            )
+        )
+
+    def _own(node: UnifiedNode) -> str:
+        graph.add_node(node)
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id,
+                    target=node.id,
+                    relationship=RelationshipType.OWNS,
+                    evidence={"source": "snowflake-services"},
+                )
+            )
+        return node.id
+
+    for wh in payload.get("warehouses", []) or []:
+        if not isinstance(wh, dict):
+            continue
+        name = _clean_graph_part(wh.get("name"))
+        if not name:
+            continue
+        _own(
+            UnifiedNode(
+                id=f"cloud_resource:snowflake:warehouse:{name}",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"warehouse: {name}",
+                attributes={
+                    "resource_name": name,
+                    "resource_type": "warehouse",
+                    "resource_kind": "snowflake-warehouse",
+                    "cloud_provider": "snowflake",
+                    "size": wh.get("size"),
+                    "state": wh.get("state"),
+                    "auto_suspend": wh.get("auto_suspend"),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="compute"),
+            )
+        )
+
+    # Database + schema containers, keyed by fqn so table nodes can attach.
+    schema_node_by_fqn: dict[str, str] = {}
+    db_node_by_name: dict[str, str] = {}
+    for db in payload.get("databases", []) or []:
+        if not isinstance(db, dict):
+            continue
+        name = _clean_graph_part(db.get("name"))
+        if not name:
+            continue
+        db_id = _own(
+            UnifiedNode(
+                id=f"data_store:snowflake:db:{name}",
+                entity_type=EntityType.DATA_STORE,
+                label=f"database: {name}",
+                attributes={
+                    "database_name": name,
+                    "object_type": "database",
+                    "cloud_provider": "snowflake",
+                    "is_data_store": True,
+                    "is_container": True,
+                    "retention_time": db.get("retention_time"),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+            )
+        )
+        db_node_by_name[name] = db_id
+
+    for sch in payload.get("schemas", []) or []:
+        if not isinstance(sch, dict):
+            continue
+        fqn = _clean_graph_part(sch.get("fqn"))
+        db_name = _clean_graph_part(sch.get("database_name"))
+        if not fqn or not db_name:
+            continue
+        sch_id = f"data_store:snowflake:schema:{fqn}"
+        graph.add_node(
+            UnifiedNode(
+                id=sch_id,
+                entity_type=EntityType.DATA_STORE,
+                label=f"schema: {fqn}",
+                attributes={
+                    "fqn": fqn,
+                    "object_type": "schema",
+                    "database": db_name,
+                    "cloud_provider": "snowflake",
+                    "is_data_store": True,
+                    "is_container": True,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+            )
+        )
+        schema_node_by_fqn[fqn] = sch_id
+        # database CONTAINS schema
+        parent_db_id = db_node_by_name.get(db_name)
+        if parent_db_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=parent_db_id,
+                    target=sch_id,
+                    relationship=RelationshipType.CONTAINS,
+                    evidence={"source": "snowflake-services"},
+                )
+            )
+
+    # Link existing object-graph table/view nodes under their schema (schema CONTAINS object).
+    if schema_node_by_fqn:
+        for node in list(graph.nodes.values()):
+            if node.entity_type != EntityType.DATA_STORE:
+                continue
+            obj_fqn = str(node.attributes.get("fqn") or "")
+            # Only DB.SCHEMA.OBJECT (3-part) table/view nodes, not the containers themselves.
+            if node.attributes.get("is_container") or obj_fqn.count(".") != 2:
+                continue
+            parent_schema = obj_fqn.rsplit(".", 1)[0]
+            parent_sch_id = schema_node_by_fqn.get(parent_schema)
+            if parent_sch_id:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=parent_sch_id,
+                        target=node.id,
+                        relationship=RelationshipType.CONTAINS,
+                        evidence={"source": "snowflake-services"},
+                    )
+                )
 
 
 def _add_snowflake_identity(graph: UnifiedGraph, login_payload: Any, auth_payload: Any, data_source: str) -> None:

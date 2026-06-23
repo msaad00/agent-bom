@@ -81,6 +81,16 @@ def _sf_truthy(value: Any) -> bool:
     return str(value).strip().lower() in ("true", "t", "yes", "y", "1")
 
 
+def _coerce_int_or_none(value: Any) -> int | None:
+    """Coerce a Snowflake numeric cell to int, preserving 0 (which ``or`` would eat)."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    return int(text) if text.lstrip("-").isdigit() else None
+
+
 def _snowflake_cloud_origin(
     *,
     account: str,
@@ -2476,6 +2486,151 @@ def discover_auth_posture(
                     "detail": f"{len(weak)} enabled human user(s) authenticate with a password and have no MFA enrolled.",
                 }
             )
+        result["status"] = "ok"
+    finally:
+        conn.close()
+    return result
+
+
+def discover_snowflake_services(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> dict[str, Any]:
+    """Inventory Snowflake compute + the database/schema containment hierarchy (read-only).
+
+    Completes the object catalog beyond tables/views: the **warehouses** that run
+    queries (the compute service) and the **database → schema** containers that
+    organize the data. With the object graph's table/view nodes, this lets the
+    graph render a navigable DB → schema → table tree and surface compute.
+
+    * Warehouses — `SHOW WAREHOUSES`: size, state, auto-suspend.
+    * Databases — `SHOW DATABASES`: owner, retention (time-travel) window.
+    * Schemas — `SHOW SCHEMAS IN ACCOUNT`: parent database.
+
+    Returns ``status``, ``account``, ``warehouses``, ``databases``, ``schemas``,
+    ``findings``, ``warnings``. Never leaks data — only object metadata.
+
+    Raises:
+        CloudDiscoveryError: if snowflake-connector-python is not installed.
+    """
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake service discovery. Install with: pip install 'agent-bom[snowflake]'"
+        )
+
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "account": resolved_account,
+        "warehouses": [],
+        "databases": [],
+        "schemas": [],
+        "findings": [],
+        "warnings": [],
+    }
+    warnings: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "no_account"
+        warnings.append("SNOWFLAKE_ACCOUNT not set.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator, database, schema)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+        return result
+
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW WAREHOUSES")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                if not name:
+                    continue
+                result["warehouses"].append(
+                    {
+                        "name": name,
+                        "size": str(r.get("size", "") or ""),
+                        "state": str(r.get("state", "") or ""),
+                        "auto_suspend": _coerce_int_or_none(r.get("auto_suspend")),
+                        "type": str(r.get("type", "") or "STANDARD"),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list warehouses: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW DATABASES")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                if not name:
+                    continue
+                result["databases"].append(
+                    {
+                        "name": name,
+                        "owner": str(r.get("owner", "") or ""),
+                        "retention_time": _coerce_int_or_none(r.get("retention_time")),
+                        "is_default": str(r.get("is_default", "") or "").upper() in ("Y", "YES", "TRUE"),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list databases: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW SCHEMAS IN ACCOUNT")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                db = str(r.get("database_name", "") or "")
+                if not name or not db:
+                    continue
+                if name in ("INFORMATION_SCHEMA",):
+                    continue
+                result["schemas"].append({"name": name, "database_name": db, "fqn": f"{db}.{name}", "owner": str(r.get("owner", "") or "")})
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list schemas: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        warehouses: list[dict[str, Any]] = result["warehouses"]
+        for wh_item in warehouses:
+            if wh_item["auto_suspend"] in (None, 0):
+                result["findings"].append(
+                    {
+                        "severity": "low",
+                        "title": "Warehouse without auto-suspend",
+                        "detail": f"Warehouse {wh_item['name']} has no auto-suspend; it accrues compute cost while idle.",
+                    }
+                )
+        databases: list[dict[str, Any]] = result["databases"]
+        for db_item in databases:
+            if db_item["retention_time"] == 0:
+                result["findings"].append(
+                    {
+                        "severity": "low",
+                        "title": "Database without time-travel retention",
+                        "detail": f"Database {db_item['name']} has 0-day retention; dropped/changed data cannot be recovered.",
+                    }
+                )
         result["status"] = "ok"
     finally:
         conn.close()

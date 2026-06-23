@@ -71,12 +71,24 @@ ui = [
 aws = ["boto3>=1.34"]
 azure = [
     "azure-identity>=1.15",
+    "azure-mgmt-resource>=23.0",
+    "azure-mgmt-authorization>=4.0",
     "azure-mgmt-cognitiveservices>=13.5",
     "azure-mgmt-web>=7.2",
+    "azure-mgmt-appcontainers>=3.0",
     "azure-mgmt-containerinstance>=10.1",
-    "azure-mgmt-machinelearningservices>=1.0",
     "azure-mgmt-containerservice>=30.0",
-    "azure-mgmt-resource>=23.0",
+    "azure-mgmt-machinelearningservices>=1.0",
+    "azure-mgmt-compute>=30.0",
+    "azure-mgmt-storage>=21.0",
+    "azure-mgmt-network>=25.0",
+    "azure-mgmt-msi>=7.0",
+    "azure-mgmt-monitor>=6.0",
+    "azure-mgmt-security>=7.0",
+    "azure-mgmt-keyvault>=10.3",
+    "azure-mgmt-sql>=3.0",
+    "azure-mgmt-rdbms>=10.1",
+    "six>=1.16",
 ]
 gcp = [
     "google-cloud-aiplatform>=1.38",

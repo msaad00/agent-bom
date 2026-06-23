@@ -78,13 +78,24 @@ class AzureCISReport:
         return sum(1 for c in self.checks if c.status == CheckStatus.FAIL)
 
     @property
+    def errored(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.ERROR)
+
+    @property
+    def not_applicable(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.NOT_APPLICABLE)
+
+    @property
+    def evaluated(self) -> int:
+        return self.passed + self.failed
+
+    @property
     def total(self) -> int:
         return len(self.checks)
 
     @property
     def pass_rate(self) -> float:
-        evaluated = sum(1 for c in self.checks if c.status in (CheckStatus.PASS, CheckStatus.FAIL))
-        return (self.passed / evaluated * 100) if evaluated else 0.0
+        return (self.passed / self.evaluated * 100) if self.evaluated else 0.0
 
     def to_dict(self) -> dict:
         from agent_bom.mitre_attack import tag_cis_check
@@ -96,6 +107,9 @@ class AzureCISReport:
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
             "failed": self.failed,
+            "errored": self.errored,
+            "not_applicable": self.not_applicable,
+            "evaluated": self.evaluated,
             "total": self.total,
             "checks": [
                 {
@@ -573,7 +587,7 @@ def _check_2_1(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="VirtualMachines")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="VirtualMachines")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS
@@ -598,7 +612,7 @@ def _check_2_2(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="AppServices")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="AppServices")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS
@@ -623,7 +637,7 @@ def _check_2_3(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="SqlServers")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="SqlServers")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS
@@ -648,7 +662,7 @@ def _check_2_4(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="StorageAccounts")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="StorageAccounts")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS
@@ -673,7 +687,7 @@ def _check_2_5(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="KeyVaults")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="KeyVaults")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS
@@ -698,7 +712,7 @@ def _check_2_6(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="Dns")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="Dns")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS
@@ -724,7 +738,7 @@ def _check_2_7(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="Arm")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="Arm")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS
@@ -749,7 +763,7 @@ def _check_2_8(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="OpenSourceRelationalDatabases")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="OpenSourceRelationalDatabases")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS
@@ -774,7 +788,7 @@ def _check_2_9(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="CosmosDbs")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="CosmosDbs")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS
@@ -799,7 +813,7 @@ def _check_2_10(security_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_DEFENDER_SECTION,
     )
     try:
-        pricing = security_client.pricings.get(pricing_name="Containers")
+        pricing = security_client.pricings.get(scope_id=f"/subscriptions/{subscription_id}", pricing_name="Containers")
         tier = getattr(pricing, "pricing_tier", "") or ""
         if tier.lower() == "standard":
             result.status = CheckStatus.PASS

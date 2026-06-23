@@ -213,7 +213,7 @@ class SQLiteProxyReplayStore:
 class PostgresProxyReplayStore:
     """Postgres-backed tier-B capture store for multi-replica deployments."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: Any = None) -> None:
         from agent_bom.api.postgres_common import _get_pool
 
         self._pool = pool or _get_pool()

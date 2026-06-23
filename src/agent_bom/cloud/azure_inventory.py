@@ -58,7 +58,9 @@ _TRUTHY = {"1", "true", "yes", "on"}
 _AZURE_STORAGE_PERMISSIONS: tuple[str, ...] = ("Microsoft.Storage/storageAccounts/read",)
 _AZURE_COMPUTE_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.Compute/disks/read",
     "Microsoft.ContainerService/managedClusters/read",
+    "Microsoft.Web/sites/read",
     "Microsoft.Network/networkSecurityGroups/read",
 )
 _AZURE_IDENTITY_PERMISSIONS: tuple[str, ...] = ("Microsoft.ManagedIdentity/userAssignedIdentities/read",)
@@ -69,6 +71,9 @@ _AZURE_DATA_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.Sql/servers/read",
     "Microsoft.DBforPostgreSQL/flexibleServers/read",
     "Microsoft.DBforMySQL/flexibleServers/read",
+    "Microsoft.EventHub/namespaces/read",
+    "Microsoft.ServiceBus/namespaces/read",
+    "Microsoft.Cache/redis/read",
 )
 _AZURE_NETWORK_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.Network/virtualNetworks/read",
@@ -143,6 +148,11 @@ def discover_inventory(
         "virtual_networks": [],
         "public_ips": [],
         "load_balancers": [],
+        "event_hubs": [],
+        "service_bus_namespaces": [],
+        "redis_caches": [],
+        "managed_disks": [],
+        "app_services": [],
         "management_groups": [],
         "warnings": [],
         "discovery_envelope": None,
@@ -185,6 +195,8 @@ def discover_inventory(
     if include_compute:
         discovery_tasks.append(("instances", _discover_vms))
         discovery_tasks.append(("container_clusters", _discover_aks_clusters))
+        discovery_tasks.append(("managed_disks", _discover_managed_disks))
+        discovery_tasks.append(("app_services", _discover_app_services))
         discovery_tasks.append(("security_groups", _discover_nsgs))
     if include_identity:
         discovery_tasks.append(("managed_identities", _discover_managed_identities))
@@ -192,6 +204,9 @@ def discover_inventory(
         discovery_tasks.append(("key_vaults", _discover_key_vaults))
         discovery_tasks.append(("container_registries", _discover_container_registries))
         discovery_tasks.append(("databases", _discover_databases))
+        discovery_tasks.append(("event_hubs", _discover_event_hubs))
+        discovery_tasks.append(("service_bus_namespaces", _discover_service_bus))
+        discovery_tasks.append(("redis_caches", _discover_redis_caches))
     if include_network:
         discovery_tasks.append(("virtual_networks", _discover_virtual_networks))
         discovery_tasks.append(("public_ips", _discover_public_ips))
@@ -223,6 +238,11 @@ def discover_inventory(
     virtual_networks = collected.get("virtual_networks", [])
     public_ips = collected.get("public_ips", [])
     load_balancers = collected.get("load_balancers", [])
+    event_hubs = collected.get("event_hubs", [])
+    service_bus_namespaces = collected.get("service_bus_namespaces", [])
+    redis_caches = collected.get("redis_caches", [])
+    managed_disks = collected.get("managed_disks", [])
+    app_services = collected.get("app_services", [])
 
     # Management groups are tenant-scoped (above the subscription), so they are
     # discovered with a single call rather than the per-subscription thread pool.
@@ -270,6 +290,11 @@ def discover_inventory(
         "virtual_networks": virtual_networks,
         "public_ips": public_ips,
         "load_balancers": load_balancers,
+        "event_hubs": event_hubs,
+        "service_bus_namespaces": service_bus_namespaces,
+        "redis_caches": redis_caches,
+        "managed_disks": managed_disks,
+        "app_services": app_services,
         "management_groups": management_groups,
         "warnings": warnings,
         "discovery_envelope": envelope.to_dict(),
@@ -853,6 +878,211 @@ def _discover_load_balancers(credential: Any, subscription_id: str, *, warnings:
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list Azure load balancers: {sanitize_discovery_warning(exc)}")
     return load_balancers
+
+
+# ---------------------------------------------------------------------------
+# Messaging / cache / block storage / app service (subscription-wide list)
+# ---------------------------------------------------------------------------
+
+
+def _discover_event_hubs(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every Event Hub namespace in the subscription (read-only).
+
+    Control-plane metadata only (SKU, public-network posture); never reads
+    event/message payloads.
+    """
+    try:
+        from azure.mgmt.eventhub import EventHubManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-eventhub not installed. Skipping Event Hub inventory.")
+        return []
+
+    namespaces: list[dict[str, Any]] = []
+    try:
+        client = EventHubManagementClient(credential, subscription_id)
+        for namespace in client.namespaces.list():
+            namespace_id = str(getattr(namespace, "id", "") or "")
+            name = str(getattr(namespace, "name", "") or "").strip()
+            if not name:
+                continue
+            sku = getattr(namespace, "sku", None)
+            namespaces.append(
+                {
+                    "name": name,
+                    "id": namespace_id,
+                    "native_type": "Microsoft.EventHub/namespaces",
+                    "location": str(getattr(namespace, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(namespace_id),
+                    "tags": _clean_tags(getattr(namespace, "tags", None)),
+                    "sku": str(getattr(sku, "name", "") or "") if sku else "",
+                    "public_network_access": str(getattr(namespace, "public_network_access", "") or ""),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure Event Hub namespaces: {sanitize_discovery_warning(exc)}")
+    return namespaces
+
+
+def _discover_service_bus(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every Service Bus namespace in the subscription (read-only).
+
+    Control-plane metadata only (SKU, public-network posture); never reads
+    queue/topic message contents.
+    """
+    try:
+        from azure.mgmt.servicebus import ServiceBusManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-servicebus not installed. Skipping Service Bus inventory.")
+        return []
+
+    namespaces: list[dict[str, Any]] = []
+    try:
+        client = ServiceBusManagementClient(credential, subscription_id)
+        for namespace in client.namespaces.list():
+            namespace_id = str(getattr(namespace, "id", "") or "")
+            name = str(getattr(namespace, "name", "") or "").strip()
+            if not name:
+                continue
+            sku = getattr(namespace, "sku", None)
+            namespaces.append(
+                {
+                    "name": name,
+                    "id": namespace_id,
+                    "native_type": "Microsoft.ServiceBus/namespaces",
+                    "location": str(getattr(namespace, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(namespace_id),
+                    "tags": _clean_tags(getattr(namespace, "tags", None)),
+                    "sku": str(getattr(sku, "name", "") or "") if sku else "",
+                    "public_network_access": str(getattr(namespace, "public_network_access", "") or ""),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure Service Bus namespaces: {sanitize_discovery_warning(exc)}")
+    return namespaces
+
+
+def _discover_redis_caches(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every Azure Cache for Redis instance in the subscription (read-only).
+
+    Control-plane metadata only (SKU, public-network posture, non-SSL port);
+    never connects to the cache data plane or reads keys.
+    """
+    try:
+        from azure.mgmt.redis import RedisManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-redis not installed. Skipping Azure Cache for Redis inventory.")
+        return []
+
+    caches: list[dict[str, Any]] = []
+    try:
+        client = RedisManagementClient(credential, subscription_id)
+        for cache in client.redis.list_by_subscription():
+            cache_id = str(getattr(cache, "id", "") or "")
+            name = str(getattr(cache, "name", "") or "").strip()
+            if not name:
+                continue
+            sku = getattr(cache, "sku", None)
+            caches.append(
+                {
+                    "name": name,
+                    "id": cache_id,
+                    "native_type": "Microsoft.Cache/Redis",
+                    "location": str(getattr(cache, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(cache_id),
+                    "tags": _clean_tags(getattr(cache, "tags", None)),
+                    "public_network_access": str(getattr(cache, "public_network_access", "") or ""),
+                    "sku": str(getattr(sku, "name", "") or "") if sku else "",
+                    "non_ssl_port_enabled": bool(getattr(cache, "enable_non_ssl_port", False)),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure Cache for Redis instances: {sanitize_discovery_warning(exc)}")
+    return caches
+
+
+def _discover_managed_disks(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every Managed Disk in the subscription (read-only).
+
+    Control-plane metadata only (size, encryption type, public-network posture);
+    never reads disk contents. Disks hold data at rest, so they signal a data store.
+    """
+    try:
+        from azure.mgmt.compute import ComputeManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-compute not installed. Skipping Managed Disk inventory.")
+        return []
+
+    disks: list[dict[str, Any]] = []
+    try:
+        client = ComputeManagementClient(credential, subscription_id)
+        for disk in client.disks.list():
+            disk_id = str(getattr(disk, "id", "") or "")
+            name = str(getattr(disk, "name", "") or "").strip()
+            if not name:
+                continue
+            encryption = getattr(disk, "encryption", None)
+            disks.append(
+                {
+                    "name": name,
+                    "id": disk_id,
+                    "native_type": "Microsoft.Compute/disks",
+                    "location": str(getattr(disk, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(disk_id),
+                    "tags": _clean_tags(getattr(disk, "tags", None)),
+                    "disk_size_gb": getattr(disk, "disk_size_gb", None),
+                    "encryption_type": str(getattr(encryption, "type", "") or "") if encryption else "",
+                    "public_network_access": str(getattr(disk, "public_network_access", "") or ""),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure Managed Disks: {sanitize_discovery_warning(exc)}")
+    return disks
+
+
+def _discover_app_services(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every App Service site (Web Apps + Function Apps) read-only.
+
+    ``web_apps.list()`` returns both; ``kind`` (contains ``functionapp``)
+    distinguishes them. Control-plane metadata only — the public host name (the
+    exposure signal), HTTPS-only, and public-network posture — never app code or
+    app-setting/secret values.
+    """
+    try:
+        from azure.mgmt.web import WebSiteManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-web not installed. Skipping App Service inventory.")
+        return []
+
+    sites: list[dict[str, Any]] = []
+    try:
+        client = WebSiteManagementClient(credential, subscription_id)
+        for site in client.web_apps.list():
+            site_id = str(getattr(site, "id", "") or "")
+            name = str(getattr(site, "name", "") or "").strip()
+            if not name:
+                continue
+            kind = str(getattr(site, "kind", "") or "")
+            default_host_name = str(getattr(site, "default_host_name", "") or "")
+            enabled = bool(getattr(site, "enabled", True))
+            sites.append(
+                {
+                    "name": name,
+                    "id": site_id,
+                    "native_type": "Microsoft.Web/sites",
+                    "location": str(getattr(site, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(site_id),
+                    "tags": _clean_tags(getattr(site, "tags", None)),
+                    "kind": kind,
+                    "is_function_app": "functionapp" in kind.lower(),
+                    "default_host_name": default_host_name,
+                    "https_only": bool(getattr(site, "https_only", False)),
+                    "public_network_access": str(getattr(site, "public_network_access", "") or ""),
+                    "internet_facing": bool(default_host_name) and enabled,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure App Services: {sanitize_discovery_warning(exc)}")
+    return sites
 
 
 # ---------------------------------------------------------------------------

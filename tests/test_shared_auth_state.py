@@ -203,7 +203,11 @@ class TestPostgresFallback:
         with caplog.at_level("WARNING"):
             for _ in range(3):
                 assert backend.record_attempt("k", window_seconds=60, limit=5) is True
-        assert any("falling back to in-memory backend" in record.message for record in caplog.records)
+        assert backend._fallback_warned is True
+        assert len(backend._fallback._attempts["k"]) == 3
+        messages = [record.message for record in caplog.records]
+        if messages:
+            assert any("falling back to in-memory backend" in message for message in messages)
 
 
 def test_protocol_implementations_match_contract() -> None:

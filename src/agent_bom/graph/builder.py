@@ -939,6 +939,7 @@ def build_unified_graph_from_report(
     _add_snowflake_services(graph, report_json.get("snowflake_services"), data_source_tag)
     _add_snowflake_pipeline(graph, report_json.get("snowflake_pipeline"), data_source_tag)
     _add_snowflake_integrations(graph, report_json.get("snowflake_integrations"), data_source_tag)
+    _add_snowflake_external_data(graph, report_json.get("snowflake_external_data"), data_source_tag)
 
     # ── Discovered non-human identities (IdP service accounts, gated) ────
     # Project NHIs enumerated by the identity connectors (Okta service apps /
@@ -2393,6 +2394,144 @@ def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str)
                         evidence={"source": "snowflake-services"},
                     )
                 )
+
+
+_SF_EXTERNAL_BUCKET_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}
+
+
+def _add_snowflake_external_data(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote Snowflake open-table-format + external data into the graph.
+
+    * **Iceberg tables** → ``DATA_STORE``; when the base location is a cloud
+      bucket, ``EXPOSED_TO`` that bucket node (same id a cloud scan emits — the
+      cross-cloud stitch), so off-account Iceberg data is traversable.
+    * **External tables** → ``DATA_STORE``; ``DEPENDS_ON`` the stage they read
+      from (which the exfil layer links onward to the bucket).
+
+    Never raises; a non-ok payload is a no-op.
+    """
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return
+    account = _clean_graph_part(payload.get("account"))
+    data_sources = sorted({data_source, "snowflake-external-data"} - {""})
+    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
+    if account_node_id:
+        graph.add_node(
+            UnifiedNode(
+                id=account_node_id,
+                entity_type=EntityType.ACCOUNT,
+                label=account or "snowflake",
+                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-external-data"},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+            )
+        )
+
+    def _own_data_store(node_id: str, label: str, attrs: dict[str, Any]) -> str:
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.DATA_STORE,
+                label=label,
+                attributes={"cloud_provider": "snowflake", "is_data_store": True, **attrs},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+            )
+        )
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id,
+                    target=node_id,
+                    relationship=RelationshipType.OWNS,
+                    evidence={"source": "snowflake-external-data"},
+                )
+            )
+        return node_id
+
+    for tbl in payload.get("iceberg_tables", []) or []:
+        if not isinstance(tbl, dict):
+            continue
+        fqn = _clean_graph_part(tbl.get("fqn")) or _clean_graph_part(tbl.get("name"))
+        if not fqn:
+            continue
+        node_id = _own_data_store(
+            f"data_store:snowflake:iceberg:{fqn}",
+            f"iceberg table: {fqn}",
+            {
+                "fqn": fqn,
+                "object_type": "iceberg_table",
+                "table_format": "iceberg",
+                "catalog": tbl.get("catalog"),
+                "catalog_source": tbl.get("catalog_source"),
+                "base_location": tbl.get("base_location"),
+            },
+        )
+        cloud = _clean_graph_part(tbl.get("cloud_provider"))
+        bucket = _clean_graph_part(tbl.get("bucket"))
+        if cloud and bucket:
+            service = _SF_EXTERNAL_BUCKET_SERVICE.get(cloud, "storage")
+            bucket_id = f"cloud_resource:{cloud}:{service}:bucket:{bucket}"
+            if bucket_id not in graph.nodes:
+                graph.add_node(
+                    UnifiedNode(
+                        id=bucket_id,
+                        entity_type=EntityType.CLOUD_RESOURCE,
+                        label=f"bucket: {bucket}",
+                        attributes={
+                            "resource_name": bucket,
+                            "resource_type": "bucket",
+                            "resource_kind": f"{service}-bucket",
+                            "cloud_provider": cloud,
+                            "cloud_service": service,
+                        },
+                        data_sources=data_sources,
+                        dimensions=NodeDimensions(cloud_provider=cloud, surface=service),
+                    )
+                )
+            graph.add_edge(
+                UnifiedEdge(
+                    source=node_id,
+                    target=bucket_id,
+                    relationship=RelationshipType.EXPOSED_TO,
+                    evidence={"source": "snowflake-external-data", "channel": "iceberg-base-location"},
+                )
+            )
+
+    for tbl in payload.get("external_tables", []) or []:
+        if not isinstance(tbl, dict):
+            continue
+        fqn = _clean_graph_part(tbl.get("fqn")) or _clean_graph_part(tbl.get("name"))
+        if not fqn:
+            continue
+        node_id = _own_data_store(
+            f"data_store:snowflake:external_table:{fqn}",
+            f"external table: {fqn}",
+            {"fqn": fqn, "object_type": "external_table", "location": tbl.get("location")},
+        )
+        stage = _clean_graph_part(tbl.get("stage"))
+        if stage:
+            stage_name = stage.split(".")[-1]
+            stage_id = f"cloud_resource:snowflake:stage:{stage_name}"
+            if stage_id not in graph.nodes:
+                graph.add_node(
+                    UnifiedNode(
+                        id=stage_id,
+                        entity_type=EntityType.CLOUD_RESOURCE,
+                        label=f"external stage: {stage_name}",
+                        attributes={"cloud_provider": "snowflake", "resource_type": "external-stage"},
+                        data_sources=data_sources,
+                        dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+                    )
+                )
+            graph.add_edge(
+                UnifiedEdge(
+                    source=node_id,
+                    target=stage_id,
+                    relationship=RelationshipType.DEPENDS_ON,
+                    evidence={"source": "snowflake-external-data", "via": "external-table-stage"},
+                )
+            )
 
 
 def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: str) -> None:

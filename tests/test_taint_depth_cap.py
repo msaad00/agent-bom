@@ -66,9 +66,7 @@ def test_default_depth_when_malformed(monkeypatch: pytest.MonkeyPatch) -> None:
         ("9999", 8),  # clamped down to ceiling
     ],
 )
-def test_depth_clamped_to_operational_range(
-    monkeypatch: pytest.MonkeyPatch, value: str, expected: int
-) -> None:
+def test_depth_clamped_to_operational_range(monkeypatch: pytest.MonkeyPatch, value: str, expected: int) -> None:
     monkeypatch.setenv("AGENT_BOM_TAINT_MAX_DEPTH", value)
     assert _max_taint_depth() == expected
 
@@ -130,8 +128,7 @@ def test_chain_within_default_depth_fires(tmp_path, monkeypatch: pytest.MonkeyPa
     project = _make_project(tmp_path, _chain_source(depth=3))
     result = analyze_project(project)
     assert _has_helper_chain_finding(result), (
-        f"Expected an inter-procedural finding within the default depth (4); "
-        f"got categories={[f.category for f in result.flow_findings]}"
+        f"Expected an inter-procedural finding within the default depth (4); got categories={[f.category for f in result.flow_findings]}"
     )
 
 
@@ -142,8 +139,7 @@ def test_chain_capped_does_not_fire(tmp_path, monkeypatch: pytest.MonkeyPatch) -
     result = analyze_project(project)
     # The cap prevents the analyzer from reaching the sink past depth 2
     assert not _has_helper_chain_finding(result), (
-        f"Expected no inter-procedural finding with cap=2; "
-        f"got categories={[f.category for f in result.flow_findings]}"
+        f"Expected no inter-procedural finding with cap=2; got categories={[f.category for f in result.flow_findings]}"
     )
 
 

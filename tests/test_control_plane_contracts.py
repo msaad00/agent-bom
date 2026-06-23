@@ -105,8 +105,9 @@ def control_plane_contracts(tmp_path, monkeypatch):
     monkeypatch.setattr("agent_bom.api.routes.graph._get_graph_store_or_503", lambda: sqlite_graph)
     monkeypatch.setattr(
         "agent_bom.api.routes.graph._tenant",
-        lambda request: getattr(getattr(request, "state", None), "tenant_id", None)
-        or request.headers.get("X-Agent-Bom-Tenant-ID", "default"),
+        lambda request: (
+            getattr(getattr(request, "state", None), "tenant_id", None) or request.headers.get("X-Agent-Bom-Tenant-ID", "default")
+        ),
     )
 
     async def _direct_graph_store_call(fn, /, *args, **kwargs):

@@ -29,12 +29,15 @@ from agent_bom.alerts.dispatcher import AlertDispatcher
 from agent_bom.otel_ingest import parse_otel_traces
 from agent_bom.runtime.detectors import (
     ArgumentAnalyzer,
+    BiasTriggerDetector,
     CredentialLeakDetector,
     CrossAgentCorrelator,
+    HallucinationDetector,
     RateLimitTracker,
     ResponseInspector,
     SequenceAnalyzer,
     ToolDriftDetector,
+    ToxicityDetector,
     VectorDBInjectionDetector,
 )
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text
@@ -130,7 +133,7 @@ class ProtectionStats:
     traces_processed: int = 0
     tool_calls_analyzed: int = 0
     alerts_generated: int = 0
-    detectors_active: int = 8
+    detectors_active: int = 11
     # Deep defense stats
     shield_active: bool = False
     threat_level: str = ThreatLevel.NORMAL.value
@@ -284,6 +287,9 @@ class ProtectionEngine:
         self.seq_analyzer = SequenceAnalyzer()
         self.response_inspector = ResponseInspector()
         self.vector_db_detector = VectorDBInjectionDetector()
+        self.bias_detector = BiasTriggerDetector()
+        self.toxicity_detector = ToxicityDetector()
+        self.hallucination_detector = HallucinationDetector()
         self._correlator = CrossAgentCorrelator()
         self.dispatcher = dispatcher or AlertDispatcher()
         self._active = False
@@ -406,6 +412,9 @@ class ProtectionEngine:
                 "SequenceAnalyzer",
                 "ResponseInspector",
                 "VectorDBInjectionDetector",
+                "BiasTriggerDetector",
+                "ToxicityDetector",
+                "HallucinationDetector",
                 "CrossAgentCorrelator",
             ],
             "detectors_active": self._stats.detectors_active,
@@ -762,6 +771,10 @@ class ProtectionEngine:
         # Vector DB injection — elevated severity for RAG/retrieval tools
         vec_alerts = self.vector_db_detector.check(tool_name, response_text)
         all_alerts.extend(a.to_dict() for a in vec_alerts)
+
+        # AI-safety response detectors: bias, toxicity, hallucination
+        for _ai_detector in (self.bias_detector, self.toxicity_detector, self.hallucination_detector):
+            all_alerts.extend(a.to_dict() for a in _ai_detector.check(tool_name, response_text))
 
         for alert_dict in all_alerts:
             await self.dispatcher.dispatch(alert_dict)

@@ -15,7 +15,7 @@ def test_accuracy_baseline_has_release_accounting() -> None:
 
     assert baseline["schema_version"] == "accuracy-baseline/v1"
     assert baseline["scope"]["release_gate"] is True
-    assert baseline["runtime_red_team"]["attack_cases"] == 17
+    assert baseline["runtime_red_team"]["attack_cases"] == 23
     assert baseline["runtime_red_team"]["benign_cases"] == 2
     assert baseline["runtime_red_team"]["missed_attacks"] == 0
     assert baseline["runtime_red_team"]["false_positives"] == 0

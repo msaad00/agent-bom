@@ -1176,12 +1176,14 @@ async def _graph_store_call(fn, /, *args, **kwargs):
 
 
 class PresetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str
     description: str = ""
     filters: dict
 
 
 class GraphQueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     roots: list[str] = Field(..., min_length=1, description="One or more starting node IDs")
     scan_id: str = ""
     direction: Literal["forward", "reverse", "both"] = "forward"

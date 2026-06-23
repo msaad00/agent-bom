@@ -65,6 +65,11 @@ _AZURE_DATA_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.ContainerRegistry/registries/read",
     "Microsoft.DocumentDB/databaseAccounts/read",
 )
+_AZURE_NETWORK_PERMISSIONS: tuple[str, ...] = (
+    "Microsoft.Network/virtualNetworks/read",
+    "Microsoft.Network/publicIPAddresses/read",
+    "Microsoft.Network/loadBalancers/read",
+)
 
 # Open-to-the-world source-address ranges that mark an NSG inbound rule as
 # internet-facing. The CNAPP overlay keys off this `network_exposure` shape.
@@ -88,6 +93,7 @@ def discover_inventory(
     include_compute: bool = True,
     include_identity: bool = True,
     include_data: bool = True,
+    include_network: bool = True,
     force: bool = False,
 ) -> dict[str, Any]:
     """Enumerate the general Azure estate (storage, VMs + NSGs, identities).
@@ -127,6 +133,9 @@ def discover_inventory(
         "key_vaults": [],
         "container_registries": [],
         "databases": [],
+        "virtual_networks": [],
+        "public_ips": [],
+        "load_balancers": [],
         "warnings": [],
         "discovery_envelope": None,
     }
@@ -164,6 +173,9 @@ def discover_inventory(
     key_vaults: list[dict[str, Any]] = []
     container_registries: list[dict[str, Any]] = []
     databases: list[dict[str, Any]] = []
+    virtual_networks: list[dict[str, Any]] = []
+    public_ips: list[dict[str, Any]] = []
+    load_balancers: list[dict[str, Any]] = []
 
     if include_storage:
         storage_accounts = _discover_storage_accounts(credential, resolved_sub, warnings=warnings)
@@ -176,6 +188,10 @@ def discover_inventory(
         key_vaults = _discover_key_vaults(credential, resolved_sub, warnings=warnings)
         container_registries = _discover_container_registries(credential, resolved_sub, warnings=warnings)
         databases = _discover_databases(credential, resolved_sub, warnings=warnings)
+    if include_network:
+        virtual_networks = _discover_virtual_networks(credential, resolved_sub, warnings=warnings)
+        public_ips = _discover_public_ips(credential, resolved_sub, warnings=warnings)
+        load_balancers = _discover_load_balancers(credential, resolved_sub, warnings=warnings)
 
     permissions_used: list[str] = []
     if include_storage:
@@ -186,6 +202,8 @@ def discover_inventory(
         permissions_used.extend(_AZURE_IDENTITY_PERMISSIONS)
     if include_data:
         permissions_used.extend(_AZURE_DATA_PERMISSIONS)
+    if include_network:
+        permissions_used.extend(_AZURE_NETWORK_PERMISSIONS)
 
     envelope = DiscoveryEnvelope(
         scan_mode=ScanMode.CLOUD_READ_ONLY,
@@ -208,6 +226,9 @@ def discover_inventory(
         "key_vaults": key_vaults,
         "container_registries": container_registries,
         "databases": databases,
+        "virtual_networks": virtual_networks,
+        "public_ips": public_ips,
+        "load_balancers": load_balancers,
         "warnings": warnings,
         "discovery_envelope": envelope.to_dict(),
     }
@@ -564,6 +585,113 @@ def _discover_databases(credential: Any, subscription_id: str, *, warnings: list
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list Azure database accounts: {sanitize_discovery_warning(exc)}")
     return databases
+
+
+# ---------------------------------------------------------------------------
+# Network topology (subscription-wide list)
+# ---------------------------------------------------------------------------
+
+
+def _discover_virtual_networks(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every VNet in the subscription with its address space and subnets."""
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping virtual-network inventory.")
+        return []
+
+    vnets: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for vnet in client.virtual_networks.list_all():
+            vnet_id = str(getattr(vnet, "id", "") or "")
+            name = str(getattr(vnet, "name", "") or "").strip()
+            if not name:
+                continue
+            address_space = getattr(vnet, "address_space", None)
+            prefixes = list(getattr(address_space, "address_prefixes", []) or []) if address_space else []
+            subnets = [str(getattr(s, "name", "") or "") for s in (getattr(vnet, "subnets", None) or [])]
+            vnets.append(
+                {
+                    "name": name,
+                    "id": vnet_id,
+                    "location": str(getattr(vnet, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(vnet_id),
+                    "tags": _clean_tags(getattr(vnet, "tags", None)),
+                    "address_prefixes": [str(p) for p in prefixes],
+                    "subnets": [s for s in subnets if s],
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure virtual networks: {sanitize_discovery_warning(exc)}")
+    return vnets
+
+
+def _discover_public_ips(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate public IP addresses — the internet-facing exposure surface."""
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping public-IP inventory.")
+        return []
+
+    public_ips: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for pip in client.public_ip_addresses.list_all():
+            pip_id = str(getattr(pip, "id", "") or "")
+            name = str(getattr(pip, "name", "") or "").strip()
+            if not name:
+                continue
+            public_ips.append(
+                {
+                    "name": name,
+                    "id": pip_id,
+                    "location": str(getattr(pip, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(pip_id),
+                    "tags": _clean_tags(getattr(pip, "tags", None)),
+                    "ip_address": str(getattr(pip, "ip_address", "") or ""),
+                    "allocation_method": str(getattr(pip, "public_ip_allocation_method", "") or ""),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure public IPs: {sanitize_discovery_warning(exc)}")
+    return public_ips
+
+
+def _discover_load_balancers(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate load balancers with their SKU and public-frontend posture."""
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping load-balancer inventory.")
+        return []
+
+    load_balancers: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for lb in client.load_balancers.list_all():
+            lb_id = str(getattr(lb, "id", "") or "")
+            name = str(getattr(lb, "name", "") or "").strip()
+            if not name:
+                continue
+            sku = getattr(lb, "sku", None)
+            frontends = getattr(lb, "frontend_ip_configurations", None) or []
+            internet_facing = any(getattr(fe, "public_ip_address", None) is not None for fe in frontends)
+            load_balancers.append(
+                {
+                    "name": name,
+                    "id": lb_id,
+                    "location": str(getattr(lb, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(lb_id),
+                    "tags": _clean_tags(getattr(lb, "tags", None)),
+                    "sku": str(getattr(sku, "name", "") or "") if sku else "",
+                    "internet_facing": internet_facing,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure load balancers: {sanitize_discovery_warning(exc)}")
+    return load_balancers
 
 
 # ---------------------------------------------------------------------------

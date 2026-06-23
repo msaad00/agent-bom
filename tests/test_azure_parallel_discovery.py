@@ -28,6 +28,7 @@ def _stub_azure_sdk(monkeypatch):
 _SERVICES = [
     "_discover_storage_accounts",
     "_discover_vms",
+    "_discover_aks_clusters",
     "_discover_nsgs",
     "_discover_managed_identities",
     "_discover_key_vaults",
@@ -54,10 +55,10 @@ def test_discovery_runs_concurrently(monkeypatch) -> None:
     start = time.time()
     inv = azinv.discover_inventory("sub-1", credential=object(), include_hierarchy=False, force=True)
     elapsed = time.time() - start
-    # 10 × 0.15s sequential = 1.5s; concurrent should be well under half that.
+    # 11 × 0.15s sequential = 1.65s; concurrent should be well under half that.
     assert elapsed < 0.75, f"discovery not parallel (took {elapsed:.2f}s)"
     assert inv["status"] == "ok"
-    for collection in ("storage_accounts", "key_vaults", "databases", "public_ips", "load_balancers"):
+    for collection in ("storage_accounts", "container_clusters", "key_vaults", "databases", "public_ips", "load_balancers"):
         assert len(inv[collection]) == 1
 
 

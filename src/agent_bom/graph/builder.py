@@ -2388,6 +2388,7 @@ def _add_normalized_cloud_resources(
 
     # normalized type -> (label keyword, graph surface, signals a data store)
     type_meta = {
+        CloudResourceType.CONTAINER_CLUSTER: ("kubernetes cluster", "container", False),
         CloudResourceType.SECRET_STORE: ("key vault", "secret-store", True),
         CloudResourceType.CONTAINER_REGISTRY: ("container registry", "registry", False),
         CloudResourceType.DATABASE: ("database", "database", True),

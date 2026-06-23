@@ -58,6 +58,7 @@ _TRUTHY = {"1", "true", "yes", "on"}
 _AZURE_STORAGE_PERMISSIONS: tuple[str, ...] = ("Microsoft.Storage/storageAccounts/read",)
 _AZURE_COMPUTE_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.ContainerService/managedClusters/read",
     "Microsoft.Network/networkSecurityGroups/read",
 )
 _AZURE_IDENTITY_PERMISSIONS: tuple[str, ...] = ("Microsoft.ManagedIdentity/userAssignedIdentities/read",)
@@ -132,6 +133,7 @@ def discover_inventory(
         "region": "",
         "storage_accounts": [],
         "instances": [],
+        "container_clusters": [],
         "security_groups": [],
         "managed_identities": [],
         "service_principals": [],
@@ -182,6 +184,7 @@ def discover_inventory(
         discovery_tasks.append(("storage_accounts", _discover_storage_accounts))
     if include_compute:
         discovery_tasks.append(("instances", _discover_vms))
+        discovery_tasks.append(("container_clusters", _discover_aks_clusters))
         discovery_tasks.append(("security_groups", _discover_nsgs))
     if include_identity:
         discovery_tasks.append(("managed_identities", _discover_managed_identities))
@@ -211,6 +214,7 @@ def discover_inventory(
 
     storage_accounts = collected.get("storage_accounts", [])
     instances = collected.get("instances", [])
+    container_clusters = collected.get("container_clusters", [])
     security_groups = collected.get("security_groups", [])
     managed_identities = collected.get("managed_identities", [])
     key_vaults = collected.get("key_vaults", [])
@@ -256,6 +260,7 @@ def discover_inventory(
         "region": "",
         "storage_accounts": storage_accounts,
         "instances": instances,
+        "container_clusters": container_clusters,
         "security_groups": security_groups,
         "managed_identities": managed_identities,
         "service_principals": [],
@@ -362,6 +367,52 @@ def _discover_vms(credential: Any, subscription_id: str, *, warnings: list[str])
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list Azure virtual machines: {sanitize_discovery_warning(exc)}")
     return instances
+
+
+def _discover_aks_clusters(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate AKS (managed Kubernetes) clusters in the subscription (read-only).
+
+    Captures control-plane metadata: Kubernetes version, the API-server FQDN
+    (its public reachability is the exposure signal), whether the API server is
+    private, and whether Kubernetes RBAC is enabled. Never reads workload or
+    secret contents.
+    """
+    try:
+        from azure.mgmt.containerservice import ContainerServiceClient
+    except ImportError:
+        warnings.append("azure-mgmt-containerservice not installed. Skipping AKS inventory.")
+        return []
+
+    clusters: list[dict[str, Any]] = []
+    try:
+        client = ContainerServiceClient(credential, subscription_id)
+        for cluster in client.managed_clusters.list():
+            cluster_id = str(getattr(cluster, "id", "") or "")
+            name = str(getattr(cluster, "name", "") or "").strip()
+            if not name:
+                continue
+            api_profile = getattr(cluster, "api_server_access_profile", None)
+            private_cluster = bool(getattr(api_profile, "enable_private_cluster", False)) if api_profile else False
+            fqdn = str(getattr(cluster, "fqdn", "") or "")
+            clusters.append(
+                {
+                    "name": name,
+                    "id": cluster_id,
+                    "native_type": "Microsoft.ContainerService/managedClusters",
+                    "location": str(getattr(cluster, "location", "") or ""),
+                    "resource_group": _resource_group_from_id(cluster_id),
+                    "tags": _clean_tags(getattr(cluster, "tags", None)),
+                    "kubernetes_version": str(getattr(cluster, "kubernetes_version", "") or ""),
+                    "api_server_fqdn": fqdn,
+                    "private_cluster": private_cluster,
+                    "rbac_enabled": bool(getattr(cluster, "enable_rbac", False)),
+                    # A reachable API-server FQDN on a non-private cluster is internet-facing.
+                    "internet_facing": bool(fqdn) and not private_cluster,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure AKS clusters: {sanitize_discovery_warning(exc)}")
+    return clusters
 
 
 def _discover_nsgs(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:

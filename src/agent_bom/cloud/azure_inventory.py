@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
@@ -169,32 +170,53 @@ def discover_inventory(
             return {**empty, "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
 
     warnings: list[str] = []
-    storage_accounts: list[dict[str, Any]] = []
-    instances: list[dict[str, Any]] = []
-    security_groups: list[dict[str, Any]] = []
-    managed_identities: list[dict[str, Any]] = []
-    key_vaults: list[dict[str, Any]] = []
-    container_registries: list[dict[str, Any]] = []
-    databases: list[dict[str, Any]] = []
-    virtual_networks: list[dict[str, Any]] = []
-    public_ips: list[dict[str, Any]] = []
-    load_balancers: list[dict[str, Any]] = []
 
+    # Discover each service concurrently — the ARM list calls are independent and
+    # IO-bound, so a thread pool collapses the previously-sequential sum-of-latencies
+    # sweep to roughly the slowest single call. Each task gets its own warnings list
+    # (thread-safe) that is merged back in deterministic task order.
+    discovery_tasks: list[tuple[str, Any]] = []
     if include_storage:
-        storage_accounts = _discover_storage_accounts(credential, resolved_sub, warnings=warnings)
+        discovery_tasks.append(("storage_accounts", _discover_storage_accounts))
     if include_compute:
-        instances = _discover_vms(credential, resolved_sub, warnings=warnings)
-        security_groups = _discover_nsgs(credential, resolved_sub, warnings=warnings)
+        discovery_tasks.append(("instances", _discover_vms))
+        discovery_tasks.append(("security_groups", _discover_nsgs))
     if include_identity:
-        managed_identities = _discover_managed_identities(credential, resolved_sub, warnings=warnings)
+        discovery_tasks.append(("managed_identities", _discover_managed_identities))
     if include_data:
-        key_vaults = _discover_key_vaults(credential, resolved_sub, warnings=warnings)
-        container_registries = _discover_container_registries(credential, resolved_sub, warnings=warnings)
-        databases = _discover_databases(credential, resolved_sub, warnings=warnings)
+        discovery_tasks.append(("key_vaults", _discover_key_vaults))
+        discovery_tasks.append(("container_registries", _discover_container_registries))
+        discovery_tasks.append(("databases", _discover_databases))
     if include_network:
-        virtual_networks = _discover_virtual_networks(credential, resolved_sub, warnings=warnings)
-        public_ips = _discover_public_ips(credential, resolved_sub, warnings=warnings)
-        load_balancers = _discover_load_balancers(credential, resolved_sub, warnings=warnings)
+        discovery_tasks.append(("virtual_networks", _discover_virtual_networks))
+        discovery_tasks.append(("public_ips", _discover_public_ips))
+        discovery_tasks.append(("load_balancers", _discover_load_balancers))
+
+    collected: dict[str, list[dict[str, Any]]] = {}
+    task_warnings: dict[str, list[str]] = {key: [] for key, _ in discovery_tasks}
+    if discovery_tasks:
+        with ThreadPoolExecutor(max_workers=min(8, len(discovery_tasks))) as executor:
+            future_to_key = {executor.submit(fn, credential, resolved_sub, warnings=task_warnings[key]): key for key, fn in discovery_tasks}
+            for future in as_completed(future_to_key):
+                key = future_to_key[future]
+                try:
+                    collected[key] = future.result()
+                except Exception as exc:  # noqa: BLE001 — one service failing must not sink the rest
+                    collected[key] = []
+                    task_warnings[key].append(sanitize_discovery_warning(exc))
+    for key, _ in discovery_tasks:
+        warnings.extend(task_warnings[key])
+
+    storage_accounts = collected.get("storage_accounts", [])
+    instances = collected.get("instances", [])
+    security_groups = collected.get("security_groups", [])
+    managed_identities = collected.get("managed_identities", [])
+    key_vaults = collected.get("key_vaults", [])
+    container_registries = collected.get("container_registries", [])
+    databases = collected.get("databases", [])
+    virtual_networks = collected.get("virtual_networks", [])
+    public_ips = collected.get("public_ips", [])
+    load_balancers = collected.get("load_balancers", [])
 
     permissions_used: list[str] = []
     if include_storage:

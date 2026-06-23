@@ -2,9 +2,28 @@
 
 from __future__ import annotations
 
+import sys
 import time
+import types
+
+import pytest
 
 from agent_bom.cloud import azure_inventory as azinv
+
+
+@pytest.fixture(autouse=True)
+def _stub_azure_sdk(monkeypatch):
+    """Let ``discover_inventory`` past its ``from azure.identity import ...`` gate.
+
+    CI's base test env does not install the optional ``azure`` extra, so without
+    this the function returns ``status="sdk_missing"`` before any discovery runs.
+    """
+    azure_mod = sys.modules.get("azure") or types.ModuleType("azure")
+    identity_mod = types.ModuleType("azure.identity")
+    identity_mod.DefaultAzureCredential = object  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "azure", azure_mod)
+    monkeypatch.setitem(sys.modules, "azure.identity", identity_mod)
+
 
 _SERVICES = [
     "_discover_storage_accounts",

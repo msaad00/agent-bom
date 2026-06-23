@@ -1833,6 +1833,62 @@ def _discover_sf_dependencies(conn: Any, warnings: list[str]) -> list[dict[str, 
     return dependencies
 
 
+def _discover_sf_grants(conn: Any, warnings: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Object-level role grants + user→role memberships (the CIEM access graph).
+
+    ``GRANTS_TO_ROLES`` (filtered to TABLE/VIEW) → a role's privilege on an
+    object; ``GRANTS_TO_USERS`` → a user's role memberships. Read-only metadata.
+    """
+    grants: list[dict[str, Any]] = []
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT grantee_name, privilege, granted_on, name, table_catalog, table_schema "
+            "FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES "
+            "WHERE deleted_on IS NULL AND granted_on IN ('TABLE', 'VIEW') "
+            "ORDER BY grantee_name LIMIT 100000"
+        )
+        keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+        for row in cursor.fetchall():
+            r = dict(zip(keys, row))
+            role = str(r.get("grantee_name", ""))
+            db, sch, nm = str(r.get("table_catalog", "")), str(r.get("table_schema", "")), str(r.get("name", ""))
+            if not role or not nm:
+                continue
+            grants.append(
+                {
+                    "role": role,
+                    "privilege": str(r.get("privilege", "")),
+                    "object_fqn": f"{db}.{sch}.{nm}",
+                    "object_type": str(r.get("granted_on", "")).lower(),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not query GRANTS_TO_ROLES: {sanitize_error(exc)}")
+    finally:
+        cursor.close()
+
+    memberships: list[dict[str, Any]] = []
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT grantee_name, role FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_USERS "
+            "WHERE deleted_on IS NULL ORDER BY grantee_name LIMIT 10000"
+        )
+        keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+        for row in cursor.fetchall():
+            r = dict(zip(keys, row))
+            user_name, role = str(r.get("grantee_name", "")), str(r.get("role", ""))
+            if user_name and role:
+                memberships.append({"user": user_name, "role": role})
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not query GRANTS_TO_USERS: {sanitize_error(exc)}")
+    finally:
+        cursor.close()
+
+    return grants, memberships
+
+
 def discover_object_dependencies(
     account: str | None = None,
     user: str | None = None,
@@ -1840,14 +1896,16 @@ def discover_object_dependencies(
     database: str | None = None,
     schema: str | None = None,
 ) -> dict[str, Any]:
-    """Discover the Snowflake object + dependency graph (read-only).
+    """Discover the Snowflake object + dependency + permission graph (read-only).
 
     Tables and views become DATA_STORE graph nodes; OBJECT_DEPENDENCIES become
-    DEPENDS_ON edges (referencing object → referenced object). Read-only,
-    control-plane metadata only — object names/types/counts, never row data.
+    DEPENDS_ON edges (referencing → referenced). Object-level role grants become
+    HAS_PERMISSION edges (role → object) and user→role memberships become
+    ASSUMES edges. Read-only, control-plane metadata only — never row data.
 
     Returns a payload with ``status`` (``"ok"`` / ``"disabled"`` /
-    ``"no_account"``), ``objects``, ``dependencies``, and ``warnings``.
+    ``"no_account"``), ``objects``, ``dependencies``, ``grants``,
+    ``role_memberships``, and ``warnings``.
 
     Raises:
         CloudDiscoveryError: if snowflake-connector-python is not installed.
@@ -1865,6 +1923,8 @@ def discover_object_dependencies(
         "account": resolved_account,
         "objects": [],
         "dependencies": [],
+        "grants": [],
+        "role_memberships": [],
         "warnings": [],
     }
     warnings: list[str] = result["warnings"]
@@ -1884,6 +1944,7 @@ def discover_object_dependencies(
     try:
         result["objects"] = _discover_sf_objects(conn, warnings)
         result["dependencies"] = _discover_sf_dependencies(conn, warnings)
+        result["grants"], result["role_memberships"] = _discover_sf_grants(conn, warnings)
         result["status"] = "ok"
     finally:
         conn.close()

@@ -57,7 +57,8 @@ class SQLiteSourceStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
             self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        conn: sqlite3.Connection = self._local.conn
+        return conn
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "sources")
@@ -96,7 +97,8 @@ class SQLiteSourceStore:
         row = self._conn.execute("SELECT data FROM sources WHERE source_id = ?", (source_id,)).fetchone()
         if row is None:
             return None
-        return SourceRecord.model_validate_json(row[0])
+        record: SourceRecord = SourceRecord.model_validate_json(row[0])
+        return record
 
     def delete(self, source_id: str) -> bool:
         cursor = self._conn.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))

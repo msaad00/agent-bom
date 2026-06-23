@@ -64,6 +64,9 @@ _AZURE_DATA_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.KeyVault/vaults/read",
     "Microsoft.ContainerRegistry/registries/read",
     "Microsoft.DocumentDB/databaseAccounts/read",
+    "Microsoft.Sql/servers/read",
+    "Microsoft.DBforPostgreSQL/flexibleServers/read",
+    "Microsoft.DBforMySQL/flexibleServers/read",
 )
 _AZURE_NETWORK_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.Network/virtualNetworks/read",
@@ -549,21 +552,49 @@ def _discover_container_registries(credential: Any, subscription_id: str, *, war
     return registries
 
 
-def _discover_databases(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
-    """Enumerate Cosmos DB accounts in the subscription (read-only).
+def _append_db_servers(databases: list[dict[str, Any]], servers: Any, *, native_type: str, engine: str) -> None:
+    """Append SQL-family servers (Azure SQL / PostgreSQL / MySQL) in the shared shape.
 
-    SQL/PostgreSQL/MySQL extend this collection later; each item carries its own
-    ``native_type`` so the normalized model maps them to ``DATABASE`` without
-    losing the provider-native type.
+    Public-network posture lives either directly on the server (Azure SQL) or
+    under ``server.network`` (the flexible-server engines); read both.
     """
+    for server in servers:
+        server_id = str(getattr(server, "id", "") or "")
+        name = str(getattr(server, "name", "") or "").strip()
+        if not name:
+            continue
+        network = getattr(server, "network", None)
+        public_access = str(getattr(server, "public_network_access", "") or "") or (
+            str(getattr(network, "public_network_access", "") or "") if network else ""
+        )
+        databases.append(
+            {
+                "name": name,
+                "id": server_id,
+                "native_type": native_type,
+                "engine": engine,
+                "location": str(getattr(server, "location", "") or ""),
+                "resource_group": _resource_group_from_id(server_id),
+                "tags": _clean_tags(getattr(server, "tags", None)),
+                "public_network_access": public_access,
+            }
+        )
+
+
+def _discover_databases(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate managed databases in the subscription (read-only).
+
+    Covers Cosmos DB, Azure SQL, PostgreSQL, and MySQL — each item carries its
+    own ``native_type`` so the normalized model maps them all to ``DATABASE``
+    without losing the provider-native type. Each engine is enumerated
+    independently so a missing SDK or access denial never sinks the others;
+    control-plane metadata only, never row / data-plane contents.
+    """
+    databases: list[dict[str, Any]] = []
+
     try:
         from azure.mgmt.cosmosdb import CosmosDBManagementClient
-    except ImportError:
-        warnings.append("azure-mgmt-cosmosdb not installed. Skipping database inventory.")
-        return []
 
-    databases: list[dict[str, Any]] = []
-    try:
         client = CosmosDBManagementClient(credential, subscription_id)
         for account in client.database_accounts.list():
             account_id = str(getattr(account, "id", "") or "")
@@ -583,8 +614,46 @@ def _discover_databases(credential: Any, subscription_id: str, *, warnings: list
                     "is_virtual_network_filter_enabled": bool(getattr(account, "is_virtual_network_filter_enabled", False)),
                 }
             )
+    except ImportError:
+        warnings.append("azure-mgmt-cosmosdb not installed. Skipping Cosmos DB inventory.")
     except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure database accounts: {sanitize_discovery_warning(exc)}")
+        warnings.append(f"Could not list Azure Cosmos DB accounts: {sanitize_discovery_warning(exc)}")
+
+    try:
+        from azure.mgmt.sql import SqlManagementClient
+
+        sql_client = SqlManagementClient(credential, subscription_id)
+        _append_db_servers(databases, sql_client.servers.list(), native_type="Microsoft.Sql/servers", engine="azure-sql")
+    except ImportError:
+        warnings.append("azure-mgmt-sql not installed. Skipping Azure SQL inventory.")
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure SQL servers: {sanitize_discovery_warning(exc)}")
+
+    try:
+        from azure.mgmt.rdbms.postgresql_flexibleservers import PostgreSQLManagementClient
+
+        pg_client = PostgreSQLManagementClient(credential, subscription_id)
+        _append_db_servers(
+            databases,
+            pg_client.servers.list(),
+            native_type="Microsoft.DBforPostgreSQL/flexibleServers",
+            engine="postgresql",
+        )
+    except ImportError:
+        warnings.append("azure-mgmt-rdbms not installed. Skipping PostgreSQL inventory.")
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure PostgreSQL servers: {sanitize_discovery_warning(exc)}")
+
+    try:
+        from azure.mgmt.rdbms.mysql_flexibleservers import MySQLManagementClient
+
+        mysql_client = MySQLManagementClient(credential, subscription_id)
+        _append_db_servers(databases, mysql_client.servers.list(), native_type="Microsoft.DBforMySQL/flexibleServers", engine="mysql")
+    except ImportError:
+        warnings.append("azure-mgmt-rdbms not installed. Skipping MySQL inventory.")
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Azure MySQL servers: {sanitize_discovery_warning(exc)}")
+
     return databases
 
 

@@ -929,6 +929,7 @@ def build_unified_graph_from_report(
         _add_cloud_inventory(graph, inventory_payload, data_source_tag)
 
     _add_snowflake_object_graph(graph, report_json.get("snowflake_object_graph"), data_source_tag)
+    _add_snowflake_exfil(graph, report_json.get("snowflake_exfil_graph"), data_source_tag)
 
     # ── Discovered non-human identities (IdP service accounts, gated) ────
     # Project NHIs enumerated by the identity connectors (Okta service apps /
@@ -2221,6 +2222,197 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
                 target=_ensure_role(role),
                 relationship=RelationshipType.ASSUMES,
                 evidence={"source": "snowflake-objects"},
+            )
+        )
+
+
+_EXFIL_STAGE_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}
+
+
+def _add_snowflake_exfil(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote Snowflake egress surfaces into the graph (exfil layer).
+
+    Three node/edge families that model how data leaves the account:
+
+    - **Outbound shares** → ``DATA_STORE`` for the shared database, ``EXPOSED_TO``
+      each consumer ``ACCOUNT`` (a Marketplace listing reaches an open consumer
+      set, modeled as a single internet-reachable consumer).
+    - **External stages** → ``CLOUD_RESOURCE`` stage node, ``EXPOSED_TO`` the
+      destination bucket. The bucket id matches the scheme an AWS/Azure/GCP scan
+      emits (``cloud_resource:{cloud}:{service}:bucket:{name}``), so when both a
+      cloud scan and this Snowflake scan run, the edge **stitches the two clouds'
+      graphs together** rather than landing on a thin node.
+    - **Sensitive objects** → ``DATA_STORE`` carrying a ``sensitivity`` attribute
+      and ``is_protected`` (masking/row-access coverage).
+
+    Never raises; a missing/empty/non-ok payload is a no-op.
+    """
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return
+    account = _clean_graph_part(payload.get("account"))
+    data_sources = sorted({data_source, "snowflake-exfil"} - {""})
+    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
+    if account_node_id:
+        graph.add_node(
+            UnifiedNode(
+                id=account_node_id,
+                entity_type=EntityType.ACCOUNT,
+                label=account or "snowflake",
+                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-exfil"},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+            )
+        )
+
+    def _owned(node: UnifiedNode) -> str:
+        graph.add_node(node)
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id,
+                    target=node.id,
+                    relationship=RelationshipType.OWNS,
+                    evidence={"source": "snowflake-exfil"},
+                )
+            )
+        return node.id
+
+    # ── Outbound shares → consumer accounts ────────────────────────────
+    for share in payload.get("outbound_shares", []) or []:
+        if not isinstance(share, dict):
+            continue
+        share_name = _clean_graph_part(share.get("share_name"))
+        if not share_name:
+            continue
+        db = _clean_graph_part(share.get("database_name"))
+        is_marketplace = bool(share.get("is_marketplace"))
+        share_id = _owned(
+            UnifiedNode(
+                id=f"data_store:snowflake:share:{share_name}",
+                entity_type=EntityType.DATA_STORE,
+                label=f"outbound share: {share_name}",
+                attributes={
+                    "share_name": share_name,
+                    "database": db,
+                    "cloud_provider": "snowflake",
+                    "is_data_store": True,
+                    "is_outbound_share": True,
+                    "is_marketplace": is_marketplace,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+            )
+        )
+        consumers = list(share.get("consumers") or [])
+        if is_marketplace and not consumers:
+            consumers = ["public-marketplace"]
+        for consumer in consumers:
+            consumer = _clean_graph_part(consumer)
+            if not consumer:
+                continue
+            consumer_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", consumer)
+            graph.add_node(
+                UnifiedNode(
+                    id=consumer_id,
+                    entity_type=EntityType.ACCOUNT,
+                    label=f"consumer account: {consumer}",
+                    attributes={
+                        "account_id": consumer,
+                        "cloud_provider": "snowflake",
+                        "is_external_consumer": True,
+                        "internet_exposed": consumer == "public-marketplace",
+                    },
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+                )
+            )
+            graph.add_edge(
+                UnifiedEdge(
+                    source=share_id,
+                    target=consumer_id,
+                    relationship=RelationshipType.EXPOSED_TO,
+                    evidence={"source": "snowflake-exfil", "channel": "data-share", "marketplace": is_marketplace},
+                )
+            )
+
+    # ── External stages → destination buckets (cross-cloud stitch) ─────
+    for stage in payload.get("external_stages", []) or []:
+        if not isinstance(stage, dict):
+            continue
+        stage_name = _clean_graph_part(stage.get("stage_name"))
+        bucket = _clean_graph_part(stage.get("bucket"))
+        cloud = _clean_graph_part(stage.get("cloud_provider"))
+        if not stage_name or not bucket or not cloud:
+            continue
+        stage_id = _owned(
+            UnifiedNode(
+                id=f"cloud_resource:snowflake:stage:{stage_name}",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"external stage: {stage_name}",
+                attributes={
+                    "resource_name": stage_name,
+                    "resource_type": "external-stage",
+                    "resource_kind": "snowflake-external-stage",
+                    "cloud_provider": "snowflake",
+                    "destination_cloud": cloud,
+                    "destination_bucket": bucket,
+                    "url": _clean_graph_part(stage.get("url")),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+            )
+        )
+        service = _EXFIL_STAGE_SERVICE.get(cloud, "storage")
+        bucket_node_id = f"cloud_resource:{cloud}:{service}:bucket:{bucket}"
+        if bucket_node_id not in graph.nodes:
+            # Thin destination node — a cloud scan, if also run, owns the rich one.
+            graph.add_node(
+                UnifiedNode(
+                    id=bucket_node_id,
+                    entity_type=EntityType.CLOUD_RESOURCE,
+                    label=f"bucket: {bucket}",
+                    attributes={
+                        "resource_name": bucket,
+                        "resource_type": "bucket",
+                        "resource_kind": f"{service}-bucket",
+                        "cloud_provider": cloud,
+                        "cloud_service": service,
+                    },
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider=cloud, surface=service),
+                )
+            )
+        graph.add_edge(
+            UnifiedEdge(
+                source=stage_id,
+                target=bucket_node_id,
+                relationship=RelationshipType.EXPOSED_TO,
+                evidence={"source": "snowflake-exfil", "channel": "external-stage", "destination_cloud": cloud},
+            )
+        )
+
+    # ── Sensitive objects → DATA_STORE with sensitivity ────────────────
+    for obj in payload.get("sensitive_objects", []) or []:
+        if not isinstance(obj, dict):
+            continue
+        fqn = _clean_graph_part(obj.get("fqn"))
+        if not fqn:
+            continue
+        _owned(
+            UnifiedNode(
+                id=f"data_store:snowflake:{fqn}",
+                entity_type=EntityType.DATA_STORE,
+                label=f"sensitive: {fqn}",
+                attributes={
+                    "fqn": fqn,
+                    "cloud_provider": "snowflake",
+                    "is_data_store": True,
+                    "sensitivity": _clean_graph_part(obj.get("sensitivity")) or "sensitive",
+                    "tagged_columns": obj.get("tagged_columns"),
+                    "is_protected": bool(obj.get("is_protected")),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
             )
         )
 

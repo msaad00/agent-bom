@@ -102,6 +102,11 @@ _AZURE_COLLECTION_MAP: dict[str, tuple[CloudResourceType, str]] = {
     "virtual_networks": (CloudResourceType.VIRTUAL_NETWORK, "Microsoft.Network/virtualNetworks"),
     "public_ips": (CloudResourceType.PUBLIC_IP, "Microsoft.Network/publicIPAddresses"),
     "load_balancers": (CloudResourceType.LOAD_BALANCER, "Microsoft.Network/loadBalancers"),
+    "event_hubs": (CloudResourceType.MESSAGING, "Microsoft.EventHub/namespaces"),
+    "service_bus_namespaces": (CloudResourceType.MESSAGING, "Microsoft.ServiceBus/namespaces"),
+    "redis_caches": (CloudResourceType.CACHE, "Microsoft.Cache/Redis"),
+    "managed_disks": (CloudResourceType.BLOCK_STORAGE, "Microsoft.Compute/disks"),
+    "app_services": (CloudResourceType.SERVERLESS_FUNCTION, "Microsoft.Web/sites"),
 }
 
 

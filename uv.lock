@@ -61,7 +61,9 @@ all = [
     { name = "azure-mgmt-cognitiveservices" },
     { name = "azure-mgmt-compute" },
     { name = "azure-mgmt-containerinstance" },
+    { name = "azure-mgmt-containerregistry" },
     { name = "azure-mgmt-containerservice" },
+    { name = "azure-mgmt-cosmosdb" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-machinelearningservices" },
     { name = "azure-mgmt-monitor" },
@@ -130,7 +132,9 @@ azure = [
     { name = "azure-mgmt-cognitiveservices" },
     { name = "azure-mgmt-compute" },
     { name = "azure-mgmt-containerinstance" },
+    { name = "azure-mgmt-containerregistry" },
     { name = "azure-mgmt-containerservice" },
+    { name = "azure-mgmt-cosmosdb" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-machinelearningservices" },
     { name = "azure-mgmt-monitor" },
@@ -151,7 +155,9 @@ cloud = [
     { name = "azure-mgmt-cognitiveservices" },
     { name = "azure-mgmt-compute" },
     { name = "azure-mgmt-containerinstance" },
+    { name = "azure-mgmt-containerregistry" },
     { name = "azure-mgmt-containerservice" },
+    { name = "azure-mgmt-cosmosdb" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-machinelearningservices" },
     { name = "azure-mgmt-monitor" },
@@ -336,7 +342,9 @@ requires-dist = [
     { name = "azure-mgmt-cognitiveservices", marker = "extra == 'azure'", specifier = ">=13.5" },
     { name = "azure-mgmt-compute", marker = "extra == 'azure'", specifier = ">=30.0" },
     { name = "azure-mgmt-containerinstance", marker = "extra == 'azure'", specifier = ">=10.1" },
+    { name = "azure-mgmt-containerregistry", marker = "extra == 'azure'", specifier = ">=10.3" },
     { name = "azure-mgmt-containerservice", marker = "extra == 'azure'", specifier = ">=30.0" },
+    { name = "azure-mgmt-cosmosdb", marker = "extra == 'azure'", specifier = ">=9.5" },
     { name = "azure-mgmt-keyvault", marker = "extra == 'azure'", specifier = ">=10.3" },
     { name = "azure-mgmt-machinelearningservices", marker = "extra == 'azure'", specifier = ">=1.0" },
     { name = "azure-mgmt-monitor", marker = "extra == 'azure'", specifier = ">=6.0" },
@@ -785,6 +793,20 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-mgmt-containerregistry"
+version = "15.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-mgmt-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e0/b2/f4161251d451d492372dcc703a7796e14156d8234f1ad8a3e17571275a33/azure_mgmt_containerregistry-15.0.0.tar.gz", hash = "sha256:a31a70b7b6811d343c26804a146f1e4c1b12f6660c6e381d2d5017b27bcab573", size = 147096, upload-time = "2026-03-19T23:02:15.697Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ea/a1/8dd7e1dda118bb3bdd4ee1e45eb0f77c4419202e9670010399d6620de9a4/azure_mgmt_containerregistry-15.0.0-py3-none-any.whl", hash = "sha256:e7d6302e8b993b53c3167a255dd8fae75fc2f1dc0e39ae9fa97fb4b7ed5d25d1", size = 121718, upload-time = "2026-03-19T23:02:17.399Z" },
+]
+
+[[package]]
 name = "azure-mgmt-containerservice"
 version = "41.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -808,6 +830,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3e/99/fa9e7551313d8c7099c89ebf3b03cd31beb12e1b498d575aa19bb59a5d04/azure_mgmt_core-1.6.0.tar.gz", hash = "sha256:b26232af857b021e61d813d9f4ae530465255cb10b3dde945ad3743f7a58e79c", size = 30818, upload-time = "2025-07-03T02:02:24.093Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/26/c79f962fd3172b577b6f38685724de58b6b4337a51d3aad316a43a4558c6/azure_mgmt_core-1.6.0-py3-none-any.whl", hash = "sha256:0460d11e85c408b71c727ee1981f74432bc641bb25dfcf1bb4e90a49e776dbc4", size = 29310, upload-time = "2025-07-03T02:02:25.203Z" },
+]
+
+[[package]]
+name = "azure-mgmt-cosmosdb"
+version = "9.9.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-mgmt-core" },
+    { name = "msrest" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/05/e3/8687e481a34c83f5a6e6d9d3a084c8344920aaf6a505b19a299e58f20421/azure_mgmt_cosmosdb-9.9.0.tar.gz", hash = "sha256:4678bf042bdc208aa24fca71767ac29b6f2a2722ac7872608371a5922f3b6c37", size = 285338, upload-time = "2025-11-14T06:29:06.641Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3e/6b/19a16013a805e506f5e775d79587859852b1a07dd6ae5b377ab541ef4692/azure_mgmt_cosmosdb-9.9.0-py3-none-any.whl", hash = "sha256:31322770c61fdca6bcd1444e9dad501a5a225879c152ec1fd57ab5c68901a1fa", size = 420362, upload-time = "2025-11-14T06:29:09.083Z" },
 ]
 
 [[package]]

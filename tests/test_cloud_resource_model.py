@@ -67,3 +67,18 @@ def test_to_dict_roundtrip_shape() -> None:
     assert d["resource_type"] == "secret_store"
     assert d["native_type"] == "Microsoft.KeyVault/vaults"
     assert "raw" not in d  # raw is provenance-only, not serialized
+
+
+def test_data_services_normalize_to_shared_types() -> None:
+    inv = {
+        "provider": "azure",
+        "subscription_id": "s",
+        "key_vaults": [{"name": "kv", "id": "/.../kv"}],
+        "container_registries": [{"name": "acr", "id": "/.../acr"}],
+        "databases": [{"name": "cos", "id": "/.../cos", "native_type": "Microsoft.DocumentDB/databaseAccounts"}],
+    }
+    by_type = {r.resource_type: r for r in normalize_azure_inventory(inv)}
+    assert by_type[CloudResourceType.SECRET_STORE].native_type == "Microsoft.KeyVault/vaults"
+    assert by_type[CloudResourceType.CONTAINER_REGISTRY].native_type == "Microsoft.ContainerRegistry/registries"
+    # item-level native_type wins for the shared databases collection
+    assert by_type[CloudResourceType.DATABASE].native_type == "Microsoft.DocumentDB/databaseAccounts"

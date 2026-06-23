@@ -56,6 +56,7 @@ ai-enrich = [
 ]
 all = [
     { name = "azure-identity" },
+    { name = "azure-mgmt-apimanagement" },
     { name = "azure-mgmt-appcontainers" },
     { name = "azure-mgmt-authorization" },
     { name = "azure-mgmt-cognitiveservices" },
@@ -65,6 +66,7 @@ all = [
     { name = "azure-mgmt-containerservice" },
     { name = "azure-mgmt-cosmosdb" },
     { name = "azure-mgmt-eventhub" },
+    { name = "azure-mgmt-frontdoor" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-machinelearningservices" },
     { name = "azure-mgmt-managementgroups" },
@@ -131,6 +133,7 @@ aws = [
 ]
 azure = [
     { name = "azure-identity" },
+    { name = "azure-mgmt-apimanagement" },
     { name = "azure-mgmt-appcontainers" },
     { name = "azure-mgmt-authorization" },
     { name = "azure-mgmt-cognitiveservices" },
@@ -140,6 +143,7 @@ azure = [
     { name = "azure-mgmt-containerservice" },
     { name = "azure-mgmt-cosmosdb" },
     { name = "azure-mgmt-eventhub" },
+    { name = "azure-mgmt-frontdoor" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-machinelearningservices" },
     { name = "azure-mgmt-managementgroups" },
@@ -158,6 +162,7 @@ azure = [
 ]
 cloud = [
     { name = "azure-identity" },
+    { name = "azure-mgmt-apimanagement" },
     { name = "azure-mgmt-appcontainers" },
     { name = "azure-mgmt-authorization" },
     { name = "azure-mgmt-cognitiveservices" },
@@ -167,6 +172,7 @@ cloud = [
     { name = "azure-mgmt-containerservice" },
     { name = "azure-mgmt-cosmosdb" },
     { name = "azure-mgmt-eventhub" },
+    { name = "azure-mgmt-frontdoor" },
     { name = "azure-mgmt-keyvault" },
     { name = "azure-mgmt-machinelearningservices" },
     { name = "azure-mgmt-managementgroups" },
@@ -349,6 +355,7 @@ requires-dist = [
     { name = "agent-bom", extras = ["wandb"], marker = "extra == 'cloud'" },
     { name = "agent-bom", extras = ["watch"], marker = "extra == 'all'" },
     { name = "azure-identity", marker = "extra == 'azure'", specifier = ">=1.15" },
+    { name = "azure-mgmt-apimanagement", marker = "extra == 'azure'", specifier = ">=4.0" },
     { name = "azure-mgmt-appcontainers", marker = "extra == 'azure'", specifier = ">=3.0" },
     { name = "azure-mgmt-authorization", marker = "extra == 'azure'", specifier = ">=4.0" },
     { name = "azure-mgmt-cognitiveservices", marker = "extra == 'azure'", specifier = ">=13.5" },
@@ -358,6 +365,7 @@ requires-dist = [
     { name = "azure-mgmt-containerservice", marker = "extra == 'azure'", specifier = ">=30.0" },
     { name = "azure-mgmt-cosmosdb", marker = "extra == 'azure'", specifier = ">=9.5" },
     { name = "azure-mgmt-eventhub", marker = "extra == 'azure'", specifier = ">=11.0" },
+    { name = "azure-mgmt-frontdoor", marker = "extra == 'azure'", specifier = ">=1.1" },
     { name = "azure-mgmt-keyvault", marker = "extra == 'azure'", specifier = ">=10.3" },
     { name = "azure-mgmt-machinelearningservices", marker = "extra == 'azure'", specifier = ">=1.0" },
     { name = "azure-mgmt-managementgroups", marker = "extra == 'azure'", specifier = ">=1.0" },
@@ -739,6 +747,21 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-mgmt-apimanagement"
+version = "5.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-common" },
+    { name = "azure-mgmt-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/25/e4/3e536f0374bccb203886ef7aeb1148e063de6be31187034179ddcbf1adff/azure_mgmt_apimanagement-5.0.0.tar.gz", hash = "sha256:0ab7fe17e70fe3154cd840ff47d19d7a4610217003eaa7c21acf3511a6e57999", size = 625729, upload-time = "2025-04-22T06:24:05.364Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/d8/1406ff959601b1a93fb662b1a76067ecef7094680efcdd75c007457f9efd/azure_mgmt_apimanagement-5.0.0-py3-none-any.whl", hash = "sha256:b88c42a392333b60722fb86f15d092dfc19a8d67510dccd15c217381dff4e6ec", size = 1150262, upload-time = "2025-04-22T06:24:07.012Z" },
+]
+
+[[package]]
 name = "azure-mgmt-appcontainers"
 version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -875,6 +898,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/04/41/5080742de3a0c7a2c579fcf6995c531d48a83f9c588b52334b41bd84d666/azure_mgmt_eventhub-11.2.0.tar.gz", hash = "sha256:31c47f18f73d2d83345cde5909568e28858c2548a35b10e23194b4767a9ce7e3", size = 626966, upload-time = "2025-01-21T07:06:47.256Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f8/a0/1142295958af5531f394662adda09ec49f0583f04475b977b4b22373336a/azure_mgmt_eventhub-11.2.0-py3-none-any.whl", hash = "sha256:a7e2618eca58d8e52c7ff7d4a04a4fae12685351746e6d01b933b43e7ea3b906", size = 1054754, upload-time = "2025-01-21T07:06:49.056Z" },
+]
+
+[[package]]
+name = "azure-mgmt-frontdoor"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-common" },
+    { name = "azure-mgmt-core" },
+    { name = "isodate" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e0/8b/4673bde71ed5daa29c6850ef6e456cdb7274816ca09d7ec0c419092bf7b0/azure_mgmt_frontdoor-1.2.0.tar.gz", hash = "sha256:0d257fbc813aaf4c203cba477d3e0e0ea368c737823c894092c9ac9c4b84c528", size = 98142, upload-time = "2024-04-15T08:30:31.075Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/c4/8ea5cfd2452d98b502703e8a07b49054168d85b320f16e24130c4b22ca7c/azure_mgmt_frontdoor-1.2.0-py3-none-any.whl", hash = "sha256:22f1f60a0c875d8a4e71cebcf6557a3c67249b86431a7954fc1fa3fb9fedd2be", size = 143129, upload-time = "2024-04-15T08:30:33.057Z" },
 ]
 
 [[package]]

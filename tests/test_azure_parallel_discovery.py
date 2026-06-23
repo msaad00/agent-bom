@@ -42,6 +42,9 @@ _SERVICES = [
     "_discover_event_hubs",
     "_discover_service_bus",
     "_discover_redis_caches",
+    "_discover_application_gateways",
+    "_discover_front_doors",
+    "_discover_api_management",
 ]
 
 

@@ -94,6 +94,8 @@ azure = [
     "azure-mgmt-eventhub>=11.0",
     "azure-mgmt-servicebus>=8.2",
     "azure-mgmt-redis>=14.3",
+    "azure-mgmt-frontdoor>=1.1",
+    "azure-mgmt-apimanagement>=4.0",
     "six>=1.16",
 ]
 gcp = [

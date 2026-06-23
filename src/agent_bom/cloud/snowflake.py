@@ -1951,6 +1951,200 @@ def discover_object_dependencies(
     return result
 
 
+_EXTERNAL_STAGE_SCHEMES = {"s3": "aws", "s3gov": "aws", "azure": "azure", "gcs": "gcp"}
+
+
+def discover_data_exfil(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> dict[str, Any]:
+    """Discover Snowflake data-exfiltration surfaces (read-only).
+
+    Three egress surfaces, summarized (no row data leaves Snowflake):
+
+    * **Outbound shares** — data shared to consumer accounts (`SHOW SHARES`,
+      identified by ``target_accounts``).
+    * **External stages** — off-account storage reachable by ``COPY INTO``
+      (`SHOW STAGES IN ACCOUNT`, external ``s3://`` / ``azure://`` / ``gcs://``
+      URLs). The destination bucket id matches what an AWS/Azure/GCP scan emits,
+      so the graph **stitches Snowflake to the actual cloud storage node**.
+    * **Sensitive objects** — tables/columns tagged PII/PHI/etc.
+      (`ACCOUNT_USAGE.TAG_REFERENCES`) and whether a masking/row-access policy
+      protects them (`POLICY_REFERENCES`).
+
+    Returns a payload with ``status``, ``outbound_shares``, ``external_stages``,
+    ``sensitive_objects``, derived ``findings``, and ``warnings``.
+
+    Raises:
+        CloudDiscoveryError: if snowflake-connector-python is not installed.
+    """
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake exfil discovery. Install with: pip install 'agent-bom[snowflake]'"
+        )
+
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "account": resolved_account,
+        "outbound_shares": [],
+        "external_stages": [],
+        "sensitive_objects": [],
+        "findings": [],
+        "warnings": [],
+    }
+    warnings: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "no_account"
+        warnings.append("SNOWFLAKE_ACCOUNT not set.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator, database, schema)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+        return result
+
+    try:
+        # Outbound shares.
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW SHARES")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                if str(r.get("kind", "")).upper() != "OUTBOUND":
+                    continue
+                consumers = [c.strip() for c in re.split(r"[,\s]+", str(r.get("to", "") or "")) if c.strip()]
+                result["outbound_shares"].append(
+                    {
+                        "share_name": str(r.get("name", "")),
+                        "database_name": str(r.get("database_name", "")),
+                        "consumers": consumers,
+                        "is_marketplace": bool(str(r.get("listing_global_name", "") or "")),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list outbound shares: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        # External stages.
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW STAGES IN ACCOUNT")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                url = str(r.get("url", "") or "")
+                if "://" not in url:
+                    continue
+                scheme = url.split("://", 1)[0].lower()
+                cloud = _EXTERNAL_STAGE_SCHEMES.get(scheme, "")
+                if not cloud:
+                    continue
+                bucket = url.split("://", 1)[1].split("/", 1)[0]
+                result["external_stages"].append(
+                    {
+                        "stage_name": str(r.get("name", "")),
+                        "database_name": str(r.get("database_name", "")),
+                        "schema_name": str(r.get("schema_name", "")),
+                        "url": url,
+                        "cloud_provider": cloud,
+                        "bucket": bucket,
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list external stages: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        # Sensitive objects (tagged) + masking/row-access coverage.
+        protected: set[str] = set()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT ref_database_name, ref_schema_name, ref_entity_name "
+                "FROM SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES "
+                "WHERE policy_kind IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY') LIMIT 5000"
+            )
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                protected.add(".".join(str(r.get(k, "")) for k in ("ref_database_name", "ref_schema_name", "ref_entity_name")).upper())
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not query POLICY_REFERENCES: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT object_database, object_schema, object_name, "
+                "       COUNT(DISTINCT tag_name) AS tags, COUNT(DISTINCT column_name) AS cols "
+                "FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES "
+                "WHERE tag_name ILIKE ANY ('%PII%', '%PHI%', '%SENSITIVE%', '%CONFIDENTIAL%', "
+                "      '%FINANCIAL%', '%CLASSIFICATION%', '%PRIVACY%', '%SEMANTIC_CATEGORY%') "
+                "GROUP BY 1, 2, 3 LIMIT 5000"
+            )
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                fqn = ".".join(str(r.get(k, "")) for k in ("object_database", "object_schema", "object_name"))
+                result["sensitive_objects"].append(
+                    {
+                        "fqn": fqn,
+                        "tagged_columns": int(r.get("cols", 0) or 0),
+                        "tag_count": int(r.get("tags", 0) or 0),
+                        "is_protected": fqn.upper() in protected,
+                        "sensitivity": "sensitive",
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not query TAG_REFERENCES: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        for s in result["outbound_shares"]:
+            result["findings"].append(
+                {
+                    "severity": "high" if s["is_marketplace"] else "medium",
+                    "title": "Outbound data share",
+                    "detail": f"Share {s['share_name']} exposes data to {len(s['consumers'])} consumer account(s)"
+                    + (" via a public Marketplace listing" if s["is_marketplace"] else "")
+                    + ".",
+                }
+            )
+        for st in result["external_stages"]:
+            result["findings"].append(
+                {
+                    "severity": "medium",
+                    "title": "External stage (exfil destination)",
+                    "detail": f"Stage {st['stage_name']} writes to {st['cloud_provider']} bucket '{st['bucket']}'.",
+                }
+            )
+        unprotected = [s["fqn"] for s in result["sensitive_objects"] if not s["is_protected"]]
+        if unprotected:
+            result["findings"].append(
+                {
+                    "severity": "high",
+                    "title": "Unprotected sensitive data",
+                    "detail": f"{len(unprotected)} sensitivity-tagged object(s) have no masking/row-access policy.",
+                }
+            )
+        result["status"] = "ok"
+    finally:
+        conn.close()
+    return result
+
+
 def discover_login_anomalies(
     account: str | None = None,
     user: str | None = None,

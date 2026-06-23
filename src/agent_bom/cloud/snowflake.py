@@ -1951,6 +1951,161 @@ def discover_object_dependencies(
     return result
 
 
+def discover_login_anomalies(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+    days: int = 7,
+    rapid_switch_minutes: int = 10,
+    max_distinct_ips: int = 20,
+    failed_burst_threshold: int = 5,
+) -> dict[str, Any]:
+    """Detect Snowflake login anomalies from LOGIN_HISTORY (read-only).
+
+    Three identity-threat signals, all summarized server-side (no raw IPs/PII
+    leave Snowflake):
+
+    * **Impossible travel** — the same user logging in from a *different* client
+      IP within ``rapid_switch_minutes`` of a prior successful login. Switching
+      source IPs faster than one can physically travel is the classic signal
+      (geo distance would refine it, but the rapid-IP-switch heuristic needs no
+      external GeoIP data).
+    * **High distinct-IP count** — a user authenticating from more than
+      ``max_distinct_ips`` distinct addresses in the window.
+    * **Failed-login bursts** — a user with at least ``failed_burst_threshold``
+      failed logins (brute-force / credential-stuffing pressure).
+
+    Returns a payload with ``status``, ``per_user`` summaries, ``impossible_travel``,
+    ``failed_bursts``, derived ``findings``, and ``warnings``.
+
+    Raises:
+        CloudDiscoveryError: if snowflake-connector-python is not installed.
+    """
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake login anomaly detection. Install with: pip install 'agent-bom[snowflake]'"
+        )
+
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    days = _coerce_snowflake_days(days, max_days=365)
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "account": resolved_account,
+        "window_days": days,
+        "per_user": [],
+        "impossible_travel": [],
+        "failed_bursts": [],
+        "findings": [],
+        "warnings": [],
+    }
+    warnings: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "no_account"
+        warnings.append("SNOWFLAKE_ACCOUNT not set.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator, database, schema)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+        return result
+
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT user_name, COUNT(DISTINCT client_ip) AS distinct_ips, COUNT(*) AS logins, "
+                "       SUM(IFF(is_success = 'NO', 1, 0)) AS failed "
+                "FROM SNOWFLAKE.ACCOUNT_USAGE.LOGIN_HISTORY "
+                f"WHERE event_timestamp >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — int day window
+                "GROUP BY user_name ORDER BY distinct_ips DESC LIMIT 1000"
+            )
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                distinct_ips = int(r.get("distinct_ips", 0) or 0)
+                failed = int(r.get("failed", 0) or 0)
+                entry = {
+                    "user": str(r.get("user_name", "")),
+                    "distinct_ips": distinct_ips,
+                    "logins": int(r.get("logins", 0) or 0),
+                    "failed": failed,
+                }
+                result["per_user"].append(entry)
+                if failed >= failed_burst_threshold:
+                    result["failed_bursts"].append({"user": entry["user"], "failed": failed})
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not summarize LOGIN_HISTORY: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        # Impossible travel: consecutive successful logins from a different IP
+        # within rapid_switch_minutes (computed server-side via LAG).
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "WITH ordered AS ( "
+                "  SELECT user_name, client_ip, event_timestamp, "
+                "         LAG(client_ip) OVER (PARTITION BY user_name ORDER BY event_timestamp) AS prev_ip, "
+                "         LAG(event_timestamp) OVER (PARTITION BY user_name ORDER BY event_timestamp) AS prev_ts "
+                "  FROM SNOWFLAKE.ACCOUNT_USAGE.LOGIN_HISTORY "
+                f"  WHERE is_success = 'YES' AND event_timestamp >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608
+                ") "
+                "SELECT user_name, COUNT(*) AS rapid_switches "
+                "FROM ordered "
+                "WHERE prev_ip IS NOT NULL AND client_ip != prev_ip "
+                f"  AND TIMESTAMPDIFF(minute, prev_ts, event_timestamp) <= {rapid_switch_minutes} "  # nosec B608
+                "GROUP BY user_name HAVING COUNT(*) > 0 ORDER BY rapid_switches DESC LIMIT 1000"
+            )
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                result["impossible_travel"].append(
+                    {"user": str(r.get("user_name", "")), "rapid_switches": int(r.get("rapid_switches", 0) or 0)}
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not compute impossible-travel signal: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        for it in result["impossible_travel"]:
+            result["findings"].append(
+                {
+                    "severity": "high",
+                    "title": "Possible impossible travel",
+                    "detail": f"User {it['user']} switched source IP within {rapid_switch_minutes} min "
+                    f"{it['rapid_switches']} time(s) — faster than physical travel.",
+                }
+            )
+        for u in result["per_user"]:
+            if u["distinct_ips"] > max_distinct_ips:
+                result["findings"].append(
+                    {
+                        "severity": "medium",
+                        "title": "High distinct source-IP count",
+                        "detail": f"User {u['user']} logged in from {u['distinct_ips']} distinct IPs in {days} days.",
+                    }
+                )
+        for b in result["failed_bursts"]:
+            result["findings"].append(
+                {
+                    "severity": "medium",
+                    "title": "Failed-login burst",
+                    "detail": f"User {b['user']} had {b['failed']} failed logins (brute-force / stuffing pressure).",
+                }
+            )
+        result["status"] = "ok"
+    finally:
+        conn.close()
+    return result
+
+
 def discover_activity(
     account: str | None = None,
     user: str | None = None,

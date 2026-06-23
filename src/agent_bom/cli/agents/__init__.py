@@ -1754,6 +1754,15 @@ def scan(
                 report.snowflake_object_graph_data = _sf_object_graph
         except Exception:  # noqa: BLE001 — object graph is supplementary; never fail the scan
             pass
+        # Login anomalies: impossible travel, high distinct-IP, failed-login bursts. Best-effort.
+        try:
+            from agent_bom.cloud.snowflake import discover_login_anomalies
+
+            _sf_login_anomalies = discover_login_anomalies()
+            if _sf_login_anomalies.get("status") == "ok" and _sf_login_anomalies.get("findings"):
+                report.snowflake_login_anomalies_data = _sf_login_anomalies
+        except Exception:  # noqa: BLE001 — anomaly detection is supplementary; never fail the scan
+            pass
         # Exfil graph: outbound shares, external stages (cross-cloud stitch to the
         # destination bucket), and sensitivity-tagged objects. Best-effort.
         try:

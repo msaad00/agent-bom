@@ -949,13 +949,24 @@ async def get_compliance_summary(request: Request) -> dict:
     }
     response = {key: full.get(key) for key in summary_keys if key in full}
     framework_summary: dict[str, dict[str, int]] = {}
+
+    def _control_status_counts(value: list[object]) -> tuple[int, int, int, int] | None:
+        controls = [item for item in value if isinstance(item, dict) and isinstance(item.get("status"), str)]
+        if not controls:
+            return None
+        pass_count = sum(1 for item in controls if item.get("status") == "pass")
+        warn_count = sum(1 for item in controls if item.get("status") == "warning")
+        fail_count = sum(1 for item in controls if item.get("status") == "fail")
+        return len(controls), pass_count, warn_count, fail_count
+
     for key, value in full.items():
         if isinstance(value, list):
-            pass_count = sum(1 for item in value if item.get("status") == "pass")
-            warn_count = sum(1 for item in value if item.get("status") == "warning")
-            fail_count = sum(1 for item in value if item.get("status") == "fail")
+            counts = _control_status_counts(value)
+            if counts is None:
+                continue
+            controls, pass_count, warn_count, fail_count = counts
             framework_summary[key] = {
-                "controls": len(value),
+                "controls": controls,
                 "pass": pass_count,
                 "warning": warn_count,
                 "fail": fail_count,

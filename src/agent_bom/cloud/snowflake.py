@@ -95,6 +95,23 @@ def _snowflake_cloud_origin(
     )
 
 
+def _apply_key_pair(conn_kwargs: dict[str, Any]) -> bool:
+    """Load the RSA key-pair (``SNOWFLAKE_PRIVATE_KEY_PATH``) into *conn_kwargs*.
+
+    Returns ``True`` when a key path was configured. Shared by the explicit
+    ``snowflake_jwt`` authenticator path and the implicit key-pair fallback so a
+    private key is loaded in both — never just the authenticator name alone.
+    """
+    key_path = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH", "")
+    if not key_path:
+        return False
+    conn_kwargs["private_key_file"] = key_path
+    passphrase = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", "")
+    if passphrase:
+        conn_kwargs["private_key_file_pwd"] = passphrase
+    return True
+
+
 def _resolve_snowflake_auth(
     conn_kwargs: dict[str, Any],
     authenticator: str | None,
@@ -109,15 +126,16 @@ def _resolve_snowflake_auth(
         authenticator = os.environ.get("SNOWFLAKE_AUTHENTICATOR", "")
     if authenticator:
         conn_kwargs["authenticator"] = authenticator
+        # `snowflake_jwt` is key-pair auth — it still needs the private key
+        # loaded. Without this, setting SNOWFLAKE_AUTHENTICATOR=snowflake_jwt
+        # (the documented key-pair option) sent the authenticator with no key
+        # and the connector failed with "Expected bytes ... got NoneType".
+        if authenticator.lower() == "snowflake_jwt":
+            _apply_key_pair(conn_kwargs)
         return
 
     # Key-pair auth (recommended for CI/CD)
-    key_path = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH", "")
-    if key_path:
-        conn_kwargs["private_key_file"] = key_path
-        passphrase = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", "")
-        if passphrase:
-            conn_kwargs["private_key_file_pwd"] = passphrase
+    if _apply_key_pair(conn_kwargs):
         return
 
     # Password auth — deprecated, emit warning
@@ -496,7 +514,7 @@ def _discover_streamlit_apps(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SHOW STREAMLIT IN ACCOUNT")
+        cursor.execute("SHOW STREAMLITS IN ACCOUNT")
         rows = cursor.fetchall()
         columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
 

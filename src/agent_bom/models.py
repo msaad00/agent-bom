@@ -1012,6 +1012,7 @@ class AIBOMReport:
     snowflake_login_anomalies_data: Optional[dict] = None  # Snowflake impossible-travel / login-anomaly detection
     snowflake_exfil_graph_data: Optional[dict] = None  # Snowflake egress: outbound shares, external stages, sensitive objects
     snowflake_auth_posture_data: Optional[dict] = None  # Snowflake per-user auth matrix + network policies (MFA/key-pair/password)
+    snowflake_services_data: Optional[dict] = None  # Snowflake compute (warehouses) + database/schema containment hierarchy
     azure_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Azure Benchmark results
     gcp_cis_benchmark_data: Optional[dict] = None  # Serialized CIS GCP Benchmark results
     databricks_cis_benchmark_data: Optional[dict] = None  # Serialized Databricks Security Best Practices results

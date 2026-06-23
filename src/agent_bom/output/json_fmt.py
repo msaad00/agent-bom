@@ -1207,6 +1207,8 @@ def to_json(report: AIBOMReport) -> dict:
         result["snowflake_exfil_graph"] = report.snowflake_exfil_graph_data
     if report.snowflake_auth_posture_data:
         result["snowflake_auth_posture"] = report.snowflake_auth_posture_data
+    if report.snowflake_services_data:
+        result["snowflake_services"] = report.snowflake_services_data
 
     if report.azure_cis_benchmark_data:
         result["azure_cis_benchmark"] = report.azure_cis_benchmark_data

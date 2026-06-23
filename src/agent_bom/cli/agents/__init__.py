@@ -1784,6 +1784,17 @@ def scan(
                 report.snowflake_auth_posture_data = _sf_auth
         except Exception:  # noqa: BLE001 — auth posture is supplementary; never fail the scan
             pass
+        # Services: warehouses (compute) + database/schema containment hierarchy. Best-effort.
+        try:
+            from agent_bom.cloud.snowflake import discover_snowflake_services
+
+            _sf_services = discover_snowflake_services()
+            if _sf_services.get("status") == "ok" and (
+                _sf_services.get("warehouses") or _sf_services.get("databases") or _sf_services.get("schemas")
+            ):
+                report.snowflake_services_data = _sf_services
+        except Exception:  # noqa: BLE001 — service inventory is supplementary; never fail the scan
+            pass
     if ctx.azure_cis_benchmark_report is not None:
         report.azure_cis_benchmark_data = ctx.azure_cis_benchmark_report.to_dict()
     if ctx.gcp_cis_benchmark_report is not None:

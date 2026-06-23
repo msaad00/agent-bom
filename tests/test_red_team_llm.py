@@ -15,7 +15,7 @@ from agent_bom.red_team_llm import (
 def test_static_baseline_unchanged():
     # The deterministic baseline still runs with no LLM involved.
     report = run_red_team()
-    assert report["total"] == 19
+    assert report["total"] == 25
     assert "detection_rate" in report and "by_category" in report
 
 
@@ -27,7 +27,7 @@ def test_offline_generates_no_variants_but_baseline_still_runs():
     assert report["variants_generated"] == 0
     assert report["llm_model"] is None
     # Baseline still scored.
-    assert report["total"] == 19
+    assert report["total"] == 25
     assert report["coverage_score"] == report["baseline_detection_rate"]
 
 
@@ -50,7 +50,7 @@ def test_generated_variants_flow_into_coverage():
     assert report["variants_generated"] == 2 * 4
     assert report["llm_model"] == "ollama/llama3.2"
     # Combined run scored more attacks than the 19-attack baseline.
-    assert report["total"] == 19 + 2 * 4
+    assert report["total"] == 25 + 2 * 4
     assert "coverage_score" in report
 
 

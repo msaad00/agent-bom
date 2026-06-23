@@ -115,6 +115,7 @@ def test_compliance_summary_does_not_route_as_framework_slug() -> None:
     assert "summary" in body
     assert "frameworks" in body
     assert "owasp_llm_top10" in body["frameworks"]
+    assert "scan_sources" not in body["frameworks"]
 
 
 def test_compliance_export_end_to_end_returns_real_evidence() -> None:

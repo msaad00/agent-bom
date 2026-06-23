@@ -28,6 +28,7 @@ def _stub_azure_sdk(monkeypatch):
 _SERVICES = [
     "_discover_storage_accounts",
     "_discover_vms",
+    "_discover_aks_clusters",
     "_discover_nsgs",
     "_discover_managed_identities",
     "_discover_key_vaults",
@@ -54,10 +55,10 @@ def test_discovery_runs_concurrently(monkeypatch) -> None:
     start = time.time()
     inv = azinv.discover_inventory("sub-1", credential=object(), force=True)
     elapsed = time.time() - start
-    # 10 × 0.15s sequential = 1.5s; concurrent should be well under half that.
+    # 11 × 0.15s sequential = 1.65s; concurrent should be well under half that.
     assert elapsed < 0.75, f"discovery not parallel (took {elapsed:.2f}s)"
     assert inv["status"] == "ok"
-    for collection in ("storage_accounts", "key_vaults", "databases", "public_ips", "load_balancers"):
+    for collection in ("storage_accounts", "container_clusters", "key_vaults", "databases", "public_ips", "load_balancers"):
         assert len(inv[collection]) == 1
 
 
@@ -65,7 +66,7 @@ def test_warnings_preserved_in_deterministic_order(monkeypatch) -> None:
     for name in _SERVICES:
         monkeypatch.setattr(azinv, name, _slow_stub(name, delay=0.0))
     inv = azinv.discover_inventory("sub-1", credential=object(), force=True)
-    assert len(inv["warnings"]) == 10
+    assert len(inv["warnings"]) == len(_SERVICES)
     # storage is the first task → its warning is first regardless of completion order
     assert inv["warnings"][0] == "warn-_discover_storage_accounts"
 

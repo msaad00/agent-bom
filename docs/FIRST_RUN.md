@@ -9,8 +9,9 @@ inventory and graph without asking them to scan a private repository first.
 agent-bom agents --demo --offline
 ```
 
-Use this when you need reproducible output. The package versions are curated
-and guarded by tests so screenshots and docs do not depend on fabricated CVEs.
+Use this when you need reproducible output. The package versions and
+advisory-backed ranges are curated in code and guarded by tests, so screenshots
+and docs do not depend on fabricated CVEs or a machine-specific local DB.
 
 ### Annotated demo output
 
@@ -19,7 +20,7 @@ private repo. A current release run starts like this:
 
 ```text
 Demo mode - curated agent + MCP sample with known-vulnerable packages.
-Offline mode - local vulnerability DB only
+Offline mode - bundled demo advisory DB only
 
 Discovery
   [ok] 2 agent(s) from curated sample environment
@@ -28,12 +29,12 @@ Package Extraction
   12 packages (7 pypi, 5 npm)
 
 Vulnerability Scan
-  [ok] Local DB: 57 vulnerabilities found (offline)
-  [warn] Found 57 vulnerabilities across 57 findings
-  [warn] Scan complete - 2 critical, 19 high, 28 medium, 8 low
+  [ok] Demo advisory DB: 11 vulnerabilities found (offline)
+  [warn] Found 11 vulnerabilities across 11 findings
+  [warn] Scan complete - 1 critical, 7 high, 3 medium
 
 agent-bom <installed version>
-agents=2 servers=4 packages=12 vulnerabilities=57
+agents=2 servers=4 packages=12 vulnerabilities=11
 ```
 
 What to look for:
@@ -41,10 +42,10 @@ What to look for:
 | Output | Meaning | Why it matters |
 |---|---|---|
 | `Demo mode` | Uses the bundled curated sample instead of your workstation config. | The first run is reproducible and safe to share in a bug report or sales demo. |
-| `Offline mode` | Uses the local vulnerability database only. | The command does not depend on live OSV/GHSA/network availability. |
+| `Offline mode` | Uses the bundled demo advisory DB and no network calls. | The command does not depend on live OSV/GHSA/network availability or a pre-synced local DB. |
 | `2 agent(s)` | Loads sample agent surfaces such as Cursor and Claude Desktop. | Findings are tied to AI agents, not only package names. |
 | `12 packages` | Extracts Python and npm package evidence behind MCP servers. | The scan proves supply-chain inventory before reporting risk. |
-| `57 vulnerabilities` | Matches vulnerable demo package versions against real advisories. | The findings are advisory-backed; they are not invented demo rows. |
+| `11 vulnerabilities` | Matches vulnerable demo package versions against curated advisory-backed ranges. | The findings are advisory-backed; they are not invented demo rows. |
 | severity summary | Groups findings by critical/high/medium/low. | Operators can immediately prioritize the highest-risk fixes. |
 | `agents=... servers=...` | Prints a compact inventory summary. | The same evidence can move into JSON, SARIF, SBOM, HTML, graph, or dashboard workflows. |
 
@@ -59,8 +60,8 @@ Then it lists findings with fix guidance and reach context:
 
 ```text
 VULN_ID          SEVERITY  PACKAGE              FIX     AGENTS  CREDENTIALS
-CVE-2023-50447  critical  pillow@9.0.0         10.2.0  1       2
-CVE-2023-0286   high      cryptography@39.0.0  39.0.1  1       2
+GHSA-8vj2-vxx3-667w  critical  pillow@9.0.0         9.0.1   1       2
+PYSEC-2023-254       high      cryptography@39.0.0  41.0.3  1       2
 ```
 
 Read the final columns as blast-radius context: `AGENTS` is how many agent

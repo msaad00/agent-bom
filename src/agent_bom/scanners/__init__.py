@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from rich.console import Console
@@ -109,6 +111,7 @@ class ScanOptions:
     compliance_enabled: bool = False
     resolve_transitive: bool = False
     prefer_local_db: bool = False
+    demo_advisories: bool = False
 
 
 def default_scan_options(
@@ -117,6 +120,7 @@ def default_scan_options(
     resolve_transitive: bool = False,
     prefer_local_db: bool | None = None,
     offline: bool | None = None,
+    demo_advisories: bool = False,
 ) -> ScanOptions:
     """Build per-scan options while preserving legacy offline defaults."""
 
@@ -125,6 +129,7 @@ def default_scan_options(
         compliance_enabled=compliance_enabled,
         resolve_transitive=resolve_transitive,
         prefer_local_db=prefer_local_db if prefer_local_db is not None else globals().get("prefer_local_db", False),
+        demo_advisories=demo_advisories,
     )
 
 
@@ -629,58 +634,81 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
         record_scan_warning("local vulnerability DB unavailable")
         return 0, set()
 
-    covered: set[str] = set()
-    total = 0
-
     try:
-        from agent_bom.db.lookup import package_in_db
-
-        if len(packages) > _BATCH_DB_THRESHOLD:
-            total = _scan_packages_local_db_batch(conn, packages, covered)
-        else:
-            for pkg in packages:
-                eco_key = pkg.ecosystem.lower()
-                db_ecos = _db_ecosystems_for_package(pkg) or [pkg.ecosystem.lower()]
-                candidate_names = _package_lookup_names(pkg)
-                norm_name = candidate_names[0]
-                db_key = f"{eco_key}:{norm_name}@{pkg.version}"
-                local_vulns = []
-                db_hit = False
-                for db_eco in db_ecos:
-                    for candidate_name in candidate_names:
-                        local_vulns.extend(lookup_package(conn, db_eco, candidate_name, pkg.version))
-                        db_hit = db_hit or package_in_db(conn, db_eco, candidate_name)
-
-                # Only mark as "covered by DB" when the package name actually exists in the
-                # affected table — not just because the ecosystem is mapped. This prevents
-                # false negatives where a package has no DB entry but is silently skipped
-                # (no OSV fallback) because the ecosystem is present.
-                if db_hit:
-                    covered.add(db_key)
-
-                if local_vulns:
-                    existing_ids = {v.id for v in pkg.vulnerabilities}
-                    # Also track aliases to prevent PYSEC/GHSA/CVE duplicates
-                    for v in pkg.vulnerabilities:
-                        existing_ids.update(v.aliases)
-                    new_vulns = []
-                    for lv in local_vulns:
-                        # Skip if this vuln or any of its aliases already seen
-                        lv_all_ids = {lv.id} | set(getattr(lv, "aliases", []))
-                        if lv_all_ids & existing_ids:
-                            continue
-                        new_vulns.append(_local_vuln_to_vulnerability(lv))
-                        existing_ids.add(lv.id)
-                        existing_ids.update(getattr(lv, "aliases", []))
-                    pkg.vulnerabilities.extend(new_vulns)
-                    total += len(new_vulns)
-                    for v in new_vulns:
-                        v.compliance_tags = _tag_vuln(v, pkg)
-                    flag_malicious_from_vulns(pkg)
+        covered: set[str] = set()
+        total = _scan_packages_db_conn(conn, packages, covered)
     finally:
         conn.close()
 
     return total, covered
+
+
+def _scan_packages_db_conn(conn: Any, packages: list[Package], covered: set[str]) -> int:
+    """Scan packages against an initialized vulnerability DB connection."""
+
+    from agent_bom.db import lookup_package
+    from agent_bom.db.lookup import package_in_db
+
+    if len(packages) > _BATCH_DB_THRESHOLD:
+        return _scan_packages_local_db_batch(conn, packages, covered)
+
+    total = 0
+    for pkg in packages:
+        eco_key = pkg.ecosystem.lower()
+        db_ecos = _db_ecosystems_for_package(pkg) or [pkg.ecosystem.lower()]
+        candidate_names = _package_lookup_names(pkg)
+        norm_name = candidate_names[0]
+        db_key = f"{eco_key}:{norm_name}@{pkg.version}"
+        local_vulns = []
+        db_hit = False
+        for db_eco in db_ecos:
+            for candidate_name in candidate_names:
+                local_vulns.extend(lookup_package(conn, db_eco, candidate_name, pkg.version))
+                db_hit = db_hit or package_in_db(conn, db_eco, candidate_name)
+
+        # Only mark as "covered by DB" when the package name actually exists in
+        # the affected table, not merely because the ecosystem is mapped.
+        if db_hit:
+            covered.add(db_key)
+
+        if local_vulns:
+            existing_ids = {v.id for v in pkg.vulnerabilities}
+            # Also track aliases to prevent PYSEC/GHSA/CVE duplicates
+            for v in pkg.vulnerabilities:
+                existing_ids.update(v.aliases)
+            new_vulns = []
+            for lv in local_vulns:
+                # Skip if this vuln or any of its aliases already seen
+                lv_all_ids = {lv.id} | set(getattr(lv, "aliases", []))
+                if lv_all_ids & existing_ids:
+                    continue
+                new_vulns.append(_local_vuln_to_vulnerability(lv))
+                existing_ids.add(lv.id)
+                existing_ids.update(getattr(lv, "aliases", []))
+            pkg.vulnerabilities.extend(new_vulns)
+            total += len(new_vulns)
+            for v in new_vulns:
+                v.compliance_tags = _tag_vuln(v, pkg)
+            flag_malicious_from_vulns(pkg)
+
+    return total
+
+
+def _scan_packages_demo_advisories(packages: list[Package]) -> tuple[int, set[str]]:
+    """Scan packages against the bundled demo advisory manifest."""
+
+    from agent_bom.db.schema import init_db
+    from agent_bom.demo_advisories import seed_demo_advisories
+
+    with tempfile.TemporaryDirectory(prefix="agent-bom-demo-vulns-") as tmp_dir:
+        conn = init_db(Path(tmp_dir) / "vulns.db")
+        try:
+            seed_demo_advisories(conn)
+            covered: set[str] = set()
+            total = _scan_packages_db_conn(conn, packages, covered)
+            return total, covered
+        finally:
+            conn.close()
 
 
 def _scan_packages_local_db_batch(
@@ -925,25 +953,37 @@ async def scan_packages(
     if not scannable:
         return 0
 
-    # ── Local DB lookup (fast, offline-capable) ───────────────────────────────
-    # Query the local SQLite DB first.  Packages covered by the DB skip the
-    # OSV API call — saving round-trips and enabling fully offline scanning
-    # when the DB is populated via `agent-bom db update`.
-    local_count, db_covered = _scan_packages_local_db(scannable)
-    if local_count:
-        local_label = "vulnerability found" if local_count == 1 else "vulnerabilities found"
-        console.print(f"  [green]✓[/green] Local DB: {local_count} {local_label} (offline)")
-
-    # Only call OSV for packages not already covered by the local DB
     def _db_key(p: Package) -> str:
         return f"{p.ecosystem.lower()}:{normalize_package_name(p.name, p.ecosystem)}@{p.version}"
 
+    # ── Local DB lookup (fast, offline-capable) ───────────────────────────────
+    # Demo mode uses bundled advisory rows first so published first-run evidence
+    # is deterministic and does not depend on a user's ambient ~/.agent-bom DB.
+    local_count = 0
+    db_covered: set[str] = set()
+    if scan_options.demo_advisories:
+        demo_count, demo_covered = _scan_packages_demo_advisories(scannable)
+        local_count += demo_count
+        db_covered.update(demo_covered)
+
+    # Query the local SQLite DB for packages not already covered by the
+    # deterministic demo manifest. Packages covered by the DB skip OSV calls.
+    local_db_targets = [p for p in scannable if _db_key(p) not in db_covered]
+    local_db_count, local_db_covered = _scan_packages_local_db(local_db_targets) if local_db_targets else (0, set())
+    local_count += local_db_count
+    db_covered.update(local_db_covered)
+    if local_count:
+        local_label = "vulnerability found" if local_count == 1 else "vulnerabilities found"
+        source_label = "Demo advisory DB" if scan_options.demo_advisories else "Local DB"
+        console.print(f"  [green]✓[/green] {source_label}: {local_count} {local_label} (offline)")
+
+    # Only call OSV for packages not already covered by the local DB
     osv_targets = [p for p in scannable if _db_key(p) not in db_covered]
 
     if scan_offline or (scan_prefer_local_db and not osv_targets):
         if scan_offline:
             covered_ecos = _db_covered_ecosystems()
-            if not covered_ecos:
+            if not covered_ecos and osv_targets:
                 # Genuinely empty/missing DB — nothing can be scanned offline.
                 raise IncompleteScanError(
                     "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update` before using `--offline`."
@@ -1428,6 +1468,7 @@ def scan_agents_sync(
     show_scan_banner: bool = True,
     offline: bool | None = None,
     prefer_local_db: bool | None = None,
+    demo_advisories: bool = False,
     options: ScanOptions | None = None,
 ) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
@@ -1436,6 +1477,7 @@ def scan_agents_sync(
         resolve_transitive=resolve_transitive,
         prefer_local_db=prefer_local_db,
         offline=offline,
+        demo_advisories=demo_advisories,
     )
     if enable_enrichment:
         blast_radii = asyncio.run(

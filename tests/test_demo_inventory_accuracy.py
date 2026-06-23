@@ -6,7 +6,7 @@ local vuln DB cannot match to a real advisory, the published screenshots
 become misleading — finding labels that map to nothing real.
 
 This test pins the contract: every package in the demo inventory must
-either resolve to at least one real entry in the bundled offline DB, or be
+either resolve to at least one expected advisory-backed range, or be
 explicitly listed in the no-known-vulns allowlist below. The allowlist
 exists so the demo can include intentionally-clean packages alongside the
 vulnerable ones (e.g. to show that not everything is on fire).
@@ -17,8 +17,9 @@ from __future__ import annotations
 import pytest
 
 from agent_bom.db.lookup import lookup_package
-from agent_bom.db.schema import open_existing_db_readonly
+from agent_bom.db.schema import init_db
 from agent_bom.demo import DEMO_INVENTORY
+from agent_bom.demo_advisories import seed_demo_advisories
 
 # Packages that the demo intentionally ships at a known-clean version. Add
 # entries here only after manually confirming that the version genuinely
@@ -42,11 +43,12 @@ def _all_demo_packages() -> list[tuple[str, str, str]]:
 
 
 @pytest.fixture(scope="module")
-def vuln_db():
-    try:
-        conn = open_existing_db_readonly()
-    except FileNotFoundError:
-        pytest.skip("Local vuln DB not present in this environment")
+def vuln_db(tmp_path_factory):
+    """Seed only the demo contract rows so the guard is independent of ~/.agent-bom."""
+    db_path = tmp_path_factory.mktemp("demo-vuln-db") / "vulns.db"
+    conn = init_db(db_path)
+    seed_demo_advisories(conn)
+
     yield conn
     conn.close()
 

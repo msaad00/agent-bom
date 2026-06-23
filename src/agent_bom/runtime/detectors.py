@@ -25,10 +25,13 @@ from agent_bom.runtime.patterns import (
     CREDENTIAL_PATTERNS,
     DANGEROUS_ARG_PATTERNS,
     RESPONSE_BASE64_PATTERN,
+    RESPONSE_BIAS_PATTERNS,
     RESPONSE_CLOAKING_PATTERNS,
+    RESPONSE_HALLUCINATION_PATTERNS,
     RESPONSE_INJECTION_PATTERNS,
     RESPONSE_INVISIBLE_CHARS,
     RESPONSE_SVG_PATTERNS,
+    RESPONSE_TOXICITY_PATTERNS,
     SUSPICIOUS_SEQUENCES,
     detect_cortex_models,
     score_semantic_injection,
@@ -365,6 +368,59 @@ class CredentialLeakDetector:
         for pii_name, pattern in _PII_PATTERNS:
             result = pattern.sub(f"[REDACTED:{pii_name}]", result)
         return result
+
+
+# ─── AI-safety response detectors (bias / toxicity / hallucination) ───────────
+
+
+class _PatternResponseDetector:
+    """Shared base for high-precision pattern detectors over response text.
+
+    Heuristic first-pass: flags explicit assertions, not topic mentions, to keep
+    false positives low. The LLM-harnessed red-team layer deepens detection.
+    """
+
+    detector_name: str = "ai_safety"
+    severity: AlertSeverity = AlertSeverity.MEDIUM
+    patterns: list[tuple[str, "re.Pattern"]] = []
+
+    def check(self, tool_name: str, response_text: str) -> list[Alert]:
+        alerts: list[Alert] = []
+        for pattern_name, pattern in self.patterns:
+            if pattern.search(response_text):
+                alerts.append(
+                    Alert(
+                        detector=self.detector_name,
+                        severity=self.severity,
+                        message=f"{self.detector_name} pattern '{pattern_name}' in response from {tool_name}",
+                        details={"tool": tool_name, "pattern": pattern_name},
+                    )
+                )
+        return alerts
+
+
+class BiasTriggerDetector(_PatternResponseDetector):
+    """Flag demographic-leading generalisations / stereotype assertions in responses."""
+
+    detector_name = "bias"
+    severity = AlertSeverity.MEDIUM
+    patterns = RESPONSE_BIAS_PATTERNS
+
+
+class ToxicityDetector(_PatternResponseDetector):
+    """Flag explicit threats or direct personal abuse in responses."""
+
+    detector_name = "toxicity"
+    severity = AlertSeverity.HIGH
+    patterns = RESPONSE_TOXICITY_PATTERNS
+
+
+class HallucinationDetector(_PatternResponseDetector):
+    """Flag fabricated citations / admitted fabrication / unsupported authority claims."""
+
+    detector_name = "hallucination"
+    severity = AlertSeverity.MEDIUM
+    patterns = RESPONSE_HALLUCINATION_PATTERNS
 
 
 # ─── Rate Limit Tracker ──────────────────────────────────────────────────────

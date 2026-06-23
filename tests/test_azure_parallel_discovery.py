@@ -53,7 +53,7 @@ def test_discovery_runs_concurrently(monkeypatch) -> None:
     for name in _SERVICES:
         monkeypatch.setattr(azinv, name, _slow_stub(name))
     start = time.time()
-    inv = azinv.discover_inventory("sub-1", credential=object(), force=True)
+    inv = azinv.discover_inventory("sub-1", credential=object(), include_hierarchy=False, force=True)
     elapsed = time.time() - start
     # 11 × 0.15s sequential = 1.65s; concurrent should be well under half that.
     assert elapsed < 0.75, f"discovery not parallel (took {elapsed:.2f}s)"
@@ -65,7 +65,7 @@ def test_discovery_runs_concurrently(monkeypatch) -> None:
 def test_warnings_preserved_in_deterministic_order(monkeypatch) -> None:
     for name in _SERVICES:
         monkeypatch.setattr(azinv, name, _slow_stub(name, delay=0.0))
-    inv = azinv.discover_inventory("sub-1", credential=object(), force=True)
+    inv = azinv.discover_inventory("sub-1", credential=object(), include_hierarchy=False, force=True)
     assert len(inv["warnings"]) == len(_SERVICES)
     # storage is the first task → its warning is first regardless of completion order
     assert inv["warnings"][0] == "warn-_discover_storage_accounts"
@@ -78,7 +78,7 @@ def test_one_service_failing_does_not_sink_others(monkeypatch) -> None:
     for name in _SERVICES:
         monkeypatch.setattr(azinv, name, _slow_stub(name, delay=0.0))
     monkeypatch.setattr(azinv, "_discover_key_vaults", boom)
-    inv = azinv.discover_inventory("sub-1", credential=object(), force=True)
+    inv = azinv.discover_inventory("sub-1", credential=object(), include_hierarchy=False, force=True)
     assert inv["status"] == "ok"
     assert inv["key_vaults"] == []  # failed service is empty
     assert len(inv["storage_accounts"]) == 1  # others unaffected

@@ -1795,6 +1795,17 @@ def scan(
                 report.snowflake_services_data = _sf_services
         except Exception:  # noqa: BLE001 — service inventory is supplementary; never fail the scan
             pass
+        # Pipeline objects: tasks (automation), streams (CDC), pipes (ingestion). Best-effort.
+        try:
+            from agent_bom.cloud.snowflake import discover_snowflake_pipeline
+
+            _sf_pipeline = discover_snowflake_pipeline()
+            if _sf_pipeline.get("status") == "ok" and (
+                _sf_pipeline.get("tasks") or _sf_pipeline.get("streams") or _sf_pipeline.get("pipes")
+            ):
+                report.snowflake_pipeline_data = _sf_pipeline
+        except Exception:  # noqa: BLE001 — pipeline inventory is supplementary; never fail the scan
+            pass
     if ctx.azure_cis_benchmark_report is not None:
         report.azure_cis_benchmark_data = ctx.azure_cis_benchmark_report.to_dict()
     if ctx.gcp_cis_benchmark_report is not None:

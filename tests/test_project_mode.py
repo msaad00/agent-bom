@@ -518,6 +518,30 @@ def test_cargo_toml_manifest_fallback_when_no_lockfile(tmp_path):
     assert all(p.version_source == "manifest" for p in pkgs)
 
 
+def test_cargo_toml_manifest_fallback_handles_target_and_workspace_deps(tmp_path):
+    from agent_bom.parsers.compiled_parsers import parse_cargo_packages
+
+    (tmp_path / "Cargo.toml").write_text(
+        '[package]\nname = "app"\n'
+        "[workspace.dependencies]\n"
+        'serde = "1.0.193"\n'
+        "[dependencies]\n"
+        "serde = { workspace = true }\n"
+        'git-dep = { git = "https://example.invalid/repo", version = "1.0" }\n'
+        "[target.'cfg(unix)'.dependencies]\n"
+        'nix = "0.27"\n'
+        "[target.'cfg(windows)'.dev-dependencies]\n"
+        'winapi = "0.3"\n'
+    )
+
+    pkgs = parse_cargo_packages(tmp_path)
+    versions = {p.name: p.version for p in pkgs}
+
+    assert versions == {"serde": "1.0.193", "nix": "0.27", "winapi": "0.3"}
+    assert {p.name: p.is_direct for p in pkgs} == {"serde": True, "nix": True, "winapi": False}
+    assert "git-dep" not in versions
+
+
 def test_cargo_lockfile_preferred_over_manifest(tmp_path):
     from agent_bom.parsers.compiled_parsers import parse_cargo_packages
 

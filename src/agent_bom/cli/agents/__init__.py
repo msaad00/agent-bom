@@ -1775,6 +1775,15 @@ def scan(
                 report.snowflake_exfil_graph_data = _sf_exfil
         except Exception:  # noqa: BLE001 — exfil graph is supplementary; never fail the scan
             pass
+        # Auth posture: per-user MFA/key-pair/password matrix + network policies. Best-effort.
+        try:
+            from agent_bom.cloud.snowflake import discover_auth_posture
+
+            _sf_auth = discover_auth_posture()
+            if _sf_auth.get("status") == "ok" and (_sf_auth.get("users") or _sf_auth.get("network_policies")):
+                report.snowflake_auth_posture_data = _sf_auth
+        except Exception:  # noqa: BLE001 — auth posture is supplementary; never fail the scan
+            pass
     if ctx.azure_cis_benchmark_report is not None:
         report.azure_cis_benchmark_data = ctx.azure_cis_benchmark_report.to_dict()
     if ctx.gcp_cis_benchmark_report is not None:

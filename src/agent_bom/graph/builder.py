@@ -930,6 +930,12 @@ def build_unified_graph_from_report(
 
     _add_snowflake_object_graph(graph, report_json.get("snowflake_object_graph"), data_source_tag)
     _add_snowflake_exfil(graph, report_json.get("snowflake_exfil_graph"), data_source_tag)
+    _add_snowflake_identity(
+        graph,
+        report_json.get("snowflake_login_anomalies"),
+        report_json.get("snowflake_auth_posture"),
+        data_source_tag,
+    )
 
     # ── Discovered non-human identities (IdP service accounts, gated) ────
     # Project NHIs enumerated by the identity connectors (Okta service apps /
@@ -2227,6 +2233,117 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
 
 
 _EXFIL_STAGE_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}
+
+
+def _add_snowflake_identity(graph: UnifiedGraph, login_payload: Any, auth_payload: Any, data_source: str) -> None:
+    """Enrich Snowflake user nodes with identity-threat + auth-posture signal.
+
+    Closes the gap where login-anomaly detection and auth-posture inventory
+    reached JSON but never the graph, so a flagged/weak identity was invisible
+    to the visual and blast-radius. For each affected user this merges threat +
+    posture attributes onto the existing ``user:snowflake:<name>`` node (a thin
+    node is created when the user appears only in the threat feed), tags the
+    relevant **MITRE ATT&CK** technique, and raises node severity. Never raises;
+    missing/empty/non-ok payloads are a no-op.
+
+    Technique mapping:
+      * impossible travel / high distinct-IP → ``T1078`` (Valid Accounts)
+      * failed-login burst → ``T1110`` (Brute Force)
+      * password user without MFA → ``T1078`` (Valid Accounts)
+    """
+    login_ok = isinstance(login_payload, dict) and login_payload.get("status") == "ok"
+    auth_ok = isinstance(auth_payload, dict) and auth_payload.get("status") == "ok"
+    if not login_ok and not auth_ok:
+        return
+
+    data_sources = sorted({data_source, "snowflake-identity"} - {""})
+
+    def _user_node_id(name: str) -> str:
+        return f"user:snowflake:{name}"
+
+    def _enrich(name: str, attrs: dict[str, Any], *, severity: str | None, mitre: list[str]) -> None:
+        name = _clean_graph_part(name)
+        if not name:
+            return
+        node = UnifiedNode(
+            id=_user_node_id(name),
+            entity_type=EntityType.USER,
+            label=f"user: {name}",
+            severity=severity or "",
+            attributes={"user_name": name, "cloud_provider": "snowflake", **attrs},
+            data_sources=data_sources,
+            dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+            compliance_tags=sorted(set(mitre)),
+        )
+        graph.add_node(node)  # merges onto an existing user node (attrs/tags/severity union)
+
+    if login_ok:
+        rapid_by_user = {
+            _clean_graph_part(it.get("user")): int(it.get("rapid_switches", 0) or 0)
+            for it in login_payload.get("impossible_travel", []) or []
+            if isinstance(it, dict)
+        }
+        failed_by_user = {
+            _clean_graph_part(b.get("user")): int(b.get("failed", 0) or 0)
+            for b in login_payload.get("failed_bursts", []) or []
+            if isinstance(b, dict)
+        }
+        for u in login_payload.get("per_user", []) or []:
+            if not isinstance(u, dict):
+                continue
+            name = _clean_graph_part(u.get("user"))
+            if not name:
+                continue
+            impossible = name in rapid_by_user
+            failed = failed_by_user.get(name, int(u.get("failed", 0) or 0))
+            distinct_ips = int(u.get("distinct_ips", 0) or 0)
+            mitre: list[str] = []
+            sev = None
+            if impossible:
+                mitre.append("T1078")  # Valid Accounts
+                sev = "high"
+            if failed_by_user.get(name):
+                mitre.append("T1110")  # Brute Force
+                sev = sev or "medium"
+            _enrich(
+                name,
+                {
+                    "impossible_travel": impossible,
+                    "rapid_ip_switches": rapid_by_user.get(name, 0),
+                    "distinct_login_ips": distinct_ips,
+                    "failed_logins": failed,
+                    "identity_threat": bool(mitre),
+                },
+                severity=sev,
+                mitre=mitre,
+            )
+
+    if auth_ok:
+        account_np = bool(auth_payload.get("account_network_policy"))
+        for u in auth_payload.get("users", []) or []:
+            if not isinstance(u, dict):
+                continue
+            name = _clean_graph_part(u.get("name"))
+            if not name:
+                continue
+            auth_methods = list(u.get("auth_methods") or [])
+            has_mfa = bool(u.get("has_mfa"))
+            disabled = bool(u.get("disabled"))
+            user_type = str(u.get("user_type", "") or "").upper()
+            weak = not disabled and "password" in auth_methods and not has_mfa and user_type in ("PERSON", "UNKNOWN", "")
+            _enrich(
+                name,
+                {
+                    "auth_methods": auth_methods,
+                    "has_mfa": has_mfa,
+                    "disabled": disabled,
+                    "user_type": user_type or "unknown",
+                    "account_network_policy": account_np,
+                    "weak_auth": weak,
+                },
+                severity="high" if weak else None,
+                mitre=["T1078"] if weak else [],  # Valid Accounts (weak credential control)
+            )
 
 
 def _add_snowflake_exfil(graph: UnifiedGraph, payload: Any, data_source: str) -> None:

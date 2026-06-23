@@ -2157,6 +2157,73 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
             )
         )
 
+    # ── Roles + users (CIEM access layer) ──────────────────────────────
+    seen_roles: set[str] = set()
+
+    def _ensure_role(name: str) -> str:
+        node_id = f"role:snowflake:{name}"
+        if node_id not in seen_roles:
+            seen_roles.add(node_id)
+            graph.add_node(
+                UnifiedNode(
+                    id=node_id,
+                    entity_type=EntityType.ROLE,
+                    label=f"role: {name}",
+                    attributes={"role_name": name, "cloud_provider": "snowflake", "source": "snowflake-objects"},
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+                )
+            )
+        return node_id
+
+    # Object-level grants: role HAS_PERMISSION on the object (data store).
+    for grant in payload.get("grants", []) or []:
+        if not isinstance(grant, dict):
+            continue
+        role = _clean_graph_part(grant.get("role"))
+        object_fqn = _clean_graph_part(grant.get("object_fqn"))
+        if not role or not object_fqn:
+            continue
+        graph.add_edge(
+            UnifiedEdge(
+                source=_ensure_role(role),
+                target=_ensure_object(object_fqn, object_type=str(grant.get("object_type") or "object").lower()),
+                relationship=RelationshipType.HAS_PERMISSION,
+                evidence={"source": "snowflake-objects", "privilege": grant.get("privilege", "")},
+            )
+        )
+
+    # User → role memberships: the user ASSUMES the role's privileges.
+    seen_users: set[str] = set()
+    for membership in payload.get("role_memberships", []) or []:
+        if not isinstance(membership, dict):
+            continue
+        user_name = _clean_graph_part(membership.get("user"))
+        role = _clean_graph_part(membership.get("role"))
+        if not user_name or not role:
+            continue
+        user_node_id = f"user:snowflake:{user_name}"
+        if user_node_id not in seen_users:
+            seen_users.add(user_node_id)
+            graph.add_node(
+                UnifiedNode(
+                    id=user_node_id,
+                    entity_type=EntityType.USER,
+                    label=f"user: {user_name}",
+                    attributes={"user_name": user_name, "cloud_provider": "snowflake", "source": "snowflake-objects"},
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+                )
+            )
+        graph.add_edge(
+            UnifiedEdge(
+                source=user_node_id,
+                target=_ensure_role(role),
+                relationship=RelationshipType.ASSUMES,
+                evidence={"source": "snowflake-objects"},
+            )
+        )
+
 
 def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) -> None:
     """Promote estate-wide cloud inventory into first-class graph nodes.

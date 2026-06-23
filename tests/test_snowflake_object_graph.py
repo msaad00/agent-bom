@@ -76,3 +76,34 @@ def test_thin_node_created_for_external_dependency_endpoint() -> None:
 def test_non_ok_payload_is_noop() -> None:
     g = build_unified_graph_from_report({"snowflake_object_graph": {"status": "no_account"}})
     assert not [k for k in g.nodes if "snowflake" in k]
+
+
+def _report_with_grants() -> dict:
+    return {
+        "snowflake_object_graph": {
+            "status": "ok",
+            "account": "acct1",
+            "objects": [{"fqn": "DB.PUBLIC.ORDERS", "name": "ORDERS", "object_type": "table"}],
+            "dependencies": [],
+            "grants": [
+                {"role": "ANALYST", "privilege": "SELECT", "object_fqn": "DB.PUBLIC.ORDERS", "object_type": "table"},
+            ],
+            "role_memberships": [{"user": "ALICE", "role": "ANALYST"}],
+        }
+    }
+
+
+def test_grants_become_role_has_permission_edges() -> None:
+    g = build_unified_graph_from_report(_report_with_grants())
+    edges = list(g.edges.values()) if isinstance(g.edges, dict) else list(g.edges)
+    assert "role:snowflake:ANALYST" in g.nodes
+    has_perm = {(e.source, e.target) for e in edges if e.relationship.value == "has_permission"}
+    assert ("role:snowflake:ANALYST", "data_store:snowflake:DB.PUBLIC.ORDERS") in has_perm
+
+
+def test_user_role_membership_becomes_assumes_edge() -> None:
+    g = build_unified_graph_from_report(_report_with_grants())
+    edges = list(g.edges.values()) if isinstance(g.edges, dict) else list(g.edges)
+    assert "user:snowflake:ALICE" in g.nodes
+    assumes = {(e.source, e.target) for e in edges if e.relationship.value == "assumes"}
+    assert ("user:snowflake:ALICE", "role:snowflake:ANALYST") in assumes

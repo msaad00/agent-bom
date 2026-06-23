@@ -107,6 +107,18 @@ def _run_query(cursor: Any, sql: str) -> list[dict]:
 _AUTH_SECTION = "1 - Account and Authentication"
 
 
+def _sf_truthy(value: Any) -> bool:
+    """Normalize an ACCOUNT_USAGE boolean column.
+
+    These columns come back from the connector as a Python ``bool``, a string
+    (``"true"``/``"false"``), or ``None`` depending on the view and value, so a
+    plain ``.lower()`` crashes on the ``bool`` form.
+    """
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("true", "1", "yes", "t")
+
+
 def _check_1_1(cursor: Any) -> CISCheckResult:
     """CIS 1.1 — Ensure MFA is enabled for all users with password authentication."""
     result = CISCheckResult(
@@ -127,7 +139,7 @@ def _check_1_1(cursor: Any) -> CISCheckResult:
           AND has_password = 'true'
     """,
     )
-    no_mfa = [r["name"] for r in rows if r.get("ext_authn_duo", "false").lower() != "true"]
+    no_mfa = [r["name"] for r in rows if not _sf_truthy(r.get("ext_authn_duo"))]
 
     if no_mfa:
         result.status = CheckStatus.FAIL
@@ -153,7 +165,7 @@ def _check_1_2(cursor: Any) -> CISCheckResult:
     rows = _run_query(
         cursor,
         """
-        SELECT policy_name, password_min_length
+        SELECT name, password_min_length
         FROM SNOWFLAKE.ACCOUNT_USAGE.PASSWORD_POLICIES
         WHERE deleted IS NULL
     """,
@@ -163,10 +175,10 @@ def _check_1_2(cursor: Any) -> CISCheckResult:
         result.evidence = "No password policies configured."
         return result
 
-    weak = [r for r in rows if int(r.get("password_min_length", 0)) < 14]
+    weak = [r for r in rows if int(r.get("password_min_length") or 0) < 14]
     if weak:
         result.status = CheckStatus.FAIL
-        names = [f"{r['policy_name']} (len={r['password_min_length']})" for r in weak]
+        names = [f"{r['name']} (len={r['password_min_length']})" for r in weak]
         result.evidence = f"Password policies with weak min length: {', '.join(names[:5])}"
     else:
         result.evidence = f"All {len(rows)} password policies require >= 14 character minimum."
@@ -241,7 +253,7 @@ def _check_1_5(cursor: Any) -> CISCheckResult:
     rows = _run_query(
         cursor,
         """
-        SELECT policy_name, password_history
+        SELECT name, password_history
         FROM SNOWFLAKE.ACCOUNT_USAGE.PASSWORD_POLICIES
         WHERE deleted IS NULL
     """,
@@ -254,7 +266,7 @@ def _check_1_5(cursor: Any) -> CISCheckResult:
     weak = [r for r in rows if int(r.get("password_history", 0) or 0) < 24]
     if weak:
         result.status = CheckStatus.FAIL
-        names = [f"{r['policy_name']} (history={r.get('password_history', 0)})" for r in weak]
+        names = [f"{r['name']} (history={r.get('password_history', 0)})" for r in weak]
         result.evidence = f"Password policies with weak password history: {', '.join(names[:5])}"
     else:
         result.evidence = f"All {len(rows)} password policies enforce password history of 24 or greater."
@@ -274,7 +286,7 @@ def _check_1_6(cursor: Any) -> CISCheckResult:
     rows = _run_query(
         cursor,
         """
-        SELECT policy_name, password_max_age_days
+        SELECT name, password_max_age_days
         FROM SNOWFLAKE.ACCOUNT_USAGE.PASSWORD_POLICIES
         WHERE deleted IS NULL
     """,
@@ -287,7 +299,7 @@ def _check_1_6(cursor: Any) -> CISCheckResult:
     weak = [r for r in rows if int(r.get("password_max_age_days", 0) or 0) == 0 or int(r.get("password_max_age_days", 0) or 0) > 90]
     if weak:
         result.status = CheckStatus.FAIL
-        names = [f"{r['policy_name']} (max_age={r.get('password_max_age_days', 0)})" for r in weak]
+        names = [f"{r['name']} (max_age={r.get('password_max_age_days', 0)})" for r in weak]
         result.evidence = f"Password policies with weak maximum age: {', '.join(names[:5])}"
     else:
         result.evidence = f"All {len(rows)} password policies enforce a maximum password age of 90 days or less."
@@ -400,14 +412,14 @@ def _check_3_2(cursor: Any) -> CISCheckResult:
     rows = _run_query(
         cursor,
         """
-        SELECT database_name, name, kind
+        SELECT name, database_name, target_accounts
         FROM SNOWFLAKE.ACCOUNT_USAGE.SHARES
-        WHERE deleted IS NULL
-          AND kind = 'OUTBOUND'
+        WHERE deleted_on IS NULL
+          AND target_accounts IS NOT NULL
     """,
     )
     if rows:
-        share_names = [f"{r['database_name']}.{r['name']}" for r in rows]
+        share_names = [f"{r.get('database_name') or '?'}.{r['name']}" for r in rows]
         result.evidence = f"{len(rows)} outbound share(s) found: {', '.join(share_names[:5])}"
         if len(share_names) > 5:
             result.evidence += f" (+{len(share_names) - 5} more)"

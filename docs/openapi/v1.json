@@ -50,6 +50,7 @@
         "type": "object"
       },
       "AuditExportVerifyRequest": {
+        "additionalProperties": false,
         "properties": {
           "payload": {
             "description": "Audit export payload object, JSON string, or JSONL text",
@@ -84,6 +85,7 @@
         "type": "object"
       },
       "BrowserSessionRequest": {
+        "additionalProperties": false,
         "properties": {
           "api_key": {
             "description": "API key to exchange for a same-origin httpOnly browser session cookie",
@@ -1608,6 +1610,7 @@
         "type": "object"
       },
       "GraphQueryRequest": {
+        "additionalProperties": false,
         "properties": {
           "compliance_prefixes": {
             "items": {
@@ -2172,6 +2175,7 @@
         "type": "object"
       },
       "PresetCreate": {
+        "additionalProperties": false,
         "properties": {
           "description": {
             "default": "",

@@ -31,6 +31,7 @@ components:
       title: AnalyticsHealth
       type: object
     AuditExportVerifyRequest:
+      additionalProperties: false
       properties:
         payload:
           description: Audit export payload object, JSON string, or JSONL text
@@ -57,6 +58,7 @@ components:
       title: BrowserExtensionsRequest
       type: object
     BrowserSessionRequest:
+      additionalProperties: false
       properties:
         api_key:
           description: API key to exchange for a same-origin httpOnly browser session
@@ -1047,6 +1049,7 @@ components:
       title: GraphDeployDecisionRequest
       type: object
     GraphQueryRequest:
+      additionalProperties: false
       properties:
         compliance_prefixes:
           items:
@@ -1451,6 +1454,7 @@ components:
       title: PolicyUpdate
       type: object
     PresetCreate:
+      additionalProperties: false
       properties:
         description:
           default: ''

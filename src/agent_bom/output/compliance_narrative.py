@@ -387,17 +387,28 @@ def _build_framework_narrative(
 
 def _build_remediation_impact(
     blast_radii_dicts: list[dict],
+    framework_slug: str | None = None,
 ) -> list[RemediationImpact]:
     """Cross-reference fix versions with control tags to build RemediationImpact entries.
 
     Groups blast radius entries by (package, current_version, fix_version),
-    collects all framework control codes triggered, and generates a narrative.
+    collects framework control codes triggered, and generates a narrative.
+
+    When ``framework_slug`` is set, only that framework's controls are listed —
+    so a single-framework report (e.g. ``--framework soc2``) doesn't bleed ISO /
+    NIST / EU-AI-Act control IDs into its remediation section.
     """
     from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 
     field_to_framework = {
         metadata.tag_field: _DISPLAY_NAME_OVERRIDES.get(metadata.slug, metadata.report_label) for metadata in TAG_MAPPED_FRAMEWORKS
     }
+    if framework_slug:
+        try:
+            _catalog, tag_field, display_name = _get_catalog(framework_slug)
+            field_to_framework = {tag_field: display_name}
+        except ValueError:
+            pass  # unknown slug — fall back to all frameworks
 
     # Group: key = (pkg_name_version, fix_version)
     # value = {controls: set, frameworks: set}
@@ -660,7 +671,7 @@ def generate_compliance_narrative(
 
     framework_narratives: list[FrameworkNarrative] = [_build_framework_narrative(slug, blast_dicts) for slug in slugs]
 
-    remediation_impact = _build_remediation_impact(blast_dicts)
+    remediation_impact = _build_remediation_impact(blast_dicts, framework)
 
     total_vulns = len(blast_dicts)
     critical_count = sum(1 for b in blast_dicts if (b.get("severity") or "") == "critical")

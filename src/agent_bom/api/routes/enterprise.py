@@ -42,7 +42,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api.models import (
     CreateKeyRequest,
@@ -66,6 +66,7 @@ _logger = logging.getLogger(__name__)
 
 
 class BrowserSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     api_key: str = Field(
         ...,
         min_length=1,
@@ -74,6 +75,7 @@ class BrowserSessionRequest(BaseModel):
 
 
 class AuditExportVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     payload: Any = Field(..., description="Audit export payload object, JSON string, or JSONL text")
     signature: str = Field(..., min_length=64, max_length=128, description="X-Agent-Bom-Audit-Export-Signature value")
 

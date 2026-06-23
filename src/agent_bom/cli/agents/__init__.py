@@ -1794,7 +1794,11 @@ def scan(
         }
 
     # ── Context graph: lateral movement analysis ────────────────────
-    if context_graph_flag and report.blast_radii:
+    # Build whenever requested — credential pivots / SHARES_CREDENTIAL lateral
+    # edges exist independent of any CVE, so gating on blast_radii hid the
+    # credential lateral graph for vuln-free estates (the case credential-risk
+    # ranking already surfaces without a CVE).
+    if context_graph_flag:
         from agent_bom.context_graph import (
             build_context_graph,
             compute_interaction_risks,

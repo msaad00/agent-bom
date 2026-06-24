@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
-from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+from agent_bom.finding import Asset, Finding, FindingSource, FindingType, blast_radius_to_finding
 from agent_bom.models import (
     Agent,
     AgentStatus,
@@ -23,7 +23,7 @@ from agent_bom.models import (
     TransportType,
     Vulnerability,
 )
-from agent_bom.output import to_csv, to_json, to_junit, to_markdown, to_spdx
+from agent_bom.output import to_badge, to_csv, to_json, to_junit, to_markdown, to_spdx
 from agent_bom.output.html import to_html
 from agent_bom.output.prometheus import to_prometheus
 from agent_bom.output.sarif import to_sarif
@@ -224,6 +224,31 @@ def _make_unified_cve_finding() -> Finding:
         affected_servers=["prod-mcp"],
         exposed_credentials=["AWS_SECRET_ACCESS_KEY"],
     )
+
+
+def _report_with_canonical_cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius]) -> AIBOMReport:
+    canonical = _make_report(agents=report.agents)
+    canonical.findings = [blast_radius_to_finding(br) for br in blast_radii]
+    return canonical
+
+
+def test_flat_formatters_do_not_drift_between_blast_radius_and_finding_inputs():
+    report, brs = _report_with_vulns()
+    canonical = _report_with_canonical_cve_findings(report, brs)
+
+    assert to_csv(canonical) == to_csv(report, brs)
+    assert to_junit(canonical) == to_junit(report, brs)
+    assert to_prometheus(canonical) == to_prometheus(report, brs)
+    assert to_badge(canonical) == to_badge(report)
+
+
+def test_empty_legacy_override_does_not_hide_canonical_findings():
+    report = _make_report()
+    report.findings = [_make_unified_cve_finding()]
+
+    assert "CVE-2026-4242" in to_csv(report, [])
+    assert "CVE-2026-4242" in to_junit(report, [])
+    assert "CVE-2026-4242" in to_prometheus(report, [])
 
 
 # ── JUnit XML ────────────────────────────────────────────────────────────────

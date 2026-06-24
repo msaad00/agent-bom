@@ -239,7 +239,7 @@ def _rule_prompt_passthrough(tool_name: str, prop_name: str, prop_schema: dict) 
                 "instruction. Prompt-shaped tool inputs are a primary OWASP LLM01 injection vector "
                 "when the tool composes the value into another LLM call without sanitization."
             ),
-            evidence=f"description references prompt/instruction/system: \"{desc[:80]}\"",
+            evidence=f'description references prompt/instruction/system: "{desc[:80]}"',
             tool_name=tool_name,
             property_name=prop_name,
             owasp_tags=("LLM01-Prompt-Injection",),

@@ -66,7 +66,6 @@ def test_dockerfile_produces_ran_verdict(tmp_path):
     assert v["dockerfile"].files_scanned == 1
 
 
-
 def test_dcm_migration_produces_ran_verdict(tmp_path):
     d = tmp_path / "dcm"
     d.mkdir()
@@ -137,7 +136,6 @@ def test_deployment_mode_round_trips(tmp_path, mode):
     # No scanner should be disabled purely because of deployment_mode
     for v in result.verdicts:
         assert v.status in ("ran", "not-applicable")
-
 
 
 def test_native_app_with_dcm_only_allowlist(tmp_path):

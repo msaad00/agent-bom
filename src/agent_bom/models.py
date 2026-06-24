@@ -1015,6 +1015,7 @@ class AIBOMReport:
     snowflake_services_data: Optional[dict] = None  # Snowflake compute (warehouses) + database/schema containment hierarchy
     snowflake_pipeline_data: Optional[dict] = None  # Snowflake data-pipeline objects: tasks, streams, pipes
     snowflake_integrations_data: Optional[dict] = None  # Snowflake account integrations: storage/API/external-access/security/catalog
+    snowflake_external_data_data: Optional[dict] = None  # Snowflake open-table-format + external data: iceberg + external tables
     azure_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Azure Benchmark results
     gcp_cis_benchmark_data: Optional[dict] = None  # Serialized CIS GCP Benchmark results
     databricks_cis_benchmark_data: Optional[dict] = None  # Serialized Databricks Security Best Practices results

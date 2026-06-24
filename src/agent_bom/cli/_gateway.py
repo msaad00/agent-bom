@@ -264,6 +264,31 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     help="Act on quarantined fleet agents: 'enforce' blocks every call from a quarantined agent, 'warn' audits it, 'off' stays advisory.",
 )
 @click.option(
+    "--graph-reachability-report",
+    "graph_reachability_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar="AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_REPORT",
+    default=None,
+    help=(
+        "Scan-report JSON whose AGENT_REACHES_PRIVILEGED graph findings supply "
+        "agent→privileged-node reachability facts. With --graph-reachability-enforcement "
+        "warn/enforce, an over-reaching agent's first call to one of its reachable "
+        "privileged tools is flagged/blocked pre-emptively (consume direction). "
+        "Read-only; a missing/malformed report is a no-op."
+    ),
+)
+@click.option(
+    "--graph-reachability-enforcement",
+    type=click.Choice(["off", "warn", "enforce"]),
+    envvar="AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_ENFORCEMENT",
+    default="off",
+    show_default=True,
+    help=(
+        "Act on graph-derived agent→privileged-node reachability: 'enforce' blocks "
+        "the first reaching call, 'warn' audits it, 'off' stays advisory."
+    ),
+)
+@click.option(
     "--allow-visual-leak-best-effort",
     is_flag=True,
     default=False,
@@ -294,6 +319,8 @@ def serve_cmd(
     drift_enforcement: str,
     anomaly_enforcement: str,
     fleet_enforcement: str,
+    graph_reachability_path: Path | None,
+    graph_reachability_enforcement: str,
     allow_visual_leak_best_effort: bool,
     log_level: str,
 ) -> None:
@@ -421,6 +448,8 @@ def serve_cmd(
         drift_enforcement_mode=drift_enforcement,
         anomaly_enforcement_mode=anomaly_enforcement,
         fleet_enforcement_mode=fleet_enforcement,
+        graph_reachability_path=graph_reachability_path,
+        graph_reachability_enforcement_mode=graph_reachability_enforcement,
     )
     app = create_gateway_app(settings)
     policy_summary = summarize_policy_bundle(policy)

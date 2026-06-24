@@ -1744,124 +1744,14 @@ def scan(
     if ctx.sf_cis_benchmark_report is not None:
         report.snowflake_cis_benchmark_data = ctx.sf_cis_benchmark_report.to_dict()
     if snowflake_flag:
-        # Object + dependency graph: tables/views → DATA_STORE nodes,
-        # OBJECT_DEPENDENCIES → DEPENDS_ON lineage edges. Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_object_dependencies
+        # Estate discoveries (object graph, login anomalies, exfil, auth posture,
+        # services, pipeline, integrations, external data, governance, activity).
+        # Shared with the gated AGENT_BOM_SNOWFLAKE_INVENTORY enrichment path so
+        # the CLI flag and the env gate run identical logic. Each discovery is
+        # best-effort and never fails the scan.
+        from agent_bom.cloud.snowflake import enrich_report_with_snowflake_estate
 
-            _sf_object_graph = discover_object_dependencies()
-            if _sf_object_graph.get("status") == "ok" and (_sf_object_graph.get("objects") or _sf_object_graph.get("dependencies")):
-                report.snowflake_object_graph_data = _sf_object_graph
-        except Exception:  # noqa: BLE001 — object graph is supplementary; never fail the scan
-            pass
-        # Login anomalies: impossible travel, high distinct-IP, failed-login bursts. Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_login_anomalies
-
-            _sf_login_anomalies = discover_login_anomalies()
-            if _sf_login_anomalies.get("status") == "ok" and _sf_login_anomalies.get("findings"):
-                report.snowflake_login_anomalies_data = _sf_login_anomalies
-        except Exception:  # noqa: BLE001 — anomaly detection is supplementary; never fail the scan
-            pass
-        # Exfil graph: outbound shares, external stages (cross-cloud stitch to the
-        # destination bucket), and sensitivity-tagged objects. Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_data_exfil
-
-            _sf_exfil = discover_data_exfil()
-            if _sf_exfil.get("status") == "ok" and (
-                _sf_exfil.get("outbound_shares") or _sf_exfil.get("external_stages") or _sf_exfil.get("sensitive_objects")
-            ):
-                report.snowflake_exfil_graph_data = _sf_exfil
-        except Exception:  # noqa: BLE001 — exfil graph is supplementary; never fail the scan
-            pass
-        # Auth posture: per-user MFA/key-pair/password matrix + network policies. Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_auth_posture
-
-            _sf_auth = discover_auth_posture()
-            if _sf_auth.get("status") == "ok" and (_sf_auth.get("users") or _sf_auth.get("network_policies")):
-                report.snowflake_auth_posture_data = _sf_auth
-        except Exception:  # noqa: BLE001 — auth posture is supplementary; never fail the scan
-            pass
-        # Services: warehouses (compute) + database/schema containment hierarchy. Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_snowflake_services
-
-            _sf_services = discover_snowflake_services()
-            if _sf_services.get("status") == "ok" and (
-                _sf_services.get("warehouses") or _sf_services.get("databases") or _sf_services.get("schemas")
-            ):
-                report.snowflake_services_data = _sf_services
-        except Exception:  # noqa: BLE001 — service inventory is supplementary; never fail the scan
-            pass
-        # Pipeline objects: tasks (automation), streams (CDC), pipes (ingestion). Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_snowflake_pipeline
-
-            _sf_pipeline = discover_snowflake_pipeline()
-            if _sf_pipeline.get("status") == "ok" and (
-                _sf_pipeline.get("tasks") or _sf_pipeline.get("streams") or _sf_pipeline.get("pipes")
-            ):
-                report.snowflake_pipeline_data = _sf_pipeline
-        except Exception:  # noqa: BLE001 — pipeline inventory is supplementary; never fail the scan
-            pass
-        # Integrations: storage/API/external-access/security/notification/catalog. Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_snowflake_integrations
-
-            _sf_integrations = discover_snowflake_integrations()
-            if _sf_integrations.get("status") == "ok" and _sf_integrations.get("integrations"):
-                report.snowflake_integrations_data = _sf_integrations
-        except Exception:  # noqa: BLE001 — integration inventory is supplementary; never fail the scan
-            pass
-        # External data: iceberg + external tables (open-table-format / query-in-place). Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_snowflake_external_data
-
-            _sf_external = discover_snowflake_external_data()
-            if _sf_external.get("status") == "ok" and (_sf_external.get("iceberg_tables") or _sf_external.get("external_tables")):
-                report.snowflake_external_data_data = _sf_external
-        except Exception:  # noqa: BLE001 — external-data inventory is supplementary; never fail the scan
-            pass
-        # Governance: ACCESS_HISTORY reads (who read what) + Cortex agent telemetry
-        # + derived risk findings. De-duplicated against the object-dependency and
-        # exfil discoveries: privilege_grants and data_classifications are dropped
-        # here because grants/role-memberships and sensitivity tags are already
-        # emitted by discover_object_dependencies and discover_data_exfil. Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_governance
-
-            _sf_governance = discover_governance().to_dict()
-            if _sf_governance.get("access_records") or _sf_governance.get("agent_usage") or _sf_governance.get("findings"):
-                report.snowflake_governance_data = {
-                    "status": "ok",
-                    "account": _sf_governance.get("account", ""),
-                    "discovered_at": _sf_governance.get("discovered_at", ""),
-                    "summary": _sf_governance.get("summary", {}),
-                    "access_records": _sf_governance.get("access_records", []),
-                    "agent_usage": _sf_governance.get("agent_usage", []),
-                    "findings": _sf_governance.get("findings", []),
-                    "warnings": _sf_governance.get("warnings", []),
-                }
-        except Exception:  # noqa: BLE001 — governance is supplementary; never fail the scan
-            pass
-        # Activity timeline: QUERY_HISTORY (365-day lookback) + AI observability
-        # events. The graph builder summarizes this onto the account node rather
-        # than exploding per-query rows into nodes. Best-effort.
-        try:
-            from agent_bom.cloud.snowflake import discover_activity
-
-            _sf_activity = discover_activity().to_dict()
-            if (
-                (_sf_activity.get("summary") or {}).get("total_queries")
-                or _sf_activity.get("query_history")
-                or _sf_activity.get("observability_events")
-            ):
-                _sf_activity["status"] = "ok"
-                report.snowflake_activity_data = _sf_activity
-        except Exception:  # noqa: BLE001 — activity timeline is supplementary; never fail the scan
-            pass
+        enrich_report_with_snowflake_estate(report)
     if ctx.azure_cis_benchmark_report is not None:
         report.azure_cis_benchmark_data = ctx.azure_cis_benchmark_report.to_dict()
     if ctx.gcp_cis_benchmark_report is not None:

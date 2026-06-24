@@ -34,7 +34,12 @@ def test_every_google_cloud_module_imported_is_installed() -> None:
     assert used, "no google.cloud imports found — scraper regex may be stale"
     missing = []
     for mod in sorted(used):
-        if importlib.util.find_spec(f"google.cloud.{mod}") is None:
+        # import_module is more reliable than find_spec here: google.cloud.*
+        # are namespace subpackages whose __spec__ can be None, which makes
+        # find_spec raise ValueError even though the module imports fine.
+        try:
+            importlib.import_module(f"google.cloud.{mod}")
+        except Exception:  # noqa: BLE001 — only ImportError means truly absent
             missing.append(mod)
     assert not missing, (
         f"google.cloud modules imported by GCP code but missing from the gcp extra: {missing} — add the distribution to pyproject.toml"

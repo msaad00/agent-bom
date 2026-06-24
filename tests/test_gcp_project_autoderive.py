@@ -23,6 +23,13 @@ def _stub_google_auth(monkeypatch, *, project: Any, raises: bool = False) -> Non
         return (object(), project)
 
     mod.default = _default  # type: ignore[attr-defined]
+    # The helper does ``from google import auth``; that needs the parent
+    # ``google`` package to import AND expose ``auth`` — which isn't true in the
+    # base test env (no google-* installed). Stub both so the test is
+    # independent of whether the gcp extra is present.
+    google_mod = sys.modules.get("google") or types.ModuleType("google")
+    monkeypatch.setitem(sys.modules, "google", google_mod)
+    monkeypatch.setattr(google_mod, "auth", mod, raising=False)
     monkeypatch.setitem(sys.modules, "google.auth", mod)
 
 

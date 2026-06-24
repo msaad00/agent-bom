@@ -51,8 +51,12 @@ from .normalization import sanitize_discovery_warning
 logger = logging.getLogger(__name__)
 
 # Opt-in env flag. Default OFF — estate-wide enumeration must be explicitly
-# requested by an operator. Mirrors the other AGENT_BOM_* feature gates.
-INVENTORY_ENV_FLAG = "AGENT_BOM_CLOUD_INVENTORY"
+# requested by an operator. Symmetric with the other providers'
+# AGENT_BOM_<PROVIDER>_INVENTORY gates (AZURE / GCP / SNOWFLAKE).
+INVENTORY_ENV_FLAG = "AGENT_BOM_AWS_INVENTORY"
+# Deprecated original name. Still honoured (with a one-time warning) so existing
+# automation keeps working; remove in a future release.
+INVENTORY_ENV_FLAG_LEGACY = "AGENT_BOM_CLOUD_INVENTORY"
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -111,13 +115,30 @@ _INTERNET_CIDRS = {"0.0.0.0/0"}
 _INTERNET_IPV6 = {"::/0"}
 
 
-def inventory_enabled() -> bool:
-    """Return whether estate-wide inventory enumeration is opted in.
+_legacy_flag_warned = False
 
-    Default OFF. Operators enable it by setting ``AGENT_BOM_CLOUD_INVENTORY``
-    to a truthy value (``1`` / ``true`` / ``yes`` / ``on``).
+
+def inventory_enabled() -> bool:
+    """Return whether estate-wide AWS inventory enumeration is opted in.
+
+    Default OFF. Operators enable it by setting ``AGENT_BOM_AWS_INVENTORY`` to a
+    truthy value (``1`` / ``true`` / ``yes`` / ``on``). The original
+    ``AGENT_BOM_CLOUD_INVENTORY`` name is still honoured for one release and
+    emits a one-time deprecation warning.
     """
-    return os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() in _TRUTHY
+    global _legacy_flag_warned
+    if os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() in _TRUTHY:
+        return True
+    if os.environ.get(INVENTORY_ENV_FLAG_LEGACY, "").strip().lower() in _TRUTHY:
+        if not _legacy_flag_warned:
+            logger.warning(
+                "%s is deprecated; set %s instead.",
+                INVENTORY_ENV_FLAG_LEGACY,
+                INVENTORY_ENV_FLAG,
+            )
+            _legacy_flag_warned = True
+        return True
+    return False
 
 
 def discover_inventory(

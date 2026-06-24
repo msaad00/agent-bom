@@ -9,7 +9,7 @@ the always-empty default.
 Every enrichment here is:
 
 - **Default OFF** — guarded by the same per-provider env flags the discovery
-  modules already own (``AGENT_BOM_CLOUD_INVENTORY`` / ``AGENT_BOM_AZURE_INVENTORY``
+  modules already own (``AGENT_BOM_AWS_INVENTORY`` / ``AGENT_BOM_AZURE_INVENTORY``
   / ``AGENT_BOM_GCP_INVENTORY`` for inventory; ``AGENT_BOM_OKTA_DISCOVERY`` /
   ``AGENT_BOM_ENTRA_DISCOVERY`` for NHIs). With all flags off these functions do
   no network I/O and leave the report untouched.

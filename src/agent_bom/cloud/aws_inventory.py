@@ -78,6 +78,16 @@ _AWS_IAM_PERMISSIONS: tuple[str, ...] = (
     "iam:GetPolicy",
     "iam:GetPolicyVersion",
 )
+_AWS_DATA_PERMISSIONS: tuple[str, ...] = (
+    "rds:DescribeDBInstances",
+    "dynamodb:ListTables",
+    "dynamodb:DescribeTable",
+)
+_AWS_COMPUTE_PERMISSIONS: tuple[str, ...] = (
+    "lambda:ListFunctions",
+    "eks:ListClusters",
+    "eks:DescribeCluster",
+)
 _AWS_BASELINE_PERMISSIONS: tuple[str, ...] = ("sts:GetCallerIdentity",)
 
 # Open-to-the-world CIDR / ipv6 ranges that mark a security-group ingress rule
@@ -102,6 +112,8 @@ def discover_inventory(
     include_s3: bool = True,
     include_ec2: bool = True,
     include_iam: bool = True,
+    include_data: bool = True,
+    include_compute: bool = True,
     force: bool = False,
 ) -> dict[str, Any]:
     """Enumerate the general AWS estate (S3, EC2 + security groups, IAM).
@@ -130,6 +142,10 @@ def discover_inventory(
         "security_groups": [],
         "roles": [],
         "users": [],
+        "rds_instances": [],
+        "lambda_functions": [],
+        "dynamodb_tables": [],
+        "eks_clusters": [],
         "warnings": [],
         "discovery_envelope": None,
     }
@@ -167,6 +183,10 @@ def discover_inventory(
     security_groups: list[dict[str, Any]] = []
     roles: list[dict[str, Any]] = []
     users: list[dict[str, Any]] = []
+    rds_instances: list[dict[str, Any]] = []
+    lambda_functions: list[dict[str, Any]] = []
+    dynamodb_tables: list[dict[str, Any]] = []
+    eks_clusters: list[dict[str, Any]] = []
 
     try:
         if include_s3:
@@ -175,6 +195,12 @@ def discover_inventory(
             instances, security_groups = _discover_ec2(session, resolved_region, account_id=account_id, warnings=warnings)
         if include_iam:
             roles, users = _discover_iam(session, account_id=account_id, warnings=warnings)
+        if include_data:
+            rds_instances = _discover_rds(session, resolved_region, account_id=account_id, warnings=warnings)
+            dynamodb_tables = _discover_dynamodb(session, resolved_region, account_id=account_id, warnings=warnings)
+        if include_compute:
+            lambda_functions = _discover_lambda(session, resolved_region, account_id=account_id, warnings=warnings)
+            eks_clusters = _discover_eks(session, resolved_region, account_id=account_id, warnings=warnings)
     except NoCredentialsError:
         return {
             **empty,
@@ -189,6 +215,10 @@ def discover_inventory(
         permissions_used.extend(_AWS_EC2_PERMISSIONS)
     if include_iam:
         permissions_used.extend(_AWS_IAM_PERMISSIONS)
+    if include_data:
+        permissions_used.extend(_AWS_DATA_PERMISSIONS)
+    if include_compute:
+        permissions_used.extend(_AWS_COMPUTE_PERMISSIONS)
 
     discovery_scope: list[str] = []
     if account_id:
@@ -213,6 +243,10 @@ def discover_inventory(
         "security_groups": security_groups,
         "roles": roles,
         "users": users,
+        "rds_instances": rds_instances,
+        "lambda_functions": lambda_functions,
+        "dynamodb_tables": dynamodb_tables,
+        "eks_clusters": eks_clusters,
         "warnings": warnings,
         "discovery_envelope": envelope.to_dict(),
     }
@@ -574,6 +608,124 @@ def _highest_privilege(policies: list[dict[str, Any]]) -> str:
         if _PRIVILEGE_RANK.get(level, 0) > _PRIVILEGE_RANK.get(best, 0):
             best = level
     return best
+
+
+def _discover_rds(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate RDS database instances (read-only). Become ``DATABASE`` data stores."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("rds", region_name=region)
+        paginator = client.get_paginator("describe_db_instances")
+        for page in paginator.paginate():
+            for db in page.get("DBInstances", []):
+                name = str(db.get("DBInstanceIdentifier", "") or "")
+                if not name:
+                    continue
+                out.append(
+                    {
+                        "name": name,
+                        "arn": str(db.get("DBInstanceArn", "") or ""),
+                        "engine": str(db.get("Engine", "") or ""),
+                        "publicly_accessible": bool(db.get("PubliclyAccessible")),
+                        "encrypted": bool(db.get("StorageEncrypted")),
+                        "endpoint": str((db.get("Endpoint") or {}).get("Address", "") or ""),
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list RDS instances: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_lambda(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate Lambda functions (read-only). Become ``SERVERLESS_FUNCTION`` resources."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("lambda", region_name=region)
+        paginator = client.get_paginator("list_functions")
+        for page in paginator.paginate():
+            for fn in page.get("Functions", []):
+                name = str(fn.get("FunctionName", "") or "")
+                if not name:
+                    continue
+                vpc = fn.get("VpcConfig") or {}
+                out.append(
+                    {
+                        "name": name,
+                        "arn": str(fn.get("FunctionArn", "") or ""),
+                        "runtime": str(fn.get("Runtime", "") or ""),
+                        "role": str(fn.get("Role", "") or ""),
+                        "in_vpc": bool(vpc.get("VpcId")),
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Lambda functions: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_dynamodb(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate DynamoDB tables (read-only). Become ``DATABASE`` data stores."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("dynamodb", region_name=region)
+        paginator = client.get_paginator("list_tables")
+        for page in paginator.paginate():
+            for name in page.get("TableNames", []):
+                if not name:
+                    continue
+                encrypted = False
+                try:
+                    desc = client.describe_table(TableName=name).get("Table", {})
+                    encrypted = bool((desc.get("SSEDescription") or {}).get("Status") == "ENABLED")
+                except Exception:  # noqa: BLE001 — table metadata is best-effort
+                    desc = {}
+                out.append(
+                    {
+                        "name": str(name),
+                        "arn": str(desc.get("TableArn", "") or f"arn:aws:dynamodb:{region}:{account_id or ''}:table/{name}"),
+                        "encrypted": encrypted,
+                        "item_count": int(desc.get("ItemCount", 0) or 0),
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list DynamoDB tables: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_eks(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate EKS clusters (read-only). Become ``CONTAINER_CLUSTER`` resources."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("eks", region_name=region)
+        names: list[str] = []
+        paginator = client.get_paginator("list_clusters")
+        for page in paginator.paginate():
+            names.extend(page.get("clusters", []))
+        for name in names:
+            try:
+                c = client.describe_cluster(name=name).get("cluster", {})
+            except Exception:  # noqa: BLE001
+                c = {"name": name}
+            endpoint_public = bool((c.get("resourcesVpcConfig") or {}).get("endpointPublicAccess"))
+            out.append(
+                {
+                    "name": str(c.get("name", name) or name),
+                    "arn": str(c.get("arn", "") or ""),
+                    "version": str(c.get("version", "") or ""),
+                    "endpoint_public": endpoint_public,
+                    "internet_exposed": endpoint_public,
+                    "account_id": account_id or "",
+                    "location": region,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list EKS clusters: {sanitize_discovery_warning(exc)}")
+    return out
 
 
 def _iso(value: Any) -> str:

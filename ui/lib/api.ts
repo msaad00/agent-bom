@@ -59,6 +59,7 @@ import type {
   ComplianceNarrativeResponse,
   AISVSComplianceResponse,
   ComplianceResponse,
+  CISBenchmarkChecksResponse,
   FrameworkCatalogsResponse,
   AgentDetailResponse,
   AgentLifecycleResponse,
@@ -212,6 +213,9 @@ export type {
   AISVSBenchmark,
   AISVSComplianceResponse,
   ComplianceResponse,
+  CISBenchmarkCheck,
+  CISBenchmarkRemediation,
+  CISBenchmarkChecksResponse,
   FrameworkCatalogMetadata,
   FrameworkCatalogsResponse,
   AgentDetailResponse,
@@ -706,6 +710,28 @@ export const api = {
 
   /** Latest tenant-scoped OWASP AISVS benchmark posture */
   getAISVSCompliance: () => get<AISVSComplianceResponse>("/v1/compliance/aisvs"),
+
+  /**
+   * Tenant-scoped cloud CIS benchmark checks with structured remediation.
+   * Server-side filters (cloud/status/priority) are optional; callers that
+   * also need a guardrails filter fetch a page and filter client-side.
+   */
+  listCisBenchmarkChecks: (filters?: {
+    cloud?: string;
+    status?: string;
+    priority?: number;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.cloud) params.set("cloud", filters.cloud);
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.priority !== undefined) params.set("priority", String(filters.priority));
+    if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
+    if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
+    const qs = params.toString();
+    return get<CISBenchmarkChecksResponse>(`/v1/cis/checks${qs ? `?${qs}` : ""}`);
+  },
 
   /** Active framework catalog metadata surfaced by the API */
   getFrameworkCatalogs: () => get<FrameworkCatalogsResponse>("/v1/frameworks/catalogs"),

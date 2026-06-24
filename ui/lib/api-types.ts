@@ -1530,6 +1530,50 @@ export interface AISVSComplianceResponse {
   benchmark: AISVSBenchmark;
 }
 
+/** Structured remediation attached to a single cloud CIS benchmark check. */
+export interface CISBenchmarkRemediation {
+  priority?: number | undefined;
+  effort?: string | undefined;
+  guardrails?: string[] | undefined;
+  fix_cli?: string | null | undefined;
+  fix_console?: string | undefined;
+  requires_human_review?: boolean | undefined;
+  docs?: string | undefined;
+}
+
+/**
+ * One normalized cloud CIS benchmark check row, as emitted by the backend
+ * `analytics_contract.build_cis_benchmark_check_rows` and served by
+ * `GET /v1/cis/checks`. Top-level `fix_cli` / `fix_console` / `priority` /
+ * `guardrails` / `requires_human_review` are flattened copies of the matching
+ * `remediation` fields for cheap indexing/filtering.
+ */
+export interface CISBenchmarkCheck {
+  scan_id: string;
+  measured_at: string;
+  cloud: string;
+  check_id: string;
+  title: string;
+  status: string;
+  severity: string;
+  cis_section: string;
+  evidence: string;
+  resource_ids: string[];
+  remediation: CISBenchmarkRemediation;
+  fix_cli: string;
+  fix_console: string;
+  effort: string;
+  priority: number;
+  guardrails: string[];
+  requires_human_review: boolean;
+}
+
+export interface CISBenchmarkChecksResponse {
+  checks: CISBenchmarkCheck[];
+  count: number;
+  source: string;
+}
+
 export interface ComplianceResponse {
   overall_score: number;
   overall_status: "pass" | "warning" | "fail";

@@ -34,7 +34,7 @@
     "next": "^16.2.9",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "recharts": "^3.8.1",
+    "recharts": "^3.9.0",
     "sigma": "^3.0.3"
   },
   "overrides": {
@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.2.9",
-    "@playwright/test": "^1.61.0",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.3.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -50,7 +50,7 @@
     "@types/node": "26.0.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "^6.0.2",
+    "@vitejs/plugin-react": "^6.0.3",
     "eslint": "9.39.4",
     "eslint-config-next": "^16.2.9",
     "eslint-plugin-jsx-a11y": "6.10.2",

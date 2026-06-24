@@ -56,39 +56,21 @@ from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, Tran
 from agent_bom.security import sanitize_error
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_package_purl
+from .normalization import (
+    build_cloud_origin,
+    build_package_purl,
+    coerce_int_or_none,
+    coerce_truthy,
+    resolve_env_or_value,
+)
 
 logger = logging.getLogger(__name__)
 
-
-def _env_or_value(value: str | None, env_var: str, default: str = "") -> str:
-    """Resolve an optional CLI value against an environment fallback."""
-    if value is not None:
-        return value
-    return os.environ.get(env_var) or default
-
-
-def _sf_truthy(value: Any) -> bool:
-    """Coerce a Snowflake cell (bool / 'true'/'false' string / None) to bool.
-
-    ACCOUNT_USAGE views return mixed bool and string-boolean values; a plain
-    ``bool(value)`` would treat the string ``"false"`` as truthy.
-    """
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    return str(value).strip().lower() in ("true", "t", "yes", "y", "1")
-
-
-def _coerce_int_or_none(value: Any) -> int | None:
-    """Coerce a Snowflake numeric cell to int, preserving 0 (which ``or`` would eat)."""
-    if isinstance(value, bool) or value is None:
-        return None
-    if isinstance(value, int):
-        return value
-    text = str(value).strip()
-    return int(text) if text.lstrip("-").isdigit() else None
+# Backwards-compatible aliases for the shared cloud helpers. Call sites and
+# tests may reference either the shared public names or these private aliases.
+_env_or_value = resolve_env_or_value
+_sf_truthy = coerce_truthy
+_coerce_int_or_none = coerce_int_or_none
 
 
 def _snowflake_cloud_origin(

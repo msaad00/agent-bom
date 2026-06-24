@@ -1404,11 +1404,14 @@ def _resolve_affected_server_ids(
             named_ids.update(server_name_to_agent_servers.get(server_name, {}).values())
         narrowed = (candidate_ids & named_ids) if candidate_ids else named_ids
         if candidate_ids and named_ids and not narrowed:
+            # Log counts only — dumping the full id/name collections risks
+            # clear-text logging of data that flows in from cloud-inventory
+            # collections (e.g. Secrets Manager / KMS resource names).
             _logger.debug(
-                "blast-radius narrow-by-server collapsed to empty: pkg=%s servers=%s candidates=%s",
+                "blast-radius narrow-by-server collapsed to empty: pkg=%s servers=%d candidates=%d",
                 pkg_name,
-                sorted(server_names),
-                sorted(candidate_ids),
+                len(server_names),
+                len(candidate_ids),
             )
         candidate_ids = narrowed
 
@@ -1420,10 +1423,10 @@ def _resolve_affected_server_ids(
         narrowed = (candidate_ids & agent_ids) if candidate_ids else agent_ids
         if candidate_ids and agent_ids and not narrowed:
             _logger.debug(
-                "blast-radius narrow-by-agent collapsed to empty: pkg=%s agents=%s candidates=%s",
+                "blast-radius narrow-by-agent collapsed to empty: pkg=%s agents=%d candidates=%d",
                 pkg_name,
-                sorted(agent_names),
-                sorted(candidate_ids),
+                len(agent_names),
+                len(candidate_ids),
             )
         candidate_ids = narrowed
 

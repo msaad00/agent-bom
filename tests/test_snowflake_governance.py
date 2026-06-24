@@ -163,9 +163,19 @@ class TestAccessHistory:
         )
         base_objects = json.dumps([{"objectName": "DB.SCHEMA.USERS"}])
 
+        # role_name comes from the QUERY_HISTORY join; objects_modified is the
+        # real write signal and is empty for this read-only query.
         cursor = _make_cursor(
-            rows=[("q123", "alice", "ANALYST", "2026-02-20T00:00:00Z", direct_objects, base_objects)],
-            columns=["query_id", "user_name", "role_name", "query_start_time", "direct_objects_accessed", "base_objects_accessed"],
+            rows=[("q123", "alice", "ANALYST", "2026-02-20T00:00:00Z", direct_objects, base_objects, "[]")],
+            columns=[
+                "query_id",
+                "user_name",
+                "role_name",
+                "query_start_time",
+                "direct_objects_accessed",
+                "base_objects_accessed",
+                "objects_modified",
+            ],
         )
         conn.cursor.return_value = cursor
 
@@ -173,9 +183,35 @@ class TestAccessHistory:
         assert len(records) == 1
         assert records[0].object_name == "DB.SCHEMA.USERS"
         assert records[0].role_name == "ANALYST"
+        assert records[0].base_objects == ["DB.SCHEMA.USERS"]
         assert "EMAIL" in records[0].columns
         assert records[0].operation == "SELECT"
         assert records[0].is_write is False
+        assert warnings == []
+
+    def test_mine_access_history_null_role_from_join(self):
+        """role_name from a LEFT JOIN may be NULL when QUERY_HISTORY has no match."""
+        from agent_bom.cloud.snowflake import _mine_access_history
+
+        conn = _make_mock_conn()
+        direct_objects = json.dumps([{"objectName": "DB.SCHEMA.T", "objectDomain": "TABLE", "columns": []}])
+        cursor = _make_cursor(
+            rows=[("q789", "svc", None, "2026-02-20T00:00:00Z", direct_objects, "[]", "[]")],
+            columns=[
+                "query_id",
+                "user_name",
+                "role_name",
+                "query_start_time",
+                "direct_objects_accessed",
+                "base_objects_accessed",
+                "objects_modified",
+            ],
+        )
+        conn.cursor.return_value = cursor
+
+        records, warnings = _mine_access_history(conn, 30)
+        assert len(records) == 1
+        assert records[0].role_name == ""
         assert warnings == []
 
     def test_mine_access_history_write_operation(self):
@@ -195,8 +231,16 @@ class TestAccessHistory:
         )
 
         cursor = _make_cursor(
-            rows=[("q456", "bot", "ETL_ROLE", "2026-02-20T00:00:00Z", direct_objects, "[]")],
-            columns=["query_id", "user_name", "role_name", "query_start_time", "direct_objects_accessed", "base_objects_accessed"],
+            rows=[("q456", "bot", "ETL_ROLE", "2026-02-20T00:00:00Z", direct_objects, "[]", "[]")],
+            columns=[
+                "query_id",
+                "user_name",
+                "role_name",
+                "query_start_time",
+                "direct_objects_accessed",
+                "base_objects_accessed",
+                "objects_modified",
+            ],
         )
         conn.cursor.return_value = cursor
 
@@ -204,6 +248,43 @@ class TestAccessHistory:
         assert len(records) == 1
         assert records[0].operation == "UPDATE"
         assert records[0].is_write is True
+
+    def test_mine_access_history_write_from_objects_modified(self):
+        """Writes surface in objects_modified, not direct_objects_accessed."""
+        from agent_bom.cloud.snowflake import _mine_access_history
+
+        conn = _make_mock_conn()
+        # INSERT INTO TARGET SELECT FROM SOURCE: SOURCE is read, TARGET is modified.
+        direct_objects = json.dumps([{"objectName": "DB.SCHEMA.SOURCE", "objectDomain": "TABLE", "columns": []}])
+        objects_modified = json.dumps(
+            [
+                {
+                    "objectName": "DB.SCHEMA.TARGET",
+                    "objectDomain": "TABLE",
+                    "columns": [{"columnName": "ID"}],
+                }
+            ]
+        )
+        cursor = _make_cursor(
+            rows=[("qw", "etl", "ETL_ROLE", "2026-02-20T00:00:00Z", direct_objects, "[]", objects_modified)],
+            columns=[
+                "query_id",
+                "user_name",
+                "role_name",
+                "query_start_time",
+                "direct_objects_accessed",
+                "base_objects_accessed",
+                "objects_modified",
+            ],
+        )
+        conn.cursor.return_value = cursor
+
+        records, _ = _mine_access_history(conn, 30)
+        by_name = {r.object_name: r for r in records}
+        assert by_name["DB.SCHEMA.SOURCE"].is_write is False
+        assert by_name["DB.SCHEMA.TARGET"].is_write is True
+        assert by_name["DB.SCHEMA.TARGET"].operation == "WRITE"
+        assert "ID" in by_name["DB.SCHEMA.TARGET"].columns
 
     def test_mine_access_history_enterprise_error(self):
         from agent_bom.cloud.snowflake import _mine_access_history
@@ -289,6 +370,18 @@ class TestCortexAgentUsage:
         from agent_bom.cloud.snowflake import _mine_cortex_agent_usage
 
         conn = _make_mock_conn()
+        # Real schema: TOKENS is a scalar total, TOKEN_CREDITS the credit cost,
+        # database/schema are AGENT_*_NAME, and per-model/input/output detail
+        # lives in the METADATA OBJECT.
+        metadata = json.dumps(
+            {
+                "input_tokens": 1000,
+                "output_tokens": 500,
+                "model_name": "claude-3.5-sonnet",
+                "tool_calls": 5,
+                "status": "SUCCESS",
+            }
+        )
         cursor = _make_cursor(
             rows=[
                 (
@@ -296,33 +389,25 @@ class TestCortexAgentUsage:
                     "DB",
                     "SCHEMA",
                     "alice",
-                    "ANALYST",
                     "2026-02-20T00:00:00Z",
                     "2026-02-20T00:00:05Z",
-                    1000,
-                    500,
+                    "req-1",
                     1500,
                     0.015,
-                    "claude-3.5-sonnet",
-                    5,
-                    "SUCCESS",
+                    metadata,
                 ),
             ],
             columns=[
                 "agent_name",
-                "database_name",
-                "schema_name",
+                "agent_database_name",
+                "agent_schema_name",
                 "user_name",
-                "role_name",
                 "start_time",
                 "end_time",
-                "input_tokens",
-                "output_tokens",
-                "total_tokens",
-                "credits_used",
-                "model_name",
-                "tool_calls",
-                "status",
+                "request_id",
+                "tokens",
+                "token_credits",
+                "metadata",
             ],
         )
         conn.cursor.return_value = cursor
@@ -330,9 +415,58 @@ class TestCortexAgentUsage:
         records, warnings = _mine_cortex_agent_usage(conn, 30)
         assert len(records) == 1
         assert records[0].agent_name == "my_agent"
+        assert records[0].database_name == "DB"
+        assert records[0].schema_name == "SCHEMA"
         assert records[0].total_tokens == 1500
+        assert records[0].input_tokens == 1000
+        assert records[0].output_tokens == 500
         assert records[0].credits_used == 0.015
+        assert records[0].model_name == "claude-3.5-sonnet"
         assert records[0].tool_calls == 5
+        assert records[0].status == "SUCCESS"
+        assert warnings == []
+
+    def test_mine_cortex_agent_usage_empty_metadata(self):
+        """METADATA may be NULL/empty — record still maps scalar columns."""
+        from agent_bom.cloud.snowflake import _mine_cortex_agent_usage
+
+        conn = _make_mock_conn()
+        cursor = _make_cursor(
+            rows=[
+                (
+                    "agent2",
+                    "DB",
+                    "SCHEMA",
+                    "bob",
+                    "2026-02-20T00:00:00Z",
+                    "2026-02-20T00:00:05Z",
+                    "req-2",
+                    200,
+                    0.002,
+                    None,
+                ),
+            ],
+            columns=[
+                "agent_name",
+                "agent_database_name",
+                "agent_schema_name",
+                "user_name",
+                "start_time",
+                "end_time",
+                "request_id",
+                "tokens",
+                "token_credits",
+                "metadata",
+            ],
+        )
+        conn.cursor.return_value = cursor
+
+        records, warnings = _mine_cortex_agent_usage(conn, 30)
+        assert len(records) == 1
+        assert records[0].total_tokens == 200
+        assert records[0].credits_used == 0.002
+        assert records[0].input_tokens == 0
+        assert records[0].model_name == ""
         assert warnings == []
 
     def test_mine_cortex_agent_usage_not_available(self):

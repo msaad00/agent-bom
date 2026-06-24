@@ -208,6 +208,7 @@ def _install_fake_boto3() -> Any:
 
 def test_inventory_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(aws_inventory.INVENTORY_ENV_FLAG, raising=False)
+    monkeypatch.delenv(aws_inventory.INVENTORY_ENV_FLAG_LEGACY, raising=False)
     assert aws_inventory.inventory_enabled() is False
     payload = aws_inventory.discover_inventory()
     assert payload["status"] == "disabled"
@@ -217,6 +218,15 @@ def test_inventory_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_inventory_flag_enables(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(aws_inventory.INVENTORY_ENV_FLAG, "true")
+    assert aws_inventory.inventory_enabled() is True
+
+
+def test_inventory_legacy_flag_still_enables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The deprecated AGENT_BOM_CLOUD_INVENTORY name keeps working (with a warning)."""
+    monkeypatch.delenv(aws_inventory.INVENTORY_ENV_FLAG, raising=False)
+    monkeypatch.setenv(aws_inventory.INVENTORY_ENV_FLAG_LEGACY, "1")
+    assert aws_inventory.INVENTORY_ENV_FLAG == "AGENT_BOM_AWS_INVENTORY"
+    assert aws_inventory.INVENTORY_ENV_FLAG_LEGACY == "AGENT_BOM_CLOUD_INVENTORY"
     assert aws_inventory.inventory_enabled() is True
 
 

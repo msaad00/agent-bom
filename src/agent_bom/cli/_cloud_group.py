@@ -251,7 +251,7 @@ def inventory_cmd(
 ) -> None:
     """Show an estate-wide AWS / Azure / GCP asset summary (read-only).
 
-    Gated by ``AGENT_BOM_CLOUD_INVENTORY`` (AWS), ``AGENT_BOM_AZURE_INVENTORY``
+    Gated by ``AGENT_BOM_AWS_INVENTORY`` (AWS), ``AGENT_BOM_AZURE_INVENTORY``
     (Azure), and ``AGENT_BOM_GCP_INVENTORY`` (GCP). A disabled provider reports a
     ``disabled`` status and runs no network call. Reference only.
     """
@@ -298,7 +298,7 @@ def inventory_cmd(
     if any_disabled:
         con.print(
             "  [dim]Disabled providers run no network call. Enable with[/dim] "
-            "[cyan]AGENT_BOM_CLOUD_INVENTORY=1[/cyan] [dim]·[/dim] "
+            "[cyan]AGENT_BOM_AWS_INVENTORY=1[/cyan] [dim]·[/dim] "
             "[cyan]AGENT_BOM_AZURE_INVENTORY=1[/cyan] [dim]·[/dim] [cyan]AGENT_BOM_GCP_INVENTORY=1[/cyan]"
         )
     con.print()

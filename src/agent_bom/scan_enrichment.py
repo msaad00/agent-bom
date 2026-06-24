@@ -140,3 +140,15 @@ def enrich_report_with_estate_discovery(report: AIBOMReport) -> None:
             report.identity_discovery_data = discovery
     except Exception:  # noqa: BLE001
         _logger.warning("Identity discovery enrichment skipped", exc_info=True)
+
+    # AWS Organizations hierarchy (org → OUs → accounts → SCPs). Gated by the same
+    # AGENT_BOM_CLOUD_INVENTORY flag; only attached when the account is in an org.
+    try:
+        from agent_bom.cloud import aws_inventory, aws_organizations
+
+        if aws_inventory.inventory_enabled():
+            org = aws_organizations.discover_organization()
+            if isinstance(org, dict) and org.get("status") == "ok":
+                report.aws_organization_data = org
+    except Exception:  # noqa: BLE001 — org enrichment must never break a scan
+        _logger.warning("AWS organization enrichment skipped", exc_info=True)

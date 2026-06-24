@@ -929,6 +929,7 @@ def build_unified_graph_from_report(
         _add_cloud_inventory(graph, inventory_payload, data_source_tag)
         _add_cloud_role_assignments(graph, inventory_payload, data_source_tag)
 
+    _add_aws_organization(graph, report_json.get("aws_organization"), data_source_tag)
     _add_snowflake_object_graph(graph, report_json.get("snowflake_object_graph"), data_source_tag)
     _add_snowflake_exfil(graph, report_json.get("snowflake_exfil_graph"), data_source_tag)
     _add_snowflake_identity(
@@ -3082,6 +3083,128 @@ _RBAC_PRIVILEGED_ROLES = {
     "key vault administrator",
     "storage blob data owner",
 }
+
+
+def _add_aws_organization(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote the AWS Organization (org → OUs → accounts → SCPs) into the graph.
+
+    The multi-account estate as a navigable ``CONTAINS`` hierarchy: org → OU →
+    account, with SCPs ``GOVERNS``-linked to the OUs/accounts they bound. Account
+    nodes use the same ``account:aws:<id>`` id a per-account scan emits, so the
+    org structure and any inventoried account graph stitch together. Scales to
+    thousands of accounts. Never raises; non-ok payload is a no-op.
+    """
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return
+    org_id = _clean_graph_part(payload.get("org_id"))
+    data_sources = sorted({data_source, "aws-organizations"} - {""})
+    org_node_id = f"org:aws:{org_id}" if org_id else "org:aws:organization"
+    graph.add_node(
+        UnifiedNode(
+            id=org_node_id,
+            entity_type=EntityType.ORG,
+            label=f"AWS org: {org_id or 'organization'}",
+            attributes={
+                "org_id": org_id,
+                "cloud_provider": "aws",
+                "master_account_id": _clean_graph_part(payload.get("master_account_id")),
+                "feature_set": _clean_graph_part(payload.get("feature_set")),
+            },
+            data_sources=data_sources,
+            dimensions=NodeDimensions(cloud_provider="aws", surface="identity"),
+        )
+    )
+
+    def _ou_node_id(ou_id: str) -> str:
+        return f"org:aws:ou:{ou_id}"
+
+    for ou in payload.get("organizational_units", []) or []:
+        if not isinstance(ou, dict):
+            continue
+        ou_id = _clean_graph_part(ou.get("id"))
+        if not ou_id:
+            continue
+        node_id = _ou_node_id(ou_id)
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.ORG,
+                label=f"{'root' if ou.get('is_root') else 'OU'}: {_clean_graph_part(ou.get('name')) or ou_id}",
+                attributes={"ou_id": ou_id, "is_root": bool(ou.get("is_root")), "cloud_provider": "aws"},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="aws", surface="identity"),
+            )
+        )
+        parent = _clean_graph_part(ou.get("parent_id"))
+        parent_node = _ou_node_id(parent) if parent else org_node_id
+        graph.add_edge(
+            UnifiedEdge(
+                source=parent_node, target=node_id, relationship=RelationshipType.CONTAINS, evidence={"source": "aws-organizations"}
+            )
+        )
+
+    for acct in payload.get("accounts", []) or []:
+        if not isinstance(acct, dict):
+            continue
+        acct_id = _clean_graph_part(acct.get("id"))
+        if not acct_id:
+            continue
+        acct_node = _identity_node_id(EntityType.ACCOUNT, "aws", acct_id)
+        graph.add_node(
+            UnifiedNode(
+                id=acct_node,
+                entity_type=EntityType.ACCOUNT,
+                label=f"account: {_clean_graph_part(acct.get('name')) or acct_id}",
+                attributes={
+                    "account_id": acct_id,
+                    "cloud_provider": "aws",
+                    "account_name": _clean_graph_part(acct.get("name")),
+                    "account_status": _clean_graph_part(acct.get("status")),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="aws", surface="identity"),
+            )
+        )
+        ou_id = _clean_graph_part(acct.get("ou_id"))
+        parent_node = _ou_node_id(ou_id) if ou_id else org_node_id
+        graph.add_edge(
+            UnifiedEdge(
+                source=parent_node, target=acct_node, relationship=RelationshipType.CONTAINS, evidence={"source": "aws-organizations"}
+            )
+        )
+
+    for scp in payload.get("scps", []) or []:
+        if not isinstance(scp, dict):
+            continue
+        scp_id = _clean_graph_part(scp.get("id"))
+        if not scp_id:
+            continue
+        scp_node = f"policy:aws:scp:{scp_id}"
+        graph.add_node(
+            UnifiedNode(
+                id=scp_node,
+                entity_type=EntityType.POLICY,
+                label=f"SCP: {_clean_graph_part(scp.get('name')) or scp_id}",
+                attributes={"scp_id": scp_id, "aws_managed": bool(scp.get("aws_managed")), "cloud_provider": "aws"},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="aws", surface="identity"),
+            )
+        )
+        graph.add_edge(
+            UnifiedEdge(source=org_node_id, target=scp_node, relationship=RelationshipType.OWNS, evidence={"source": "aws-organizations"})
+        )
+        for target in scp.get("targets", []) or []:
+            target = _clean_graph_part(target)
+            if not target:
+                continue
+            # A target is an OU id, the root id, or a 12-digit account id.
+            tgt_node = _identity_node_id(EntityType.ACCOUNT, "aws", target) if target.isdigit() else _ou_node_id(target)
+            if tgt_node in graph.nodes:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=scp_node, target=tgt_node, relationship=RelationshipType.GOVERNS, evidence={"source": "aws-organizations"}
+                    )
+                )
 
 
 def _add_cloud_role_assignments(graph: UnifiedGraph, inventory: Any, data_source: str) -> None:

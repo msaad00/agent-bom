@@ -34,6 +34,7 @@ from agent_bom.discovery_envelope import RedactionStatus, ScanMode
 PROVIDERS: list[tuple[str, ScanMode, RedactionStatus]] = [
     ("agent_bom.cloud.aws", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.aws_inventory", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
+    ("agent_bom.cloud.aws_organizations", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.gcp", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.gcp_inventory", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.azure", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),

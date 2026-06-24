@@ -1006,6 +1006,7 @@ class AIBOMReport:
     toxic_combinations: Optional[list] = None  # Serialized ToxicCombination list
     prioritized_findings: Optional[list] = None  # Priority-ordered findings
     sast_data: Optional[dict] = None  # Serialized SAST scan results (Semgrep)
+    aws_organization_data: Optional[dict] = None  # AWS Organizations: org/OUs/accounts/SCPs hierarchy
     cis_benchmark_data: Optional[dict] = None  # Serialized CIS AWS Benchmark results
     snowflake_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Snowflake Benchmark results
     snowflake_object_graph_data: Optional[dict] = None  # Snowflake tables/views + OBJECT_DEPENDENCIES lineage

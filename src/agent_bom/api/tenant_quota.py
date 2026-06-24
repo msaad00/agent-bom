@@ -264,18 +264,19 @@ def _raise_quota_exceeded(
     )
 
 
-def enforce_active_scan_quota(tenant_id: str) -> None:
+def enforce_active_scan_quota(tenant_id: str, attempted: int = 1) -> None:
     """Limit concurrent pending/running scan jobs per tenant."""
     limit = _quota_limit(tenant_id, "active_scan_jobs")
     if limit <= 0:
         return
     current = sum(1 for job in _get_store().list_all(tenant_id=tenant_id) if job.status in (JobStatus.PENDING, JobStatus.RUNNING))
-    if current >= limit:
+    if current + attempted > limit:
         _raise_quota_exceeded(
             tenant_id=tenant_id,
             quota_name="active_scan_jobs",
             limit=limit,
             current=current,
+            attempted=attempted,
         )
 
 

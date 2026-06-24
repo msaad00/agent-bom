@@ -58,6 +58,12 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
     created_at   TEXT NOT NULL,
     completed_at TEXT,
     team_id      TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+    batch_id     TEXT,
+    parent_job_id TEXT,
+    child_job_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    target       JSONB,
+    target_index INTEGER,
+    target_count INTEGER,
     schedule_id  TEXT,
     triggered_by TEXT,
     data         JSONB NOT NULL
@@ -80,12 +86,56 @@ DO $$ BEGIN
         ALTER TABLE scan_jobs
             ADD COLUMN schedule_id TEXT;
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scan_jobs' AND column_name = 'batch_id'
+    ) THEN
+        ALTER TABLE scan_jobs
+            ADD COLUMN batch_id TEXT;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scan_jobs' AND column_name = 'parent_job_id'
+    ) THEN
+        ALTER TABLE scan_jobs
+            ADD COLUMN parent_job_id TEXT;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scan_jobs' AND column_name = 'child_job_ids'
+    ) THEN
+        ALTER TABLE scan_jobs
+            ADD COLUMN child_job_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scan_jobs' AND column_name = 'target'
+    ) THEN
+        ALTER TABLE scan_jobs
+            ADD COLUMN target JSONB;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scan_jobs' AND column_name = 'target_index'
+    ) THEN
+        ALTER TABLE scan_jobs
+            ADD COLUMN target_index INTEGER;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scan_jobs' AND column_name = 'target_count'
+    ) THEN
+        ALTER TABLE scan_jobs
+            ADD COLUMN target_count INTEGER;
+    END IF;
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON scan_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON scan_jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_team_status  ON scan_jobs(team_id, status);
 CREATE INDEX IF NOT EXISTS idx_jobs_team_created ON scan_jobs(team_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_batch ON scan_jobs(team_id, batch_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_parent ON scan_jobs(team_id, parent_job_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_schedule ON scan_jobs(team_id, schedule_id, created_at DESC);
 
 -- ── Table: CIS Benchmark Checks ──────────────────────────────────────────────

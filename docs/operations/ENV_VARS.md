@@ -153,6 +153,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS` | `int` | `90` | — |
 | `AGENT_BOM_RATE_LIMIT_KEY_ROTATION_DAYS` | `int` | `30` | Operators rotate AGENT_BOM_RATE_LIMIT_KEY periodically and record the rotation timestamp in AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED (ISO-8601 with timezone). The control plane warns when the configured key age approaches the rotation interval |
 
+## Runtime → graph incident feedback
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_RUNTIME_FEEDBACK_PATH` | `str` | `''` | The feedback direction of the agentic moat: the runtime ProtectionEngine appends observed incidents (credential reach, lateral movement, kill-switch) to a durable JSONL sink at this path; the next scan's graph builder ingests them so the gr |
+
 ## Scan Cache
 | Env var | Type | Default | Description |
 |---|---|---|---|

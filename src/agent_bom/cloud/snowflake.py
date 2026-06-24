@@ -1189,12 +1189,18 @@ def _mine_access_history(
     days = _coerce_snowflake_days(days)
 
     try:
+        # ACCESS_HISTORY has no ROLE_NAME column; the executing role lives on
+        # QUERY_HISTORY, joined via query_id. The accessed/modified objects are
+        # VARIANT arrays (objectName/objectDomain/columns) parsed in Python below.
         cursor.execute(
-            "SELECT query_id, user_name, role_name, query_start_time, "
-            "       direct_objects_accessed, base_objects_accessed "
-            "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY "
-            f"WHERE query_start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
-            "ORDER BY query_start_time DESC "
+            "SELECT ah.query_id, ah.user_name, qh.role_name, ah.query_start_time, "
+            "       ah.direct_objects_accessed, ah.base_objects_accessed, "
+            "       ah.objects_modified "
+            "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah "
+            "LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY qh "
+            "       ON ah.query_id = qh.query_id "
+            f"WHERE ah.query_start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
+            "ORDER BY ah.query_start_time DESC "
             "LIMIT 1000"
         )
         columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
@@ -1202,27 +1208,62 @@ def _mine_access_history(
         for row in cursor.fetchall():
             row_dict = dict(zip(columns, row))
 
-            # direct_objects_accessed is a JSON array
+            query_id = str(row_dict.get("query_id", ""))
+            user_name = str(row_dict.get("user_name", ""))
+            role_name = str(row_dict.get("role_name") or "")
+            query_start = str(row_dict.get("query_start_time", ""))
+
+            # Each is a JSON array of objects with objectName/objectDomain/columns.
             direct_objects = _parse_json_field(row_dict.get("direct_objects_accessed", "[]"))
             base_objects = _parse_json_field(row_dict.get("base_objects_accessed", "[]"))
+            objects_modified = _parse_json_field(row_dict.get("objects_modified", "[]"))
+
+            base_names = [b.get("objectName", "") for b in base_objects if b.get("objectName")]
+            # Tables written by this query — writes surface in objects_modified,
+            # not direct_objects_accessed (which captures reads).
+            modified_names = {m.get("objectName", "") for m in objects_modified if m.get("objectName")}
 
             for obj in direct_objects:
                 obj_name = obj.get("objectName", "")
                 obj_type = obj.get("objectDomain", "")
                 col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
+                is_write = obj_name in modified_names or _is_write_operation(obj)
 
                 records.append(
                     AccessRecord(
-                        query_id=str(row_dict.get("query_id", "")),
-                        user_name=str(row_dict.get("user_name", "")),
-                        role_name=str(row_dict.get("role_name", "")),
-                        query_start=str(row_dict.get("query_start_time", "")),
+                        query_id=query_id,
+                        user_name=user_name,
+                        role_name=role_name,
+                        query_start=query_start,
                         object_name=obj_name,
                         object_type=obj_type,
                         columns=col_list,
                         operation=_infer_operation(obj),
-                        is_write=_is_write_operation(obj),
-                        base_objects=[b.get("objectName", "") for b in base_objects if b.get("objectName")],
+                        is_write=is_write,
+                        base_objects=base_names,
+                    )
+                )
+
+            # Surface write targets that only appear in objects_modified (e.g. an
+            # INSERT/COPY into a table not present in direct_objects_accessed).
+            direct_names = {o.get("objectName", "") for o in direct_objects}
+            for obj in objects_modified:
+                obj_name = obj.get("objectName", "")
+                if not obj_name or obj_name in direct_names:
+                    continue
+                col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
+                records.append(
+                    AccessRecord(
+                        query_id=query_id,
+                        user_name=user_name,
+                        role_name=role_name,
+                        query_start=query_start,
+                        object_name=obj_name,
+                        object_type=obj.get("objectDomain", ""),
+                        columns=col_list,
+                        operation="WRITE",
+                        is_write=True,
+                        base_objects=base_names,
                     )
                 )
 
@@ -1367,11 +1408,14 @@ def _mine_cortex_agent_usage(
     days = _coerce_snowflake_days(days)
 
     try:
+        # Real CORTEX_AGENT_USAGE_HISTORY schema: agent/database/schema are
+        # AGENT_*_NAME columns, there is no ROLE_NAME, TOKENS is a scalar total,
+        # TOKEN_CREDITS holds the credit cost, and per-model/input/output detail
+        # lives in METADATA (OBJECT) / TOKENS_GRANULAR (ARRAY).
         cursor.execute(
-            "SELECT agent_name, database_name, schema_name, "
-            "       user_name, role_name, start_time, end_time, "
-            "       input_tokens, output_tokens, total_tokens, "
-            "       credits_used, model_name, tool_calls, status "
+            "SELECT agent_name, agent_database_name, agent_schema_name, "
+            "       user_name, start_time, end_time, request_id, "
+            "       tokens, token_credits, metadata "
             "FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY "
             f"WHERE start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
             "ORDER BY start_time DESC "
@@ -1381,22 +1425,27 @@ def _mine_cortex_agent_usage(
 
         for row in cursor.fetchall():
             row_dict = dict(zip(columns, row))
+            metadata = _parse_json_object(row_dict.get("metadata"))
+            total_tokens = int(row_dict.get("tokens", 0) or 0)
+            input_tokens = int(metadata.get("input_tokens", metadata.get("inputTokens", 0)) or 0)
+            output_tokens = int(metadata.get("output_tokens", metadata.get("outputTokens", 0)) or 0)
+
             records.append(
                 AgentUsageRecord(
                     agent_name=str(row_dict.get("agent_name", "")),
-                    database_name=str(row_dict.get("database_name", "")),
-                    schema_name=str(row_dict.get("schema_name", "")),
+                    database_name=str(row_dict.get("agent_database_name", "")),
+                    schema_name=str(row_dict.get("agent_schema_name", "")),
                     user_name=str(row_dict.get("user_name", "")),
-                    role_name=str(row_dict.get("role_name", "")),
+                    role_name="",
                     start_time=str(row_dict.get("start_time", "")),
                     end_time=str(row_dict.get("end_time", "")),
-                    input_tokens=int(row_dict.get("input_tokens", 0) or 0),
-                    output_tokens=int(row_dict.get("output_tokens", 0) or 0),
-                    total_tokens=int(row_dict.get("total_tokens", 0) or 0),
-                    credits_used=float(row_dict.get("credits_used", 0.0) or 0.0),
-                    model_name=str(row_dict.get("model_name", "")),
-                    tool_calls=int(row_dict.get("tool_calls", 0) or 0),
-                    status=str(row_dict.get("status", "")),
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=total_tokens,
+                    credits_used=float(row_dict.get("token_credits", 0.0) or 0.0),
+                    model_name=str(metadata.get("model_name", metadata.get("model", "")) or ""),
+                    tool_calls=int(metadata.get("tool_calls", metadata.get("toolCalls", 0)) or 0),
+                    status=str(metadata.get("status", "") or ""),
                 )
             )
 
@@ -1713,6 +1762,21 @@ def _parse_json_field(value: Any) -> list[dict]:
         except (json.JSONDecodeError, TypeError):
             return []
     return []
+
+
+def _parse_json_object(value: Any) -> dict:
+    """Parse a JSON-encoded object field that may be a string, dict, or None."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return {}
 
 
 def _infer_operation(obj: dict) -> str:

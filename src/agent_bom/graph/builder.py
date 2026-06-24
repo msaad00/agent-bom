@@ -3434,6 +3434,10 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         ("vpcs", "ec2", "virtual_network", "vpc", "vpc", False),
         ("kms_keys", "kms", "key", "kms-key", "kms key", False),
         ("secrets", "secretsmanager", "secret", "secretsmanager-secret", "secret", False),
+        ("cloudfront_distributions", "cloudfront", "cdn", "cloudfront-distribution", "cdn distribution", False),
+        ("ecr_repositories", "ecr", "container_registry", "ecr-repository", "container registry", False),
+        ("redshift_clusters", "redshift", "data_warehouse", "redshift-cluster", "redshift warehouse", True),
+        ("messaging", "messaging", "messaging", "aws-messaging", "messaging", False),
     ):
         for item in inventory.get(coll_key, []) or []:
             if not isinstance(item, dict):

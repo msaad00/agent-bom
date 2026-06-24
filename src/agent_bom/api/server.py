@@ -790,6 +790,7 @@ from agent_bom.api.routes.graph import router as _graph_router  # noqa: E402
 from agent_bom.api.routes.identities import router as _identities_router  # noqa: E402
 from agent_bom.api.routes.intel import router as _intel_router  # noqa: E402
 from agent_bom.api.routes.observability import router as _observability_router  # noqa: E402
+from agent_bom.api.routes.overview import router as _overview_router  # noqa: E402
 from agent_bom.api.routes.plugins import router as _plugins_router  # noqa: E402
 from agent_bom.api.routes.posture_streaming import router as _posture_streaming_router  # noqa: E402
 from agent_bom.api.routes.privacy import router as _privacy_router  # noqa: E402
@@ -820,6 +821,7 @@ app.include_router(_graph_router)
 app.include_router(_identities_router)
 app.include_router(_intel_router)
 app.include_router(_observability_router)
+app.include_router(_overview_router)
 app.include_router(_plugins_router)
 app.include_router(_posture_streaming_router)
 app.include_router(_privacy_router)

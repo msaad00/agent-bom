@@ -1875,6 +1875,53 @@ export interface PostureResponse {
   dimensions: Record<string, { score: number; label: string; details?: string }>;
 }
 
+// ─── Cross-domain overview (landing page) ────────────────────────────────────
+
+export type OverviewDomainStatus = "ok" | "warn" | "critical" | "idle";
+
+export interface OverviewDomain {
+  label: string;
+  href: string;
+  metric: number;
+  metric_label: string;
+  status: OverviewDomainStatus;
+  detail: Record<string, unknown>;
+}
+
+export interface OverviewTopRisk {
+  vulnerability_id: string;
+  package: string | null;
+  severity: string;
+  risk_score: number;
+  is_kev: boolean;
+  cvss_score: number | null;
+  epss_score: number | null;
+  affected_agents: string[];
+}
+
+export interface OverviewResponse {
+  schema_version: string;
+  tenant_id: string;
+  posture: { grade: string; score: number; summary: string };
+  headline: {
+    critical: number;
+    high: number;
+    critical_high: number;
+    kev: number;
+    credential_exposed: number;
+    scans: number;
+    latest_scan_at: string | null;
+  };
+  domains: {
+    cloud: OverviewDomain;
+    runtime: OverviewDomain;
+    cost: OverviewDomain;
+    identity: OverviewDomain;
+    ops: OverviewDomain;
+  };
+  top_risks: OverviewTopRisk[];
+}
+
 export interface EnrichmentSourcePosture {
   source: string;
   status: "ok" | "stale" | "degraded" | "unknown" | string;

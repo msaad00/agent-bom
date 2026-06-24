@@ -35,6 +35,7 @@ import {
   DollarSign,
   Fingerprint,
   Radar,
+  Compass,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
@@ -79,6 +80,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: LayoutDashboard,
     accent: "#58a6ff", // blue — discovery layer
     links: [
+      { href: "/overview", label: "Overview", icon: Compass },
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/agents", label: "Agents", icon: Server },
       { href: "/manifest", label: "Agent BOM", icon: Waypoints },

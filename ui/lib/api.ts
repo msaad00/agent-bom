@@ -23,6 +23,7 @@ import type {
   GraphExportFormat,
   AgentBomManifestResponse,
   PostureCountsResponse,
+  OverviewResponse,
   RemediationItem,
   FindingTriageRequest,
   FindingTriageDecisionRequest,
@@ -134,6 +135,9 @@ export type {
   AgentBomManifestEdge,
   DeploymentMode,
   PostureCountsResponse,
+  OverviewResponse,
+  OverviewDomain,
+  OverviewTopRisk,
   RemediationItem,
   FindingTriageQueueState,
   FindingTriageDecision,
@@ -687,6 +691,9 @@ export const api = {
 
   /** Full posture grade + dimensions */
   getPosture: () => get<PostureResponse>("/v1/posture"),
+
+  /** Cross-domain posture snapshot for the unified overview landing page */
+  getOverview: () => get<OverviewResponse>("/v1/overview"),
 
   /** Runtime health for external vulnerability enrichment sources */
   getEnrichmentPosture: () => get<EnrichmentPostureResponse>("/v1/posture/enrichment"),

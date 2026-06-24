@@ -24,6 +24,13 @@ from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.package_utils import canonical_package_key, normalize_package_name
 from agent_bom.risk_analyzer import ToolCapability, classify_tool
+from agent_bom.runtime.incident_feedback import (
+    RuntimeIncidentRecord,
+    incident_attribute,
+    iter_observed_targets,
+    load_incident_records,
+    merge_records,
+)
 from agent_bom.security import sanitize_security_warnings, sanitize_sensitive_payload, sanitize_text, sanitize_url
 
 try:
@@ -849,6 +856,13 @@ def build_unified_graph_from_report(
     # ── Agentic identity graph projections (runtime audit slices) ─────
     _add_agentic_identity_graph_projections(graph, report_json, data_source_tag, tenant_id)
 
+    # ── Runtime → graph feedback (observed-reach from the runtime relay) ──
+    # The feedback direction of the agentic moat: incidents the runtime engine
+    # observed (credential reach, lateral movement, kill-switch) are projected
+    # onto agent nodes so this scan reflects OBSERVED behavior, not just static
+    # reachability. Default-off — absent records is a pure no-op.
+    _add_runtime_incident_feedback(graph, report_json, agent_name_to_ids, data_source_tag)
+
     # ── Toxic combinations as TRIGGERS edges ─────────────────────────
     toxic_data = report_json.get("toxic_combinations")
     if toxic_data:
@@ -1133,6 +1147,156 @@ def _add_agentic_identity_graph_projections(
                         "schema_version": schema_version,
                     },
                 )
+            )
+
+
+# Which observed-reach relationship each incident kind projects.
+_FEEDBACK_RELATIONSHIP: dict[str, RelationshipType] = {
+    "reached_credential": RelationshipType.USED_CREDENTIAL,
+    "lateral_movement": RelationshipType.ACCESSED,
+    "kill_switch": RelationshipType.ACCESSED,
+}
+
+
+def _iter_runtime_incident_records(report_json: Mapping[str, Any]) -> list[RuntimeIncidentRecord]:
+    """Collect runtime incident-feedback records for this scan.
+
+    Two sources, both optional and default-off:
+
+    * ``runtime_incident_feedback``: an inline list of record dicts in the
+      report (e.g. carried alongside a runtime audit slice).
+    * ``runtime_incident_feedback_path``: a path to a JSONL file the runtime
+      relay appended to during the prior window.
+
+    Absent both ⇒ empty list ⇒ the graph build is byte-identical to today.
+    """
+    records: list[RuntimeIncidentRecord] = []
+    for raw in _mapping_list(report_json.get("runtime_incident_feedback")):
+        record = RuntimeIncidentRecord.from_dict(raw)
+        if record is not None:
+            records.append(record)
+    path = report_json.get("runtime_incident_feedback_path")
+    if isinstance(path, str) and path.strip():
+        records.extend(load_incident_records(path))
+    return records
+
+
+def _resolve_feedback_agent_ids(
+    agent_id: str,
+    agent_name_to_ids: Mapping[str, list[str]],
+) -> list[str]:
+    """Map a runtime incident's ``agent_id`` onto existing graph agent node ids.
+
+    Matches by agent name first (the common case). When the runtime id does not
+    name a discovered agent, falls back to the deterministic ``agent:<name>`` id
+    so the observed-reach is still recorded against a stable node.
+    """
+    name = str(agent_id or "").strip()
+    if name and name in agent_name_to_ids and agent_name_to_ids[name]:
+        return list(agent_name_to_ids[name])
+    return [_agent_node_id(name or "unknown")]
+
+
+def _add_runtime_incident_feedback(
+    graph: UnifiedGraph,
+    report_json: Mapping[str, Any],
+    agent_name_to_ids: Mapping[str, list[str]],
+    data_source_tag: str,
+) -> None:
+    """Project runtime-observed incidents onto the unified graph (feedback dir).
+
+    For each record:
+
+    * Mark the matched agent node with the ``observed_*`` attribute for the
+      incident kind (e.g. ``observed_reached_credential=True``) plus an
+      aggregate ``runtime_feedback`` summary — toxic-combo / reachability
+      evaluators then account for observed behavior, not just static reach.
+    * Draw an observed-reach edge (``USED_CREDENTIAL`` / ``ACCESSED``) from the
+      agent to each observed node id, or to a synthetic observed-tool node for
+      label-only reaches. Every node/edge is tagged ``source="runtime-feedback"``.
+    """
+    records = _iter_runtime_incident_records(report_json)
+    if not records:
+        return
+
+    for agent_id, agent_records in merge_records(records).items():
+        node_ids = _resolve_feedback_agent_ids(agent_id, agent_name_to_ids)
+        for node_id in node_ids:
+            _project_agent_feedback(graph, node_id, agent_records, data_source_tag)
+
+
+def _project_agent_feedback(
+    graph: UnifiedGraph,
+    agent_node_id: str,
+    records: list[RuntimeIncidentRecord],
+    data_source_tag: str,
+) -> None:
+    """Mark one agent node + draw observed-reach edges for its incidents."""
+    observed_attrs: dict[str, Any] = {}
+    kinds: set[str] = set()
+    severities: set[str] = set()
+    total = 0
+    for record in records:
+        attr = incident_attribute(record.kind)
+        if attr is None:
+            continue
+        observed_attrs[attr] = True
+        kinds.add(record.kind)
+        severities.add(record.severity)
+        total += max(1, record.count)
+
+    if not kinds:
+        return
+
+    observed_attrs["runtime_feedback"] = {
+        "source": "runtime-feedback",
+        "incident_kinds": sorted(kinds),
+        "incident_count": total,
+        "severities": sorted(severities),
+    }
+
+    # add_node merges attributes onto the existing agent node (if any); when the
+    # observed agent was not otherwise discovered this scan, this materializes a
+    # minimal agent node so the observed-reach is never silently dropped.
+    graph.add_node(
+        UnifiedNode(
+            id=agent_node_id,
+            entity_type=EntityType.AGENT,
+            label=agent_node_id.removeprefix("agent:"),
+            attributes=observed_attrs,
+            data_sources=[data_source_tag, "runtime-feedback"],
+        )
+    )
+
+    for record in records:
+        relationship = _FEEDBACK_RELATIONSHIP.get(record.kind, RelationshipType.ACCESSED)
+        for target, is_node_id in iter_observed_targets(record):
+            target_id = target if is_node_id else f"tool:observed:{_clean_graph_part(target) or 'unknown'}"
+            if not is_node_id:
+                graph.add_node(
+                    UnifiedNode(
+                        id=target_id,
+                        entity_type=EntityType.TOOL,
+                        label=target,
+                        attributes={"source": "runtime-feedback", "observed": True},
+                        data_sources=[data_source_tag, "runtime-feedback"],
+                    )
+                )
+            elif target_id not in graph.nodes:
+                # Reference to a node not present this scan — skip the dangling edge.
+                continue
+            _add_rel_edge(
+                graph,
+                agent_node_id,
+                target_id,
+                relationship,
+                {
+                    "source": "runtime-feedback",
+                    "incident_kind": record.kind,
+                    "severity": record.severity,
+                    "observed_at": record.observed_at,
+                    "count": max(1, record.count),
+                },
             )
 
 

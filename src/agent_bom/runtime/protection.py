@@ -40,6 +40,11 @@ from agent_bom.runtime.detectors import (
     ToxicityDetector,
     VectorDBInjectionDetector,
 )
+from agent_bom.runtime.incident_feedback import (
+    IncidentKind,
+    RuntimeIncidentRecord,
+    RuntimeIncidentSink,
+)
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -279,6 +284,7 @@ class ProtectionEngine:
         shield: bool = False,
         correlation_window: float = 30.0,
         block_on_critical: bool = True,
+        feedback_sink: RuntimeIncidentSink | str | None = None,
     ) -> None:
         self.drift_detector = ToolDriftDetector(restore=shield)
         self.arg_analyzer = ArgumentAnalyzer()
@@ -304,6 +310,14 @@ class ProtectionEngine:
         self._blocked = False
         self._allowed_tools: set[str] | None = None  # None = all allowed
         self._session_graph = RuntimeSessionGraph()
+
+        # Runtime → graph feedback sink (the feedback direction of the moat).
+        # Default-off: with no path (and no AGENT_BOM_RUNTIME_FEEDBACK_PATH env)
+        # the sink is inert and emission is a no-op.
+        if isinstance(feedback_sink, RuntimeIncidentSink):
+            self._feedback_sink = feedback_sink
+        else:
+            self._feedback_sink = RuntimeIncidentSink(feedback_sink)
 
     # ── Persistent kill-switch state ──────────────────────────────────────
 
@@ -516,6 +530,49 @@ class ProtectionEngine:
             )
             self._session_graph.add_edge(tool_key, alert_id, "triggered")
 
+    # ── Runtime → graph feedback emission ────────────────────────────────
+
+    def _feedback_timestamp(self) -> str:
+        """Timestamp used for emitted incident records.
+
+        Centralized so tests can monkeypatch a fixed clock and keep emission
+        deterministic; production uses wall-clock UTC.
+        """
+        return datetime.now(timezone.utc).isoformat()
+
+    def _emit_feedback(
+        self,
+        agent_id: str,
+        kind: IncidentKind,
+        *,
+        severity: str,
+        node_ids: list[str] | None = None,
+        tool_labels: list[str] | None = None,
+        count: int = 1,
+        detail: dict[str, object] | None = None,
+    ) -> None:
+        """Emit one runtime-observed incident to the durable feedback sink.
+
+        Additive and fail-safe: when the sink is disabled (default) or a write
+        fails, this is a silent no-op and never disturbs the relay.
+        """
+        if not self._feedback_sink.enabled:
+            return
+        try:
+            record = RuntimeIncidentRecord(
+                agent_id=agent_id or "unknown",
+                kind=kind.value,
+                observed_at=self._feedback_timestamp(),
+                severity=severity or "high",
+                observed_node_ids=list(node_ids or []),
+                observed_tool_labels=list(tool_labels or []),
+                count=max(1, count),
+                detail=detail or {},
+            )
+            self._feedback_sink.emit(record)
+        except Exception:  # pragma: no cover - belt-and-suspenders fail-safe
+            logger.debug("Runtime feedback emission failed (non-fatal)", exc_info=True)
+
     # ── Deep defense internals ───────────────────────────────────────────
 
     def _prune_correlation_buffer(self) -> None:
@@ -564,6 +621,21 @@ class ProtectionEngine:
                     tool_name=la.get("tool", ""),
                 )
             )
+            # Feedback: each converging agent was observed in lateral movement
+            # over this tool — record so the next scan's graph reflects it.
+            la_tool = str(la.get("tool", "") or "")
+            la_severity = str(la.get("severity", "high") or "high")
+            raw_agents = la.get("agents")
+            la_agents: list[object] = raw_agents if isinstance(raw_agents, list) else []
+            for observed_agent in la_agents:
+                self._emit_feedback(
+                    str(observed_agent),
+                    IncidentKind.LATERAL_MOVEMENT,
+                    severity=la_severity,
+                    tool_labels=[la_tool] if la_tool else [],
+                    count=len(la_agents) or 1,
+                    detail={"detector": "cross_agent_correlator", "tool": la_tool},
+                )
 
         entries = list(self._correlation_buffer)
         if not entries:
@@ -689,6 +761,16 @@ class ProtectionEngine:
             block_alerts = self._check_blocked(tool_name)
             if block_alerts:
                 self._record_alert_graph(block_alerts, tool_name)
+                # Feedback: the kill-switch fired against this agent/tool — make
+                # that observed containment durable for the next scan's graph.
+                self._emit_feedback(
+                    agent_id,
+                    IncidentKind.KILL_SWITCH,
+                    severity="critical",
+                    tool_labels=[tool_name],
+                    count=len(block_alerts),
+                    detail={"detector": "shield_killswitch", "tool": tool_name},
+                )
                 for alert_dict in block_alerts:
                     await self.dispatcher.dispatch(alert_dict)
                 self._stats.alerts_generated += len(block_alerts)
@@ -744,7 +826,7 @@ class ProtectionEngine:
 
         return all_alerts
 
-    async def process_tool_response(self, tool_name: str, response_text: str) -> list[dict]:
+    async def process_tool_response(self, tool_name: str, response_text: str, agent_id: str = "") -> list[dict]:
         """Check a tool response for credential leaks, injection, and cloaking.
 
         Runs all response-path detectors: CredentialLeakDetector,
@@ -753,6 +835,8 @@ class ProtectionEngine:
         Args:
             tool_name: MCP tool that produced the response.
             response_text: Response text to analyze.
+            agent_id: Optional caller identity, used to attribute runtime
+                feedback to the right agent node on the next scan.
 
         Returns:
             List of alert dicts for any findings detected.
@@ -762,7 +846,20 @@ class ProtectionEngine:
 
         # Credential leak detection
         cred_alerts = self.cred_detector.check(tool_name, response_text)
-        all_alerts.extend(a.to_dict() for a in cred_alerts)
+        cred_alert_dicts = [a.to_dict() for a in cred_alerts]
+        all_alerts.extend(cred_alert_dicts)
+
+        # Feedback: a credential observed flowing through this tool means the
+        # agent was seen reaching a credential. Project it into the next scan.
+        if cred_alert_dicts:
+            self._emit_feedback(
+                agent_id,
+                IncidentKind.REACHED_CREDENTIAL,
+                severity=str(cred_alert_dicts[0].get("severity") or "high"),
+                tool_labels=[tool_name],
+                count=len(cred_alert_dicts),
+                detail={"detector": "credential_leak", "tool": tool_name},
+            )
 
         # Response inspection — cloaking, SVG, invisible unicode, injection
         resp_alerts = self.response_inspector.check(tool_name, response_text)

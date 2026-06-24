@@ -11,6 +11,12 @@ from agent_bom.runtime.detectors import (
     ToolDriftDetector,
     VectorDBInjectionDetector,
 )
+from agent_bom.runtime.incident_feedback import (
+    IncidentKind,
+    RuntimeIncidentRecord,
+    RuntimeIncidentSink,
+    load_incident_records,
+)
 from agent_bom.runtime.patterns import (
     CREDENTIAL_PATTERNS,
     DANGEROUS_ARG_PATTERNS,
@@ -24,10 +30,14 @@ __all__ = [
     "CREDENTIAL_PATTERNS",
     "CredentialLeakDetector",
     "DANGEROUS_ARG_PATTERNS",
+    "IncidentKind",
     "RateLimitTracker",
     "ResponseInspector",
+    "RuntimeIncidentRecord",
+    "RuntimeIncidentSink",
     "SUSPICIOUS_SEQUENCES",
     "SequenceAnalyzer",
     "ToolDriftDetector",
     "VectorDBInjectionDetector",
+    "load_incident_records",
 ]

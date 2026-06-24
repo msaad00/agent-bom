@@ -295,6 +295,17 @@ RATE_LIMIT_KEY_MAX_AGE_DAYS = _int("AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS", 90)
 RATE_LIMIT_KEY_LAST_ROTATED = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED") or "").strip()
 
 
+# ── Runtime → graph incident feedback ────────────────────────────────────
+# The feedback direction of the agentic moat: the runtime ProtectionEngine
+# appends observed incidents (credential reach, lateral movement, kill-switch)
+# to a durable JSONL sink at this path; the next scan's graph builder ingests
+# them so the graph reflects OBSERVED behavior, not just static reachability.
+# Default-off — empty means no sink and no projection (current behavior). The
+# value is re-read dynamically by agent_bom.runtime.incident_feedback so it can
+# be set per-process; this declaration is the canonical default.
+RUNTIME_FEEDBACK_PATH = _str("AGENT_BOM_RUNTIME_FEEDBACK_PATH", "")
+
+
 # ── Agent-to-Agent (A2A) auth posture ────────────────────────────────────
 # Governance thresholds for the A2A auth posture evaluator
 # (agent_bom.a2a_auth_posture). agent-bom does not broker A2A auth; it scans

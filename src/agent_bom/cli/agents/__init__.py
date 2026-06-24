@@ -1921,6 +1921,23 @@ def scan(
             from agent_bom.graph.builder import build_unified_graph_from_report
 
             _ug = build_unified_graph_from_report(_graph_json, scan_id=_scan_id, tenant_id=_resolve_cli_tenant_id())
+
+            # Graph toxic-combination evaluator: now that every overlay has
+            # enriched the unified graph, run the declarative rules and route the
+            # resulting findings into the unified stream so they reach the
+            # --fail-on-severity gate and machine outputs (mirrors cloud CIS).
+            try:
+                from agent_bom.graph.toxic_findings import build_toxic_combination_findings_data
+
+                _toxic_findings_data = build_toxic_combination_findings_data(_ug)
+                if _toxic_findings_data:
+                    report.toxic_combination_findings_data = _toxic_findings_data
+                    con.print(f"  [green]✓[/green] Toxic combinations: {len(_toxic_findings_data)} finding(s)")
+            except Exception as _toxic_err:  # noqa: BLE001
+                import logging as _tlog
+
+                _tlog.getLogger(__name__).debug("Toxic-combination evaluation skipped: %s", _toxic_err)
+
             _graph_db_path = default_graph_db_path()
             _graph_db_path.parent.mkdir(parents=True, exist_ok=True)
             with open_graph_db(_graph_db_path) as _gconn:

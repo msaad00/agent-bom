@@ -1231,6 +1231,16 @@ def to_json(report: AIBOMReport) -> dict:
     if report.aisvs_benchmark_data:
         result["aisvs_benchmark"] = report.aisvs_benchmark_data
 
+    # Graph toxic-combination findings (also folded into the unified ``findings``
+    # block above); surfaced here as a standalone block for discoverability.
+    if report.toxic_combination_findings_data:
+        result["toxic_combinations_graph"] = {
+            "schema_version": "1",
+            "source": "graph-toxic-combination",
+            "count": len(report.toxic_combination_findings_data),
+            "findings": report.toxic_combination_findings_data,
+        }
+
     if report.runtime_correlation:
         result["runtime_correlation"] = report.runtime_correlation
     if report.delta_data:

@@ -1024,6 +1024,9 @@ class AIBOMReport:
     vector_db_scan_data: Optional[list] = None  # Serialized vector DB security assessments
     gpu_infra_data: Optional[dict] = None  # Serialized GPU/AI compute infra scan results
     iac_findings_data: Optional[dict] = None  # Serialized IaC misconfiguration findings (set by CLI)
+    # Graph toxic-combination findings (serialized Finding dicts; set at the graph-build call site).
+    # Rehydrated into the unified Finding stream by to_findings() so they reach --fail-on-severity.
+    toxic_combination_findings_data: Optional[list] = None
     # Estate-wide cloud asset inventory; one provider payload or a per-provider list (opt-in AGENT_BOM_CLOUD_INVENTORY)
     cloud_inventory_data: Optional[Union[dict, list]] = None
     identity_discovery_data: Optional[dict] = None  # Discovered non-human identities (opt-in AGENT_BOM_OKTA/ENTRA_DISCOVERY)
@@ -1109,6 +1112,20 @@ class AIBOMReport:
 
         return [secret_dict_to_finding(s) for s in block.get("findings", []) if isinstance(s, dict)]
 
+    def _toxic_combination_findings(self) -> "list[Finding]":
+        """Graph toxic-combination findings, rehydrated from the side block.
+
+        The graph evaluator (``graph.toxic_findings``) stores serialized Finding
+        dicts on ``toxic_combination_findings_data`` at the graph-build call site.
+        Surfacing them here routes them through ``--fail-on-severity`` and every
+        machine output (JSON/SARIF/CSV), mirroring the secret-finding side block.
+        """
+        if not self.toxic_combination_findings_data:
+            return []
+        from agent_bom.graph.toxic_findings import toxic_combination_findings_from_data
+
+        return toxic_combination_findings_from_data(self.toxic_combination_findings_data)
+
     def to_findings(self) -> "list[Finding]":
         """Return the unified findings list, auto-populating from blast_radii if empty.
 
@@ -1129,6 +1146,8 @@ class AIBOMReport:
         base.extend(finding for finding in self._secret_findings() if finding.id not in existing_ids)
         cis_existing = existing_ids | {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._cloud_cis_findings() if finding.id not in cis_existing)
+        toxic_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._toxic_combination_findings() if finding.id not in toxic_existing)
         return base
 
     def _cloud_cis_findings(self) -> "list[Finding]":

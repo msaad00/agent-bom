@@ -2,11 +2,48 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.package_utils import normalize_package_ecosystem
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
+
+
+def resolve_env_or_value(value: str | None, env_var: str, default: str = "") -> str:
+    """Resolve an optional explicit value against an environment fallback.
+
+    Returns ``value`` when provided (including the empty string), otherwise the
+    environment variable, otherwise ``default``.
+    """
+    if value is not None:
+        return value
+    return os.environ.get(env_var) or default
+
+
+def coerce_truthy(value: Any) -> bool:
+    """Coerce a provider cell (bool / 'true'/'false' string / None) to bool.
+
+    Provider views (for example Snowflake ACCOUNT_USAGE) return mixed bool and
+    string-boolean values; a plain ``bool(value)`` would treat the string
+    ``"false"`` as truthy.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in ("true", "t", "yes", "y", "1")
+
+
+def coerce_int_or_none(value: Any) -> int | None:
+    """Coerce a provider numeric cell to int, preserving 0 (which ``or`` would eat)."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    return int(text) if text.lstrip("-").isdigit() else None
+
 
 _UNKNOWN_PACKAGE_VERSIONS = {"", "unknown", "detected", "0.0"}
 _CLOUD_PURL_TYPE_ALIASES = {

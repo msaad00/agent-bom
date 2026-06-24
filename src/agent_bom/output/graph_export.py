@@ -250,7 +250,78 @@ def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
                     graph.add_node(cve_id, vuln_id_str, "cve", severity)
                     graph.add_edge(pkg_id, cve_id, "affects")
 
+    _merge_cloud_graph(graph, data)
     return graph
+
+
+# Cloud / identity / posture entity types the thin local walker doesn't produce
+# but the cloud-aware unified builder does (cloud inventory, CIEM, CIS, Snowflake
+# objects, exfil, RBAC, …). Pulled in so `agent-bom graph` shows the cloud estate
+# instead of a local-only graph.
+_CLOUD_ENTITY_TYPES = frozenset(
+    {
+        "cloud_resource",
+        "resource",
+        "data_store",
+        "misconfiguration",
+        "org",
+        "account",
+        "user",
+        "group",
+        "role",
+        "policy",
+        "service_account",
+        "service_principal",
+        "federated_identity",
+        "access_grant",
+        "access_policy",
+        "environment",
+        "fleet",
+        "cluster",
+        "infra",
+    }
+)
+
+
+def _merge_cloud_graph(graph: DepGraph, data: dict[str, Any]) -> None:
+    """Merge the cloud-aware unified graph's cloud/identity nodes into the DepGraph.
+
+    The CLI graph export historically walked only agents→servers→tools→creds→
+    packages→CVEs, so cloud-inventory, CIEM (HAS_PERMISSION), CIS misconfigs, and
+    the Snowflake object/exfil/identity graphs were invisible. This reuses
+    ``build_unified_graph_from_report`` (the single source of cloud graph truth)
+    and grafts its cloud/identity/posture nodes + edges onto the DepGraph so every
+    existing serializer (json/dot/mermaid/graphml/cypher) shows the full estate.
+    Best-effort: never raises into the export path.
+    """
+    try:
+        from agent_bom.graph.builder import build_unified_graph_from_report
+
+        unified = build_unified_graph_from_report(data)
+    except Exception:  # noqa: BLE001 — graph export must not fail on cloud enrichment
+        return
+
+    added: set[str] = set()
+    for node in unified.nodes.values():
+        etype = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
+        if etype not in _CLOUD_ENTITY_TYPES or node.id in graph._nodes:
+            continue
+        graph.add_node(
+            node.id,
+            node.label or node.id,
+            etype,
+            severity=str(getattr(node, "severity", "") or ""),
+            attributes=dict(node.attributes or {}),
+        )
+        added.add(node.id)
+
+    edges = unified.edges.values() if isinstance(unified.edges, dict) else unified.edges
+    for edge in edges:
+        # Only graft edges that touch at least one freshly-added cloud node and
+        # whose endpoints both exist, so we don't create dangling references.
+        if (edge.source in added or edge.target in added) and edge.source in graph._nodes and edge.target in graph._nodes:
+            rel = edge.relationship.value if hasattr(edge.relationship, "value") else str(edge.relationship)
+            graph.add_edge(edge.source, edge.target, rel, evidence=dict(getattr(edge, "evidence", {}) or {}))
 
 
 def load_graph_from_scan(scan_path: Union[str, Path]) -> DepGraph:

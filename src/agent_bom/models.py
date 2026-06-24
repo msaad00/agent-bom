@@ -1126,7 +1126,35 @@ class AIBOMReport:
         # finding, but do not suppress unrelated secret findings in the side block.
         existing_ids = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._secret_findings() if finding.id not in existing_ids)
+        cis_existing = existing_ids | {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._cloud_cis_findings() if finding.id not in cis_existing)
         return base
+
+    def _cloud_cis_findings(self) -> "list[Finding]":
+        """Cloud CIS benchmark FAILures lifted into the unified findings stream.
+
+        Each provider's CIS results live in a side block (``*_cis_benchmark_data``)
+        and never reached the unified stream — so ``cloud`` scans exited 0 even on
+        HIGH/CRITICAL misconfigurations and ``--fail-on-severity`` was blind to
+        cloud posture. Convert every FAILED check to a CLOUD_CIS Finding so the
+        gate, SARIF, and severity rollups converge across all providers.
+        """
+        from agent_bom.finding import cloud_cis_check_to_finding
+
+        findings: list[Finding] = []
+        for provider, data in (
+            ("aws", self.cis_benchmark_data),
+            ("azure", self.azure_cis_benchmark_data),
+            ("gcp", self.gcp_cis_benchmark_data),
+            ("snowflake", self.snowflake_cis_benchmark_data),
+            ("databricks", self.databricks_cis_benchmark_data),
+        ):
+            if not isinstance(data, dict):
+                continue
+            for check in data.get("checks", []) or []:
+                if isinstance(check, dict) and str(check.get("status", "")).upper() == "FAIL":
+                    findings.append(cloud_cis_check_to_finding(check, provider))
+        return findings
 
     def cve_findings(self) -> "list[Finding]":
         """Return only CVE-type findings from the unified stream."""

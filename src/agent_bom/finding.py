@@ -641,6 +641,50 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
     )
 
 
+def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
+    """Convert one FAILED cloud CIS check into a unified CLOUD_CIS Finding.
+
+    Lifts cloud CIS failures out of the side-block (``*_cis_benchmark_data``) into
+    the unified findings stream so ``--fail-on-severity``, SARIF, and severity
+    rollups see them — previously a ``cloud`` scan exited 0 even with HIGH/CRITICAL
+    misconfigurations. Carries the check's MITRE ATT&CK techniques + CIS tag.
+    """
+    from agent_bom.security import sanitize_text
+
+    check_id = sanitize_text(str(check.get("check_id", "") or "unknown"), max_len=40)
+    title = sanitize_text(str(check.get("title", "") or check_id), max_len=300)
+    severity = sanitize_text(str(check.get("severity", "medium") or "medium"), max_len=40).upper()
+    evidence_text = sanitize_text(str(check.get("evidence", "") or ""), max_len=600)
+    recommendation = sanitize_text(str(check.get("recommendation", "") or ""), max_len=600)
+    resource_ids = [sanitize_text(str(r), max_len=300) for r in (check.get("resource_ids") or []) if str(r).strip()]
+    primary = resource_ids[0] if resource_ids else f"{provider}-account"
+    attack = [str(t) for t in (check.get("attack_techniques") or []) if str(t).strip()]
+    compliance = [f"CIS-{check_id}"] + [str(t) for t in (check.get("compliance_tags") or []) if str(t).strip()]
+    return Finding(
+        finding_type=FindingType.CIS_FAIL,
+        source=FindingSource.CLOUD_CIS,
+        asset=Asset(
+            name=primary,
+            asset_type="cloud_resource",
+            identifier=primary,
+            location=provider,
+        ),
+        severity=severity,
+        title=f"CIS {check_id}: {title}",
+        description=evidence_text or f"CIS benchmark control {check_id} failed for {provider}.",
+        remediation_guidance=recommendation or None,
+        compliance_tags=sorted(set(compliance)),
+        attack_tags=sorted(set(attack)),
+        evidence={
+            "provider": provider,
+            "check_id": check_id,
+            "cis_section": check.get("cis_section", ""),
+            "resource_ids": resource_ids,
+            "benchmark": "CIS",
+        },
+    )
+
+
 def blast_radius_to_finding(br: object) -> "Finding":
     """Convert a BlastRadius instance to a unified Finding.
 

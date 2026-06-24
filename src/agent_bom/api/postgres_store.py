@@ -275,6 +275,14 @@ class PostgresJobStore:
             return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def list_summary(self, tenant_id: str | None = None) -> list[dict]:
+        def _json_column(row: tuple, index: int, default: str, expected_type: type) -> object:
+            if len(row) <= index:
+                return json.loads(default)
+            value = row[index]
+            if isinstance(value, expected_type):
+                return value
+            return json.loads(value or default)
+
         with _tenant_connection(self._pool) as conn:
             if tenant_id is None:
                 rows = conn.execute(
@@ -303,8 +311,8 @@ class PostgresJobStore:
                     "schedule_id": row[6] if len(row) > 6 else None,
                     "batch_id": row[7] if len(row) > 7 else None,
                     "parent_job_id": row[8] if len(row) > 8 else None,
-                    "child_job_ids": row[9] if len(row) > 9 and isinstance(row[9], list) else json.loads(row[9] or "[]"),
-                    "target": row[10] if len(row) > 10 and isinstance(row[10], dict) else json.loads(row[10] or "null"),
+                    "child_job_ids": _json_column(row, 9, "[]", list),
+                    "target": _json_column(row, 10, "null", dict),
                     "target_index": row[11] if len(row) > 11 else None,
                     "target_count": row[12] if len(row) > 12 else None,
                 }

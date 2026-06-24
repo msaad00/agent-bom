@@ -1824,6 +1824,44 @@ def scan(
                 report.snowflake_external_data_data = _sf_external
         except Exception:  # noqa: BLE001 — external-data inventory is supplementary; never fail the scan
             pass
+        # Governance: ACCESS_HISTORY reads (who read what) + Cortex agent telemetry
+        # + derived risk findings. De-duplicated against the object-dependency and
+        # exfil discoveries: privilege_grants and data_classifications are dropped
+        # here because grants/role-memberships and sensitivity tags are already
+        # emitted by discover_object_dependencies and discover_data_exfil. Best-effort.
+        try:
+            from agent_bom.cloud.snowflake import discover_governance
+
+            _sf_governance = discover_governance().to_dict()
+            if _sf_governance.get("access_records") or _sf_governance.get("agent_usage") or _sf_governance.get("findings"):
+                report.snowflake_governance_data = {
+                    "status": "ok",
+                    "account": _sf_governance.get("account", ""),
+                    "discovered_at": _sf_governance.get("discovered_at", ""),
+                    "summary": _sf_governance.get("summary", {}),
+                    "access_records": _sf_governance.get("access_records", []),
+                    "agent_usage": _sf_governance.get("agent_usage", []),
+                    "findings": _sf_governance.get("findings", []),
+                    "warnings": _sf_governance.get("warnings", []),
+                }
+        except Exception:  # noqa: BLE001 — governance is supplementary; never fail the scan
+            pass
+        # Activity timeline: QUERY_HISTORY (365-day lookback) + AI observability
+        # events. The graph builder summarizes this onto the account node rather
+        # than exploding per-query rows into nodes. Best-effort.
+        try:
+            from agent_bom.cloud.snowflake import discover_activity
+
+            _sf_activity = discover_activity().to_dict()
+            if (
+                (_sf_activity.get("summary") or {}).get("total_queries")
+                or _sf_activity.get("query_history")
+                or _sf_activity.get("observability_events")
+            ):
+                _sf_activity["status"] = "ok"
+                report.snowflake_activity_data = _sf_activity
+        except Exception:  # noqa: BLE001 — activity timeline is supplementary; never fail the scan
+            pass
     if ctx.azure_cis_benchmark_report is not None:
         report.azure_cis_benchmark_data = ctx.azure_cis_benchmark_report.to_dict()
     if ctx.gcp_cis_benchmark_report is not None:

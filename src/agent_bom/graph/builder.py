@@ -3444,6 +3444,10 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         ("dynamodb_tables", "dynamodb", "database", "dynamodb-table", "dynamodb table", True),
         ("lambda_functions", "lambda", "function", "lambda-function", "lambda function", False),
         ("eks_clusters", "eks", "container_cluster", "eks-cluster", "eks cluster", False),
+        ("elb_load_balancers", "elbv2", "load_balancer", "elb-load-balancer", "load balancer", False),
+        ("vpcs", "ec2", "virtual_network", "vpc", "vpc", False),
+        ("kms_keys", "kms", "key", "kms-key", "kms key", False),
+        ("secrets", "secretsmanager", "secret", "secretsmanager-secret", "secret", False),
     ):
         for item in inventory.get(coll_key, []) or []:
             if not isinstance(item, dict):

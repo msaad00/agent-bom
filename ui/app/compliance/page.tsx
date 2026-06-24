@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
+import { CISBenchmarkDetail } from "@/components/cis-benchmark-detail";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
@@ -855,6 +856,13 @@ function CompliancePageContent() {
         <FrameworkBar label="ISO 27001" pass={s.iso_27001_pass} warn={s.iso_27001_warn} fail={s.iso_27001_fail} total={data.iso_27001.length} />
         <FrameworkBar label="SOC 2" pass={s.soc2_pass} warn={s.soc2_warn} fail={s.soc2_fail} total={data.soc2.length} />
         <FrameworkBar label="CIS Controls v8" pass={s.cis_pass} warn={s.cis_warn} fail={s.cis_fail} total={data.cis_controls.length} />
+        <a
+          href="#cloud-cis-benchmarks"
+          className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+          Drill into cloud CIS benchmark checks (AWS / Azure / GCP / Snowflake / Databricks)
+        </a>
         <FrameworkBar label="CMMC 2.0" pass={s.cmmc_pass} warn={s.cmmc_warn} fail={s.cmmc_fail} total={data.cmmc.length} />
       </div>
 
@@ -909,6 +917,9 @@ function CompliancePageContent() {
           />
         ))}
       </div>
+
+      {/* ── Cloud CIS benchmark drill-down ─────────────────────────────── */}
+      <CISBenchmarkDetail />
 
       </>
       )}

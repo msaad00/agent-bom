@@ -75,6 +75,54 @@ def test_azure_extra_declares_every_imported_mgmt_sdk() -> None:
     assert not missing, f"azure extra missing imported SDKs: {sorted(missing)}"
 
 
+# Non-mgmt azure namespaces are transitive (pulled in by core) or genuinely
+# optional — only those mapped here are required in the extra. azure.core /
+# azure.common ship transitively with any azure SDK, so they are not required.
+_TRANSITIVE_AZURE = {"core", "common"}
+
+
+def _azure_dist_for(module: str) -> str | None:
+    """Map a top-level azure import path to its required PyPI distribution.
+
+    Returns None for transitively-provided namespaces (azure.core/common) that
+    need not be declared explicitly.
+    """
+    parts = module.split(".")
+    if len(parts) < 2 or parts[1] in _TRANSITIVE_AZURE:
+        return None
+    if parts[1] == "mgmt":
+        return f"azure-mgmt-{parts[2].replace('_', '')}"
+    if parts[1] == "ai":
+        return f"azure-ai-{parts[2].replace('_', '')}"
+    if parts[1] == "keyvault":
+        return f"azure-keyvault-{parts[2].replace('_', '')}"
+    if parts[1] == "identity":
+        return "azure-identity"
+    if parts[1] == "storage":
+        return f"azure-storage-{parts[2].replace('_', '')}" if len(parts) > 2 else "azure-storage"
+    return f"azure-{parts[1].replace('_', '')}"
+
+
+def test_azure_extra_declares_every_imported_azure_sdk() -> None:
+    """Every azure SDK the cloud code imports — mgmt AND data-plane (azure.ai,
+    azure.keyvault, …) — must be in the ``azure`` extra, or it is dead-on-arrival
+    for installed users. Caught live: azure-ai-projects (AI Foundry) and
+    azure-keyvault-keys/secrets (CIS key/secret expiry) were missing → those
+    features silently skipped.
+    """
+    declared = _declared_azure_dists()
+    imports: set[str] = set()
+    for py in _SRC.rglob("*.py"):
+        for m in re.findall(r"(?:from|import)\s+(azure(?:\.[a-z_]+)+)", py.read_text()):
+            imports.add(m)
+    missing = []
+    for module in sorted(imports):
+        dist = _azure_dist_for(module)
+        if dist and dist not in declared:
+            missing.append((module, dist))
+    assert not missing, f"azure extra missing imported SDKs (dead-on-arrival): {missing}"
+
+
 def _result_with(statuses: list[CheckStatus]) -> AzureCISReport:
     checks = [CISCheckResult(check_id=f"c{i}", title=f"check {i}", status=s, severity="medium") for i, s in enumerate(statuses)]
     return AzureCISReport(checks=checks, subscription_id="sub")

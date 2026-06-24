@@ -55,7 +55,10 @@ ai-enrich = [
     { name = "litellm" },
 ]
 all = [
+    { name = "azure-ai-projects" },
     { name = "azure-identity" },
+    { name = "azure-keyvault-keys" },
+    { name = "azure-keyvault-secrets" },
     { name = "azure-mgmt-apimanagement" },
     { name = "azure-mgmt-appcontainers" },
     { name = "azure-mgmt-authorization" },
@@ -132,7 +135,10 @@ aws = [
     { name = "boto3" },
 ]
 azure = [
+    { name = "azure-ai-projects" },
     { name = "azure-identity" },
+    { name = "azure-keyvault-keys" },
+    { name = "azure-keyvault-secrets" },
     { name = "azure-mgmt-apimanagement" },
     { name = "azure-mgmt-appcontainers" },
     { name = "azure-mgmt-authorization" },
@@ -161,7 +167,10 @@ azure = [
     { name = "six" },
 ]
 cloud = [
+    { name = "azure-ai-projects" },
     { name = "azure-identity" },
+    { name = "azure-keyvault-keys" },
+    { name = "azure-keyvault-secrets" },
     { name = "azure-mgmt-apimanagement" },
     { name = "azure-mgmt-appcontainers" },
     { name = "azure-mgmt-authorization" },
@@ -354,7 +363,10 @@ requires-dist = [
     { name = "agent-bom", extras = ["visual"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["wandb"], marker = "extra == 'cloud'" },
     { name = "agent-bom", extras = ["watch"], marker = "extra == 'all'" },
+    { name = "azure-ai-projects", marker = "extra == 'azure'", specifier = ">=1.0" },
     { name = "azure-identity", marker = "extra == 'azure'", specifier = ">=1.15" },
+    { name = "azure-keyvault-keys", marker = "extra == 'azure'", specifier = ">=4.8" },
+    { name = "azure-keyvault-secrets", marker = "extra == 'azure'", specifier = ">=4.7" },
     { name = "azure-mgmt-apimanagement", marker = "extra == 'azure'", specifier = ">=4.0" },
     { name = "azure-mgmt-appcontainers", marker = "extra == 'azure'", specifier = ">=3.0" },
     { name = "azure-mgmt-authorization", marker = "extra == 'azure'", specifier = ">=4.0" },
@@ -709,6 +721,23 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-ai-projects"
+version = "2.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "azure-identity" },
+    { name = "azure-storage-blob" },
+    { name = "isodate" },
+    { name = "openai" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b9/d8/24342aea74fe75b0a8378b6eff665b9c1cb63f855c1a96f70a0095e474a2/azure_ai_projects-2.2.0.tar.gz", hash = "sha256:58ee31bb031cfb004051145c545294bb0d32de679c670c312ef384845bd72cef", size = 668496, upload-time = "2026-05-30T00:20:59.099Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/40/cf/90f27a2b48c9b748f84194b07e565f900e7f0ce0500da9b9f067dca599d3/azure_ai_projects-2.2.0-py3-none-any.whl", hash = "sha256:8f89bdaca4df1bd479d3bd2bd0f19a0905d60be6d17b84a69e8fabd82eac5906", size = 344307, upload-time = "2026-05-30T00:21:00.672Z" },
+]
+
+[[package]]
 name = "azure-common"
 version = "1.1.28"
 source = { registry = "https://pypi.org/simple" }
@@ -744,6 +773,35 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c5/0e/3a63efb48aa4a5ae2cfca61ee152fbcb668092134d3eb8bfda472dd5c617/azure_identity-1.25.3.tar.gz", hash = "sha256:ab23c0d63015f50b630ef6c6cf395e7262f439ce06e5d07a64e874c724f8d9e6", size = 286304, upload-time = "2026-03-13T01:12:20.892Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/9a/417b3a533e01953a7c618884df2cb05a71e7b68bdbce4fbdb62349d2a2e8/azure_identity-1.25.3-py3-none-any.whl", hash = "sha256:f4d0b956a8146f30333e071374171f3cfa7bdb8073adb8c3814b65567aa7447c", size = 192138, upload-time = "2026-03-13T01:12:22.951Z" },
+]
+
+[[package]]
+name = "azure-keyvault-keys"
+version = "4.11.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "cryptography" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f4/03/5ce6db28b545427d4ab572f6a4ef2a727b6b4e7bf6941cedddf98822535b/azure_keyvault_keys-4.11.1.tar.gz", hash = "sha256:90caa3a7b2c8f6b53c247ec115cf1c1dad7f107cc3aa9f35aff4838bbce7e562", size = 260915, upload-time = "2026-05-19T20:01:08.041Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/3d/7bed91ae9268cf48124cf6990d8cd2c3daff7a2bb1e91a439d26ee90d705/azure_keyvault_keys-4.11.1-py3-none-any.whl", hash = "sha256:f46cdf6ee7a9baf27f70e6838327032886c8a087041dd56397773b1639da8fe2", size = 200651, upload-time = "2026-05-19T20:01:09.809Z" },
+]
+
+[[package]]
+name = "azure-keyvault-secrets"
+version = "4.11.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f1/b8/03c7b4edd1e3355ad5fffb70e68af70cd09542963f45cf3a2aa9fb3930b5/azure_keyvault_secrets-4.11.0.tar.gz", hash = "sha256:ac14727b9159cca353173ec5a454d8d7b192a6f2f5e7eb540f9fbcf914fa0ca0", size = 112291, upload-time = "2026-04-17T00:52:12.422Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/76/41c513917c0e8dc68de0c33578c6a0668b4a09eb4dc3e2782d382dc2947f/azure_keyvault_secrets-4.11.0-py3-none-any.whl", hash = "sha256:d8543b710423569bd00ada2a2533fe83d52d8e1fe026e1c47f41a3bc0fc73ef5", size = 103148, upload-time = "2026-04-17T00:52:13.796Z" },
 ]
 
 [[package]]
@@ -1112,6 +1170,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/71/dd/581afc7b4e6e2a86859e1323d654f58a7e3f63cfaa69ddbdb0baa8419d0a/azure_mgmt_web-11.0.0.tar.gz", hash = "sha256:1f98b29283ecb9c36ede7309c0da8d26db0455d77ae37e1cb6cdcd244044d6de", size = 520401, upload-time = "2026-05-06T18:42:03.281Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fd/5e/0e4922a0c17464a821271ae2df4e49e351364d2062e131b96fd3d70f7a97/azure_mgmt_web-11.0.0-py3-none-any.whl", hash = "sha256:ccaeeaa757de94a6deb62e7692c0274190fe9e252e67984baf43d7fa3913df7b", size = 499178, upload-time = "2026-05-06T18:42:05.228Z" },
+]
+
+[[package]]
+name = "azure-storage-blob"
+version = "12.30.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "cryptography" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3b/48/84a820d898267f662b5c06f7cd76fdb8a9e272b44aa9376cef3ec0f6a294/azure_storage_blob-12.30.0.tar.gz", hash = "sha256:2cd74d4d5731e5eb6b8d5c5056ee115a5e88f8fdf22517b739836fda685018be", size = 618229, upload-time = "2026-06-08T11:45:35.575Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/0b/e106f0fd7fa785867d9ffcc47dc9e6237c0e58f51058473b777487a98edc/azure_storage_blob-12.30.0-py3-none-any.whl", hash = "sha256:d415ac50b67a8da6b3ae7e9f1014b1b55cd7aafa0b8d4ca9b380568dc7360423", size = 435610, upload-time = "2026-06-08T11:45:37.213Z" },
 ]
 
 [[package]]

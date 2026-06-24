@@ -79,6 +79,10 @@ _AWS_IAM_PERMISSIONS: tuple[str, ...] = (
     "iam:ListUsers",
     "iam:ListAttachedRolePolicies",
     "iam:ListAttachedUserPolicies",
+    "iam:ListRolePolicies",
+    "iam:ListUserPolicies",
+    "iam:GetRolePolicy",
+    "iam:GetUserPolicy",
     "iam:GetPolicy",
     "iam:GetPolicyVersion",
 )
@@ -573,6 +577,7 @@ def _normalize_role(iam: Any, role: dict[str, Any], *, account_id: str | None, w
     role_name = str(role.get("RoleName", "") or "")
     role_arn = str(role.get("Arn", "") or "")
     policies = _attached_policies(iam, "role", role_name, warnings=warnings)
+    policies += _inline_policies(iam, "role", role_name, warnings=warnings)
     trust_principals = _extract_trust_principals(
         role.get("AssumeRolePolicyDocument"),
         account_id=account_id or _account_id_from_arn(role_arn),
@@ -594,6 +599,7 @@ def _normalize_user(iam: Any, user: dict[str, Any], *, account_id: str | None, w
     user_name = str(user.get("UserName", "") or "")
     user_arn = str(user.get("Arn", "") or "")
     policies = _attached_policies(iam, "user", user_name, warnings=warnings)
+    policies += _inline_policies(iam, "user", user_name, warnings=warnings)
     return {
         "principal_type": "user",
         "name": user_name,
@@ -632,6 +638,47 @@ def _attached_policies(iam: Any, principal_kind: str, principal_name: str, *, wa
                 )
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"IAM policy enumeration skipped for {principal_kind} {principal_name}: {sanitize_discovery_warning(exc)}")
+    return policies
+
+
+def _inline_policies(iam: Any, principal_kind: str, principal_name: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+    """Return inline policies with a classified privilege level (read-only).
+
+    Inline policies attach directly to a single principal and never appear in
+    ``list_attached_*`` — yet they can silently grant admin, so a posture scan
+    must read them. Lists the inline names, fetches each document, and classifies
+    by Allow actions. Degrades to a warning on error; never blocks enumeration.
+    """
+    if not principal_name:
+        return []
+    list_op = "list_role_policies" if principal_kind == "role" else "list_user_policies"
+    kwarg = "RoleName" if principal_kind == "role" else "UserName"
+    policies: list[dict[str, Any]] = []
+    try:
+        get_doc = iam.get_role_policy if principal_kind == "role" else iam.get_user_policy
+        paginator = iam.get_paginator(list_op)
+        for page in paginator.paginate(**{kwarg: principal_name}):
+            for name in page.get("PolicyNames", []):
+                if not name:
+                    continue
+                privilege = "unknown"
+                try:
+                    document = get_doc(**{kwarg: principal_name, "PolicyName": name}).get("PolicyDocument")
+                    privilege = _classify_policy_actions(_policy_actions_from_document(document))
+                except Exception as exc:  # noqa: BLE001
+                    short = sanitize_discovery_warning(exc)
+                    warnings.append(f"IAM inline policy doc skipped for {principal_kind} {principal_name}/{name}: {short}")
+                policies.append(
+                    {
+                        "policy_id": f"{principal_name}/{name}",
+                        "policy_name": str(name),
+                        "attachment_type": "inline",
+                        "privilege_level": privilege,
+                        "source_field": f"List{principal_kind.capitalize()}Policies.PolicyNames",
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"IAM inline policy enumeration skipped for {principal_kind} {principal_name}: {sanitize_discovery_warning(exc)}")
     return policies
 
 

@@ -411,3 +411,50 @@ def test_graph_inventory_ignores_missing_section() -> None:
 
     graph = build_unified_graph_from_report({"agents": []})
     assert not any(nid.startswith("cloud_resource:aws:") for nid in graph.nodes)
+
+
+# ---------------------------------------------------------------------------
+# Inline IAM policy enumeration (inline policies never appear in list_attached_*)
+# ---------------------------------------------------------------------------
+
+
+class _InlinePaginator:
+    def __init__(self, names: list[str]) -> None:
+        self._names = names
+
+    def paginate(self, **_kwargs: Any) -> list[dict[str, Any]]:
+        return [{"PolicyNames": self._names}]
+
+
+class _FakeIAMInline:
+    """Minimal IAM whose role carries a single admin INLINE policy."""
+
+    def get_paginator(self, op: str) -> Any:
+        return _InlinePaginator(["AdminInline"] if op == "list_role_policies" else [])
+
+    def get_role_policy(self, RoleName: str, PolicyName: str) -> dict[str, Any]:  # noqa: N803
+        return {
+            "RoleName": RoleName,
+            "PolicyName": PolicyName,
+            "PolicyDocument": {"Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]},
+        }
+
+
+def test_inline_policies_enumerated_and_classified() -> None:
+    pols = aws_inventory._inline_policies(_FakeIAMInline(), "role", "app-role", warnings=[])
+    assert len(pols) == 1
+    p = pols[0]
+    assert p["attachment_type"] == "inline"
+    assert p["policy_name"] == "AdminInline"
+    assert p["privilege_level"] == "admin"  # Action "*" → admin, even though inline
+
+
+def test_inline_policies_missing_method_degrades_to_warning() -> None:
+    class _NoInline:
+        def get_paginator(self, op: str) -> Any:
+            raise RuntimeError("no inline support")
+
+    warns: list[str] = []
+    pols = aws_inventory._inline_policies(_NoInline(), "role", "app-role", warnings=warns)
+    assert pols == []
+    assert warns and "inline policy" in warns[0].lower()

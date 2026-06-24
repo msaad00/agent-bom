@@ -209,6 +209,25 @@
   },
   "description": "Represents a running or completed scan job.",
   "properties": {
+    "batch_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Batch Id"
+    },
+    "child_job_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Child Job Ids",
+      "type": "array"
+    },
     "completed_at": {
       "anyOf": [
         {
@@ -240,6 +259,18 @@
     "job_id": {
       "title": "Job Id",
       "type": "string"
+    },
+    "parent_job_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Job Id"
     },
     "progress": {
       "items": {
@@ -303,6 +334,43 @@
     "status": {
       "$ref": "#/$defs/JobStatus",
       "default": "pending"
+    },
+    "target": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target"
+    },
+    "target_count": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Count"
+    },
+    "target_index": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Index"
     },
     "tenant_id": {
       "default": "default",

@@ -81,6 +81,27 @@ def inventory_enabled() -> bool:
     return os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() in _TRUTHY
 
 
+def _derive_default_project() -> tuple[str, str]:
+    """Best-effort ``(project_id, note)`` from Application Default Credentials.
+
+    ``google.auth.default()`` resolves the project the same way every google
+    client does — from a service-account key's ``project_id``, the gcloud config,
+    or the metadata server — so a key/ADC connection needs no explicit
+    ``GOOGLE_CLOUD_PROJECT``. Returns ``("", note)`` on any failure; never raises.
+    """
+    try:
+        from google import auth as google_auth
+    except ImportError:
+        return "", "google-auth not installed; cannot auto-derive the project. Set GOOGLE_CLOUD_PROJECT."
+    try:
+        _creds, project = google_auth.default()
+    except Exception as exc:  # noqa: BLE001 — ADC resolution must not crash a scan
+        return "", sanitize_discovery_warning(exc)
+    if not project:
+        return "", "No GCP project resolved from Application Default Credentials. Set GOOGLE_CLOUD_PROJECT."
+    return str(project), ""
+
+
 def discover_inventory(
     project_id: str | None = None,
     *,
@@ -138,14 +159,21 @@ def discover_inventory(
             "warnings": ["google-cloud-storage is required for GCP inventory. Install with: pip install 'agent-bom[gcp]'"],
         }
 
+    derive_note = ""
     if not resolved_project:
-        return {
-            **empty,
-            "status": "no_project",
-            "warnings": ["GOOGLE_CLOUD_PROJECT not set. Provide project_id or set the GOOGLE_CLOUD_PROJECT env var."],
-        }
+        resolved_project, derive_note = _derive_default_project()
+        if not resolved_project:
+            return {
+                **empty,
+                "status": "no_project",
+                "warnings": [derive_note or "No GCP project found. Set GOOGLE_CLOUD_PROJECT or provide project_id."],
+            }
+        empty["project_id"] = resolved_project
+        empty["account_id"] = resolved_project
 
     warnings: list[str] = []
+    if derive_note:
+        warnings.append(derive_note)
     buckets: list[dict[str, Any]] = []
     instances: list[dict[str, Any]] = []
     firewalls: list[dict[str, Any]] = []

@@ -28,6 +28,7 @@ from typing import Any, Callable
 
 from .aws_cis_benchmark import CheckStatus, CISCheckResult
 from .base import CloudDiscoveryError
+from .normalization import coerce_truthy as _sf_truthy
 
 logger = logging.getLogger(__name__)
 
@@ -105,18 +106,6 @@ def _run_query(cursor: Any, sql: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 _AUTH_SECTION = "1 - Account and Authentication"
-
-
-def _sf_truthy(value: Any) -> bool:
-    """Normalize an ACCOUNT_USAGE boolean column.
-
-    These columns come back from the connector as a Python ``bool``, a string
-    (``"true"``/``"false"``), or ``None`` depending on the view and value, so a
-    plain ``.lower()`` crashes on the ``bool`` form.
-    """
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in ("true", "1", "yes", "t")
 
 
 def _check_1_1(cursor: Any) -> CISCheckResult:

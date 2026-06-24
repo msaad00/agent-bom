@@ -113,6 +113,19 @@ def _sensitive_text(node: UnifiedNode) -> str:
             parts.extend(str(item) for item in val)
         elif isinstance(val, str):
             parts.append(val)
+    # Cloud resources carry data classification natively, but each provider uses
+    # a different carrier — AWS/Azure resource ``tags`` and GCP ``labels`` (e.g.
+    # ``{"classification": "pii"}``). Feed both keys and values into the one
+    # shared classifier so every cloud's native sensitivity marker is honoured
+    # without a per-provider code path (Snowflake carries it via sensitive_objects).
+    for key in ("tags", "labels"):
+        bag = node.attributes.get(key)
+        if isinstance(bag, dict):
+            for tag_key, tag_val in bag.items():
+                parts.append(str(tag_key))
+                parts.append(str(tag_val))
+        elif isinstance(bag, list):
+            parts.extend(str(item) for item in bag)
     return " ".join(parts).lower()
 
 

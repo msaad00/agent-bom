@@ -417,7 +417,7 @@ export function KeyLifecyclePanel({
               {copied ? "Copied" : "Copy raw key"}
             </button>
           </div>
-          <pre className="mt-3 overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-zinc-100">
+          <pre className="mt-3 max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-zinc-100">
             {issuedSecret.rawKey}
           </pre>
         </div>
@@ -619,7 +619,7 @@ export function KeyLifecyclePanel({
                   {policy.tenant_quota_runtime.source}
                   {policy.tenant_quota_runtime.active_override ? " · tenant override active" : " · global defaults active"}
                 </p>
-                <p className="mt-1 text-xs text-zinc-400">Manage overrides at {policy.tenant_quota_runtime.override_endpoint}.</p>
+                <p className="mt-1 break-words text-xs text-zinc-400 [overflow-wrap:anywhere]">Manage overrides at {policy.tenant_quota_runtime.override_endpoint}.</p>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {quotaCards.map(({ field, label, value }) => (
@@ -1019,10 +1019,12 @@ function BoundaryCard({
           detail: "text-amber-200/70",
         };
   return (
-    <div className={`rounded-xl border bg-zinc-950/50 p-3 ${tone.border}`}>
+    <div className={`min-w-0 rounded-xl border bg-zinc-950/50 p-3 ${tone.border}`}>
       <p className={`text-sm font-semibold ${tone.title}`}>{title}</p>
-      <p className="mt-1 text-xs leading-5 text-zinc-300">{body}</p>
-      {detail ? <p className={`mt-2 text-[11px] uppercase tracking-[0.14em] ${tone.detail}`}>{detail}</p> : null}
+      <p className="mt-1 break-words text-xs leading-5 text-zinc-300 [overflow-wrap:anywhere]">{body}</p>
+      {detail ? (
+        <p className={`mt-2 break-words text-[11px] uppercase tracking-[0.14em] [overflow-wrap:anywhere] ${tone.detail}`}>{detail}</p>
+      ) : null}
     </div>
   );
 }

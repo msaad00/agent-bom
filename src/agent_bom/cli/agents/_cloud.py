@@ -321,7 +321,8 @@ def run_benchmarks(
         try:
             from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
 
-            ctx.sf_cis_benchmark_report = run_sf_cis()
+            # Forward the chosen authenticator; account/user resolve from env.
+            ctx.sf_cis_benchmark_report = run_sf_cis(authenticator=snowflake_authenticator or None)
             passed = ctx.sf_cis_benchmark_report.passed
             failed = ctx.sf_cis_benchmark_report.failed
             total = ctx.sf_cis_benchmark_report.total
@@ -359,7 +360,9 @@ def run_benchmarks(
         try:
             from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_az_cis
 
-            ctx.azure_cis_benchmark_report = run_az_cis()
+            # Forward the --subscription value; run_benchmark falls back to
+            # AZURE_SUBSCRIPTION_ID only when this is None.
+            ctx.azure_cis_benchmark_report = run_az_cis(subscription_id=azure_subscription or None)
             passed = ctx.azure_cis_benchmark_report.passed
             failed = ctx.azure_cis_benchmark_report.failed
             total = ctx.azure_cis_benchmark_report.total

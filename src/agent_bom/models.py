@@ -1017,6 +1017,12 @@ class AIBOMReport:
     snowflake_pipeline_data: Optional[dict] = None  # Snowflake data-pipeline objects: tasks, streams, pipes
     snowflake_integrations_data: Optional[dict] = None  # Snowflake account integrations: storage/API/external-access/security/catalog
     snowflake_external_data_data: Optional[dict] = None  # Snowflake open-table-format + external data: iceberg + external tables
+    snowflake_governance_data: Optional[dict] = (
+        None  # Snowflake governance: ACCESS_HISTORY reads + Cortex agent telemetry + derived findings
+    )
+    snowflake_activity_data: Optional[dict] = (
+        None  # Snowflake activity timeline: QUERY_HISTORY (365d) + AI observability events (summarized)
+    )
     azure_cis_benchmark_data: Optional[dict] = None  # Serialized CIS Azure Benchmark results
     gcp_cis_benchmark_data: Optional[dict] = None  # Serialized CIS GCP Benchmark results
     databricks_cis_benchmark_data: Optional[dict] = None  # Serialized Databricks Security Best Practices results
@@ -1148,7 +1154,30 @@ class AIBOMReport:
         base.extend(finding for finding in self._cloud_cis_findings() if finding.id not in cis_existing)
         toxic_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._toxic_combination_findings() if finding.id not in toxic_existing)
+        gov_existing = {getattr(f, "id", None) for f in base}
+        base.extend(finding for finding in self._snowflake_governance_findings() if finding.id not in gov_existing)
         return base
+
+    def _snowflake_governance_findings(self) -> "list[Finding]":
+        """Snowflake governance findings lifted into the unified findings stream.
+
+        The derived governance findings live in a side block
+        (``snowflake_governance_data['findings']``) and never reached the unified
+        stream — so ``cloud`` scans exited 0 even on HIGH/CRITICAL access risks and
+        ``--fail-on-severity`` was blind to governance posture. Convert each one to a
+        Finding so the gate, SARIF, and severity rollups converge.
+        """
+        from agent_bom.finding import snowflake_governance_finding_to_finding
+
+        data = self.snowflake_governance_data
+        if not isinstance(data, dict):
+            return []
+        account = str(data.get("account", "") or "")
+        findings: list[Finding] = []
+        for raw in data.get("findings", []) or []:
+            if isinstance(raw, dict):
+                findings.append(snowflake_governance_finding_to_finding(raw, account))
+        return findings
 
     def _cloud_cis_findings(self) -> "list[Finding]":
         """Cloud CIS benchmark FAILures lifted into the unified findings stream.

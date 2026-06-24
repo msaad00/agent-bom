@@ -96,3 +96,49 @@ def test_structured_network_exposure_is_port_aware():
     # The attack-path reason names the port.
     detail = next(d for k, _l, d, _b in _fusion_signals_for_path(g, ["cloud:vm"]) if k == "internet_exposed")
     assert "port(s) 22" in detail
+
+
+def test_resource_tags_drive_data_sensitivity_cross_cloud():
+    """AWS/Azure tags (and GCP labels) carrying a classification feed the shared
+    sensitivity classifier — an internet-exposed tagged bucket becomes a toxic,
+    GDPR-classified crown jewel, exactly as a Snowflake-tagged object would."""
+    graph = UnifiedGraph(scan_id="s", tenant_id="t")
+    graph.add_node(
+        UnifiedNode(
+            id="cloud:s3-pii",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="customer S3 bucket",  # label alone carries no sensitivity keyword
+            attributes={
+                "resource_type": "bucket",
+                "internet_exposed": True,
+                "tags": {"classification": "pii", "env": "prod"},
+            },
+        )
+    )
+
+    apply_cnapp_overlay(graph)
+
+    companion = graph.nodes.get("data_store:cloud:s3-pii")
+    assert companion is not None, "CNAPP must attach a DATA_STORE companion to the bucket"
+    assert companion.attributes.get("data_sensitivity") == "sensitive"
+    # internet-exposed + sensitive ⇒ toxic, and the pii tag classifies it GDPR.
+    assert companion.attributes.get("toxic_exposed_sensitive") is True
+    assert "GDPR" in (companion.attributes.get("data_regulatory_frameworks") or [])
+    assert companion.attributes.get("data_classification_tier") == "restricted"
+
+
+def test_non_sensitive_tags_do_not_falsely_classify():
+    graph = UnifiedGraph(scan_id="s", tenant_id="t")
+    graph.add_node(
+        UnifiedNode(
+            id="cloud:s3-plain",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="logs S3 bucket",
+            attributes={"resource_type": "bucket", "internet_exposed": True, "tags": {"env": "prod", "team": "ops"}},
+        )
+    )
+    apply_cnapp_overlay(graph)
+    companion = graph.nodes.get("data_store:cloud:s3-plain")
+    assert companion is not None
+    assert not companion.attributes.get("data_sensitivity")
+    assert not companion.attributes.get("toxic_exposed_sensitive")

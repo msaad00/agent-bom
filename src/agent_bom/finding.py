@@ -47,6 +47,7 @@ class FindingType(str, Enum):
     LICENSE = "LICENSE"  # License compliance violation
     RATE_LIMIT = "RATE_LIMIT"  # Rate limit abuse by MCP tool
     MCP_BLOCKLIST = "MCP_BLOCKLIST"  # Curated malicious/suspicious MCP server match
+    COMBINATION = "COMBINATION"  # Toxic combination — multiple signals chained into one exploitable path
 
 
 class FindingSource(str, Enum):
@@ -64,6 +65,7 @@ class FindingSource(str, Enum):
     FILESYSTEM = "FILESYSTEM"  # filesystem mount scan
     PROMPT_SCAN = "PROMPT_SCAN"  # prompt template/content scanner
     SECRET_SCAN = "SECRET_SCAN"  # hardcoded secret / PII scanner
+    GRAPH_ANALYSIS = "GRAPH_ANALYSIS"  # graph-level correlation (toxic combinations, attack-path fusion)
 
 
 @dataclass(frozen=True)

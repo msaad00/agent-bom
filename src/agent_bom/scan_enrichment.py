@@ -157,3 +157,17 @@ def enrich_report_with_estate_discovery(report: AIBOMReport) -> None:
                 report.aws_organization_data = org
     except Exception:  # noqa: BLE001 — org enrichment must never break a scan
         _logger.warning("AWS organization enrichment skipped", exc_info=True)
+
+    # Snowflake estate (object graph, exfil, auth posture, services, pipeline,
+    # integrations, external data, governance, activity). Unlike AWS/Azure/GCP it
+    # produces distinct ``snowflake_*_data`` blocks rather than the single
+    # inventory-dict shape ``collect_cloud_inventory`` returns, so it attaches via
+    # the shared estate helper here instead. Gated by AGENT_BOM_SNOWFLAKE_INVENTORY,
+    # default OFF, and crash-safe — symmetric with the AWS/Azure/GCP gates.
+    try:
+        from agent_bom.cloud import snowflake
+
+        if snowflake.inventory_enabled():
+            snowflake.enrich_report_with_snowflake_estate(report)
+    except Exception:  # noqa: BLE001 — Snowflake estate enrichment must never break a scan
+        _logger.warning("Snowflake estate enrichment skipped", exc_info=True)

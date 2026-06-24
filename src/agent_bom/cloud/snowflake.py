@@ -72,6 +72,25 @@ _env_or_value = resolve_env_or_value
 _sf_truthy = coerce_truthy
 _coerce_int_or_none = coerce_int_or_none
 
+# Opt-in env flag. Default OFF — estate-wide enumeration must be explicitly
+# requested by an operator. Symmetric with the other providers'
+# AGENT_BOM_<PROVIDER>_INVENTORY gates (AWS / AZURE / GCP), so an ordinary scan
+# can fold the Snowflake estate into the graph without the ``--snowflake`` CLI
+# flag.
+INVENTORY_ENV_FLAG = "AGENT_BOM_SNOWFLAKE_INVENTORY"
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def inventory_enabled() -> bool:
+    """Return whether estate-wide Snowflake inventory enumeration is opted in.
+
+    Default OFF. Operators enable it by setting ``AGENT_BOM_SNOWFLAKE_INVENTORY``
+    to a truthy value (``1`` / ``true`` / ``yes`` / ``on``). Read-only with no
+    side effects — mirrors the AWS / Azure / GCP inventory gates.
+    """
+    return os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() in _TRUTHY
+
 
 def _snowflake_cloud_origin(
     *,
@@ -3354,3 +3373,114 @@ def _classify_agent_query(query_text: str) -> tuple[bool, str]:
         if pattern.search(query_text):
             return True, label
     return False, ""
+
+
+def enrich_report_with_snowflake_estate(report: Any) -> None:
+    """Run the Snowflake estate discoveries and attach their ``snowflake_*_data`` blocks.
+
+    Mutates ``report`` in place, populating the ``snowflake_*_data`` fields the
+    graph builder consumes (object graph, login anomalies, exfil graph, auth
+    posture, services, pipeline, integrations, external data, governance,
+    activity). Each discovery is best-effort: a connector raising never breaks
+    the scan; that block is simply skipped.
+
+    Unlike :func:`collect_cloud_inventory`, the Snowflake estate does not fit the
+    single inventory-dict shape AWS / Azure / GCP contribute — it produces
+    distinct ``snowflake_*_data`` blocks — so this parallel helper is the shared
+    entry point for both the ``--snowflake`` CLI path and the gated
+    ``AGENT_BOM_SNOWFLAKE_INVENTORY`` enrichment path. Callers decide *whether*
+    to run it (CLI flag vs. env gate); this function owns *what* it runs so the
+    two surfaces stay identical.
+    """
+    # Object + dependency graph: tables/views → DATA_STORE nodes,
+    # OBJECT_DEPENDENCIES → DEPENDS_ON lineage edges. Best-effort.
+    try:
+        _sf_object_graph = discover_object_dependencies()
+        if _sf_object_graph.get("status") == "ok" and (_sf_object_graph.get("objects") or _sf_object_graph.get("dependencies")):
+            report.snowflake_object_graph_data = _sf_object_graph
+    except Exception:  # noqa: BLE001 — object graph is supplementary; never fail the scan
+        pass
+    # Login anomalies: impossible travel, high distinct-IP, failed-login bursts. Best-effort.
+    try:
+        _sf_login_anomalies = discover_login_anomalies()
+        if _sf_login_anomalies.get("status") == "ok" and _sf_login_anomalies.get("findings"):
+            report.snowflake_login_anomalies_data = _sf_login_anomalies
+    except Exception:  # noqa: BLE001 — anomaly detection is supplementary; never fail the scan
+        pass
+    # Exfil graph: outbound shares, external stages, sensitivity-tagged objects. Best-effort.
+    try:
+        _sf_exfil = discover_data_exfil()
+        if _sf_exfil.get("status") == "ok" and (
+            _sf_exfil.get("outbound_shares") or _sf_exfil.get("external_stages") or _sf_exfil.get("sensitive_objects")
+        ):
+            report.snowflake_exfil_graph_data = _sf_exfil
+    except Exception:  # noqa: BLE001 — exfil graph is supplementary; never fail the scan
+        pass
+    # Auth posture: per-user MFA/key-pair/password matrix + network policies. Best-effort.
+    try:
+        _sf_auth = discover_auth_posture()
+        if _sf_auth.get("status") == "ok" and (_sf_auth.get("users") or _sf_auth.get("network_policies")):
+            report.snowflake_auth_posture_data = _sf_auth
+    except Exception:  # noqa: BLE001 — auth posture is supplementary; never fail the scan
+        pass
+    # Services: warehouses (compute) + database/schema containment hierarchy. Best-effort.
+    try:
+        _sf_services = discover_snowflake_services()
+        if _sf_services.get("status") == "ok" and (
+            _sf_services.get("warehouses") or _sf_services.get("databases") or _sf_services.get("schemas")
+        ):
+            report.snowflake_services_data = _sf_services
+    except Exception:  # noqa: BLE001 — service inventory is supplementary; never fail the scan
+        pass
+    # Pipeline objects: tasks (automation), streams (CDC), pipes (ingestion). Best-effort.
+    try:
+        _sf_pipeline = discover_snowflake_pipeline()
+        if _sf_pipeline.get("status") == "ok" and (_sf_pipeline.get("tasks") or _sf_pipeline.get("streams") or _sf_pipeline.get("pipes")):
+            report.snowflake_pipeline_data = _sf_pipeline
+    except Exception:  # noqa: BLE001 — pipeline inventory is supplementary; never fail the scan
+        pass
+    # Integrations: storage/API/external-access/security/notification/catalog. Best-effort.
+    try:
+        _sf_integrations = discover_snowflake_integrations()
+        if _sf_integrations.get("status") == "ok" and _sf_integrations.get("integrations"):
+            report.snowflake_integrations_data = _sf_integrations
+    except Exception:  # noqa: BLE001 — integration inventory is supplementary; never fail the scan
+        pass
+    # External data: iceberg + external tables (open-table-format / query-in-place). Best-effort.
+    try:
+        _sf_external = discover_snowflake_external_data()
+        if _sf_external.get("status") == "ok" and (_sf_external.get("iceberg_tables") or _sf_external.get("external_tables")):
+            report.snowflake_external_data_data = _sf_external
+    except Exception:  # noqa: BLE001 — external-data inventory is supplementary; never fail the scan
+        pass
+    # Governance: ACCESS_HISTORY reads + Cortex agent telemetry + derived risk
+    # findings. De-duplicated against object-dependency and exfil discoveries.
+    # Best-effort.
+    try:
+        _sf_governance = discover_governance().to_dict()
+        if _sf_governance.get("access_records") or _sf_governance.get("agent_usage") or _sf_governance.get("findings"):
+            report.snowflake_governance_data = {
+                "status": "ok",
+                "account": _sf_governance.get("account", ""),
+                "discovered_at": _sf_governance.get("discovered_at", ""),
+                "summary": _sf_governance.get("summary", {}),
+                "access_records": _sf_governance.get("access_records", []),
+                "agent_usage": _sf_governance.get("agent_usage", []),
+                "findings": _sf_governance.get("findings", []),
+                "warnings": _sf_governance.get("warnings", []),
+            }
+    except Exception:  # noqa: BLE001 — governance is supplementary; never fail the scan
+        pass
+    # Activity timeline: QUERY_HISTORY (365-day lookback) + AI observability
+    # events. Summarized onto the account node. Best-effort.
+    try:
+        _sf_activity = discover_activity().to_dict()
+        if (
+            (_sf_activity.get("summary") or {}).get("total_queries")
+            or _sf_activity.get("query_history")
+            or _sf_activity.get("observability_events")
+        ):
+            _sf_activity["status"] = "ok"
+            report.snowflake_activity_data = _sf_activity
+    except Exception:  # noqa: BLE001 — activity timeline is supplementary; never fail the scan
+        pass

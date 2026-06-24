@@ -687,6 +687,48 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
     )
 
 
+def snowflake_governance_finding_to_finding(finding: dict, account: str) -> "Finding":
+    """Convert one derived Snowflake governance finding into a unified Finding.
+
+    Governance findings (write-access risk, sensitive-data access, agent-usage
+    anomalies) live in the side block ``snowflake_governance_data['findings']``.
+    Lift severity-bearing ones into the unified stream so ``--fail-on-severity``,
+    SARIF, and severity rollups see them — otherwise a ``cloud`` scan exits 0 even
+    when governance surfaced HIGH/CRITICAL access risks.
+    """
+    from agent_bom.security import sanitize_text
+
+    category = sanitize_text(str(finding.get("category", "") or "access"), max_len=60)
+    severity = sanitize_text(str(finding.get("severity", "medium") or "medium"), max_len=40).upper()
+    title = sanitize_text(str(finding.get("title", "") or category), max_len=300)
+    description = sanitize_text(str(finding.get("description", "") or ""), max_len=600)
+    agent_or_role = sanitize_text(str(finding.get("agent_or_role", "") or ""), max_len=300)
+    object_name = sanitize_text(str(finding.get("object_name", "") or ""), max_len=300)
+    primary = object_name or agent_or_role or f"snowflake:{account or 'account'}"
+    return Finding(
+        finding_type=FindingType.CIS_FAIL,
+        source=FindingSource.CLOUD_CIS,
+        asset=Asset(
+            name=primary,
+            asset_type="cloud_resource",
+            identifier=primary,
+            location="snowflake",
+        ),
+        severity=severity,
+        title=f"Snowflake governance: {title}",
+        description=description or f"Snowflake governance risk ({category}) for {primary}.",
+        compliance_tags=[f"SNOWFLAKE-GOVERNANCE-{category.upper()}"],
+        evidence={
+            "provider": "snowflake",
+            "account": account,
+            "category": category,
+            "agent_or_role": agent_or_role,
+            "object_name": object_name,
+            "details": finding.get("details", {}) or {},
+        },
+    )
+
+
 def blast_radius_to_finding(br: object) -> "Finding":
     """Convert a BlastRadius instance to a unified Finding.
 

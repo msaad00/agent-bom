@@ -942,6 +942,8 @@ def build_unified_graph_from_report(
     _add_snowflake_pipeline(graph, report_json.get("snowflake_pipeline"), data_source_tag)
     _add_snowflake_integrations(graph, report_json.get("snowflake_integrations"), data_source_tag)
     _add_snowflake_external_data(graph, report_json.get("snowflake_external_data"), data_source_tag)
+    _add_snowflake_governance(graph, report_json.get("snowflake_governance"), data_source_tag)
+    _add_snowflake_activity(graph, report_json.get("snowflake_activity"), data_source_tag)
 
     # ── Discovered non-human identities (IdP service accounts, gated) ────
     # Project NHIs enumerated by the identity connectors (Okta service apps /
@@ -3011,6 +3013,227 @@ def _add_snowflake_exfil(graph: UnifiedGraph, payload: Any, data_source: str) ->
                 dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
             )
         )
+
+
+def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote Snowflake governance telemetry into the graph (CIEM read-access layer).
+
+    De-duplicated against ``_add_snowflake_object_graph`` (grants + role
+    memberships) and ``_add_snowflake_exfil`` (sensitivity tags): only the
+    non-redundant value is wired here.
+
+    - **ACCESS_HISTORY** → for each ``(user, object)`` pair, a ``USER`` node
+      ``ACCESSED`` the object's ``DATA_STORE`` node. The data-store id matches the
+      scheme the object/exfil layers emit (``data_store:snowflake:{fqn}``), so the
+      edge lands on the existing object node rather than a duplicate. Records are
+      collapsed per ``(user, object, write?)`` so a year of reads becomes a handful
+      of edges, not thousands.
+    - **CORTEX_AGENT_USAGE_HISTORY** → one ``AGENT`` node per distinct agent name,
+      ``OWNS``-attached to the account, carrying aggregate telemetry (calls, tokens,
+      credits) as attributes — not one node per call.
+    - **Derived findings** are converged into the unified findings stream by
+      ``GraphIndices.to_findings`` (``_snowflake_governance_findings``), not into
+      nodes, so ``--fail-on-severity`` sees them.
+
+    Never raises; a missing/empty/non-ok payload is a no-op.
+    """
+    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-governance")
+    if prepared is None:
+        return
+    account, data_sources = prepared
+
+    account_node_id = ""
+    if account:
+        account_node_id = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            account,
+            "snowflake",
+            data_sources,
+            label=account or "snowflake",
+            account_id=account,
+            cloud_provider="snowflake",
+            source="snowflake-governance",
+        )
+
+    # ── ACCESS_HISTORY: user ACCESSED data store (collapsed per user+object) ──
+    seen_users: set[str] = set()
+    seen_access: set[tuple[str, str, bool]] = set()
+
+    def _ensure_user(name: str) -> str:
+        node_id = f"user:snowflake:{name}"
+        if node_id not in seen_users:
+            seen_users.add(node_id)
+            _add_identity_node(
+                graph,
+                EntityType.USER,
+                name,
+                "snowflake",
+                data_sources,
+                label=f"user: {name}",
+                user_name=name,
+                cloud_provider="snowflake",
+                source="snowflake-governance",
+            )
+        return node_id
+
+    for rec in payload.get("access_records", []) or []:
+        if not isinstance(rec, dict):
+            continue
+        user_name = _clean_graph_part(rec.get("user_name"))
+        object_name = _clean_graph_part(rec.get("object_name"))
+        if not user_name or not object_name:
+            continue
+        is_write = bool(rec.get("is_write"))
+        key = (user_name, object_name, is_write)
+        if key in seen_access:
+            continue
+        seen_access.add(key)
+        object_node_id = f"data_store:snowflake:{object_name}"
+        if object_node_id not in graph.nodes:
+            # Thin object node — the object/exfil layers, if also run, own the
+            # rich one (same id → merges, no duplicate).
+            graph.add_node(
+                UnifiedNode(
+                    id=object_node_id,
+                    entity_type=EntityType.DATA_STORE,
+                    label=f"{_clean_graph_part(rec.get('object_type')) or 'object'}: {object_name}",
+                    attributes={
+                        "fqn": object_name,
+                        "object_type": _clean_graph_part(rec.get("object_type")) or "object",
+                        "cloud_provider": "snowflake",
+                        "is_data_store": True,
+                    },
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+                )
+            )
+            if account_node_id:
+                _add_rel_edge(graph, account_node_id, object_node_id, RelationshipType.OWNS, {"source": "snowflake-governance"})
+        _add_rel_edge(
+            graph,
+            _ensure_user(user_name),
+            object_node_id,
+            RelationshipType.ACCESSED,
+            {
+                "source": "snowflake-governance",
+                "operation": _clean_graph_part(rec.get("operation")),
+                "is_write": is_write,
+                "role_name": _clean_graph_part(rec.get("role_name")),
+            },
+        )
+
+    # ── CORTEX_AGENT_USAGE_HISTORY: one AGENT node per name, aggregated ──────
+    agent_aggregate: dict[str, dict[str, Any]] = {}
+    for rec in payload.get("agent_usage", []) or []:
+        if not isinstance(rec, dict):
+            continue
+        agent_name = _clean_graph_part(rec.get("agent_name"))
+        if not agent_name:
+            continue
+        agg = agent_aggregate.setdefault(
+            agent_name,
+            {"calls": 0, "total_tokens": 0, "credits_used": 0.0, "tool_calls": 0, "models": set(), "users": set()},
+        )
+        agg["calls"] += 1
+        agg["total_tokens"] += int(rec.get("total_tokens") or 0)
+        agg["credits_used"] += float(rec.get("credits_used") or 0.0)
+        agg["tool_calls"] += int(rec.get("tool_calls") or 0)
+        model = _clean_graph_part(rec.get("model_name"))
+        if model:
+            agg["models"].add(model)
+        user = _clean_graph_part(rec.get("user_name"))
+        if user:
+            agg["users"].add(user)
+
+    for agent_name, agg in agent_aggregate.items():
+        agent_node_id = f"agent:snowflake:{agent_name}"
+        graph.add_node(
+            UnifiedNode(
+                id=agent_node_id,
+                entity_type=EntityType.AGENT,
+                label=f"cortex agent: {agent_name}",
+                attributes={
+                    "agent_name": agent_name,
+                    "cloud_provider": "snowflake",
+                    "source": "cortex-agent-usage",
+                    "call_count": agg["calls"],
+                    "total_tokens": agg["total_tokens"],
+                    "credits_used": round(agg["credits_used"], 4),
+                    "tool_calls": agg["tool_calls"],
+                    "models": sorted(agg["models"]),
+                    "distinct_users": len(agg["users"]),
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+            )
+        )
+        if account_node_id:
+            _add_rel_edge(graph, account_node_id, agent_node_id, RelationshipType.OWNS, {"source": "snowflake-governance"})
+
+
+def _add_snowflake_activity(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Summarize the Snowflake activity timeline onto the account node.
+
+    QUERY_HISTORY can carry a year of rows; exploding them into per-query nodes
+    would bury the graph (the data-store-scale lesson). Instead this attaches a
+    compact ``activity_summary`` to the account node — total/agent query counts,
+    distinct users, and a capped sample of notable agent-pattern statements — and
+    creates **no per-query nodes**. Never raises; non-ok payload is a no-op.
+    """
+    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-activity")
+    if prepared is None:
+        return
+    account, data_sources = prepared
+    if not account:
+        return
+
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    query_history = payload.get("query_history") or []
+
+    distinct_users: set[str] = set()
+    notable: list[dict[str, str]] = []
+    notable_cap = 25
+    for q in query_history:
+        if not isinstance(q, dict):
+            continue
+        user = _clean_graph_part(q.get("user_name"))
+        if user:
+            distinct_users.add(user)
+        if q.get("is_agent_query") and len(notable) < notable_cap:
+            notable.append(
+                {
+                    "query_id": _clean_graph_part(q.get("query_id")),
+                    "user_name": user,
+                    "agent_pattern": _clean_graph_part(q.get("agent_pattern")),
+                    "query_type": _clean_graph_part(q.get("query_type")),
+                    "start_time": _clean_graph_part(q.get("start_time")),
+                }
+            )
+
+    activity_summary = {
+        "total_queries": int(summary.get("total_queries") or 0),
+        "agent_queries": int(summary.get("agent_queries") or 0),
+        "observability_events": int(summary.get("observability_events") or 0),
+        "unique_agents": int(summary.get("unique_agents") or 0),
+        "tool_calls": int(summary.get("tool_calls") or 0),
+        "distinct_users": len(distinct_users),
+        "notable_agent_statements": notable,
+    }
+
+    # Merge onto the account node (add_node unions attributes by id).
+    _add_identity_node(
+        graph,
+        EntityType.ACCOUNT,
+        account,
+        "snowflake",
+        data_sources,
+        label=account or "snowflake",
+        account_id=account,
+        cloud_provider="snowflake",
+        source="snowflake-activity",
+        activity_summary=activity_summary,
+    )
 
 
 _RBAC_PRINCIPAL_ENTITY = {

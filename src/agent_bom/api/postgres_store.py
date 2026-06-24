@@ -65,6 +65,12 @@ class PostgresJobStore:
                     created_at TEXT NOT NULL,
                     completed_at TEXT,
                     team_id TEXT NOT NULL DEFAULT 'default',
+                    batch_id TEXT,
+                    parent_job_id TEXT,
+                    child_job_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    target JSONB,
+                    target_index INTEGER,
+                    target_count INTEGER,
                     schedule_id TEXT,
                     triggered_by TEXT,
                     data JSONB NOT NULL
@@ -90,6 +96,42 @@ class PostgresJobStore:
                         WHERE table_name = 'scan_jobs' AND column_name = 'triggered_by'
                     ) THEN
                         ALTER TABLE scan_jobs ADD COLUMN triggered_by TEXT;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'scan_jobs' AND column_name = 'batch_id'
+                    ) THEN
+                        ALTER TABLE scan_jobs ADD COLUMN batch_id TEXT;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'scan_jobs' AND column_name = 'parent_job_id'
+                    ) THEN
+                        ALTER TABLE scan_jobs ADD COLUMN parent_job_id TEXT;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'scan_jobs' AND column_name = 'child_job_ids'
+                    ) THEN
+                        ALTER TABLE scan_jobs ADD COLUMN child_job_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'scan_jobs' AND column_name = 'target'
+                    ) THEN
+                        ALTER TABLE scan_jobs ADD COLUMN target JSONB;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'scan_jobs' AND column_name = 'target_index'
+                    ) THEN
+                        ALTER TABLE scan_jobs ADD COLUMN target_index INTEGER;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'scan_jobs' AND column_name = 'target_count'
+                    ) THEN
+                        ALTER TABLE scan_jobs ADD COLUMN target_count INTEGER;
                     END IF;
                 END
                 $$;
@@ -118,6 +160,8 @@ class PostgresJobStore:
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_team_created ON scan_jobs(team_id, created_at DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_batch ON scan_jobs(team_id, batch_id, created_at DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_parent ON scan_jobs(team_id, parent_job_id, created_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_schedule ON scan_jobs(team_id, schedule_id, created_at DESC)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cis_checks_team_cloud_status_priority "
@@ -151,12 +195,21 @@ class PostgresJobStore:
         data = job.model_dump_json()
         with _tenant_connection(self._pool) as conn:
             conn.execute(
-                """INSERT INTO scan_jobs (job_id, status, created_at, completed_at, team_id, schedule_id, triggered_by, data)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """INSERT INTO scan_jobs (
+                       job_id, status, created_at, completed_at, team_id, batch_id, parent_job_id,
+                       child_job_ids, target, target_index, target_count, schedule_id, triggered_by, data
+                   )
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
                    ON CONFLICT (job_id) DO UPDATE SET
                      status = EXCLUDED.status,
                      completed_at = EXCLUDED.completed_at,
                      team_id = EXCLUDED.team_id,
+                     batch_id = EXCLUDED.batch_id,
+                     parent_job_id = EXCLUDED.parent_job_id,
+                     child_job_ids = EXCLUDED.child_job_ids,
+                     target = EXCLUDED.target,
+                     target_index = EXCLUDED.target_index,
+                     target_count = EXCLUDED.target_count,
                      schedule_id = EXCLUDED.schedule_id,
                      triggered_by = EXCLUDED.triggered_by,
                      data = EXCLUDED.data""",
@@ -166,6 +219,12 @@ class PostgresJobStore:
                     job.created_at,
                     job.completed_at,
                     job.tenant_id,
+                    getattr(job, "batch_id", None),
+                    getattr(job, "parent_job_id", None),
+                    json.dumps(getattr(job, "child_job_ids", []) or []),
+                    json.dumps(getattr(job, "target", None)) if getattr(job, "target", None) is not None else None,
+                    getattr(job, "target_index", None),
+                    getattr(job, "target_count", None),
                     getattr(job, "schedule_id", None),
                     getattr(job, "triggered_by", None),
                     data,
@@ -216,16 +275,26 @@ class PostgresJobStore:
             return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def list_summary(self, tenant_id: str | None = None) -> list[dict]:
+        def _json_column(row: tuple, index: int, default: str, expected_type: type) -> object:
+            if len(row) <= index:
+                return json.loads(default)
+            value = row[index]
+            if isinstance(value, expected_type):
+                return value
+            return json.loads(value or default)
+
         with _tenant_connection(self._pool) as conn:
             if tenant_id is None:
                 rows = conn.execute(
-                    """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id
+                    """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id,
+                              batch_id, parent_job_id, child_job_ids, target, target_index, target_count
                        FROM scan_jobs
                        ORDER BY created_at DESC"""
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id
+                    """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id,
+                              batch_id, parent_job_id, child_job_ids, target, target_index, target_count
                        FROM scan_jobs
                        WHERE team_id = %s
                        ORDER BY created_at DESC""",
@@ -240,6 +309,12 @@ class PostgresJobStore:
                     "completed_at": row[4],
                     "triggered_by": row[5] if len(row) > 5 else None,
                     "schedule_id": row[6] if len(row) > 6 else None,
+                    "batch_id": row[7] if len(row) > 7 else None,
+                    "parent_job_id": row[8] if len(row) > 8 else None,
+                    "child_job_ids": _json_column(row, 9, "[]", list),
+                    "target": _json_column(row, 10, "null", dict),
+                    "target_index": row[11] if len(row) > 11 else None,
+                    "target_count": row[12] if len(row) > 12 else None,
                 }
                 for row in rows
             ]

@@ -226,6 +226,14 @@ def test_scan_jobs_has_schedule_id_back_pointer():
     assert "idx_jobs_schedule" in _indexes()
 
 
+def test_scan_jobs_has_batch_parent_child_columns():
+    cols = _columns_for("scan_jobs")
+    for col in ("batch_id", "parent_job_id", "child_job_ids", "target", "target_index", "target_count"):
+        assert col in cols
+    assert "idx_jobs_batch" in _indexes()
+    assert "idx_jobs_parent" in _indexes()
+
+
 def test_scan_jobs_keeps_team_id_as_rls_column_with_api_tenant_translation():
     cols = _columns_for("scan_jobs")
     assert "team_id" in cols

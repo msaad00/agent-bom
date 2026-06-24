@@ -7,6 +7,7 @@ Provides pluggable job persistence:
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -90,6 +91,12 @@ class InMemoryJobStore:
                 {
                     "job_id": j.job_id,
                     "tenant_id": j.tenant_id,
+                    "batch_id": j.batch_id,
+                    "parent_job_id": j.parent_job_id,
+                    "child_job_ids": list(j.child_job_ids),
+                    "target": j.target,
+                    "target_index": j.target_index,
+                    "target_count": j.target_count,
                     "schedule_id": j.schedule_id,
                     "triggered_by": j.triggered_by,
                     "status": j.status,
@@ -174,6 +181,12 @@ class SQLiteJobStore:
                     created_at TEXT NOT NULL,
                     completed_at TEXT,
                     tenant_id TEXT NOT NULL DEFAULT 'default',
+                    batch_id TEXT,
+                    parent_job_id TEXT,
+                    child_job_ids TEXT,
+                    target TEXT,
+                    target_index INTEGER,
+                    target_count INTEGER,
                     schedule_id TEXT,
                     triggered_by TEXT,
                     data TEXT NOT NULL
@@ -184,9 +197,23 @@ class SQLiteJobStore:
                 self._conn.execute("ALTER TABLE jobs ADD COLUMN schedule_id TEXT")
             if "triggered_by" not in columns:
                 self._conn.execute("ALTER TABLE jobs ADD COLUMN triggered_by TEXT")
+            if "batch_id" not in columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN batch_id TEXT")
+            if "parent_job_id" not in columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN parent_job_id TEXT")
+            if "child_job_ids" not in columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN child_job_ids TEXT")
+            if "target" not in columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN target TEXT")
+            if "target_index" not in columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN target_index INTEGER")
+            if "target_count" not in columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN target_count INTEGER")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_completed ON jobs(completed_at)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON jobs(tenant_id)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_batch ON jobs(tenant_id, batch_id, created_at DESC)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_parent ON jobs(tenant_id, parent_job_id, created_at DESC)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_schedule ON jobs(tenant_id, schedule_id, created_at DESC)")
             self._conn.commit()
         finally:
@@ -204,14 +231,23 @@ class SQLiteJobStore:
     def put(self, job: ScanJob) -> None:
         try:
             self._conn.execute(
-                """INSERT OR REPLACE INTO jobs (job_id, status, created_at, completed_at, tenant_id, schedule_id, triggered_by, data)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT OR REPLACE INTO jobs (
+                       job_id, status, created_at, completed_at, tenant_id, batch_id, parent_job_id,
+                       child_job_ids, target, target_index, target_count, schedule_id, triggered_by, data
+                   )
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     job.job_id,
                     job.status.value,
                     job.created_at,
                     job.completed_at,
                     job.tenant_id,
+                    job.batch_id,
+                    job.parent_job_id,
+                    json.dumps(job.child_job_ids),
+                    json.dumps(job.target) if job.target is not None else None,
+                    job.target_index,
+                    job.target_count,
                     job.schedule_id,
                     job.triggered_by,
                     self._serialize(job),
@@ -271,13 +307,15 @@ class SQLiteJobStore:
         try:
             if tenant_id is None:
                 rows = self._conn.execute(
-                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id
+                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id,
+                              batch_id, parent_job_id, child_job_ids, target, target_index, target_count
                        FROM jobs
                        ORDER BY created_at DESC"""
                 ).fetchall()
             else:
                 rows = self._conn.execute(
-                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id
+                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id,
+                              batch_id, parent_job_id, child_job_ids, target, target_index, target_count
                        FROM jobs
                        WHERE tenant_id = ?
                        ORDER BY created_at DESC""",
@@ -291,6 +329,12 @@ class SQLiteJobStore:
                         "tenant_id": row[1],
                         "triggered_by": row[5],
                         "schedule_id": row[6],
+                        "batch_id": row[7],
+                        "parent_job_id": row[8],
+                        "child_job_ids": json.loads(row[9] or "[]"),
+                        "target": json.loads(row[10]) if row[10] else None,
+                        "target_index": row[11],
+                        "target_count": row[12],
                         "status": row[2],
                         "created_at": row[3],
                         "completed_at": row[4],

@@ -135,7 +135,7 @@ function CopyableFixCli({ check }: { check: CISBenchmarkCheck }) {
         </pre>
         <button
           type="button"
-          onClick={onCopy}
+          onClick={() => void onCopy()}
           aria-label={
             check.requires_human_review
               ? "Copy fix command — requires human review before applying"
@@ -293,7 +293,7 @@ export function CISBenchmarkDetail() {
     setError(null);
     // One page covers the full benchmark catalog (well under the 500 cap), so
     // every guardrails/priority filter sees all checks rather than a slice.
-    api
+    void api
       .listCisBenchmarkChecks({ limit: 500 })
       .then((response) => {
         if (cancelled) return;

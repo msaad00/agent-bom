@@ -1403,13 +1403,6 @@ def _resolve_affected_server_ids(
         for server_name in server_names:
             named_ids.update(server_name_to_agent_servers.get(server_name, {}).values())
         narrowed = (candidate_ids & named_ids) if candidate_ids else named_ids
-        if candidate_ids and named_ids and not narrowed:
-            _logger.debug(
-                "blast-radius narrow-by-server collapsed to empty: pkg=%s servers=%s candidates=%s",
-                pkg_name,
-                sorted(server_names),
-                sorted(candidate_ids),
-            )
         candidate_ids = narrowed
 
     agent_names = {str(agent).strip() for agent in br_dict.get("affected_agents", []) if str(agent).strip()}
@@ -1418,13 +1411,6 @@ def _resolve_affected_server_ids(
         for agent_name in agent_names:
             agent_ids.update(agent_to_server_ids.get(agent_name, set()))
         narrowed = (candidate_ids & agent_ids) if candidate_ids else agent_ids
-        if candidate_ids and agent_ids and not narrowed:
-            _logger.debug(
-                "blast-radius narrow-by-agent collapsed to empty: pkg=%s agents=%s candidates=%s",
-                pkg_name,
-                sorted(agent_names),
-                sorted(candidate_ids),
-            )
         candidate_ids = narrowed
 
     return sorted(candidate_ids)
@@ -3444,6 +3430,10 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         ("dynamodb_tables", "dynamodb", "database", "dynamodb-table", "dynamodb table", True),
         ("lambda_functions", "lambda", "function", "lambda-function", "lambda function", False),
         ("eks_clusters", "eks", "container_cluster", "eks-cluster", "eks cluster", False),
+        ("elb_load_balancers", "elbv2", "load_balancer", "elb-load-balancer", "load balancer", False),
+        ("vpcs", "ec2", "virtual_network", "vpc", "vpc", False),
+        ("kms_keys", "kms", "key", "kms-key", "kms key", False),
+        ("secrets", "secretsmanager", "secret", "secretsmanager-secret", "secret", False),
     ):
         for item in inventory.get(coll_key, []) or []:
             if not isinstance(item, dict):

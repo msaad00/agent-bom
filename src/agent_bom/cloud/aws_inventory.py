@@ -88,6 +88,16 @@ _AWS_COMPUTE_PERMISSIONS: tuple[str, ...] = (
     "eks:ListClusters",
     "eks:DescribeCluster",
 )
+_AWS_NETWORK_PERMISSIONS: tuple[str, ...] = (
+    "elasticloadbalancing:DescribeLoadBalancers",
+    "ec2:DescribeVpcs",
+)
+_AWS_SECURITY_PERMISSIONS: tuple[str, ...] = (
+    "kms:ListKeys",
+    "kms:DescribeKey",
+    "kms:GetKeyRotationStatus",
+    "secretsmanager:ListSecrets",
+)
 _AWS_BASELINE_PERMISSIONS: tuple[str, ...] = ("sts:GetCallerIdentity",)
 
 # Open-to-the-world CIDR / ipv6 ranges that mark a security-group ingress rule
@@ -114,6 +124,7 @@ def discover_inventory(
     include_iam: bool = True,
     include_data: bool = True,
     include_compute: bool = True,
+    include_network: bool = True,
     force: bool = False,
 ) -> dict[str, Any]:
     """Enumerate the general AWS estate (S3, EC2 + security groups, IAM).
@@ -146,6 +157,10 @@ def discover_inventory(
         "lambda_functions": [],
         "dynamodb_tables": [],
         "eks_clusters": [],
+        "elb_load_balancers": [],
+        "vpcs": [],
+        "kms_keys": [],
+        "secrets": [],
         "warnings": [],
         "discovery_envelope": None,
     }
@@ -187,6 +202,10 @@ def discover_inventory(
     lambda_functions: list[dict[str, Any]] = []
     dynamodb_tables: list[dict[str, Any]] = []
     eks_clusters: list[dict[str, Any]] = []
+    elb_load_balancers: list[dict[str, Any]] = []
+    vpcs: list[dict[str, Any]] = []
+    kms_keys: list[dict[str, Any]] = []
+    secrets: list[dict[str, Any]] = []
 
     try:
         if include_s3:
@@ -198,9 +217,14 @@ def discover_inventory(
         if include_data:
             rds_instances = _discover_rds(session, resolved_region, account_id=account_id, warnings=warnings)
             dynamodb_tables = _discover_dynamodb(session, resolved_region, account_id=account_id, warnings=warnings)
+            kms_keys = _discover_kms(session, resolved_region, account_id=account_id, warnings=warnings)
+            secrets = _discover_secrets(session, resolved_region, account_id=account_id, warnings=warnings)
         if include_compute:
             lambda_functions = _discover_lambda(session, resolved_region, account_id=account_id, warnings=warnings)
             eks_clusters = _discover_eks(session, resolved_region, account_id=account_id, warnings=warnings)
+        if include_network:
+            elb_load_balancers = _discover_elb(session, resolved_region, account_id=account_id, warnings=warnings)
+            vpcs = _discover_vpcs(session, resolved_region, account_id=account_id, warnings=warnings)
     except NoCredentialsError:
         return {
             **empty,
@@ -219,6 +243,10 @@ def discover_inventory(
         permissions_used.extend(_AWS_DATA_PERMISSIONS)
     if include_compute:
         permissions_used.extend(_AWS_COMPUTE_PERMISSIONS)
+    if include_data:
+        permissions_used.extend(_AWS_SECURITY_PERMISSIONS)
+    if include_network:
+        permissions_used.extend(_AWS_NETWORK_PERMISSIONS)
 
     discovery_scope: list[str] = []
     if account_id:
@@ -247,6 +275,10 @@ def discover_inventory(
         "lambda_functions": lambda_functions,
         "dynamodb_tables": dynamodb_tables,
         "eks_clusters": eks_clusters,
+        "elb_load_balancers": elb_load_balancers,
+        "vpcs": vpcs,
+        "kms_keys": kms_keys,
+        "secrets": secrets,
         "warnings": warnings,
         "discovery_envelope": envelope.to_dict(),
     }
@@ -725,6 +757,128 @@ def _discover_eks(session: Any, region: str, *, account_id: str | None, warnings
             )
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list EKS clusters: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_elb(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate ALB/NLB load balancers (read-only). Internet-facing scheme = exposed."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("elbv2", region_name=region)
+        paginator = client.get_paginator("describe_load_balancers")
+        for page in paginator.paginate():
+            for lb in page.get("LoadBalancers", []):
+                name = str(lb.get("LoadBalancerName", "") or "")
+                if not name:
+                    continue
+                out.append(
+                    {
+                        "name": name,
+                        "arn": str(lb.get("LoadBalancerArn", "") or ""),
+                        "scheme": str(lb.get("Scheme", "") or ""),
+                        "lb_type": str(lb.get("Type", "") or ""),
+                        "internet_exposed": str(lb.get("Scheme", "")).lower() == "internet-facing",
+                        "dns_name": str(lb.get("DNSName", "") or ""),
+                        "vpc_id": str(lb.get("VpcId", "") or ""),
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list load balancers: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_vpcs(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate VPCs (read-only). Become ``CLOUD_RESOURCE`` network nodes."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("ec2", region_name=region)
+        for vpc in client.describe_vpcs().get("Vpcs", []):
+            vpc_id = str(vpc.get("VpcId", "") or "")
+            if not vpc_id:
+                continue
+            tags = {str(t.get("Key", "")): str(t.get("Value", "")) for t in vpc.get("Tags", []) if t.get("Key")}
+            out.append(
+                {
+                    # vpc_id is the stable node identifier; the Name tag is display-only.
+                    "name": vpc_id,
+                    "display_name": tags.get("Name") or vpc_id,
+                    "vpc_id": vpc_id,
+                    "cidr": str(vpc.get("CidrBlock", "") or ""),
+                    "is_default": bool(vpc.get("IsDefault")),
+                    "tags": tags,
+                    "account_id": account_id or "",
+                    "location": region,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list VPCs: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_kms(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate customer-managed KMS keys (read-only). Metadata only, never key material."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("kms", region_name=region)
+        paginator = client.get_paginator("list_keys")
+        for page in paginator.paginate():
+            for key in page.get("Keys", []):
+                key_id = str(key.get("KeyId", "") or "")
+                if not key_id:
+                    continue
+                manager, enabled, rotation = "", True, None
+                try:
+                    meta = client.describe_key(KeyId=key_id).get("KeyMetadata", {})
+                    manager = str(meta.get("KeyManager", "") or "")
+                    enabled = bool(meta.get("Enabled", True))
+                    if manager == "AWS":  # skip AWS-managed keys — not customer's responsibility
+                        continue
+                    try:
+                        rotation = bool(client.get_key_rotation_status(KeyId=key_id).get("KeyRotationEnabled"))
+                    except Exception:  # noqa: BLE001
+                        rotation = None
+                except Exception:  # noqa: BLE001
+                    meta = {}
+                out.append(
+                    {
+                        "name": key_id,
+                        "arn": str(key.get("KeyArn", "") or ""),
+                        "enabled": enabled,
+                        "rotation_enabled": rotation,
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list KMS keys: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_secrets(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate Secrets Manager secrets (read-only). Metadata only — never secret values."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("secretsmanager", region_name=region)
+        paginator = client.get_paginator("list_secrets")
+        for page in paginator.paginate():
+            for sec in page.get("SecretList", []):
+                name = str(sec.get("Name", "") or "")
+                if not name:
+                    continue
+                out.append(
+                    {
+                        "name": name,
+                        "arn": str(sec.get("ARN", "") or ""),
+                        "rotation_enabled": bool(sec.get("RotationEnabled")),
+                        "last_changed": _iso(sec.get("LastChangedDate")),
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Secrets Manager secrets: {sanitize_discovery_warning(exc)}")
     return out
 
 

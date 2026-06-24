@@ -1408,8 +1408,7 @@ def _resolve_affected_server_ids(
             # clear-text logging of data that flows in from cloud-inventory
             # collections (e.g. Secrets Manager / KMS resource names).
             _logger.debug(
-                "blast-radius narrow-by-server collapsed to empty: pkg=%s servers=%d candidates=%d",
-                pkg_name,
+                "blast-radius narrow-by-server collapsed to empty: servers=%d candidates=%d",
                 len(server_names),
                 len(candidate_ids),
             )
@@ -1423,8 +1422,7 @@ def _resolve_affected_server_ids(
         narrowed = (candidate_ids & agent_ids) if candidate_ids else agent_ids
         if candidate_ids and agent_ids and not narrowed:
             _logger.debug(
-                "blast-radius narrow-by-agent collapsed to empty: pkg=%s agents=%d candidates=%d",
-                pkg_name,
+                "blast-radius narrow-by-agent collapsed to empty: agents=%d candidates=%d",
                 len(agent_names),
                 len(candidate_ids),
             )

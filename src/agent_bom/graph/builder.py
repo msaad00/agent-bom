@@ -3437,6 +3437,54 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                 )
             )
 
+    # ── AWS data + compute services (RDS / DynamoDB / Lambda / EKS) ──────
+    # (key, service, resource_type, kind, label, is_data_store)
+    for coll_key, svc, rtype, kind, label, is_data in (
+        ("rds_instances", "rds", "database", "rds-instance", "rds database", True),
+        ("dynamodb_tables", "dynamodb", "database", "dynamodb-table", "dynamodb table", True),
+        ("lambda_functions", "lambda", "function", "lambda-function", "lambda function", False),
+        ("eks_clusters", "eks", "container_cluster", "eks-cluster", "eks cluster", False),
+    ):
+        for item in inventory.get(coll_key, []) or []:
+            if not isinstance(item, dict):
+                continue
+            name = _clean_graph_part(item.get("name"))
+            if not name:
+                continue
+            node_id = f"cloud_resource:{provider}:{svc}:{rtype}:{name}"
+            exposed = bool(item.get("publicly_accessible") or item.get("internet_exposed") or item.get("endpoint_public"))
+            graph.add_node(
+                UnifiedNode(
+                    id=node_id,
+                    entity_type=EntityType.DATA_STORE if is_data else EntityType.CLOUD_RESOURCE,
+                    label=f"{label}: {name}",
+                    attributes={
+                        "resource_id": _clean_graph_part(item.get("arn")) or name,
+                        "resource_name": name,
+                        "resource_type": rtype,
+                        "resource_kind": kind,
+                        "cloud_provider": provider,
+                        "cloud_service": svc,
+                        "location": _clean_graph_part(item.get("location")) or region,
+                        "internet_exposed": exposed,
+                        "is_data_store": is_data,
+                        "engine": _clean_graph_part(item.get("engine")),
+                        "runtime": _clean_graph_part(item.get("runtime")),
+                        "encrypted": bool(item.get("encrypted")),
+                        "account_id": account_id,
+                    },
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider=provider, surface=svc),
+                )
+            )
+            resource_ids.append(node_id)
+            if account_node_id:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
+                    )
+                )
+
     # ── Data / secret / registry / network resources (normalized model) ──
     _add_normalized_cloud_resources(
         graph,

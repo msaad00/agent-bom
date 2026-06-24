@@ -304,26 +304,22 @@ def inventory_cmd(
     con.print()
 
 
-# Per-provider asset collections to count in the compact estate summary.
-_INVENTORY_ASSET_KEYS = (
-    "buckets",
-    "instances",
-    "security_groups",
-    "roles",
-    "users",
-    "storage_accounts",
-    "managed_identities",
-    "service_principals",
-    "service_accounts",
-    "firewalls",
-)
+# Report keys that are lists but NOT asset collections — excluded from the count
+# so the summary auto-includes every resource type a provider adds without drift.
+_INVENTORY_NON_ASSET_KEYS = frozenset({"warnings", "discovery_envelope", "permissions_used", "discovery_scope", "errors"})
 
 
 def _asset_summary(report: dict) -> str:
-    """Compact ``key=N`` summary of the non-empty asset collections in a report."""
+    """Compact ``key=N`` summary of every non-empty asset collection in a report.
+
+    Counts all list-valued keys (minus envelope/warning metadata) so any new
+    resource type a provider's inventory adds appears here automatically — no
+    hardcoded allowlist to drift out of sync with the discovery layer.
+    """
     bits = []
-    for key in _INVENTORY_ASSET_KEYS:
-        value = report.get(key)
+    for key, value in report.items():
+        if key in _INVENTORY_NON_ASSET_KEYS:
+            continue
         if isinstance(value, list) and value:
             bits.append(f"{key}={len(value)}")
     return ", ".join(bits) if bits else "[dim]none[/dim]"

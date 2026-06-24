@@ -16,7 +16,8 @@ const BUDGETS = {
   // Includes the Gateway Live Feed tab for tool-call auth, DLP, and LLM-call events.
   // Includes cost forecast/chargeback and NHI governance console panels.
   // Includes the cloud CIS benchmark drill-down (per-cloud checks + remediation) on the compliance dashboard.
-  totalClientJsBytes: 3_035_000,
+  // Includes the cross-domain overview landing page entrypoint and API client contract.
+  totalClientJsBytes: 3_045_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

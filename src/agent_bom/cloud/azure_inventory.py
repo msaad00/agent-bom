@@ -102,6 +102,49 @@ def inventory_enabled() -> bool:
     return os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() in _TRUTHY
 
 
+def _derive_default_subscription(credential: Any) -> tuple[str, str]:
+    """Best-effort ``(subscription_id, note)`` from the signed-in credential.
+
+    Lists the subscriptions visible to the credential and returns the first
+    enabled one, so a single-subscription ``az login`` needs no explicit
+    ``AZURE_SUBSCRIPTION_ID``. Returns ``("", note)`` on any failure — read-only
+    and never raises. When more than one subscription is visible, the note asks
+    the operator to pin one so selection stays deterministic.
+    """
+    import json
+    import urllib.request
+
+    # Read-only ARM subscriptions list — the same endpoint the SDK clients call,
+    # reached directly with the credential's own bearer token so no extra SDK
+    # distribution is required just to resolve the subscription.
+    try:
+        token = credential.get_token("https://management.azure.com/.default").token
+    except Exception as exc:  # noqa: BLE001 — token acquisition must not crash a scan
+        return "", sanitize_discovery_warning(exc)
+    request = urllib.request.Request(  # noqa: S310 — fixed https ARM endpoint, not user input
+        "https://management.azure.com/subscriptions?api-version=2022-12-01",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:  # noqa: S310  # nosec B310 — fixed https ARM endpoint, not user input
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 — listing failures degrade to a warning
+        return "", sanitize_discovery_warning(exc)
+
+    subs = [s for s in payload.get("value", []) if s.get("subscriptionId")]
+    enabled = [s for s in subs if str(s.get("state", "Enabled")) == "Enabled"] or subs
+    if not enabled:
+        return "", "No Azure subscriptions visible to the signed-in credential."
+    chosen = enabled[0]["subscriptionId"]
+    note = ""
+    if len(enabled) > 1:
+        note = (
+            f"AZURE_SUBSCRIPTION_ID not set; auto-selected subscription {chosen} "
+            f"of {len(enabled)} visible. Set AZURE_SUBSCRIPTION_ID to pin one."
+        )
+    return str(chosen), note
+
+
 def discover_inventory(
     subscription_id: str | None = None,
     *,
@@ -181,13 +224,6 @@ def discover_inventory(
             "warnings": ["azure-identity is required for Azure inventory. Install with: pip install 'agent-bom[azure]'"],
         }
 
-    if not resolved_sub:
-        return {
-            **empty,
-            "status": "no_subscription",
-            "warnings": ["AZURE_SUBSCRIPTION_ID not set. Provide subscription_id or set the AZURE_SUBSCRIPTION_ID env var."],
-        }
-
     if credential is None:
         try:
             credential = DefaultAzureCredential()
@@ -195,6 +231,23 @@ def discover_inventory(
             return {**empty, "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
 
     warnings: list[str] = []
+
+    # Auto-derive the subscription from the signed-in credential (e.g. ``az
+    # login``) when one was not supplied, so the common single-subscription case
+    # connects with zero extra configuration. Multi-subscription tenants still
+    # fan out via the management-group path or an explicit AZURE_SUBSCRIPTION_ID.
+    if not resolved_sub:
+        resolved_sub, derive_note = _derive_default_subscription(credential)
+        if derive_note:
+            warnings.append(derive_note)
+        if not resolved_sub:
+            return {
+                **empty,
+                "status": "no_subscription",
+                "warnings": ["No Azure subscription found. Run `az login`, set AZURE_SUBSCRIPTION_ID, or pass subscription_id."],
+            }
+        empty["subscription_id"] = resolved_sub
+        empty["account_id"] = resolved_sub
 
     # Discover each service concurrently — the ARM list calls are independent and
     # IO-bound, so a thread pool collapses the previously-sequential sum-of-latencies

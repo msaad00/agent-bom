@@ -207,7 +207,7 @@ def test_cloud_inventory_gated_off_shows_disabled():
     result = CliRunner().invoke(main, ["cloud", "inventory"])
     assert result.exit_code == 0
     assert "disabled" in result.output.lower()
-    assert "AGENT_BOM_CLOUD_INVENTORY" in result.output
+    assert "AGENT_BOM_AWS_INVENTORY" in result.output
 
 
 def test_cloud_inventory_json_valid_when_disabled():

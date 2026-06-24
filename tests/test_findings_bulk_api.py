@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from starlette.testclient import TestClient
 
 from agent_bom.api.compliance_hub_store import reset_compliance_hub_store
@@ -32,7 +34,8 @@ def _client(tenant: str = "tenant-alpha", role: str = "analyst") -> TestClient:
 
 
 def test_bulk_findings_ingest_returns_agent_native_envelope() -> None:
-    client = _client()
+    tenant_id = f"bulk-ingest-{uuid4().hex}"
+    client = _client(tenant=tenant_id)
 
     resp = client.post(
         "/v1/findings/bulk",
@@ -57,15 +60,17 @@ def test_bulk_findings_ingest_returns_agent_native_envelope() -> None:
     assert body["schema_version"] == "v1"
     assert body["ingested"] == 1
     assert body["tenant_total"] == 1
-    assert body["tenant_id"] == "tenant-alpha"
+    assert body["tenant_id"] == tenant_id
     assert body["source"] == "agent-runtime"
     assert body["warnings"] == ["tenant_id in body ignored; request tenant scope is authoritative"]
     assert body["batch_id"]
 
 
 def test_bulk_findings_are_listed_and_tenant_scoped() -> None:
-    tenant_a = _client(tenant="tenant-alpha")
-    tenant_b = _client(tenant="tenant-beta")
+    tenant_a_id = f"bulk-list-a-{uuid4().hex}"
+    tenant_b_id = f"bulk-list-b-{uuid4().hex}"
+    tenant_a = _client(tenant=tenant_a_id)
+    tenant_b = _client(tenant=tenant_b_id)
 
     created = tenant_a.post(
         "/v1/findings/bulk",

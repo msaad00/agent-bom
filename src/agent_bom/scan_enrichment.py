@@ -54,12 +54,17 @@ def collect_cloud_inventory() -> list[dict[str, Any]]:
     except Exception:  # noqa: BLE001 — a connector failure must never break a scan
         _logger.warning("AWS estate inventory enrichment failed", exc_info=True)
 
-    # Azure — AGENT_BOM_AZURE_INVENTORY
+    # Azure — AGENT_BOM_AZURE_INVENTORY (+ AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS to
+    # fan across every subscription in the tenant, like AWS Organizations does
+    # for member accounts).
     try:
         from agent_bom.cloud import azure_inventory
 
         if azure_inventory.inventory_enabled():
-            payloads.append(azure_inventory.discover_inventory())
+            if azure_inventory.all_subscriptions_enabled():
+                payloads.extend(azure_inventory.discover_all_subscription_inventories())
+            else:
+                payloads.append(azure_inventory.discover_inventory())
     except Exception:  # noqa: BLE001
         _logger.warning("Azure estate inventory enrichment failed", exc_info=True)
 

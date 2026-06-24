@@ -91,3 +91,89 @@ def test_missing_sdk_is_graceful(monkeypatch) -> None:
     out = _discover_role_assignments(object(), "sub1", warnings=warnings)
     assert out == []
     assert any("azure-mgmt-authorization" in w for w in warnings)
+
+
+# ── Graph: HAS_PERMISSION edges from role assignments ────────────────────
+def _rbac_inventory() -> dict:
+    return {
+        "status": "ok",
+        "provider": "azure",
+        "account_id": "sub1",
+        # an inventoried resource the assignment scope should match by resource_id
+        "key_vaults": [
+            {
+                "name": "kv1",
+                "id": "/subscriptions/sub1/resourceGroups/rg/providers/Microsoft.KeyVault/vaults/kv1",
+                "resource_id": "/subscriptions/sub1/resourceGroups/rg/providers/Microsoft.KeyVault/vaults/kv1",
+            }
+        ],
+        "role_assignments": [
+            # one SP with two roles on the SAME resource → one aggregated edge
+            {
+                "principal_id": "sp-1",
+                "principal_type": "serviceprincipal",
+                "role_name": "Key Vault Administrator",
+                "scope": "/subscriptions/sub1/resourceGroups/rg/providers/Microsoft.KeyVault/vaults/kv1",
+            },
+            {
+                "principal_id": "sp-1",
+                "principal_type": "serviceprincipal",
+                "role_name": "Reader",
+                "scope": "/subscriptions/sub1/resourceGroups/rg/providers/Microsoft.KeyVault/vaults/kv1",
+            },
+            # subscription-scoped Owner → account node, privileged
+            {"principal_id": "usr-1", "principal_type": "user", "role_name": "Owner", "scope": "/subscriptions/sub1"},
+            # resource-group scope → RG node
+            {
+                "principal_id": "sp-2",
+                "principal_type": "serviceprincipal",
+                "role_name": "Contributor",
+                "scope": "/subscriptions/sub1/resourceGroups/rg",
+            },
+        ],
+    }
+
+
+def _rbac_graph():
+    from agent_bom.graph.builder import build_unified_graph_from_report
+
+    g = build_unified_graph_from_report({"cloud_inventory": _rbac_inventory()})
+    edges = [e for e in g.edges if e.relationship.value == "has_permission"]
+    return g, edges
+
+
+def test_multiple_roles_same_scope_aggregate_to_one_edge() -> None:
+    g, edges = _rbac_graph()
+    kv_edges = [e for e in edges if e.target.endswith("kv1") or "kv1" in e.target]
+    assert len(kv_edges) == 1
+    assert set(kv_edges[0].evidence["roles"]) == {"Key Vault Administrator", "Reader"}
+    assert kv_edges[0].evidence["privileged"] is True  # Key Vault Administrator
+
+
+def test_assignment_scope_matches_inventoried_resource_node() -> None:
+    _, edges = _rbac_graph()
+    targets = {e.target for e in edges}
+    # the kv assignment lands on the SAME node id the inventory created, not a thin one
+    assert "cloud_resource:azure:secret_store:kv1" in targets
+
+
+def test_subscription_scope_targets_account_node_and_is_privileged() -> None:
+    _, edges = _rbac_graph()
+    owner = [e for e in edges if "Owner" in e.evidence.get("roles", [])]
+    assert owner and owner[0].target == "account:azure:sub1"
+    assert owner[0].evidence["privileged"] is True
+
+
+def test_resource_group_scope_creates_rg_node() -> None:
+    g, edges = _rbac_graph()
+    assert "cloud_resource:azure:resource_group:rg" in g.nodes
+    rg_edge = [e for e in edges if e.target == "cloud_resource:azure:resource_group:rg"]
+    assert rg_edge and "Contributor" in rg_edge[0].evidence["roles"]
+
+
+def test_no_role_assignments_is_noop() -> None:
+    from agent_bom.graph.builder import build_unified_graph_from_report
+
+    inv = {**_rbac_inventory(), "role_assignments": []}
+    g = build_unified_graph_from_report({"cloud_inventory": inv})
+    assert not [e for e in g.edges if e.relationship.value == "has_permission"]

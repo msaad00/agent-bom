@@ -247,6 +247,7 @@ def discover_inventory(
     container_clusters = collected.get("container_clusters", [])
     security_groups = collected.get("security_groups", [])
     managed_identities = collected.get("managed_identities", [])
+    role_assignments = collected.get("role_assignments", [])
     key_vaults = collected.get("key_vaults", [])
     container_registries = collected.get("container_registries", [])
     databases = collected.get("databases", [])
@@ -301,6 +302,7 @@ def discover_inventory(
         "container_clusters": container_clusters,
         "security_groups": security_groups,
         "managed_identities": managed_identities,
+        "role_assignments": role_assignments,
         "service_principals": [],
         "key_vaults": key_vaults,
         "container_registries": container_registries,

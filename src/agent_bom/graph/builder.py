@@ -927,6 +927,7 @@ def build_unified_graph_from_report(
     # per-provider payloads.
     for inventory_payload in _iter_cloud_inventories(report_json.get("cloud_inventory")):
         _add_cloud_inventory(graph, inventory_payload, data_source_tag)
+        _add_cloud_role_assignments(graph, inventory_payload, data_source_tag)
 
     _add_snowflake_object_graph(graph, report_json.get("snowflake_object_graph"), data_source_tag)
     _add_snowflake_exfil(graph, report_json.get("snowflake_exfil_graph"), data_source_tag)
@@ -2935,6 +2936,143 @@ def _add_snowflake_exfil(graph: UnifiedGraph, payload: Any, data_source: str) ->
                 },
                 data_sources=data_sources,
                 dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
+            )
+        )
+
+
+_RBAC_PRINCIPAL_ENTITY = {
+    "serviceprincipal": EntityType.SERVICE_PRINCIPAL,
+    "service_principal": EntityType.SERVICE_PRINCIPAL,
+    "user": EntityType.USER,
+    "group": EntityType.SERVICE_ACCOUNT,
+    "managedidentity": EntityType.MANAGED_IDENTITY,
+    "managed_identity": EntityType.MANAGED_IDENTITY,
+}
+# Roles that grant broad / privileged access — flagged on the edge for risk.
+_RBAC_PRIVILEGED_ROLES = {
+    "owner",
+    "contributor",
+    "user access administrator",
+    "role based access control administrator",
+    "key vault administrator",
+    "storage blob data owner",
+}
+
+
+def _add_cloud_role_assignments(graph: UnifiedGraph, inventory: Any, data_source: str) -> None:
+    """Turn cloud RBAC role assignments into ``HAS_PERMISSION`` edges.
+
+    Each assignment links a principal (by its directory object id) to a scope —
+    the subscription/account, a resource group, or a specific resource — via a
+    role. Principal and scope nodes are created when absent (so the CIEM graph is
+    complete even for principals not in the resource inventory), and merged onto
+    existing nodes when present. Resource scopes are matched to inventoried
+    resource nodes by their ARM ``resource_id``. Privileged roles mark the edge.
+    Never raises; missing/empty data is a no-op.
+    """
+    if not isinstance(inventory, dict):
+        return
+    assignments = inventory.get("role_assignments") or []
+    if not assignments:
+        return
+    provider = _clean_graph_part(inventory.get("provider")) or "azure"
+    account_id = _clean_graph_part(inventory.get("account_id") or inventory.get("subscription_id"))
+    data_sources = sorted({data_source, "cloud-rbac"} - {""})
+    account_node_id = _identity_node_id(EntityType.ACCOUNT, provider, account_id) if account_id else ""
+
+    # Index inventoried resource nodes by their ARM resource_id for scope match.
+    resource_by_arm: dict[str, str] = {}
+    for node in graph.nodes.values():
+        if node.entity_type == EntityType.CLOUD_RESOURCE:
+            arm = _clean_graph_part(node.attributes.get("resource_id"))
+            if arm:
+                resource_by_arm[arm.lower()] = node.id
+
+    def _scope_target(scope: str) -> str:
+        s = scope.rstrip("/")
+        low = s.lower()
+        # Exact resource match against inventory.
+        if low in resource_by_arm:
+            return resource_by_arm[low]
+        # Subscription scope → account node.
+        if account_node_id and low == f"/subscriptions/{account_id}".lower():
+            return account_node_id
+        # Resource-group scope → a resource-group node.
+        if "/resourcegroups/" in low and "/providers/" not in low:
+            rg = s.rsplit("/", 1)[-1]
+            rg_id = f"cloud_resource:{provider}:resource_group:{rg}"
+            if rg_id not in graph.nodes:
+                graph.add_node(
+                    UnifiedNode(
+                        id=rg_id,
+                        entity_type=EntityType.CLOUD_RESOURCE,
+                        label=f"resource group: {rg}",
+                        attributes={"resource_name": rg, "resource_type": "resource_group", "cloud_provider": provider, "resource_id": s},
+                        data_sources=data_sources,
+                        dimensions=NodeDimensions(cloud_provider=provider),
+                    )
+                )
+            return rg_id
+        # A specific resource not in inventory → thin resource node.
+        thin_id = f"cloud_resource:{provider}:scope:{low}"
+        if thin_id not in graph.nodes:
+            graph.add_node(
+                UnifiedNode(
+                    id=thin_id,
+                    entity_type=EntityType.CLOUD_RESOURCE,
+                    label=s.rsplit("/", 1)[-1] or s,
+                    attributes={"resource_id": s, "cloud_provider": provider},
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider=provider),
+                )
+            )
+        return thin_id
+
+    # Group by (principal, scope) so a principal with several roles on the same
+    # scope yields ONE edge carrying all roles — edge dedup would otherwise drop
+    # all but the first role (seen live: an SP with 3 roles on one storage account).
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for ra in assignments:
+        if not isinstance(ra, dict):
+            continue
+        principal_id = _clean_graph_part(ra.get("principal_id"))
+        scope = _clean_graph_part(ra.get("scope"))
+        if not principal_id or not scope:
+            continue
+        ptype = str(ra.get("principal_type", "") or "").lower().replace("-", "").replace("_", "")
+        key = (principal_id, scope.rstrip("/"))
+        entry = grouped.setdefault(key, {"principal_type": ptype, "roles": []})
+        role_name = _clean_graph_part(ra.get("role_name"))
+        if role_name and role_name not in entry["roles"]:
+            entry["roles"].append(role_name)
+
+    for (principal_id, scope), entry in grouped.items():
+        ptype = entry["principal_type"]
+        entity = _RBAC_PRINCIPAL_ENTITY.get(ptype, EntityType.SERVICE_PRINCIPAL)
+        principal_node_id = _identity_node_id(entity, provider, principal_id)
+        graph.add_node(
+            UnifiedNode(
+                id=principal_node_id,
+                entity_type=entity,
+                label=f"{ptype or 'principal'}: {principal_id[:8]}",
+                attributes={"principal_id": principal_id, "principal_type": ptype, "cloud_provider": provider},
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+            )
+        )
+        roles = entry["roles"]
+        graph.add_edge(
+            UnifiedEdge(
+                source=principal_node_id,
+                target=_scope_target(scope),
+                relationship=RelationshipType.HAS_PERMISSION,
+                evidence={
+                    "source": "cloud-rbac",
+                    "roles": roles,
+                    "role": roles[0] if roles else "",
+                    "privileged": any(r.lower() in _RBAC_PRIVILEGED_ROLES for r in roles),
+                    "scope": scope,
+                },
             )
         )
 

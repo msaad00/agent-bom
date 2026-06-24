@@ -1213,6 +1213,8 @@ def to_json(report: AIBOMReport) -> dict:
         result["snowflake_pipeline"] = report.snowflake_pipeline_data
     if report.snowflake_integrations_data:
         result["snowflake_integrations"] = report.snowflake_integrations_data
+    if report.snowflake_external_data_data:
+        result["snowflake_external_data"] = report.snowflake_external_data_data
 
     if report.azure_cis_benchmark_data:
         result["azure_cis_benchmark"] = report.azure_cis_benchmark_data

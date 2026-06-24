@@ -2925,6 +2925,162 @@ def discover_snowflake_integrations(
     return result
 
 
+_SF_EXTERNAL_SCHEMES = {"s3": "aws", "s3gov": "aws", "azure": "azure", "gcs": "gcp"}
+
+
+def _parse_external_location(url: str) -> tuple[str, str]:
+    """Return (cloud_provider, bucket) for an s3:// / azure:// / gcs:// path, else ('','')."""
+    if "://" not in (url or ""):
+        return "", ""
+    scheme, rest = url.split("://", 1)
+    cloud = _SF_EXTERNAL_SCHEMES.get(scheme.lower(), "")
+    if not cloud:
+        return "", ""
+    return cloud, rest.split("/", 1)[0]
+
+
+def discover_snowflake_external_data(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> dict[str, Any]:
+    """Inventory Snowflake open-table-format + external data objects (read-only).
+
+    The data that physically lives outside Snowflake-managed storage:
+
+    * **Iceberg tables** (`SHOW ICEBERG TABLES IN ACCOUNT`) — Apache Iceberg
+      tables, with their external base location (cloud bucket) and catalog
+      (Snowflake-managed or external / Polaris-Open-Catalog).
+    * **External tables** (`SHOW EXTERNAL TABLES IN ACCOUNT`) — query-in-place
+      over files in a stage, with the backing stage/location.
+
+    Both point at off-account storage, so they are data-residency / exfil
+    relevant; the graph links them to the destination bucket (the same node a
+    cloud scan emits) and to their stage.
+
+    Returns ``status``, ``account``, ``iceberg_tables``, ``external_tables``,
+    ``findings``, ``warnings``. Object metadata only; never the data.
+
+    Raises:
+        CloudDiscoveryError: if snowflake-connector-python is not installed.
+    """
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake external-data discovery. Install with: pip install 'agent-bom[snowflake]'"
+        )
+
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "account": resolved_account,
+        "iceberg_tables": [],
+        "external_tables": [],
+        "findings": [],
+        "warnings": [],
+    }
+    warnings: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "no_account"
+        warnings.append("SNOWFLAKE_ACCOUNT not set.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator, database, schema)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+        return result
+
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW ICEBERG TABLES IN ACCOUNT")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                db = str(r.get("database_name", "") or "")
+                sch = str(r.get("schema_name", "") or "")
+                if not name:
+                    continue
+                base_location = str(r.get("base_location", "") or r.get("external_volume", "") or "")
+                cloud, bucket = _parse_external_location(base_location)
+                result["iceberg_tables"].append(
+                    {
+                        "name": name,
+                        "fqn": _split_fqn_parts(name, db, sch),
+                        "catalog": str(r.get("catalog", "") or ""),
+                        "catalog_source": str(r.get("catalog_source", "") or ""),
+                        "base_location": base_location,
+                        "cloud_provider": cloud,
+                        "bucket": bucket,
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list Iceberg tables: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SHOW EXTERNAL TABLES IN ACCOUNT")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                name = str(r.get("name", ""))
+                db = str(r.get("database_name", "") or "")
+                sch = str(r.get("schema_name", "") or "")
+                if not name:
+                    continue
+                location = str(r.get("location", "") or "")
+                # location is typically @db.schema.stage/path — capture the stage.
+                stage = ""
+                if location.startswith("@"):
+                    stage = location[1:].split("/", 1)[0]
+                result["external_tables"].append(
+                    {
+                        "name": name,
+                        "fqn": _split_fqn_parts(name, db, sch),
+                        "location": location,
+                        "stage": stage,
+                        "file_format": str(r.get("file_format_name", "") or r.get("file_format_type", "") or ""),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Could not list external tables: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        external_catalog = [
+            t["fqn"] for t in result["iceberg_tables"] if t["catalog_source"] and t["catalog_source"].upper() not in ("SNOWFLAKE", "")
+        ]
+        if external_catalog:
+            result["findings"].append(
+                {
+                    "severity": "low",
+                    "title": "Iceberg tables on an external catalog",
+                    "detail": f"{len(external_catalog)} Iceberg table(s) use an external catalog; governance is shared externally.",
+                }
+            )
+        if result["external_tables"]:
+            result["findings"].append(
+                {
+                    "severity": "low",
+                    "title": "External tables query data in place",
+                    "detail": f"{len(result['external_tables'])} external table(s) read files from a stage outside Snowflake storage.",
+                }
+            )
+        result["status"] = "ok"
+    finally:
+        conn.close()
+    return result
+
+
 def discover_activity(
     account: str | None = None,
     user: str | None = None,

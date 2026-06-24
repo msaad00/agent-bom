@@ -1815,6 +1815,15 @@ def scan(
                 report.snowflake_integrations_data = _sf_integrations
         except Exception:  # noqa: BLE001 — integration inventory is supplementary; never fail the scan
             pass
+        # External data: iceberg + external tables (open-table-format / query-in-place). Best-effort.
+        try:
+            from agent_bom.cloud.snowflake import discover_snowflake_external_data
+
+            _sf_external = discover_snowflake_external_data()
+            if _sf_external.get("status") == "ok" and (_sf_external.get("iceberg_tables") or _sf_external.get("external_tables")):
+                report.snowflake_external_data_data = _sf_external
+        except Exception:  # noqa: BLE001 — external-data inventory is supplementary; never fail the scan
+            pass
     if ctx.azure_cis_benchmark_report is not None:
         report.azure_cis_benchmark_data = ctx.azure_cis_benchmark_report.to_dict()
     if ctx.gcp_cis_benchmark_report is not None:

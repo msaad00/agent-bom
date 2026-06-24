@@ -562,9 +562,7 @@ def test_gcp_project_bucket_does_not_drop_endpoint_only_cross_project_candidate(
 
     matches = correlate_gcp_vertex([local, unrelated, _cloud_gcp_vertex_endpoint()])
 
-    assert [(match.cloud_agent_name, match.matched_signals) for match in matches] == [
-        ("vertex-ai:gemini-prod-endpoint", ("endpoint_id",))
-    ]
+    assert [(match.cloud_agent_name, match.matched_signals) for match in matches] == [("vertex-ai:gemini-prod-endpoint", ("endpoint_id",))]
 
 
 def test_gcp_endpoint_resource_path_in_env_supplies_all_three_signals() -> None:

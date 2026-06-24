@@ -134,6 +134,12 @@ class ScanJob(BaseModel):
 
     job_id: str
     tenant_id: str = "default"
+    batch_id: str | None = None
+    parent_job_id: str | None = None
+    child_job_ids: list[str] = Field(default_factory=list)
+    target: dict[str, Any] | None = None
+    target_index: int | None = None
+    target_count: int | None = None
     source_id: str | None = None
     schedule_id: str | None = None
     triggered_by: str | None = None

@@ -228,15 +228,33 @@ class SnowflakeJobStore:
             summaries: list[dict] = []
             for row in cur.fetchall():
                 triggered_by = None
+                batch_id = None
+                parent_job_id = None
+                child_job_ids: list[str] = []
+                target = None
+                target_index = None
+                target_count = None
                 if len(row) > 5:
                     job = ScanJob.model_validate_json(row[5] if isinstance(row[5], str) else json.dumps(row[5]))
                     triggered_by = job.triggered_by
+                    batch_id = job.batch_id
+                    parent_job_id = job.parent_job_id
+                    child_job_ids = list(job.child_job_ids)
+                    target = job.target
+                    target_index = job.target_index
+                    target_count = job.target_count
                 summaries.append(
                     {
                         "job_id": row[0],
                         "tenant_id": row[1],
                         "triggered_by": triggered_by,
                         "schedule_id": row[6] if len(row) > 6 else None,
+                        "batch_id": batch_id,
+                        "parent_job_id": parent_job_id,
+                        "child_job_ids": child_job_ids,
+                        "target": target,
+                        "target_index": target_index,
+                        "target_count": target_count,
                         "status": row[2],
                         "created_at": str(row[3]) if row[3] else None,
                         "completed_at": str(row[4]) if row[4] else None,

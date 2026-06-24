@@ -29,9 +29,13 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-import agent_bom.api.models as models_module
-
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+import agent_bom.api.models as models_module  # noqa: E402
+
 SCHEMA_DIR = ROOT / "docs" / "schemas" / "v1"
 INDEX_FILE = SCHEMA_DIR / "index.json"
 

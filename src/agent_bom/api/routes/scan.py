@@ -50,6 +50,7 @@ from agent_bom.api.models import (
     TrainingPipelinesRequest,
 )
 from agent_bom.api.pipeline import _now, submit_scan_job
+from agent_bom.api.scan_batches import child_request_for_target, refresh_batch_parent, scan_request_targets
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 from agent_bom.api.stores import (
     _get_store,
@@ -514,6 +515,12 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
     return {
         "job_id": job.job_id,
         "tenant_id": job.tenant_id,
+        "batch_id": job.batch_id,
+        "parent_job_id": job.parent_job_id,
+        "child_job_ids": list(job.child_job_ids),
+        "target": job.target,
+        "target_index": job.target_index,
+        "target_count": job.target_count,
         "source_id": job.source_id,
         "schedule_id": job.schedule_id,
         "status": job.status,
@@ -536,11 +543,20 @@ def _job_for_request(request: Request, job_id: str) -> ScanJob:
         if _jobs_is_compacted(in_mem):
             persisted = _get_store().get(job_id, tenant_id=tenant_id)
             if persisted is not None:
+                if persisted.child_job_ids:
+                    refreshed = refresh_batch_parent(persisted.job_id, tenant_id=tenant_id)
+                    return refreshed or persisted
                 return persisted
+        if in_mem.child_job_ids:
+            refreshed = refresh_batch_parent(in_mem.job_id, tenant_id=tenant_id)
+            return refreshed or in_mem
         return in_mem
     job = _get_store().get(job_id, tenant_id=tenant_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    if job.child_job_ids:
+        refreshed = refresh_batch_parent(job.job_id, tenant_id=tenant_id)
+        return refreshed or job
     return job
 
 
@@ -572,6 +588,79 @@ def enqueue_scan_job(
 ) -> ScanJob:
     """Persist and queue a scan job for async execution."""
     store = _get_store()
+    targets = scan_request_targets(request_body)
+
+    def _dispatch(job: ScanJob) -> None:
+        # In a clustered control plane, hand the job to the shared dispatch queue
+        # so any replica can claim and run it (work-stealing). Single-node
+        # deployments keep running the job on this process directly.
+        from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
+
+        if distributed_scans_enabled() and store_supports_dispatch(store):
+            store.enqueue_for_dispatch(job)
+        else:
+            submit_scan_job(job)
+
+    if len(targets) > 1:
+        batch_id = str(uuid.uuid4())
+        now = _now()
+        parent_job_id = str(uuid.uuid4())
+        child_jobs: list[ScanJob] = []
+        for index, target in enumerate(targets, start=1):
+            child_jobs.append(
+                ScanJob(
+                    job_id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    batch_id=batch_id,
+                    parent_job_id=parent_job_id,
+                    target=target,
+                    target_index=index,
+                    target_count=len(targets),
+                    source_id=source_id,
+                    triggered_by=triggered_by,
+                    created_at=now,
+                    request=child_request_for_target(request_body, target),
+                )
+            )
+
+        parent = ScanJob(
+            job_id=parent_job_id,
+            tenant_id=tenant_id,
+            batch_id=batch_id,
+            child_job_ids=[job.job_id for job in child_jobs],
+            source_id=source_id,
+            triggered_by=triggered_by,
+            status=JobStatus.RUNNING,
+            created_at=now,
+            started_at=now,
+            request=request_body,
+            progress=[f"Batch scan created with {len(child_jobs)} target job(s)"],
+            target_count=len(targets),
+        )
+
+        attempted_jobs = len(child_jobs) + 1
+        with tenant_quota_guard(
+            tenant_id,
+            lambda: enforce_active_scan_quota(tenant_id, attempted=attempted_jobs),
+            lambda: enforce_retained_jobs_quota(tenant_id, attempted=attempted_jobs),
+        ):
+            store.put(parent)
+            _jobs_put(parent.job_id, parent)
+            for child in child_jobs:
+                store.put(child)
+                _jobs_put(child.job_id, child)
+            try:
+                refresh_batch_parent(parent.job_id, tenant_id=tenant_id)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                reconcile_scan_jobs_active(store)
+            except Exception:  # noqa: BLE001
+                pass
+
+        for child in child_jobs:
+            _dispatch(child)
+        return parent
 
     job = ScanJob(
         job_id=str(uuid.uuid4()),
@@ -600,15 +689,7 @@ def enqueue_scan_job(
         except Exception:  # noqa: BLE001
             pass
 
-    # In a clustered control plane, hand the job to the shared dispatch queue so
-    # any replica can claim and run it (work-stealing). Single-node deployments
-    # keep running the job on this process directly.
-    from agent_bom.api.scan_queue import distributed_scans_enabled, store_supports_dispatch
-
-    if distributed_scans_enabled() and store_supports_dispatch(store):
-        store.enqueue_for_dispatch(job)
-    else:
-        submit_scan_job(job)
+    _dispatch(job)
     return job
 
 

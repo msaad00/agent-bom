@@ -194,7 +194,31 @@ class MockConnection:
                 cursor.rows = [(r[-1],) for r in rows]
             elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at, triggered_by" in sql_lower:
                 rows = list(self._store.get("scan_jobs", {}).values())
-                cursor.rows = [(r[0], r[1], r[2], r[3], r[4], (r[5] if len(r) > 5 else None), (r[6] if len(r) > 6 else None)) for r in rows]
+                summary_rows = []
+                for r in rows:
+                    if len(r) >= 14:
+                        # Stored from PostgresJobStore.put INSERT param order.
+                        summary_rows.append((r[0], r[4], r[1], r[2], r[3], r[12], r[11], r[5], r[6], r[7], r[8], r[9], r[10]))
+                    else:
+                        # Older tests seed rows in SELECT projection order.
+                        summary_rows.append(
+                            (
+                                r[0],
+                                r[1],
+                                r[2],
+                                r[3],
+                                r[4],
+                                (r[5] if len(r) > 5 else None),
+                                (r[6] if len(r) > 6 else None),
+                                (r[7] if len(r) > 7 else None),
+                                (r[8] if len(r) > 8 else None),
+                                (r[9] if len(r) > 9 else "[]"),
+                                (r[10] if len(r) > 10 else "null"),
+                                (r[11] if len(r) > 11 else None),
+                                (r[12] if len(r) > 12 else None),
+                            )
+                        )
+                cursor.rows = summary_rows
             elif "from fleet_agents" in sql_lower and "agent_id, canonical_id, name, lifecycle_state, trust_score" in sql_lower:
                 rows = list(self._store.get("fleet_agents", {}).values())
                 cursor.rows = [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
@@ -348,8 +372,8 @@ def test_job_store_persists_triggered_by(mock_pool):
     insert_sql, insert_params = next((sql, params) for sql, params in reversed(mock_pool._conn.executed) if "INSERT INTO scan_jobs" in sql)
     assert "triggered_by" in insert_sql
     assert "schedule_id" in insert_sql
-    assert insert_params[5] == "sched-alpha"
-    assert insert_params[6] == "analyst@example.com"
+    assert insert_params[11] == "sched-alpha"
+    assert insert_params[12] == "analyst@example.com"
 
 
 def test_job_store_get_nonexistent(mock_pool):

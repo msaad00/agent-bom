@@ -311,6 +311,33 @@ def test_sqlite_list_summary():
         Path(db_path).unlink(missing_ok=True)
 
 
+def test_sqlite_list_summary_includes_scan_batch_metadata():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        store = SQLiteJobStore(db_path=db_path)
+        job = _make_job(
+            "child-1",
+            batch_id="batch-1",
+            parent_job_id="parent-1",
+            target={"field": "images", "value": "repo/a:latest", "ordinal": 0},
+            target_index=1,
+            target_count=2,
+        )
+        store.put(job)
+
+        summary = store.list_summary()
+
+        assert summary[0]["batch_id"] == "batch-1"
+        assert summary[0]["parent_job_id"] == "parent-1"
+        assert summary[0]["target"] == {"field": "images", "value": "repo/a:latest", "ordinal": 0}
+        assert summary[0]["target_index"] == 1
+        assert summary[0]["target_count"] == 2
+        assert summary[0]["child_job_ids"] == []
+    finally:
+        Path(db_path).unlink(missing_ok=True)
+
+
 def test_sqlite_list_summary_does_not_hydrate_full_result(monkeypatch):
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name

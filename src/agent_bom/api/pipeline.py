@@ -1090,6 +1090,13 @@ def _run_scan_sync(job: ScanJob) -> None:
         if not bool(getattr(store, "retains_job_objects_in_memory", True)):
             _compact_terminal_job_in_place(job)
         _jobs_put(job.job_id, job, compact_terminal=True)
+        if job.parent_job_id:
+            try:
+                from agent_bom.api.scan_batches import refresh_batch_parent
+
+                refresh_batch_parent(job.parent_job_id, tenant_id=job.tenant_id or "default")
+            except Exception:  # noqa: BLE001
+                _logger.exception("Failed to refresh scan batch parent job=%s child=%s", job.parent_job_id, job.job_id)
         _release_scan_memory()
         # Update operator-visible scan metrics. The active gauge feeds
         # the KEDA scaler in deploy/helm/agent-bom; the completion

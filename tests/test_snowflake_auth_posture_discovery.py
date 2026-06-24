@@ -50,6 +50,10 @@ class _FakeCursor:
                 ("SVC_PIPE", False, False, True, False, "INGEST", "SERVICE", False),
                 # disabled → ignored
                 ("OLD_USER", True, True, False, False, "PUBLIC", "PERSON", False),
+                # human, password, no MFA, EMPTY type column → must still be flagged
+                # (live regression: empty type defaulted to lowercase "unknown" and
+                # the uppercase "UNKNOWN" filter missed it — an ACCOUNTADMIN slipped through)
+                ("ADMIN_X", False, True, False, False, "ACCOUNTADMIN", "", False),
             ]
         else:
             self.description = []
@@ -106,8 +110,9 @@ def test_password_user_without_mfa_flagged_excludes_service_and_disabled(monkeyp
     out = _run(monkeypatch, account_np="CORP_POLICY")  # set account policy so only the MFA finding remains
     mfa_findings = [f for f in out["findings"] if f["title"] == "Password users without MFA"]
     assert mfa_findings, "expected an MFA finding"
-    # Only WSAAD qualifies: ALICE has MFA, SVC_PIPE is service, OLD_USER disabled.
-    assert "1 enabled human user" in mfa_findings[0]["detail"]
+    # WSAAD (PERSON) + ADMIN_X (empty type) qualify; ALICE has MFA, SVC_PIPE is
+    # service, OLD_USER disabled. The empty-type user must NOT be missed.
+    assert "2 enabled human user" in mfa_findings[0]["detail"]
     assert out["status"] == "ok"
 
 

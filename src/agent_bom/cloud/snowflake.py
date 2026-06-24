@@ -2453,7 +2453,7 @@ def discover_auth_posture(
                         "disabled": disabled,
                         "auth_methods": auth_methods,
                         "has_mfa": has_mfa,
-                        "user_type": user_type or "unknown",
+                        "user_type": user_type or "UNKNOWN",
                         "default_role": str(r.get("default_role", "") or ""),
                     }
                 )

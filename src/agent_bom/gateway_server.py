@@ -59,6 +59,7 @@ from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc, policy_subject_from_message
 from agent_bom.proxy_policy import check_policy_warning, summarize_policy_bundle
+from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")
@@ -95,6 +96,7 @@ def _public_gateway_block_reason(policy_source: str) -> str:
         "identity_scope": "Identity scope blocked this tool",
         "identity_jit": "Gateway policy blocked this request",
         "firewall": "Inter-agent firewall blocked this request",
+        "graph_reachability": "Graph reachability policy blocked this request",
     }.get(policy_source, "Gateway policy blocked this request")
 
 
@@ -133,6 +135,18 @@ class GatewaySettings:
     # without touching the MCP allow/deny patterns.
     firewall_policy_path: Path | None = None
     firewall_policy_reload_interval_seconds: int = 0
+    # Graph-derived reachability enforcement (consume direction). The unified
+    # graph statically detects which agents reach a credential / privileged-tool
+    # node (the AGENT_REACHES_PRIVILEGED toxic-combination rule). Today that is
+    # advisory-only. Point this at a scan-report JSON and an over-reaching agent's
+    # FIRST call against one of its reachable privileged tools is blocked
+    # ("enforce") or flagged ("warn") in-path — pre-emptively, before any runtime
+    # correlation. Default "off" + no facts path = zero behaviour change. Loading
+    # is read-only/no-network and fail-safe: a missing/malformed report is a no-op
+    # and never breaks a relay. The reverse runtime→graph feedback loop is a
+    # documented follow-up and is NOT wired here.
+    graph_reachability_path: Path | None = None
+    graph_reachability_enforcement_mode: str = "off"
     upstream_failure_threshold: int = 3
     upstream_circuit_cooldown_seconds: float = 30.0
     upstream_http_timeout_seconds: float = 30.0
@@ -836,6 +850,20 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     }
     firewall_lock = asyncio.Lock()
     firewall_reload_task: asyncio.Task[None] | None = None
+
+    # Graph-derived reachability facts (consume direction). Loaded once at build
+    # time from a static scan-report JSON; fail-safe (a missing/malformed report
+    # yields an empty no-op map and is logged, never raised). Enforcement is only
+    # active when a facts path is set AND graph_reachability_enforcement_mode is
+    # warn/enforce — otherwise this is dead-weight default-allow.
+    reachability_map: ReachabilityMap = load_reachability_map(settings.graph_reachability_path)
+    if settings.graph_reachability_path is not None:
+        logger.info(
+            "gateway graph-reachability facts loaded from %s: %d agent(s), mode=%s",
+            _sanitize_for_log(settings.graph_reachability_path),
+            len(reachability_map.by_agent),
+            _sanitize_for_log(settings.graph_reachability_enforcement_mode),
+        )
 
     async def _reload_firewall_policy_if_changed(force: bool = False) -> bool:
         if settings.firewall_policy_path is None:
@@ -1639,6 +1667,64 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                 "source_agent": source_agent,
                                 "tool": tool_name,
                                 "reason": drift_reason,
+                            }
+                        )
+            # Graph reachability enforcement (consume direction): the unified
+            # graph statically flagged this source_agent as reaching a credential
+            # / privileged-tool node (AGENT_REACHES_PRIVILEGED). When the call's
+            # target tool is one of those reachable privileged nodes, block the
+            # FIRST attempt ("enforce") or flag it ("warn") — pre-emptively,
+            # before any runtime call-sequence correlation. Off by default and a
+            # no-op when no facts are loaded; fail-safe so it never breaks a relay.
+            if allowed and reachability_map and settings.graph_reachability_enforcement_mode in ("warn", "enforce"):
+                try:
+                    reach_hit = reachability_map.reaches_privileged(source_agent, tool_name)
+                except Exception as exc:  # noqa: BLE001 — fail-open, never break the relay
+                    logger.warning("gateway graph-reachability check failed: %s", _sanitize_for_log(exc))
+                    reach_hit = None
+                if reach_hit is not None:
+                    reach_reason = (
+                        f"agent '{source_agent}' statically reaches privileged/credential node "
+                        f"'{tool_name}' ({reach_hit.rule_id}); blocking pre-emptively"
+                    )
+                    if settings.graph_reachability_enforcement_mode == "enforce":
+                        allowed, reason, policy_source = False, reach_reason, "graph_reachability"
+                        if settings.audit_sink is not None:
+                            await settings.audit_sink(
+                                {
+                                    "action": "gateway.graph_reachability_blocked",
+                                    "upstream": upstream.name,
+                                    "tenant_id": tenant_id,
+                                    "source_agent": source_agent,
+                                    "tool": tool_name,
+                                    "rule_id": reach_hit.rule_id,
+                                    "severity": reach_hit.severity,
+                                    "reason": reach_reason,
+                                }
+                            )
+                        _emit_gateway_governance_event(
+                            "graph_reachability.blocked",
+                            tenant_id=tenant_id,
+                            subject_id=source_agent,
+                            payload={
+                                "source_agent": source_agent,
+                                "tool": tool_name,
+                                "rule_id": reach_hit.rule_id,
+                                "severity": reach_hit.severity,
+                                "reason": reach_reason,
+                            },
+                        )
+                    elif settings.audit_sink is not None:
+                        await settings.audit_sink(
+                            {
+                                "action": "gateway.graph_reachability_warned",
+                                "upstream": upstream.name,
+                                "tenant_id": tenant_id,
+                                "source_agent": source_agent,
+                                "tool": tool_name,
+                                "rule_id": reach_hit.rule_id,
+                                "severity": reach_hit.severity,
+                                "reason": reach_reason,
                             }
                         )
             if not allowed:

@@ -16,14 +16,80 @@ Supported file types:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# ── Obfuscation normalization ──────────────────────────────────────────────
+# Adversarial prompt injections evade naive keyword matching via Unicode
+# homoglyphs, zero-width separators, leetspeak, and base64 encoding. We match
+# every pattern against BOTH the raw text and a normalized projection so these
+# bypasses are caught. Detection only — the projection is never persisted.
+
+# Zero-width / invisible separators an attacker inserts between letters.
+_ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠⁡⁢⁣⁤﻿­͏᠎"), None)
+# Common Cyrillic/Greek homoglyphs → Latin (NFKC misses these script confusables).
+_HOMOGLYPHS = {
+    ord(src): dst
+    for src, dst in {
+        "а": "a",
+        "е": "e",
+        "о": "o",
+        "р": "p",
+        "с": "c",
+        "х": "x",
+        "у": "y",
+        "ѕ": "s",
+        "і": "i",
+        "ј": "j",
+        "ԁ": "d",
+        "ո": "n",
+        "һ": "h",
+        "ɡ": "g",
+        "ⅼ": "l",
+        "α": "a",
+        "ε": "e",
+        "ο": "o",
+        "ρ": "p",
+        "ι": "i",
+        "κ": "k",
+        "ν": "v",
+        "τ": "t",
+    }.items()
+}
+# Leetspeak substitutions (applied to a separate projection to limit false positives).
+_LEET = str.maketrans({"4": "a", "3": "e", "1": "i", "0": "o", "5": "s", "7": "t", "@": "a", "$": "s"})
+_B64_RUN = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")
+
+
+def _normalize_for_matching(text: str) -> str:
+    """Return a normalized projection of ``text`` for obfuscation-resistant matching.
+
+    Folds Unicode (NFKC + homoglyphs), strips zero-width separators, de-leets, and
+    appends any decoded base64 payloads — so injections hidden via homoglyph,
+    zero-width, leetspeak, or base64 still match the keyword patterns. Newline
+    structure is not preserved (this projection is for presence detection only;
+    line numbers come from the raw pass).
+    """
+    folded = unicodedata.normalize("NFKC", text).translate(_ZERO_WIDTH).translate(_HOMOGLYPHS)
+    decoded: list[str] = []
+    for m in _B64_RUN.finditer(text):
+        chunk = m.group(0)
+        try:
+            raw = base64.b64decode(chunk + "===", validate=False).decode("utf-8", "ignore")
+        except Exception:  # noqa: BLE001
+            continue
+        if len(raw) > 6 and sum(c.isprintable() for c in raw) / len(raw) > 0.8:
+            decoded.append(raw)
+    return "\n".join([folded, folded.translate(_LEET), *decoded])
+
 
 # ── File discovery patterns ──────────────────────────────────────────────────
 
@@ -152,10 +218,52 @@ _SECRET_PATTERNS = [
 _INJECTION_PATTERNS = [
     (
         re.compile(
-            r"""ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|rules?|constraints?)""",
+            r"""(?:ignore|disregard|forget|override|bypass|skip)\s+"""
+            r"""(?:all\s+|the\s+|any\s+|your\s+)*"""
+            r"""(?:previous|prior|above|earlier|preceding|former|original|system|these)\s+"""
+            r"""(?:instructions?|rules?|constraints?|prompts?|guidelines?|directions?|commands?|context)""",
             re.IGNORECASE,
         ),
         "Prompt injection: ignore previous instructions",
+    ),
+    (
+        # Same intent with the qualifier AFTER the noun ("the rules above").
+        re.compile(
+            r"""(?:ignore|disregard|forget|override|bypass|skip)\s+"""
+            r"""(?:all\s+|the\s+|any\s+|your\s+)*"""
+            r"""(?:instructions?|rules?|constraints?|guidelines?|directions?|prompts?)\s+"""
+            r"""(?:above|below|earlier|here|given|provided|stated)""",
+            re.IGNORECASE,
+        ),
+        "Prompt injection: ignore previous instructions",
+    ),
+    (
+        # Indirect injection: embedded SYSTEM/ASSISTANT directives or HTML-comment
+        # smuggling — the #1 vector for poisoned documents and MCP tool descriptions.
+        re.compile(
+            r"""(?:\[\[?\s*|<!--\s*|\{\{\s*)?\b(?:system|assistant|ai|agent)\s*[:>]\s*"""
+            r"""(?:ignore|exfiltrat|send|call|execute|run|reveal|leak|transfer|delete|disregard)""",
+            re.IGNORECASE,
+        ),
+        "Indirect prompt injection: embedded system directive",
+    ),
+    (
+        # System-prompt / configuration disclosure attempts.
+        re.compile(
+            r"""(?:repeat|reveal|print|show|output|disclose|leak)\s+(?:me\s+)?(?:your\s+|the\s+|all\s+)*"""
+            r"""(?:initial\s+|system\s+|original\s+|hidden\s+|above\s+)*"""
+            r"""(?:prompt|instructions?|configuration|config|rules?|guidelines?|directives?)""",
+            re.IGNORECASE,
+        ),
+        "Prompt injection: system-prompt disclosure attempt",
+    ),
+    (
+        re.compile(
+            r"""(?:developer|debug|god|admin|root|dan|jailbreak)\s+mode\s+"""
+            r"""(?:enabled?|activated?|on\b|is\s+now)""",
+            re.IGNORECASE,
+        ),
+        "Jailbreak pattern: mode-override persona",
     ),
     (
         re.compile(
@@ -205,7 +313,10 @@ _UNSAFE_INSTRUCTION_PATTERNS = [
     ),
     (
         re.compile(
-            r"""(?:send|post|upload|exfiltrate)\s+(?:data|results?|output)\s+to\s+(?:https?://|webhook)""",
+            r"""(?:send|post|upload|exfiltrate|email|forward|leak|transmit|copy|deliver)\s+"""
+            r"""(?:me\s+|the\s+|all\s+|your\s+|any\s+|this\s+)*"""
+            r"""(?:data|results?|output|conversation|history|context|secrets?|credentials?|keys?|tokens?|files?|contents?)\s+"""
+            r"""(?:to|over\s+to|via)\s+(?:https?://|webhook|[\w.+-]+@|attacker|evil|ngrok)""",
             re.IGNORECASE,
         ),
         "Data exfiltration instruction",
@@ -433,6 +544,30 @@ def _analyze_content(
                     recommendation="Remove sensitive data from prompt templates. Use parameterized inputs.",
                 )
             )
+
+    # Obfuscation-resistant pass: re-run the injection + unsafe-instruction
+    # patterns against a normalized projection (homoglyph/zero-width/leet/base64
+    # decoded) so an attack hidden by encoding is still caught. Findings whose
+    # title was already raised in the raw pass are skipped.
+    seen_titles = {f.title for f in findings}
+    normalized = _normalize_for_matching(content)
+    if normalized != content:
+        for pattern, title in (*_INJECTION_PATTERNS, *_UNSAFE_INSTRUCTION_PATTERNS):
+            nmatch = pattern.search(normalized)
+            if nmatch and title not in seen_titles:
+                seen_titles.add(title)
+                findings.append(
+                    PromptFinding(
+                        severity="high",
+                        category="prompt_injection",
+                        title=f"{title} (obfuscated)",
+                        detail="Detected only after de-obfuscation (homoglyph/zero-width/leetspeak/base64).",
+                        source_file=source_file,
+                        line_number=1,
+                        matched_text=nmatch.group(0)[:100],
+                        recommendation="An injection was hidden via text obfuscation — treat the source as hostile.",
+                    )
+                )
 
     return findings
 

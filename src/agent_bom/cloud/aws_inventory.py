@@ -82,15 +82,20 @@ _AWS_DATA_PERMISSIONS: tuple[str, ...] = (
     "rds:DescribeDBInstances",
     "dynamodb:ListTables",
     "dynamodb:DescribeTable",
+    "redshift:DescribeClusters",
 )
 _AWS_COMPUTE_PERMISSIONS: tuple[str, ...] = (
     "lambda:ListFunctions",
     "eks:ListClusters",
     "eks:DescribeCluster",
+    "ecr:DescribeRepositories",
 )
 _AWS_NETWORK_PERMISSIONS: tuple[str, ...] = (
     "elasticloadbalancing:DescribeLoadBalancers",
     "ec2:DescribeVpcs",
+    "cloudfront:ListDistributions",
+    "sns:ListTopics",
+    "sqs:ListQueues",
 )
 _AWS_SECURITY_PERMISSIONS: tuple[str, ...] = (
     "kms:ListKeys",
@@ -161,6 +166,10 @@ def discover_inventory(
         "vpcs": [],
         "kms_keys": [],
         "secrets": [],
+        "cloudfront_distributions": [],
+        "ecr_repositories": [],
+        "redshift_clusters": [],
+        "messaging": [],
         "warnings": [],
         "discovery_envelope": None,
     }
@@ -206,6 +215,10 @@ def discover_inventory(
     vpcs: list[dict[str, Any]] = []
     kms_keys: list[dict[str, Any]] = []
     secrets: list[dict[str, Any]] = []
+    cloudfront_distributions: list[dict[str, Any]] = []
+    ecr_repositories: list[dict[str, Any]] = []
+    redshift_clusters: list[dict[str, Any]] = []
+    messaging: list[dict[str, Any]] = []
 
     try:
         if include_s3:
@@ -219,12 +232,16 @@ def discover_inventory(
             dynamodb_tables = _discover_dynamodb(session, resolved_region, account_id=account_id, warnings=warnings)
             kms_keys = _discover_kms(session, resolved_region, account_id=account_id, warnings=warnings)
             secrets = _discover_secrets(session, resolved_region, account_id=account_id, warnings=warnings)
+            redshift_clusters = _discover_redshift(session, resolved_region, account_id=account_id, warnings=warnings)
         if include_compute:
             lambda_functions = _discover_lambda(session, resolved_region, account_id=account_id, warnings=warnings)
             eks_clusters = _discover_eks(session, resolved_region, account_id=account_id, warnings=warnings)
+            ecr_repositories = _discover_ecr(session, resolved_region, account_id=account_id, warnings=warnings)
         if include_network:
             elb_load_balancers = _discover_elb(session, resolved_region, account_id=account_id, warnings=warnings)
             vpcs = _discover_vpcs(session, resolved_region, account_id=account_id, warnings=warnings)
+            cloudfront_distributions = _discover_cloudfront(session, account_id=account_id, warnings=warnings)
+            messaging = _discover_messaging(session, resolved_region, account_id=account_id, warnings=warnings)
     except NoCredentialsError:
         return {
             **empty,
@@ -279,6 +296,10 @@ def discover_inventory(
         "vpcs": vpcs,
         "kms_keys": kms_keys,
         "secrets": secrets,
+        "cloudfront_distributions": cloudfront_distributions,
+        "ecr_repositories": ecr_repositories,
+        "redshift_clusters": redshift_clusters,
+        "messaging": messaging,
         "warnings": warnings,
         "discovery_envelope": envelope.to_dict(),
     }
@@ -879,6 +900,135 @@ def _discover_secrets(session: Any, region: str, *, account_id: str | None, warn
                 )
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list Secrets Manager secrets: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_cloudfront(session: Any, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate CloudFront CDN distributions (read-only, global). Internet-facing edge."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("cloudfront")
+        paginator = client.get_paginator("list_distributions")
+        for page in paginator.paginate():
+            for dist in (page.get("DistributionList", {}) or {}).get("Items", []) or []:
+                dist_id = str(dist.get("Id", "") or "")
+                if not dist_id:
+                    continue
+                origins = [str(o.get("DomainName", "")) for o in (dist.get("Origins", {}) or {}).get("Items", []) or []]
+                out.append(
+                    {
+                        "name": dist_id,
+                        "arn": str(dist.get("ARN", "") or ""),
+                        "domain_name": str(dist.get("DomainName", "") or ""),
+                        "enabled": bool(dist.get("Enabled")),
+                        "internet_exposed": True,  # a CDN distribution is internet-facing by definition
+                        "origins": origins,
+                        "account_id": account_id or "",
+                        "location": "global",
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list CloudFront distributions: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_ecr(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate ECR container registries (read-only). Become container-registry resources."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("ecr", region_name=region)
+        paginator = client.get_paginator("describe_repositories")
+        for page in paginator.paginate():
+            for repo in page.get("repositories", []):
+                name = str(repo.get("repositoryName", "") or "")
+                if not name:
+                    continue
+                out.append(
+                    {
+                        "name": name,
+                        "arn": str(repo.get("repositoryArn", "") or ""),
+                        "uri": str(repo.get("repositoryUri", "") or ""),
+                        "scan_on_push": bool((repo.get("imageScanningConfiguration") or {}).get("scanOnPush")),
+                        "tag_immutable": str(repo.get("imageTagMutability", "")) == "IMMUTABLE",
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list ECR repositories: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_redshift(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate Redshift clusters (read-only). Data warehouses → ``DATA_STORE``."""
+    out: list[dict[str, Any]] = []
+    try:
+        client = session.client("redshift", region_name=region)
+        paginator = client.get_paginator("describe_clusters")
+        for page in paginator.paginate():
+            for c in page.get("Clusters", []):
+                name = str(c.get("ClusterIdentifier", "") or "")
+                if not name:
+                    continue
+                out.append(
+                    {
+                        "name": name,
+                        "engine": "redshift",
+                        "publicly_accessible": bool(c.get("PubliclyAccessible")),
+                        "encrypted": bool(c.get("Encrypted")),
+                        "endpoint": str((c.get("Endpoint") or {}).get("Address", "") or ""),
+                        "node_type": str(c.get("NodeType", "") or ""),
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Redshift clusters: {sanitize_discovery_warning(exc)}")
+    return out
+
+
+def _discover_messaging(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate SNS topics + SQS queues (read-only). Become messaging resources."""
+    out: list[dict[str, Any]] = []
+    try:
+        sns = session.client("sns", region_name=region)
+        paginator = sns.get_paginator("list_topics")
+        for page in paginator.paginate():
+            for topic in page.get("Topics", []):
+                arn = str(topic.get("TopicArn", "") or "")
+                if not arn:
+                    continue
+                out.append(
+                    {
+                        "name": arn.rsplit(":", 1)[-1],
+                        "arn": arn,
+                        "messaging_type": "sns-topic",
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list SNS topics: {sanitize_discovery_warning(exc)}")
+    try:
+        sqs = session.client("sqs", region_name=region)
+        paginator = sqs.get_paginator("list_queues")
+        for page in paginator.paginate():
+            for url in page.get("QueueUrls", []) or []:
+                name = str(url).rsplit("/", 1)[-1]
+                if not name:
+                    continue
+                out.append(
+                    {
+                        "name": name,
+                        "arn": f"arn:aws:sqs:{region}:{account_id or ''}:{name}",
+                        "messaging_type": "sqs-queue",
+                        "url": str(url),
+                        "account_id": account_id or "",
+                        "location": region,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list SQS queues: {sanitize_discovery_warning(exc)}")
     return out
 
 

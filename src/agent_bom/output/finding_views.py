@@ -9,14 +9,11 @@ from agent_bom.models import AIBOMReport, BlastRadius, Severity
 
 
 def cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
-    """Return CVE findings, accepting legacy BlastRadius overrides."""
-    if blast_radii is not None:
+    """Return CVE findings, accepting non-empty legacy BlastRadius overrides."""
+    if blast_radii:
         return [blast_radius_to_finding(br) for br in blast_radii]
 
-    findings = [finding for finding in report.to_findings() if finding.finding_type == FindingType.CVE]
-    if not findings and report.blast_radii:
-        findings = [blast_radius_to_finding(br) for br in report.blast_radii]
-    return findings
+    return [finding for finding in report.to_findings() if finding.finding_type == FindingType.CVE]
 
 
 def nested_vulnerabilities(report: AIBOMReport) -> list[Any]:

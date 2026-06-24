@@ -1649,6 +1649,76 @@ def _trust_entries(principal: dict[str, Any]) -> list[dict[str, str]]:
     return trusts
 
 
+def _prepare_cloud_payload(payload: Any, data_source: str, *tags: str) -> tuple[str, list[str]] | None:
+    """Shared guard for the cloud ``_add_*`` layers.
+
+    Returns ``None`` when *payload* is not a status-ok dict (the universal no-op
+    guard), otherwise ``(account, data_sources)`` where ``account`` is the
+    cleaned ``account`` field and ``data_sources`` is the sorted, blank-stripped
+    union of *data_source* and *tags*.
+    """
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return None
+    account = _clean_graph_part(payload.get("account"))
+    data_sources = sorted({data_source, *tags} - {""})
+    return account, data_sources
+
+
+def _add_identity_node(
+    graph: UnifiedGraph,
+    entity_type: EntityType,
+    identity_id: str,
+    provider: str,
+    data_sources: list[str],
+    *,
+    label: str | None = None,
+    surface: str = "identity",
+    **attrs: Any,
+) -> str:
+    """Add an identity-surface node (account/role/user/OU/...) and return its id.
+
+    Mirrors the repeated cloud identity-node construction: id from
+    ``_identity_node_id``, ``surface`` dimensions on *provider* (default
+    ``"identity"``), and the caller's attributes verbatim. The ``cloud_provider``
+    attribute is passed as a keyword like any other (it is *not* derived from
+    *provider*) so call sites stay byte-identical.
+    """
+    node_id = _identity_node_id(entity_type, provider, identity_id)
+    graph.add_node(
+        UnifiedNode(
+            id=node_id,
+            entity_type=entity_type,
+            label=label if label is not None else identity_id,
+            attributes=attrs,
+            data_sources=data_sources,
+            dimensions=NodeDimensions(cloud_provider=provider, surface=surface),
+        )
+    )
+    return node_id
+
+
+def _add_rel_edge(
+    graph: UnifiedGraph,
+    source_id: str,
+    target_id: str,
+    relationship: RelationshipType,
+    evidence: dict[str, Any] | None = None,
+) -> None:
+    """Add a relationship edge; thin wrapper over ``graph.add_edge(UnifiedEdge(...))``.
+
+    ``evidence=None`` is normalized to ``{}`` to match the ``UnifiedEdge``
+    default, so routed call sites stay byte-identical.
+    """
+    graph.add_edge(
+        UnifiedEdge(
+            source=source_id,
+            target=target_id,
+            relationship=relationship,
+            evidence=evidence if evidence is not None else {},
+        )
+    )
+
+
 def _add_agent_cloud_lineage(
     graph: UnifiedGraph,
     *,
@@ -1738,85 +1808,73 @@ def _add_agent_cloud_lineage(
         )
     )
     if org_node_id:
-        graph.add_node(
-            UnifiedNode(
-                id=org_node_id,
-                entity_type=EntityType.ORG,
-                label=org_id,
-                attributes={
-                    "org_id": org_id,
-                    "scope_key": org_key,
-                    "cloud_provider": provider,
-                    "cloud_origin": origin,
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
-            )
+        _add_identity_node(
+            graph,
+            EntityType.ORG,
+            org_id,
+            provider,
+            data_sources,
+            label=org_id,
+            org_id=org_id,
+            scope_key=org_key,
+            cloud_provider=provider,
+            cloud_origin=origin,
         )
-        graph.add_edge(
-            UnifiedEdge(
-                source=cloud_provider_id,
-                target=org_node_id,
-                relationship=RelationshipType.HOSTS,
-                evidence={"source": "cloud_origin", "provider": provider, "scope_key": org_key},
-            )
+        _add_rel_edge(
+            graph,
+            cloud_provider_id,
+            org_node_id,
+            RelationshipType.HOSTS,
+            {"source": "cloud_origin", "provider": provider, "scope_key": org_key},
         )
     if account_node_id:
-        graph.add_node(
-            UnifiedNode(
-                id=account_node_id,
-                entity_type=EntityType.ACCOUNT,
-                label=account_id,
-                attributes={
-                    "account_id": account_id,
-                    "scope_key": account_key or "account_id",
-                    "cloud_provider": provider,
-                    "cloud_origin": origin,
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
-            )
+        _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            account_id,
+            provider,
+            data_sources,
+            label=account_id,
+            account_id=account_id,
+            scope_key=account_key or "account_id",
+            cloud_provider=provider,
+            cloud_origin=origin,
         )
-        graph.add_edge(
-            UnifiedEdge(
-                source=cloud_provider_id,
-                target=account_node_id,
-                relationship=RelationshipType.HOSTS,
-                evidence={"source": "cloud_origin", "provider": provider, "scope_key": account_key or "account_id"},
-            )
+        _add_rel_edge(
+            graph,
+            cloud_provider_id,
+            account_node_id,
+            RelationshipType.HOSTS,
+            {"source": "cloud_origin", "provider": provider, "scope_key": account_key or "account_id"},
         )
         if org_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id,
-                    target=org_node_id,
-                    relationship=RelationshipType.PART_OF,
-                    evidence={"source": "cloud_origin", "provider": provider, "scope_key": org_key},
-                )
+            _add_rel_edge(
+                graph,
+                account_node_id,
+                org_node_id,
+                RelationshipType.PART_OF,
+                {"source": "cloud_origin", "provider": provider, "scope_key": org_key},
             )
-        graph.add_edge(
-            UnifiedEdge(
-                source=account_node_id,
-                target=resource_node_id,
-                relationship=RelationshipType.HOSTS,
-                evidence={"source": "cloud_origin", "provider": provider, "scope_key": account_key or "account_id"},
-            )
+        _add_rel_edge(
+            graph,
+            account_node_id,
+            resource_node_id,
+            RelationshipType.HOSTS,
+            {"source": "cloud_origin", "provider": provider, "scope_key": account_key or "account_id"},
         )
-    graph.add_edge(
-        UnifiedEdge(
-            source=cloud_provider_id,
-            target=resource_node_id,
-            relationship=RelationshipType.HOSTS,
-            evidence={"source": "cloud_origin", "provider": provider, "service": service},
-        )
+    _add_rel_edge(
+        graph,
+        cloud_provider_id,
+        resource_node_id,
+        RelationshipType.HOSTS,
+        {"source": "cloud_origin", "provider": provider, "service": service},
     )
-    graph.add_edge(
-        UnifiedEdge(
-            source=resource_node_id,
-            target=agent_id,
-            relationship=RelationshipType.HOSTS,
-            evidence={"source": "cloud_origin", "resource_id": resource_id},
-        )
+    _add_rel_edge(
+        graph,
+        resource_node_id,
+        agent_id,
+        RelationshipType.HOSTS,
+        {"source": "cloud_origin", "resource_id": resource_id},
     )
 
     principal = agent_metadata.get("cloud_principal")
@@ -1828,111 +1886,94 @@ def _add_agent_cloud_lineage(
     principal_name = _clean_graph_part(principal.get("principal_name")) or principal_id
     principal_type = principal.get("principal_type", "")
     principal_entity_type = _identity_entity_type(principal_type)
-    principal_node_id = _identity_node_id(principal_entity_type, provider, principal_id)
-    graph.add_node(
-        UnifiedNode(
-            id=principal_node_id,
-            entity_type=principal_entity_type,
-            label=principal_name,
-            attributes={
-                "principal_id": principal_id,
-                "principal_name": principal_name,
-                "principal_type": principal_type,
-                "tenant_id": principal.get("tenant_id", ""),
-                "source_field": principal.get("source_field", ""),
-                "cloud_provider": provider,
-                "cloud_service": service,
-                "cloud_principal": principal,
-            },
-            data_sources=data_sources,
-            dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
-        )
+    principal_node_id = _add_identity_node(
+        graph,
+        principal_entity_type,
+        principal_id,
+        provider,
+        data_sources,
+        label=principal_name,
+        principal_id=principal_id,
+        principal_name=principal_name,
+        principal_type=principal_type,
+        tenant_id=principal.get("tenant_id", ""),
+        source_field=principal.get("source_field", ""),
+        cloud_provider=provider,
+        cloud_service=service,
+        cloud_principal=principal,
     )
     if account_node_id:
-        graph.add_edge(
-            UnifiedEdge(
-                source=principal_node_id,
-                target=account_node_id,
-                relationship=RelationshipType.MEMBER_OF,
-                evidence={"source": "cloud_principal", "principal_type": principal_type},
-            )
+        _add_rel_edge(
+            graph,
+            principal_node_id,
+            account_node_id,
+            RelationshipType.MEMBER_OF,
+            {"source": "cloud_principal", "principal_type": principal_type},
         )
-    graph.add_edge(
-        UnifiedEdge(
-            source=principal_node_id,
-            target=resource_node_id,
-            relationship=RelationshipType.MANAGES,
-            evidence={"source": "cloud_principal", "principal_type": principal_type},
-        )
+    _add_rel_edge(
+        graph,
+        principal_node_id,
+        resource_node_id,
+        RelationshipType.MANAGES,
+        {"source": "cloud_principal", "principal_type": principal_type},
     )
-    graph.add_edge(
-        UnifiedEdge(
-            source=principal_node_id,
-            target=resource_node_id,
-            relationship=RelationshipType.CAN_ACCESS,
-            evidence={"source": "cloud_principal", "principal_type": principal_type},
-        )
+    _add_rel_edge(
+        graph,
+        principal_node_id,
+        resource_node_id,
+        RelationshipType.CAN_ACCESS,
+        {"source": "cloud_principal", "principal_type": principal_type},
     )
     for policy in _policy_entries(principal):
-        policy_node_id = _identity_node_id(EntityType.POLICY, provider, policy["id"])
-        graph.add_node(
-            UnifiedNode(
-                id=policy_node_id,
-                entity_type=EntityType.POLICY,
-                label=policy["name"],
-                attributes={
-                    "policy_id": policy["id"],
-                    "policy_name": policy["name"],
-                    "privilege_level": policy.get("privilege_level", "unknown"),
-                    "cloud_provider": provider,
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
-            )
+        policy_node_id = _add_identity_node(
+            graph,
+            EntityType.POLICY,
+            policy["id"],
+            provider,
+            data_sources,
+            label=policy["name"],
+            policy_id=policy["id"],
+            policy_name=policy["name"],
+            privilege_level=policy.get("privilege_level", "unknown"),
+            cloud_provider=provider,
         )
-        graph.add_edge(
-            UnifiedEdge(
-                source=principal_node_id,
-                target=policy_node_id,
-                relationship=RelationshipType.ATTACHED,
-                evidence={"source": "cloud_principal", "principal_type": principal_type},
-            )
+        _add_rel_edge(
+            graph,
+            principal_node_id,
+            policy_node_id,
+            RelationshipType.ATTACHED,
+            {"source": "cloud_principal", "principal_type": principal_type},
         )
     for trust in _trust_entries(principal):
         trust_entity_type = _identity_entity_type(trust["type"])
-        trust_node_id = _identity_node_id(trust_entity_type, provider, trust["id"])
-        graph.add_node(
-            UnifiedNode(
-                id=trust_node_id,
-                entity_type=trust_entity_type,
-                label=trust["name"],
-                attributes={
-                    "principal_id": trust["id"],
-                    "principal_name": trust["name"],
-                    "principal_type": trust["type"],
-                    "cloud_provider": provider,
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
-            )
+        trust_node_id = _add_identity_node(
+            graph,
+            trust_entity_type,
+            trust["id"],
+            provider,
+            data_sources,
+            label=trust["name"],
+            principal_id=trust["id"],
+            principal_name=trust["name"],
+            principal_type=trust["type"],
+            cloud_provider=provider,
         )
         relationship = (
             RelationshipType.CROSS_ACCOUNT_TRUST
             if trust["relationship"] == RelationshipType.CROSS_ACCOUNT_TRUST.value
             else RelationshipType.TRUSTS
         )
-        graph.add_edge(
-            UnifiedEdge(
-                source=principal_node_id,
-                target=trust_node_id,
-                relationship=relationship,
-                evidence={
-                    "source": "cloud_principal_trust",
-                    "principal_type": principal_type,
-                    "trusted_principal_type": trust["type"],
-                    "source_field": trust["source_field"],
-                },
-            )
+        _add_rel_edge(
+            graph,
+            principal_node_id,
+            trust_node_id,
+            relationship,
+            {
+                "source": "cloud_principal_trust",
+                "principal_type": principal_type,
+                "trusted_principal_type": trust["type"],
+                "source_field": trust["source_field"],
+            },
         )
     # Direct principal → agent edge so single-hop "which principals can
     # reach this agent?" queries don't have to traverse the intermediate
@@ -1941,17 +1982,16 @@ def _add_agent_cloud_lineage(
     # `via` records that the relationship is mediated by a cloud_resource
     # so consumers can distinguish direct ownership from cloud-mediated
     # operation when they need to.
-    graph.add_edge(
-        UnifiedEdge(
-            source=principal_node_id,
-            target=agent_id,
-            relationship=RelationshipType.MANAGES,
-            evidence={
-                "source": "cloud_principal",
-                "principal_type": principal_type,
-                "via": resource_node_id,
-            },
-        )
+    _add_rel_edge(
+        graph,
+        principal_node_id,
+        agent_id,
+        RelationshipType.MANAGES,
+        {
+            "source": "cloud_principal",
+            "principal_type": principal_type,
+            "via": resource_node_id,
+        },
     )
 
 
@@ -2064,22 +2104,23 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
     table to everything derived from it. Never raises; a missing/empty payload
     is a no-op.
     """
-    if not isinstance(payload, dict) or payload.get("status") != "ok":
+    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-objects")
+    if prepared is None:
         return
-    account = _clean_graph_part(payload.get("account"))
-    data_sources = sorted({data_source, "snowflake-objects"} - {""})
+    account, data_sources = prepared
 
-    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
-    if account_node_id:
-        graph.add_node(
-            UnifiedNode(
-                id=account_node_id,
-                entity_type=EntityType.ACCOUNT,
-                label=account or "snowflake",
-                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-objects"},
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-            )
+    account_node_id = ""
+    if account:
+        account_node_id = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            account,
+            "snowflake",
+            data_sources,
+            label=account or "snowflake",
+            account_id=account,
+            cloud_provider="snowflake",
+            source="snowflake-objects",
         )
 
     def _obj_node_id(fqn: str) -> str:
@@ -2109,14 +2150,7 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
             )
         )
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id,
-                    target=node_id,
-                    relationship=RelationshipType.OWNS,
-                    evidence={"source": "snowflake-objects"},
-                )
-            )
+            _add_rel_edge(graph, account_node_id, node_id, RelationshipType.OWNS, {"source": "snowflake-objects"})
         return node_id
 
     for obj in payload.get("objects", []) or []:
@@ -2147,13 +2181,12 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
         # system objects) — create thin nodes so the lineage edge still lands.
         src = _ensure_object(referencing, object_type=str(dep.get("referencing_domain") or "object").lower())
         tgt = _ensure_object(referenced, object_type=str(dep.get("referenced_domain") or "object").lower())
-        graph.add_edge(
-            UnifiedEdge(
-                source=src,
-                target=tgt,
-                relationship=RelationshipType.DEPENDS_ON,
-                evidence={"source": "snowflake-objects", "dependency_type": dep.get("dependency_type", "")},
-            )
+        _add_rel_edge(
+            graph,
+            src,
+            tgt,
+            RelationshipType.DEPENDS_ON,
+            {"source": "snowflake-objects", "dependency_type": dep.get("dependency_type", "")},
         )
 
     # ── Roles + users (CIEM access layer) ──────────────────────────────
@@ -2163,15 +2196,16 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
         node_id = f"role:snowflake:{name}"
         if node_id not in seen_roles:
             seen_roles.add(node_id)
-            graph.add_node(
-                UnifiedNode(
-                    id=node_id,
-                    entity_type=EntityType.ROLE,
-                    label=f"role: {name}",
-                    attributes={"role_name": name, "cloud_provider": "snowflake", "source": "snowflake-objects"},
-                    data_sources=data_sources,
-                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-                )
+            _add_identity_node(
+                graph,
+                EntityType.ROLE,
+                name,
+                "snowflake",
+                data_sources,
+                label=f"role: {name}",
+                role_name=name,
+                cloud_provider="snowflake",
+                source="snowflake-objects",
             )
         return node_id
 
@@ -2183,13 +2217,12 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
         object_fqn = _clean_graph_part(grant.get("object_fqn"))
         if not role or not object_fqn:
             continue
-        graph.add_edge(
-            UnifiedEdge(
-                source=_ensure_role(role),
-                target=_ensure_object(object_fqn, object_type=str(grant.get("object_type") or "object").lower()),
-                relationship=RelationshipType.HAS_PERMISSION,
-                evidence={"source": "snowflake-objects", "privilege": grant.get("privilege", "")},
-            )
+        _add_rel_edge(
+            graph,
+            _ensure_role(role),
+            _ensure_object(object_fqn, object_type=str(grant.get("object_type") or "object").lower()),
+            RelationshipType.HAS_PERMISSION,
+            {"source": "snowflake-objects", "privilege": grant.get("privilege", "")},
         )
 
     # User → role memberships: the user ASSUMES the role's privileges.
@@ -2204,24 +2237,18 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
         user_node_id = f"user:snowflake:{user_name}"
         if user_node_id not in seen_users:
             seen_users.add(user_node_id)
-            graph.add_node(
-                UnifiedNode(
-                    id=user_node_id,
-                    entity_type=EntityType.USER,
-                    label=f"user: {user_name}",
-                    attributes={"user_name": user_name, "cloud_provider": "snowflake", "source": "snowflake-objects"},
-                    data_sources=data_sources,
-                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-                )
+            _add_identity_node(
+                graph,
+                EntityType.USER,
+                user_name,
+                "snowflake",
+                data_sources,
+                label=f"user: {user_name}",
+                user_name=user_name,
+                cloud_provider="snowflake",
+                source="snowflake-objects",
             )
-        graph.add_edge(
-            UnifiedEdge(
-                source=user_node_id,
-                target=_ensure_role(role),
-                relationship=RelationshipType.ASSUMES,
-                evidence={"source": "snowflake-objects"},
-            )
-        )
+        _add_rel_edge(graph, user_node_id, _ensure_role(role), RelationshipType.ASSUMES, {"source": "snowflake-objects"})
 
 
 _EXFIL_STAGE_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}
@@ -2241,34 +2268,28 @@ def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str)
 
     Never raises; missing/empty/non-ok payload is a no-op.
     """
-    if not isinstance(payload, dict) or payload.get("status") != "ok":
+    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-services")
+    if prepared is None:
         return
-    account = _clean_graph_part(payload.get("account"))
-    data_sources = sorted({data_source, "snowflake-services"} - {""})
-    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
-    if account_node_id:
-        graph.add_node(
-            UnifiedNode(
-                id=account_node_id,
-                entity_type=EntityType.ACCOUNT,
-                label=account or "snowflake",
-                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-services"},
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-            )
+    account, data_sources = prepared
+    account_node_id = ""
+    if account:
+        account_node_id = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            account,
+            "snowflake",
+            data_sources,
+            label=account or "snowflake",
+            account_id=account,
+            cloud_provider="snowflake",
+            source="snowflake-services",
         )
 
     def _own(node: UnifiedNode) -> str:
         graph.add_node(node)
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id,
-                    target=node.id,
-                    relationship=RelationshipType.OWNS,
-                    evidence={"source": "snowflake-services"},
-                )
-            )
+            _add_rel_edge(graph, account_node_id, node.id, RelationshipType.OWNS, {"source": "snowflake-services"})
         return node.id
 
     for wh in payload.get("warehouses", []) or []:
@@ -2353,14 +2374,7 @@ def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str)
         # database CONTAINS schema
         parent_db_id = db_node_by_name.get(db_name)
         if parent_db_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=parent_db_id,
-                    target=sch_id,
-                    relationship=RelationshipType.CONTAINS,
-                    evidence={"source": "snowflake-services"},
-                )
-            )
+            _add_rel_edge(graph, parent_db_id, sch_id, RelationshipType.CONTAINS, {"source": "snowflake-services"})
 
     # Link existing object-graph table/view nodes under their schema (schema CONTAINS object).
     if schema_node_by_fqn:
@@ -2374,14 +2388,7 @@ def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str)
             parent_schema = obj_fqn.rsplit(".", 1)[0]
             parent_sch_id = schema_node_by_fqn.get(parent_schema)
             if parent_sch_id:
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=parent_sch_id,
-                        target=node.id,
-                        relationship=RelationshipType.CONTAINS,
-                        evidence={"source": "snowflake-services"},
-                    )
-                )
+                _add_rel_edge(graph, parent_sch_id, node.id, RelationshipType.CONTAINS, {"source": "snowflake-services"})
 
 
 _SF_EXTERNAL_BUCKET_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}
@@ -2398,21 +2405,22 @@ def _add_snowflake_external_data(graph: UnifiedGraph, payload: Any, data_source:
 
     Never raises; a non-ok payload is a no-op.
     """
-    if not isinstance(payload, dict) or payload.get("status") != "ok":
+    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-external-data")
+    if prepared is None:
         return
-    account = _clean_graph_part(payload.get("account"))
-    data_sources = sorted({data_source, "snowflake-external-data"} - {""})
-    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
-    if account_node_id:
-        graph.add_node(
-            UnifiedNode(
-                id=account_node_id,
-                entity_type=EntityType.ACCOUNT,
-                label=account or "snowflake",
-                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-external-data"},
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-            )
+    account, data_sources = prepared
+    account_node_id = ""
+    if account:
+        account_node_id = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            account,
+            "snowflake",
+            data_sources,
+            label=account or "snowflake",
+            account_id=account,
+            cloud_provider="snowflake",
+            source="snowflake-external-data",
         )
 
     def _own_data_store(node_id: str, label: str, attrs: dict[str, Any]) -> str:
@@ -2427,14 +2435,7 @@ def _add_snowflake_external_data(graph: UnifiedGraph, payload: Any, data_source:
             )
         )
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id,
-                    target=node_id,
-                    relationship=RelationshipType.OWNS,
-                    evidence={"source": "snowflake-external-data"},
-                )
-            )
+            _add_rel_edge(graph, account_node_id, node_id, RelationshipType.OWNS, {"source": "snowflake-external-data"})
         return node_id
 
     for tbl in payload.get("iceberg_tables", []) or []:
@@ -2477,13 +2478,12 @@ def _add_snowflake_external_data(graph: UnifiedGraph, payload: Any, data_source:
                         dimensions=NodeDimensions(cloud_provider=cloud, surface=service),
                     )
                 )
-            graph.add_edge(
-                UnifiedEdge(
-                    source=node_id,
-                    target=bucket_id,
-                    relationship=RelationshipType.EXPOSED_TO,
-                    evidence={"source": "snowflake-external-data", "channel": "iceberg-base-location"},
-                )
+            _add_rel_edge(
+                graph,
+                node_id,
+                bucket_id,
+                RelationshipType.EXPOSED_TO,
+                {"source": "snowflake-external-data", "channel": "iceberg-base-location"},
             )
 
     for tbl in payload.get("external_tables", []) or []:
@@ -2512,13 +2512,12 @@ def _add_snowflake_external_data(graph: UnifiedGraph, payload: Any, data_source:
                         dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
                     )
                 )
-            graph.add_edge(
-                UnifiedEdge(
-                    source=node_id,
-                    target=stage_id,
-                    relationship=RelationshipType.DEPENDS_ON,
-                    evidence={"source": "snowflake-external-data", "via": "external-table-stage"},
-                )
+            _add_rel_edge(
+                graph,
+                node_id,
+                stage_id,
+                RelationshipType.DEPENDS_ON,
+                {"source": "snowflake-external-data", "via": "external-table-stage"},
             )
 
 
@@ -2532,21 +2531,22 @@ def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: 
     the visual surface the account's outbound/federation surface. Never raises;
     a non-ok payload is a no-op.
     """
-    if not isinstance(payload, dict) or payload.get("status") != "ok":
+    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-integrations")
+    if prepared is None:
         return
-    account = _clean_graph_part(payload.get("account"))
-    data_sources = sorted({data_source, "snowflake-integrations"} - {""})
-    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
-    if account_node_id:
-        graph.add_node(
-            UnifiedNode(
-                id=account_node_id,
-                entity_type=EntityType.ACCOUNT,
-                label=account or "snowflake",
-                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-integrations"},
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-            )
+    account, data_sources = prepared
+    account_node_id = ""
+    if account:
+        account_node_id = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            account,
+            "snowflake",
+            data_sources,
+            label=account or "snowflake",
+            account_id=account,
+            cloud_provider="snowflake",
+            source="snowflake-integrations",
         )
 
     egress_categories = {"STORAGE", "API", "EXTERNAL_ACCESS", "NOTIFICATION", "CATALOG"}
@@ -2580,14 +2580,7 @@ def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: 
             )
         )
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id,
-                    target=node_id,
-                    relationship=RelationshipType.OWNS,
-                    evidence={"source": "snowflake-integrations"},
-                )
-            )
+            _add_rel_edge(graph, account_node_id, node_id, RelationshipType.OWNS, {"source": "snowflake-integrations"})
 
 
 def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
@@ -2603,34 +2596,28 @@ def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str)
     Endpoints (warehouse/table/stage) may already exist from other layers; a thin
     node is created only when absent. Never raises; non-ok payload is a no-op.
     """
-    if not isinstance(payload, dict) or payload.get("status") != "ok":
+    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-pipeline")
+    if prepared is None:
         return
-    account = _clean_graph_part(payload.get("account"))
-    data_sources = sorted({data_source, "snowflake-pipeline"} - {""})
-    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
-    if account_node_id:
-        graph.add_node(
-            UnifiedNode(
-                id=account_node_id,
-                entity_type=EntityType.ACCOUNT,
-                label=account or "snowflake",
-                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-pipeline"},
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-            )
+    account, data_sources = prepared
+    account_node_id = ""
+    if account:
+        account_node_id = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            account,
+            "snowflake",
+            data_sources,
+            label=account or "snowflake",
+            account_id=account,
+            cloud_provider="snowflake",
+            source="snowflake-pipeline",
         )
 
     def _own(node: UnifiedNode) -> str:
         graph.add_node(node)
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id,
-                    target=node.id,
-                    relationship=RelationshipType.OWNS,
-                    evidence={"source": "snowflake-pipeline"},
-                )
-            )
+            _add_rel_edge(graph, account_node_id, node.id, RelationshipType.OWNS, {"source": "snowflake-pipeline"})
         return node.id
 
     def _thin(node_id: str, entity_type: EntityType, label: str, surface: str) -> None:
@@ -2673,26 +2660,12 @@ def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str)
         if warehouse:
             wh_id = f"cloud_resource:snowflake:warehouse:{warehouse}"
             _thin(wh_id, EntityType.CLOUD_RESOURCE, f"warehouse: {warehouse}", "compute")
-            graph.add_edge(
-                UnifiedEdge(
-                    source=task_id,
-                    target=wh_id,
-                    relationship=RelationshipType.DEPENDS_ON,
-                    evidence={"source": "snowflake-pipeline", "via": "warehouse"},
-                )
-            )
+            _add_rel_edge(graph, task_id, wh_id, RelationshipType.DEPENDS_ON, {"source": "snowflake-pipeline", "via": "warehouse"})
         owner = _clean_graph_part(task.get("owner"))
         if owner:
             role_id = f"role:snowflake:{owner}"
             _thin(role_id, EntityType.ROLE, f"role: {owner}", "identity")
-            graph.add_edge(
-                UnifiedEdge(
-                    source=task_id,
-                    target=role_id,
-                    relationship=RelationshipType.ASSUMES,
-                    evidence={"source": "snowflake-pipeline", "runs_as": owner},
-                )
-            )
+            _add_rel_edge(graph, task_id, role_id, RelationshipType.ASSUMES, {"source": "snowflake-pipeline", "runs_as": owner})
 
     for stream in payload.get("streams", []) or []:
         if not isinstance(stream, dict):
@@ -2720,14 +2693,7 @@ def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str)
         if source:
             src_id = f"data_store:snowflake:{source}"
             _thin(src_id, EntityType.DATA_STORE, f"object: {source}", "data")
-            graph.add_edge(
-                UnifiedEdge(
-                    source=stream_id,
-                    target=src_id,
-                    relationship=RelationshipType.DEPENDS_ON,
-                    evidence={"source": "snowflake-pipeline", "via": "cdc-source"},
-                )
-            )
+            _add_rel_edge(graph, stream_id, src_id, RelationshipType.DEPENDS_ON, {"source": "snowflake-pipeline", "via": "cdc-source"})
 
     for pipe in payload.get("pipes", []) or []:
         if not isinstance(pipe, dict):
@@ -2757,14 +2723,7 @@ def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str)
             stage_name = stage.split(".")[-1]
             stage_id = f"cloud_resource:snowflake:stage:{stage_name}"
             _thin(stage_id, EntityType.CLOUD_RESOURCE, f"external stage: {stage_name}", "data")
-            graph.add_edge(
-                UnifiedEdge(
-                    source=pipe_id,
-                    target=stage_id,
-                    relationship=RelationshipType.DEPENDS_ON,
-                    evidence={"source": "snowflake-pipeline", "via": "ingest-stage"},
-                )
-            )
+            _add_rel_edge(graph, pipe_id, stage_id, RelationshipType.DEPENDS_ON, {"source": "snowflake-pipeline", "via": "ingest-stage"})
 
 
 def _add_snowflake_identity(graph: UnifiedGraph, login_payload: Any, auth_payload: Any, data_source: str) -> None:
@@ -2896,34 +2855,28 @@ def _add_snowflake_exfil(graph: UnifiedGraph, payload: Any, data_source: str) ->
 
     Never raises; a missing/empty/non-ok payload is a no-op.
     """
-    if not isinstance(payload, dict) or payload.get("status") != "ok":
+    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-exfil")
+    if prepared is None:
         return
-    account = _clean_graph_part(payload.get("account"))
-    data_sources = sorted({data_source, "snowflake-exfil"} - {""})
-    account_node_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", account) if account else ""
-    if account_node_id:
-        graph.add_node(
-            UnifiedNode(
-                id=account_node_id,
-                entity_type=EntityType.ACCOUNT,
-                label=account or "snowflake",
-                attributes={"account_id": account, "cloud_provider": "snowflake", "source": "snowflake-exfil"},
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-            )
+    account, data_sources = prepared
+    account_node_id = ""
+    if account:
+        account_node_id = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            account,
+            "snowflake",
+            data_sources,
+            label=account or "snowflake",
+            account_id=account,
+            cloud_provider="snowflake",
+            source="snowflake-exfil",
         )
 
     def _owned(node: UnifiedNode) -> str:
         graph.add_node(node)
         if account_node_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=account_node_id,
-                    target=node.id,
-                    relationship=RelationshipType.OWNS,
-                    evidence={"source": "snowflake-exfil"},
-                )
-            )
+            _add_rel_edge(graph, account_node_id, node.id, RelationshipType.OWNS, {"source": "snowflake-exfil"})
         return node.id
 
     # ── Outbound shares → consumer accounts ────────────────────────────
@@ -2959,29 +2912,24 @@ def _add_snowflake_exfil(graph: UnifiedGraph, payload: Any, data_source: str) ->
             consumer = _clean_graph_part(consumer)
             if not consumer:
                 continue
-            consumer_id = _identity_node_id(EntityType.ACCOUNT, "snowflake", consumer)
-            graph.add_node(
-                UnifiedNode(
-                    id=consumer_id,
-                    entity_type=EntityType.ACCOUNT,
-                    label=f"consumer account: {consumer}",
-                    attributes={
-                        "account_id": consumer,
-                        "cloud_provider": "snowflake",
-                        "is_external_consumer": True,
-                        "internet_exposed": consumer == "public-marketplace",
-                    },
-                    data_sources=data_sources,
-                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-                )
+            consumer_id = _add_identity_node(
+                graph,
+                EntityType.ACCOUNT,
+                consumer,
+                "snowflake",
+                data_sources,
+                label=f"consumer account: {consumer}",
+                account_id=consumer,
+                cloud_provider="snowflake",
+                is_external_consumer=True,
+                internet_exposed=consumer == "public-marketplace",
             )
-            graph.add_edge(
-                UnifiedEdge(
-                    source=share_id,
-                    target=consumer_id,
-                    relationship=RelationshipType.EXPOSED_TO,
-                    evidence={"source": "snowflake-exfil", "channel": "data-share", "marketplace": is_marketplace},
-                )
+            _add_rel_edge(
+                graph,
+                share_id,
+                consumer_id,
+                RelationshipType.EXPOSED_TO,
+                {"source": "snowflake-exfil", "channel": "data-share", "marketplace": is_marketplace},
             )
 
     # ── External stages → destination buckets (cross-cloud stitch) ─────
@@ -3031,13 +2979,12 @@ def _add_snowflake_exfil(graph: UnifiedGraph, payload: Any, data_source: str) ->
                     dimensions=NodeDimensions(cloud_provider=cloud, surface=service),
                 )
             )
-        graph.add_edge(
-            UnifiedEdge(
-                source=stage_id,
-                target=bucket_node_id,
-                relationship=RelationshipType.EXPOSED_TO,
-                evidence={"source": "snowflake-exfil", "channel": "external-stage", "destination_cloud": cloud},
-            )
+        _add_rel_edge(
+            graph,
+            stage_id,
+            bucket_node_id,
+            RelationshipType.EXPOSED_TO,
+            {"source": "snowflake-exfil", "channel": "external-stage", "destination_cloud": cloud},
         )
 
     # ── Sensitive objects → DATA_STORE with sensitivity ────────────────
@@ -3094,10 +3041,11 @@ def _add_aws_organization(graph: UnifiedGraph, payload: Any, data_source: str) -
     org structure and any inventoried account graph stitch together. Scales to
     thousands of accounts. Never raises; non-ok payload is a no-op.
     """
-    if not isinstance(payload, dict) or payload.get("status") != "ok":
+    prepared = _prepare_cloud_payload(payload, data_source, "aws-organizations")
+    if prepared is None:
         return
+    _, data_sources = prepared
     org_id = _clean_graph_part(payload.get("org_id"))
-    data_sources = sorted({data_source, "aws-organizations"} - {""})
     org_node_id = f"org:aws:{org_id}" if org_id else "org:aws:organization"
     graph.add_node(
         UnifiedNode(
@@ -3137,11 +3085,7 @@ def _add_aws_organization(graph: UnifiedGraph, payload: Any, data_source: str) -
         )
         parent = _clean_graph_part(ou.get("parent_id"))
         parent_node = _ou_node_id(parent) if parent else org_node_id
-        graph.add_edge(
-            UnifiedEdge(
-                source=parent_node, target=node_id, relationship=RelationshipType.CONTAINS, evidence={"source": "aws-organizations"}
-            )
-        )
+        _add_rel_edge(graph, parent_node, node_id, RelationshipType.CONTAINS, {"source": "aws-organizations"})
 
     for acct in payload.get("accounts", []) or []:
         if not isinstance(acct, dict):
@@ -3149,29 +3093,21 @@ def _add_aws_organization(graph: UnifiedGraph, payload: Any, data_source: str) -
         acct_id = _clean_graph_part(acct.get("id"))
         if not acct_id:
             continue
-        acct_node = _identity_node_id(EntityType.ACCOUNT, "aws", acct_id)
-        graph.add_node(
-            UnifiedNode(
-                id=acct_node,
-                entity_type=EntityType.ACCOUNT,
-                label=f"account: {_clean_graph_part(acct.get('name')) or acct_id}",
-                attributes={
-                    "account_id": acct_id,
-                    "cloud_provider": "aws",
-                    "account_name": _clean_graph_part(acct.get("name")),
-                    "account_status": _clean_graph_part(acct.get("status")),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="aws", surface="identity"),
-            )
+        acct_node = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            acct_id,
+            "aws",
+            data_sources,
+            label=f"account: {_clean_graph_part(acct.get('name')) or acct_id}",
+            account_id=acct_id,
+            cloud_provider="aws",
+            account_name=_clean_graph_part(acct.get("name")),
+            account_status=_clean_graph_part(acct.get("status")),
         )
         ou_id = _clean_graph_part(acct.get("ou_id"))
         parent_node = _ou_node_id(ou_id) if ou_id else org_node_id
-        graph.add_edge(
-            UnifiedEdge(
-                source=parent_node, target=acct_node, relationship=RelationshipType.CONTAINS, evidence={"source": "aws-organizations"}
-            )
-        )
+        _add_rel_edge(graph, parent_node, acct_node, RelationshipType.CONTAINS, {"source": "aws-organizations"})
 
     for scp in payload.get("scps", []) or []:
         if not isinstance(scp, dict):
@@ -3190,9 +3126,7 @@ def _add_aws_organization(graph: UnifiedGraph, payload: Any, data_source: str) -
                 dimensions=NodeDimensions(cloud_provider="aws", surface="identity"),
             )
         )
-        graph.add_edge(
-            UnifiedEdge(source=org_node_id, target=scp_node, relationship=RelationshipType.OWNS, evidence={"source": "aws-organizations"})
-        )
+        _add_rel_edge(graph, org_node_id, scp_node, RelationshipType.OWNS, {"source": "aws-organizations"})
         for target in scp.get("targets", []) or []:
             target = _clean_graph_part(target)
             if not target:
@@ -3200,11 +3134,7 @@ def _add_aws_organization(graph: UnifiedGraph, payload: Any, data_source: str) -
             # A target is an OU id, the root id, or a 12-digit account id.
             tgt_node = _identity_node_id(EntityType.ACCOUNT, "aws", target) if target.isdigit() else _ou_node_id(target)
             if tgt_node in graph.nodes:
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=scp_node, target=tgt_node, relationship=RelationshipType.GOVERNS, evidence={"source": "aws-organizations"}
-                    )
-                )
+                _add_rel_edge(graph, scp_node, tgt_node, RelationshipType.GOVERNS, {"source": "aws-organizations"})
 
 
 def _add_cloud_role_assignments(graph: UnifiedGraph, inventory: Any, data_source: str) -> None:

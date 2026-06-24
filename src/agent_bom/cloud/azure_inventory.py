@@ -324,6 +324,85 @@ def discover_inventory(
     }
 
 
+# Multi-subscription fan-out is opt-in (enumerating every subscription in a
+# tenant is heavier than a single-sub scan). Mirrors the AWS Organizations
+# multi-account enumeration: discover the subscription set, then inventory each.
+ALL_SUBSCRIPTIONS_ENV_FLAG = "AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS"
+# Defensive cap so a tenant with thousands of subscriptions can't run unbounded
+# without an operator opting into a larger budget.
+_MAX_SUBSCRIPTIONS = int(os.environ.get("AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS", "500") or "500")
+
+
+def all_subscriptions_enabled() -> bool:
+    """Whether to fan a single scan across every subscription in the tenant."""
+    return os.environ.get(ALL_SUBSCRIPTIONS_ENV_FLAG, "").strip().lower() in _TRUTHY
+
+
+def _subscription_ids_from_mg_tree(management_groups: list[dict[str, Any]]) -> list[str]:
+    """Extract every subscription id from the management-group hierarchy tree."""
+    sub_ids: list[str] = []
+    for group in management_groups:
+        for child in group.get("children", []) or []:
+            if "subscriptions" in str(child.get("type", "")).lower():
+                sid = str(child.get("name", "") or "").strip()
+                if sid and sid not in sub_ids:
+                    sub_ids.append(sid)
+    return sub_ids
+
+
+def discover_all_subscription_inventories(credential: Any = None, *, force: bool = False) -> list[dict[str, Any]]:
+    """Inventory EVERY subscription in the tenant (multi-subscription fan-out).
+
+    The Azure counterpart of the AWS Organizations multi-account enumeration:
+    discover the subscription set from the management-group hierarchy, then run
+    the per-subscription inventory for each (partitioned by ``account_id`` so the
+    graph keeps thousands of subscriptions as distinct accounts under the
+    management-group ``CONTAINS`` tree). Read-only.
+
+    Returns a LIST of per-subscription inventory payloads (the exact shape the
+    graph builder's ``_iter_cloud_inventories`` consumes). Falls back to the
+    single ``AZURE_SUBSCRIPTION_ID`` when the management-group tree is unavailable
+    (e.g. the credential lacks Management Group Reader). Never raises.
+    """
+    if not force and not inventory_enabled():
+        return []
+    try:
+        from azure.identity import DefaultAzureCredential  # noqa: F401
+    except ImportError:
+        return []
+    if credential is None:
+        try:
+            credential = DefaultAzureCredential()
+        except Exception:  # noqa: BLE001
+            return []
+
+    warnings: list[str] = []
+    try:
+        management_groups, mg_warnings = _discover_management_groups(credential)
+        warnings.extend(mg_warnings)
+    except Exception as exc:  # noqa: BLE001
+        management_groups, _ = [], None
+        warnings.append(sanitize_discovery_warning(exc))
+
+    sub_ids = _subscription_ids_from_mg_tree(management_groups)
+    if not sub_ids:
+        # No tenant-root visibility — fall back to the single configured sub.
+        single = os.environ.get("AZURE_SUBSCRIPTION_ID", "").strip()
+        if single:
+            sub_ids = [single]
+
+    payloads: list[dict[str, Any]] = []
+    for sub_id in sub_ids[:_MAX_SUBSCRIPTIONS]:
+        payloads.append(discover_inventory(subscription_id=sub_id, credential=credential, force=True))
+    if len(sub_ids) > _MAX_SUBSCRIPTIONS:
+        logger.warning(
+            "Azure multi-subscription scan capped at %d of %d subscriptions (set AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS to raise).",
+            _MAX_SUBSCRIPTIONS,
+            len(sub_ids),
+        )
+    return payloads
+
+
 # ---------------------------------------------------------------------------
 # Storage accounts (subscription-wide list)
 # ---------------------------------------------------------------------------

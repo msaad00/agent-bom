@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
+import errno
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import click
 
@@ -97,6 +99,105 @@ def _resolve_output_path(output: Any, output_format: str) -> str:
     raise SystemExit(2)
 
 
+def _stdout_serialization(
+    report: AIBOMReport,
+    blast_radii: list,
+    output_format: str,
+    *,
+    exclude_unfixable: bool,
+    offline_html: bool,
+) -> str | None:
+    """Best-effort serialize the report for stdout fallback when -o write fails.
+
+    Returns ``None`` for formats that have no usable stdout representation
+    (e.g. binary PDF), in which case the caller prints a skip message instead.
+    """
+    if output_format in ("json", "graph", "badge"):
+        if output_format == "graph":
+            from agent_bom.output.graph import build_graph_elements
+
+            return json.dumps({"elements": build_graph_elements(report, blast_radii), "format": "cytoscape"}, indent=2)
+        if output_format == "badge":
+            from agent_bom.output.badge import to_badge
+
+            return json.dumps(to_badge(report), indent=2)
+        return json.dumps(to_json(report), indent=2)
+    if output_format == "cyclonedx":
+        return json.dumps(to_cyclonedx(report), indent=2)
+    if output_format == "sarif":
+        return json.dumps(to_sarif(report, exclude_unfixable=exclude_unfixable), indent=2)
+    if output_format == "spdx":
+        return json.dumps(to_spdx(report), indent=2)
+    if output_format == "junit":
+        return to_junit(report, blast_radii)
+    if output_format == "csv":
+        return to_csv(report, blast_radii)
+    if output_format == "markdown":
+        return to_markdown(report, blast_radii)
+    if output_format == "prometheus":
+        return to_prometheus(report, blast_radii)
+    if output_format in ("html", "graph-html"):
+        from agent_bom.output import to_html
+
+        return to_html(report, blast_radii, offline_assets=offline_html)
+    if output_format in ("text", "plain"):
+        return _format_text(report, blast_radii)
+    if output_format == "mermaid":
+        from agent_bom.output.mermaid import to_mermaid_supply_chain
+
+        return to_mermaid_supply_chain(report)
+    if output_format == "svg":
+        from agent_bom.output.svg import to_svg
+
+        return to_svg(report, blast_radii)
+    # pdf and any unknown/binary format have no stdout representation
+    return None
+
+
+@contextlib.contextmanager
+def _enospc_report_fallback(
+    con: Any,
+    report: AIBOMReport,
+    blast_radii: list,
+    output_format: str,
+    *,
+    exclude_unfixable: bool,
+    offline_html: bool,
+) -> Iterator[None]:
+    """Catch a full-disk (or any) failure writing the ``-o`` report.
+
+    The scan has already done all the work and computed its findings; a failed
+    report write must NOT crash with a traceback. On ``OSError`` we emit the
+    report to stdout when the format allows (so results are never lost), or
+    print a clear actionable skip message, then let the normal exit-code path
+    run with the scan's real exit code.
+    """
+    try:
+        yield
+    except OSError as exc:
+        is_full = exc.errno in (errno.ENOSPC, errno.EDQUOT)
+        reason = "disk full" if is_full else (exc.strerror or str(exc))
+        target = getattr(exc, "filename", None) or "the report file"
+        serialized = _stdout_serialization(
+            report,
+            blast_radii,
+            output_format,
+            exclude_unfixable=exclude_unfixable,
+            offline_html=offline_html,
+        )
+        if serialized is not None:
+            con.print(f"\n  [yellow]⚠[/yellow] Could not write report to {target} ({reason}) — emitting results to stdout instead.")
+            sys.stdout.write(serialized)
+            if not serialized.endswith("\n"):
+                sys.stdout.write("\n")
+        else:
+            con.print(
+                f"\n  [yellow]⚠[/yellow] Could not write report to {target} ({reason}) — "
+                f"results shown above. Free space, pass -o to a roomier path, or set "
+                f"AGENT_BOM_STATE_DIR=/tmp/agent-bom."
+            )
+
+
 def render_output(
     ctx: ScanContext,
     *,
@@ -126,274 +227,290 @@ def render_output(
     blast_radii = ctx.blast_radii
     is_stdout = output == "-"
 
-    if is_stdout:
-        # Pipe mode: write clean output to stdout
-        if output_format == "cyclonedx":
-            sys.stdout.write(json.dumps(to_cyclonedx(report), indent=2))
-        elif output_format == "sarif":
-            sys.stdout.write(json.dumps(to_sarif(report, exclude_unfixable=exclude_unfixable), indent=2))
-        elif output_format == "spdx":
-            sys.stdout.write(json.dumps(to_spdx(report), indent=2))
-        elif output_format == "html":
-            from agent_bom.output import to_html
+    def _emit_report() -> None:
+        """All console/stdout/file emission for the report.
 
-            sys.stdout.write(to_html(report, blast_radii, offline_assets=offline_html))
+        Wrapped so a failed -o file write (e.g. ENOSPC) degrades to stdout
+        instead of crashing after the scan already computed its findings.
+        """
+        if is_stdout:
+            # Pipe mode: write clean output to stdout
+            if output_format == "cyclonedx":
+                sys.stdout.write(json.dumps(to_cyclonedx(report), indent=2))
+            elif output_format == "sarif":
+                sys.stdout.write(json.dumps(to_sarif(report, exclude_unfixable=exclude_unfixable), indent=2))
+            elif output_format == "spdx":
+                sys.stdout.write(json.dumps(to_spdx(report), indent=2))
+            elif output_format == "html":
+                from agent_bom.output import to_html
+
+                sys.stdout.write(to_html(report, blast_radii, offline_assets=offline_html))
+            elif output_format == "pdf":
+                click.echo("Error: --format pdf requires --output/-o (cannot write PDF to stdout)", err=True)
+                sys.exit(2)
+            elif output_format == "prometheus":
+                sys.stdout.write(to_prometheus(report, blast_radii))
+            elif output_format == "graph":
+                from agent_bom.output.graph import build_graph_elements
+
+                elements = build_graph_elements(report, blast_radii)
+                sys.stdout.write(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
+            elif output_format == "mermaid":
+                if mermaid_mode == "attack-flow":
+                    from agent_bom.output.mermaid import to_mermaid
+
+                    sys.stdout.write(to_mermaid(report, blast_radii))
+                elif mermaid_mode == "lifecycle":
+                    from agent_bom.output.mermaid import to_mermaid_lifecycle
+
+                    sys.stdout.write(to_mermaid_lifecycle(report, blast_radii))
+                else:
+                    from agent_bom.output.mermaid import to_mermaid_supply_chain
+
+                    sys.stdout.write(to_mermaid_supply_chain(report))
+            elif output_format == "svg":
+                from agent_bom.output.svg import to_svg
+
+                sys.stdout.write(to_svg(report, blast_radii))
+            elif output_format == "junit":
+                sys.stdout.write(to_junit(report, blast_radii))
+            elif output_format == "csv":
+                sys.stdout.write(to_csv(report, blast_radii))
+            elif output_format == "markdown":
+                sys.stdout.write(to_markdown(report, blast_radii))
+            elif output_format == "graph-html":
+                click.echo("Error: --format graph-html requires --output/-o (cannot write HTML to stdout)", err=True)
+                sys.exit(2)
+            elif agent_mode:
+                payload = success_envelope(
+                    command="agents",
+                    report_json=to_json(report),
+                    exit_code=ctx.exit_code,
+                    token_budget=agent_token_budget,
+                )
+                sys.stdout.write(dumps_envelope(payload))
+            else:
+                sys.stdout.write(json.dumps(to_json(report), indent=2))
+            sys.stdout.write("\n")
+        elif output_format == "console" and not output:
+            _skill_audit_obj = ctx._skill_audit_obj
+            if verbose:
+                # Full output (--verbose)
+                print_summary(report)
+                print_scan_performance_summary(report)
+                print_posture_summary(report)
+                if not no_tree:
+                    print_agent_tree(report)
+                print_severity_chart(report)
+                print_blast_radius(report, fixable_only=fixable_only)
+                if not no_tree:
+                    print_attack_flow_tree(report)
+                print_threat_frameworks(report)
+            else:
+                # Compact output (default) — verdict-led posture summary.
+                print_compact_summary(report, verbose=verbose)
+                print_scan_performance_summary(report)
+                print_compact_agents(report)
+                print_compact_blast_radius(report, fixable_only=fixable_only)
+
+            # AI enrichment output (both modes)
+            if report.executive_summary:
+                from rich.panel import Panel
+
+                con.print("\n[bold]Executive Summary (AI-Generated)[/bold]")
+                con.print(Panel.fit(report.executive_summary, border_style="cyan"))
+            if report.ai_threat_chains:
+                from rich.panel import Panel
+
+                con.print("\n[bold]Threat Chain Analysis (AI-Generated)[/bold]")
+                for chain in report.ai_threat_chains:
+                    con.print(Panel(chain, border_style="red dim"))
+            # AI skill analysis output (if enriched)
+            if _skill_audit_obj and _skill_audit_obj.ai_skill_summary:
+                from rich.panel import Panel
+
+                sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim", "safe": "green"}
+                risk = _skill_audit_obj.ai_overall_risk_level or "unknown"
+                risk_style = sev_colors.get(risk, "white")
+                con.print(f"\n[bold]Skill File AI Analysis[/bold]  [{risk_style}]\\[{risk.upper()}][/{risk_style}]")
+                con.print(Panel.fit(_skill_audit_obj.ai_skill_summary, border_style="cyan"))
+
+                # Show AI-adjusted findings
+                adjusted = [sk_f for sk_f in _skill_audit_obj.findings if sk_f.ai_adjusted_severity]
+                if adjusted:
+                    for sk_f in adjusted:
+                        if sk_f.ai_adjusted_severity == "false_positive":
+                            con.print(f"  [green]✓ FP[/green] {sk_f.title}")
+                            con.print(f"    [dim]{sk_f.ai_analysis}[/dim]")
+                        else:
+                            con.print(f"  [yellow]↕ ADJ[/yellow] {sk_f.title}: {sk_f.severity} → {sk_f.ai_adjusted_severity}")
+                            if sk_f.ai_analysis:
+                                con.print(f"    [dim]{sk_f.ai_analysis}[/dim]")
+
+                # Show AI-detected new findings
+                ai_detected = [sk_f for sk_f in _skill_audit_obj.findings if sk_f.context == "ai_analysis"]
+                if ai_detected:
+                    con.print(f"\n  [bold yellow]AI-Detected Threats ({len(ai_detected)})[/bold yellow]")
+                    for sk_f in ai_detected:
+                        style = sev_colors.get(sk_f.severity, "white")
+                        con.print(f"    [{style}]\\[{sk_f.severity.upper()}][/{style}] {sk_f.title}")
+                        con.print(f"      [dim]{sk_f.detail}[/dim]")
+                        if sk_f.recommendation:
+                            con.print(f"      [green]→ {sk_f.recommendation}[/green]")
+
+            if verbose:
+                print_remediation_plan(report)
+                print_compact_cis_posture(report, limit=20)
+                print_export_hint(report)
+            else:
+                print_compact_remediation(report)
+                print_compact_cis_posture(report)
+                print_compact_export_hint(report)
+        elif output_format in ("text", "plain") and not output:
+            _print_text(report, blast_radii)
+        elif output_format == "json":
+            if output in (None, "", "-"):
+                sys.stdout.write(json.dumps(to_json(report), indent=2))
+                sys.stdout.write("\n")
+            else:
+                out_path = _resolve_output_path(output, output_format)
+                export_json(report, out_path)
+                con.print(f"\n  [green]✓[/green] JSON report: {out_path}")
+        elif output_format == "cyclonedx":
+            out_path = _resolve_output_path(output, output_format)
+            export_cyclonedx(report, out_path)
+            con.print(f"\n  [green]✓[/green] CycloneDX BOM: {out_path}")
+        elif output_format == "sarif":
+            out_path = _resolve_output_path(output, output_format)
+            export_sarif(report, out_path, exclude_unfixable=exclude_unfixable)
+            con.print(f"\n  [green]✓[/green] SARIF report: {out_path}")
+            if not quiet:
+                con.print("  [dim]SARIF includes enrichment context when available: CVSS/CWE, EPSS, and CISA KEV.[/dim]")
+        elif output_format == "spdx":
+            out_path = _resolve_output_path(output, output_format)
+            export_spdx(report, out_path)
+            con.print(f"\n  [green]✓[/green] SPDX 3.0 BOM: {out_path}")
+        elif output_format == "junit":
+            out_path = _resolve_output_path(output, output_format)
+            export_junit(report, out_path, blast_radii)
+            con.print(f"\n  [green]✓[/green] JUnit XML: {out_path}")
+        elif output_format == "csv":
+            out_path = _resolve_output_path(output, output_format)
+            export_csv(report, out_path, blast_radii)
+            con.print(f"\n  [green]✓[/green] CSV report: {out_path}")
+        elif output_format == "markdown":
+            out_path = _resolve_output_path(output, output_format)
+            export_markdown(report, out_path, blast_radii)
+            con.print(f"\n  [green]✓[/green] Markdown report: {out_path}")
+        elif output_format == "html":
+            out_path = _resolve_output_path(output, output_format)
+            export_html(report, out_path, blast_radii, offline_assets=offline_html)
+            con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
+            if open_report:
+                import webbrowser
+
+                con.print(f"  [green]✓[/green] Opening report in browser: {out_path}")
+                webbrowser.open(f"file://{Path(out_path).resolve()}")
+            else:
+                con.print(f"  [dim]Open with:[/dim] open {out_path}")
         elif output_format == "pdf":
-            click.echo("Error: --format pdf requires --output/-o (cannot write PDF to stdout)", err=True)
-            sys.exit(2)
+            out_path = _resolve_output_path(output, output_format)
+            export_pdf(report, out_path, blast_radii)
+            con.print(f"\n  [green]✓[/green] PDF report: {out_path}")
         elif output_format == "prometheus":
-            sys.stdout.write(to_prometheus(report, blast_radii))
+            out_path = _resolve_output_path(output, output_format)
+            export_prometheus(report, out_path, blast_radii)
+            con.print(f"\n  [green]✓[/green] Prometheus metrics: {out_path}")
+            con.print("  [dim]Scrape with node_exporter textfile or push via --push-gateway[/dim]")
         elif output_format == "graph":
             from agent_bom.output.graph import build_graph_elements
 
+            out_path = _resolve_output_path(output, output_format)
             elements = build_graph_elements(report, blast_radii)
-            sys.stdout.write(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
+            Path(out_path).write_text(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
+            con.print(f"\n  [green]✓[/green] Graph JSON: {out_path}")
+            con.print("  [dim]Cytoscape.js-compatible element list — open with Cytoscape desktop or any JS graph library[/dim]")
         elif output_format == "mermaid":
+            out_path = _resolve_output_path(output, output_format)
             if mermaid_mode == "attack-flow":
                 from agent_bom.output.mermaid import to_mermaid
 
-                sys.stdout.write(to_mermaid(report, blast_radii))
+                Path(out_path).write_text(to_mermaid(report, blast_radii))
             elif mermaid_mode == "lifecycle":
                 from agent_bom.output.mermaid import to_mermaid_lifecycle
 
-                sys.stdout.write(to_mermaid_lifecycle(report, blast_radii))
+                Path(out_path).write_text(to_mermaid_lifecycle(report, blast_radii))
             else:
                 from agent_bom.output.mermaid import to_mermaid_supply_chain
 
-                sys.stdout.write(to_mermaid_supply_chain(report))
+                Path(out_path).write_text(to_mermaid_supply_chain(report))
+            con.print(f"\n  [green]✓[/green] Mermaid diagram ({mermaid_mode}): {out_path}")
+            con.print("  [dim]Render with: mermaid-cli, GitHub markdown, or mermaid.live[/dim]")
         elif output_format == "svg":
-            from agent_bom.output.svg import to_svg
+            from agent_bom.output.svg import export_svg
 
-            sys.stdout.write(to_svg(report, blast_radii))
-        elif output_format == "junit":
-            sys.stdout.write(to_junit(report, blast_radii))
-        elif output_format == "csv":
-            sys.stdout.write(to_csv(report, blast_radii))
-        elif output_format == "markdown":
-            sys.stdout.write(to_markdown(report, blast_radii))
-        elif output_format == "graph-html":
-            click.echo("Error: --format graph-html requires --output/-o (cannot write HTML to stdout)", err=True)
-            sys.exit(2)
-        elif agent_mode:
-            payload = success_envelope(
-                command="agents",
-                report_json=to_json(report),
-                exit_code=ctx.exit_code,
-                token_budget=agent_token_budget,
-            )
-            sys.stdout.write(dumps_envelope(payload))
-        else:
-            sys.stdout.write(json.dumps(to_json(report), indent=2))
-        sys.stdout.write("\n")
-    elif output_format == "console" and not output:
-        _skill_audit_obj = ctx._skill_audit_obj
-        if verbose:
-            # Full output (--verbose)
-            print_summary(report)
-            print_scan_performance_summary(report)
-            print_posture_summary(report)
-            if not no_tree:
-                print_agent_tree(report)
-            print_severity_chart(report)
-            print_blast_radius(report, fixable_only=fixable_only)
-            if not no_tree:
-                print_attack_flow_tree(report)
-            print_threat_frameworks(report)
-        else:
-            # Compact output (default) — verdict-led posture summary.
-            print_compact_summary(report, verbose=verbose)
-            print_scan_performance_summary(report)
-            print_compact_agents(report)
-            print_compact_blast_radius(report, fixable_only=fixable_only)
-
-        # AI enrichment output (both modes)
-        if report.executive_summary:
-            from rich.panel import Panel
-
-            con.print("\n[bold]Executive Summary (AI-Generated)[/bold]")
-            con.print(Panel.fit(report.executive_summary, border_style="cyan"))
-        if report.ai_threat_chains:
-            from rich.panel import Panel
-
-            con.print("\n[bold]Threat Chain Analysis (AI-Generated)[/bold]")
-            for chain in report.ai_threat_chains:
-                con.print(Panel(chain, border_style="red dim"))
-        # AI skill analysis output (if enriched)
-        if _skill_audit_obj and _skill_audit_obj.ai_skill_summary:
-            from rich.panel import Panel
-
-            sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim", "safe": "green"}
-            risk = _skill_audit_obj.ai_overall_risk_level or "unknown"
-            risk_style = sev_colors.get(risk, "white")
-            con.print(f"\n[bold]Skill File AI Analysis[/bold]  [{risk_style}]\\[{risk.upper()}][/{risk_style}]")
-            con.print(Panel.fit(_skill_audit_obj.ai_skill_summary, border_style="cyan"))
-
-            # Show AI-adjusted findings
-            adjusted = [sk_f for sk_f in _skill_audit_obj.findings if sk_f.ai_adjusted_severity]
-            if adjusted:
-                for sk_f in adjusted:
-                    if sk_f.ai_adjusted_severity == "false_positive":
-                        con.print(f"  [green]✓ FP[/green] {sk_f.title}")
-                        con.print(f"    [dim]{sk_f.ai_analysis}[/dim]")
-                    else:
-                        con.print(f"  [yellow]↕ ADJ[/yellow] {sk_f.title}: {sk_f.severity} → {sk_f.ai_adjusted_severity}")
-                        if sk_f.ai_analysis:
-                            con.print(f"    [dim]{sk_f.ai_analysis}[/dim]")
-
-            # Show AI-detected new findings
-            ai_detected = [sk_f for sk_f in _skill_audit_obj.findings if sk_f.context == "ai_analysis"]
-            if ai_detected:
-                con.print(f"\n  [bold yellow]AI-Detected Threats ({len(ai_detected)})[/bold yellow]")
-                for sk_f in ai_detected:
-                    style = sev_colors.get(sk_f.severity, "white")
-                    con.print(f"    [{style}]\\[{sk_f.severity.upper()}][/{style}] {sk_f.title}")
-                    con.print(f"      [dim]{sk_f.detail}[/dim]")
-                    if sk_f.recommendation:
-                        con.print(f"      [green]→ {sk_f.recommendation}[/green]")
-
-        if verbose:
-            print_remediation_plan(report)
-            print_compact_cis_posture(report, limit=20)
-            print_export_hint(report)
-        else:
-            print_compact_remediation(report)
-            print_compact_cis_posture(report)
-            print_compact_export_hint(report)
-    elif output_format in ("text", "plain") and not output:
-        _print_text(report, blast_radii)
-    elif output_format == "json":
-        if output in (None, "", "-"):
-            sys.stdout.write(json.dumps(to_json(report), indent=2))
-            sys.stdout.write("\n")
-        else:
             out_path = _resolve_output_path(output, output_format)
-            export_json(report, out_path)
-            con.print(f"\n  [green]✓[/green] JSON report: {out_path}")
-    elif output_format == "cyclonedx":
-        out_path = _resolve_output_path(output, output_format)
-        export_cyclonedx(report, out_path)
-        con.print(f"\n  [green]✓[/green] CycloneDX BOM: {out_path}")
-    elif output_format == "sarif":
-        out_path = _resolve_output_path(output, output_format)
-        export_sarif(report, out_path, exclude_unfixable=exclude_unfixable)
-        con.print(f"\n  [green]✓[/green] SARIF report: {out_path}")
-        if not quiet:
-            con.print("  [dim]SARIF includes enrichment context when available: CVSS/CWE, EPSS, and CISA KEV.[/dim]")
-    elif output_format == "spdx":
-        out_path = _resolve_output_path(output, output_format)
-        export_spdx(report, out_path)
-        con.print(f"\n  [green]✓[/green] SPDX 3.0 BOM: {out_path}")
-    elif output_format == "junit":
-        out_path = _resolve_output_path(output, output_format)
-        export_junit(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] JUnit XML: {out_path}")
-    elif output_format == "csv":
-        out_path = _resolve_output_path(output, output_format)
-        export_csv(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] CSV report: {out_path}")
-    elif output_format == "markdown":
-        out_path = _resolve_output_path(output, output_format)
-        export_markdown(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] Markdown report: {out_path}")
-    elif output_format == "html":
-        out_path = _resolve_output_path(output, output_format)
-        export_html(report, out_path, blast_radii, offline_assets=offline_html)
-        con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
-        if open_report:
-            import webbrowser
+            export_svg(report, blast_radii, out_path)
+            con.print(f"\n  [green]✓[/green] SVG diagram: {out_path}")
+            con.print("  [dim]Open in any browser or image viewer[/dim]")
+        elif output_format == "graph-html":
+            from agent_bom.output.graph import export_graph_html
 
-            con.print(f"  [green]✓[/green] Opening report in browser: {out_path}")
-            webbrowser.open(f"file://{Path(out_path).resolve()}")
-        else:
-            con.print(f"  [dim]Open with:[/dim] open {out_path}")
-    elif output_format == "pdf":
-        out_path = _resolve_output_path(output, output_format)
-        export_pdf(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] PDF report: {out_path}")
-    elif output_format == "prometheus":
-        out_path = _resolve_output_path(output, output_format)
-        export_prometheus(report, out_path, blast_radii)
-        con.print(f"\n  [green]✓[/green] Prometheus metrics: {out_path}")
-        con.print("  [dim]Scrape with node_exporter textfile or push via --push-gateway[/dim]")
-    elif output_format == "graph":
-        from agent_bom.output.graph import build_graph_elements
+            out_path = _resolve_output_path(output, output_format)
+            export_graph_html(report, blast_radii, out_path, offline_assets=offline_html)
+            con.print(f"\n  [green]✓[/green] Interactive graph: {out_path}")
+            if open_report:
+                import webbrowser
 
-        out_path = _resolve_output_path(output, output_format)
-        elements = build_graph_elements(report, blast_radii)
-        Path(out_path).write_text(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
-        con.print(f"\n  [green]✓[/green] Graph JSON: {out_path}")
-        con.print("  [dim]Cytoscape.js-compatible element list — open with Cytoscape desktop or any JS graph library[/dim]")
-    elif output_format == "mermaid":
-        out_path = _resolve_output_path(output, output_format)
-        if mermaid_mode == "attack-flow":
-            from agent_bom.output.mermaid import to_mermaid
+                con.print(f"  [green]✓[/green] Opening report in browser: {out_path}")
+                webbrowser.open(f"file://{Path(out_path).resolve()}")
+            else:
+                con.print(f"  [dim]Open with:[/dim] open {out_path}")
+        elif output_format == "badge":
+            out_path = _resolve_output_path(output, output_format)
+            export_badge(report, out_path)
+            con.print(f"\n  [green]✓[/green] Badge JSON: {out_path}")
+            con.print("  [dim]Use with: https://img.shields.io/endpoint?url=<public-url-to-badge-json>[/dim]")
+        elif output_format in ("text", "plain") and output:
+            out_path = _resolve_output_path(output, output_format)
+            Path(out_path).write_text(_format_text(report, blast_radii))
+            con.print(f"\n  [green]✓[/green] Plain text report: {out_path}")
+        elif output:
+            if output.endswith(".cdx.json"):
+                export_cyclonedx(report, output)
+            elif output.endswith(".json"):
+                export_json(report, output)
+            elif output.endswith(".sarif"):
+                export_sarif(report, output, exclude_unfixable=exclude_unfixable)
+            elif output.endswith(".spdx.json"):
+                export_spdx(report, output)
+            elif output.endswith(".html"):
+                export_html(report, output, blast_radii, offline_assets=offline_html)
+            elif output.endswith(".pdf"):
+                export_pdf(report, output, blast_radii)
+            elif output.endswith(".xml"):
+                export_junit(report, output, blast_radii)
+            elif output.endswith(".csv"):
+                export_csv(report, output, blast_radii)
+            elif output.endswith(".md"):
+                export_markdown(report, output, blast_radii)
+            else:
+                click.echo(
+                    f"Cannot infer output format from '{output}'. Use --format explicitly or choose a supported extension.",
+                    err=True,
+                )
+                raise SystemExit(2)
+            con.print(f"\n  [green]✓[/green] Report: {output}")
 
-            Path(out_path).write_text(to_mermaid(report, blast_radii))
-        elif mermaid_mode == "lifecycle":
-            from agent_bom.output.mermaid import to_mermaid_lifecycle
-
-            Path(out_path).write_text(to_mermaid_lifecycle(report, blast_radii))
-        else:
-            from agent_bom.output.mermaid import to_mermaid_supply_chain
-
-            Path(out_path).write_text(to_mermaid_supply_chain(report))
-        con.print(f"\n  [green]✓[/green] Mermaid diagram ({mermaid_mode}): {out_path}")
-        con.print("  [dim]Render with: mermaid-cli, GitHub markdown, or mermaid.live[/dim]")
-    elif output_format == "svg":
-        from agent_bom.output.svg import export_svg
-
-        out_path = _resolve_output_path(output, output_format)
-        export_svg(report, blast_radii, out_path)
-        con.print(f"\n  [green]✓[/green] SVG diagram: {out_path}")
-        con.print("  [dim]Open in any browser or image viewer[/dim]")
-    elif output_format == "graph-html":
-        from agent_bom.output.graph import export_graph_html
-
-        out_path = _resolve_output_path(output, output_format)
-        export_graph_html(report, blast_radii, out_path, offline_assets=offline_html)
-        con.print(f"\n  [green]✓[/green] Interactive graph: {out_path}")
-        if open_report:
-            import webbrowser
-
-            con.print(f"  [green]✓[/green] Opening report in browser: {out_path}")
-            webbrowser.open(f"file://{Path(out_path).resolve()}")
-        else:
-            con.print(f"  [dim]Open with:[/dim] open {out_path}")
-    elif output_format == "badge":
-        out_path = _resolve_output_path(output, output_format)
-        export_badge(report, out_path)
-        con.print(f"\n  [green]✓[/green] Badge JSON: {out_path}")
-        con.print("  [dim]Use with: https://img.shields.io/endpoint?url=<public-url-to-badge-json>[/dim]")
-    elif output_format in ("text", "plain") and output:
-        out_path = _resolve_output_path(output, output_format)
-        Path(out_path).write_text(_format_text(report, blast_radii))
-        con.print(f"\n  [green]✓[/green] Plain text report: {out_path}")
-    elif output:
-        if output.endswith(".cdx.json"):
-            export_cyclonedx(report, output)
-        elif output.endswith(".json"):
-            export_json(report, output)
-        elif output.endswith(".sarif"):
-            export_sarif(report, output, exclude_unfixable=exclude_unfixable)
-        elif output.endswith(".spdx.json"):
-            export_spdx(report, output)
-        elif output.endswith(".html"):
-            export_html(report, output, blast_radii, offline_assets=offline_html)
-        elif output.endswith(".pdf"):
-            export_pdf(report, output, blast_radii)
-        elif output.endswith(".xml"):
-            export_junit(report, output, blast_radii)
-        elif output.endswith(".csv"):
-            export_csv(report, output, blast_radii)
-        elif output.endswith(".md"):
-            export_markdown(report, output, blast_radii)
-        else:
-            click.echo(
-                f"Cannot infer output format from '{output}'. Use --format explicitly or choose a supported extension.",
-                err=True,
-            )
-            raise SystemExit(2)
-        con.print(f"\n  [green]✓[/green] Report: {output}")
+    with _enospc_report_fallback(
+        con,
+        report,
+        blast_radii,
+        output_format,
+        exclude_unfixable=exclude_unfixable,
+        offline_html=offline_html,
+    ):
+        _emit_report()
 
     # Step 5b: Push to Prometheus Pushgateway (if requested)
     if push_gateway:

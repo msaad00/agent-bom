@@ -257,13 +257,28 @@ _update_check_result: str | None = None
 _update_check_done = threading.Event()
 
 
+def _update_check_cache_file() -> Path:
+    """Path for the once-a-day update-check stamp.
+
+    Honors ``AGENT_BOM_STATE_DIR`` so the write lands off ``$HOME`` (e.g. on a
+    tiny CloudShell home) when the operator redirects state; otherwise uses the
+    per-user XDG cache dir.
+    """
+    import os
+
+    state_dir = os.environ.get("AGENT_BOM_STATE_DIR")
+    base = Path(state_dir) if state_dir else Path.home() / ".cache" / "agent-bom"
+    return base / "update-check.txt"
+
+
 def _check_for_update_bg() -> None:
     """Background thread: compare __version__ against PyPI latest. Non-blocking."""
     global _update_check_result  # noqa: PLW0603
+    import errno
+
     try:
-        cache_dir = Path.home() / ".cache" / "agent-bom"
-        cache_file = cache_dir / "update-check.txt"
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = _update_check_cache_file()
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Only hit PyPI once per 24 hours
         import time
@@ -288,7 +303,15 @@ def _check_for_update_bg() -> None:
             )
         else:
             msg = ""
-        cache_file.write_text(msg)
+        try:
+            cache_file.write_text(msg)
+        except OSError as exc:
+            # A full disk must not lose the update notice or crash the scan —
+            # degrade to no-cache (the result is still served this run).
+            if exc.errno in (errno.ENOSPC, errno.EDQUOT):
+                logger.debug("Disk full writing update-check stamp %s — skipping cache", cache_file)
+            else:
+                logger.debug("Could not write update-check stamp %s: %s", cache_file, exc)
         _update_check_result = msg or None
     except Exception:  # noqa: BLE001
         _update_check_result = None

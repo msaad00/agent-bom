@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import logging
 import os
@@ -43,15 +44,49 @@ NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 EPSS_API_URL = "https://api.first.org/data/v1/epss"
 CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
+
+def _state_dir() -> Path:
+    """Resolve the on-disk state/cache dir, honoring ``AGENT_BOM_STATE_DIR``.
+
+    Redirects every enrichment cache write off ``$HOME`` when the operator
+    points the state dir elsewhere (e.g. ``/tmp`` on a tiny CloudShell home).
+    """
+    return Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+
+
 # Cache for CISA KEV catalog (refresh daily, persisted to disk)
 _kev_cache: Optional[dict] = None
 _kev_cache_time: Optional[datetime] = None
-_KEV_CACHE_FILE = Path.home() / ".agent-bom" / "kev_cache.json"
+_KEV_CACHE_FILE = _state_dir() / "kev_cache.json"
 _KEV_CACHE_TTL_SECONDS = 86400  # 24 hours
 
 # ─── Persistent enrichment cache (NVD + EPSS) ──────────────────────────────
 
-_ENRICHMENT_CACHE_DIR = Path.home() / ".agent-bom"
+_ENRICHMENT_CACHE_DIR = _state_dir()
+
+# Deduplicate the low-disk warning so a full cache dir emits one clear line,
+# not one per cache file / per scan.
+_low_disk_warned = False
+
+
+def _is_enospc(exc: OSError) -> bool:
+    """True when an OSError is an out-of-space (ENOSPC) / quota failure."""
+    return exc.errno in (errno.ENOSPC, errno.EDQUOT)
+
+
+def _warn_low_disk_once(target: Path, exc: OSError) -> None:
+    """Emit a single actionable low-disk warning and degrade to no-cache."""
+    global _low_disk_warned  # noqa: PLW0603
+    if _low_disk_warned:
+        _logger.debug("Skipping cache write to %s — disk full (already warned): %s", target, exc)
+        return
+    _low_disk_warned = True
+    _logger.warning(
+        "Disk full writing enrichment cache (%s) — continuing without caching. "
+        "Free space or set AGENT_BOM_STATE_DIR=/tmp/agent-bom to redirect cache off $HOME.",
+        target,
+    )
+
 
 # Module-level in-memory mirrors (loaded lazily from disk)
 _nvd_file_cache: dict[str, dict] = {}
@@ -110,8 +145,19 @@ def _load_enrichment_cache() -> None:
 
 
 def _save_enrichment_cache() -> None:
-    """Persist NVD + EPSS caches to disk (atomic write to prevent corruption)."""
-    _ENRICHMENT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    """Persist NVD + EPSS caches to disk (atomic write to prevent corruption).
+
+    A full disk degrades to no-cache with a single warning rather than
+    propagating ENOSPC — the scan keeps its already-computed findings.
+    """
+    try:
+        _ENRICHMENT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        if _is_enospc(exc):
+            _warn_low_disk_once(_ENRICHMENT_CACHE_DIR, exc)
+        else:
+            _logger.warning("Failed to create enrichment cache dir %s: %s", _ENRICHMENT_CACHE_DIR, exc)
+        return
     for name, data in [("nvd_cache.json", _nvd_file_cache), ("epss_cache.json", _epss_file_cache)]:
         target = _ENRICHMENT_CACHE_DIR / name
         try:
@@ -130,8 +176,11 @@ def _save_enrichment_cache() -> None:
                 except OSError as cleanup_exc:
                     _logger.debug("Failed to remove temp cache file %s: %s", tmp_path, cleanup_exc)
                 raise
-        except OSError:
-            _logger.warning("Failed to persist %s enrichment cache to disk", name)
+        except OSError as exc:
+            if _is_enospc(exc):
+                _warn_low_disk_once(target, exc)
+            else:
+                _logger.warning("Failed to persist %s enrichment cache to disk: %s", name, exc)
 
 
 def _cached_epss_scores(cve_ids: list[str], *, allow_stale: bool = False) -> dict[str, dict]:
@@ -355,6 +404,33 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
     return scores
 
 
+def _persist_kev_cache(kev_dict: dict) -> None:
+    """Atomically persist the KEV catalog; degrade to no-cache on a full disk."""
+    payload = json.dumps({"_cached_at": time.time(), "data": kev_dict}).encode("utf-8")
+    try:
+        _KEV_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=str(_KEV_CACHE_FILE.parent), suffix=".tmp")
+        fd_closed = False
+        try:
+            os.write(fd, payload)
+            os.close(fd)
+            fd_closed = True
+            os.replace(tmp_path, str(_KEV_CACHE_FILE))
+        except BaseException:
+            if not fd_closed:
+                os.close(fd)
+            try:
+                os.unlink(tmp_path)
+            except OSError as cleanup_exc:
+                _logger.debug("Failed to remove temp KEV cache %s: %s", tmp_path, cleanup_exc)
+            raise
+    except OSError as exc:
+        if _is_enospc(exc):
+            _warn_low_disk_once(_KEV_CACHE_FILE, exc)
+        else:
+            _logger.warning("Failed to persist KEV cache to disk: %s", exc)
+
+
 async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
     """Fetch CISA Known Exploited Vulnerabilities catalog.
 
@@ -404,12 +480,9 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
             _kev_cache_time = datetime.now(timezone.utc)
             record_enrichment_source("cisa_kev", "success")
 
-            # Persist to disk for cross-session resilience
-            try:
-                _KEV_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-                _KEV_CACHE_FILE.write_text(json.dumps({"_cached_at": time.time(), "data": kev_dict}))
-            except OSError as exc:
-                _logger.warning("Failed to persist KEV cache to disk: %s", exc)
+            # Persist to disk for cross-session resilience. Atomic temp+rename so
+            # a mid-write ENOSPC never leaves a half-written (corrupt) cache.
+            _persist_kev_cache(kev_dict)
 
             return kev_dict
         except (ValueError, KeyError) as e:

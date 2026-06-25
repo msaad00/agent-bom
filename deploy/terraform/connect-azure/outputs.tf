@@ -22,3 +22,13 @@ output "assigned_roles" {
   description = "Built-in read-only roles assigned to the principal."
   value       = compact(["Reader", var.assign_security_reader ? "Security Reader" : ""])
 }
+
+output "federated_credential_id" {
+  description = "ID of the keyless federated identity credential (empty when create_federated_credential is false)."
+  value       = var.create_federated_credential ? azuread_application_federated_identity_credential.scanner[0].id : ""
+}
+
+output "federated_credential_subject" {
+  description = "The exact subject the federated credential is pinned to (empty when not created)."
+  value       = var.create_federated_credential ? var.federated_credential_subject : ""
+}

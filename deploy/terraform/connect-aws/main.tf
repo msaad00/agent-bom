@@ -17,12 +17,36 @@ locals {
 
   use_role = var.principal_type == "role"
 
+  # Unique, non-guessable principal name by default. A predictable name is
+  # squattable/targetable, so unless the operator pins an explicit "name" we
+  # append a random hex suffix to "name_prefix".
+  principal_name = var.name != "" ? var.name : "${var.name_prefix}-${random_id.name_suffix.hex}"
+
+  # ExternalId is ALWAYS enforced (never silently omitted) to keep the
+  # confused-deputy defense on by default. Use the operator-supplied value when
+  # set, otherwise the auto-generated high-entropy one.
+  effective_external_id = var.external_id != "" ? var.external_id : random_password.external_id.result
+
   # AWS-managed read-only policies. SecurityAudit is the documented baseline;
   # ViewOnlyAccess is optional and additive.
   managed_policy_arns = compact([
     "arn:aws:iam::aws:policy/SecurityAudit",
     var.attach_view_only_access ? "arn:aws:iam::aws:policy/job-function/ViewOnlyAccess" : "",
   ])
+}
+
+# ---------------------------------------------------------------------------
+# Secure-by-default randomness: a unique principal name and a high-entropy
+# ExternalId. Generated at apply time (not committed anywhere), so the defaults
+# are unique + unguessable without the operator hand-picking a value.
+# ---------------------------------------------------------------------------
+resource "random_id" "name_suffix" {
+  byte_length = 4
+}
+
+resource "random_password" "external_id" {
+  length  = 32
+  special = false
 }
 
 # ---------------------------------------------------------------------------
@@ -44,14 +68,12 @@ data "aws_iam_policy_document" "assume_role" {
         identifiers = var.trusted_principal_arns
       }
 
-      dynamic "condition" {
-        for_each = var.external_id != "" ? [1] : []
-
-        content {
-          test     = "StringEquals"
-          variable = "sts:ExternalId"
-          values   = [var.external_id]
-        }
+      # ExternalId is always required on cross-account assume-role — the
+      # confused-deputy defense cannot be silently turned off.
+      condition {
+        test     = "StringEquals"
+        variable = "sts:ExternalId"
+        values   = [local.effective_external_id]
       }
     }
   }
@@ -99,7 +121,7 @@ locals {
 resource "aws_iam_role" "this" {
   count = local.use_role ? 1 : 0
 
-  name                 = var.name
+  name                 = local.principal_name
   path                 = var.path
   description          = "Read-only role assumed by agent-bom (SecurityAudit + ViewOnlyAccess). No write permissions."
   assume_role_policy   = data.aws_iam_policy_document.assume_role[0].json
@@ -122,7 +144,7 @@ resource "aws_iam_role_policy_attachment" "this" {
 resource "aws_iam_user" "this" {
   count = local.use_role ? 0 : 1
 
-  name                 = var.name
+  name                 = local.principal_name
   path                 = var.path
   permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
   tags                 = local.common_tags

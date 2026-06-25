@@ -7,9 +7,20 @@
 # Keyless by default: this module creates NO service-account key. Use Workload
 # Identity Federation (variable-gated below) since many orgs disable SA keys.
 
+# Unique, non-guessable SA account_id by default. A predictable SA name is
+# squattable/targetable, so unless the operator pins an explicit
+# service_account_id we append a random hex suffix to the prefix.
+resource "random_id" "sa_suffix" {
+  byte_length = 4
+}
+
+locals {
+  service_account_id = var.service_account_id != "" ? var.service_account_id : "${var.service_account_id_prefix}-${random_id.sa_suffix.hex}"
+}
+
 resource "google_service_account" "this" {
   project      = var.project_id
-  account_id   = var.service_account_id
+  account_id   = local.service_account_id
   display_name = var.service_account_display_name
   description  = "Read-only service account assumed by agent-bom (viewer + securityReviewer). No write permissions."
 }
@@ -49,17 +60,47 @@ resource "google_iam_workload_identity_pool_provider" "this" {
   workload_identity_pool_provider_id = var.wif_provider_id
   display_name                       = "agent-bom OIDC"
   attribute_mapping                  = var.wif_attribute_mapping
-  attribute_condition                = var.wif_attribute_condition != "" ? var.wif_attribute_condition : null
+
+  # Always scoped: a federation provider with no attribute_condition would let
+  # ANY token from the issuer impersonate the read-only SA. This is enforced by
+  # the precondition below, so the value is never null when WIF is enabled.
+  attribute_condition = var.wif_attribute_condition
 
   oidc {
-    issuer_uri        = var.wif_issuer_uri
-    allowed_audiences = length(var.wif_allowed_audiences) > 0 ? var.wif_allowed_audiences : null
+    issuer_uri = var.wif_issuer_uri
+    # Pin the accepted audiences. An unpinned audience widens the federation
+    # trust; the precondition below requires at least one.
+    allowed_audiences = var.wif_allowed_audiences
+  }
+
+  lifecycle {
+    precondition {
+      condition     = trimspace(var.wif_attribute_condition) != ""
+      error_message = "Workload Identity Federation requires a non-empty wif_attribute_condition (a scoped CEL like \"assertion.repository == 'my-org/my-repo'\"). An empty condition would let any token from the issuer impersonate the read-only service account (wide-open federation)."
+    }
+
+    precondition {
+      condition     = length(var.wif_allowed_audiences) > 0
+      error_message = "Workload Identity Federation requires at least one wif_allowed_audiences entry. An unpinned audience widens the federation trust beyond the intended workload."
+    }
+
+    precondition {
+      condition     = trimspace(var.wif_issuer_uri) != ""
+      error_message = "Workload Identity Federation requires wif_issuer_uri (the OIDC issuer of the external IdP)."
+    }
+
+    precondition {
+      condition     = trimspace(var.wif_principal_set) != ""
+      error_message = "Workload Identity Federation requires wif_principal_set so the impersonation binding is scoped to a specific external identity, not the whole pool."
+    }
   }
 }
 
 # Allow the federated principalSet to impersonate the read-only SA (keyless).
+# Scoped to the specific principalSet (enforced non-empty by the provider
+# precondition above), never the whole pool.
 resource "google_service_account_iam_member" "wif_impersonation" {
-  count = var.enable_workload_identity_federation && var.wif_principal_set != "" ? 1 : 0
+  count = var.enable_workload_identity_federation ? 1 : 0
 
   service_account_id = google_service_account.this.name
   role               = "roles/iam.workloadIdentityUser"

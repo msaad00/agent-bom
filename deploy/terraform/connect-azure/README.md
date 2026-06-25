@@ -18,9 +18,41 @@ connector calls only `list`/`get` ARM APIs.
 - A **`Security Reader`** role assignment when `assign_security_reader = true`
   (default), for Microsoft Defender for Cloud posture.
 
-It does **not** create the service principal or its credentials. Bring an
-existing service principal (certificate auth, recommended) or managed identity
-and pass its **object ID** as `principal_id`. No secrets live in this module.
+By default it does **not** create the service principal or its credentials.
+Bring an existing service principal (certificate auth, recommended) or managed
+identity and pass its **object ID** as `principal_id`. No secrets live in this
+module.
+
+## Secure by default — keyless federated credential (optional)
+
+When you opt in with `create_federated_credential = true`, the module attaches a
+**federated identity credential** to your scanner application that is pinned to
+an **exact issuer + subject + audience** (`api://AzureADTokenExchange`), so only
+one specific external workload can exchange a token for the scanner SP — never a
+wide-open trust. The plan **fails** if the issuer or subject is empty, or if the
+subject contains a wildcard.
+
+```hcl
+module "agent_bom_connect" {
+  source = "github.com/<org>/agent-bom//deploy/terraform/connect-azure"
+
+  subscription_id = "00000000-0000-0000-0000-000000000000"
+  principal_id    = "11111111-1111-1111-1111-111111111111"
+
+  create_federated_credential         = true
+  federated_credential_application_id = "22222222-2222-2222-2222-222222222222"
+  federated_credential_issuer         = "https://token.actions.githubusercontent.com"
+  federated_credential_subject        = "repo:my-org/my-repo:ref:refs/heads/main" # exact, no wildcard
+  # audience defaults to api://AzureADTokenExchange
+}
+```
+
+> **Threat note.** A federated credential with an empty or wildcard subject
+> trusts *every* token from the issuer — any repo or workflow on that IdP could
+> impersonate the scanner SP (**wide-open federation / confused-deputy**).
+> Pinning issuer + subject + audience narrows the trust to one workload. Leave
+> `create_federated_credential = false` to keep the prior certificate-auth flow
+> unchanged.
 
 ## Usage
 
@@ -67,8 +99,13 @@ Azure network I/O.
 | `principal_type` | `ServicePrincipal` | Principal kind for the assignment. |
 | `assign_security_reader` | `true` | Also assign built-in Security Reader. |
 | `scope_override` | `""` | Management-group scope to cover all subscriptions. |
+| `create_federated_credential` | `false` | Pin a keyless federated credential (issuer+subject+audience). |
+| `federated_credential_issuer` | `""` | OIDC issuer. **Required when the credential is created.** |
+| `federated_credential_subject` | `""` | Exact subject (no wildcard). **Required when the credential is created.** |
+| `federated_credential_audience` | `api://AzureADTokenExchange` | Token-exchange audience. |
 
 ## Outputs
 
 `reader_role_assignment_id`, `security_reader_role_assignment_id`, `scope`,
-`principal_id`, `assigned_roles`.
+`principal_id`, `assigned_roles`, `federated_credential_id`,
+`federated_credential_subject`.

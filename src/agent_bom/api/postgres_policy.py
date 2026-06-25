@@ -11,7 +11,16 @@ from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
 
 
 class PostgresPolicyStore:
-    """PostgreSQL-backed gateway policy persistence."""
+    """PostgreSQL-backed gateway policy persistence.
+
+    Naming note: the policy tables expose the tenant column as ``team_id`` on
+    Postgres (the platform-wide tenant column name for team-scoped tables and
+    its RLS policies) while the SQLite backend names the same logical column
+    ``tenant_id``. The column is not renamed here to avoid rewriting existing
+    rows and the ``*_tenant_isolation`` RLS policies bound to ``team_id``; the
+    application maps ``tenant_id`` -> ``team_id`` at every query boundary, so
+    the two backends persist and read back the same logical record.
+    """
 
     def __init__(self, pool=None) -> None:
         self._pool = pool or _get_pool()
@@ -30,6 +39,7 @@ class PostgresPolicyStore:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS policy_audit_log (
                     id SERIAL PRIMARY KEY,
+                    entry_id TEXT,
                     ts TEXT NOT NULL,
                     team_id TEXT NOT NULL DEFAULT 'default',
                     data JSONB NOT NULL
@@ -50,9 +60,20 @@ class PostgresPolicyStore:
                     ) THEN
                         ALTER TABLE policy_audit_log ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default';
                     END IF;
+                    -- entry_id mirrors the SQLite PRIMARY KEY so re-ingesting the
+                    -- same audit event is idempotent across replicas.
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'policy_audit_log' AND column_name = 'entry_id'
+                    ) THEN
+                        ALTER TABLE policy_audit_log ADD COLUMN entry_id TEXT;
+                    END IF;
                 END
                 $$;
             """)
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(entry_id)"
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC)")
             _ensure_tenant_rls(conn, "gateway_policies", "team_id")
@@ -134,11 +155,29 @@ class PostgresPolicyStore:
     def put_audit_entry(self, entry) -> None:
         data = entry.model_dump_json() if hasattr(entry, "model_dump_json") else json.dumps(entry)
         team_id = getattr(entry, "tenant_id", "default")
+        # Persist the caller-supplied timestamp (the moment the policy decision
+        # was made), not insert time, so re-ingesting the same event from a
+        # replica or retry yields an identical row. Fall back to now() only when
+        # the caller did not stamp the entry.
+        ts = getattr(entry, "timestamp", None) or datetime.now(timezone.utc).isoformat()
+        entry_id = getattr(entry, "entry_id", None)
         with _tenant_connection(self._pool) as conn:
-            conn.execute(
-                "INSERT INTO policy_audit_log (ts, team_id, data) VALUES (%s, %s, %s)",
-                (datetime.now(timezone.utc).isoformat(), team_id, data),
-            )
+            if entry_id:
+                # entry_id carries the dedup key (mirrors the SQLite PRIMARY
+                # KEY); ON CONFLICT keeps re-ingestion idempotent.
+                conn.execute(
+                    """
+                    INSERT INTO policy_audit_log (entry_id, ts, team_id, data)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (entry_id) DO NOTHING
+                    """,
+                    (entry_id, ts, team_id, data),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO policy_audit_log (ts, team_id, data) VALUES (%s, %s, %s)",
+                    (ts, team_id, data),
+                )
             conn.commit()
 
     def list_audit_entries(

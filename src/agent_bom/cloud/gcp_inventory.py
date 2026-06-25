@@ -66,6 +66,19 @@ _GCP_IAM_PERMISSIONS: tuple[str, ...] = (
     "iam.serviceAccounts.list",
     "resourcemanager.projects.getIamPolicy",
 )
+# Estate-breadth read-only permissions exercised by the extended discoverers
+# (GKE / Cloud Run / Cloud Functions / Cloud SQL / VPC / disks / Pub/Sub). Kept
+# explicit so the discovery envelope's `permissions_used` stays honest.
+_GCP_ESTATE_PERMISSIONS: tuple[str, ...] = (
+    "container.clusters.list",
+    "run.services.list",
+    "cloudfunctions.functions.list",
+    "cloudsql.instances.list",
+    "compute.networks.list",
+    "compute.subnetworks.list",
+    "compute.disks.list",
+    "pubsub.topics.list",
+)
 
 # Open-to-the-world source ranges that mark a firewall rule as internet-facing.
 # The CNAPP overlay keys off this `network_exposure` shape.
@@ -197,6 +210,12 @@ def discover_inventory(
     include_storage: bool = True,
     include_compute: bool = True,
     include_iam: bool = True,
+    include_containers: bool = True,
+    include_serverless: bool = True,
+    include_databases: bool = True,
+    include_networks: bool = True,
+    include_disks: bool = True,
+    include_messaging: bool = True,
     force: bool = False,
 ) -> dict[str, Any]:
     """Enumerate the general GCP estate (GCS, instances + firewalls, SAs).
@@ -231,6 +250,13 @@ def discover_inventory(
         "instances": [],
         "firewalls": [],
         "service_accounts": [],
+        "gke_clusters": [],
+        "cloud_run_services": [],
+        "cloud_functions": [],
+        "cloud_sql_instances": [],
+        "vpc_networks": [],
+        "disks": [],
+        "pubsub_topics": [],
         "warnings": [],
         "discovery_envelope": None,
     }
@@ -271,6 +297,13 @@ def discover_inventory(
     instances: list[dict[str, Any]] = []
     firewalls: list[dict[str, Any]] = []
     service_accounts: list[dict[str, Any]] = []
+    gke_clusters: list[dict[str, Any]] = []
+    cloud_run_services: list[dict[str, Any]] = []
+    cloud_functions: list[dict[str, Any]] = []
+    cloud_sql_instances: list[dict[str, Any]] = []
+    vpc_networks: list[dict[str, Any]] = []
+    disks: list[dict[str, Any]] = []
+    pubsub_topics: list[dict[str, Any]] = []
 
     if include_storage:
         buckets = _discover_buckets(resolved_project, credentials=credentials, warnings=warnings)
@@ -282,6 +315,19 @@ def discover_inventory(
         service_accounts = _discover_service_accounts(
             resolved_project, credentials=credentials, warnings=warnings, iam_bindings=iam_bindings
         )
+    if include_containers:
+        gke_clusters = _discover_gke_clusters(resolved_project, credentials=credentials, warnings=warnings)
+    if include_serverless:
+        cloud_run_services = _discover_cloud_run_services(resolved_project, credentials=credentials, warnings=warnings)
+        cloud_functions = _discover_cloud_functions(resolved_project, credentials=credentials, warnings=warnings)
+    if include_databases:
+        cloud_sql_instances = _discover_cloud_sql_instances(resolved_project, credentials=credentials, warnings=warnings)
+    if include_networks:
+        vpc_networks = _discover_vpc_networks(resolved_project, credentials=credentials, warnings=warnings)
+    if include_disks:
+        disks = _discover_disks(resolved_project, credentials=credentials, warnings=warnings)
+    if include_messaging:
+        pubsub_topics = _discover_pubsub_topics(resolved_project, credentials=credentials, warnings=warnings)
 
     permissions_used: list[str] = []
     if include_storage:
@@ -290,6 +336,18 @@ def discover_inventory(
         permissions_used.extend(_GCP_COMPUTE_PERMISSIONS)
     if include_iam:
         permissions_used.extend(_GCP_IAM_PERMISSIONS)
+    if include_containers:
+        permissions_used.append("container.clusters.list")
+    if include_serverless:
+        permissions_used.extend(("run.services.list", "cloudfunctions.functions.list"))
+    if include_databases:
+        permissions_used.append("cloudsql.instances.list")
+    if include_networks:
+        permissions_used.extend(("compute.networks.list", "compute.subnetworks.list"))
+    if include_disks:
+        permissions_used.append("compute.disks.list")
+    if include_messaging:
+        permissions_used.append("pubsub.topics.list")
 
     envelope = DiscoveryEnvelope(
         scan_mode=ScanMode.CLOUD_READ_ONLY,
@@ -308,6 +366,13 @@ def discover_inventory(
         "instances": instances,
         "firewalls": firewalls,
         "service_accounts": service_accounts,
+        "gke_clusters": gke_clusters,
+        "cloud_run_services": cloud_run_services,
+        "cloud_functions": cloud_functions,
+        "cloud_sql_instances": cloud_sql_instances,
+        "vpc_networks": vpc_networks,
+        "disks": disks,
+        "pubsub_topics": pubsub_topics,
         "warnings": warnings,
         "discovery_envelope": envelope.to_dict(),
     }
@@ -645,8 +710,352 @@ def _discover_service_accounts(
 
 
 # ---------------------------------------------------------------------------
+# GKE clusters (container_v1, project-wide via the "-" location wildcard)
+# ---------------------------------------------------------------------------
+
+
+def _discover_gke_clusters(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every GKE cluster in the project (read-only).
+
+    Uses the ``-`` location wildcard so a single call returns clusters across all
+    regions/zones. A cluster with a public control-plane endpoint (no
+    ``private_cluster_config.enable_private_endpoint``) is marked
+    ``internet_exposed`` so the CNAPP / attack-path overlays treat it as an entry.
+    """
+    try:
+        from google.cloud import container_v1
+    except ImportError:
+        warnings.append("google-cloud-container not installed. Skipping GKE cluster inventory.")
+        return []
+
+    clusters: list[dict[str, Any]] = []
+    try:
+        client = container_v1.ClusterManagerClient(credentials=credentials)
+        response = client.list_clusters(parent=f"projects/{project_id}/locations/-")
+        for cluster in getattr(response, "clusters", None) or []:
+            name = str(getattr(cluster, "name", "") or "").strip()
+            if not name:
+                continue
+            private_cfg = getattr(cluster, "private_cluster_config", None)
+            private_endpoint = bool(getattr(private_cfg, "enable_private_endpoint", False)) if private_cfg else False
+            clusters.append(
+                {
+                    "name": name,
+                    "id": str(getattr(cluster, "id", "") or "") or name,
+                    "location": str(getattr(cluster, "location", "") or ""),
+                    "endpoint": str(getattr(cluster, "endpoint", "") or ""),
+                    "private_cluster": bool(getattr(private_cfg, "enable_private_nodes", False)) if private_cfg else False,
+                    "internet_exposed": not private_endpoint,
+                    "node_count": _safe_int(str(getattr(cluster, "current_node_count", "") or "")) or 0,
+                    "version": str(getattr(cluster, "current_master_version", "") or ""),
+                    "labels": _clean_labels(getattr(cluster, "resource_labels", None)),
+                    "project_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — API-disabled / access-denied must degrade
+        warnings.append(f"Could not list GKE clusters: {sanitize_discovery_warning(exc)}")
+    return clusters
+
+
+# ---------------------------------------------------------------------------
+# Cloud Run services (run_v2, project-wide via the "-" location wildcard)
+# ---------------------------------------------------------------------------
+
+
+def _discover_cloud_run_services(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every Cloud Run service in the project (read-only).
+
+    Ingress ``INGRESS_TRAFFIC_ALL`` means the service is reachable from the
+    internet → ``internet_exposed``. ``INGRESS_TRAFFIC_INTERNAL_*`` is private.
+    """
+    try:
+        from google.cloud import run_v2
+    except ImportError:
+        warnings.append("google-cloud-run not installed. Skipping Cloud Run service inventory.")
+        return []
+
+    services: list[dict[str, Any]] = []
+    try:
+        client = run_v2.ServicesClient(credentials=credentials)
+        request = run_v2.ListServicesRequest(parent=f"projects/{project_id}/locations/-")
+        for service in client.list_services(request=request):
+            full_name = str(getattr(service, "name", "") or "").strip()
+            name = _leaf(full_name)
+            if not name:
+                continue
+            ingress = str(getattr(service, "ingress", "") or "")
+            region = _segment(full_name, "locations")
+            services.append(
+                {
+                    "name": name,
+                    "id": full_name or name,
+                    "location": region,
+                    "url": str(getattr(service, "uri", "") or ""),
+                    "ingress": ingress,
+                    "internet_exposed": "ALL" in ingress.upper(),
+                    "labels": _clean_labels(getattr(service, "labels", None)),
+                    "project_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Cloud Run services: {sanitize_discovery_warning(exc)}")
+    return services
+
+
+# ---------------------------------------------------------------------------
+# Cloud Functions (functions_v2, project-wide via the "-" location wildcard)
+# ---------------------------------------------------------------------------
+
+
+def _discover_cloud_functions(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every 2nd-gen Cloud Function in the project (read-only)."""
+    try:
+        from google.cloud import functions_v2
+    except ImportError:
+        warnings.append("google-cloud-functions not installed. Skipping Cloud Functions inventory.")
+        return []
+
+    functions: list[dict[str, Any]] = []
+    try:
+        client = functions_v2.FunctionServiceClient(credentials=credentials)
+        request = functions_v2.ListFunctionsRequest(parent=f"projects/{project_id}/locations/-")
+        for function in client.list_functions(request=request):
+            full_name = str(getattr(function, "name", "") or "").strip()
+            name = _leaf(full_name)
+            if not name:
+                continue
+            service_config = getattr(function, "service_config", None)
+            ingress = str(getattr(service_config, "ingress_settings", "") or "") if service_config else ""
+            event_trigger = getattr(function, "event_trigger", None)
+            trigger = "event" if event_trigger else "https"
+            functions.append(
+                {
+                    "name": name,
+                    "id": full_name or name,
+                    "location": _segment(full_name, "locations"),
+                    "trigger": trigger,
+                    "ingress": ingress,
+                    "internet_exposed": "ALL" in ingress.upper(),
+                    "labels": _clean_labels(getattr(function, "labels", None)),
+                    "project_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Cloud Functions: {sanitize_discovery_warning(exc)}")
+    return functions
+
+
+# ---------------------------------------------------------------------------
+# Cloud SQL instances (Admin API via google-api-python-client)
+# ---------------------------------------------------------------------------
+
+
+def _discover_cloud_sql_instances(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every Cloud SQL instance in the project (read-only).
+
+    The Cloud SQL Admin API has no idiomatic google-cloud client, so this uses
+    the discovery-built ``sqladmin`` client. An instance with a public IPv4
+    address (``PRIMARY`` ip_address) or an open authorized-network
+    (``0.0.0.0/0``) is marked ``internet_exposed`` so a public managed database
+    feeds the CNAPP / attack-path overlays.
+    """
+    try:
+        from googleapiclient.discovery import build
+    except ImportError:
+        warnings.append("google-api-python-client not installed. Skipping Cloud SQL inventory.")
+        return []
+
+    instances: list[dict[str, Any]] = []
+    try:
+        service = build("sqladmin", "v1beta4", credentials=credentials, cache_discovery=False)
+        response = service.instances().list(project=project_id).execute()
+        for item in response.get("items", []) or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "") or "").strip()
+            if not name:
+                continue
+            ip_addresses = [str(ip.get("ipAddress", "")) for ip in (item.get("ipAddresses") or []) if isinstance(ip, dict)]
+            settings = item.get("settings") or {}
+            ip_config = settings.get("ipConfiguration") or {}
+            authorized = [str(net.get("value", "")) for net in (ip_config.get("authorizedNetworks") or []) if isinstance(net, dict)]
+            public_ip = bool(ip_config.get("ipv4Enabled")) and bool(ip_addresses)
+            open_network = any(net in _INTERNET_RANGES for net in authorized)
+            disk_encryption = item.get("diskEncryptionConfiguration") or {}
+            instances.append(
+                {
+                    "name": name,
+                    "id": str(item.get("selfLink", "") or "") or name,
+                    "location": str(item.get("region", "") or ""),
+                    "database_version": str(item.get("databaseVersion", "") or ""),
+                    "ip_addresses": ip_addresses,
+                    "authorized_networks": authorized,
+                    "publicly_accessible": public_ip or open_network,
+                    "internet_exposed": public_ip or open_network,
+                    "encrypted": bool(disk_encryption.get("kmsKeyName")),
+                    "project_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — API-disabled / access-denied must degrade
+        warnings.append(f"Could not list Cloud SQL instances: {sanitize_discovery_warning(exc)}")
+    return instances
+
+
+# ---------------------------------------------------------------------------
+# VPC networks + subnets (compute_v1)
+# ---------------------------------------------------------------------------
+
+
+def _discover_vpc_networks(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every VPC network + its subnets in the project (read-only)."""
+    try:
+        from google.cloud import compute_v1
+    except ImportError:
+        warnings.append("google-cloud-compute not installed. Skipping VPC network inventory.")
+        return []
+
+    subnets_by_network = _discover_subnets_by_network(project_id, credentials=credentials, warnings=warnings)
+    networks: list[dict[str, Any]] = []
+    try:
+        client = compute_v1.NetworksClient(credentials=credentials)
+        for network in client.list(project=project_id):
+            name = str(getattr(network, "name", "") or "").strip()
+            if not name:
+                continue
+            self_link = str(getattr(network, "self_link", "") or "")
+            network_subnets = subnets_by_network.get(self_link, []) or subnets_by_network.get(name, [])
+            networks.append(
+                {
+                    "name": name,
+                    "id": str(getattr(network, "id", "") or "") or name,
+                    "location": "global",
+                    "auto_create_subnetworks": bool(getattr(network, "auto_create_subnetworks", False)),
+                    "subnets": network_subnets,
+                    "project_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list VPC networks: {sanitize_discovery_warning(exc)}")
+    return networks
+
+
+def _discover_subnets_by_network(project_id: str, *, credentials: Any, warnings: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """Aggregated subnet list, keyed by the parent network self-link AND name."""
+    try:
+        from google.cloud import compute_v1
+    except ImportError:
+        return {}
+
+    by_network: dict[str, list[dict[str, Any]]] = {}
+    try:
+        client = compute_v1.SubnetworksClient(credentials=credentials)
+        for _region, scoped_list in client.aggregated_list(project=project_id):
+            for subnet in getattr(scoped_list, "subnetworks", None) or []:
+                network_link = str(getattr(subnet, "network", "") or "")
+                flow_logs = getattr(subnet, "enable_flow_logs", None)
+                entry = {
+                    "name": str(getattr(subnet, "name", "") or ""),
+                    "region": _leaf(getattr(subnet, "region", "")),
+                    "cidr": str(getattr(subnet, "ip_cidr_range", "") or ""),
+                    "flow_logs": bool(flow_logs) if flow_logs is not None else False,
+                }
+                by_network.setdefault(network_link, []).append(entry)
+                by_network.setdefault(_leaf(network_link), []).append(entry)
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list VPC subnets: {sanitize_discovery_warning(exc)}")
+    return by_network
+
+
+# ---------------------------------------------------------------------------
+# Persistent disks (compute_v1, aggregated)
+# ---------------------------------------------------------------------------
+
+
+def _discover_disks(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every persistent disk in the project (read-only)."""
+    try:
+        from google.cloud import compute_v1
+    except ImportError:
+        warnings.append("google-cloud-compute not installed. Skipping persistent-disk inventory.")
+        return []
+
+    disks: list[dict[str, Any]] = []
+    try:
+        client = compute_v1.DisksClient(credentials=credentials)
+        for _zone, scoped_list in client.aggregated_list(project=project_id):
+            for disk in getattr(scoped_list, "disks", None) or []:
+                name = str(getattr(disk, "name", "") or "").strip()
+                if not name:
+                    continue
+                encryption = getattr(disk, "disk_encryption_key", None)
+                disks.append(
+                    {
+                        "name": name,
+                        "id": str(getattr(disk, "id", "") or "") or name,
+                        "location": _leaf(getattr(disk, "zone", "")),
+                        "size_gb": _safe_int(str(getattr(disk, "size_gb", "") or "")) or 0,
+                        "encrypted": bool(getattr(encryption, "kms_key_name", "") if encryption else False),
+                        "source_image": _leaf(getattr(disk, "source_image", "")),
+                        "labels": _clean_labels(getattr(disk, "labels", None)),
+                        "project_id": project_id,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list persistent disks: {sanitize_discovery_warning(exc)}")
+    return disks
+
+
+# ---------------------------------------------------------------------------
+# Pub/Sub topics (pubsub_v1)
+# ---------------------------------------------------------------------------
+
+
+def _discover_pubsub_topics(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Enumerate every Pub/Sub topic in the project (read-only)."""
+    try:
+        from google.cloud import pubsub_v1
+    except ImportError:
+        warnings.append("google-cloud-pubsub not installed. Skipping Pub/Sub topic inventory.")
+        return []
+
+    topics: list[dict[str, Any]] = []
+    try:
+        client = pubsub_v1.PublisherClient(credentials=credentials)
+        for topic in client.list_topics(request={"project": f"projects/{project_id}"}):
+            full_name = str(getattr(topic, "name", "") or "").strip()
+            name = _leaf(full_name)
+            if not name:
+                continue
+            topics.append(
+                {
+                    "name": name,
+                    "id": full_name or name,
+                    "location": "global",
+                    "labels": _clean_labels(getattr(topic, "labels", None)),
+                    "project_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list Pub/Sub topics: {sanitize_discovery_warning(exc)}")
+    return topics
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _segment(self_link: str, key: str) -> str:
+    """Return the path segment following ``key`` in a GCP resource name, else ''.
+
+    e.g. ``_segment("projects/p/locations/us-central1/services/svc", "locations")``
+    → ``"us-central1"``.
+    """
+    parts = str(self_link or "").split("/")
+    for i, part in enumerate(parts):
+        if part == key and i + 1 < len(parts):
+            return parts[i + 1]
+    return ""
 
 
 def _leaf(value: Any) -> str:

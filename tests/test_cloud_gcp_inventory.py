@@ -107,9 +107,59 @@ class _FakeFirewallsClient:
         ]
 
 
+class _FakeNetworksClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list(self, project: str) -> list[Any]:
+        return [
+            _Obj(
+                name="default",
+                id="net-1",
+                self_link="https://www.googleapis.com/compute/v1/projects/p/global/networks/default",
+                auto_create_subnetworks=True,
+            ),
+        ]
+
+
+class _FakeSubnetworksClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def aggregated_list(self, project: str) -> list[Any]:
+        subnet = _Obj(
+            name="default-sub",
+            region="https://www.googleapis.com/compute/v1/projects/p/regions/us-central1",
+            ip_cidr_range="10.0.0.0/20",
+            network="https://www.googleapis.com/compute/v1/projects/p/global/networks/default",
+            enable_flow_logs=True,
+        )
+        return [("regions/us-central1", _Obj(subnetworks=[subnet]))]
+
+
+class _FakeDisksClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def aggregated_list(self, project: str) -> list[Any]:
+        disk = _Obj(
+            name="web-disk",
+            id="disk-1",
+            zone="https://www.googleapis.com/compute/v1/projects/p/zones/us-central1-a",
+            size_gb=50,
+            disk_encryption_key=_Obj(kms_key_name="projects/p/locations/us/keyRings/r/cryptoKeys/k"),
+            source_image="https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-12",
+            labels={"app": "web"},
+        )
+        return [("zones/us-central1-a", _Obj(disks=[disk]))]
+
+
 class _FakeComputeModule(types.ModuleType):
     InstancesClient = _FakeInstancesClient
     FirewallsClient = _FakeFirewallsClient
+    NetworksClient = _FakeNetworksClient
+    SubnetworksClient = _FakeSubnetworksClient
+    DisksClient = _FakeDisksClient
 
 
 class _FakeServiceAccount:
@@ -169,6 +219,157 @@ class _FakeIamPolicyPb2Module(types.ModuleType):
     GetIamPolicyRequest = _FakeGetIamPolicyRequest
 
 
+# --- GKE clusters -----------------------------------------------------------
+class _FakeClusterManagerClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list_clusters(self, parent: str) -> Any:
+        public = _Obj(
+            name="public-gke",
+            id="c-1",
+            location="us-central1",
+            endpoint="35.1.2.3",
+            current_node_count=3,
+            current_master_version="1.29",
+            resource_labels={"env": "prod"},
+            private_cluster_config=_Obj(enable_private_endpoint=False, enable_private_nodes=False),
+        )
+        private = _Obj(
+            name="private-gke",
+            id="c-2",
+            location="us-east1",
+            endpoint="10.0.0.2",
+            current_node_count=2,
+            current_master_version="1.29",
+            resource_labels={},
+            private_cluster_config=_Obj(enable_private_endpoint=True, enable_private_nodes=True),
+        )
+        return _Obj(clusters=[public, private])
+
+
+class _FakeContainerModule(types.ModuleType):
+    ClusterManagerClient = _FakeClusterManagerClient
+
+
+# --- Cloud Run --------------------------------------------------------------
+class _FakeRunServicesClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list_services(self, request: Any) -> list[Any]:
+        return [
+            _Obj(
+                name="projects/proj-1/locations/us-central1/services/public-api",
+                uri="https://public-api-abc.run.app",
+                ingress="INGRESS_TRAFFIC_ALL",
+                labels={"team": "x"},
+            ),
+            _Obj(
+                name="projects/proj-1/locations/us-central1/services/internal-api",
+                uri="https://internal-api-abc.run.app",
+                ingress="INGRESS_TRAFFIC_INTERNAL_ONLY",
+                labels={},
+            ),
+        ]
+
+
+class _FakeRunListServicesRequest:
+    def __init__(self, parent: str) -> None:
+        self.parent = parent
+
+
+class _FakeRunModule(types.ModuleType):
+    ServicesClient = _FakeRunServicesClient
+    ListServicesRequest = _FakeRunListServicesRequest
+
+
+# --- Cloud Functions --------------------------------------------------------
+class _FakeFunctionServiceClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list_functions(self, request: Any) -> list[Any]:
+        return [
+            _Obj(
+                name="projects/proj-1/locations/us-central1/functions/ingest",
+                service_config=_Obj(ingress_settings="ALLOW_ALL"),
+                event_trigger=None,
+                labels={},
+            ),
+        ]
+
+
+class _FakeFunctionsListRequest:
+    def __init__(self, parent: str) -> None:
+        self.parent = parent
+
+
+class _FakeFunctionsModule(types.ModuleType):
+    FunctionServiceClient = _FakeFunctionServiceClient
+    ListFunctionsRequest = _FakeFunctionsListRequest
+
+
+# --- Pub/Sub ----------------------------------------------------------------
+class _FakePublisherClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list_topics(self, request: Any) -> list[Any]:
+        return [_Obj(name="projects/proj-1/topics/abom-demo-topic", labels={})]
+
+
+class _FakePubsubModule(types.ModuleType):
+    PublisherClient = _FakePublisherClient
+
+
+# --- Cloud SQL (googleapiclient discovery) ----------------------------------
+class _FakeSqlInstances:
+    def list(self, project: str) -> Any:
+        return _FakeSqlExecute(
+            {
+                "items": [
+                    {
+                        "name": "public-db",
+                        "selfLink": "https://.../public-db",
+                        "region": "us-central1",
+                        "databaseVersion": "POSTGRES_15",
+                        "ipAddresses": [{"type": "PRIMARY", "ipAddress": "34.10.20.30"}],
+                        "settings": {"ipConfiguration": {"ipv4Enabled": True, "authorizedNetworks": []}},
+                        "diskEncryptionConfiguration": {},
+                    },
+                    {
+                        "name": "private-db",
+                        "selfLink": "https://.../private-db",
+                        "region": "us-east1",
+                        "databaseVersion": "MYSQL_8_0",
+                        "ipAddresses": [{"type": "PRIVATE", "ipAddress": "10.1.2.3"}],
+                        "settings": {"ipConfiguration": {"ipv4Enabled": False, "authorizedNetworks": []}},
+                        "diskEncryptionConfiguration": {"kmsKeyName": "projects/p/.../k"},
+                    },
+                ]
+            }
+        )
+
+
+class _FakeSqlExecute:
+    def __init__(self, result: dict[str, Any]) -> None:
+        self._result = result
+
+    def execute(self) -> dict[str, Any]:
+        return self._result
+
+
+class _FakeSqlService:
+    def instances(self) -> _FakeSqlInstances:
+        return _FakeSqlInstances()
+
+
+def _fake_discovery_build(*args: Any, **kwargs: Any) -> Any:
+    """Stand-in for googleapiclient.discovery.build("sqladmin", ...)."""
+    return _FakeSqlService()
+
+
 def _install_fake_gcp() -> Any:
     """Return a patch.dict context installing fake google-cloud SDK modules."""
     google_mod = types.ModuleType("google")
@@ -180,6 +381,13 @@ def _install_fake_gcp() -> Any:
     iam_v1_mod = types.ModuleType("google.iam")
     iam_v1_sub = types.ModuleType("google.iam.v1")
     iam_policy_mod = _FakeIamPolicyPb2Module("google.iam.v1.iam_policy_pb2")
+    container_mod = _FakeContainerModule("google.cloud.container_v1")
+    run_mod = _FakeRunModule("google.cloud.run_v2")
+    functions_mod = _FakeFunctionsModule("google.cloud.functions_v2")
+    pubsub_mod = _FakePubsubModule("google.cloud.pubsub_v1")
+    apiclient_mod = types.ModuleType("googleapiclient")
+    discovery_mod = types.ModuleType("googleapiclient.discovery")
+    discovery_mod.build = _fake_discovery_build  # type: ignore[attr-defined]
     return patch.dict(
         sys.modules,
         {
@@ -192,6 +400,12 @@ def _install_fake_gcp() -> Any:
             "google.iam": iam_v1_mod,
             "google.iam.v1": iam_v1_sub,
             "google.iam.v1.iam_policy_pb2": iam_policy_mod,
+            "google.cloud.container_v1": container_mod,
+            "google.cloud.run_v2": run_mod,
+            "google.cloud.functions_v2": functions_mod,
+            "google.cloud.pubsub_v1": pubsub_mod,
+            "googleapiclient": apiclient_mod,
+            "googleapiclient.discovery": discovery_mod,
         },
     )
 
@@ -547,3 +761,141 @@ def test_target_tag_scopes_firewall_to_matching_instance() -> None:
     assert graph.nodes[web_id].attributes["internet_exposed"] is True
     # The db instance does not carry the http-server tag → not exposed by this rule.
     assert not graph.nodes[db_id].attributes.get("internet_exposed")
+
+
+# ---------------------------------------------------------------------------
+# Estate breadth: GKE / Cloud Run / Functions / Cloud SQL / VPC / disks / Pub/Sub
+# ---------------------------------------------------------------------------
+
+
+def test_inventory_enumerates_estate_breadth(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+
+    assert payload["status"] == "ok"
+
+    # GKE: public-endpoint cluster exposed, private not.
+    gke = {c["name"]: c for c in payload["gke_clusters"]}
+    assert set(gke) == {"public-gke", "private-gke"}
+    assert gke["public-gke"]["internet_exposed"] is True
+    assert gke["public-gke"]["node_count"] == 3
+    assert gke["private-gke"]["internet_exposed"] is False
+
+    # Cloud Run: all-ingress public, internal-only private.
+    run = {s["name"]: s for s in payload["cloud_run_services"]}
+    assert run["public-api"]["internet_exposed"] is True
+    assert run["public-api"]["location"] == "us-central1"
+    assert run["public-api"]["url"] == "https://public-api-abc.run.app"
+    assert run["internal-api"]["internet_exposed"] is False
+
+    # Cloud Functions: ALLOW_ALL ingress is public.
+    funcs = {f["name"]: f for f in payload["cloud_functions"]}
+    assert funcs["ingest"]["internet_exposed"] is True
+    assert funcs["ingest"]["trigger"] == "https"
+    assert funcs["ingest"]["location"] == "us-central1"
+
+    # Cloud SQL: public-IP instance exposed; private instance not; encryption read.
+    sql = {i["name"]: i for i in payload["cloud_sql_instances"]}
+    assert sql["public-db"]["internet_exposed"] is True
+    assert sql["public-db"]["publicly_accessible"] is True
+    assert sql["public-db"]["database_version"] == "POSTGRES_15"
+    assert sql["private-db"]["internet_exposed"] is False
+    assert sql["private-db"]["encrypted"] is True
+
+    # VPC network + subnet (CIDR + flow logs).
+    nets = {n["name"]: n for n in payload["vpc_networks"]}
+    assert nets["default"]["auto_create_subnetworks"] is True
+    assert nets["default"]["subnets"][0]["cidr"] == "10.0.0.0/20"
+    assert nets["default"]["subnets"][0]["flow_logs"] is True
+
+    # Persistent disk (size, encryption, source image).
+    disks = {d["name"]: d for d in payload["disks"]}
+    assert disks["web-disk"]["size_gb"] == 50
+    assert disks["web-disk"]["encrypted"] is True
+    assert disks["web-disk"]["source_image"] == "debian-12"
+
+    # Pub/Sub topic.
+    topics = {t["name"]: t for t in payload["pubsub_topics"]}
+    assert "abom-demo-topic" in topics
+
+    # Per-run trust contract picks up the estate permissions.
+    env = payload["discovery_envelope"]
+    assert "container.clusters.list" in env["permissions_used"]
+    assert "cloudsql.instances.list" in env["permissions_used"]
+    assert "pubsub.topics.list" in env["permissions_used"]
+
+
+def test_estate_discoverers_degrade_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An exception in any estate discoverer becomes a warning, never a crash."""
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+
+    class _BoomContainer(types.ModuleType):
+        class ClusterManagerClient:  # noqa: D106
+            def __init__(self, credentials: Any = None) -> None:
+                raise RuntimeError("API disabled")
+
+    with _install_fake_gcp(), patch.dict(sys.modules, {"google.cloud.container_v1": _BoomContainer("google.cloud.container_v1")}):
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+    assert payload["status"] == "ok"
+    assert payload["gke_clusters"] == []
+    assert any("GKE" in w for w in payload["warnings"])
+
+
+def test_estate_selective_classes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(
+            project_id="proj-1",
+            include_containers=False,
+            include_databases=False,
+            include_messaging=False,
+        )
+    assert payload["gke_clusters"] == []
+    assert payload["cloud_sql_instances"] == []
+    assert payload["pubsub_topics"] == []
+    # Others still enumerate.
+    assert payload["cloud_run_services"]
+    assert payload["disks"]
+    env = payload["discovery_envelope"]
+    assert "container.clusters.list" not in env["permissions_used"]
+    assert "pubsub.topics.list" not in env["permissions_used"]
+
+
+def test_graph_emits_estate_nodes_and_owns_edges(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+    graph = _build_graph_from_inventory(payload)
+    from agent_bom.graph.types import EntityType, RelationshipType
+
+    nodes = graph.nodes
+    account_id = "account:gcp:proj-1"
+
+    # GKE cluster → CLOUD_RESOURCE, public endpoint exposed.
+    gke_id = "cloud_resource:gcp:gke:container_cluster:c-1"
+    assert gke_id in nodes
+    assert nodes[gke_id].entity_type == EntityType.CLOUD_RESOURCE
+    assert nodes[gke_id].attributes["internet_exposed"] is True
+
+    # Cloud Run public service exposed.
+    run_id = "cloud_resource:gcp:run:function:public-api"
+    assert run_id in nodes
+    assert nodes[run_id].attributes["internet_exposed"] is True
+
+    # Cloud SQL → DATA_STORE, public IP exposed (feeds CNAPP/attack-paths).
+    sql_id = "cloud_resource:gcp:cloudsql:database:public-db"
+    assert sql_id in nodes
+    assert nodes[sql_id].entity_type == EntityType.DATA_STORE
+    assert nodes[sql_id].attributes["internet_exposed"] is True
+
+    # VPC, disk, Pub/Sub topic present.
+    assert "cloud_resource:gcp:compute:virtual_network:default" in nodes
+    assert "cloud_resource:gcp:compute:storage:web-disk" in nodes
+    assert "cloud_resource:gcp:pubsub:messaging:abom-demo-topic" in nodes
+
+    # Every estate node is OWNS-linked from the project/account node.
+    owns_targets = {e.target for e in graph.edges if e.relationship == RelationshipType.OWNS and e.source == account_id}
+    assert gke_id in owns_targets
+    assert sql_id in owns_targets
+    assert "cloud_resource:gcp:pubsub:messaging:abom-demo-topic" in owns_targets

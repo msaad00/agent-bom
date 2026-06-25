@@ -113,6 +113,7 @@ gcp = [
     "google-cloud-iam>=2.12",
     "google-cloud-storage>=2.10",
     "google-cloud-logging>=3.5",
+    "google-cloud-pubsub>=2.18",
     # The CIS benchmark builds service clients via the discovery API.
     "google-api-python-client>=2.100",
 ]

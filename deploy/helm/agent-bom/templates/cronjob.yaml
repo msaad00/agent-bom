@@ -1,4 +1,6 @@
 {{- if .Values.scanner.enabled }}
+{{- $cloud := .Values.scanner.cloud | default dict }}
+{{- $cloudEnabled := and $cloud (eq (toString $cloud.enabled) "true") }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -9,6 +11,7 @@ metadata:
     app.kubernetes.io/component: scanner
 spec:
   schedule: {{ .Values.scanner.schedule | quote }}
+  concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: {{ .Values.scanner.successfulJobsHistoryLimit }}
   failedJobsHistoryLimit: {{ .Values.scanner.failedJobsHistoryLimit }}
   jobTemplate:
@@ -18,6 +21,11 @@ spec:
           labels:
             {{- include "agent-bom.labels" . | nindent 12 }}
             app.kubernetes.io/component: scanner
+            {{- if and $cloudEnabled $cloud.azure (eq (toString $cloud.azure.inventory) "true") }}
+            # AKS workload identity: the webhook injects the projected token only
+            # when this pod label is present.
+            azure.workload.identity/use: "true"
+            {{- end }}
           {{- with .Values.podAnnotations }}
           annotations:
             {{- toYaml . | nindent 12 }}
@@ -37,9 +45,11 @@ spec:
               command: ["agent-bom"]
               args:
                 - "scan"
+                {{- if .Values.scanner.k8s }}
                 - "--k8s"
                 {{- if .Values.scanner.allNamespaces }}
                 - "-A"
+                {{- end }}
                 {{- end }}
                 - "-f"
                 - {{ .Values.scanner.outputFormat | quote }}
@@ -48,13 +58,102 @@ spec:
                 {{- range .Values.scanner.extraArgs }}
                 - {{ . | quote }}
                 {{- end }}
-              {{- with .Values.scanner.env }}
               env:
+                - name: HOME
+                  value: /tmp
+                {{- if $cloudEnabled }}
+                {{- with $cloud.aws }}
+                {{- if eq (toString .inventory) "true" }}
+                - name: AGENT_BOM_AWS_INVENTORY
+                  value: "1"
+                {{- if eq (toString .allRegions) "true" }}
+                - name: AGENT_BOM_AWS_ALL_REGIONS
+                  value: "1"
+                {{- end }}
+                {{- if .regions }}
+                - name: AGENT_BOM_AWS_REGIONS
+                  value: {{ .regions | quote }}
+                {{- end }}
+                {{- if .maxRegions }}
+                - name: AGENT_BOM_AWS_MAX_REGIONS
+                  value: {{ .maxRegions | quote }}
+                {{- end }}
+                {{- end }}
+                {{- end }}
+                {{- with $cloud.azure }}
+                {{- if eq (toString .inventory) "true" }}
+                - name: AGENT_BOM_AZURE_INVENTORY
+                  value: "1"
+                {{- if eq (toString .allSubscriptions) "true" }}
+                - name: AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS
+                  value: "1"
+                {{- end }}
+                {{- if .maxSubscriptions }}
+                - name: AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS
+                  value: {{ .maxSubscriptions | quote }}
+                {{- end }}
+                {{- if .clientId }}
+                - name: AZURE_CLIENT_ID
+                  value: {{ .clientId | quote }}
+                {{- end }}
+                {{- if .tenantId }}
+                - name: AZURE_TENANT_ID
+                  value: {{ .tenantId | quote }}
+                {{- end }}
+                {{- end }}
+                {{- end }}
+                {{- with $cloud.gcp }}
+                {{- if eq (toString .inventory) "true" }}
+                - name: AGENT_BOM_GCP_INVENTORY
+                  value: "1"
+                {{- if .impersonateSa }}
+                - name: AGENT_BOM_GCP_IMPERSONATE_SA
+                  value: {{ .impersonateSa | quote }}
+                {{- end }}
+                {{- end }}
+                {{- end }}
+                {{- with $cloud.snowflake }}
+                {{- if eq (toString .inventory) "true" }}
+                - name: AGENT_BOM_SNOWFLAKE_INVENTORY
+                  value: "1"
+                {{- if .maxRoles }}
+                - name: AGENT_BOM_SNOWFLAKE_MAX_ROLES
+                  value: {{ .maxRoles | quote }}
+                {{- end }}
+                {{- if .account }}
+                - name: SNOWFLAKE_ACCOUNT
+                  value: {{ .account | quote }}
+                {{- end }}
+                {{- if .user }}
+                - name: SNOWFLAKE_USER
+                  value: {{ .user | quote }}
+                {{- end }}
+                {{- if .keySecretName }}
+                - name: SNOWFLAKE_PRIVATE_KEY_PATH
+                  value: /snowflake/{{ .keySecretKey | default "key" }}
+                {{- end }}
+                {{- end }}
+                {{- end }}
+                {{- end }}
+                {{- with .Values.scanner.env }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              {{- with .Values.scanner.envFrom }}
+              envFrom:
                 {{- toYaml . | nindent 16 }}
               {{- end }}
               volumeMounts:
                 - name: output
                   mountPath: /output
+                {{- if .Values.scanner.writableTmp }}
+                - name: tmp
+                  mountPath: /tmp
+                {{- end }}
+                {{- if and $cloudEnabled $cloud.snowflake (eq (toString $cloud.snowflake.inventory) "true") $cloud.snowflake.keySecretName }}
+                - name: snowflake-key
+                  mountPath: /snowflake
+                  readOnly: true
+                {{- end }}
               securityContext:
                 {{- toYaml .Values.securityContext | nindent 16 }}
               resources:
@@ -62,6 +161,16 @@ spec:
           volumes:
             - name: output
               emptyDir: {}
+            {{- if .Values.scanner.writableTmp }}
+            - name: tmp
+              emptyDir: {}
+            {{- end }}
+            {{- if and $cloudEnabled $cloud.snowflake (eq (toString $cloud.snowflake.inventory) "true") $cloud.snowflake.keySecretName }}
+            - name: snowflake-key
+              secret:
+                secretName: {{ $cloud.snowflake.keySecretName | quote }}
+                defaultMode: 0400
+            {{- end }}
           {{- with .Values.nodeSelector }}
           nodeSelector:
             {{- toYaml . | nindent 12 }}

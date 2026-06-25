@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# EKS read-only collector — KEYLESS via IRSA (IAM Roles for Service Accounts)
+# ─────────────────────────────────────────────────────────────────────────────
+# The scanner ServiceAccount is annotated with the read-only IAM role ARN that
+# `deploy/terraform/connect-aws` provisions. The EKS Pod Identity webhook /
+# IRSA exchanges the projected SA token for short-lived STS creds for that role.
+# NO AWS access keys live in the cluster.
+#
+# Prereqs (one-time, see deploy/RUNBOOK.md):
+#   1. terraform apply deploy/terraform/connect-aws  -> outputs role_arn
+#   2. Associate an IAM OIDC provider with the cluster:
+#        eksctl utils associate-iam-oidc-provider --cluster <cluster> --approve
+#   3. Edit the connect-aws role trust policy to federate the OIDC provider for
+#      this namespace/serviceaccount (see RUNBOOK "EKS / IRSA trust").
+#
+# Install:
+#   helm install agent-bom agent-bom/agent-bom \
+#     -n agent-bom --create-namespace \
+#     -f deploy/helm/agent-bom/examples/eks-collector-irsa-values.yaml \
+#     --set scanner.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=<role_arn>
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Scanner-only render (control plane / gateway / UI stay off).
+controlPlane:
+  enabled: false
+
+scanner:
+  enabled: true
+  schedule: "0 */6 * * *"
+  k8s: true
+  allNamespaces: true
+  serviceAccount:
+    create: true
+    annotations:
+      # Replace with the connect-aws output `role_arn`, or pass via --set.
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-readonly
+  cloud:
+    enabled: true
+    aws:
+      inventory: true
+      allRegions: false
+      regions: "us-east-1,us-west-2"
+
+# Default chart NetworkPolicy already allows DNS + TCP 443 egress, which is all
+# the AWS SDK needs. Lock ingress shut (no server in scanner-only mode).
+networkPolicy:
+  enabled: true
+  restrictIngress: true

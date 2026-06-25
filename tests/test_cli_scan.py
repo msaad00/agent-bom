@@ -1470,3 +1470,120 @@ def test_scan_complete_closer_renders_severity_breakdown():
                     f"closer rendered no severity tier: {line!r}"
                 )
                 break
+
+
+# ---------------------------------------------------------------------------
+# Positional PATH (Docker-style shorthand for --project/-p)
+# ---------------------------------------------------------------------------
+
+
+def test_scan_positional_path_resolves_like_project(tmp_path):
+    """`scan <dir>` resolves to the same project scan as `scan -p <dir>`."""
+    captured: dict = {}
+
+    def _capture(**kwargs):
+        captured["project_dir"] = kwargs.get("project_dir")
+        return []
+
+    with patch("agent_bom.cli.agents.discover_all", side_effect=_capture):
+        result = _run(["scan", str(tmp_path), "--no-scan"])
+
+    assert result.exit_code == 0
+    assert captured["project_dir"] == str(tmp_path)
+
+
+def test_scan_positional_path_matches_project_flag(tmp_path):
+    """Positional PATH and -p produce the same project_dir handed to discovery."""
+    pos: dict = {}
+    flag: dict = {}
+
+    def _make(sink):
+        def _capture(**kwargs):
+            sink["project_dir"] = kwargs.get("project_dir")
+            return []
+
+        return _capture
+
+    with patch("agent_bom.cli.agents.discover_all", side_effect=_make(pos)):
+        r1 = _run(["scan", str(tmp_path), "--no-scan"])
+    with patch("agent_bom.cli.agents.discover_all", side_effect=_make(flag)):
+        r2 = _run(["scan", "-p", str(tmp_path), "--no-scan"])
+
+    assert r1.exit_code == 0
+    assert r2.exit_code == 0
+    assert pos["project_dir"] == flag["project_dir"] == str(tmp_path)
+
+
+def test_scan_positional_dot_current_dir(tmp_path):
+    """`scan .` scans the current working directory."""
+    captured: dict = {}
+
+    def _capture(**kwargs):
+        captured["project_dir"] = kwargs.get("project_dir")
+        return []
+
+    runner = CliRunner()
+    with patch("agent_bom.cli.agents.discover_all", side_effect=_capture):
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(main, ["scan", ".", "--no-scan", "--no-auto-update-db"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert captured["project_dir"] == "."
+
+
+def test_scan_no_positional_keeps_default(tmp_path):
+    """No positional and no -p leaves project as the existing default (None)."""
+    captured: dict = {}
+
+    def _capture(**kwargs):
+        captured["project_dir"] = kwargs.get("project_dir")
+        return []
+
+    with patch("agent_bom.cli.agents.discover_all", side_effect=_capture):
+        result = _run(["scan", "--no-scan"])
+
+    assert result.exit_code == 0
+    assert captured["project_dir"] is None
+
+
+def test_scan_positional_and_project_conflict_warns_project_wins(tmp_path):
+    """When PATH and -p disagree, -p wins (positional must not silently override)."""
+    other = tmp_path / "other"
+    other.mkdir()
+    captured: dict = {}
+
+    def _capture(**kwargs):
+        captured["project_dir"] = kwargs.get("project_dir")
+        return []
+
+    with patch("agent_bom.cli.agents.discover_all", side_effect=_capture):
+        result = _run(["scan", str(tmp_path), "-p", str(other), "--no-scan"])
+
+    assert result.exit_code == 0
+    assert captured["project_dir"] == str(other)
+
+
+def test_scan_positional_with_image_still_routes_to_image(tmp_path):
+    """Positional PATH alongside --image must not hijack image scanning."""
+    image_calls: list = []
+    discover_calls: list = []
+
+    def _fake_scan_image(image_ref, **kwargs):
+        image_calls.append(image_ref)
+        return ([], "test-strategy")
+
+    def _capture_discover(**kwargs):
+        discover_calls.append(kwargs.get("project_dir"))
+        return []
+
+    with (
+        patch("agent_bom.image.scan_image", side_effect=_fake_scan_image),
+        patch("agent_bom.cli.agents.discover_all", side_effect=_capture_discover),
+    ):
+        result = _run(["scan", str(tmp_path), "--image", "alpine:3.19", "--no-scan"])
+
+    assert result.exit_code == 0
+    # Image scanning still happened.
+    assert image_calls == ["alpine:3.19"]
+    # Local project discovery was skipped for image scans (no hijack via PATH).
+    assert discover_calls == []

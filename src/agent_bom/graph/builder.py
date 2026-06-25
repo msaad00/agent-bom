@@ -4011,6 +4011,64 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     )
                 )
 
+    # ── GCP estate breadth (GKE / Cloud Run / Functions / Cloud SQL / VPC /
+    # disks / Pub/Sub) → CLOUD_RESOURCE or DATA_STORE, OWNS from the project. ──
+    # Mirrors the AWS service loop above. Cloud SQL is a DATA_STORE so DSPM tiers
+    # apply; a public-IP instance carries `internet_exposed` for CNAPP. The id key
+    # (id_field) keeps a stable node id per resource (full self-link / uid).
+    if provider == "gcp":
+        for coll_key, svc, rtype, kind, label, is_data, id_field in (
+            ("gke_clusters", "gke", "container_cluster", "gke-cluster", "gke cluster", False, "id"),
+            ("cloud_run_services", "run", "function", "cloud-run-service", "cloud run service", False, "name"),
+            ("cloud_functions", "cloudfunctions", "function", "cloud-function", "cloud function", False, "name"),
+            ("cloud_sql_instances", "cloudsql", "database", "cloud-sql-instance", "cloud sql database", True, "name"),
+            ("vpc_networks", "compute", "virtual_network", "vpc-network", "vpc network", False, "name"),
+            ("disks", "compute", "storage", "persistent-disk", "persistent disk", False, "name"),
+            ("pubsub_topics", "pubsub", "messaging", "pubsub-topic", "pubsub topic", False, "name"),
+        ):
+            for item in inventory.get(coll_key, []) or []:
+                if not isinstance(item, dict):
+                    continue
+                name = _clean_graph_part(item.get("name"))
+                if not name:
+                    continue
+                id_key = _clean_graph_part(item.get(id_field)) or name
+                node_id = f"cloud_resource:gcp:{svc}:{rtype}:{id_key}"
+                exposed = bool(item.get("publicly_accessible") or item.get("internet_exposed"))
+                graph.add_node(
+                    UnifiedNode(
+                        id=node_id,
+                        entity_type=EntityType.DATA_STORE if is_data else EntityType.CLOUD_RESOURCE,
+                        label=f"{label}: {name}",
+                        attributes={
+                            "resource_id": _clean_graph_part(item.get("id")) or name,
+                            "resource_name": name,
+                            "resource_type": rtype,
+                            "resource_kind": kind,
+                            "cloud_provider": "gcp",
+                            "cloud_service": svc,
+                            "location": _clean_graph_part(item.get("location")) or region,
+                            "internet_exposed": exposed,
+                            "is_data_store": is_data,
+                            "engine": _clean_graph_part(item.get("database_version")),
+                            "encrypted": bool(item.get("encrypted")),
+                            "account_id": account_id,
+                        },
+                        data_sources=data_sources,
+                        dimensions=NodeDimensions(cloud_provider="gcp", surface=svc),
+                    )
+                )
+                resource_ids.append(node_id)
+                if account_node_id:
+                    graph.add_edge(
+                        UnifiedEdge(
+                            source=account_node_id,
+                            target=node_id,
+                            relationship=RelationshipType.OWNS,
+                            evidence={"source": "cloud-inventory"},
+                        )
+                    )
+
     # ── Data / secret / registry / network resources (normalized model) ──
     _add_normalized_cloud_resources(
         graph,

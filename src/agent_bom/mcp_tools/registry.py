@@ -42,7 +42,7 @@ def registry_lookup_impl(
     servers = data.get("servers", {})
     search_lower = search_term.lower()
 
-    for key, entry in servers.items():
+    for key, entry in sorted(servers.items()):
         if search_lower in key.lower() or search_lower in entry.get("package", "").lower() or search_lower in entry.get("name", "").lower():
             return json.dumps(
                 {
@@ -148,7 +148,7 @@ async def marketplace_check_impl(
             registry = json.loads(data_raw)
             if isinstance(registry, dict):
                 servers = registry.get("servers", registry)
-                for _k, v in servers.items() if isinstance(servers, dict) else []:
+                for _k, v in sorted(servers.items()) if isinstance(servers, dict) else []:
                     pkgs = v.get("packages", [])
                     if name in pkgs or any(name in p for p in pkgs):
                         registry_verified = True

@@ -9,7 +9,63 @@ from types import SimpleNamespace
 
 from agent_bom.skill_bundles import build_skill_bundle
 from agent_bom.skill_intel import ThreatIntelStatus
-from agent_bom.skills_service import _review_to_status, rescan_skill_catalog, scan_skill_targets
+from agent_bom.skills_service import (
+    _catalog_findings_for_report,
+    _review_to_status,
+    rescan_skill_catalog,
+    scan_skill_targets,
+)
+
+
+def _strip_provenance(entry: dict) -> dict:
+    """Drop the non-deterministic ``scanned_at`` provenance block."""
+    return {k: v for k, v in entry.items() if k != "scanned_at"}
+
+
+def test_catalog_findings_payload_is_deterministic_across_scans(tmp_path):
+    """Two scans of the same skill must produce byte-identical findings; only
+    the isolated ``scanned_at`` provenance block may differ run-to-run."""
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# Instructions\n\nUse OPENAI_API_KEY.\n")
+
+    catalog_a = tmp_path / "a.json"
+    catalog_b = tmp_path / "b.json"
+
+    report_a = scan_skill_targets([skill_file], catalog_path=catalog_a)
+    report_b = scan_skill_targets([skill_file], catalog_path=catalog_b)
+
+    bundle_id = build_skill_bundle(skill_file).stable_id
+    entry_a = json.loads(catalog_a.read_text())["entries"][bundle_id]
+    entry_b = json.loads(catalog_b.read_text())["entries"][bundle_id]
+
+    # Timestamps live in a clearly-separated provenance field.
+    assert "scanned_at" in entry_a
+    assert "updated_at" not in entry_a
+    assert "last_seen" not in entry_a
+
+    # The findings-critical payload is byte-identical across the two runs.
+    assert _strip_provenance(entry_a) == _strip_provenance(entry_b)
+
+    # The deterministic helper carries no wall-clock value at all.
+    findings = _catalog_findings_for_report(report_a.files[0])
+    assert "scanned_at" not in findings
+    assert json.dumps(findings, sort_keys=True, default=str) == json.dumps(
+        _catalog_findings_for_report(report_b.files[0]), sort_keys=True, default=str
+    )
+
+
+def test_rescan_serialized_findings_are_deterministic(tmp_path):
+    """Rescanning the same on-disk skill twice yields identical findings rows."""
+    skill_file = tmp_path / "SKILL.md"
+    skill_file.write_text("# Skill\nUse the filesystem server.\n")
+    catalog_path = tmp_path / "catalog.json"
+    scan_skill_targets([skill_file], catalog_path=catalog_path)
+
+    first = rescan_skill_catalog(catalog_path=catalog_path).to_dict()["entries"][0]
+    second = rescan_skill_catalog(catalog_path=catalog_path).to_dict()["entries"][0]
+
+    assert "scanned_at" in first
+    assert _strip_provenance(first) == _strip_provenance(second)
 
 
 def test_scan_skill_targets_records_summary_in_hmac_audit_chain(tmp_path):

@@ -105,8 +105,8 @@ async def context_graph_impl(
             if node_id in graph.nodes:
                 paths = find_lateral_paths(graph, node_id, max_depth=depth)
         else:
-            for nid, node in graph.nodes.items():
-                if node.kind == NodeKind.AGENT:
+            for nid in sorted(graph.nodes.keys()):
+                if graph.nodes[nid].kind == NodeKind.AGENT:
                     paths.extend(find_lateral_paths(graph, nid, max_depth=depth))
 
         risks = compute_interaction_risks(graph)

@@ -84,6 +84,7 @@ Supported cloud / SaaS / local providers populate the envelope at the end of
 | `aws_organizations` | `cloud_read_only` |
 | `gcp` | `cloud_read_only` |
 | `gcp_inventory` | `cloud_read_only` |
+| `gcp_organizations` | `cloud_read_only` |
 | `azure` | `cloud_read_only` |
 | `azure_inventory` | `cloud_read_only` |
 | `coreweave` | `cloud_read_only` |

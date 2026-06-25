@@ -38,7 +38,7 @@ import re
 import warnings
 from typing import Any
 
-from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
+from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.governance import (
     AccessRecord,
     ActivityTimeline,
@@ -79,7 +79,24 @@ _coerce_int_or_none = coerce_int_or_none
 # flag.
 INVENTORY_ENV_FLAG = "AGENT_BOM_SNOWFLAKE_INVENTORY"
 
+# Opt-in env flag for the Organization → Accounts roll-up. Default OFF and
+# separate from the per-account inventory gate because enumerating the
+# organization requires the ORGADMIN role (``SHOW ORGANIZATION ACCOUNTS``),
+# which the read-only ``ABOM_READONLY`` role typically lacks. Symmetric with the
+# GCP/AWS organization gates: a single account graphs unchanged when this is off.
+ORG_ENV_FLAG = "AGENT_BOM_SNOWFLAKE_ORG"
+
 _TRUTHY = {"1", "true", "yes", "on"}
+
+# Read-only privileges this discoverer exercises, surfaced on the discovery
+# envelope so ``permissions_used`` stays honest (the producer owns the catalog).
+_SF_ORG_PERMISSIONS: tuple[str, ...] = (
+    "ORGADMIN.ORGANIZATION_ACCOUNTS:SELECT",
+    "SNOWFLAKE.ORGANIZATION_USAGE.ACCOUNTS:SELECT",
+)
+
+# Cap accounts walked so a very large organization can't run unbounded.
+_MAX_ORG_ACCOUNTS = int(os.environ.get("AGENT_BOM_SNOWFLAKE_MAX_ACCOUNTS", "500") or "500")
 
 
 def inventory_enabled() -> bool:
@@ -90,6 +107,15 @@ def inventory_enabled() -> bool:
     side effects — mirrors the AWS / Azure / GCP inventory gates.
     """
     return os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() in _TRUTHY
+
+
+def org_enabled() -> bool:
+    """Return whether the Snowflake Organization roll-up is opted in.
+
+    Default OFF. Operators enable it by setting ``AGENT_BOM_SNOWFLAKE_ORG`` to a
+    truthy value. Read-only with no side effects — mirrors the GCP/AWS org gates.
+    """
+    return os.environ.get(ORG_ENV_FLAG, "").strip().lower() in _TRUTHY
 
 
 def _snowflake_cloud_origin(
@@ -3000,6 +3026,184 @@ def discover_snowflake_services(
     return result
 
 
+# Substrings that mark an ORGADMIN-privilege / not-in-org failure of
+# ``SHOW ORGANIZATION ACCOUNTS`` rather than a transient connection error. Used to
+# distinguish "this role can't see the org" (a clean degrade) from "the org has a
+# single account". Matched case-insensitively against the sanitized error text.
+_SF_ORG_NOT_AUTHORIZED_MARKERS: tuple[str, ...] = (
+    "orgadmin",
+    "insufficient privileges",
+    "not authorized",
+    "unsupported feature",
+    "does not exist or not authorized",
+    "organization",
+)
+
+
+def discover_organization(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    *,
+    force: bool = False,
+    now: str | None = None,
+) -> dict[str, Any]:
+    """Enumerate the Snowflake Organization → member accounts roll-up (read-only).
+
+    The Snowflake analogue of the GCP Organization → Folders → Projects and AWS
+    Organizations → OU → Account hierarchies: multiple Snowflake accounts roll up
+    under a parent ORGANIZATION node so the estate is traversable top-down. Uses
+    ``SHOW ORGANIZATION ACCOUNTS`` to read the org name and its member accounts.
+
+    Returns a payload destined for ``report_json`` (carried on the Snowflake
+    services payload under ``organization``) with a ``status``:
+
+    - ``"disabled"``       — the org flag is off and ``force`` was not set.
+    - ``"sdk_missing"``    — snowflake-connector-python is not installed.
+    - ``"not_authorized"`` — the connected role lacks ORGADMIN (the read-only
+      ``ABOM_READONLY`` role typically does); single-account scanning still works.
+    - ``"not_in_org"``     — the account is standalone (no organization visible).
+    - ``"ok"``             — enumeration ran (possibly with per-call warnings).
+
+    Read-only (``SHOW`` only — no writes), opt-in (``AGENT_BOM_SNOWFLAKE_ORG`` or
+    ``force``), and crash-safe: SDK absence, missing ORGADMIN, connection / auth /
+    SQL errors all degrade to a clear status plus an actionable warning. Never
+    raises; a single account graphs exactly as it does today when this no-ops.
+
+    ``now`` (an ISO-8601 string) is injected for the ``discovered_at`` stamp so
+    the payload is deterministic under test; callers pass a clock value rather
+    than the discoverer reading wall-clock time inline.
+    """
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "org_name": "",
+        "accounts": [],
+        "findings": [],
+        "warnings": [],
+        "discovered_at": now or "",
+        "discovery_envelope": None,
+    }
+    if not force and not org_enabled():
+        return result
+
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        result["status"] = "sdk_missing"
+        result["warnings"] = [
+            "snowflake-connector-python is required for Snowflake org inventory. Install with: pip install 'agent-bom[snowflake]'"
+        ]
+        return result
+
+    warnings: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "not_in_org"
+        warnings.append("SNOWFLAKE_ACCOUNT not set; cannot enumerate the organization. Single-account scanning is unaffected.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — connection failure degrades, never crashes the scan
+        warnings.append(f"Could not connect to Snowflake for org inventory: {sanitize_error(exc)}")
+        return result
+
+    try:
+        cursor = conn.cursor()
+        try:
+            # SHOW ORGANIZATION ACCOUNTS requires the ORGADMIN role. The read-only
+            # ABOM_READONLY role usually lacks it, so a privilege error here is the
+            # expected, graceful degrade — not a scan failure.
+            cursor.execute("SHOW ORGANIZATION ACCOUNTS")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                if len(result["accounts"]) >= _MAX_ORG_ACCOUNTS:
+                    warnings.append(
+                        f"Snowflake org enumeration capped at {_MAX_ORG_ACCOUNTS} accounts (set AGENT_BOM_SNOWFLAKE_MAX_ACCOUNTS to raise)."
+                    )
+                    break
+                r = dict(zip(keys, row))
+                locator = str(r.get("account_locator", "") or r.get("account_name", "") or r.get("name", "") or "").strip()
+                if not locator:
+                    continue
+                org_name = str(r.get("organization_name", "") or "").strip()
+                if org_name and not result["org_name"]:
+                    result["org_name"] = org_name
+                result["accounts"].append(
+                    {
+                        "locator": locator,
+                        "name": str(r.get("account_name", "") or r.get("name", "") or locator).strip(),
+                        "region": str(r.get("snowflake_region", "") or r.get("region", "") or "").strip(),
+                        "edition": str(r.get("edition", "") or "").strip(),
+                        "is_org_admin": str(r.get("is_org_admin", "") or "").strip().upper() in ("Y", "YES", "TRUE"),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001 — missing ORGADMIN / not-in-org degrades cleanly
+            message = sanitize_error(exc)
+            lowered = message.lower()
+            if any(marker in lowered for marker in _SF_ORG_NOT_AUTHORIZED_MARKERS):
+                result["status"] = "not_authorized"
+                warnings.append(
+                    "SHOW ORGANIZATION ACCOUNTS requires the ORGADMIN role, which the connected "
+                    "(read-only) role lacks. Grant ORGADMIN to enumerate the organization, or "
+                    f"continue single-account scanning (unaffected). Detail: {message}"
+                )
+            else:
+                warnings.append(f"Could not enumerate Snowflake organization accounts: {message}")
+            return result
+        finally:
+            cursor.close()
+    finally:
+        conn.close()
+
+    if not result["accounts"]:
+        # Connected fine and ORGADMIN-capable but the account is standalone.
+        result["status"] = "not_in_org"
+        if resolved_account not in {a["locator"] for a in result["accounts"]}:
+            warnings.append("No organization accounts visible; the account appears standalone. Single-account scanning is unaffected.")
+        return result
+
+    if not result["org_name"]:
+        result["org_name"] = "organization"
+
+    _derive_org_findings(result)
+    result["status"] = "ok"
+    result["discovery_envelope"] = DiscoveryEnvelope(
+        scan_mode=ScanMode.SAAS_READ_ONLY,
+        discovery_scope=(f"snowflake:organization/{result['org_name']}",),
+        permissions_used=_SF_ORG_PERMISSIONS,
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    ).to_dict()
+    return result
+
+
+def _derive_org_findings(result: dict[str, Any]) -> None:
+    """Flag cheap org-shape posture signals, mirroring the GCP org findings."""
+    accounts = result.get("accounts", []) or []
+    if len(accounts) > 1:
+        result["findings"].append(
+            {
+                "severity": "info",
+                "title": "Multi-account Snowflake organization",
+                "detail": (
+                    f"{len(accounts)} accounts roll up under organization "
+                    f"'{result.get('org_name') or 'organization'}'. Org-wide policies and "
+                    "least-privilege should be reviewed across every member account."
+                ),
+            }
+        )
+    if accounts and not any(a.get("is_org_admin") for a in accounts):
+        result["findings"].append(
+            {
+                "severity": "low",
+                "title": "No ORGADMIN account flagged",
+                "detail": ("No member account is marked as the ORGADMIN account; organization-level governance ownership is unclear."),
+            }
+        )
+
+
 def _split_fqn_parts(name: str, database: str, schema: str) -> str:
     """Build a DB.SCHEMA.NAME fqn from SHOW-command columns, tolerating blanks."""
     parts = [p for p in (database, schema, name) if p]
@@ -3740,6 +3944,16 @@ def enrich_report_with_snowflake_estate(report: Any) -> None:
     # Services: warehouses (compute) + database/schema containment hierarchy. Best-effort.
     try:
         _sf_services = discover_snowflake_services()
+        # Organization → Accounts roll-up (opt-in, ORGADMIN-gated). Carried on the
+        # services payload under ``organization`` so the graph builder can parent
+        # the account node(s) under the org without a new top-level report field.
+        # A single account / missing ORGADMIN no-ops cleanly (non-ok status).
+        try:
+            _sf_org = discover_organization()
+            if isinstance(_sf_org, dict) and _sf_org.get("status") == "ok" and _sf_org.get("accounts"):
+                _sf_services["organization"] = _sf_org
+        except Exception:  # noqa: BLE001 — org roll-up is supplementary; never fail the scan
+            pass
         if _sf_services.get("status") == "ok" and (
             _sf_services.get("warehouses") or _sf_services.get("databases") or _sf_services.get("schemas")
         ):

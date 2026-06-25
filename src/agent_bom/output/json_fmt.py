@@ -1251,6 +1251,8 @@ def to_json(report: AIBOMReport) -> dict:
         result["delta"] = report.delta_data
     if report.scan_performance_data:
         result["scan_performance"] = report.scan_performance_data
+    if report.vuln_data_freshness:
+        result["vuln_data_freshness"] = report.vuln_data_freshness
     if report.runtime_session_graph:
         result["runtime_session_graph"] = report.runtime_session_graph
     if mcp_runtime_diff:

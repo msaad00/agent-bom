@@ -335,3 +335,5 @@ AGENT_BOM_TRUST_PROXY_AUTH_ISSUER
 AGENT_BOM_TRUST_PROXY_AUTH_SECRET
 AGENT_BOM_VERSION
 AGENT_BOM_VISUAL_LEAK_TIMEOUT_SECONDS
+AGENT_BOM_VULN_DB_MAX_AGE_HOURS  # runtime override for vuln-cache staleness threshold (hours, default 24); re-read at scan time so tests can monkeypatch; read in vuln_freshness.py
+AGENT_BOM_VULN_DB_OFFLINE  # airgap toggle that forces existing-cache-only freshness with no network refresh; mirrors --offline for non-CLI callers; read in vuln_freshness.py

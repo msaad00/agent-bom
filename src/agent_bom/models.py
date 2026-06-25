@@ -1039,6 +1039,7 @@ class AIBOMReport:
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
     delta_data: Optional[dict] = None  # Baseline/delta comparison metadata for CI gate outputs
     scan_performance_data: Optional[dict] = None  # Cache coverage / scan latency metadata
+    vuln_data_freshness: Optional[dict] = None  # Vuln-data source/age/staleness snapshot (set by CLI; surfaced to API/MCP)
     training_pipelines: Optional[dict] = None  # Serialized TrainingPipelineScanResult
     dataset_cards: Optional[dict] = None  # Serialized DatasetScanResult
     serving_configs: Optional[list] = None  # Serialized ServingConfig list

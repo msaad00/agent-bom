@@ -163,6 +163,27 @@ def _cached_epss_scores(cve_ids: list[str], *, allow_stale: bool = False) -> dic
     return scores
 
 
+def enrichment_cache_age_hours(now: Optional[datetime] = None) -> Optional[int]:
+    """Age (whole hours) of the on-disk CISA KEV enrichment cache, or None.
+
+    Used as a secondary live-mode freshness signal so the freshness indicator
+    can reflect how recently exploit-intel enrichment data was refreshed. The
+    reference time is injectable for deterministic tests; the wall clock is
+    only read at the boundary.
+    """
+    reference = now or datetime.now(timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+    try:
+        if not _KEV_CACHE_FILE.exists():
+            return None
+        mtime = datetime.fromtimestamp(_KEV_CACHE_FILE.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return None
+    age_seconds = max(0.0, (reference - mtime).total_seconds())
+    return int(age_seconds // 3600)
+
+
 def _cached_kev_catalog(*, allow_stale: bool = False) -> dict:
     """Return the persisted KEV catalog without making network requests."""
     global _kev_cache, _kev_cache_time

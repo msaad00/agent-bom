@@ -49,8 +49,14 @@ AGENT_BOM_AUDIT_HMAC_MAX_AGE_DAYS
 AGENT_BOM_AUDIT_HMAC_ROTATION_DAYS
 AGENT_BOM_AUTH_SESSION_ATTEMPTS_PER_MINUTE
 AGENT_BOM_AUTO_UPDATE_DB
+# Opt-in (default OFF) gate to fan the read-only AWS inventory across every enabled region (multi-region aggregation).
+AGENT_BOM_AWS_ALL_REGIONS
 # Opt-in (default OFF) gate for the estate-wide read-only Azure asset inventory scanner (token/credential auth only).
 AGENT_BOM_AWS_INVENTORY
+# Defensive cap on the number of regions a single multi-region AWS inventory scan fans out over.
+AGENT_BOM_AWS_MAX_REGIONS
+# Explicit comma-separated region override for the multi-region AWS inventory fan-out (else enabled regions are enumerated).
+AGENT_BOM_AWS_REGIONS
 AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS
 AGENT_BOM_AZURE_INVENTORY
 AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS

@@ -85,3 +85,27 @@ def test_clean_cis_does_not_trip_gate() -> None:
     r = AIBOMReport(scan_id="t")
     r.cis_benchmark_data = {"checks": [{"check_id": "1.1", "title": "ok", "status": "PASS", "severity": "high"}]}
     assert _gate(r) == 0
+
+
+def test_cis_fail_posture_and_gate_agree() -> None:
+    """The compact headline and the --fail-on-severity gate read the same report
+    consistently: CIS HIGH fails are both non-CLEAN and gate-failing."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    import agent_bom.output as out_mod
+    from agent_bom.output import print_compact_summary
+
+    report = _report()
+    buf = StringIO()
+    con = Console(file=buf, width=120, force_terminal=True, no_color=True)
+    orig = out_mod.console
+    out_mod.console = con
+    try:
+        print_compact_summary(report, verbose=True)
+    finally:
+        out_mod.console = orig
+    rendered = buf.getvalue()
+    assert "CLEAN" not in rendered  # headline reflects CIS fails
+    assert _gate(report) != 0  # gate agrees

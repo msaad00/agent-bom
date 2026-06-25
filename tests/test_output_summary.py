@@ -149,3 +149,85 @@ def test_posture_summary_agent_status_counts():
     output = _capture_posture(report)
     assert "2 configured" in output
     assert "1 installed-not-configured" in output
+
+
+def _cis_fail_report() -> AIBOMReport:
+    """A cloud scan with 0 package CVEs but HIGH CIS failures."""
+    report = AIBOMReport(agents=[_make_agent()])
+    report.cis_benchmark_data = {
+        "checks": [
+            {
+                "check_id": "3.1",
+                "title": "Ensure CloudTrail is enabled",
+                "status": "fail",
+                "severity": "high",
+                "evidence": "No CloudTrail trail found",
+                "resource_ids": ["account"],
+            },
+            {
+                "check_id": "5.2",
+                "title": "Ensure no NACLs allow ingress to admin ports",
+                "status": "fail",
+                "severity": "high",
+                "evidence": "NACL acl-1 open to 0.0.0.0/0 on port 22",
+            },
+            {"check_id": "1.1", "title": "Root MFA", "status": "pass", "severity": "high"},
+        ]
+    }
+    return report
+
+
+def test_posture_summary_cloud_cis_fail_not_clean():
+    """Cloud CIS HIGH failures must NOT read CLEAN even with 0 package CVEs."""
+    output = _capture_posture(_cis_fail_report())
+    assert "CLEAN" not in output
+    assert "2 HIGH" in output
+
+
+def test_posture_summary_cloud_cis_clean_still_clean():
+    """A genuinely clean cloud scan (all checks pass) still reads CLEAN."""
+    report = AIBOMReport(agents=[_make_agent()])
+    report.cis_benchmark_data = {
+        "checks": [
+            {"check_id": "1.1", "title": "Root MFA", "status": "pass", "severity": "high"},
+            {"check_id": "3.1", "title": "CloudTrail", "status": "pass", "severity": "high"},
+        ]
+    }
+    output = _capture_posture(report)
+    assert "CLEAN" in output
+
+
+def test_safe_emoji_passthrough_on_utf8():
+    from agent_bom.output.console_render import safe_emoji
+
+    assert safe_emoji("🔍", ">") == "🔍"
+
+
+def test_safe_emoji_falls_back_when_unencodable(monkeypatch):
+    import sys
+
+    from agent_bom.output.console_render import safe_emoji
+
+    class _AsciiStdout:
+        encoding = "ascii"
+
+    monkeypatch.setattr(sys, "stdout", _AsciiStdout())
+    assert safe_emoji("🔍", ">") == ">"
+
+
+def test_cis_status_badge_no_truncation_for_not_applicable():
+    from agent_bom.cli.agents._cloud import _CIS_STATUS_WIDTH, _cis_status_badge
+
+    # not_applicable must render as a compact badge that fits the column width —
+    # never the truncated "not_a…" from the raw 14-char status value.
+    badge = _cis_status_badge("not_applicable")
+    assert "N/A" in badge
+    assert "not_a" not in badge
+    # The rendered label fits the column.
+    plain = badge.replace("[dim]", "").replace("[/]", "")
+    assert len(plain) <= _CIS_STATUS_WIDTH
+    # Known statuses keep their existing labels.
+    assert "FAIL" in _cis_status_badge("fail")
+    assert "PASS" in _cis_status_badge("pass")
+    # Unknown statuses fall back to the raw value, not a missing cell.
+    assert _cis_status_badge("weird") == "weird"

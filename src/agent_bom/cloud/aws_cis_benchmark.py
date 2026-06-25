@@ -2199,9 +2199,12 @@ def _check_4_16(securityhub_client: Any) -> CISCheckResult:
             result.evidence = "Security Hub is not enabled."
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-        if error_code in ("InvalidAccessException", "ResourceNotFoundException"):
+        if error_code in ("InvalidAccessException", "ResourceNotFoundException", "SubscriptionRequiredException"):
+            # Security Hub not subscribed/enabled — this is a control FAIL with
+            # actionable guidance, not an opaque API error. SubscriptionRequired
+            # is AWS's signal that the service is simply not turned on.
             result.status = CheckStatus.FAIL
-            result.evidence = "Security Hub is not enabled in this region."
+            result.evidence = "Security Hub not enabled — enable it to evaluate this control."
         else:
             result.status = CheckStatus.ERROR
             result.evidence = f"Could not check Security Hub: {error_code or exc}"

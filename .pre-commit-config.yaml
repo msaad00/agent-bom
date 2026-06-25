@@ -32,7 +32,7 @@ repos:
       - id: mypy
         args: [--ignore-missing-imports, --no-error-summary, --disable-error-code, import-untyped]
         files: ^src/
-        additional_dependencies: [types-PyYAML]
+        additional_dependencies: ["pydantic>=2.0", types-PyYAML]
         pass_filenames: true
 
   - repo: https://github.com/PyCQA/bandit

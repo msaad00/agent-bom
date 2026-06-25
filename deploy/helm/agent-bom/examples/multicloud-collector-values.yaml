@@ -1,0 +1,66 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# All-clouds read-only collector — one CronJob, four providers, keyless where the
+# cloud offers workload identity.
+# ─────────────────────────────────────────────────────────────────────────────
+# Runs on (for example) an EKS cluster and reaches across AWS + GCP + Azure +
+# Snowflake on a schedule. AWS/GCP/Azure are keyless (IRSA + impersonation +
+# workload identity). Snowflake has no cloud workload identity, so it uses
+# key-pair auth — the private key is supplied ONLY as a Secret reference, never
+# inline in this file.
+#
+# Because the host cluster here is EKS, the SA's primary identity is the IRSA
+# role (AWS). Cross-cloud auth to GCP/Azure from an EKS pod requires those
+# clouds' federation to trust the EKS OIDC issuer (GCP Workload Identity
+# Federation pool from connect-gcp; Azure federated credential on the EKS issuer)
+# OR running this collector natively per cloud. See deploy/RUNBOOK.md
+# "Cross-cloud federation" for both paths. The single-cloud example files are the
+# simplest starting point.
+# ─────────────────────────────────────────────────────────────────────────────
+
+controlPlane:
+  enabled: false
+
+scanner:
+  enabled: true
+  schedule: "0 2 * * *"
+  k8s: true
+  allNamespaces: true
+  writableTmp: true
+  serviceAccount:
+    create: true
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-readonly
+      iam.gke.io/gcp-service-account: agent-bom-wi@my-project.iam.gserviceaccount.com
+      azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000
+  # Passphrase for the Snowflake key (if encrypted) comes from a Secret, never
+  # inline. external-secrets / sealed-secrets should populate this Secret.
+  envFrom:
+    - secretRef:
+        name: agent-bom-snowflake-passphrase
+        optional: true
+  cloud:
+    enabled: true
+    aws:
+      inventory: true
+      allRegions: true
+    gcp:
+      inventory: true
+      impersonateSa: agent-bom-readonly@my-project.iam.gserviceaccount.com
+    azure:
+      inventory: true
+      clientId: 00000000-0000-0000-0000-000000000000
+      tenantId: 11111111-1111-1111-1111-111111111111
+    snowflake:
+      inventory: true
+      account: MYORG-MYACCOUNT
+      user: AGENT_BOM_RO
+      # Pre-existing Secret with the PEM private key under data key `key`.
+      # Create it with external-secrets pointing at your secrets manager:
+      #   kubectl create secret generic agent-bom-snowflake-key \
+      #     --from-file=key=./rsa_key.p8   # (one-off; prefer external-secrets)
+      keySecretName: agent-bom-snowflake-key
+      keySecretKey: key
+
+networkPolicy:
+  enabled: true
+  restrictIngress: true

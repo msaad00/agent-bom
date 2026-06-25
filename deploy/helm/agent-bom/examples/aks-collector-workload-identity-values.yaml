@@ -1,0 +1,52 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AKS read-only collector — KEYLESS via Azure Workload Identity
+# ─────────────────────────────────────────────────────────────────────────────
+# A user-assigned managed identity (or app registration) is federated to the
+# collector's KSA via a federated identity credential. The Reader (+ Security
+# Reader) role that `deploy/terraform/connect-azure` assigns is granted to that
+# identity's principal. The azure-workload-identity webhook projects an AAD
+# token into the pod when the pod carries label azure.workload.identity/use=true
+# (the chart adds this automatically when cloud.azure.inventory=true) and the SA
+# carries the client-id annotation. NO client secret lives in the cluster.
+#
+# Prereqs (one-time, see deploy/RUNBOOK.md):
+#   1. Cluster has OIDC issuer + workload identity enabled
+#        (az aks update --enable-oidc-issuer --enable-workload-identity).
+#   2. Create a user-assigned managed identity; pass its principalId as
+#      connect-azure `principal_id`; terraform apply assigns Reader at the scope.
+#   3. az identity federated-credential create -> federate the KSA subject
+#        system:serviceaccount:agent-bom:agent-bom-scanner
+#      (see RUNBOOK "AKS / Workload Identity").
+#
+# Install:
+#   helm install agent-bom agent-bom/agent-bom \
+#     -n agent-bom --create-namespace \
+#     -f deploy/helm/agent-bom/examples/aks-collector-workload-identity-values.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+controlPlane:
+  enabled: false
+
+scanner:
+  enabled: true
+  schedule: "0 */6 * * *"
+  k8s: true
+  allNamespaces: true
+  serviceAccount:
+    create: true
+    annotations:
+      # Client ID of the user-assigned managed identity federated to this KSA.
+      azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000
+  cloud:
+    enabled: true
+    azure:
+      inventory: true
+      allSubscriptions: false
+      # Mirror the SA client-id here so the SDK's DefaultAzureCredential picks the
+      # workload-identity path; tenantId is the federation tenant.
+      clientId: 00000000-0000-0000-0000-000000000000
+      tenantId: 11111111-1111-1111-1111-111111111111
+
+networkPolicy:
+  enabled: true
+  restrictIngress: true

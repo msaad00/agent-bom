@@ -30,6 +30,7 @@ from agent_bom.api.agent_identity_store import (
     ConditionalAccessPolicy,
 )
 from agent_bom.api.postgres_common import (
+    ConnectionPool,
     _ensure_tenant_rls,
     _get_pool,
     _tenant_connection,
@@ -41,7 +42,7 @@ from agent_bom.api.storage_schema import ensure_postgres_schema_version
 class PostgresAgentIdentityStore:
     """Shared agent-identity + JIT + conditional-access store backed by Postgres."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 

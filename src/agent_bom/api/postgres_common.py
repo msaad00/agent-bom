@@ -11,8 +11,10 @@ from __future__ import annotations
 import inspect
 import logging
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
+from typing import TYPE_CHECKING
 
 from agent_bom.config import (
     POSTGRES_CONNECT_TIMEOUT_SECONDS,
@@ -20,6 +22,16 @@ from agent_bom.config import (
     POSTGRES_POOL_MIN_SIZE,
     POSTGRES_STATEMENT_TIMEOUT_MS,
 )
+
+if TYPE_CHECKING:
+    # psycopg ships no type stubs and is an optional dependency, so these
+    # resolve to Any under mypy. The runtime fallbacks below let the store
+    # modules import the aliases without requiring psycopg to be installed.
+    from psycopg import Connection
+    from psycopg_pool import ConnectionPool
+else:
+    Connection = object
+    ConnectionPool = object
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +70,7 @@ def _audit_rls_bypass_activation(*, caller: str) -> None:
 
 
 @contextmanager
-def bypass_tenant_rls():
+def bypass_tenant_rls() -> Iterator[None]:
     """Temporarily disable Postgres tenant RLS for trusted internal tasks."""
     stack = inspect.stack(context=0)
     frame = next((candidate for candidate in stack[1:] if os.path.basename(candidate.filename) != "contextlib.py"), None)
@@ -77,7 +89,7 @@ def is_tenant_rls_bypassed() -> bool:
     return _bypass_tenant_rls.get()
 
 
-def _get_pool():
+def _get_pool() -> ConnectionPool:
     """Lazy-create a connection pool (singleton)."""
     global _pool
     if _pool is None:
@@ -103,13 +115,13 @@ def _get_pool():
     return _pool
 
 
-def reset_pool():
+def reset_pool() -> None:
     """Reset the connection pool (for testing)."""
     global _pool
     _pool = None
 
 
-def _apply_tenant_session(conn) -> None:
+def _apply_tenant_session(conn: Connection) -> None:
     """Attach tenant session settings used by Postgres RLS policies."""
     conn.execute("SELECT set_config('app.tenant_id', %s, true)", (_current_tenant.get(),))
     conn.execute("SELECT set_config('app.bypass_rls', %s, true)", ("1" if _bypass_tenant_rls.get() else "0",))
@@ -117,7 +129,7 @@ def _apply_tenant_session(conn) -> None:
         conn.execute("SELECT set_config('statement_timeout', %s, false)", (str(POSTGRES_STATEMENT_TIMEOUT_MS),))
 
 
-def _ensure_rls_helpers(conn) -> None:
+def _ensure_rls_helpers(conn: Connection) -> None:
     """Create shared SQL helpers used by tenant RLS policies."""
     conn.execute("""
         CREATE OR REPLACE FUNCTION public.abom_current_tenant()
@@ -139,7 +151,7 @@ def _ensure_rls_helpers(conn) -> None:
     """)
 
 
-def _ensure_tenant_rls(conn, table: str, column: str) -> None:
+def _ensure_tenant_rls(conn: Connection, table: str, column: str) -> None:
     """Enable tenant RLS for a table using the shared tenant session helpers."""
     _ensure_rls_helpers(conn)
     conn.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")  # nosec B608
@@ -166,7 +178,7 @@ def _ensure_tenant_rls(conn, table: str, column: str) -> None:
 
 
 @contextmanager
-def _tenant_connection(pool):
+def _tenant_connection(pool: ConnectionPool) -> Iterator[Connection]:
     """Open a connection with the current tenant/bypass settings attached."""
     with pool.connection() as conn:
         _apply_tenant_session(conn)

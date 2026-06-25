@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from agent_bom.api.auth import ApiKey, Role, verify_api_key
 from agent_bom.api.exception_store import ExceptionStatus, VulnException
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
-from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
+from .postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
 
 
 class PostgresKeyStore:
     """PostgreSQL-backed API key storage with tenant RLS."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -84,7 +85,7 @@ class PostgresKeyStore:
             conn.commit()
 
     @staticmethod
-    def _row_to_key(row) -> ApiKey:
+    def _row_to_key(row: tuple[Any, ...]) -> ApiKey:
         scopes = row[7] if isinstance(row[7], list) else json.loads(row[7] or "[]")
         return ApiKey(
             key_id=row[0],
@@ -154,7 +155,7 @@ class PostgresKeyStore:
                 (key_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def mark_rotating(self, key_id: str, *, replacement_key_id: str, overlap_until: str) -> bool:
         with _tenant_connection(self._pool) as conn:
@@ -166,7 +167,7 @@ class PostgresKeyStore:
                 (replacement_key_id, overlap_until, key_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def get(self, key_id: str) -> ApiKey | None:
         with _tenant_connection(self._pool) as conn:
@@ -221,7 +222,7 @@ class PostgresKeyStore:
 class PostgresExceptionStore:
     """PostgreSQL-backed vulnerability exception storage with tenant RLS."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -264,7 +265,7 @@ class PostgresExceptionStore:
             conn.commit()
 
     @staticmethod
-    def _row_to_exception(row) -> VulnException:
+    def _row_to_exception(row: tuple[Any, ...]) -> VulnException:
         return VulnException(
             exception_id=row[0],
             vuln_id=row[1],
@@ -349,7 +350,7 @@ class PostgresExceptionStore:
                     (exception_id, tenant_id),
                 )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]:
         query = """

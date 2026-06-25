@@ -1,0 +1,18 @@
+# Example A — provision a fresh, minimal cluster + full platform in one apply.
+region         = "us-east-1"
+create_cluster = true
+cluster_name   = "agent-bom-platform"
+domain         = "agent-bom.internal.example.com"
+
+# Optional: mint the read-only role the scanner assumes to inventory this account.
+create_aws_connect_role = true
+
+# Example B — install onto an existing EKS cluster instead. Comment out the
+# create_cluster block above and uncomment the following:
+#
+# region             = "us-east-1"
+# create_cluster     = false
+# cluster_name       = "my-existing-eks"
+# vpc_id             = "vpc-0123456789abcdef0"
+# private_subnet_ids = ["subnet-aaa", "subnet-bbb", "subnet-ccc"]
+# domain             = "agent-bom.internal.example.com"

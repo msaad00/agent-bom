@@ -6,7 +6,9 @@ agent-bom is one product with multiple deployable surfaces: local CLI, CI
 scanner, container image, self-hosted API/UI, fleet sync, proxy, gateway, MCP
 server mode, and Snowflake-specific compatibility views. This document covers
 the maintained deployment shapes. For the canonical chooser, start with
-[`site-docs/deployment/overview.md`](../site-docs/deployment/overview.md).
+[`site-docs/deployment/overview.md`](../site-docs/deployment/overview.md). For
+the three-tier deploy-anywhere guide (Compose · EKS one-apply · hosted), see
+[`DEPLOY_PLATFORM.md`](DEPLOY_PLATFORM.md).
 
 ---
 

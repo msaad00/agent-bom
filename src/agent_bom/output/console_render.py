@@ -1380,6 +1380,189 @@ def print_remediation_plan(report: AIBOMReport) -> None:
         _console().print()
 
 
+_CIS_CLOUD_BUNDLES: tuple[tuple[str, str, str], ...] = (
+    ("aws", "AWS", "cis_benchmark_data"),
+    ("azure", "Azure", "azure_cis_benchmark_data"),
+    ("gcp", "GCP", "gcp_cis_benchmark_data"),
+    ("snowflake", "Snowflake", "snowflake_cis_benchmark_data"),
+    ("databricks", "Databricks", "databricks_cis_benchmark_data"),
+)
+
+_SEV_RANK: dict[str, int] = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+_SEV_LABEL: dict[str, str] = {
+    "critical": "CRITICAL",
+    "high": "HIGH",
+    "medium": "MEDIUM",
+    "low": "LOW",
+}
+_SEV_TABLE_STYLE: dict[str, str] = {
+    "critical": "white on red",
+    "high": "white on #e67e22",
+    "medium": "black on yellow",
+    "low": "white on #555555",
+}
+
+
+def _cis_sev(check: dict) -> str:
+    """Normalize a check's severity to a known lowercase band."""
+    sev = str(check.get("severity") or "").lower()
+    return sev if sev in _SEV_RANK else "low"
+
+
+def _cis_check_sort_key(check: dict) -> tuple[int, int, str, str]:
+    """Deterministic ordering: severity, remediation priority, section, id."""
+    rem = check.get("remediation") or {}
+    priority = rem.get("priority")
+    if not isinstance(priority, int):
+        priority = 3
+    return (
+        _SEV_RANK.get(_cis_sev(check), 4),
+        priority,
+        str(check.get("cis_section") or "~"),
+        str(check.get("check_id") or ""),
+    )
+
+
+def _cis_evidence(check: dict) -> str:
+    """Best available evidence string: prefer affected resource IDs."""
+    resources = check.get("resource_ids") or []
+    if resources:
+        shown = ", ".join(str(r) for r in resources[:4])
+        if len(resources) > 4:
+            shown += f" (+{len(resources) - 4} more)"
+        return shown
+    return str(check.get("evidence") or "").strip()
+
+
+def _cis_remediation_line(check: dict) -> str:
+    """Resolve the single 'what to do' line for a failed check."""
+    rem = check.get("remediation") or {}
+    fix_cli = rem.get("fix_cli")
+    if fix_cli:
+        return str(fix_cli)
+    fix_console = rem.get("fix_console")
+    if fix_console:
+        return f"→ {fix_console}"
+    recommendation = str(check.get("recommendation") or "").strip()
+    if recommendation:
+        return recommendation
+    return ""
+
+
+def print_cis_findings(report: AIBOMReport, *, show_passed: bool = False) -> None:
+    """Render CIS benchmark results as a prioritized, grouped FAILED plan.
+
+    Built for large result sets (60+ checks) where a flat table is
+    unreadable. For each cloud with benchmark data:
+
+      - A posture header: pass-rate band, passed/evaluated counts, and a
+        verdict driven by the highest failing severity.
+      - PASS checks are collapsed into a single ``N passed`` summary line
+        by default; pass ``show_passed=True`` to list them.
+      - FAILED checks lead, grouped by severity (CRITICAL first) then by
+        CIS section/domain, each showing a severity badge, check id +
+        title, the affected resources (evidence), and a recommendation /
+        remediation command (the 'what to do' line).
+
+    Ordering is deterministic so the same report renders identically
+    across runs. Emits nothing when no CIS data is present.
+    """
+    con = _console()
+    raw_bundles = [(cloud, label, getattr(report, attr, None)) for cloud, label, attr in _CIS_CLOUD_BUNDLES]
+    bundles = [(c, lbl, b) for c, lbl, b in raw_bundles if b and b.get("checks")]
+    if not bundles:
+        return
+
+    con.print()
+    con.print(Rule("CIS Benchmark Posture", style="bold bright_magenta"))
+
+    for _cloud, label, bundle in bundles:
+        checks = bundle.get("checks") or []
+        failed = [c for c in checks if str(c.get("status")) == "fail"]
+        passed = [c for c in checks if str(c.get("status")) == "pass"]
+        errored = [c for c in checks if str(c.get("status")) == "error"]
+        evaluated = len(failed) + len(passed)
+        pass_rate = bundle.get("pass_rate")
+        if not isinstance(pass_rate, (int, float)):
+            pass_rate = (len(passed) / evaluated * 100) if evaluated else 0.0
+
+        band = "green" if pass_rate >= 90 else "yellow" if pass_rate >= 70 else "red"
+
+        # Verdict driven by the worst failing severity.
+        if not failed:
+            verdict = "[bold green]PASS[/bold green]"
+        else:
+            worst = min((_SEV_RANK.get(_cis_sev(c), 4) for c in failed), default=4)
+            worst_band = {0: "CRITICAL", 1: "HIGH", 2: "MEDIUM", 3: "LOW"}.get(worst, "LOW")
+            vstyle = {"CRITICAL": "red bold", "HIGH": "#e67e22 bold", "MEDIUM": "yellow", "LOW": "dim"}[worst_band]
+            verdict = f"[{vstyle}]{worst_band} GAPS[/{vstyle}]"
+
+        con.print()
+        con.print(
+            f"  [bold]{label}[/bold]  {verdict}   "
+            f"[{band}]{pass_rate:.0f}% pass[/{band}]  "
+            f"[dim]({len(passed)}/{evaluated} checks"
+            + (f", {len(failed)} failed" if failed else "")
+            + (f", {len(errored)} errored" if errored else "")
+            + ")[/dim]"
+        )
+
+        if not failed:
+            con.print(f"    [green]{safe_emoji('✓', 'OK')}[/green] [dim]no failed checks[/dim]")
+            if show_passed and passed:
+                _print_cis_passed(con, passed)
+            continue
+
+        # Top risks: the highest-priority failing check ids, for the header.
+        top = sorted(failed, key=_cis_check_sort_key)[:3]
+        top_str = ", ".join(str(c.get("check_id") or "?") for c in top)
+        con.print(f"    [dim]top risks:[/dim] {top_str}")
+
+        # Group failed checks by severity, then by CIS section.
+        for sev in ("critical", "high", "medium", "low"):
+            sev_failed = [c for c in failed if _cis_sev(c) == sev]
+            if not sev_failed:
+                continue
+            badge_style = _SEV_TABLE_STYLE[sev]
+            con.print(f"\n    [{badge_style}] {_SEV_LABEL[sev]} [/{badge_style}] [dim]{len(sev_failed)} failed[/dim]")
+
+            # Group within severity by section for readability.
+            sections: dict[str, list[dict]] = {}
+            for c in sorted(sev_failed, key=_cis_check_sort_key):
+                sections.setdefault(str(c.get("cis_section") or "Other"), []).append(c)
+
+            for section in sorted(sections):
+                con.print(f"      [bold dim]{section}[/bold dim]")
+                for check in sections[section]:
+                    rem = check.get("remediation") or {}
+                    review = f" [yellow]{safe_emoji('↺', '(review)')} review[/yellow]" if rem.get("requires_human_review") else ""
+                    title = str(check.get("title") or "").rstrip(".")
+                    con.print(f"        [bold]{check.get('check_id', '')}[/bold]  {title}{review}")
+                    evidence = _cis_evidence(check)
+                    if evidence:
+                        con.print(f"          [dim]evidence:[/dim] {evidence}")
+                    fix = _cis_remediation_line(check)
+                    if fix:
+                        con.print(f"          [cyan]fix:[/cyan] {fix}")
+
+        # Collapsed PASS summary (expandable).
+        if passed:
+            if show_passed:
+                _print_cis_passed(con, passed)
+            else:
+                con.print(f"\n    [green]{safe_emoji('✓', 'OK')}[/green] [dim]{len(passed)} passed (use --show-passed to list)[/dim]")
+
+    con.print()
+
+
+def _print_cis_passed(con: Console, passed: list[dict]) -> None:
+    """List passed checks compactly, sorted by check id (deterministic)."""
+    con.print(f"\n    [green]Passed ({len(passed)}):[/green]")
+    for check in sorted(passed, key=lambda c: str(c.get("check_id") or "")):
+        title = str(check.get("title") or "").rstrip(".")
+        con.print(f"      [green]{safe_emoji('✓', 'OK')}[/green] [dim]{check.get('check_id', '')}  {title}[/dim]")
+
+
 def print_export_hint(report: AIBOMReport) -> None:
     """Print an AI-BOM identity footer with threat framework badge, explore links, and export hints."""
 

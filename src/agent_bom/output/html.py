@@ -691,7 +691,29 @@ _CIS_CLOUD_LABELS = {
     "azure": ("Azure", "azure_cis_benchmark_data"),
     "gcp": ("GCP", "gcp_cis_benchmark_data"),
     "snowflake": ("Snowflake", "snowflake_cis_benchmark_data"),
+    "databricks": ("Databricks", "databricks_cis_benchmark_data"),
 }
+
+_CIS_SEV_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _cis_evidence_html(check: dict) -> str:
+    """Affected-resource evidence cell: resource IDs when present, else text."""
+    resources = check.get("resource_ids") or []
+    if resources:
+        chips = "".join(
+            f'<span style="display:inline-block;padding:1px 7px;margin:1px 3px 1px 0;border-radius:4px;'
+            f"background:#0f172a;color:#cbd5e1;font-size:.66rem;font-family:monospace;"
+            f'word-break:break-all">{_esc(r)}</span>'
+            for r in resources[:6]
+        )
+        if len(resources) > 6:
+            chips += f'<span style="color:#475569;font-size:.66rem">+{len(resources) - 6} more</span>'
+        return chips
+    evidence = str(check.get("evidence") or "").strip()
+    if evidence:
+        return f'<span style="color:#94a3b8;font-size:.72rem">{_esc(evidence)}</span>'
+    return '<span style="color:#475569;font-size:.7rem">&mdash;</span>'
 
 
 def _cis_benchmark_section(report: "AIBOMReport") -> str:
@@ -703,8 +725,17 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
     Returns an empty string when no CIS data is present.
     """
 
+    def _sort_key(c: dict) -> tuple[int, int, str]:
+        rem = c.get("remediation") or {}
+        priority = rem.get("priority", 3)
+        if not isinstance(priority, int):
+            priority = 3
+        sev = (c.get("severity") or "").lower()
+        sev_rank = _CIS_SEV_RANK.get(sev, 4)
+        return (sev_rank, priority, str(c.get("check_id") or ""))
+
     panels: list[str] = []
-    for cloud_key, (label, attr) in _CIS_CLOUD_LABELS.items():
+    for idx, (cloud_key, (label, attr)) in enumerate(_CIS_CLOUD_LABELS.items()):
         bundle = getattr(report, attr, None)
         if not bundle:
             continue
@@ -713,31 +744,77 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
             continue
         failed = [c for c in checks if c.get("status") == "fail"]
         evaluated = [c for c in checks if c.get("status") in ("pass", "fail")]
+        passed_n = bundle.get("passed", sum(1 for c in checks if c.get("status") == "pass"))
         pass_rate = bundle.get("pass_rate", 0.0)
         band_color = "#16a34a" if pass_rate >= 90 else "#eab308" if pass_rate >= 70 else "#ef4444"
 
+        # Verdict + per-severity failed counts for the summary header.
+        sev_counts = {s: sum(1 for c in failed if (c.get("severity") or "").lower() == s) for s in _CIS_SEV_RANK}
+        if not failed:
+            verdict_text, verdict_color = "PASS", "#16a34a"
+        else:
+            worst = min((_CIS_SEV_RANK.get((c.get("severity") or "").lower(), 4) for c in failed), default=4)
+            worst_band = {0: "CRITICAL", 1: "HIGH", 2: "MEDIUM", 3: "LOW"}.get(worst, "LOW")
+            verdict_text = f"{worst_band} GAPS"
+            verdict_color = _SEV_COLOR.get(worst_band.lower(), "#ef4444")
+
+        top = sorted(failed, key=_sort_key)[:3]
+        top_html = ""
+        if top:
+            chips = "".join(
+                f'<code style="background:#1e293b;color:#f1f5f9;padding:1px 6px;border-radius:4px;'
+                f'margin-right:5px;font-size:.7rem">{_esc(c.get("check_id", ""))}</code>'
+                for c in top
+            )
+            top_html = f'<div style="color:#64748b;font-size:.74rem;margin-top:6px">top risks: {chips}</div>'
+
+        counts_html = " ".join(
+            f'<span style="color:{_SEV_COLOR.get(s, "#6b7280")};font-size:.72rem;font-weight:700">{n} {s[0].upper()}</span>'
+            for s, n in sev_counts.items()
+            if n
+        )
+
         header = (
-            f'<div style="display:flex;align-items:center;gap:18px;margin-bottom:12px">'
+            f'<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:4px">'
             f'<div style="font-weight:700;color:#f1f5f9;font-size:.95rem">{_esc(label)}</div>'
+            f'<span style="background:{verdict_color};color:#fff;padding:2px 9px;border-radius:4px;'
+            f'font-size:.7rem;font-weight:700;letter-spacing:.04em">{verdict_text}</span>'
             f'<div style="color:{band_color};font-weight:700">{pass_rate:.0f}% pass</div>'
             f'<div style="color:#64748b;font-size:.78rem">'
-            f"{bundle.get('passed', 0)}/{len(evaluated)} checks &middot; "
+            f"{passed_n}/{len(evaluated)} checks &middot; "
             f'<strong style="color:#f97316">{len(failed)} failed</strong>'
-            f"</div></div>"
+            f"</div>"
+            f'<div style="display:flex;gap:10px">{counts_html}</div>'
+            f"</div>"
+            f"{top_html}"
         )
 
         if not failed:
             panels.append(
-                f'<div class="panel" style="margin-bottom:16px">{header}<div class="empty-state">&#x2705; No failed CIS checks.</div></div>'
+                f'<div class="panel" style="margin-bottom:16px">{header}'
+                f'<div class="empty-state" style="margin-top:12px">&#x2705; No failed CIS checks.</div></div>'
             )
             continue
 
-        def _sort_key(c: dict) -> tuple[int, int]:
-            rem = c.get("remediation") or {}
-            priority = rem.get("priority", 3)
-            sev = (c.get("severity") or "").lower()
-            sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(sev, 4)
-            return (priority, sev_rank)
+        # Severity filter buttons (client-side, per panel).
+        panel_id = f"cis-{_esc(cloud_key)}"
+        filter_btns = (
+            f'<div class="cis-filter" data-target="{panel_id}" style="margin:10px 0 4px">'
+            + "".join(
+                f'<button type="button" class="cis-filter-btn" data-sev="{sev}" '
+                f'style="background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:4px;'
+                f'padding:2px 9px;margin-right:6px;font-size:.7rem;cursor:pointer">{lbl}</button>'
+                for sev, lbl in (
+                    ("all", "All"),
+                    ("critical", "Critical"),
+                    ("high", "High"),
+                    ("medium", "Medium"),
+                    ("low", "Low"),
+                )
+                if sev == "all" or sev_counts.get(sev)
+            )
+            + "</div>"
+        )
 
         rows = []
         for check in sorted(failed, key=_sort_key):
@@ -765,6 +842,8 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
                 fix_cell = f'<code style="color:#67e8f9;font-size:.72rem;white-space:pre-wrap;word-break:break-all">{_esc(fix_cli)}</code>'
             elif fix_console:
                 fix_cell = f'<span style="color:#94a3b8;font-size:.72rem">&rarr; {_esc(fix_console)}</span>'
+            elif check.get("recommendation"):
+                fix_cell = f'<span style="color:#94a3b8;font-size:.72rem">{_esc(check.get("recommendation"))}</span>'
 
             docs_link = ""
             docs = rem.get("docs") or ""
@@ -772,34 +851,50 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
                 docs_link = f' &middot; <a href="{_esc(docs)}" target="_blank" rel="noopener" style="font-size:.7rem">docs</a>'
 
             rows.append(
-                "<tr>"
+                f'<tr class="cis-row" data-sev="{_esc(sev)}">'
                 f"<td>{_sev_badge(sev)}</td>"
                 f'<td style="font-family:monospace;color:#f1f5f9;font-weight:600">{_esc(check.get("check_id", ""))}</td>'
                 f'<td style="color:#e2e8f0;font-size:.82rem">{_esc(check.get("title", ""))}{review_badge}</td>'
                 f'<td style="color:#94a3b8;font-size:.75rem">P{priority} &middot; {_esc(effort)}</td>'
+                f"<td>{_cis_evidence_html(check)}</td>"
                 f"<td>{guard_html}</td>"
                 f"<td>{fix_cell}{docs_link}</td>"
                 "</tr>"
             )
 
         table_html = (
-            '<div class="table-wrap"><table class="data-table sortable">'
+            f'<div class="table-wrap"><table class="data-table sortable" id="{panel_id}">'
             + "<thead><tr>"
             + "".join(
                 f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>'
-                for i, h in enumerate(["Severity", "Check", "Title", "Priority", "Guardrails", "Remediation"])
+                for i, h in enumerate(["Severity", "Check", "Title", "Priority", "Evidence", "Guardrails", "Remediation"])
             )
             + "</tr></thead>"
             + f"<tbody>{''.join(rows)}</tbody></table></div>"
         )
 
-        panels.append(f'<div class="panel" style="margin-bottom:16px">{header}{table_html}</div>')
+        panels.append(f'<div class="panel" style="margin-bottom:16px">{header}{filter_btns}{table_html}</div>')
 
     if not panels:
         return ""
 
+    filter_script = (
+        "<script>document.querySelectorAll('.cis-filter').forEach(function(bar){"
+        "bar.querySelectorAll('.cis-filter-btn').forEach(function(btn){"
+        "btn.addEventListener('click',function(){"
+        "var tbl=document.getElementById(bar.getAttribute('data-target'));if(!tbl)return;"
+        "var sev=btn.getAttribute('data-sev');"
+        "tbl.querySelectorAll('tbody tr.cis-row').forEach(function(r){"
+        "r.style.display=(sev==='all'||r.getAttribute('data-sev')===sev)?'':'none';});"
+        "bar.querySelectorAll('.cis-filter-btn').forEach(function(b){b.style.color='#94a3b8';});"
+        "btn.style.color='#f1f5f9';});});});</script>"
+    )
+
     return (
-        '<section id="cisbenchmarks"><div class="sec-title">&#x1f6e1;&#xfe0f; CIS Benchmark Posture</div>' + "".join(panels) + "</section>"
+        '<section id="cisbenchmarks"><div class="sec-title">&#x1f6e1;&#xfe0f; CIS Benchmark Posture</div>'
+        + "".join(panels)
+        + filter_script
+        + "</section>"
     )
 
 

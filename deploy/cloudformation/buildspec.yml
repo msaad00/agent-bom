@@ -1,0 +1,73 @@
+# Reference copy of the buildspec embedded in agent-bom-scan.yaml.
+#
+# The CloudFormation stack inlines this buildspec into the CodeBuild project's
+# Source.BuildSpec, so deploying the template needs nothing else. This file is
+# kept in sync as a readable reference and for local `cfn-lint`/CodeBuild local
+# testing. The following environment variables are injected by the stack:
+#
+#   AGENT_BOM_AWS_INVENTORY=1     enables AWS inventory enrichment
+#   SCAN_REGION                   region passed to `agent-bom cloud aws --region`
+#   REPORT_BUCKET                 private S3 bucket for reports
+#   AGENT_BOM_SPEC                pip requirement, e.g. "agent-bom[aws]==0.89.2"
+#   FAIL_ON_SEVERITY              none|low|medium|high|critical
+#
+# The scan is read-only: every `agent-bom cloud aws` invocation discovers
+# resources and runs the CIS benchmark without mutating the account. The only
+# writes are report objects to the single S3 bucket.
+
+version: 0.2
+phases:
+  install:
+    commands:
+      - python3 --version
+      - python3 -m pip install --quiet --upgrade pip
+      - python3 -m pip install --quiet "${AGENT_BOM_SPEC}"
+      - agent-bom --version
+  build:
+    commands:
+      - export PREFIX="aws-scan/$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+      - echo "Scanning region ${SCAN_REGION}; reports prefix ${PREFIX}"
+      - agent-bom cloud aws --region "${SCAN_REGION}" -f html -o report.html
+      - agent-bom cloud aws --region "${SCAN_REGION}" -f json -o report.json
+      - agent-bom cloud aws --region "${SCAN_REGION}" -f plain -o report.txt
+      - agent-bom cloud aws --region "${SCAN_REGION}" 2>&1 | tee console.log || true
+  post_build:
+    commands:
+      - |
+        for f in report.html report.json report.txt console.log; do
+          if [ -f "$f" ]; then
+            aws s3 cp "$f" "s3://${REPORT_BUCKET}/${PREFIX}/$f" \
+              --content-type "$([ "$f" = report.html ] && echo text/html || echo text/plain)"
+          fi
+        done
+      - echo "Reports uploaded to s3://${REPORT_BUCKET}/${PREFIX}/"
+      - |
+        if [ "${FAIL_ON_SEVERITY}" != "none" ]; then
+          echo "Enforcing fail-on-severity=${FAIL_ON_SEVERITY}"
+          agent-bom cloud aws --region "${SCAN_REGION}" -f json -o gate.json
+          python3 - "$FAIL_ON_SEVERITY" gate.json <<'PY'
+        import json, sys
+        order = ["low", "medium", "high", "critical"]
+        threshold = sys.argv[1]
+        try:
+            data = json.load(open(sys.argv[2]))
+        except Exception as exc:  # noqa: BLE001
+            print(f"gate: could not read report ({exc}); not failing")
+            sys.exit(0)
+        def sevs(obj):
+            if isinstance(obj, dict):
+                if "severity" in obj and isinstance(obj["severity"], str):
+                    yield obj["severity"].lower()
+                for v in obj.values():
+                    yield from sevs(v)
+            elif isinstance(obj, list):
+                for v in obj:
+                    yield from sevs(v)
+        cut = order.index(threshold) if threshold in order else len(order)
+        hits = [s for s in sevs(data) if s in order and order.index(s) >= cut]
+        if hits:
+            print(f"gate: {len(hits)} finding(s) at/above {threshold}")
+            sys.exit(1)
+        print(f"gate: no findings at/above {threshold}")
+        PY
+        fi

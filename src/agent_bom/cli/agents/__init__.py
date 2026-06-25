@@ -247,8 +247,15 @@ def _reproducible_generated_at(enabled: bool):
 
 
 @click.command()
+@click.argument(
+    "path",
+    required=False,
+    type=click.Path(exists=True, file_okay=False),
+    metavar="[PATH]",
+)
 @scan_options
 def scan(
+    path: Optional[str],
     project: Optional[str],
     repo_url: Optional[str],
     config_dir: Optional[str],
@@ -512,6 +519,23 @@ def scan(
     else:
         _log_level = log_level or ("DEBUG" if verbose else "WARNING")
     setup_logging(level=_log_level, json_output=log_json, log_file=log_file)
+
+    # ── Positional PATH is Docker-style shorthand for --project/-p ──
+    # `agent-bom scan .` / `agent-bom scan ./dir` resolve to a project scan.
+    # If both the positional PATH and --project/-p are given, they must point at
+    # the same directory; otherwise --project/-p wins and we warn so the
+    # intent is never silently dropped. The positional value is purely a
+    # project alias and does not interfere with --image/--sbom/--filesystem/
+    # --self-scan/--demo input modes.
+    if path is not None:
+        if project is not None and Path(project).resolve() != Path(path).resolve():
+            logger.warning(
+                "Both PATH (%s) and --project/-p (%s) were given; using --project/-p.",
+                path,
+                project,
+            )
+        elif project is None:
+            project = path
 
     # Load .agent-bom.yaml project config — CLI flags always win
     _proj_cfg = load_project_config()

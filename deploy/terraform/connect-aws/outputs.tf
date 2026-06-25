@@ -24,6 +24,7 @@ output "attached_managed_policy_arns" {
 }
 
 output "external_id" {
-  description = "ExternalId required on assume-role, if configured (empty otherwise)."
-  value       = var.external_id
+  description = "The sts:ExternalId required on assume-role. Always set (auto-generated when not supplied). Configure the agent-bom scanner with this value so it can assume the role. Marked sensitive — read it explicitly with `terraform output -raw external_id`."
+  value       = local.effective_external_id
+  sensitive   = true
 }

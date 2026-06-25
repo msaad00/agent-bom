@@ -1,7 +1,13 @@
 variable "name" {
-  description = "Name for the read-only role/user agent-bom assumes."
+  description = "Explicit, fixed name for the read-only role/user. Leave empty (default) to auto-generate a unique, non-guessable name (\"<name_prefix>-<random hex>\"), which defends against name-squatting and targeting of a predictable principal. Set this only when an external system requires a stable, known name."
   type        = string
-  default     = "agent-bom-readonly"
+  default     = ""
+}
+
+variable "name_prefix" {
+  description = "Prefix for the auto-generated unique principal name when \"name\" is empty. A random suffix is appended so the final name is unique and unpredictable."
+  type        = string
+  default     = "abom-readonly"
 }
 
 variable "principal_type" {
@@ -40,7 +46,7 @@ variable "trusted_oidc_audience" {
 }
 
 variable "external_id" {
-  description = "Optional sts:ExternalId required on assume-role, to defend against the confused-deputy problem in cross-account trust. Leave empty to omit."
+  description = "Bring-your-own sts:ExternalId required on assume-role, to defend against the confused-deputy problem in cross-account trust. Leave empty (default) to auto-generate a high-entropy ExternalId — the confused-deputy condition is ALWAYS applied and can never be silently omitted. Read the generated value from the (sensitive) external_id output and configure the scanner with it. Set this only to pin a known value."
   type        = string
   default     = ""
 }

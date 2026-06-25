@@ -317,6 +317,7 @@ module = [
     "agent_bom.api.metrics",
     "agent_bom.api.models",
     "agent_bom.api.policy_store",
+    "agent_bom.api.postgres_access",
     "agent_bom.api.postgres_access_review",
     "agent_bom.api.postgres_agent_identity",
     "agent_bom.api.postgres_audit",

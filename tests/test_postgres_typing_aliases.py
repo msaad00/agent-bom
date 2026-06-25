@@ -19,6 +19,7 @@ import agent_bom.api.postgres_common as postgres_common
 
 # Stores that import the ConnectionPool alias and annotate __init__ with it.
 _STORE_MODULES = [
+    "agent_bom.api.postgres_access",
     "agent_bom.api.postgres_access_review",
     "agent_bom.api.postgres_agent_identity",
     "agent_bom.api.postgres_audit",

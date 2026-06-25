@@ -97,6 +97,10 @@ AGENT_BOM_CRED_NEAR_EXPIRY_DAYS
 AGENT_BOM_CRED_ROTATION_DAYS
 # Dormancy window (days, default 90) before a non-human identity with no recent usage is flagged dormant; read in graph/nhi_governance.py.
 AGENT_BOM_NHI_DORMANT_DAYS
+# Opt-in window (days, default 0 = disabled) after which a dormant agent-bom-issued identity is auto-revoked; read in api/agent_identity_store.py.
+AGENT_BOM_NHI_DEPROVISION_DAYS
+# Token age (days, default 90) beyond which an agent identity is flagged rotation_due (advisory, no silent rotation); read in api/agent_identity_store.py.
+AGENT_BOM_TOKEN_ROTATION_DAYS
 AGENT_BOM_CORS_ALL
 AGENT_BOM_DASHBOARD_CSP_HASH_MANIFEST
 AGENT_BOM_DB
@@ -116,6 +120,12 @@ AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS  # explicit opt-out (default OFF): allo
 AGENT_BOM_GATEWAY_ALLOW_INSECURE_NO_AUTH
 AGENT_BOM_GATEWAY_BEARER_TOKEN
 AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS
+# fail-closed posture for the gateway policy engine (open|closed, default open): when closed, a missing/unloadable policy or evaluation error DENIES instead of default-allow; read in gateway_server.py via proxy_policy.resolve_fail_mode
+AGENT_BOM_GATEWAY_FAIL_MODE
+# optional SIEM/SOAR webhook URL (default unset = no-op): every deny/quarantine POSTs a normalized OCSF event with an idempotency key; failures never block the relay; read in proxy_policy.deliver_policy_webhook
+AGENT_BOM_POLICY_WEBHOOK_URL
+# optional bearer credential for AGENT_BOM_POLICY_WEBHOOK_URL (default unset); read in proxy_policy.deliver_policy_webhook
+AGENT_BOM_POLICY_WEBHOOK_TOKEN
 # opt-in anomaly-triggered gateway enforcement mode (off|warn|enforce)
 AGENT_BOM_GATEWAY_ANOMALY_ENFORCEMENT
 # opt-in drift-triggered gateway enforcement mode (off|warn|enforce)

@@ -53,6 +53,45 @@ def baseline_gateway_rules() -> list[GatewayRule]:
     ]
 
 
+def conditional_access_rules() -> list[dict]:
+    """Return declarative, deterministic conditional-access rule examples.
+
+    These ride alongside the allow/deny rules and are consumed by the gateway's
+    conditional-access evaluator. Each rule carries a ``conditions`` block whose
+    constraints are ANDed; when the context does NOT satisfy them the rule's
+    ``action`` selects the verdict:
+
+    * ``"block"``/``"fail"`` → hard DENY
+    * ``"quarantine"``       → QUARANTINE (block the tool, flag + audit the agent)
+
+    The blocks are pure declarative data (no clock / random reads) so the same
+    request context always yields the same verdict — the engine injects ``now``.
+    """
+    return [
+        {
+            "id": "business-hours-only",
+            "description": "Sensitive tools may only run during UTC business hours on weekdays.",
+            "action": "block",
+            "conditions": {
+                "time_window": {"start": "08:00", "end": "20:00"},
+                "weekdays": [0, 1, 2, 3, 4],
+            },
+        },
+        {
+            "id": "quarantine-high-risk",
+            "description": "Quarantine (do not hard-deny) calls from sessions above the risk ceiling.",
+            "action": "quarantine",
+            "conditions": {"max_risk_score": 0.8},
+        },
+        {
+            "id": "require-mfa-context",
+            "description": "Require an asserted MFA context attribute for privileged tool calls.",
+            "action": "block",
+            "conditions": {"required_attributes": {"mfa": "true"}},
+        },
+    ]
+
+
 def baseline_gateway_policy(
     *,
     mode: GatewayBaselineMode = "audit",
@@ -111,5 +150,6 @@ __all__ = [
     "BASELINE_GATEWAY_SCHEMA_VERSION",
     "baseline_gateway_policy",
     "baseline_gateway_rules",
+    "conditional_access_rules",
     "render_gateway_baseline_policy",
 ]

@@ -91,9 +91,28 @@ jobs:
           if ui_version != tag:
               errors.append(f"ui/package.json version {ui_version!r} does not match tag {tag}")
 
+          # The chart's pinned image tags must track the release tag so a `helm install`
+          # of the published chart pulls the images built by this same release.
+          values_text = Path("deploy/helm/agent-bom/values.yaml").read_text(encoding="utf-8")
+          for block in ("image", "uiImage", "runtimeImage"):
+              m = re.search(
+                  rf'^{block}:\n(?:[ \t]+.*\n)*?[ \t]+tag:\s*"?([^"\n]+)"?',
+                  values_text,
+                  re.M,
+              )
+              if not m:
+                  errors.append(f"values.yaml: {block}.tag not found")
+              elif m.group(1).strip() != tag:
+                  errors.append(
+                      f"values.yaml {block}.tag {m.group(1).strip()!r} does not match tag {tag}"
+                  )
+
           if errors:
               raise SystemExit("\n".join(errors))
-          print(f"Auxiliary versions aligned with {tag}: chart, appVersion, ui/package.json")
+          print(
+              f"Auxiliary versions aligned with {tag}: chart, appVersion, "
+              "ui/package.json, values.yaml image/uiImage/runtimeImage tags"
+          )
           PY
 
       - name: Block Finder duplicate artifacts

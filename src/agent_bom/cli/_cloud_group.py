@@ -3,20 +3,158 @@
 Cloud providers: AWS, Azure, GCP (real infrastructure with fleets, IAM, services).
 AI platforms (Snowflake, Databricks, HuggingFace, etc.) are separate — not cloud infra.
 
+One cloud-aware command spans every provider — ``cloud scan`` auto-detects which
+clouds are configured and runs the same CIS + discovery work across them, instead
+of asking the user to remember a separate subcommand per cloud. The per-cloud
+``aws`` / ``azure`` / ``gcp`` commands remain as thin aliases that scope the
+unified path to a single provider, so existing invocations keep working.
+
 Usage::
 
-    agent-bom cloud aws                   # AWS discovery + CIS benchmark
-    agent-bom cloud azure                 # Azure discovery + CIS benchmark
-    agent-bom cloud gcp                   # GCP discovery + CIS benchmark
+    agent-bom cloud scan                  # every configured cloud (auto-detect)
+    agent-bom cloud scan --provider aws   # one cloud, same as `cloud aws`
+    agent-bom cloud aws                   # alias → scan --provider aws
+    agent-bom cloud azure                 # alias → scan --provider azure
+    agent-bom cloud gcp                   # alias → scan --provider gcp
 """
 
 from __future__ import annotations
 
+import shutil
 from typing import Optional
 
 import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
+
+# Deterministic provider catalogue. The order here drives auto-detect ordering,
+# per-provider sectioning, and `--provider all` fan-out so the same configuration
+# always produces the same output. Each entry maps the provider to the CLI tool
+# whose presence signals "configured" (mirrors the existing no-subcommand path
+# and `agent-cloud posture`).
+_PROVIDER_CLI = {
+    "aws": "aws",
+    "azure": "az",
+    "gcp": "gcloud",
+}
+# Sorted for determinism — same config in, same provider order out.
+_PROVIDER_ORDER: tuple[str, ...] = tuple(sorted(_PROVIDER_CLI))
+
+# How a missing provider CLI is described when we skip it, so the friendly note
+# points the user at the exact thing to install/configure.
+_PROVIDER_HINT = {
+    "aws": "aws configure",
+    "azure": "az login",
+    "gcp": "gcloud auth login",
+}
+
+
+def _provider_configured(provider: str) -> bool:
+    """Return True when the provider's CLI is on PATH (its creds are reachable).
+
+    Credential detection deliberately reuses the same CLI-presence signal the
+    cloud group already trusts for its no-subcommand fan-out, so behaviour is
+    consistent across every entry point.
+    """
+    return bool(shutil.which(_PROVIDER_CLI[provider]))
+
+
+def _detect_configured_providers() -> list[str]:
+    """Configured providers in deterministic order (unconfigured ones dropped)."""
+    return [p for p in _PROVIDER_ORDER if _provider_configured(p)]
+
+
+def _resolve_scan_providers(provider: str) -> tuple[list[str], list[str]]:
+    """Resolve ``--provider`` into (selected, skipped) provider lists.
+
+    ``all`` expands to every configured cloud (auto-detect); unconfigured clouds
+    are returned as ``skipped`` so the caller can surface a friendly note instead
+    of failing. A single named provider is always selected even when its CLI is
+    absent — the underlying scan emits its own credential guidance — so the alias
+    commands keep their existing behaviour.
+    """
+    if provider == "all":
+        selected = _detect_configured_providers()
+        skipped = [p for p in _PROVIDER_ORDER if p not in selected]
+        return selected, skipped
+    return [provider], []
+
+
+def _run_cloud_scan(
+    providers: list[str],
+    *,
+    skipped: Optional[list[str]] = None,
+    aws_region: Optional[str] = None,
+    aws_profile: Optional[str] = None,
+    aws_include_lambda: bool = False,
+    aws_include_eks: bool = False,
+    aws_include_ec2: bool = False,
+    aws_include_iam: bool = False,
+    azure_subscription: Optional[str] = None,
+    gcp_project: Optional[str] = None,
+    cis: bool = True,
+    output_format: str = "console",
+    output_path: Optional[str] = None,
+    quiet: bool = False,
+) -> None:
+    """Run the shared cloud-scan body across one or more providers.
+
+    Single code path behind both the unified ``cloud scan`` command and the
+    per-cloud aliases. The selected providers are enabled together in a single
+    ``scan`` invocation; ``scan`` already discovers and benchmarks each provider
+    under its own ``try``/``except`` so one provider failing or being
+    unconfigured never aborts the others. Provider order is deterministic.
+    """
+    from rich.console import Console
+
+    from agent_bom.cli.agents import scan
+
+    providers = [p for p in _PROVIDER_ORDER if p in providers]
+
+    if skipped:
+        con = Console(stderr=True)
+        for prov in skipped:
+            con.print(f"  [dim]skipping {prov.upper()} — not configured (set up with: {_PROVIDER_HINT[prov]})[/dim]")
+
+    if not providers:
+        con = Console(stderr=True)
+        con.print("\n[yellow]No configured cloud providers to scan.[/yellow]")
+        con.print("  Configure at least one provider and retry:")
+        for prov in _PROVIDER_ORDER:
+            con.print(f"  [cyan]{prov}[/cyan] → {_PROVIDER_HINT[prov]}")
+        return
+
+    aws_on = "aws" in providers
+    azure_on = "azure" in providers
+    gcp_on = "gcp" in providers
+
+    if not quiet and output_format == "console" and len(providers) > 1:
+        Console(stderr=True).print(
+            f"\n[bold]Cloud scan[/bold] [dim]· {', '.join(p.upper() for p in providers)} · {'CIS + ' if cis else ''}discovery[/dim]"
+        )
+
+    ctx = click.get_current_context()
+    ctx.invoke(
+        scan,
+        aws=aws_on,
+        aws_region=aws_region,
+        aws_profile=aws_profile,
+        aws_include_lambda=aws_include_lambda,
+        aws_include_eks=aws_include_eks,
+        aws_include_ec2=aws_include_ec2,
+        aws_include_iam=aws_include_iam,
+        azure_flag=azure_on,
+        azure_subscription=azure_subscription,
+        gcp_flag=gcp_on,
+        gcp_project=gcp_project,
+        aws_cis_benchmark=aws_on and cis,
+        azure_cis_benchmark=azure_on and cis,
+        gcp_cis_benchmark=gcp_on and cis,
+        auto_update_db=False,
+        output_format=output_format,
+        output=output_path,
+        quiet=quiet,
+    )
 
 
 @click.group("cloud", cls=SuggestingGroup, invoke_without_command=True)
@@ -35,22 +173,14 @@ def cloud_group(ctx: click.Context) -> None:
 
     \b
     Subcommands (require credentials):
-      aws          AWS — Bedrock, Lambda, ECS, EKS + CIS v3.0 (60 checks)
-      azure        Azure — AI Foundry, Container Apps + CIS v2.0 (95 checks)
-      gcp          GCP — Vertex AI, Cloud Run + CIS v3.0 (59 checks)
+      scan         One cloud-aware scan across every configured provider
+      aws          Alias — scan --provider aws (Bedrock, Lambda, ECS, EKS + CIS)
+      azure        Alias — scan --provider azure (AI Foundry, Container Apps + CIS)
+      gcp          Alias — scan --provider gcp (Vertex AI, Cloud Run + CIS)
       resilience   Provider pagination/retry/partial-failure evidence
     """
     if ctx.invoked_subcommand is None:
-        # Check if any cloud credentials are configured before running all
-        import shutil
-
-        providers = []
-        if shutil.which("aws"):
-            providers.append("aws")
-        if shutil.which("az"):
-            providers.append("azure")
-        if shutil.which("gcloud"):
-            providers.append("gcp")
+        providers = _detect_configured_providers()
 
         if not providers:
             from rich.console import Console
@@ -66,18 +196,76 @@ def cloud_group(ctx: click.Context) -> None:
             con.print("  [cyan]agent-bom image[/cyan] · [cyan]agent-bom iac[/cyan] · [cyan]agent-bom fs[/cyan]")
             return
 
-        from agent_bom.cli.agents import scan
+        # Bare `cloud` runs the unified scan across whatever is configured.
+        _run_cloud_scan(providers)
 
-        ctx.invoke(
-            scan,
-            aws="aws" in providers,
-            azure_flag="azure" in providers,
-            gcp_flag="gcp" in providers,
-            aws_cis_benchmark="aws" in providers,
-            azure_cis_benchmark="azure" in providers,
-            gcp_cis_benchmark="gcp" in providers,
-            auto_update_db=False,
-        )
+
+@click.command("scan")
+@click.option(
+    "--provider",
+    type=click.Choice(["all", *_PROVIDER_ORDER]),
+    default="all",
+    show_default=True,
+    help="Cloud(s) to scan. 'all' auto-detects every configured provider and skips the rest.",
+)
+@click.option("--region", default=None, help="AWS region (aws only).")
+@click.option("--profile", default=None, help="AWS credential profile (aws only).")
+@click.option("--include-lambda", is_flag=True, help="Include Lambda functions (aws only).")
+@click.option("--include-eks", is_flag=True, help="Include EKS workloads (aws only).")
+@click.option("--include-ec2", is_flag=True, help="Include EC2 instances (aws only).")
+@click.option("--include-iam", is_flag=True, help="Enrich identity graph with IAM (aws only).")
+@click.option("--subscription", default=None, help="Azure subscription ID (azure only).")
+@click.option("--project", default=None, help="GCP project ID (gcp only).")
+@click.option("--cis/--no-cis", default=True, show_default=True, help="Run CIS benchmark for each selected provider.")
+@click.option("-f", "--format", "output_format", default="console", help="Output format")
+@click.option("-o", "--output", "output_path", help="Output file path")
+@click.option("--quiet", "-q", is_flag=True)
+def scan_cmd(
+    provider: str,
+    region: Optional[str],
+    profile: Optional[str],
+    include_lambda: bool,
+    include_eks: bool,
+    include_ec2: bool,
+    include_iam: bool,
+    subscription: Optional[str],
+    project: Optional[str],
+    cis: bool,
+    output_format: str,
+    output_path: Optional[str],
+    quiet: bool,
+) -> None:
+    """Scan one or every configured cloud — AI agents, infra, and CIS compliance.
+
+    A single cloud-aware command instead of one subcommand per provider. With the
+    default ``--provider all`` it auto-detects which clouds are configured, scans
+    each, and skips the rest with a note — never failing the whole run because one
+    cloud is unconfigured. Provider-scoped flags apply only to their cloud.
+
+    \b
+    Examples:
+      agent-bom cloud scan                       every configured cloud
+      agent-bom cloud scan --provider aws        AWS only (same as `cloud aws`)
+      agent-bom cloud scan --provider gcp --project my-proj
+      agent-bom cloud scan --no-cis              discovery only, skip CIS
+    """
+    selected, skipped = _resolve_scan_providers(provider)
+    _run_cloud_scan(
+        selected,
+        skipped=skipped,
+        aws_region=region,
+        aws_profile=profile,
+        aws_include_lambda=include_lambda,
+        aws_include_eks=include_eks,
+        aws_include_ec2=include_ec2,
+        aws_include_iam=include_iam,
+        azure_subscription=subscription,
+        gcp_project=project,
+        cis=cis,
+        output_format=output_format,
+        output_path=output_path,
+        quiet=quiet,
+    )
 
 
 @click.command("aws")
@@ -105,23 +293,21 @@ def aws_cmd(
     output_path: Optional[str],
     quiet: bool,
 ) -> None:
-    """Scan AWS for AI agents, infrastructure, and CIS compliance."""
-    from agent_bom.cli.agents import scan
+    """Scan AWS for AI agents, infrastructure, and CIS compliance.
 
-    ctx = click.get_current_context()
-    ctx.invoke(
-        scan,
-        aws=True,
+    Alias for ``cloud scan --provider aws`` — kept for back-compat.
+    """
+    _run_cloud_scan(
+        ["aws"],
         aws_region=region,
         aws_profile=profile,
         aws_include_lambda=include_lambda,
         aws_include_eks=include_eks,
         aws_include_ec2=include_ec2,
         aws_include_iam=include_iam,
-        aws_cis_benchmark=cis and not no_cis,
-        auto_update_db=False,
+        cis=cis and not no_cis,
         output_format=output_format,
-        output=output_path,
+        output_path=output_path,
         quiet=quiet,
     )
 
@@ -141,18 +327,16 @@ def azure_cmd(
     output_path: Optional[str],
     quiet: bool,
 ) -> None:
-    """Scan Azure for AI agents, infrastructure, and CIS compliance."""
-    from agent_bom.cli.agents import scan
+    """Scan Azure for AI agents, infrastructure, and CIS compliance.
 
-    ctx = click.get_current_context()
-    ctx.invoke(
-        scan,
-        azure_flag=True,
+    Alias for ``cloud scan --provider azure`` — kept for back-compat.
+    """
+    _run_cloud_scan(
+        ["azure"],
         azure_subscription=subscription,
-        azure_cis_benchmark=cis and not no_cis,
-        auto_update_db=False,
+        cis=cis and not no_cis,
         output_format=output_format,
-        output=output_path,
+        output_path=output_path,
         quiet=quiet,
     )
 
@@ -172,23 +356,22 @@ def gcp_cmd(
     output_path: Optional[str],
     quiet: bool,
 ) -> None:
-    """Scan GCP for AI agents, infrastructure, and CIS compliance."""
-    from agent_bom.cli.agents import scan
+    """Scan GCP for AI agents, infrastructure, and CIS compliance.
 
-    ctx = click.get_current_context()
-    ctx.invoke(
-        scan,
-        gcp_flag=True,
+    Alias for ``cloud scan --provider gcp`` — kept for back-compat.
+    """
+    _run_cloud_scan(
+        ["gcp"],
         gcp_project=project,
-        gcp_cis_benchmark=cis and not no_cis,
-        auto_update_db=False,
+        cis=cis and not no_cis,
         output_format=output_format,
-        output=output_path,
+        output_path=output_path,
         quiet=quiet,
     )
 
 
-# Register standalone commands on the cloud group
+# Register the unified command + the per-cloud aliases on the cloud group.
+cloud_group.add_command(scan_cmd, "scan")
 cloud_group.add_command(aws_cmd, "aws")
 cloud_group.add_command(azure_cmd, "azure")
 cloud_group.add_command(gcp_cmd, "gcp")

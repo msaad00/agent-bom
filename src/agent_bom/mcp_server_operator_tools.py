@@ -669,6 +669,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "shield_start",
             shield_start_impl,
+            destructive=True,
+            required_scope="shield:write",
             session_id=session_id,
             correlation_window=correlation_window,
             operator_role=operator_role,
@@ -705,6 +707,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "shield_unblock",
             shield_unblock_impl,
+            destructive=True,
+            required_scope="shield:write",
             session_id=session_id,
             operator_role=operator_role,
             operator_scopes=operator_scopes,
@@ -740,6 +744,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "shield_break_glass",
             shield_break_glass_impl,
+            destructive=True,
+            required_scope="shield:write",
             session_id=session_id,
             operator_role=operator_role,
             operator_scopes=operator_scopes,
@@ -764,6 +770,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "identity_issue",
             identity_issue_impl,
+            destructive=True,
+            required_scope="identity:write",
             agent_id=agent_id,
             role=role,
             blueprint_id=blueprint_id,
@@ -793,6 +801,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "identity_rotate",
             identity_rotate_impl,
+            destructive=True,
+            required_scope="identity:write",
             identity_id=identity_id,
             overlap_seconds=overlap_seconds,
             ttl_seconds=ttl_seconds,
@@ -815,6 +825,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "identity_revoke",
             identity_revoke_impl,
+            destructive=True,
+            required_scope="identity:write",
             identity_id=identity_id,
             operator_role=operator_role,
             operator_scopes=operator_scopes,
@@ -838,6 +850,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "identity_grant_jit",
             identity_grant_jit_impl,
+            destructive=True,
+            required_scope="identity:write",
             identity_id=identity_id,
             tool_name=tool_name,
             ttl_seconds=ttl_seconds,
@@ -861,6 +875,8 @@ def register_operator_tools(
         return await execute_tool_async(
             "identity_revoke_jit",
             identity_revoke_jit_impl,
+            destructive=True,
+            required_scope="identity:write",
             grant_id=grant_id,
             operator_role=operator_role,
             operator_scopes=operator_scopes,

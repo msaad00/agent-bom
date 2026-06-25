@@ -5781,6 +5781,264 @@
         ]
       }
     },
+    "/v1/cloud/{provider}/cis-benchmark": {
+      "get": {
+        "description": "Run the CIS Foundations benchmark for a cloud provider over REST.\n\nCalls the same provider ``run_benchmark`` functions the CLI and MCP\n``cis_benchmark`` tool use and returns the report's canonical ``to_dict()``\nshape unchanged, so REST / CLI / MCP report the same checks and counts.",
+        "operationId": "cloud_cis_benchmark_v1_cloud__provider__cis_benchmark_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional comma-separated CIS check ids to scope the run.",
+            "in": "query",
+            "name": "checks",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Optional comma-separated CIS check ids to scope the run.",
+              "title": "Checks",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional AWS region (e.g. us-east-1).",
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Optional AWS region (e.g. us-east-1).",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional AWS profile name.",
+            "in": "query",
+            "name": "profile",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Optional AWS profile name.",
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Azure subscription id.",
+            "in": "query",
+            "name": "subscription_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Optional Azure subscription id.",
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional GCP project id.",
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Optional GCP project id.",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cloud Cis Benchmark V1 Cloud  Provider  Cis Benchmark Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cloud Cis Benchmark",
+        "tags": [
+          "cloud"
+        ]
+      }
+    },
+    "/v1/cloud/{provider}/inventory": {
+      "get": {
+        "description": "Estate-wide cloud asset inventory summary for a provider (or ``all``).\n\nCalls the same ``discover_inventory`` functions the CLI and MCP ``cloud_inventory``\ntool use and reduces each provider payload to the identical non-secret count\nshape (``_summarize_inventory_payload``). Each provider self-gates on its own\n``AGENT_BOM_*_INVENTORY`` env flag + credentials; a disabled provider returns a\nclear ``status`` and contributes zero nodes.",
+        "operationId": "cloud_inventory_v1_cloud__provider__inventory_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional region scope (AWS only, e.g. us-east-1).",
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Optional region scope (AWS only, e.g. us-east-1).",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cloud Inventory V1 Cloud  Provider  Inventory Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cloud Inventory",
+        "tags": [
+          "cloud"
+        ]
+      }
+    },
     "/v1/compliance": {
       "get": {
         "description": "Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,\nOWASP Agentic Top 10, and EU AI Act compliance posture across all completed scans.\n\nReturns per-control pass/warning/fail status and an overall compliance score.",

@@ -237,6 +237,59 @@ def record_tool_request(
     )
 
 
+# Write / destructive MCP tools (``destructiveHint: true`` / ``readOnlyHint:
+# false``) accept ``operator_role`` + ``operator_scopes`` parameters. Today each
+# write impl enforces those, but the metadata only *hints* at the dispatch layer.
+# ``authorize_destructive_tool`` makes the dispatch fail closed: a destructive
+# tool invoked without an admin operator role (or with an insufficient scope) is
+# rejected before the handler runs, regardless of whether the impl re-checks.
+# Read-only tools are never gated here.
+_WRITE_SCOPE_WILDCARDS = ("*", "admin", "admin:*", "write", "*:write")
+
+
+def _scope_set(operator_scopes: str) -> set[str]:
+    return {part.strip().lower() for part in (operator_scopes or "").split(",") if part.strip()}
+
+
+def authorize_destructive_tool(
+    tool_name: str,
+    *,
+    operator_role: str,
+    operator_scopes: str,
+    required_scope: str | None = None,
+) -> dict[str, Any] | None:
+    """Authorize a destructive MCP tool. Return an error payload, or None if allowed.
+
+    Fails closed: a destructive tool requires an ``admin`` operator role. When a
+    ``required_scope`` is supplied, the operator scopes must include it (or a
+    recognized wildcard). Mirrors the per-impl write-tool gate so the dispatch
+    layer enforces the ``destructiveHint`` metadata instead of merely hinting it.
+    """
+    normalized_role = (operator_role or "").strip().lower()
+    if normalized_role != "admin":
+        return {
+            "error": f"tool '{tool_name}' is a write action and requires admin operator role",
+            "tool": tool_name,
+            "status": "blocked",
+            "required_role": "admin",
+            "provided_role": normalized_role or "unset",
+        }
+    if required_scope:
+        scopes = _scope_set(operator_scopes)
+        wanted = required_scope.strip().lower()
+        family = wanted.split(":", 1)[0]
+        allowed = scopes & ({wanted, f"{family}:*", *(_WRITE_SCOPE_WILDCARDS)})
+        if not allowed:
+            return {
+                "error": f"tool '{tool_name}' requires the '{wanted}' scope",
+                "tool": tool_name,
+                "status": "blocked",
+                "required_role": "admin",
+                "required_scope": wanted,
+            }
+    return None
+
+
 async def execute_tool_async(
     tool_name: str,
     handler: Callable[..., Awaitable[_ToolReturn]],
@@ -251,8 +304,36 @@ async def execute_tool_async(
     get_tool_semaphore_fn: Callable[[], asyncio.Semaphore],
     sanitize_error_fn: Callable[[Exception], str],
     logger,
+    destructive: bool = False,
+    required_scope: str | None = None,
     **kwargs,
 ) -> _ToolReturn | str:
+    if destructive:
+        denial = authorize_destructive_tool(
+            tool_name,
+            operator_role=str(kwargs.get("operator_role", "") or ""),
+            operator_scopes=str(kwargs.get("operator_scopes", "") or ""),
+            required_scope=required_scope,
+        )
+        if denial is not None:
+            request_meta = request_meta_factory()
+            record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="forbidden")
+            record_tool_request_fn(
+                tool_name,
+                caller=request_meta["caller"],
+                client_id=request_meta["client_id"],
+                request_id=request_meta["request_id"],
+                status="forbidden",
+                elapsed_ms=0,
+                error="forbidden",
+            )
+            logger.warning(
+                "mcp tool forbidden: %s caller=%s role=%r",
+                tool_name,
+                request_meta["caller"],
+                str(kwargs.get("operator_role", "") or "unset"),
+            )
+            return truncate_response_fn(json.dumps(denial))
     request_meta = request_meta_factory()
     retry_after = check_caller_rate_limit_fn(request_meta["caller"] or "local")
     if retry_after is not None:

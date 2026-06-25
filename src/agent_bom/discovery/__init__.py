@@ -1229,7 +1229,9 @@ def discover_all(
         k8s_all_namespaces: Query all Kubernetes namespaces.
         k8s_context: kubectl context to use (uses current context if None).
     """
-    console.print("\n[bold blue]🔍 Discovering MCP configurations...[/bold blue]\n")
+    from agent_bom.output.console_render import safe_emoji
+
+    console.print(f"\n[bold blue]{safe_emoji('🔍', '>')} Discovering MCP configurations...[/bold blue]\n")
     project_search_dir = str(_project_search_dir(project_dir)) if project_dir else None
 
     if project_dir:

@@ -14,6 +14,25 @@ from agent_bom.security import sanitize_command_args
 
 console = Console()
 
+
+def safe_emoji(emoji: str, fallback: str = "*") -> str:
+    """Return ``emoji`` only when the active stdout encoding can render it.
+
+    On terminals/locales whose encoding cannot encode the glyph (for example a
+    ``cp1252``/``ascii`` Windows console or a stripped CI locale) a raw emoji
+    prints as a mojibake box or raises ``UnicodeEncodeError`` mid-line. Fall
+    back to a plain ASCII marker so the line stays readable everywhere.
+    """
+    import sys
+
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        emoji.encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        return fallback
+    return emoji
+
+
 # ─── Centralized severity styling ────────────────────────────────────────────
 
 SEVERITY_BADGES: dict[Severity, str] = {
@@ -263,6 +282,7 @@ def print_posture_summary(report: AIBOMReport) -> None:
                     cred_map.setdefault(cred, []).append(f"{agent.name}/{server.name}")
 
     # Vulnerability severity breakdown (excluding VEX-suppressed)
+    from agent_bom.finding import FindingType
     from agent_bom.vex import is_vex_suppressed
 
     sev_counts: Counter[str] = Counter()
@@ -273,11 +293,19 @@ def print_posture_summary(report: AIBOMReport) -> None:
         else:
             sev_counts[br.vulnerability.severity.value.upper()] += 1
 
+    # Non-CVE policy/security findings (cloud CIS FAILs, MCP blocklist, toxic
+    # combinations, governance) drive the headline too. A cloud scan with HIGH
+    # CIS failures must NOT read CLEAN just because no package CVEs were found —
+    # these findings already flow into to_findings() and --fail-on-severity.
+    policy_findings = [finding for finding in report.to_findings() if finding.finding_type != FindingType.CVE]
+    for finding in policy_findings:
+        sev_counts[str(finding.severity).upper()] += 1
+
     # Posture headline
     if coverage_incomplete:
         posture = "[bold yellow]PARTIAL COVERAGE[/bold yellow]"
         border_style = "yellow"
-    elif report.total_vulnerabilities == 0:
+    elif report.total_vulnerabilities == 0 and not policy_findings:
         posture = "[bold green]CLEAN[/bold green]"
         border_style = "green"
     elif sev_counts.get("CRITICAL", 0) > 0:

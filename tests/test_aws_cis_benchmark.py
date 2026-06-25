@@ -2293,6 +2293,17 @@ class TestCheck416:
         result = _check_4_16(client)
         assert result.status == CheckStatus.ERROR
 
+    def test_subscription_required_is_actionable_fail(self):
+        # SubscriptionRequiredException means Security Hub is simply not enabled —
+        # render an actionable FAIL, not an opaque ERR.
+        client = MagicMock()
+        exc = Exception("SubscriptionRequiredException")
+        exc.response = {"Error": {"Code": "SubscriptionRequiredException"}}
+        client.describe_hub.side_effect = exc
+        result = _check_4_16(client)
+        assert result.status == CheckStatus.FAIL
+        assert "enable it to evaluate this control" in result.evidence
+
 
 # ---------------------------------------------------------------------------
 # 5.5 — No security groups allow unrestricted ingress to all ports

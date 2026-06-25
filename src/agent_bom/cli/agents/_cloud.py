@@ -6,6 +6,26 @@ from typing import Any
 
 from agent_bom.cli.agents._context import ScanContext
 
+# Shared CIS status badges across every provider table. ``not_applicable`` is
+# rendered as a short ``N/A`` badge so it is never truncated to ``not_a…`` in
+# the width-constrained Status column, and unknown statuses fall back to their
+# raw value instead of a missing cell.
+_CIS_STATUS_STYLE = {
+    "pass": "[green]PASS[/]",
+    "fail": "[red]FAIL[/]",
+    "error": "[yellow]ERR[/]",
+    "not_applicable": "[dim]N/A[/]",
+}
+
+# Width that fits the longest rendered status label (``FAIL``/``PASS``/``ERR``/
+# ``N/A``) without clipping.
+_CIS_STATUS_WIDTH = 6
+
+
+def _cis_status_badge(status_value: str) -> str:
+    """Render a CIS check status as a compact, never-truncated badge."""
+    return _CIS_STATUS_STYLE.get(status_value, status_value)
+
 
 def run_cloud_discovery(
     ctx: ScanContext,
@@ -295,16 +315,15 @@ def run_benchmarks(
                 tbl = Table(title="CIS AWS Foundations Benchmark v3.0", show_lines=False, padding=(0, 1))
                 tbl.add_column("Check", style="cyan", width=6)
                 tbl.add_column("Title", min_width=30)
-                tbl.add_column("Status", width=6)
+                tbl.add_column("Status", width=_CIS_STATUS_WIDTH)
                 tbl.add_column("Severity", width=8)
                 tbl.add_column("Evidence", max_width=50)
-                _status_style = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
                 _sev_style = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
                 for c in ctx.cis_benchmark_report.checks:
                     tbl.add_row(
                         c.check_id,
                         c.title,
-                        _status_style.get(c.status.value, c.status.value),
+                        _cis_status_badge(c.status.value),
                         _sev_style.get(c.severity, c.severity),
                         c.evidence,
                     )
@@ -334,16 +353,15 @@ def run_benchmarks(
                 tbl = Table(title="CIS Snowflake Benchmark v1.0", show_lines=False, padding=(0, 1))
                 tbl.add_column("Check", style="cyan", width=6)
                 tbl.add_column("Title", min_width=30)
-                tbl.add_column("Status", width=6)
+                tbl.add_column("Status", width=_CIS_STATUS_WIDTH)
                 tbl.add_column("Severity", width=8)
                 tbl.add_column("Evidence", max_width=50)
-                _sf_status_style = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
                 _sf_sev_style = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
                 for c in ctx.sf_cis_benchmark_report.checks:
                     tbl.add_row(
                         c.check_id,
                         c.title,
-                        _sf_status_style.get(c.status.value, c.status.value),
+                        _cis_status_badge(c.status.value),
                         _sf_sev_style.get(c.severity, c.severity),
                         c.evidence,
                     )
@@ -374,11 +392,10 @@ def run_benchmarks(
                 tbl = Table(title="CIS Azure Security Benchmark v3.0", show_lines=False, padding=(0, 1))
                 tbl.add_column("Check", style="cyan", width=6)
                 tbl.add_column("Title", min_width=30)
-                tbl.add_column("Status", width=6)
+                tbl.add_column("Status", width=_CIS_STATUS_WIDTH)
                 tbl.add_column("Severity", width=8)
                 tbl.add_column("ATT&CK", width=20)
                 tbl.add_column("Evidence", max_width=40)
-                _az_status = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
                 _az_sev = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
                 from agent_bom.mitre_attack import tag_cis_check
 
@@ -387,7 +404,7 @@ def run_benchmarks(
                     tbl.add_row(
                         c.check_id,
                         c.title,
-                        _az_status.get(c.status.value, c.status.value),
+                        _cis_status_badge(c.status.value),
                         _az_sev.get(c.severity, c.severity),
                         attack,
                         c.evidence,
@@ -417,11 +434,10 @@ def run_benchmarks(
                 tbl = Table(title="CIS GCP Foundation Benchmark v3.0", show_lines=False, padding=(0, 1))
                 tbl.add_column("Check", style="cyan", width=6)
                 tbl.add_column("Title", min_width=30)
-                tbl.add_column("Status", width=6)
+                tbl.add_column("Status", width=_CIS_STATUS_WIDTH)
                 tbl.add_column("Severity", width=8)
                 tbl.add_column("ATT&CK", width=20)
                 tbl.add_column("Evidence", max_width=40)
-                _gcp_status = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
                 _gcp_sev = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
                 from agent_bom.mitre_attack import tag_cis_check as _tag_gcp
 
@@ -430,7 +446,7 @@ def run_benchmarks(
                     tbl.add_row(
                         c.check_id,
                         c.title,
-                        _gcp_status.get(c.status.value, c.status.value),
+                        _cis_status_badge(c.status.value),
                         _gcp_sev.get(c.severity, c.severity),
                         attack,
                         c.evidence,

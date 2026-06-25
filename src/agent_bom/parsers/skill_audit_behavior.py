@@ -30,13 +30,24 @@ _DANGEROUS_SERVER_NAME_KEYWORDS = {"exec", "shell", "terminal", "command"}
 
 
 class _BehavioralPattern(NamedTuple):
-    """A regex-based behavioral risk pattern to detect in skill file prose/code."""
+    """A regex-based behavioral risk pattern to detect in skill file prose/code.
+
+    ``pattern`` is the high-confidence signal (an imperative directive, a
+    concrete dangerous flag, or an actual command invocation). ``weak_pattern``
+    is an optional lower-confidence heuristic — a bare feature name appearing in
+    prose (e.g. "subagent", "delegation") that, on its own, is descriptive
+    rather than evidence of malicious behavior. A weak-only match is downgraded
+    to ``weak_severity`` with ``confidence="low"`` so a single descriptive
+    keyword in a legitimate instruction file cannot escalate the file's verdict.
+    """
 
     category: str  # e.g. "credential_file_access"
     severity: str  # "critical" | "high" | "medium" | "low"
     title: str  # Human-readable finding title
-    pattern: re.Pattern  # Compiled regex
+    pattern: re.Pattern  # Compiled regex (high-confidence signal)
     description: str  # Recommendation text
+    weak_pattern: re.Pattern | None = None  # optional low-confidence keyword regex
+    weak_severity: str = "low"  # severity to use when only weak_pattern matches
 
 
 _BEHAVIORAL_PATTERNS: list[_BehavioralPattern] = [
@@ -139,12 +150,22 @@ _BEHAVIORAL_PATTERNS: list[_BehavioralPattern] = [
             \b codex \s+ (exec|--yolo) \b                 # Codex execution
             | \b claude \s+ (exec|--dangerously) \b       # Claude Code execution
             | \b spawn \s+ agent \b                       # Generic agent spawn
-            | \b sub[-_]?agent \b                         # Sub-agent reference
             | \b Task \s* \( .*? subagent                 # SDK Task() with subagent
             """,
             re.VERBOSE | re.IGNORECASE,
         ),
         description="Sub-agent delegation can bypass safety controls. Ensure child agents inherit permission restrictions.",
+        # A bare "subagent"/"sub-agent"/"delegation" mention in prose (as in a
+        # legitimate CLAUDE.md/AGENTS.md describing normal agent features) is a
+        # descriptive keyword, not evidence of an actual spawn directive.
+        weak_pattern=re.compile(
+            r"""
+            \b sub[-_]?agent s? \b                        # Sub-agent reference
+            | \b agent \s+ delegation \b                  # Delegation reference
+            """,
+            re.VERBOSE | re.IGNORECASE,
+        ),
+        weak_severity="low",
     ),
     _BehavioralPattern(
         category="input_injection",
@@ -439,6 +460,18 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
                 continue
 
             match = bp.pattern.search(content)
+            severity = bp.severity
+            confidence = "high" if bp.severity in {"critical", "high"} else "medium"
+
+            if match is None and bp.weak_pattern is not None:
+                # Only a low-confidence keyword/heuristic matched. Keep the
+                # finding visible but demote it so a lone descriptive keyword
+                # cannot dominate the file's trust verdict.
+                match = bp.weak_pattern.search(content)
+                if match is not None:
+                    severity = bp.weak_severity
+                    confidence = "low"
+
             if match:
                 seen_categories.add(bp.category)
                 snippet = match.group(0).strip()
@@ -448,7 +481,7 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
 
                 findings.append(
                     SkillFinding(
-                        severity=bp.severity,
+                        severity=severity,
                         category=bp.category,
                         title=bp.title,
                         detail=(f'Detected in {filename}: "{snippet}". {bp.description}'),
@@ -456,7 +489,7 @@ def _scan_behavioral_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
                         recommendation=bp.description,
                         context="behavioral",
                         evidence_source="static_text",
-                        confidence="high" if bp.severity in {"critical", "high"} else "medium",
+                        confidence=confidence,
                         source_line=line,
                         source_column=column,
                     )

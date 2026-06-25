@@ -272,9 +272,16 @@ async def _execute_tool_async(
     /,
     *args,
     timeout: float | None = None,
+    destructive: bool = False,
+    required_scope: str | None = None,
     **kwargs,
 ) -> _ToolReturn | str:
-    """Run an async MCP tool with bounded concurrency, timeout, and metrics."""
+    """Run an async MCP tool with bounded concurrency, timeout, and metrics.
+
+    When ``destructive`` is set, the shared dispatch fails closed for callers
+    lacking an admin operator role (and the ``required_scope`` when supplied),
+    enforcing the tool's ``destructiveHint`` metadata at the dispatch layer.
+    """
     timeout_seconds = timeout if timeout and timeout > 0 else _MCP_TOOL_TIMEOUT_SECONDS
     return await _mcp_runtime.execute_tool_async(
         tool_name,
@@ -289,6 +296,8 @@ async def _execute_tool_async(
         get_tool_semaphore_fn=_get_tool_semaphore,
         sanitize_error_fn=sanitize_error,
         logger=logger,
+        destructive=destructive,
+        required_scope=required_scope,
         **kwargs,
     )
 

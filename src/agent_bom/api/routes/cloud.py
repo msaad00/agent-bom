@@ -1,0 +1,244 @@
+"""Cloud scanning REST routes — estate inventory + CIS benchmark over HTTP.
+
+Cloud discovery has long been reachable from the CLI (``agent-bom cloud …``) and
+over MCP (``cloud_inventory`` / ``cis_benchmark`` tools), but not over REST. That
+left API-only / SaaS consumers unable to reach cloud scanning at all. These
+endpoints close the surface-parity gap by calling the **same** cloud inventory and
+CIS benchmark functions the CLI and MCP already use, returning a deterministic
+result shape that matches them field-for-field.
+
+Endpoints:
+    GET /v1/cloud/{provider}/inventory       estate asset inventory summary
+    GET /v1/cloud/{provider}/cis-benchmark   CIS Foundations benchmark report
+
+``provider`` is one of ``aws`` | ``azure`` | ``gcp``; ``all`` is also accepted for
+inventory (estate-wide fan-out). Every endpoint enforces the same tenant + role
+gate the sibling routes use: ``require_request_tenant_id`` plus the ``scan``
+permission ({admin, analyst}) via the shared RBAC dependency, so there is no
+unauthenticated cloud scan and an under-privileged role is rejected with 403.
+
+Responses are additive: where the underlying scan carries a read-only discovery
+envelope (``permissions_used`` / discovery scope), it is surfaced under
+``audit_metadata`` so auditors can verify the read-only scope used.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Query, Request
+
+from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.rbac import require_authenticated_permission
+
+router = APIRouter(tags=["cloud"])
+_logger = logging.getLogger(__name__)
+
+# Reuse the same RBAC gate the sibling scan/identity routes use. Cloud scanning is
+# a scan-class action, so it maps to the "scan" permission ({admin, analyst}).
+_SCAN_DEP = require_authenticated_permission("scan")
+
+_INVENTORY_PROVIDERS = ("aws", "azure", "gcp")
+_CIS_PROVIDERS = ("aws", "azure", "gcp")
+_REGION_RE = re.compile(r"[a-z]{2}(-gov)?-[a-z]+-\d{1,2}")
+_PROFILE_RE = re.compile(r"[a-zA-Z0-9._-]{1,100}")
+
+
+def _tenant(request: Request) -> str:
+    return require_request_tenant_id(request)
+
+
+def _audit_metadata(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    """Roll the per-provider read-only discovery envelopes into one audit block.
+
+    Surfaces ``permissions_used`` and the discovery scope so an auditor can verify
+    the read-only IAM footprint the scan actually used. Additive — the underlying
+    payloads are untouched.
+    """
+    permissions: list[str] = []
+    scopes: list[str] = []
+    redaction: list[str] = []
+    scan_modes: list[str] = []
+    for payload in payloads:
+        envelope = payload.get("discovery_envelope")
+        if not isinstance(envelope, dict):
+            continue
+        permissions.extend(str(p) for p in envelope.get("permissions_used", []) or [])
+        scopes.extend(str(s) for s in envelope.get("discovery_scope", []) or [])
+        if envelope.get("redaction_status"):
+            redaction.append(str(envelope["redaction_status"]))
+        if envelope.get("scan_mode"):
+            scan_modes.append(str(envelope["scan_mode"]))
+    return {
+        "read_only": True,
+        "writes_performed": False,
+        "scan_modes": sorted(set(scan_modes)),
+        "permissions_used": sorted(set(permissions)),
+        "discovery_scope": sorted(set(scopes)),
+        "redaction_status": sorted(set(redaction)),
+        "note": (
+            "agent-bom cloud scanning is read-only and agentless. permissions_used lists the exact "
+            "read-only IAM actions exercised; no resource is mutated and no secret value is returned."
+        ),
+    }
+
+
+@router.get("/v1/cloud/{provider}/inventory")
+async def cloud_inventory(
+    request: Request,
+    provider: str,
+    region: str = Query("", description="Optional region scope (AWS only, e.g. us-east-1)."),
+    _role: Any = _SCAN_DEP,
+) -> dict[str, Any]:
+    """Estate-wide cloud asset inventory summary for a provider (or ``all``).
+
+    Calls the same ``discover_inventory`` functions the CLI and MCP ``cloud_inventory``
+    tool use and reduces each provider payload to the identical non-secret count
+    shape (``_summarize_inventory_payload``). Each provider self-gates on its own
+    ``AGENT_BOM_*_INVENTORY`` env flag + credentials; a disabled provider returns a
+    clear ``status`` and contributes zero nodes.
+    """
+    tenant_id = _tenant(request)
+    requested = provider.strip().lower()
+    if requested == "all":
+        selected = list(_INVENTORY_PROVIDERS)
+    elif requested in _INVENTORY_PROVIDERS:
+        selected = [requested]
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unsupported provider '{provider}'. Use one of: {', '.join((*_INVENTORY_PROVIDERS, 'all'))}.",
+        )
+
+    scoped_region = region.strip() or None
+    if scoped_region and not _REGION_RE.fullmatch(scoped_region):
+        raise HTTPException(status_code=400, detail=f"Invalid region format: {region}")
+
+    try:
+        from agent_bom.cloud import aws_inventory, azure_inventory, gcp_inventory
+        from agent_bom.mcp_tools.posture import _summarize_inventory_payload
+
+        raw_payloads: list[dict[str, Any]] = []
+        summaries: list[dict[str, Any]] = []
+        if "aws" in selected:
+            payload = aws_inventory.discover_inventory(region=scoped_region)
+            raw_payloads.append(payload)
+            summaries.append(_summarize_inventory_payload("aws", payload))
+        if "azure" in selected:
+            payload = azure_inventory.discover_inventory()
+            raw_payloads.append(payload)
+            summaries.append(_summarize_inventory_payload("azure", payload))
+        if "gcp" in selected:
+            payload = gcp_inventory.discover_inventory()
+            raw_payloads.append(payload)
+            summaries.append(_summarize_inventory_payload("gcp", payload))
+
+        any_enabled = any(s["status"] != "disabled" for s in summaries)
+        return {
+            "schema_version": "cloud.inventory.summary.v1",
+            "tenant_id": tenant_id,
+            "status": "ok" if any_enabled else "disabled",
+            "total_resources": sum(s["resource_count"] for s in summaries),
+            "total_identities": sum(s["identity_count"] for s in summaries),
+            "providers": summaries,
+            "audit_metadata": _audit_metadata(raw_payloads),
+            "note": (
+                "Estate-wide inventory is opt-in per provider via AGENT_BOM_CLOUD_INVENTORY / "
+                "AGENT_BOM_AZURE_INVENTORY / AGENT_BOM_GCP_INVENTORY. Reference-only counts; "
+                "no resource secrets are returned."
+            ),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # Full diagnostics go to the server log only; the client gets a generic
+        # message so no exception/stack detail is exposed over REST.
+        _logger.exception("Cloud inventory failed")
+        raise HTTPException(status_code=500, detail="Cloud inventory failed; see server logs.") from exc
+
+
+@router.get("/v1/cloud/{provider}/cis-benchmark")
+async def cloud_cis_benchmark(
+    request: Request,
+    provider: str,
+    checks: str = Query("", description="Optional comma-separated CIS check ids to scope the run."),
+    region: str = Query("", description="Optional AWS region (e.g. us-east-1)."),
+    profile: str = Query("", description="Optional AWS profile name."),
+    subscription_id: str = Query("", description="Optional Azure subscription id."),
+    project_id: str = Query("", description="Optional GCP project id."),
+    _role: Any = _SCAN_DEP,
+) -> dict[str, Any]:
+    """Run the CIS Foundations benchmark for a cloud provider over REST.
+
+    Calls the same provider ``run_benchmark`` functions the CLI and MCP
+    ``cis_benchmark`` tool use and returns the report's canonical ``to_dict()``
+    shape unchanged, so REST / CLI / MCP report the same checks and counts.
+    """
+    tenant_id = _tenant(request)
+    requested = provider.strip().lower()
+    if requested not in _CIS_PROVIDERS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unsupported provider '{provider}'. Use one of: {', '.join(_CIS_PROVIDERS)}.",
+        )
+
+    check_list = [c.strip() for c in checks.split(",") if c.strip()] or None
+    region_arg = region.strip() or None
+    profile_arg = profile.strip() or None
+    if region_arg and not _REGION_RE.fullmatch(region_arg):
+        raise HTTPException(status_code=400, detail=f"Invalid AWS region format: {region}")
+    if profile_arg and not _PROFILE_RE.fullmatch(profile_arg):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid AWS profile name. Use alphanumeric, dot, dash, underscore (max 100 chars).",
+        )
+
+    try:
+        from agent_bom.cloud import CloudDiscoveryError
+
+        report: Any
+        try:
+            if requested == "aws":
+                from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
+
+                report = run_aws_cis(region=region_arg, profile=profile_arg, checks=check_list)
+            elif requested == "azure":
+                from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
+
+                report = run_azure_cis(subscription_id=subscription_id.strip() or None, checks=check_list)
+            else:  # gcp
+                from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
+
+                report = run_gcp_cis(project_id=project_id.strip() or None, checks=check_list)
+        except CloudDiscoveryError as exc:
+            # Provider SDK absent / credentials unavailable degrades to a clear
+            # error envelope (HTTP 200) — exactly as the MCP cis_benchmark tool
+            # does — never a 500. Keeps REST / MCP shape parity for the no-SDK path.
+            # Detail is logged server-side; the client gets a generic reason so no
+            # exception/stack detail leaks over REST.
+            safe_requested = re.sub(r"[\r\n]+", "", requested)
+            _logger.warning("Cloud CIS benchmark unavailable for %s: %s", safe_requested, exc)
+            return {
+                "error": "Provider SDK or credentials unavailable for this benchmark.",
+                "provider": requested,
+                "tenant_id": tenant_id,
+                "status": "unavailable",
+            }
+
+        result = report.to_dict()
+        result.setdefault("tenant_id", tenant_id)
+        result["audit_metadata"] = {
+            "read_only": True,
+            "writes_performed": False,
+            "provider": requested,
+            "note": "CIS benchmark is read-only; checks evaluate posture without mutating any resource.",
+        }
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # Full diagnostics to the server log only; client gets a generic message.
+        _logger.exception("Cloud CIS benchmark failed")
+        raise HTTPException(status_code=500, detail="Cloud CIS benchmark failed; see server logs.") from exc

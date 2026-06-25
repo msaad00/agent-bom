@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from unittest.mock import patch
 
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from agent_bom.mcp_server import (
     _caller_rate_windows,
@@ -197,6 +199,74 @@ class TestToolMetrics:
         payload = json.loads(result)
         assert payload["tool"] == "slow_sync_tool"
         assert payload["timed_out"] is True
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_async_returns_sanitized_error_payload(self):
+        async def _boom():
+            raise RuntimeError("failed token=abc123 at /tmp/private/path")
+
+        result = await _execute_tool_async("failing_tool", _boom)
+
+        payload = json.loads(result)
+        assert payload["tool"] == "failing_tool"
+        assert payload["status"] == "error"
+        assert "token=<redacted>" in payload["error"]
+        assert "/tmp/private/path" not in payload["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_async_preserves_tool_error(self):
+        async def _tool_error():
+            raise ToolError("Invalid severity: bad")
+
+        with pytest.raises(ToolError, match="Invalid severity"):
+            await _execute_tool_async("failing_tool", _tool_error)
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_sync_async_returns_sanitized_error_payload(self):
+        def _boom_sync():
+            raise RuntimeError("failed password=swordfish at /tmp/private/path")
+
+        result = await _execute_tool_sync_async("failing_sync_tool", _boom_sync)
+
+        payload = json.loads(result)
+        assert payload["tool"] == "failing_sync_tool"
+        assert payload["status"] == "error"
+        assert "password=<redacted>" in payload["error"]
+        assert "/tmp/private/path" not in payload["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_sync_async_preserves_tool_error(self):
+        def _tool_error_sync():
+            raise ToolError("Invalid severity: bad")
+
+        with pytest.raises(ToolError, match="Invalid severity"):
+            await _execute_tool_sync_async("failing_sync_tool", _tool_error_sync)
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_logs_single_line_caller(self, caplog, monkeypatch):
+        import agent_bom.mcp_server as mod
+
+        _caller_rate_windows.clear()
+        monkeypatch.setattr(
+            mod,
+            "_current_tool_request",
+            lambda: {
+                "caller": "client-1\nforged=true",
+                "client_id": "client-1\nforged=true",
+                "request_id": "req-1\r\nforged=true",
+            },
+        )
+
+        async def _ok():
+            return "ok"
+
+        caplog.set_level(logging.INFO, logger="agent_bom.mcp_server")
+        assert await _execute_tool_async("safe_tool", _ok) == "ok"
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("client-1 forged=true" in message for message in messages)
+        assert all("client-1\nforged=true" not in message for message in messages)
+        assert all("req-1\r\nforged=true" not in message for message in messages)
 
     def test_current_tool_request_defaults_to_local_without_context(self):
         assert _current_tool_request() == {"caller": "local", "client_id": None, "request_id": None}

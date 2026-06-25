@@ -773,6 +773,7 @@ from agent_bom.api.routes.agent_manifest import router as _agent_manifest_router
 
 # ─── Route modules ────────────────────────────────────────────────────────
 from agent_bom.api.routes.assets import router as _assets_router  # noqa: E402
+from agent_bom.api.routes.cloud import router as _cloud_router  # noqa: E402
 from agent_bom.api.routes.compliance import router as _compliance_router  # noqa: E402
 from agent_bom.api.routes.connectors import router as _connectors_router  # noqa: E402
 from agent_bom.api.routes.credentials import router as _credentials_router  # noqa: E402
@@ -804,6 +805,7 @@ from agent_bom.api.routes.webhooks import router as _webhooks_router  # noqa: E4
 
 app.include_router(_assets_router)
 app.include_router(_agent_manifest_router)
+app.include_router(_cloud_router)
 app.include_router(_compliance_router)
 app.include_router(_connectors_router)
 app.include_router(_credentials_router)

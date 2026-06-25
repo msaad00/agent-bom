@@ -65,6 +65,13 @@ from .base import CloudDiscoveryError
 logger = logging.getLogger(__name__)
 
 
+def _safe_error_evidence(prefix: str, error_code: str) -> str:
+    """Build client-safe evidence text without leaking raw exception details."""
+    if error_code:
+        return f"{prefix} (AWS error code: {error_code})"
+    return prefix
+
+
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
@@ -185,7 +192,7 @@ def _check_1_1(account_client: Any) -> CISCheckResult:
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
-        result.evidence = f"Could not retrieve contact information: {error_code or exc}"
+        result.evidence = _safe_error_evidence("Could not retrieve contact information.", error_code)
     return result
 
 
@@ -214,7 +221,7 @@ def _check_1_2(account_client: Any) -> CISCheckResult:
             result.evidence = "No security alternate contact is registered."
         else:
             result.status = CheckStatus.ERROR
-            result.evidence = f"Could not retrieve security contact: {error_code or exc}"
+            result.evidence = _safe_error_evidence("Could not retrieve security contact.", error_code)
     return result
 
 
@@ -812,7 +819,7 @@ def _check_1_19(ec2_client: Any) -> CISCheckResult:
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
-        result.evidence = f"Could not check EC2 instances: {error_code or exc}"
+        result.evidence = _safe_error_evidence("Could not check EC2 instances.", error_code)
     return result
 
 
@@ -838,7 +845,7 @@ def _check_1_20(accessanalyzer_client: Any) -> CISCheckResult:
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
-        result.evidence = f"Could not check IAM Access Analyzer: {error_code or exc}"
+        result.evidence = _safe_error_evidence("Could not check IAM Access Analyzer.", error_code)
     return result
 
 
@@ -1695,7 +1702,7 @@ def _check_4_5(logs_client: Any, cloudtrail_client: Any) -> CISCheckResult:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         logger.debug("Could not check metric filters: %s (%s)", exc, error_code)
         result.status = CheckStatus.ERROR
-        result.evidence = f"Could not query metric filters: {error_code or exc}"
+        result.evidence = _safe_error_evidence("Could not query metric filters.", error_code)
     return result
 
 
@@ -2176,7 +2183,7 @@ def _check_4_15(logs_client: Any) -> CISCheckResult:
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         result.status = CheckStatus.ERROR
-        result.evidence = f"Could not query metric filters: {error_code or exc}"
+        result.evidence = _safe_error_evidence("Could not query metric filters.", error_code)
     return result
 
 
@@ -2207,7 +2214,7 @@ def _check_4_16(securityhub_client: Any) -> CISCheckResult:
             result.evidence = "Security Hub not enabled — enable it to evaluate this control."
         else:
             result.status = CheckStatus.ERROR
-            result.evidence = f"Could not check Security Hub: {error_code or exc}"
+            result.evidence = _safe_error_evidence("Could not check Security Hub.", error_code)
     return result
 
 

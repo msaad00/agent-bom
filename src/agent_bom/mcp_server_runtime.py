@@ -13,7 +13,16 @@ import time
 from pathlib import Path
 from typing import AbstractSet, Any, Awaitable, Callable, TypeVar
 
+from agent_bom.security import sanitize_log_label
+
 _ToolReturn = TypeVar("_ToolReturn")
+
+try:
+    from mcp.server.fastmcp.exceptions import ToolError as _FastMCPToolError
+except ModuleNotFoundError:  # pragma: no cover - base CLI installs do not include MCP extras
+    _TOOL_ERROR_TYPES: tuple[type[BaseException], ...] = ()
+else:
+    _TOOL_ERROR_TYPES = (_FastMCPToolError,)
 
 
 def validate_ecosystem(ecosystem: str, valid_ecosystems: AbstractSet[str]) -> str:
@@ -49,6 +58,22 @@ def safe_path(path_str: str) -> Path:
         return validate_path(path_str, restrict_to_home=True)
     except SecurityError as exc:
         raise ValueError(str(exc)) from exc
+
+
+def _log_value(value: object, *, max_len: int = 160) -> str:
+    return sanitize_log_label(value, max_len=max_len) or "-"
+
+
+def _error_payload(tool_name: str, error: str) -> str:
+    return json.dumps({"error": error, "tool": tool_name, "status": "error"})
+
+
+def _is_tool_error(exc: Exception) -> bool:
+    return bool(_TOOL_ERROR_TYPES) and isinstance(exc, _TOOL_ERROR_TYPES)
+
+
+def _raise_sanitized_tool_error(exc: Exception, sanitized: str) -> None:
+    raise type(exc)(sanitized) from None
 
 
 def get_tool_semaphore(
@@ -237,6 +262,59 @@ def record_tool_request(
     )
 
 
+# Write / destructive MCP tools (``destructiveHint: true`` / ``readOnlyHint:
+# false``) accept ``operator_role`` + ``operator_scopes`` parameters. Today each
+# write impl enforces those, but the metadata only *hints* at the dispatch layer.
+# ``authorize_destructive_tool`` makes the dispatch fail closed: a destructive
+# tool invoked without an admin operator role (or with an insufficient scope) is
+# rejected before the handler runs, regardless of whether the impl re-checks.
+# Read-only tools are never gated here.
+_WRITE_SCOPE_WILDCARDS = ("*", "admin", "admin:*", "write", "*:write")
+
+
+def _scope_set(operator_scopes: str) -> set[str]:
+    return {part.strip().lower() for part in (operator_scopes or "").split(",") if part.strip()}
+
+
+def authorize_destructive_tool(
+    tool_name: str,
+    *,
+    operator_role: str,
+    operator_scopes: str,
+    required_scope: str | None = None,
+) -> dict[str, Any] | None:
+    """Authorize a destructive MCP tool. Return an error payload, or None if allowed.
+
+    Fails closed: a destructive tool requires an ``admin`` operator role. When a
+    ``required_scope`` is supplied, the operator scopes must include it (or a
+    recognized wildcard). Mirrors the per-impl write-tool gate so the dispatch
+    layer enforces the ``destructiveHint`` metadata instead of merely hinting it.
+    """
+    normalized_role = (operator_role or "").strip().lower()
+    if normalized_role != "admin":
+        return {
+            "error": f"tool '{tool_name}' is a write action and requires admin operator role",
+            "tool": tool_name,
+            "status": "blocked",
+            "required_role": "admin",
+            "provided_role": normalized_role or "unset",
+        }
+    if required_scope:
+        scopes = _scope_set(operator_scopes)
+        wanted = required_scope.strip().lower()
+        family = wanted.split(":", 1)[0]
+        allowed = scopes & ({wanted, f"{family}:*", *(_WRITE_SCOPE_WILDCARDS)})
+        if not allowed:
+            return {
+                "error": f"tool '{tool_name}' requires the '{wanted}' scope",
+                "tool": tool_name,
+                "status": "blocked",
+                "required_role": "admin",
+                "required_scope": wanted,
+            }
+    return None
+
+
 async def execute_tool_async(
     tool_name: str,
     handler: Callable[..., Awaitable[_ToolReturn]],
@@ -251,9 +329,41 @@ async def execute_tool_async(
     get_tool_semaphore_fn: Callable[[], asyncio.Semaphore],
     sanitize_error_fn: Callable[[Exception], str],
     logger,
+    destructive: bool = False,
+    required_scope: str | None = None,
     **kwargs,
 ) -> _ToolReturn | str:
+    if destructive:
+        denial = authorize_destructive_tool(
+            tool_name,
+            operator_role=str(kwargs.get("operator_role", "") or ""),
+            operator_scopes=str(kwargs.get("operator_scopes", "") or ""),
+            required_scope=required_scope,
+        )
+        if denial is not None:
+            request_meta = request_meta_factory()
+            log_caller = _log_value(request_meta["caller"])
+            log_role = _log_value(str(kwargs.get("operator_role", "") or "unset"))
+            record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="forbidden")
+            record_tool_request_fn(
+                tool_name,
+                caller=request_meta["caller"],
+                client_id=request_meta["client_id"],
+                request_id=request_meta["request_id"],
+                status="forbidden",
+                elapsed_ms=0,
+                error="forbidden",
+            )
+            logger.warning(
+                "mcp tool forbidden: %s caller=%s role=%r",
+                tool_name,
+                log_caller,
+                log_role,
+            )
+            return truncate_response_fn(json.dumps(denial))
     request_meta = request_meta_factory()
+    log_caller = _log_value(request_meta["caller"])
+    log_request_id = _log_value(request_meta["request_id"])
     retry_after = check_caller_rate_limit_fn(request_meta["caller"] or "local")
     if retry_after is not None:
         record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="rate limited")
@@ -266,7 +376,7 @@ async def execute_tool_async(
             elapsed_ms=0,
             error="rate limited",
         )
-        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, request_meta["caller"], retry_after)
+        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, log_caller, retry_after)
         return truncate_response_fn(
             json.dumps(
                 {
@@ -278,7 +388,7 @@ async def execute_tool_async(
             )
         )
     start = time.perf_counter()
-    logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, request_meta["caller"], request_meta["request_id"])
+    logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, log_caller, log_request_id)
     try:
         async with get_tool_semaphore_fn():
             result = await asyncio.wait_for(handler(*args, **kwargs), timeout=timeout_seconds)
@@ -300,7 +410,7 @@ async def execute_tool_async(
             elapsed_ms=elapsed_ms,
             error=f"timed out after {timeout_seconds:.1f}s",
         )
-        logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, request_meta["caller"], timeout_seconds)
+        logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, log_caller, timeout_seconds)
         return truncate_response_fn(
             json.dumps(
                 {
@@ -312,7 +422,7 @@ async def execute_tool_async(
         )
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - start) * 1000)
-        sanitized = sanitize_error_fn(exc)
+        sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
         record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
         record_tool_request_fn(
             tool_name,
@@ -323,8 +433,10 @@ async def execute_tool_async(
             elapsed_ms=elapsed_ms,
             error=sanitized,
         )
-        logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, request_meta["caller"], sanitized)
-        raise
+        logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
+        if _is_tool_error(exc):
+            _raise_sanitized_tool_error(exc, sanitized)
+        return truncate_response_fn(_error_payload(tool_name, sanitized))
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=True)
     record_tool_request_fn(
@@ -335,7 +447,7 @@ async def execute_tool_async(
         status="ok",
         elapsed_ms=elapsed_ms,
     )
-    logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, request_meta["caller"], elapsed_ms)
+    logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, log_caller, elapsed_ms)
     return result
 
 
@@ -356,6 +468,8 @@ async def execute_tool_sync_async(
     **kwargs,
 ) -> _ToolReturn | str:
     request_meta = request_meta_factory()
+    log_caller = _log_value(request_meta["caller"])
+    log_request_id = _log_value(request_meta["request_id"])
     retry_after = check_caller_rate_limit_fn(request_meta["caller"] or "local")
     if retry_after is not None:
         record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="rate limited")
@@ -368,7 +482,7 @@ async def execute_tool_sync_async(
             elapsed_ms=0,
             error="rate limited",
         )
-        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, request_meta["caller"], retry_after)
+        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, log_caller, retry_after)
         return truncate_response_fn(
             json.dumps(
                 {
@@ -381,7 +495,7 @@ async def execute_tool_sync_async(
         )
     async with get_tool_semaphore_fn():
         start = time.perf_counter()
-        logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, request_meta["caller"], request_meta["request_id"])
+        logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, log_caller, log_request_id)
         try:
             result = await asyncio.wait_for(
                 asyncio.to_thread(handler, *args, **kwargs),
@@ -405,7 +519,7 @@ async def execute_tool_sync_async(
                 elapsed_ms=elapsed_ms,
                 error=f"timed out after {timeout_seconds:.1f}s",
             )
-            logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, request_meta["caller"], timeout_seconds)
+            logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, log_caller, timeout_seconds)
             return truncate_response_fn(
                 json.dumps(
                     {
@@ -417,7 +531,7 @@ async def execute_tool_sync_async(
             )
         except Exception as exc:
             elapsed_ms = int((time.perf_counter() - start) * 1000)
-            sanitized = sanitize_error_fn(exc)
+            sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
             record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
             record_tool_request_fn(
                 tool_name,
@@ -428,8 +542,10 @@ async def execute_tool_sync_async(
                 elapsed_ms=elapsed_ms,
                 error=sanitized,
             )
-            logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, request_meta["caller"], sanitized)
-            raise
+            logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
+            if _is_tool_error(exc):
+                _raise_sanitized_tool_error(exc, sanitized)
+            return truncate_response_fn(_error_payload(tool_name, sanitized))
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=True)
         record_tool_request_fn(
@@ -440,7 +556,7 @@ async def execute_tool_sync_async(
             status="ok",
             elapsed_ms=elapsed_ms,
         )
-        logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, request_meta["caller"], elapsed_ms)
+        logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, log_caller, elapsed_ms)
         return result
 
 

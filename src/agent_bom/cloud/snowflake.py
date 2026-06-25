@@ -2043,8 +2043,9 @@ def discover_object_dependencies(
 # ACCOUNT_USAGE.GRANTS_TO_* which lags 45min–2h. Object-level grants we surface
 # (so a freshly-created role hierarchy is graphed immediately).
 _LIVE_GRANT_OBJECT_TYPES = {"TABLE", "VIEW", "MATERIALIZED VIEW", "DYNAMIC TABLE", "EXTERNAL TABLE", "ICEBERG TABLE"}
-# Bound the per-role SHOW GRANTS fan-out so a pathological account can't stall a scan.
-_LIVE_MAX_ROLES = 500
+# Default bound on the per-role SHOW GRANTS fan-out so a pathological account
+# can't stall a scan; override with AGENT_BOM_SNOWFLAKE_MAX_ROLES.
+_LIVE_MAX_ROLES = 2000
 
 
 def discover_identity_live(
@@ -2124,7 +2125,16 @@ def discover_identity_live(
 
 
 def _live_show_roles(conn: Any, warnings_list: list[str]) -> list[dict[str, Any]]:
-    """``SHOW ROLES`` → current role list (name / owner / comment), capped."""
+    """``SHOW ROLES`` → current role list (name / owner / comment).
+
+    Bounded by ``AGENT_BOM_SNOWFLAKE_MAX_ROLES`` (default ``_LIVE_MAX_ROLES``) so
+    large accounts can raise it; hitting the bound emits a warning rather than a
+    silent truncation.
+    """
+    try:
+        cap = max(1, int(os.environ.get("AGENT_BOM_SNOWFLAKE_MAX_ROLES", "") or _LIVE_MAX_ROLES))
+    except ValueError:
+        cap = _LIVE_MAX_ROLES
     roles: list[dict[str, Any]] = []
     cursor = conn.cursor()
     try:
@@ -2136,8 +2146,8 @@ def _live_show_roles(conn: Any, warnings_list: list[str]) -> list[dict[str, Any]
             if not name:
                 continue
             roles.append({"name": name, "owner": str(r.get("owner", "") or ""), "comment": str(r.get("comment", "") or "")})
-            if len(roles) >= _LIVE_MAX_ROLES:
-                warnings_list.append(f"SHOW ROLES truncated at {_LIVE_MAX_ROLES} roles.")
+            if len(roles) >= cap:
+                warnings_list.append(f"SHOW ROLES truncated at {cap} roles; raise AGENT_BOM_SNOWFLAKE_MAX_ROLES to see more.")
                 break
     except Exception as exc:  # noqa: BLE001
         warnings_list.append(f"Could not list roles (SHOW ROLES): {sanitize_error(exc)}")

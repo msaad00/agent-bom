@@ -304,6 +304,7 @@ AGENT_BOM_SIEM_TYPE
 AGENT_BOM_SIEM_URL
 AGENT_BOM_SKILLS_SCAN_CONCURRENCY
 AGENT_BOM_SNOWFLAKE_INVENTORY  # opt-in flag (default OFF) gating read-only estate-wide Snowflake inventory enrichment; read in cloud/snowflake.py
+AGENT_BOM_SNOWFLAKE_MAX_ROLES  # max roles enumerated by live SHOW-based identity discovery before the scan warns + caps (default 2000); read in cloud/snowflake.py
 AGENT_BOM_STATE_DIR
 AGENT_BOM_TAINT_MAX_DEPTH
 AGENT_BOM_TENANT_ID

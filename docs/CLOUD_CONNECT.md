@@ -98,6 +98,14 @@ constants in `cloud/aws_inventory.py` (`_AWS_*_PERMISSIONS`) and
 `cloud/aws_organizations.py` (`_AWS_ORG_PERMISSIONS`). Secret *values* are never
 read — only existence and rotation state.
 
+**Secure-by-default provisioning** (`deploy/terraform/connect-aws`): the read-only
+role gets a **unique, non-guessable name** (`abom-readonly-<random hex>`) and an
+**always-enforced, high-entropy `sts:ExternalId`** — generated automatically when
+you don't supply one and surfaced via a *sensitive* `external_id` output. The
+confused-deputy condition can never be silently omitted, and a predictable
+principal name can't be squatted or targeted. Both have override variables for
+operators who need a fixed name or a BYO External ID.
+
 **One SDK, proven current:** AWS support uses a single dependency (`boto3`, the
 `aws` extra). A guard test (`tests/test_aws_boto3_client_coverage.py`) scrapes
 every `.client("…")` the code uses and asserts each is a real service in the
@@ -138,6 +146,16 @@ cap (default 500) bounds blast radius.
 **SDK fragility, handled:** Azure SDKs are per-service distributions, so each is
 imported under `try/except ImportError` and degrades to a warning if absent —
 one missing package never crashes a scan.
+
+**Secure-by-default provisioning** (`deploy/terraform/connect-azure`): the
+optional keyless **federated identity credential** is pinned to an exact
+**issuer + subject + audience** (`api://AzureADTokenExchange`). The plan fails if
+the subject is empty or contains a wildcard, so only one specific external
+workload can exchange a token for the scanner principal — never a wide-open
+trust. The GCP module (`deploy/terraform/connect-gcp`) is locked the same way:
+Workload Identity Federation cannot be enabled without a scoped
+`attribute_condition`, pinned audiences, and a specific `principalSet`, and the
+service account gets a unique, non-guessable name.
 
 ---
 
@@ -213,6 +231,21 @@ Discoveries that need a grant you didn't give degrade to empty rather than error
   permissions exercised, so an auditor can verify the blast radius.
 - **Sanitized errors.** Connector exceptions pass through a central sanitizer
   before they reach logs or output, so a malformed credential can't leak.
+- **Secure-by-default identities.** The Terraform connect modules mint the
+  read-only identity so it is **unique, unguessable, and not exploitable**: a
+  randomized principal name (anti-squatting), a mandatory high-entropy AWS
+  `ExternalId` (confused-deputy defense), and federation that is locked to a
+  specific issuer + subject + audience (no wide-open trust). Overrides exist for
+  operators who need fixed values; only the *defaults* changed, so existing
+  configs that pin a name/External ID still apply unchanged.
+
+> **Threat note (provisioning).** Two classic IAM pitfalls these defaults close:
+> the **confused-deputy** problem — where a third party that learns your role
+> ARN tricks the shared scanner account into assuming it without an ExternalId
+> guard — and **name-squatting / targeting** of a predictable principal name.
+> Wide-open federation (an OIDC trust with no subject/condition) is the cloud
+> equivalent: any token from the issuer could impersonate the read-only
+> identity. The modules now make the secure path the default one.
 
 ---
 

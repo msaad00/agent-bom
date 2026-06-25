@@ -4,9 +4,15 @@ variable "project_id" {
 }
 
 variable "service_account_id" {
-  description = "The account_id (left part of the email) for the read-only service account agent-bom uses."
+  description = "Explicit, fixed account_id (left part of the email) for the read-only service account. Leave empty (default) to auto-generate a unique, non-guessable account_id (\"<service_account_id_prefix>-<random hex>\"), which defends against name-squatting and targeting of a predictable SA. Set this only when an external system requires a stable, known account_id."
   type        = string
-  default     = "agent-bom-readonly"
+  default     = ""
+}
+
+variable "service_account_id_prefix" {
+  description = "Prefix for the auto-generated unique service-account account_id when service_account_id is empty. A random suffix is appended so the final account_id is unique and unpredictable. Must keep the final account_id within GCP's 6-30 char limit."
+  type        = string
+  default     = "abom-readonly"
 }
 
 variable "service_account_display_name" {
@@ -45,7 +51,7 @@ variable "wif_issuer_uri" {
 }
 
 variable "wif_allowed_audiences" {
-  description = "Optional list of allowed audiences for the OIDC provider. Empty uses the default audience derived from the provider resource name."
+  description = "Allowed audiences for the OIDC provider. Required (at least one) when enable_workload_identity_federation is true — an unpinned audience widens the federation trust. Set this to the audience your external IdP issues tokens for."
   type        = list(string)
   default     = []
 }
@@ -59,13 +65,13 @@ variable "wif_attribute_mapping" {
 }
 
 variable "wif_attribute_condition" {
-  description = "Optional CEL condition restricting which external identities may use the provider (e.g. assertion.repository == 'my-org/my-repo'). Empty allows any token from the issuer — set this in production."
+  description = "REQUIRED when enable_workload_identity_federation is true: a scoped CEL condition restricting which external identities may use the provider (e.g. assertion.repository == 'my-org/my-repo'). An empty condition is rejected at plan time because it would let ANY token from the issuer impersonate the read-only SA (wide-open federation)."
   type        = string
   default     = ""
 }
 
 variable "wif_principal_set" {
-  description = "The principalSet:// member allowed to impersonate the SA via the pool (e.g. principalSet://iam.googleapis.com/<pool-resource>/attribute.repository/my-org/my-repo). Required to bind impersonation when WIF is enabled."
+  description = "REQUIRED when enable_workload_identity_federation is true: the principalSet:// member allowed to impersonate the SA via the pool (e.g. principalSet://iam.googleapis.com/<pool-resource>/attribute.repository/my-org/my-repo). Scopes impersonation to a specific external identity, not the whole pool. Empty is rejected at plan time."
   type        = string
   default     = ""
 }

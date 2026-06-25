@@ -68,12 +68,24 @@ def collect_cloud_inventory() -> list[dict[str, Any]]:
     except Exception:  # noqa: BLE001
         _logger.warning("Azure estate inventory enrichment failed", exc_info=True)
 
-    # GCP — AGENT_BOM_GCP_INVENTORY
+    # GCP — AGENT_BOM_GCP_INVENTORY (+ AGENT_BOM_GCP_ALL_PROJECTS to fan across
+    # every project in the org/folder tree, like AWS Organizations does for member
+    # accounts and Azure does for subscriptions).
     try:
-        from agent_bom.cloud import gcp_inventory
+        from agent_bom.cloud import gcp_inventory, gcp_organizations
 
         if gcp_inventory.inventory_enabled():
-            payloads.append(gcp_inventory.discover_inventory())
+            if gcp_inventory.all_projects_enabled():
+                gcp_payloads = gcp_inventory.discover_all_project_inventories()
+            else:
+                gcp_payloads = [gcp_inventory.discover_inventory()]
+            # Attach the org → folder → project hierarchy to the first GCP payload
+            # so the graph builder can promote the CONTAINS roll-up backbone. Only
+            # attached when the project is actually in an organization.
+            org = gcp_organizations.discover_organization()
+            if isinstance(org, dict) and org.get("status") == "ok" and gcp_payloads:
+                gcp_payloads[0]["gcp_organization"] = org
+            payloads.extend(gcp_payloads)
     except Exception:  # noqa: BLE001
         _logger.warning("GCP estate inventory enrichment failed", exc_info=True)
 

@@ -50,7 +50,7 @@ _SERVICES = [
 
 
 def _slow_stub(label: str, delay: float = 0.15):
-    def fn(cred, sub, *, warnings):
+    def fn(cred, sub, *, warnings, missing=None):
         time.sleep(delay)
         warnings.append(f"warn-{label}")
         return [{"name": f"{label}-1", "id": f"/id/{label}"}]
@@ -81,7 +81,7 @@ def test_warnings_preserved_in_deterministic_order(monkeypatch) -> None:
 
 
 def test_one_service_failing_does_not_sink_others(monkeypatch) -> None:
-    def boom(cred, sub, *, warnings):
+    def boom(cred, sub, *, warnings, missing=None):
         raise RuntimeError("simulated ARM failure")
 
     for name in _SERVICES:

@@ -899,3 +899,89 @@ def test_graph_emits_estate_nodes_and_owns_edges(monkeypatch: pytest.MonkeyPatch
     assert gke_id in owns_targets
     assert sql_id in owns_targets
     assert "cloud_resource:gcp:pubsub:messaging:abom-demo-topic" in owns_targets
+
+
+# ---------------------------------------------------------------------------
+# Partial-permission tolerance: a single failing discoverer must degrade to a
+# warning (and, for access errors, an actionable missing_permissions entry)
+# without aborting the rest of the scan.
+# ---------------------------------------------------------------------------
+
+
+class PermissionDenied(Exception):  # noqa: N818 — name must match the real google-api-core SDK type the classifier keys on
+    """Stand-in for google.api_core.exceptions.PermissionDenied (403 / code 7).
+
+    Named to match the real SDK exception so the access-error classifier keys off
+    the type name without importing the heavy google-api-core dependency.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("403 Permission 'container.clusters.list' denied on project 'proj-1'.")
+        self.code = 403
+
+
+def test_gcp_discoverer_exception_does_not_abort_scan(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Patch the SDK call INSIDE the bucket discoverer so the genuine
+    # try/except degrade path runs (not a stubbed discoverer).
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+
+    def _boom(self: Any) -> list[Any]:
+        raise RuntimeError("transient 500 from the GCS list endpoint")
+
+    monkeypatch.setattr(_FakeStorageClient, "list_buckets", _boom)
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+
+    # The overall call still returns ok and the OTHER resource types are present.
+    assert payload["status"] == "ok"
+    assert payload["buckets"] == []  # the failed type degrades to empty…
+    assert {c["name"] for c in payload["gke_clusters"]} == {"public-gke", "private-gke"}  # …others survive
+    # …but the skipped type still produced a clear warning (no silent drop).
+    assert any("transient 500" in w for w in payload["warnings"])
+    # A generic (non-access) failure produces NO missing_permissions entry.
+    assert payload["missing_permissions"] == []
+
+
+def test_gcp_permission_denied_degrades_with_guidance(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+
+    def _denied(self: Any, parent: str) -> Any:
+        raise PermissionDenied()
+
+    monkeypatch.setattr(_FakeClusterManagerClient, "list_clusters", _denied)
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+
+    assert payload["status"] == "ok"
+    # Other resource types still discovered — no silent total failure.
+    assert {b["name"] for b in payload["buckets"]} == {"public-lake", "private-logs"}
+    assert payload["gke_clusters"] == []
+    # The access error yields an ACTIONABLE warning naming the missing permission.
+    actionable = [w for w in payload["warnings"] if "role lacks" in w and "GKE clusters" in w]
+    assert actionable, payload["warnings"]
+    assert "container.clusters.list" in actionable[0]
+    assert "add it to the read-only policy" in actionable[0]
+    # And a structured missing_permissions entry the product can render.
+    entries = [e for e in payload["missing_permissions"] if e["resource_type"] == "GKE clusters"]
+    assert entries == [{"cloud": "gcp", "permission": "container.clusters.list", "resource_type": "GKE clusters"}]
+
+
+def test_gcp_missing_permissions_are_sorted_and_deduped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+
+    def _denied_clusters(self: Any, parent: str) -> Any:
+        raise PermissionDenied()
+
+    def _denied_buckets(self: Any) -> list[Any]:
+        raise PermissionDenied()
+
+    monkeypatch.setattr(_FakeClusterManagerClient, "list_clusters", _denied_clusters)
+    monkeypatch.setattr(_FakeStorageClient, "list_buckets", _denied_buckets)
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+
+    perms = payload["missing_permissions"]
+    # Sorted by (cloud, resource_type, permission) → GCS buckets before GKE clusters.
+    assert [e["resource_type"] for e in perms] == ["GCS buckets", "GKE clusters"]
+    # Idempotent: re-deduping the same list is a no-op.
+    assert gcp_inventory.dedupe_missing_permissions(perms + perms) == perms

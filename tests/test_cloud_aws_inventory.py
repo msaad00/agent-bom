@@ -624,3 +624,102 @@ def test_multiregion_enumerates_enabled_regions_when_no_override(monkeypatch: py
 
     # describe_regions drove the region set when no explicit override was given.
     assert set(payload["regions"]) == {"us-east-1", "ap-south-1"}
+
+
+# ---------------------------------------------------------------------------
+# Partial-permission tolerance: the shared degrade-don't-crash helpers and the
+# AWS discoverer path that produces actionable missing_permissions guidance.
+# ---------------------------------------------------------------------------
+
+
+class _ClientError(Exception):
+    """Stand-in for botocore.exceptions.ClientError carrying an Error.Code."""
+
+    def __init__(self, code: str, status: int = 403) -> None:
+        super().__init__(f"An error occurred ({code}) when calling the API.")
+        self.response = {"Error": {"Code": code}, "ResponseMetadata": {"HTTPStatusCode": status}}
+
+
+def test_is_access_denied_error_detects_each_cloud_shape() -> None:
+    # AWS error-code, Azure 403 status, GCP type-name + message.
+    assert aws_inventory.is_access_denied_error(_ClientError("AccessDenied")) is True
+    assert aws_inventory.is_access_denied_error(_ClientError("UnauthorizedOperation")) is True
+
+    class _AzureAuth(Exception):  # noqa: N818 — emulates azure HttpResponseError (no Error suffix)
+        def __init__(self) -> None:
+            super().__init__("AuthorizationFailed")
+            self.status_code = 403
+
+    assert aws_inventory.is_access_denied_error(_AzureAuth()) is True
+
+    class PermissionDenied(Exception):  # noqa: N818 — name matches the real GCP SDK type the classifier keys on
+        pass
+
+    assert aws_inventory.is_access_denied_error(PermissionDenied("403 denied")) is True
+    # A non-access error is NOT misclassified.
+    assert aws_inventory.is_access_denied_error(RuntimeError("transient 500")) is False
+
+
+def test_record_discovery_failure_branches_on_access_vs_generic() -> None:
+    warnings: list[str] = []
+    missing: list[dict[str, str]] = []
+
+    # Access error → actionable warning + missing_permissions entry.
+    aws_inventory.record_discovery_failure(
+        exc=_ClientError("AccessDenied"),
+        resource_type="EC2 instances",
+        permission="ec2:DescribeInstances",
+        cloud="aws",
+        warnings=warnings,
+        missing=missing,
+    )
+    assert "role lacks ec2:DescribeInstances" in warnings[0]
+    assert "add it to the read-only policy" in warnings[0]
+    assert missing == [{"cloud": "aws", "permission": "ec2:DescribeInstances", "resource_type": "EC2 instances"}]
+
+    # Generic error → plain warning, NO missing_permissions entry.
+    aws_inventory.record_discovery_failure(
+        exc=RuntimeError("transient 500"),
+        resource_type="S3 buckets",
+        permission="s3:ListAllMyBuckets",
+        cloud="aws",
+        warnings=warnings,
+        missing=missing,
+    )
+    assert any("Could not list S3 buckets" in w for w in warnings)
+    assert len(missing) == 1  # unchanged
+
+
+def test_dedupe_missing_permissions_is_sorted_and_idempotent() -> None:
+    raw = [
+        {"cloud": "aws", "permission": "s3:ListAllMyBuckets", "resource_type": "S3 buckets"},
+        {"cloud": "aws", "permission": "ec2:DescribeInstances", "resource_type": "EC2 instances"},
+        {"cloud": "aws", "permission": "ec2:DescribeInstances", "resource_type": "EC2 instances"},
+    ]
+    out = aws_inventory.dedupe_missing_permissions(raw)
+    assert out == [
+        {"cloud": "aws", "permission": "ec2:DescribeInstances", "resource_type": "EC2 instances"},
+        {"cloud": "aws", "permission": "s3:ListAllMyBuckets", "resource_type": "S3 buckets"},
+    ]
+    assert aws_inventory.dedupe_missing_permissions(out) == out  # idempotent
+
+
+def test_aws_permission_denied_degrades_with_guidance(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(aws_inventory.INVENTORY_ENV_FLAG, "1")
+
+    def _denied(self: Any) -> dict[str, Any]:
+        raise _ClientError("AccessDenied")
+
+    monkeypatch.setattr(_FakeS3, "list_buckets", _denied)
+    with _install_fake_boto3():
+        payload = aws_inventory.discover_inventory(region="us-east-1")
+
+    assert payload["status"] == "ok"
+    # S3 skipped, but the rest of the estate still enumerated.
+    assert payload["buckets"] == []
+    assert payload["instances"]  # EC2 still discovered
+    actionable = [w for w in payload["warnings"] if "role lacks s3:ListAllMyBuckets" in w]
+    assert actionable, payload["warnings"]
+    assert payload["missing_permissions"] == [
+        {"cloud": "aws", "permission": "s3:ListAllMyBuckets", "resource_type": "S3 buckets"}
+    ]

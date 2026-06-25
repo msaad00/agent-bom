@@ -368,3 +368,84 @@ def test_graph_inventory_noop_when_not_ok() -> None:
         {"provider": "azure", "status": "disabled", "storage_accounts": [], "instances": [], "security_groups": []}
     )
     assert not any(nid.startswith("cloud_resource:azure:") for nid in graph.nodes)
+
+
+# ---------------------------------------------------------------------------
+# Partial-permission tolerance: a single failing discoverer must degrade to a
+# warning (and, for access errors, an actionable missing_permissions entry)
+# without aborting the rest of the scan.
+# ---------------------------------------------------------------------------
+
+
+class _AzureAuthError(Exception):
+    """Stand-in for azure.core HttpResponseError on a 403 (AuthorizationFailed)."""
+
+    def __init__(self) -> None:
+        super().__init__("(AuthorizationFailed) The client does not have authorization to perform action.")
+        self.status_code = 403
+
+
+def test_azure_discoverer_exception_does_not_abort_scan(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Patch the SDK call INSIDE the VM discoverer so the real discoverer's own
+    # try/except runs — this proves the genuine degrade path, not a stub.
+    monkeypatch.setenv(azure_inventory.INVENTORY_ENV_FLAG, "1")
+
+    def _boom(self: Any) -> list[Any]:
+        raise RuntimeError("transient ARM 500 from the VM list endpoint")
+
+    monkeypatch.setattr(_FakeVMOps, "list_all", _boom)
+    with _install_fake_azure():
+        payload = azure_inventory.discover_inventory(subscription_id="sub-1", credential=_FakeCredential())
+
+    # The overall call still returns ok and the OTHER resource types are present.
+    assert payload["status"] == "ok"
+    assert {a["name"] for a in payload["storage_accounts"]} == {"publiclake", "privatelogs"}
+    # The failed resource type still produced a clear warning (never a silent drop).
+    assert any("transient ARM 500" in w for w in payload["warnings"])
+    # A generic (non-access) failure produces NO missing_permissions entry.
+    assert payload["missing_permissions"] == []
+
+
+def test_azure_permission_denied_degrades_with_guidance(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(azure_inventory.INVENTORY_ENV_FLAG, "1")
+
+    def _denied(self: Any) -> list[Any]:
+        raise _AzureAuthError()
+
+    monkeypatch.setattr(_FakeVMOps, "list_all", _denied)
+    with _install_fake_azure():
+        payload = azure_inventory.discover_inventory(subscription_id="sub-1", credential=_FakeCredential())
+
+    assert payload["status"] == "ok"
+    # Other resource types still discovered — no silent total failure.
+    assert {a["name"] for a in payload["storage_accounts"]} == {"publiclake", "privatelogs"}
+    # The access error yields an ACTIONABLE warning naming the missing permission.
+    actionable = [w for w in payload["warnings"] if "role lacks" in w and "Azure virtual machines" in w]
+    assert actionable, payload["warnings"]
+    assert "Microsoft.Compute/virtualMachines/read" in actionable[0]
+    assert "add it to the read-only policy" in actionable[0]
+    # And a structured missing_permissions entry the product can render.
+    entries = [e for e in payload["missing_permissions"] if e["resource_type"] == "Azure virtual machines"]
+    assert entries == [
+        {"cloud": "azure", "permission": "Microsoft.Compute/virtualMachines/read", "resource_type": "Azure virtual machines"}
+    ]
+
+
+def test_azure_missing_permissions_are_sorted_and_deduped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(azure_inventory.INVENTORY_ENV_FLAG, "1")
+
+    def _denied(self: Any) -> list[Any]:
+        raise _AzureAuthError()
+
+    # Two discoverers denied (compute VMs + storage accounts): the result list
+    # must be deterministic + deduped regardless of thread completion order.
+    monkeypatch.setattr(_FakeVMOps, "list_all", _denied)
+    monkeypatch.setattr(_FakeStorageOps, "list", _denied)
+    with _install_fake_azure():
+        payload = azure_inventory.discover_inventory(subscription_id="sub-1", credential=_FakeCredential())
+
+    perms = payload["missing_permissions"]
+    # Sorted by (cloud, resource_type, permission) → Storage before virtual machines.
+    assert [e["resource_type"] for e in perms] == ["Azure Storage Accounts", "Azure virtual machines"]
+    # Idempotent: re-deduping the same list is a no-op.
+    assert azure_inventory.dedupe_missing_permissions(perms + perms) == perms

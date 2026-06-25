@@ -13,6 +13,8 @@ import time
 from pathlib import Path
 from typing import AbstractSet, Any, Awaitable, Callable, TypeVar
 
+from mcp.server.fastmcp.exceptions import ToolError
+
 from agent_bom.security import sanitize_log_label
 
 _ToolReturn = TypeVar("_ToolReturn")
@@ -405,6 +407,21 @@ async def execute_tool_async(
                 }
             )
         )
+    except ToolError as exc:
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
+        record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
+        record_tool_request_fn(
+            tool_name,
+            caller=request_meta["caller"],
+            client_id=request_meta["client_id"],
+            request_id=request_meta["request_id"],
+            status="error",
+            elapsed_ms=elapsed_ms,
+            error=sanitized,
+        )
+        logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
+        raise
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
@@ -512,6 +529,21 @@ async def execute_tool_sync_async(
                     }
                 )
             )
+        except ToolError as exc:
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
+            record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
+            record_tool_request_fn(
+                tool_name,
+                caller=request_meta["caller"],
+                client_id=request_meta["client_id"],
+                request_id=request_meta["request_id"],
+                status="error",
+                elapsed_ms=elapsed_ms,
+                error=sanitized,
+            )
+            logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
+            raise
         except Exception as exc:
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             sanitized = _log_value(sanitize_error_fn(exc), max_len=200)

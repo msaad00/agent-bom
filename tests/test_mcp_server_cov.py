@@ -8,6 +8,7 @@ import logging
 from unittest.mock import patch
 
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from agent_bom.mcp_server import (
     _caller_rate_windows,
@@ -213,6 +214,14 @@ class TestToolMetrics:
         assert "/tmp/private/path" not in payload["error"]
 
     @pytest.mark.asyncio
+    async def test_execute_tool_async_preserves_tool_error(self):
+        async def _tool_error():
+            raise ToolError("Invalid severity: bad")
+
+        with pytest.raises(ToolError, match="Invalid severity"):
+            await _execute_tool_async("failing_tool", _tool_error)
+
+    @pytest.mark.asyncio
     async def test_execute_tool_sync_async_returns_sanitized_error_payload(self):
         def _boom_sync():
             raise RuntimeError("failed password=swordfish at /tmp/private/path")
@@ -224,6 +233,14 @@ class TestToolMetrics:
         assert payload["status"] == "error"
         assert "password=<redacted>" in payload["error"]
         assert "/tmp/private/path" not in payload["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_sync_async_preserves_tool_error(self):
+        def _tool_error_sync():
+            raise ToolError("Invalid severity: bad")
+
+        with pytest.raises(ToolError, match="Invalid severity"):
+            await _execute_tool_sync_async("failing_sync_tool", _tool_error_sync)
 
     @pytest.mark.asyncio
     async def test_execute_tool_logs_single_line_caller(self, caplog, monkeypatch):

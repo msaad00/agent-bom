@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from agent_bom.api.postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.scim_store import SCIMGroup, SCIMUser
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.platform_invariants import normalize_tenant_id, now_utc_iso
@@ -13,7 +13,7 @@ from agent_bom.platform_invariants import normalize_tenant_id, now_utc_iso
 class PostgresSCIMStore:
     """Shared SCIM store for clustered self-hosted deployments."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -180,7 +180,7 @@ class PostgresSCIMStore:
                 (normalize_tenant_id(tenant_id), group_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
 
 def _load_user(raw: object) -> SCIMUser:

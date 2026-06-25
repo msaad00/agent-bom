@@ -13,14 +13,14 @@ from __future__ import annotations
 import json
 
 from agent_bom.api.cost_store import CostBudget, LLMCostRecord, _decode_tags
-from agent_bom.api.postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
 class PostgresCostStore:
     """Shared LLM cost + budget store backed by Postgres with tenant RLS."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 

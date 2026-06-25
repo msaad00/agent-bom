@@ -12,14 +12,14 @@ import json
 from typing import Any
 
 from agent_bom.api.compliance_hub_store import _frameworks_csv, _now_utc_iso, _redact_findings
-from agent_bom.api.postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
 class PostgresComplianceHubStore:
     """Shared hub store backing multi-replica self-hosted deployments."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 

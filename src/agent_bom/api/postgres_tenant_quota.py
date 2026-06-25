@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
-from agent_bom.api.postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
 class PostgresTenantQuotaStore:
     """Persistent tenant quota overrides with tenant-aware access."""
 
-    def __init__(self, pool=None) -> None:
+    def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()
 
@@ -61,4 +61,4 @@ class PostgresTenantQuotaStore:
                 (tenant_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)

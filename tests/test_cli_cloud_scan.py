@@ -39,6 +39,12 @@ def _capture_scan(monkeypatch):
 def _all_configured(monkeypatch, providers):
     """Force credential auto-detect to report exactly ``providers`` as configured."""
     monkeypatch.setattr(cg, "_provider_configured", lambda p: p in set(providers))
+    # Keep the per-provider status surface consistent with the forced detection.
+    monkeypatch.setattr(
+        cg,
+        "_provider_status",
+        lambda p: (p in set(providers), "test source" if p in set(providers) else "no credentials"),
+    )
 
 
 # ── auto-detect / resolution ────────────────────────────────────────────────
@@ -88,8 +94,10 @@ class TestUnifiedScan:
         assert kw["aws"] is True
         assert kw["gcp_flag"] is True
         assert kw["azure_flag"] is False
-        # Friendly skip note for the unconfigured provider.
-        assert "skipping AZURE" in r.output
+        # Per-provider status: detected ones scanning, the unconfigured one skipped.
+        assert "aws: scanning" in r.output
+        assert "gcp: scanning" in r.output
+        assert "azure: skipped" in r.output
 
     def test_scan_all_no_providers_is_graceful(self, monkeypatch):
         _all_configured(monkeypatch, set())
@@ -189,3 +197,57 @@ class TestDegradation:
         assert len(seen) == 1
         kw = seen[0]
         assert kw["aws"] and kw["azure_flag"] and kw["gcp_flag"]
+
+
+# ── credential-based detection wiring ────────────────────────────────────────
+
+
+class TestCredentialDetection:
+    def test_detect_routes_through_credential_probe(self, monkeypatch):
+        """``_provider_configured`` delegates to the credential probe, not the CLI."""
+        calls: list[str] = []
+
+        def fake_probe(provider):
+            calls.append(provider)
+            return (provider == "aws", "env AWS_WEB_IDENTITY_TOKEN_FILE")
+
+        monkeypatch.setattr("agent_bom.cloud.auth_probe.provider_has_credentials", fake_probe)
+        assert cg._detect_configured_providers() == ["aws"]
+        assert set(calls) >= {"aws", "azure", "gcp"}
+
+    def test_status_line_names_the_credential_source(self, monkeypatch):
+        """`--provider all` surfaces the resolved source per scanning provider."""
+        monkeypatch.setattr(cg, "_provider_configured", lambda p: p == "aws")
+        monkeypatch.setattr(
+            cg,
+            "_provider_status",
+            lambda p: (p == "aws", "env AWS_WEB_IDENTITY_TOKEN_FILE" if p == "aws" else "no credentials"),
+        )
+        _capture_scan(monkeypatch)
+
+        r = CliRunner().invoke(cloud_group, ["scan", "--provider", "all"])
+        assert r.exit_code == 0
+        assert "aws: scanning" in r.output
+        assert "AWS_WEB_IDENTITY_TOKEN_FILE" in r.output
+
+    def test_verify_flag_runs_opt_in_confirmation(self, monkeypatch):
+        """``--verify`` triggers the network confirm path; default never does."""
+        _all_configured(monkeypatch, {"aws"})
+        _capture_scan(monkeypatch)
+        verified: list[str] = []
+
+        def fake_verify(provider):
+            verified.append(provider)
+            return True, "sts: arn:aws:iam::1:role/x"
+
+        monkeypatch.setattr("agent_bom.cloud.auth_probe.verify_credentials", fake_verify)
+
+        # Without --verify: no verification call.
+        CliRunner().invoke(cloud_group, ["scan", "--provider", "aws"])
+        assert verified == []
+
+        # With --verify: the confirm path runs and its result is surfaced.
+        r = CliRunner().invoke(cloud_group, ["scan", "--provider", "aws", "--verify"])
+        assert r.exit_code == 0
+        assert verified == ["aws"]
+        assert "verified" in r.output

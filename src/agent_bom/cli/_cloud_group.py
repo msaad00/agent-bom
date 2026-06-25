@@ -20,7 +20,6 @@ Usage::
 
 from __future__ import annotations
 
-import shutil
 from typing import Optional
 
 import click
@@ -29,34 +28,39 @@ from agent_bom.cli._grouped_help import SuggestingGroup
 
 # Deterministic provider catalogue. The order here drives auto-detect ordering,
 # per-provider sectioning, and `--provider all` fan-out so the same configuration
-# always produces the same output. Each entry maps the provider to the CLI tool
-# whose presence signals "configured" (mirrors the existing no-subcommand path
-# and `agent-cloud posture`).
-_PROVIDER_CLI = {
-    "aws": "aws",
-    "azure": "az",
-    "gcp": "gcloud",
-}
-# Sorted for determinism — same config in, same provider order out.
-_PROVIDER_ORDER: tuple[str, ...] = tuple(sorted(_PROVIDER_CLI))
+# always produces the same output.
+_PROVIDER_ORDER: tuple[str, ...] = ("aws", "azure", "gcp")
 
-# How a missing provider CLI is described when we skip it, so the friendly note
-# points the user at the exact thing to install/configure.
+# How a provider's credentials are set up, so the friendly skip note points the
+# user at the exact thing to configure.
 _PROVIDER_HINT = {
-    "aws": "aws configure",
-    "azure": "az login",
-    "gcp": "gcloud auth login",
+    "aws": "aws configure  (or IRSA / AWS_PROFILE / AWS_ACCESS_KEY_ID)",
+    "azure": "az login  (or service principal / workload identity)",
+    "gcp": "gcloud auth application-default login  (or GOOGLE_APPLICATION_CREDENTIALS)",
 }
 
 
 def _provider_configured(provider: str) -> bool:
-    """Return True when the provider's CLI is on PATH (its creds are reachable).
+    """Return True when *provider* has resolvable credentials (not just a CLI).
 
-    Credential detection deliberately reuses the same CLI-presence signal the
-    cloud group already trusts for its no-subcommand fan-out, so behaviour is
-    consistent across every entry point.
+    Detection is by actual credential SOURCE — env vars, IRSA / workload-identity
+    token files, shared config/credentials files, or a locally resolvable SDK
+    session — never by a CLI binary on ``PATH``. A CLI binary with no credentials
+    (CloudShell, CI images) is no longer a false positive, and an IRSA-backed
+    collector with no CLI installed is no longer a false negative. No network
+    call is made here.
     """
-    return bool(shutil.which(_PROVIDER_CLI[provider]))
+    from agent_bom.cloud.auth_probe import provider_has_credentials
+
+    has, _source = provider_has_credentials(provider)
+    return has
+
+
+def _provider_status(provider: str) -> tuple[bool, str]:
+    """Return ``(has_credentials, source)`` for *provider* — local checks only."""
+    from agent_bom.cloud.auth_probe import provider_has_credentials
+
+    return provider_has_credentials(provider)
 
 
 def _detect_configured_providers() -> list[str]:
@@ -80,10 +84,18 @@ def _resolve_scan_providers(provider: str) -> tuple[list[str], list[str]]:
     return [provider], []
 
 
+def _verify_provider(provider: str) -> tuple[bool, str]:
+    """Opt-in network confirmation that *provider* credentials authenticate."""
+    from agent_bom.cloud.auth_probe import verify_credentials
+
+    return verify_credentials(provider)
+
+
 def _run_cloud_scan(
     providers: list[str],
     *,
     skipped: Optional[list[str]] = None,
+    verify: bool = False,
     aws_region: Optional[str] = None,
     aws_profile: Optional[str] = None,
     aws_include_lambda: bool = False,
@@ -111,15 +123,27 @@ def _run_cloud_scan(
 
     providers = [p for p in _PROVIDER_ORDER if p in providers]
 
-    if skipped:
+    # Per-provider status: say exactly what was detected and why, so the operator
+    # (or a collector) knows which clouds are scanning and how their credentials
+    # were resolved. Only surfaced on console output and when not quiet.
+    show_status = not quiet and output_format == "console"
+    if show_status and (providers or skipped):
         con = Console(stderr=True)
-        for prov in skipped:
-            con.print(f"  [dim]skipping {prov.upper()} — not configured (set up with: {_PROVIDER_HINT[prov]})[/dim]")
+        for prov in providers:
+            _has, source = _provider_status(prov)
+            line = f"  [green]{prov}[/green]: scanning [dim](creds via {source})[/dim]"
+            if verify:
+                ok, detail = _verify_provider(prov)
+                mark = "[green]verified[/green]" if ok else "[yellow]unverified[/yellow]"
+                line += f" · {mark} [dim]({detail})[/dim]"
+            con.print(line)
+        for prov in skipped or []:
+            con.print(f"  [yellow]{prov}[/yellow]: skipped — no credentials [dim](set up: {_PROVIDER_HINT[prov]})[/dim]")
 
     if not providers:
         con = Console(stderr=True)
         con.print("\n[yellow]No configured cloud providers to scan.[/yellow]")
-        con.print("  Configure at least one provider and retry:")
+        con.print("  Configure credentials for at least one provider and retry:")
         for prov in _PROVIDER_ORDER:
             con.print(f"  [cyan]{prov}[/cyan] → {_PROVIDER_HINT[prov]}")
         return
@@ -186,11 +210,11 @@ def cloud_group(ctx: click.Context) -> None:
             from rich.console import Console
 
             con = Console(stderr=True)
-            con.print("\n[yellow]No cloud CLI tools found (aws, az, gcloud).[/yellow]")
-            con.print("  Install and configure credentials for your provider:")
-            con.print("  [cyan]agent-bom cloud aws[/cyan]     requires: aws configure")
-            con.print("  [cyan]agent-bom cloud azure[/cyan]   requires: az login")
-            con.print("  [cyan]agent-bom cloud gcp[/cyan]     requires: gcloud auth login")
+            con.print("\n[yellow]No cloud credentials detected (aws, azure, gcp).[/yellow]")
+            con.print("  Configure credentials for your provider:")
+            con.print("  [cyan]agent-bom cloud aws[/cyan]     requires: aws configure / IRSA / AWS_PROFILE")
+            con.print("  [cyan]agent-bom cloud azure[/cyan]   requires: az login / service principal")
+            con.print("  [cyan]agent-bom cloud gcp[/cyan]     requires: gcloud ADC / GOOGLE_APPLICATION_CREDENTIALS")
             con.print()
             con.print("  [dim]No credentials needed for:[/dim]")
             con.print("  [cyan]agent-bom image[/cyan] · [cyan]agent-bom iac[/cyan] · [cyan]agent-bom fs[/cyan]")
@@ -217,6 +241,11 @@ def cloud_group(ctx: click.Context) -> None:
 @click.option("--subscription", default=None, help="Azure subscription ID (azure only).")
 @click.option("--project", default=None, help="GCP project ID (gcp only).")
 @click.option("--cis/--no-cis", default=True, show_default=True, help="Run CIS benchmark for each selected provider.")
+@click.option(
+    "--verify",
+    is_flag=True,
+    help="Confirm detected credentials authenticate (STS/whoami). Opt-in — makes a network call.",
+)
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True)
@@ -231,6 +260,7 @@ def scan_cmd(
     subscription: Optional[str],
     project: Optional[str],
     cis: bool,
+    verify: bool,
     output_format: str,
     output_path: Optional[str],
     quiet: bool,
@@ -253,6 +283,7 @@ def scan_cmd(
     _run_cloud_scan(
         selected,
         skipped=skipped,
+        verify=verify,
         aws_region=region,
         aws_profile=profile,
         aws_include_lambda=include_lambda,

@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GKE read-only collector — KEYLESS via Workload Identity
+# ─────────────────────────────────────────────────────────────────────────────
+# The Kubernetes ServiceAccount (KSA) is bound to a Google service account (GSA)
+# via the `iam.gke.io/gcp-service-account` annotation + a roles/iam.workloadId
+# entityUser IAM binding. The collector then *impersonates* the read-only SA
+# that `deploy/terraform/connect-gcp` provisions (roles/viewer +
+# roles/iam.securityReviewer) by setting AGENT_BOM_GCP_IMPERSONATE_SA — so the
+# bound GSA only needs roles/iam.serviceAccountTokenCreator on the read-only SA.
+# NO service-account JSON key lives in the cluster.
+#
+# Prereqs (one-time, see deploy/RUNBOOK.md):
+#   1. Cluster has Workload Identity enabled
+#        (--workload-pool=<project>.svc.id.goog).
+#   2. terraform apply deploy/terraform/connect-gcp -> outputs service_account_email
+#   3. Create a bridge GSA (or reuse one), grant it Token Creator on the
+#      read-only SA, and bind the KSA to it (see RUNBOOK "GKE / Workload Identity").
+#
+# Install:
+#   helm install agent-bom agent-bom/agent-bom \
+#     -n agent-bom --create-namespace \
+#     -f deploy/helm/agent-bom/examples/gke-collector-workload-identity-values.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+controlPlane:
+  enabled: false
+
+scanner:
+  enabled: true
+  schedule: "0 */6 * * *"
+  k8s: true
+  allNamespaces: true
+  serviceAccount:
+    create: true
+    annotations:
+      # The bridge GSA the KSA impersonates (Workload Identity binding target).
+      iam.gke.io/gcp-service-account: agent-bom-wi@my-project.iam.gserviceaccount.com
+  cloud:
+    enabled: true
+    gcp:
+      inventory: true
+      # The connect-gcp read-only SA email (terraform output service_account_email).
+      # The bridge GSA above must hold roles/iam.serviceAccountTokenCreator on it.
+      impersonateSa: agent-bom-readonly@my-project.iam.gserviceaccount.com
+
+networkPolicy:
+  enabled: true
+  restrictIngress: true

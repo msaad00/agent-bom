@@ -180,6 +180,38 @@ def test_schema_summary_comment_is_current():
     assert "--   graph_filter_presets — tenant-scoped saved graph filters" in SQL
 
 
+def test_llm_cost_tables_baseline_with_rls():
+    """llm_costs + llm_cost_budgets must ship in the init.sql baseline.
+
+    Regression: these were only created by the app bootstrap in
+    api/postgres_cost.py::_init_tables(), so fresh / replica / migration-only
+    Postgres deploys (read-only app role that cannot run CREATE TABLE) lacked
+    the cost store until an app instance happened to boot."""
+    tables = _tables()
+    assert "llm_costs" in tables
+    assert "llm_cost_budgets" in tables
+
+    cost_cols = _columns_for("llm_costs")
+    for col in ("tenant_id", "call_id", "cost_usd", "priced", "observed_at", "cost_center", "allocation_tags"):
+        assert col in cost_cols, f"llm_costs baseline missing column: {col}"
+
+    budget_cols = _columns_for("llm_cost_budgets")
+    for col in ("tenant_id", "agent", "limit_usd", "mode", "cost_center"):
+        assert col in budget_cols, f"llm_cost_budgets baseline missing column: {col}"
+
+    for table in ("llm_costs", "llm_cost_budgets"):
+        assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in SQL
+        assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in SQL
+    assert "uq_llm_cost_budgets_scope" in _indexes() or "uq_llm_cost_budgets_scope" in SQL
+
+
+def test_policy_audit_log_has_entry_id_dedup_key():
+    """policy_audit_log must carry entry_id (mirrors the SQLite PRIMARY KEY) +
+    a unique index so re-ingesting the same audit event is idempotent."""
+    assert "entry_id" in _columns_for("policy_audit_log")
+    assert "uq_policy_audit_log_entry" in SQL
+
+
 def test_api_rate_limits_table_exists():
     cols = _columns_for("api_rate_limits")
     for col in ("bucket_key", "window_started", "hits", "updated_at"):

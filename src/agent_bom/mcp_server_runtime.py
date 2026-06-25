@@ -13,6 +13,8 @@ import time
 from pathlib import Path
 from typing import AbstractSet, Any, Awaitable, Callable, TypeVar
 
+from agent_bom.security import sanitize_log_label
+
 _ToolReturn = TypeVar("_ToolReturn")
 
 
@@ -49,6 +51,14 @@ def safe_path(path_str: str) -> Path:
         return validate_path(path_str, restrict_to_home=True)
     except SecurityError as exc:
         raise ValueError(str(exc)) from exc
+
+
+def _log_value(value: object, *, max_len: int = 160) -> str:
+    return sanitize_log_label(value, max_len=max_len) or "-"
+
+
+def _error_payload(tool_name: str, error: str) -> str:
+    return json.dumps({"error": error, "tool": tool_name, "status": "error"})
 
 
 def get_tool_semaphore(
@@ -317,6 +327,8 @@ async def execute_tool_async(
         )
         if denial is not None:
             request_meta = request_meta_factory()
+            log_caller = _log_value(request_meta["caller"])
+            log_role = _log_value(str(kwargs.get("operator_role", "") or "unset"))
             record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="forbidden")
             record_tool_request_fn(
                 tool_name,
@@ -330,11 +342,13 @@ async def execute_tool_async(
             logger.warning(
                 "mcp tool forbidden: %s caller=%s role=%r",
                 tool_name,
-                request_meta["caller"],
-                str(kwargs.get("operator_role", "") or "unset"),
+                log_caller,
+                log_role,
             )
             return truncate_response_fn(json.dumps(denial))
     request_meta = request_meta_factory()
+    log_caller = _log_value(request_meta["caller"])
+    log_request_id = _log_value(request_meta["request_id"])
     retry_after = check_caller_rate_limit_fn(request_meta["caller"] or "local")
     if retry_after is not None:
         record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="rate limited")
@@ -347,7 +361,7 @@ async def execute_tool_async(
             elapsed_ms=0,
             error="rate limited",
         )
-        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, request_meta["caller"], retry_after)
+        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, log_caller, retry_after)
         return truncate_response_fn(
             json.dumps(
                 {
@@ -359,7 +373,7 @@ async def execute_tool_async(
             )
         )
     start = time.perf_counter()
-    logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, request_meta["caller"], request_meta["request_id"])
+    logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, log_caller, log_request_id)
     try:
         async with get_tool_semaphore_fn():
             result = await asyncio.wait_for(handler(*args, **kwargs), timeout=timeout_seconds)
@@ -381,7 +395,7 @@ async def execute_tool_async(
             elapsed_ms=elapsed_ms,
             error=f"timed out after {timeout_seconds:.1f}s",
         )
-        logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, request_meta["caller"], timeout_seconds)
+        logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, log_caller, timeout_seconds)
         return truncate_response_fn(
             json.dumps(
                 {
@@ -393,7 +407,7 @@ async def execute_tool_async(
         )
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - start) * 1000)
-        sanitized = sanitize_error_fn(exc)
+        sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
         record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
         record_tool_request_fn(
             tool_name,
@@ -404,8 +418,8 @@ async def execute_tool_async(
             elapsed_ms=elapsed_ms,
             error=sanitized,
         )
-        logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, request_meta["caller"], sanitized)
-        raise
+        logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
+        return truncate_response_fn(_error_payload(tool_name, sanitized))
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=True)
     record_tool_request_fn(
@@ -416,7 +430,7 @@ async def execute_tool_async(
         status="ok",
         elapsed_ms=elapsed_ms,
     )
-    logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, request_meta["caller"], elapsed_ms)
+    logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, log_caller, elapsed_ms)
     return result
 
 
@@ -437,6 +451,8 @@ async def execute_tool_sync_async(
     **kwargs,
 ) -> _ToolReturn | str:
     request_meta = request_meta_factory()
+    log_caller = _log_value(request_meta["caller"])
+    log_request_id = _log_value(request_meta["request_id"])
     retry_after = check_caller_rate_limit_fn(request_meta["caller"] or "local")
     if retry_after is not None:
         record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="rate limited")
@@ -449,7 +465,7 @@ async def execute_tool_sync_async(
             elapsed_ms=0,
             error="rate limited",
         )
-        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, request_meta["caller"], retry_after)
+        logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, log_caller, retry_after)
         return truncate_response_fn(
             json.dumps(
                 {
@@ -462,7 +478,7 @@ async def execute_tool_sync_async(
         )
     async with get_tool_semaphore_fn():
         start = time.perf_counter()
-        logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, request_meta["caller"], request_meta["request_id"])
+        logger.info("mcp tool start: %s caller=%s request_id=%s", tool_name, log_caller, log_request_id)
         try:
             result = await asyncio.wait_for(
                 asyncio.to_thread(handler, *args, **kwargs),
@@ -486,7 +502,7 @@ async def execute_tool_sync_async(
                 elapsed_ms=elapsed_ms,
                 error=f"timed out after {timeout_seconds:.1f}s",
             )
-            logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, request_meta["caller"], timeout_seconds)
+            logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, log_caller, timeout_seconds)
             return truncate_response_fn(
                 json.dumps(
                     {
@@ -498,7 +514,7 @@ async def execute_tool_sync_async(
             )
         except Exception as exc:
             elapsed_ms = int((time.perf_counter() - start) * 1000)
-            sanitized = sanitize_error_fn(exc)
+            sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
             record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
             record_tool_request_fn(
                 tool_name,
@@ -509,8 +525,8 @@ async def execute_tool_sync_async(
                 elapsed_ms=elapsed_ms,
                 error=sanitized,
             )
-            logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, request_meta["caller"], sanitized)
-            raise
+            logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
+            return truncate_response_fn(_error_payload(tool_name, sanitized))
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=True)
         record_tool_request_fn(
@@ -521,7 +537,7 @@ async def execute_tool_sync_async(
             status="ok",
             elapsed_ms=elapsed_ms,
         )
-        logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, request_meta["caller"], elapsed_ms)
+        logger.info("mcp tool ok: %s caller=%s (%dms)", tool_name, log_caller, elapsed_ms)
         return result
 
 

@@ -102,6 +102,11 @@ class InMemoryPolicyStore:
         self._policies: dict[str, GatewayPolicy] = {}
         self._audit: list[PolicyAuditEntry] = []
 
+    def init_schema(self) -> None:
+        """No-op: the in-memory backend has no persistent schema. Present so the
+        in-memory store satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+
     def put_policy(self, policy: GatewayPolicy) -> None:
         self._policies[policy.policy_id] = policy
 
@@ -182,6 +187,11 @@ class SQLitePolicyStore:
             conn.execute("PRAGMA journal_mode=WAL")
             self._local.conn = conn
         return conn
+
+    def init_schema(self) -> None:
+        """Idempotently (re)create this store's tables. Satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+        self._init_db()
 
     def _init_db(self) -> None:
         c = self._conn

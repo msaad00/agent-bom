@@ -151,6 +151,11 @@ class InMemoryRuntimeEventStore:
         self._sessions: dict[tuple[str, str], RuntimeSessionRecord] = {}
         self._lock = threading.Lock()
 
+    def init_schema(self) -> None:
+        """No-op: the in-memory backend has no persistent schema. Present so the
+        in-memory store satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+
     def put_observation(self, record: RuntimeObservationRecord) -> None:
         key = (record.tenant_id, record.observation_id)
         session_key = (record.tenant_id, record.session_id)
@@ -199,6 +204,11 @@ class SQLiteRuntimeEventStore:
             self._local.conn.execute("PRAGMA journal_mode=WAL")
         conn: sqlite3.Connection = self._local.conn
         return conn
+
+    def init_schema(self) -> None:
+        """Idempotently (re)create this store's tables. Satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+        self._init_db()
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "runtime_events")
@@ -371,17 +381,21 @@ def get_runtime_event_store() -> RuntimeEventStore:
     global _RUNTIME_EVENT_STORE
     if _RUNTIME_EVENT_STORE is not None:
         return _RUNTIME_EVENT_STORE
-    from agent_bom.api.durable_store import select_backend, sqlite_path
+    from agent_bom.storage.base import BackendKind
+    from agent_bom.storage.factory import resolve_backend
 
-    backend = select_backend()
-    if backend == "postgres":
+    # mode="durable" preserves this store's durable-by-default ladder (the
+    # behaviour the old durable_store.select_backend() gave): Postgres →
+    # in-memory only on explicit ephemeral opt-out → durable SQLite default.
+    selection = resolve_backend(mode="durable")
+    if selection.backend is BackendKind.POSTGRES:
         from agent_bom.api.postgres_runtime_event import PostgresRuntimeEventStore
 
         _RUNTIME_EVENT_STORE = PostgresRuntimeEventStore()
-    elif backend == "memory":
+    elif selection.backend is BackendKind.MEMORY:
         _RUNTIME_EVENT_STORE = InMemoryRuntimeEventStore()
     else:
-        _RUNTIME_EVENT_STORE = SQLiteRuntimeEventStore(sqlite_path())
+        _RUNTIME_EVENT_STORE = SQLiteRuntimeEventStore(selection.sqlite_path or "")
     return _RUNTIME_EVENT_STORE
 
 

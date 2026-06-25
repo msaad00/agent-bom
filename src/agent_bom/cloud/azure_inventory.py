@@ -43,6 +43,7 @@ from typing import Any
 
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
 
+from .aws_inventory import dedupe_missing_permissions, record_discovery_failure
 from .normalization import sanitize_discovery_warning
 
 logger = logging.getLogger(__name__)
@@ -209,6 +210,7 @@ def discover_inventory(
         "app_services": [],
         "management_groups": [],
         "warnings": [],
+        "missing_permissions": [],
         "discovery_envelope": None,
     }
 
@@ -282,18 +284,36 @@ def discover_inventory(
 
     collected: dict[str, list[dict[str, Any]]] = {}
     task_warnings: dict[str, list[str]] = {key: [] for key, _ in discovery_tasks}
+    # Parallel per-task accumulator so one discoverer's missing-permission entries
+    # never race another's. Merged back in deterministic task order, then deduped.
+    task_missing: dict[str, list[dict[str, str]]] = {key: [] for key, _ in discovery_tasks}
+    missing: list[dict[str, str]] = []
     if discovery_tasks:
         with ThreadPoolExecutor(max_workers=min(8, len(discovery_tasks))) as executor:
-            future_to_key = {executor.submit(fn, credential, resolved_sub, warnings=task_warnings[key]): key for key, fn in discovery_tasks}
+            future_to_key = {
+                executor.submit(fn, credential, resolved_sub, warnings=task_warnings[key], missing=task_missing[key]): key
+                for key, fn in discovery_tasks
+            }
             for future in as_completed(future_to_key):
                 key = future_to_key[future]
                 try:
                     collected[key] = future.result()
                 except Exception as exc:  # noqa: BLE001 — one service failing must not sink the rest
                     collected[key] = []
-                    task_warnings[key].append(sanitize_discovery_warning(exc))
+                    # Translate the abort into the same actionable guidance a
+                    # discoverer-local failure would have produced, so a crash at
+                    # the future boundary is never a silent empty result.
+                    record_discovery_failure(
+                        exc=exc,
+                        resource_type=key.replace("_", " "),
+                        permission=f"Microsoft.*/{key}/read",
+                        cloud="azure",
+                        warnings=task_warnings[key],
+                        missing=task_missing[key],
+                    )
     for key, _ in discovery_tasks:
         warnings.extend(task_warnings[key])
+        missing.extend(task_missing[key])
 
     storage_accounts = collected.get("storage_accounts", [])
     instances = collected.get("instances", [])
@@ -373,6 +393,7 @@ def discover_inventory(
         "app_services": app_services,
         "management_groups": management_groups,
         "warnings": warnings,
+        "missing_permissions": dedupe_missing_permissions(missing),
         "discovery_envelope": envelope.to_dict(),
     }
 
@@ -461,7 +482,9 @@ def discover_all_subscription_inventories(credential: Any = None, *, force: bool
 # ---------------------------------------------------------------------------
 
 
-def _discover_storage_accounts(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_storage_accounts(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Storage Account in the subscription (read-only).
 
     Public-access posture is read from the account's
@@ -503,8 +526,15 @@ def _discover_storage_accounts(credential: Any, subscription_id: str, *, warning
                     "subscription_id": subscription_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Storage Accounts: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Storage Accounts list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Storage Accounts",
+            permission="Microsoft.Storage/storageAccounts/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return accounts
 
 
@@ -513,7 +543,9 @@ def _discover_storage_accounts(credential: Any, subscription_id: str, *, warning
 # ---------------------------------------------------------------------------
 
 
-def _discover_vms(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_vms(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate all VMs in the subscription (read-only, NOT tag-filtered)."""
     try:
         from azure.mgmt.compute import ComputeManagementClient
@@ -544,12 +576,21 @@ def _discover_vms(credential: Any, subscription_id: str, *, warnings: list[str])
                     "subscription_id": subscription_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure virtual machines: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure virtual machines list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure virtual machines",
+            permission="Microsoft.Compute/virtualMachines/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return instances
 
 
-def _discover_aks_clusters(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_aks_clusters(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate AKS (managed Kubernetes) clusters in the subscription (read-only).
 
     Captures control-plane metadata: Kubernetes version, the API-server FQDN
@@ -590,12 +631,21 @@ def _discover_aks_clusters(credential: Any, subscription_id: str, *, warnings: l
                     "internet_facing": bool(fqdn) and not private_cluster,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure AKS clusters: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure AKS clusters list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure AKS clusters",
+            permission="Microsoft.ContainerService/managedClusters/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return clusters
 
 
-def _discover_nsgs(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_nsgs(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate all Network Security Groups in the subscription (read-only)."""
     try:
         from azure.mgmt.network import NetworkManagementClient
@@ -612,8 +662,15 @@ def _discover_nsgs(credential: Any, subscription_id: str, *, warnings: list[str]
             if not name:
                 continue
             groups.append(_normalize_nsg(nsg, nsg_id=nsg_id, name=name, subscription_id=subscription_id))
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure network security groups: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure network security groups list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure network security groups",
+            permission="Microsoft.Network/networkSecurityGroups/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return groups
 
 
@@ -697,7 +754,9 @@ def _safe_int(value: str) -> int | None:
 # ---------------------------------------------------------------------------
 
 
-def _discover_managed_identities(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_managed_identities(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate user-assigned managed identities in the subscription (read-only).
 
     Each identity becomes a ``service_principal`` graph node carrying its
@@ -734,12 +793,21 @@ def _discover_managed_identities(credential: Any, subscription_id: str, *, warni
                     "privilege_level": "unknown",
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure managed identities: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure managed identities list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure managed identities",
+            permission="Microsoft.ManagedIdentity/userAssignedIdentities/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return identities
 
 
-def _discover_role_assignments(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_role_assignments(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate Azure RBAC role assignments in the subscription (read-only).
 
     Each assignment links a principal (managed identity / service principal /
@@ -783,8 +851,15 @@ def _discover_role_assignments(credential: Any, subscription_id: str, *, warning
                     "account_id": subscription_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure role assignments: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure role assignments list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure role assignments",
+            permission="Microsoft.Authorization/roleAssignments/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return assignments
 
 
@@ -793,7 +868,9 @@ def _discover_role_assignments(credential: Any, subscription_id: str, *, warning
 # ---------------------------------------------------------------------------
 
 
-def _discover_key_vaults(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_key_vaults(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Key Vault in the subscription (read-only).
 
     Reads only control-plane metadata (URI, RBAC mode, public-network posture);
@@ -826,12 +903,21 @@ def _discover_key_vaults(credential: Any, subscription_id: str, *, warnings: lis
                     "public_network_access": str(getattr(props, "public_network_access", "") or "") if props else "",
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Key Vaults: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Key Vaults list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Key Vaults",
+            permission="Microsoft.KeyVault/vaults/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return vaults
 
 
-def _discover_container_registries(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_container_registries(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Container Registry in the subscription (read-only)."""
     try:
         from azure.mgmt.containerregistry import ContainerRegistryManagementClient
@@ -861,8 +947,15 @@ def _discover_container_registries(credential: Any, subscription_id: str, *, war
                     "public_network_access": str(getattr(registry, "public_network_access", "") or ""),
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Container Registries: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Container Registries list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Container Registries",
+            permission="Microsoft.ContainerRegistry/registries/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return registries
 
 
@@ -895,7 +988,9 @@ def _append_db_servers(databases: list[dict[str, Any]], servers: Any, *, native_
         )
 
 
-def _discover_databases(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_databases(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate managed databases in the subscription (read-only).
 
     Covers Cosmos DB, Azure SQL, PostgreSQL, and MySQL — each item carries its
@@ -930,8 +1025,15 @@ def _discover_databases(credential: Any, subscription_id: str, *, warnings: list
             )
     except ImportError:
         warnings.append("azure-mgmt-cosmosdb not installed. Skipping Cosmos DB inventory.")
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Cosmos DB accounts: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Cosmos DB accounts list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Cosmos DB accounts",
+            permission="Microsoft.DocumentDB/databaseAccounts/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
 
     try:
         from azure.mgmt.sql import SqlManagementClient
@@ -940,8 +1042,15 @@ def _discover_databases(credential: Any, subscription_id: str, *, warnings: list
         _append_db_servers(databases, sql_client.servers.list(), native_type="Microsoft.Sql/servers", engine="azure-sql")
     except ImportError:
         warnings.append("azure-mgmt-sql not installed. Skipping Azure SQL inventory.")
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure SQL servers: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure SQL servers list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure SQL servers",
+            permission="Microsoft.Sql/servers/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
 
     try:
         from azure.mgmt.rdbms.postgresql_flexibleservers import PostgreSQLManagementClient
@@ -955,8 +1064,15 @@ def _discover_databases(credential: Any, subscription_id: str, *, warnings: list
         )
     except ImportError:
         warnings.append("azure-mgmt-rdbms not installed. Skipping PostgreSQL inventory.")
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure PostgreSQL servers: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure PostgreSQL servers list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure PostgreSQL servers",
+            permission="Microsoft.DBforPostgreSQL/flexibleServers/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
 
     try:
         from azure.mgmt.rdbms.mysql_flexibleservers import MySQLManagementClient
@@ -965,8 +1081,15 @@ def _discover_databases(credential: Any, subscription_id: str, *, warnings: list
         _append_db_servers(databases, mysql_client.servers.list(), native_type="Microsoft.DBforMySQL/flexibleServers", engine="mysql")
     except ImportError:
         warnings.append("azure-mgmt-rdbms not installed. Skipping MySQL inventory.")
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure MySQL servers: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure MySQL servers list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure MySQL servers",
+            permission="Microsoft.DBforMySQL/flexibleServers/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
 
     return databases
 
@@ -976,7 +1099,9 @@ def _discover_databases(credential: Any, subscription_id: str, *, warnings: list
 # ---------------------------------------------------------------------------
 
 
-def _discover_virtual_networks(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_virtual_networks(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every VNet in the subscription with its address space and subnets."""
     try:
         from azure.mgmt.network import NetworkManagementClient
@@ -1006,12 +1131,21 @@ def _discover_virtual_networks(credential: Any, subscription_id: str, *, warning
                     "subnets": [s for s in subnets if s],
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure virtual networks: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure virtual networks list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure virtual networks",
+            permission="Microsoft.Network/virtualNetworks/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return vnets
 
 
-def _discover_public_ips(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_public_ips(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate public IP addresses — the internet-facing exposure surface."""
     try:
         from azure.mgmt.network import NetworkManagementClient
@@ -1038,12 +1172,21 @@ def _discover_public_ips(credential: Any, subscription_id: str, *, warnings: lis
                     "allocation_method": str(getattr(pip, "public_ip_allocation_method", "") or ""),
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure public IPs: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure public IPs list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure public IPs",
+            permission="Microsoft.Network/publicIPAddresses/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return public_ips
 
 
-def _discover_load_balancers(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_load_balancers(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate load balancers with their SKU and public-frontend posture."""
     try:
         from azure.mgmt.network import NetworkManagementClient
@@ -1079,12 +1222,21 @@ def _discover_load_balancers(credential: Any, subscription_id: str, *, warnings:
                     "public_ip_ids": public_ip_ids,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure load balancers: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure load balancers list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure load balancers",
+            permission="Microsoft.Network/loadBalancers/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return load_balancers
 
 
-def _discover_application_gateways(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_application_gateways(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate Application Gateways (L7 LB + WAF) in the subscription (read-only).
 
     Captures SKU tier, whether a WAF is attached (inline config or linked
@@ -1136,12 +1288,21 @@ def _discover_application_gateways(credential: Any, subscription_id: str, *, war
                     "public_ip_ids": public_ip_ids,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Application Gateways: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Application Gateways list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Application Gateways",
+            permission="Microsoft.Network/applicationGateways/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return gateways
 
 
-def _discover_front_doors(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_front_doors(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate Azure Front Door (classic) profiles — global internet edge (read-only)."""
     try:
         from azure.mgmt.frontdoor import FrontDoorManagementClient
@@ -1170,12 +1331,21 @@ def _discover_front_doors(credential: Any, subscription_id: str, *, warnings: li
                     "internet_facing": True,  # Front Door is a global internet edge by definition
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Front Doors: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Front Doors list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Front Doors",
+            permission="Microsoft.Network/frontDoors/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return front_doors
 
 
-def _discover_api_management(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_api_management(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate API Management services (API gateway) in the subscription (read-only).
 
     Internet-facing unless deployed *Internal* into a VNet. Control-plane only —
@@ -1214,8 +1384,15 @@ def _discover_api_management(credential: Any, subscription_id: str, *, warnings:
                     "internet_facing": internet_facing,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure API Management services: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure API Management services list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure API Management services",
+            permission="Microsoft.ApiManagement/service/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return services
 
 
@@ -1224,7 +1401,9 @@ def _discover_api_management(credential: Any, subscription_id: str, *, warnings:
 # ---------------------------------------------------------------------------
 
 
-def _discover_event_hubs(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_event_hubs(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Event Hub namespace in the subscription (read-only).
 
     Control-plane metadata only (SKU, public-network posture); never reads
@@ -1257,12 +1436,21 @@ def _discover_event_hubs(credential: Any, subscription_id: str, *, warnings: lis
                     "public_network_access": str(getattr(namespace, "public_network_access", "") or ""),
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Event Hub namespaces: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Event Hub namespaces list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Event Hub namespaces",
+            permission="Microsoft.EventHub/namespaces/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return namespaces
 
 
-def _discover_service_bus(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_service_bus(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Service Bus namespace in the subscription (read-only).
 
     Control-plane metadata only (SKU, public-network posture); never reads
@@ -1295,12 +1483,21 @@ def _discover_service_bus(credential: Any, subscription_id: str, *, warnings: li
                     "public_network_access": str(getattr(namespace, "public_network_access", "") or ""),
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Service Bus namespaces: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Service Bus namespaces list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Service Bus namespaces",
+            permission="Microsoft.ServiceBus/namespaces/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return namespaces
 
 
-def _discover_redis_caches(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_redis_caches(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Azure Cache for Redis instance in the subscription (read-only).
 
     Control-plane metadata only (SKU, public-network posture, non-SSL port);
@@ -1334,12 +1531,21 @@ def _discover_redis_caches(credential: Any, subscription_id: str, *, warnings: l
                     "non_ssl_port_enabled": bool(getattr(cache, "enable_non_ssl_port", False)),
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Cache for Redis instances: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Cache for Redis instances list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Cache for Redis instances",
+            permission="Microsoft.Cache/redis/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return caches
 
 
-def _discover_managed_disks(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_managed_disks(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Managed Disk in the subscription (read-only).
 
     Control-plane metadata only (size, encryption type, public-network posture);
@@ -1373,12 +1579,21 @@ def _discover_managed_disks(credential: Any, subscription_id: str, *, warnings: 
                     "public_network_access": str(getattr(disk, "public_network_access", "") or ""),
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure Managed Disks: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Managed Disks list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Managed Disks",
+            permission="Microsoft.Compute/disks/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return disks
 
 
-def _discover_app_services(credential: Any, subscription_id: str, *, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_app_services(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every App Service site (Web Apps + Function Apps) read-only.
 
     ``web_apps.list()`` returns both; ``kind`` (contains ``functionapp``)
@@ -1419,8 +1634,15 @@ def _discover_app_services(credential: Any, subscription_id: str, *, warnings: l
                     "internet_facing": bool(default_host_name) and enabled,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Azure App Services: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Azure App Services list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure App Services",
+            permission="Microsoft.Web/sites/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
     return sites
 
 

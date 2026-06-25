@@ -10,7 +10,6 @@ accountability layer commercial agent-runtime products charge for, kept open.
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
 from collections import defaultdict
@@ -18,6 +17,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.storage.base import StorageSchema, TableSchema
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,75 @@ def _rollup_by_tag(records: list[LLMCostRecord], tag_key: str) -> list[dict[str,
     return sorted(buckets.values(), key=lambda b: b["cost_usd"], reverse=True)
 
 
+# ── Portable schema seam (reference) ──────────────────────────────────────────
+#
+# Single source-of-truth schema for the llm_costs store, shared across backends.
+# The SQLite and Postgres ``_init_db`` / ``_init_tables`` paths below remain the
+# executed DDL (audited, with their additive migrations); this declaration mirrors
+# them so a conformance/parity test can assert both backends cover the same logical
+# columns and a new backend is a registration here rather than a fork. See
+# ``agent_bom.storage.base.StorageSchema`` for the seam contract.
+COST_STORAGE_SCHEMA = StorageSchema(
+    component="llm_costs",
+    tables=(
+        TableSchema(
+            name="llm_costs",
+            columns=(
+                "tenant_id",
+                "call_id",
+                "agent",
+                "session_id",
+                "provider",
+                "model",
+                "input_tokens",
+                "output_tokens",
+                "cost_usd",
+                "priced",
+                "observed_at",
+                "cost_center",
+                "allocation_tags",
+            ),
+            ddl_by_backend={
+                "sqlite": (
+                    "CREATE TABLE IF NOT EXISTS llm_costs (tenant_id TEXT NOT NULL, "
+                    "call_id TEXT NOT NULL, agent TEXT NOT NULL, session_id TEXT NOT NULL, "
+                    "provider TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER NOT NULL, "
+                    "output_tokens INTEGER NOT NULL, cost_usd REAL NOT NULL, priced INTEGER NOT NULL, "
+                    "observed_at TEXT NOT NULL, cost_center TEXT NOT NULL DEFAULT '', "
+                    "allocation_tags TEXT NOT NULL DEFAULT '{}', PRIMARY KEY (tenant_id, call_id))"
+                ),
+                "postgres": (
+                    "CREATE TABLE IF NOT EXISTS llm_costs (tenant_id TEXT NOT NULL, "
+                    "call_id TEXT NOT NULL, agent TEXT NOT NULL, session_id TEXT NOT NULL, "
+                    "provider TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER NOT NULL, "
+                    "output_tokens INTEGER NOT NULL, cost_usd DOUBLE PRECISION NOT NULL, priced BOOLEAN NOT NULL, "
+                    "observed_at TEXT NOT NULL, cost_center TEXT NOT NULL DEFAULT '', "
+                    "allocation_tags TEXT NOT NULL DEFAULT '{}', PRIMARY KEY (tenant_id, call_id))"
+                ),
+            },
+        ),
+        TableSchema(
+            name="llm_cost_budgets",
+            columns=("tenant_id", "agent", "limit_usd", "updated_at", "mode", "cost_center"),
+            ddl_by_backend={
+                "sqlite": (
+                    "CREATE TABLE IF NOT EXISTS llm_cost_budgets (tenant_id TEXT NOT NULL, "
+                    "agent TEXT NOT NULL DEFAULT '', limit_usd REAL NOT NULL, updated_at TEXT NOT NULL, "
+                    "mode TEXT NOT NULL DEFAULT 'report', cost_center TEXT NOT NULL DEFAULT '', "
+                    "PRIMARY KEY (tenant_id, agent, cost_center))"
+                ),
+                "postgres": (
+                    "CREATE TABLE IF NOT EXISTS llm_cost_budgets (tenant_id TEXT NOT NULL, "
+                    "agent TEXT NOT NULL DEFAULT '', limit_usd DOUBLE PRECISION NOT NULL, updated_at TEXT NOT NULL, "
+                    "mode TEXT NOT NULL DEFAULT 'report', cost_center TEXT NOT NULL DEFAULT '', "
+                    "PRIMARY KEY (tenant_id, agent, cost_center))"
+                ),
+            },
+        ),
+    ),
+)
+
+
 class CostStore(Protocol):
     def record_cost(self, record: LLMCostRecord) -> None: ...
 
@@ -208,6 +277,11 @@ class InMemoryCostStore:
         self._budgets: dict[tuple[str, str, str], CostBudget] = {}
         self._lock = threading.Lock()
 
+    def init_schema(self) -> None:
+        """No-op: the in-memory backend has no persistent schema. Present so the
+        in-memory store satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+
     def record_cost(self, record: LLMCostRecord) -> None:
         with self._lock:
             if record.call_id in self._seen[record.tenant_id]:
@@ -255,6 +329,11 @@ class SQLiteCostStore:
             self._local.conn.execute("PRAGMA journal_mode=WAL")
         conn: sqlite3.Connection = self._local.conn
         return conn
+
+    def init_schema(self) -> None:
+        """Idempotently (re)create this store's tables. Satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+        self._init_db()
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "llm_costs")
@@ -445,15 +524,19 @@ def get_cost_store() -> CostStore:
     global _COST_STORE
     if _COST_STORE is not None:
         return _COST_STORE
-    # Priority mirrors the control-plane store-swap: shared Postgres first so
-    # per-agent spend and budget enforcement stay consistent across replicas;
-    # SQLite/in-memory remain for single-node and dev.
-    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    # Backend selection is centralized in the storage factory (Postgres → shared
+    # SQLite → in-memory) so per-agent spend and budget enforcement land on the
+    # same tier every other env-ladder store does, instead of a hand-rolled copy.
+    from agent_bom.storage.base import BackendKind
+    from agent_bom.storage.factory import resolve_backend
+
+    selection = resolve_backend(mode="env")
+    if selection.backend is BackendKind.POSTGRES:
         from agent_bom.api.postgres_cost import PostgresCostStore
 
         _COST_STORE = PostgresCostStore()
-    elif os.environ.get("AGENT_BOM_DB"):
-        _COST_STORE = SQLiteCostStore(os.environ["AGENT_BOM_DB"])
+    elif selection.backend is BackendKind.SQLITE and selection.sqlite_path:
+        _COST_STORE = SQLiteCostStore(selection.sqlite_path)
     else:
         _COST_STORE = InMemoryCostStore()
     return _COST_STORE

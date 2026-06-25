@@ -71,6 +71,11 @@ class InMemoryProxyReplayStore:
         self._rows: list[dict[str, Any]] = []
         self._lock = threading.Lock()
 
+    def init_schema(self) -> None:
+        """No-op: the in-memory backend has no persistent schema. Present so the
+        in-memory store satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+
     def add(
         self,
         tenant_id: str,
@@ -135,6 +140,11 @@ class SQLiteProxyReplayStore:
             self._local.conn.execute("PRAGMA journal_mode=WAL")
         conn: sqlite3.Connection = self._local.conn
         return conn
+
+    def init_schema(self) -> None:
+        """Idempotently (re)create this store's table. Satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+        self._init_db()
 
     def _init_db(self) -> None:
         from agent_bom.api.storage_schema import ensure_sqlite_schema_version
@@ -217,6 +227,11 @@ class PostgresProxyReplayStore:
         from agent_bom.api.postgres_common import _get_pool
 
         self._pool = pool or _get_pool()
+        self._init_tables()
+
+    def init_schema(self) -> None:
+        """Idempotently (re)create this store's table. Satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
         self._init_tables()
 
     def _init_tables(self) -> None:
@@ -325,16 +340,20 @@ def get_proxy_replay_store() -> ProxyReplayStore:
       3. neither -> in-memory
     """
 
+    from agent_bom.storage.base import BackendKind
+    from agent_bom.storage.factory import resolve_backend
+
     global _REPLAY_STORE
     if _REPLAY_STORE is not None:
         return _REPLAY_STORE
     with _REPLAY_LOCK:
         if _REPLAY_STORE is not None:
             return _REPLAY_STORE
-        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        selection = resolve_backend(mode="env")
+        if selection.backend is BackendKind.POSTGRES:
             _REPLAY_STORE = PostgresProxyReplayStore()
-        elif os.environ.get("AGENT_BOM_DB"):
-            _REPLAY_STORE = SQLiteProxyReplayStore(os.environ["AGENT_BOM_DB"])
+        elif selection.backend is BackendKind.SQLITE and selection.sqlite_path:
+            _REPLAY_STORE = SQLiteProxyReplayStore(selection.sqlite_path)
         else:
             _REPLAY_STORE = InMemoryProxyReplayStore()
     return _REPLAY_STORE

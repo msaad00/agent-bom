@@ -34,6 +34,11 @@ class PostgresRuntimeEventStore:
         self._pool = pool or _get_pool()
         self._init_tables()
 
+    def init_schema(self) -> None:
+        """Idempotently (re)create this store's tables. Satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+        self._init_tables()
+
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
             ensure_postgres_schema_version(conn, "runtime_events")

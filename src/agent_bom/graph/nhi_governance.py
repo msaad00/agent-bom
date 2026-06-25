@@ -521,6 +521,82 @@ def apply_nhi_governance_with_findings(
     return summary, findings
 
 
+def describe_nhi_lifecycle_posture(
+    *,
+    tenant_id: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Summarize lifecycle state of agent-bom's OWN issued identities + JIT grants.
+
+    Complements :func:`describe_nhi_governance_posture` (which scores cloud NHIs
+    in the graph) with the enforcement layer over agent-bom-issued identities:
+    rotation-due tokens, dormant-deprovision opt-in state, expiring/expired JIT
+    grants, and per-identity quota coverage. Reads the durable identity store;
+    never raises (returns an ``error`` status on a backend failure).
+    """
+    moment = now or datetime.now(timezone.utc)
+    try:
+        from agent_bom.api.agent_identity_store import (
+            get_agent_identity_store,
+            nhi_deprovision_days,
+            quota_state,
+            token_rotation_days,
+        )
+
+        store = get_agent_identity_store()
+        identities = store.iter_all_identities(limit=10000)
+        grants = store.iter_all_jit_grants(limit=10000)
+    except Exception:  # noqa: BLE001 — posture endpoint must not 500 on a store hiccup
+        return {
+            "status": "error",
+            "message": "agent-identity store unavailable; lifecycle posture could not be computed",
+            "rotation_due": 0,
+            "dormant_deprovision_enabled": False,
+            "expired_grants_pending": 0,
+            "quota_covered": 0,
+        }
+
+    if tenant_id is not None:
+        identities = [i for i in identities if i.tenant_id == tenant_id]
+        grants = [g for g in grants if g.tenant_id == tenant_id]
+
+    live = [i for i in identities if i.status in ("active", "rotating")]
+    rotation_due = sum(1 for i in live if i.rotation_due)
+    quota_covered = sum(1 for i in live if quota_state(i)["enforced"])
+    expired_pending = 0
+    for g in grants:
+        if g.status != "active" or not g.expires_at:
+            continue
+        try:
+            if moment > datetime.fromisoformat(g.expires_at):
+                expired_pending += 1
+        except ValueError:
+            continue
+    dormant_window = nhi_deprovision_days()
+
+    if rotation_due or expired_pending:
+        status = "attention_required"
+        message = "Some agent identities need token rotation or have expired JIT grants pending cleanup."
+    else:
+        status = "ok"
+        message = "Agent-identity lifecycle is within bounds."
+
+    return {
+        "status": status,
+        "secret_values_included": False,
+        "live_identities": len(live),
+        "rotation_due": rotation_due,
+        "rotation_window_days": token_rotation_days(),
+        "dormant_deprovision_enabled": dormant_window > 0,
+        "dormant_deprovision_days": dormant_window,
+        "expired_grants_pending": expired_pending,
+        "active_grants": sum(1 for g in grants if g.status == "active"),
+        "quota_covered": quota_covered,
+        "message": message,
+        "generated_from": "/v1/auth/nhi/lifecycle",
+    }
+
+
 __all__ = [
     "DEFAULT_DORMANT_DAYS",
     "IdentityGovernance",
@@ -528,6 +604,7 @@ __all__ = [
     "apply_nhi_governance_with_findings",
     "build_nhi_governance_findings",
     "describe_nhi_governance_posture",
+    "describe_nhi_lifecycle_posture",
     "dormant_days",
     "evaluate_identity_governance",
 ]

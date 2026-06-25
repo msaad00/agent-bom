@@ -662,3 +662,57 @@ class TestIamRoleAgentEdges:
         # Both agents have an ATTACHED_TO edge from the shared role
         attached = [e for e in graph.edges if e.kind.value == "attached_to"]
         assert len(attached) == 2
+
+
+class TestLateralPathDeterminism:
+    """The multi-source lateral-path output order must be stable across runs so
+    AI agents can cache and chain on it (mirrors mcp_tools/analysis.py)."""
+
+    @staticmethod
+    def _collect_all_agent_paths(graph, depth: int = 4) -> list:
+        """Replicate the source-less branch of context_graph_impl."""
+        paths: list = []
+        for nid in sorted(graph.nodes.keys()):
+            if graph.nodes[nid].kind == NodeKind.AGENT:
+                paths.extend(find_lateral_paths(graph, nid, max_depth=depth))
+        return paths
+
+    def test_multi_source_path_order_is_stable_across_node_order(self):
+        agent_specs = [
+            ("agent-a", "shared-srv"),
+            ("agent-b", "shared-srv"),
+            ("agent-c", "shared-srv"),
+        ]
+        forward = [_agent(name=n, servers=[_server(name=s)]) for n, s in agent_specs]
+        reordered = [_agent(name=n, servers=[_server(name=s)]) for n, s in reversed(agent_specs)]
+
+        graph_a = build_context_graph(forward, [])
+        graph_b = build_context_graph(reordered, [])
+
+        paths_a = self._collect_all_agent_paths(graph_a)
+        paths_b = self._collect_all_agent_paths(graph_b)
+
+        order_a = [(p.source, p.target) for p in paths_a]
+        order_b = [(p.source, p.target) for p in paths_b]
+
+        assert order_a == order_b
+        # Two runs over the same graph must be byte-identical too.
+        assert order_a == [(p.source, p.target) for p in self._collect_all_agent_paths(graph_a)]
+
+    def test_serialized_output_is_byte_identical_across_runs(self):
+        import json
+
+        agents = [
+            _agent(name="agent-a", servers=[_server(name="shared-srv", env={"API_KEY": "x"})]),
+            _agent(name="agent-b", servers=[_server(name="shared-srv")]),
+            _agent(name="agent-c", servers=[_server(name="shared-srv")]),
+        ]
+        graph = build_context_graph(agents, [])
+
+        first = self._collect_all_agent_paths(graph)
+        second = self._collect_all_agent_paths(graph)
+
+        risks = compute_interaction_risks(graph)
+        out_first = json.dumps(to_serializable(graph, first, risks), default=str, sort_keys=True)
+        out_second = json.dumps(to_serializable(graph, second, risks), default=str, sort_keys=True)
+        assert out_first == out_second

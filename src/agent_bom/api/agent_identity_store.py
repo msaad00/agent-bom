@@ -14,6 +14,8 @@ import builtins
 import hashlib
 import ipaddress
 import json
+import logging
+import os
 import secrets
 import sqlite3
 import threading
@@ -68,6 +70,21 @@ class AgentIdentity:
     rotated_to_id: str = ""
     revoked_at: str = ""
     revoked_reason: str = ""
+    # Last observed authentication time for this identity (ISO-8601, injected by
+    # the runtime verifier). Drives dormant auto-deprovision; empty means the
+    # identity has never been observed authenticating.
+    last_used_at: str = ""
+    # Advisory rotation flag. The cleanup loop sets this True when the token's
+    # age exceeds the configured rotation window; the secret is never rotated
+    # silently — an operator/automation rotates it explicitly via rotate_identity.
+    rotation_due: bool = False
+    rotation_due_at: str = ""
+    # Per-identity quota DATA. These are surfaced via ``quota_state`` for the
+    # gateway to enforce in a later PR; this store records them but does not
+    # itself meter requests. 0 / unset means "no limit".
+    max_requests_per_window: int = 0
+    max_cost_usd_per_window: float = 0.0
+    quota_window_seconds: int = 0
 
     def tool_allowed(self, tool_name: str) -> bool:
         """True when this identity may call ``tool_name`` (empty allowlist = any)."""
@@ -286,6 +303,10 @@ class AgentIdentityStore(Protocol):
         at: datetime | None = None,
     ) -> AgentJITGrant | None: ...
 
+    def iter_all_identities(self, *, limit: int = 10000) -> builtins.list[AgentIdentity]: ...
+
+    def iter_all_jit_grants(self, *, limit: int = 10000) -> builtins.list[AgentJITGrant]: ...
+
     def put_conditional_policy(self, policy: ConditionalAccessPolicy) -> None: ...
 
     def get_conditional_policy(self, policy_id: str) -> ConditionalAccessPolicy | None: ...
@@ -372,6 +393,14 @@ class InMemoryAgentIdentityStore:
                 if g.tenant_id == tenant_id and g.identity_id == identity_id and g.tool_name == tool_name and g.is_live(at=at)
             ]
             return sorted(candidates, key=lambda g: g.expires_at, reverse=True)[0] if candidates else None
+
+    def iter_all_identities(self, *, limit: int = 10000) -> builtins.list[AgentIdentity]:
+        with self._lock:
+            return list(self._by_id.values())[:limit]
+
+    def iter_all_jit_grants(self, *, limit: int = 10000) -> builtins.list[AgentJITGrant]:
+        with self._lock:
+            return list(self._jit_by_id.values())[:limit]
 
     def put_conditional_policy(self, policy: ConditionalAccessPolicy) -> None:
         with self._lock:
@@ -559,6 +588,14 @@ class SQLiteAgentIdentityStore:
         grants = [AgentJITGrant(**json.loads(r[0])) for r in rows]
         live = [g for g in grants if g.is_live(at=at)]
         return live[0] if live else None
+
+    def iter_all_identities(self, *, limit: int = 10000) -> builtins.list[AgentIdentity]:
+        rows = self._conn.execute("SELECT data FROM agent_identities ORDER BY issued_at ASC LIMIT ?", (limit,)).fetchall()
+        return [AgentIdentity(**json.loads(r[0])) for r in rows]
+
+    def iter_all_jit_grants(self, *, limit: int = 10000) -> builtins.list[AgentJITGrant]:
+        rows = self._conn.execute("SELECT data FROM agent_identity_jit_grants ORDER BY requested_at ASC LIMIT ?", (limit,)).fetchall()
+        return [AgentJITGrant(**json.loads(r[0])) for r in rows]
 
     def put_conditional_policy(self, policy: ConditionalAccessPolicy) -> None:
         self._conn.execute(
@@ -800,6 +837,409 @@ def active_jit_grant_for_tool(
     at: datetime | None = None,
 ) -> AgentJITGrant | None:
     return store.active_jit_grant(tenant_id, identity_id, tool_name, at=at)
+
+
+# ── Lifecycle-enforcement sweeps (driven by the API cleanup loop) ─────────────
+#
+# These transition lingering JIT grants and dormant agent-bom identities to a
+# terminal state and surface rotation-due tokens, emitting one append-only,
+# hash-chained governance-audit record per action. Every function:
+#   • takes an INJECTED ``now`` (never calls datetime.now itself) so results are
+#     deterministic and consistent across replicas,
+#   • derives a DETERMINISTIC action id from stable target state (so a re-run
+#     over identical state produces no duplicate audit row and no double
+#     transition — idempotent), and
+#   • catches store/DB errors per-row and continues, so a single bad record or a
+#     backend hiccup never aborts the sweep (fail-open for cleanup).
+
+_lifecycle_logger = logging.getLogger("agent_bom.api.nhi_lifecycle")
+
+# Quotas/rotation defaults. 0 = disabled for the deprovision window so dormant
+# auto-revoke is strictly opt-in; rotation defaults to a 90-day advisory flag.
+DEFAULT_TOKEN_ROTATION_DAYS = 90
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return default
+    return parsed if parsed >= 0 else default
+
+
+def nhi_deprovision_days() -> int:
+    """Dormant agent-identity auto-deprovision window in days.
+
+    Default 0 = DISABLED (opt-in). Operators set
+    ``AGENT_BOM_NHI_DEPROVISION_DAYS`` to a positive value to enable automatic
+    revocation of agent-bom's own dormant identities. Cloud NHIs are never
+    written to — this governs issued ``abi_`` identities only.
+    """
+    return _env_int("AGENT_BOM_NHI_DEPROVISION_DAYS", 0)
+
+
+def token_rotation_days() -> int:
+    """Token age (days) beyond which an identity is flagged ``rotation_due``."""
+    return _env_int("AGENT_BOM_TOKEN_ROTATION_DAYS", DEFAULT_TOKEN_ROTATION_DAYS)
+
+
+def quota_state(identity: AgentIdentity) -> dict[str, Any]:
+    """Return the per-identity quota envelope the gateway will later enforce.
+
+    Pure DATA getter: it reports the configured limits and whether any are set,
+    but does not meter usage — request/cost accounting lives in the gateway
+    (separate PR). ``enforced`` is True when at least one positive limit exists.
+    """
+    max_requests = max(0, int(identity.max_requests_per_window or 0))
+    max_cost = max(0.0, float(identity.max_cost_usd_per_window or 0.0))
+    window = max(0, int(identity.quota_window_seconds or 0))
+    return {
+        "identity_id": identity.identity_id,
+        "tenant_id": identity.tenant_id,
+        "max_requests_per_window": max_requests,
+        "max_cost_usd_per_window": max_cost,
+        "window_seconds": window,
+        "enforced": bool((max_requests or max_cost) and window),
+    }
+
+
+def set_identity_quota(
+    store: AgentIdentityStore,
+    identity_id: str,
+    *,
+    max_requests_per_window: int = 0,
+    max_cost_usd_per_window: float = 0.0,
+    window_seconds: int = 0,
+) -> AgentIdentity | None:
+    """Record per-identity quota limits (data only; gateway enforces later)."""
+    identity = store.get(identity_id)
+    if identity is None:
+        return None
+    identity.max_requests_per_window = max(0, int(max_requests_per_window))
+    identity.max_cost_usd_per_window = max(0.0, float(max_cost_usd_per_window))
+    identity.quota_window_seconds = max(0, int(window_seconds))
+    store.put(identity)
+    return identity
+
+
+def _is_postgres_store(store: AgentIdentityStore) -> bool:
+    return type(store).__name__ == "PostgresAgentIdentityStore"
+
+
+def _put_identity_any_tenant(store: AgentIdentityStore, identity: AgentIdentity) -> None:
+    """Persist an identity write that may target a non-ambient tenant.
+
+    The cleanup loop sweeps every tenant, so a write-back for tenant X must
+    satisfy that tenant's RLS WITH CHECK. For Postgres we do the write under a
+    trusted RLS bypass; other backends ignore tenant scoping on write.
+    """
+    if _is_postgres_store(store):
+        from agent_bom.api.postgres_common import bypass_tenant_rls
+
+        with bypass_tenant_rls():
+            store.put(identity)
+    else:
+        store.put(identity)
+
+
+def _put_grant_any_tenant(store: AgentIdentityStore, grant: AgentJITGrant) -> None:
+    if _is_postgres_store(store):
+        from agent_bom.api.postgres_common import bypass_tenant_rls
+
+        with bypass_tenant_rls():
+            store.put_jit_grant(grant)
+    else:
+        store.put_jit_grant(grant)
+
+
+def _emit_audit(record_kwargs: dict[str, Any], audit_log: Any) -> None:
+    """Append one governance-audit record, tolerating a sink failure."""
+    if audit_log is None:
+        return
+    try:
+        from agent_bom.api.governance_audit_log import make_governance_audit_record
+
+        record = make_governance_audit_record(**record_kwargs)
+        audit_log.append(record)
+    except Exception:  # noqa: BLE001 — an audit-sink hiccup must not abort cleanup
+        _lifecycle_logger.warning(
+            "governance audit append failed for action=%s target=%s; "
+            "check the governance_audit_log backend (SQLite path writable / disk space)",
+            record_kwargs.get("action"),
+            record_kwargs.get("target_id"),
+            exc_info=True,
+        )
+
+
+def cleanup_expired_grants(
+    store: AgentIdentityStore,
+    *,
+    now: datetime,
+    audit_log: Any = None,
+    actor: str = "system:nhi-cleanup",
+    limit: int = 10000,
+) -> dict[str, int]:
+    """Transition expired ``active`` and lingering ``denied`` JIT grants to terminal.
+
+    An ``active`` grant whose ``expires_at`` has passed becomes ``revoked`` with
+    reason ``expired``; a ``denied`` grant becomes ``revoked`` (pruned) so it no
+    longer lingers in the active set. The transition is idempotent: a grant
+    already ``revoked`` is skipped, and the audit id is derived from the grant id
+    + its terminal timestamp, so a second sweep over the same state writes no new
+    rows. Never raises; per-grant errors are logged and skipped.
+    """
+    expired = pruned = errors = 0
+    try:
+        grants = store.iter_all_jit_grants(limit=limit)
+    except Exception:  # noqa: BLE001
+        _lifecycle_logger.warning(
+            "JIT-grant cleanup could not list grants; the identity store may be "
+            "unreachable (check AGENT_BOM_POSTGRES_URL / DB connectivity). Skipping this tick.",
+            exc_info=True,
+        )
+        return {"expired": 0, "pruned": 0, "errors": 1}
+
+    for grant in grants:
+        try:
+            if grant.status == "active" and grant.expires_at and now > datetime.fromisoformat(grant.expires_at):
+                before = grant.status
+                grant.status = "revoked"
+                grant.revoked_at = _iso(now)
+                grant.revoked_reason = "expired"
+                _put_grant_any_tenant(store, grant)
+                expired += 1
+                _emit_audit(
+                    {
+                        "tenant_id": grant.tenant_id,
+                        "actor": actor,
+                        "action": "jit_grant_expired",
+                        "target_type": "jit_grant",
+                        "target_id": grant.grant_id,
+                        "reason": "expired",
+                        "before_state": before,
+                        "after_state": "revoked",
+                        "observed_at": _iso(now),
+                        "window_key": grant.expires_at,
+                        "detail": {"identity_id": grant.identity_id, "tool_name": grant.tool_name},
+                    },
+                    audit_log,
+                )
+            elif grant.status == "denied":
+                before = grant.status
+                window_key = grant.denied_at or grant.requested_at
+                grant.status = "revoked"
+                grant.revoked_at = _iso(now)
+                grant.revoked_reason = "denied_pruned"
+                _put_grant_any_tenant(store, grant)
+                pruned += 1
+                _emit_audit(
+                    {
+                        "tenant_id": grant.tenant_id,
+                        "actor": actor,
+                        "action": "jit_grant_denied_pruned",
+                        "target_type": "jit_grant",
+                        "target_id": grant.grant_id,
+                        "reason": "denied_pruned",
+                        "before_state": before,
+                        "after_state": "revoked",
+                        "observed_at": _iso(now),
+                        "window_key": window_key,
+                        "detail": {"identity_id": grant.identity_id, "tool_name": grant.tool_name},
+                    },
+                    audit_log,
+                )
+        except (ValueError, TypeError):
+            errors += 1
+            _lifecycle_logger.warning("skipping JIT grant %s with unparseable timestamps", grant.grant_id)
+        except Exception:  # noqa: BLE001 — one bad write must not abort the sweep
+            errors += 1
+            _lifecycle_logger.warning("failed to clean up JIT grant %s; continuing", grant.grant_id, exc_info=True)
+
+    return {"expired": expired, "pruned": pruned, "errors": errors}
+
+
+def deprovision_dormant_identities(
+    store: AgentIdentityStore,
+    *,
+    now: datetime,
+    dormant_days: int | None = None,
+    audit_log: Any = None,
+    actor: str = "system:nhi-cleanup",
+    limit: int = 10000,
+) -> dict[str, int]:
+    """Revoke agent-bom's OWN identities dormant beyond the configured window.
+
+    DISABLED by default (``dormant_days`` 0 / ``AGENT_BOM_NHI_DEPROVISION_DAYS``
+    unset): operators opt in. Only ``active``/``rotating`` issued identities with
+    a ``last_used_at`` older than the window are revoked, with reason
+    ``dormant_auto_revoke``. Cloud principals are not touched — this store only
+    holds agent-bom-issued identities. Idempotent + injected ``now``; never
+    raises into the loop.
+    """
+    window = dormant_days if dormant_days is not None else nhi_deprovision_days()
+    if window <= 0:
+        return {"revoked": 0, "errors": 0, "disabled": 1}
+
+    revoked = errors = 0
+    try:
+        identities = store.iter_all_identities(limit=limit)
+    except Exception:  # noqa: BLE001
+        _lifecycle_logger.warning(
+            "dormant-identity sweep could not list identities; the identity store may be "
+            "unreachable (check DB connectivity). Skipping this tick.",
+            exc_info=True,
+        )
+        return {"revoked": 0, "errors": 1, "disabled": 0}
+
+    for identity in identities:
+        try:
+            if identity.status not in ("active", "rotating"):
+                continue
+            last_used = identity.last_used_at.strip() if identity.last_used_at else ""
+            if not last_used:
+                # Never-observed identities are not auto-revoked here: lack of a
+                # usage marker can mean a freshly issued token, not dormancy. The
+                # graph governance overlay still surfaces them as findings.
+                continue
+            last_used_dt = datetime.fromisoformat(last_used)
+            age_days = (now - last_used_dt).total_seconds() / 86400.0
+            if age_days < window:
+                continue
+            before = identity.status
+            identity.status = "revoked"
+            identity.revoked_at = _iso(now)
+            identity.revoked_reason = "dormant_auto_revoke"
+            _put_identity_any_tenant(store, identity)
+            revoked += 1
+            _emit_audit(
+                {
+                    "tenant_id": identity.tenant_id,
+                    "actor": actor,
+                    "action": "identity_dormant_auto_revoke",
+                    "target_type": "agent_identity",
+                    "target_id": identity.identity_id,
+                    "reason": "dormant_auto_revoke",
+                    "before_state": before,
+                    "after_state": "revoked",
+                    "observed_at": _iso(now),
+                    "window_key": identity.revoked_at,
+                    "detail": {"agent_id": identity.agent_id, "last_used_at": last_used, "window_days": window},
+                },
+                audit_log,
+            )
+        except (ValueError, TypeError):
+            errors += 1
+            _lifecycle_logger.warning("skipping identity %s with unparseable last_used_at", identity.identity_id)
+        except Exception:  # noqa: BLE001
+            errors += 1
+            _lifecycle_logger.warning("failed to deprovision identity %s; continuing", identity.identity_id, exc_info=True)
+
+    return {"revoked": revoked, "errors": errors, "disabled": 0}
+
+
+def flag_rotation_due_identities(
+    store: AgentIdentityStore,
+    *,
+    now: datetime,
+    rotation_days: int | None = None,
+    audit_log: Any = None,
+    actor: str = "system:nhi-cleanup",
+    limit: int = 10000,
+) -> dict[str, int]:
+    """Advisory: flag identities whose token age exceeds the rotation window.
+
+    Sets ``rotation_due=True`` (and ``rotation_due_at``) on live identities whose
+    ``issued_at`` is older than the window. The secret is NOT rotated — an
+    operator/automation rotates it explicitly. Idempotent: an identity already
+    flagged is skipped (no second audit row); injected ``now``; never raises.
+    """
+    window = rotation_days if rotation_days is not None else token_rotation_days()
+    flagged = errors = 0
+    if window <= 0:
+        return {"flagged": 0, "errors": 0}
+    try:
+        identities = store.iter_all_identities(limit=limit)
+    except Exception:  # noqa: BLE001
+        _lifecycle_logger.warning(
+            "rotation-due sweep could not list identities; the identity store may be unreachable. Skipping this tick.",
+            exc_info=True,
+        )
+        return {"flagged": 0, "errors": 1}
+
+    for identity in identities:
+        try:
+            if identity.status not in ("active", "rotating") or identity.rotation_due:
+                continue
+            if not identity.issued_at:
+                continue
+            issued_dt = datetime.fromisoformat(identity.issued_at)
+            age_days = (now - issued_dt).total_seconds() / 86400.0
+            if age_days < window:
+                continue
+            identity.rotation_due = True
+            identity.rotation_due_at = _iso(now)
+            _put_identity_any_tenant(store, identity)
+            flagged += 1
+            _emit_audit(
+                {
+                    "tenant_id": identity.tenant_id,
+                    "actor": actor,
+                    "action": "token_rotation_due",
+                    "target_type": "agent_identity",
+                    "target_id": identity.identity_id,
+                    "reason": f"token age exceeds {window}d rotation window",
+                    "before_state": "rotation_current",
+                    "after_state": "rotation_due",
+                    "observed_at": _iso(now),
+                    "window_key": identity.issued_at,
+                    "detail": {"agent_id": identity.agent_id, "issued_at": identity.issued_at, "window_days": window},
+                },
+                audit_log,
+            )
+        except (ValueError, TypeError):
+            errors += 1
+            _lifecycle_logger.warning("skipping identity %s with unparseable issued_at", identity.identity_id)
+        except Exception:  # noqa: BLE001
+            errors += 1
+            _lifecycle_logger.warning("failed to flag identity %s for rotation; continuing", identity.identity_id, exc_info=True)
+
+    return {"flagged": flagged, "errors": errors}
+
+
+def run_nhi_lifecycle_cleanup(
+    store: AgentIdentityStore,
+    *,
+    now: datetime,
+    audit_log: Any = None,
+    dormant_days: int | None = None,
+    rotation_days: int | None = None,
+) -> dict[str, dict[str, int]]:
+    """Run all NHI lifecycle sweeps once. Backend-agnostic; never raises.
+
+    Returns per-sweep counters. Safe to call repeatedly: each sweep is
+    idempotent over identical store state, so two consecutive calls produce the
+    same end-state and no duplicate audit rows.
+    """
+    result: dict[str, dict[str, int]] = {}
+    try:
+        result["grants"] = cleanup_expired_grants(store, now=now, audit_log=audit_log)
+    except Exception:  # noqa: BLE001
+        _lifecycle_logger.warning("JIT-grant cleanup sweep failed wholesale; continuing", exc_info=True)
+        result["grants"] = {"expired": 0, "pruned": 0, "errors": 1}
+    try:
+        result["dormant"] = deprovision_dormant_identities(store, now=now, dormant_days=dormant_days, audit_log=audit_log)
+    except Exception:  # noqa: BLE001
+        _lifecycle_logger.warning("dormant-identity sweep failed wholesale; continuing", exc_info=True)
+        result["dormant"] = {"revoked": 0, "errors": 1, "disabled": 0}
+    try:
+        result["rotation"] = flag_rotation_due_identities(store, now=now, rotation_days=rotation_days, audit_log=audit_log)
+    except Exception:  # noqa: BLE001
+        _lifecycle_logger.warning("rotation-due sweep failed wholesale; continuing", exc_info=True)
+        result["rotation"] = {"flagged": 0, "errors": 1}
+    return result
 
 
 _VALID_CONDITIONAL_EFFECTS = ("require", "deny")

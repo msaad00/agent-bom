@@ -70,16 +70,80 @@ tests:
 scanner:
   enabled: true
   schedule: "0 */6 * * *"
+  # When `cloud.enabled` is true the CronJob runs a full `agent-bom scan` so the
+  # opt-in cloud estate enrichment (AGENT_BOM_<PROVIDER>_INVENTORY) attaches the
+  # read-only inventory + misconfig findings to the report. Default render stays
+  # Kubernetes-only (`--k8s`) for backward compatibility.
   allNamespaces: true
+  k8s: true
   outputFormat: json
   extraArgs: []
   env: []
+  # Extra `envFrom` sources (e.g. a Snowflake key-pair Secret reference managed
+  # by external-secrets). Never inline secret material in values — reference a
+  # Secret the cluster already holds.
+  envFrom: []
   serviceAccount:
     create: true
     name: ""
+    # IRSA / GKE Workload Identity annotations land here. EKS:
+    #   eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/agent-bom-readonly
+    # GKE: iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
     annotations: {}
+    # AKS workload identity binds via pod labels, not SA annotations. Set
+    #   azure.workload.identity/client-id on the SA and label the pod
+    #   azure.workload.identity/use: "true" (see cloud.azure below).
+    labels: {}
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
+  # Writable scratch dir for the read-only-root-FS container. The scan writes
+  # its report under /output (emptyDir); cloud SDKs may also need $HOME/.cache.
+  writableTmp: true
+  # ─── Keyless multi-cloud read-only collection ──────────────────────────────
+  # All providers default OFF. Enable per-provider inventory and the scan picks
+  # up the cluster's workload identity (IRSA / GKE WI / AKS WI) — NO keys in the
+  # cluster. Snowflake is the lone exception (key-pair) and references a Secret.
+  cloud:
+    enabled: false
+    aws:
+      # Sets AGENT_BOM_AWS_INVENTORY=1. Auth = IRSA (serviceAccount.annotations
+      # eks.amazonaws.com/role-arn -> the connect-aws read-only role).
+      inventory: false
+      allRegions: false       # AGENT_BOM_AWS_ALL_REGIONS
+      regions: ""             # AGENT_BOM_AWS_REGIONS (comma list, e.g. "us-east-1,eu-west-1")
+      maxRegions: ""          # AGENT_BOM_AWS_MAX_REGIONS
+    azure:
+      # Sets AGENT_BOM_AZURE_INVENTORY=1. Auth = AKS workload identity federated
+      # to the connect-azure Reader principal (see cloud.azure block below).
+      inventory: false
+      allSubscriptions: false # AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS
+      maxSubscriptions: ""    # AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS
+      # Client ID of the user-assigned managed identity / app federated to the
+      # KSA. Rendered as the azure.workload.identity/client-id SA annotation and
+      # AZURE_CLIENT_ID env. Leave empty if set directly via serviceAccount.
+      clientId: ""
+      tenantId: ""            # AZURE_TENANT_ID (federation tenant)
+    gcp:
+      # Sets AGENT_BOM_GCP_INVENTORY=1. Auth = GKE Workload Identity; the KSA
+      # impersonates the connect-gcp read-only SA via impersonateSa below.
+      inventory: false
+      # AGENT_BOM_GCP_IMPERSONATE_SA — the connect-gcp read-only SA email. The
+      # ambient KSA token is exchanged for short-lived impersonated creds.
+      impersonateSa: ""
+    snowflake:
+      # Sets AGENT_BOM_SNOWFLAKE_INVENTORY=1. Snowflake has no cloud workload
+      # identity; it uses key-pair auth. Provide the private key ONLY via a
+      # Secret reference (external-secrets / sealed-secrets), never inline.
+      inventory: false
+      maxRoles: ""            # AGENT_BOM_SNOWFLAKE_MAX_ROLES
+      account: ""             # SNOWFLAKE_ACCOUNT (non-secret)
+      user: ""               # SNOWFLAKE_USER (non-secret)
+      # Name of a pre-existing Secret holding the PEM private key under `key`.
+      # Mounted read-only at /snowflake; SNOWFLAKE_PRIVATE_KEY_PATH points to it.
+      # The passphrase (if any) comes from SNOWFLAKE_PRIVATE_KEY_PASSPHRASE via
+      # scanner.envFrom -> secretRef. Nothing secret is rendered into manifests.
+      keySecretName: ""
+      keySecretKey: "key"
 
 monitor:
   enabled: false

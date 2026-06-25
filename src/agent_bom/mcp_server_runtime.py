@@ -13,11 +13,16 @@ import time
 from pathlib import Path
 from typing import AbstractSet, Any, Awaitable, Callable, TypeVar
 
-from mcp.server.fastmcp.exceptions import ToolError
-
 from agent_bom.security import sanitize_log_label
 
 _ToolReturn = TypeVar("_ToolReturn")
+
+try:
+    from mcp.server.fastmcp.exceptions import ToolError as _FastMCPToolError
+except ModuleNotFoundError:  # pragma: no cover - base CLI installs do not include MCP extras
+    _TOOL_ERROR_TYPES: tuple[type[BaseException], ...] = ()
+else:
+    _TOOL_ERROR_TYPES = (_FastMCPToolError,)
 
 
 def validate_ecosystem(ecosystem: str, valid_ecosystems: AbstractSet[str]) -> str:
@@ -61,6 +66,14 @@ def _log_value(value: object, *, max_len: int = 160) -> str:
 
 def _error_payload(tool_name: str, error: str) -> str:
     return json.dumps({"error": error, "tool": tool_name, "status": "error"})
+
+
+def _is_tool_error(exc: Exception) -> bool:
+    return bool(_TOOL_ERROR_TYPES) and isinstance(exc, _TOOL_ERROR_TYPES)
+
+
+def _raise_sanitized_tool_error(exc: Exception, sanitized: str) -> None:
+    raise type(exc)(sanitized) from None
 
 
 def get_tool_semaphore(
@@ -407,21 +420,6 @@ async def execute_tool_async(
                 }
             )
         )
-    except ToolError as exc:
-        elapsed_ms = int((time.perf_counter() - start) * 1000)
-        sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
-        record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
-        record_tool_request_fn(
-            tool_name,
-            caller=request_meta["caller"],
-            client_id=request_meta["client_id"],
-            request_id=request_meta["request_id"],
-            status="error",
-            elapsed_ms=elapsed_ms,
-            error=sanitized,
-        )
-        logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
-        raise
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
@@ -436,6 +434,8 @@ async def execute_tool_async(
             error=sanitized,
         )
         logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
+        if _is_tool_error(exc):
+            _raise_sanitized_tool_error(exc, sanitized)
         return truncate_response_fn(_error_payload(tool_name, sanitized))
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=True)
@@ -529,21 +529,6 @@ async def execute_tool_sync_async(
                     }
                 )
             )
-        except ToolError as exc:
-            elapsed_ms = int((time.perf_counter() - start) * 1000)
-            sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
-            record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=False, error=sanitized)
-            record_tool_request_fn(
-                tool_name,
-                caller=request_meta["caller"],
-                client_id=request_meta["client_id"],
-                request_id=request_meta["request_id"],
-                status="error",
-                elapsed_ms=elapsed_ms,
-                error=sanitized,
-            )
-            logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
-            raise
         except Exception as exc:
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             sanitized = _log_value(sanitize_error_fn(exc), max_len=200)
@@ -558,6 +543,8 @@ async def execute_tool_sync_async(
                 error=sanitized,
             )
             logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
+            if _is_tool_error(exc):
+                _raise_sanitized_tool_error(exc, sanitized)
             return truncate_response_fn(_error_payload(tool_name, sanitized))
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=True)

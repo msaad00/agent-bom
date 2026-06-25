@@ -58,7 +58,18 @@ from agent_bom.firewall import evaluate as evaluate_firewall_policy
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc, policy_subject_from_message
-from agent_bom.proxy_policy import check_policy_warning, summarize_policy_bundle
+from agent_bom.proxy_policy import (
+    DecisionContext,
+    GatewayDecision,
+    build_policy_ocsf_event,
+    check_policy_warning,
+    context_from_now,
+    deliver_policy_webhook,
+    evaluate_conditional_rules,
+    evaluate_policy_plugins,
+    resolve_fail_mode,
+    summarize_policy_bundle,
+)
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 
 logger = logging.getLogger(__name__)
@@ -97,6 +108,8 @@ def _public_gateway_block_reason(policy_source: str) -> str:
         "identity_jit": "Gateway policy blocked this request",
         "firewall": "Inter-agent firewall blocked this request",
         "graph_reachability": "Graph reachability policy blocked this request",
+        "policy_plugin": "A gateway policy plugin blocked this request",
+        "fail_closed": "Gateway policy unavailable and fail-closed mode is active",
     }.get(policy_source, "Gateway policy blocked this request")
 
 
@@ -184,6 +197,19 @@ class GatewaySettings:
     # ("enforce") or flagged ("warn") at the gateway — isolating a compromised
     # or under-review agent without touching per-tool policy. Default "off".
     fleet_enforcement_mode: str = "off"
+    # Fail-closed posture for the policy engine. "open" (default) preserves
+    # today's behaviour: a missing/unloadable policy or an evaluation error
+    # degrades to default-allow. "closed" makes those paths DENY so a
+    # security-conscious operator never silently runs unprotected. Resolved from
+    # AGENT_BOM_GATEWAY_FAIL_MODE when left at the sentinel ``None``.
+    fail_mode: str | None = None
+    # SIEM/SOAR webhook for deny/quarantine OCSF events. Unset (default) is a
+    # no-op; when set, every DENY/QUARANTINE POSTs a normalized OCSF event with
+    # an idempotency key. Webhook failures NEVER block the relay (bounded
+    # retries + drop-with-warning). Resolved from AGENT_BOM_POLICY_WEBHOOK_URL /
+    # AGENT_BOM_POLICY_WEBHOOK_TOKEN when left as ``None``.
+    policy_webhook_url: str | None = None
+    policy_webhook_token: str | None = None
 
 
 def _agent_cost_anomaly(tenant_id: str, source_agent: str) -> tuple[bool, str]:
@@ -319,6 +345,41 @@ def _request_environment(request: Request) -> str:
     return (request.headers.get("x-agent-environment", "") or "").strip()[:60]
 
 
+def _request_risk_score(request: Request) -> float | None:
+    """Resolve a caller/proxy-asserted risk score for conditional-access gates.
+
+    Read from the ``x-agent-risk-score`` header (set by an upstream risk engine
+    or trust proxy). Absent/invalid → ``None`` so a min/max-risk condition that
+    requires a score simply does not match and the call is unaffected.
+    """
+    raw = (request.headers.get("x-agent-risk-score", "") or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def _request_context_attributes(request: Request) -> dict[str, str]:
+    """Resolve required-context attributes for conditional-access gates.
+
+    Attributes arrive as ``x-agent-ctx-<name>`` headers (e.g.
+    ``x-agent-ctx-mfa: true``) so a policy can require ``{"mfa": "true"}``.
+    Bounded to keep the decision context small and deterministic.
+    """
+    attributes: dict[str, str] = {}
+    for header, value in request.headers.items():
+        lowered = header.lower()
+        if lowered.startswith("x-agent-ctx-"):
+            key = lowered[len("x-agent-ctx-") :]
+            if key:
+                attributes[key] = str(value).strip()[:200]
+        if len(attributes) >= 32:
+            break
+    return attributes
+
+
 def _request_cost_center(request: Request, message: dict[str, Any]) -> str:
     """Resolve the chargeback cost-center this call is allocated to.
 
@@ -360,6 +421,50 @@ def _emit_gateway_governance_event(event_type: str, *, tenant_id: str, subject_i
         emit_governance_event(event_type=event_type, tenant_id=tenant_id, source="gateway", subject_id=subject_id, payload=payload)
     except Exception:  # noqa: BLE001
         logger.debug("gateway governance webhook emit failed for %s", event_type, exc_info=True)
+
+
+async def _emit_policy_interop_event(
+    settings: GatewaySettings,
+    *,
+    decision: GatewayDecision,
+    reason: str,
+    ctx: DecisionContext,
+    policy_source: str,
+) -> None:
+    """Emit a normalized OCSF event for a DENY/QUARANTINE and POST it to the
+    configured SIEM/SOAR webhook (best-effort).
+
+    Determinism: the event id derives from the decision inputs (it doubles as
+    the webhook idempotency key), so a retried delivery never double-records
+    downstream. Webhook failures are bounded-retry + drop-with-warning inside
+    ``deliver_policy_webhook`` and run off the event loop, so they never block
+    or crash the relay.
+    """
+    if decision == GatewayDecision.ALLOW:
+        return
+    # Only build/emit when a webhook target is configured. The OCSF event is an
+    # interop artifact for SIEM/SOAR; it deliberately does NOT fan into the
+    # audit_sink so the existing audit-event stream (and its counts) are
+    # unchanged when no webhook is set — the default no-op posture.
+    webhook_url = settings.policy_webhook_url
+    if webhook_url is None:
+        webhook_url = os.environ.get("AGENT_BOM_POLICY_WEBHOOK_URL", "")
+    if not (webhook_url or "").strip():
+        return
+    try:
+        event = build_policy_ocsf_event(decision=decision, reason=reason, ctx=ctx, policy_source=policy_source)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gateway OCSF event build failed: %s", _sanitize_for_log(exc))
+        return
+    try:
+        await asyncio.to_thread(
+            deliver_policy_webhook,
+            event,
+            url=settings.policy_webhook_url,
+            token=settings.policy_webhook_token,
+        )
+    except Exception as exc:  # noqa: BLE001 — webhook must never break the relay
+        logger.warning("gateway policy webhook dispatch error (event dropped, relay unaffected): %s", _sanitize_for_log(exc))
 
 
 class GatewayCircuitOpenError(RuntimeError):
@@ -794,12 +899,23 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     upstream_caller = settings.upstream_caller or managed_upstream_relay
     assert upstream_caller is not None
     rate_limit_store = _build_gateway_rate_limit_store(settings)
+    # Fail-closed posture resolved once at build time. "closed" makes a
+    # missing/unloadable policy or an evaluation error DENY instead of silently
+    # degrading to default-allow. Default "open" preserves current behaviour.
+    resolved_fail_mode = resolve_fail_mode(settings.fail_mode)
+    fail_closed = resolved_fail_mode == "closed"
+    if fail_closed:
+        logger.info("gateway policy engine starting in fail-CLOSED mode: unloadable policy or evaluation errors will DENY")
     policy_state: dict[str, Any] = {
         "policy": dict(settings.policy),
         "source": str(settings.policy_path) if settings.policy_path else "inline",
         "last_loaded_at": None,
         "last_error": None,
         "last_mtime": None,
+        # True only when a file policy was configured but never successfully
+        # loaded. In fail-closed mode this makes the relay DENY rather than
+        # forward against the empty default policy.
+        "load_failed": settings.policy_path is not None,
     }
     policy_lock = asyncio.Lock()
     reload_task: asyncio.Task[None] | None = None
@@ -828,6 +944,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             policy_state["last_loaded_at"] = time.time()
             policy_state["last_error"] = None
             policy_state["last_mtime"] = mtime
+            policy_state["load_failed"] = False
         logger.info("gateway policy reloaded from %s", settings.policy_path)
         return True
 
@@ -1152,6 +1269,53 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         tenant_id = getattr(request.state, "tenant_id", None) or "default"
         async with policy_lock:
             current_policy = dict(policy_state["policy"])
+            policy_load_failed = bool(policy_state["load_failed"])
+
+        # Fail-closed posture: a configured file policy that never loaded means
+        # the relay would otherwise forward against an empty default-allow
+        # policy. In fail-closed mode that is a DENY instead — the gateway must
+        # not silently run unprotected. Fail-open keeps the legacy behaviour.
+        if fail_closed and policy_load_failed:
+            record_gateway_relay(upstream.name, "blocked")
+            fc_ctx = context_from_now(
+                tenant_id=tenant_id,
+                source_agent=ANONYMOUS,
+                tool_name=str((message.get("params") or {}).get("name") or message.get("method") or ""),
+                now=time.time(),
+                environment=_request_environment(request),
+                source_ip=_request_source_ip(request),
+            )
+            if settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.policy_fail_closed",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "reason": "policy unavailable; fail-closed mode denies",
+                    }
+                )
+            await _emit_policy_interop_event(
+                settings,
+                decision=GatewayDecision.DENY,
+                reason="policy unavailable; fail-closed mode denies",
+                ctx=fc_ctx,
+                policy_source="fail_closed",
+            )
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32001,
+                        "message": "Blocked by agent-bom gateway policy",
+                        "data": {
+                            "reason": "Gateway policy unavailable and fail-closed mode is active",
+                            "policy_source": "fail_closed",
+                        },
+                    },
+                },
+                status_code=200,
+            )
 
         # Caller-identity resolution with secure-by-default fail-closed posture.
         #
@@ -1540,9 +1704,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         if policy_subject:
             tool_name, arguments = policy_subject
             allowed, reason = check_policy(current_policy, tool_name, arguments)
-            # Per-tool identity scopes: a managed identity with a non-empty
-            # allowed_tools allowlist may only call tools in that list — the
-            # identity itself bounds authorization, independent of policy.
+            # Quarantine is the middle decision tier: the call is blocked from
+            # the sensitive tool but the agent is flagged + heavily audited
+            # rather than hard-denied. ``quarantine`` is only set by the
+            # conditional-access / plugin layers below; it stays False here so
+            # existing deny/allow behaviour is byte-for-byte unchanged when the
+            # new layers produce no opinion.
+            quarantine = False
+            quarantine_reason = ""
             policy_source = "file"
             if allowed:
                 try:
@@ -1727,6 +1896,51 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                 "reason": reach_reason,
                             }
                         )
+            # Declarative conditional access + plugin policy evaluators. Both are
+            # deterministic: the decision context carries an injected ``now`` so
+            # the same (agent, tool, request) under the same policy always yields
+            # the same verdict (and the same OCSF event id). Conditional rules
+            # gate on time-window / weekday / risk-score / required attributes;
+            # plugins compose third-party evaluators. A QUARANTINE verdict blocks
+            # the sensitive tool but flags + heavily audits the agent instead of
+            # hard-denying. Evaluation errors honour the fail-mode posture:
+            # fail-closed turns an unexpected engine error into a DENY.
+            if allowed:
+                decision_now = time.time()
+                decision_ctx = context_from_now(
+                    tenant_id=tenant_id,
+                    source_agent=source_agent,
+                    tool_name=tool_name,
+                    now=decision_now,
+                    risk_score=_request_risk_score(request),
+                    environment=_request_environment(request),
+                    source_ip=_request_source_ip(request),
+                    attributes=_request_context_attributes(request),
+                )
+                try:
+                    cond_decision, cond_reason, _cond_rule = evaluate_conditional_rules(current_policy, decision_ctx)
+                    plugin_decision, plugin_reason, _plugin_name = evaluate_policy_plugins(decision_ctx, current_policy)
+                    eval_error = False
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("gateway conditional/plugin evaluation error: %s", _sanitize_for_log(exc))
+                    cond_decision = plugin_decision = GatewayDecision.ALLOW
+                    cond_reason = plugin_reason = ""
+                    eval_error = True
+                # Compose: DENY outranks QUARANTINE outranks ALLOW. Conditional
+                # rules win ties over plugins (an explicit policy deny is stronger
+                # than a third-party quarantine). A fail-closed eval error denies.
+                _rank = {GatewayDecision.ALLOW: 0, GatewayDecision.QUARANTINE: 1, GatewayDecision.DENY: 2}
+                if _rank[plugin_decision] > _rank[cond_decision]:
+                    composed, composed_reason, composed_source = plugin_decision, plugin_reason, "policy_plugin"
+                else:
+                    composed, composed_reason, composed_source = cond_decision, cond_reason, "conditional_access"
+                if eval_error and fail_closed:
+                    allowed, reason, policy_source = False, "policy evaluation error", "conditional_access"
+                elif composed == GatewayDecision.DENY:
+                    allowed, reason, policy_source = False, composed_reason, composed_source
+                elif composed == GatewayDecision.QUARANTINE:
+                    quarantine, quarantine_reason, policy_source = True, composed_reason, composed_source
+
             if not allowed:
                 record_gateway_relay(upstream.name, "blocked")
                 audit_event: dict[str, Any] = {
@@ -1741,6 +1955,20 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 }
                 if settings.audit_sink is not None:
                     await settings.audit_sink(audit_event)
+                await _emit_policy_interop_event(
+                    settings,
+                    decision=GatewayDecision.DENY,
+                    reason=reason,
+                    ctx=context_from_now(
+                        tenant_id=tenant_id,
+                        source_agent=source_agent,
+                        tool_name=tool_name,
+                        now=time.time(),
+                        environment=_request_environment(request),
+                        source_ip=_request_source_ip(request),
+                    ),
+                    policy_source=policy_source,
+                )
                 return JSONResponse(
                     {
                         "jsonrpc": "2.0",
@@ -1751,6 +1979,62 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                             "data": {
                                 "reason": _public_gateway_block_reason(policy_source),
                                 "policy_source": policy_source,
+                            },
+                        },
+                    },
+                    status_code=200,
+                    headers=rate_limit_headers or None,
+                )
+
+            if quarantine:
+                # QUARANTINE: block the sensitive tool but flag + heavily audit
+                # the agent rather than hard-deny. The client sees a structured,
+                # client-safe reason; the full reason + OCSF event stay in audit.
+                record_gateway_relay(upstream.name, "blocked")
+                if settings.audit_sink is not None:
+                    await settings.audit_sink(
+                        {
+                            "action": "gateway.policy_quarantined",
+                            "upstream": upstream.name,
+                            "tenant_id": tenant_id,
+                            "method": message.get("method"),
+                            "tool": tool_name,
+                            "reason": quarantine_reason,
+                            "source_agent": source_agent,
+                            "policy_source": policy_source,
+                        }
+                    )
+                _emit_gateway_governance_event(
+                    "policy.quarantined",
+                    tenant_id=tenant_id,
+                    subject_id=source_agent,
+                    payload={"source_agent": source_agent, "tool": tool_name, "reason": quarantine_reason, "policy_source": policy_source},
+                )
+                await _emit_policy_interop_event(
+                    settings,
+                    decision=GatewayDecision.QUARANTINE,
+                    reason=quarantine_reason,
+                    ctx=context_from_now(
+                        tenant_id=tenant_id,
+                        source_agent=source_agent,
+                        tool_name=tool_name,
+                        now=time.time(),
+                        environment=_request_environment(request),
+                        source_ip=_request_source_ip(request),
+                    ),
+                    policy_source=policy_source,
+                )
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message.get("id"),
+                        "error": {
+                            "code": -32002,  # Application-defined: quarantined
+                            "message": "Quarantined by agent-bom gateway policy",
+                            "data": {
+                                "reason": "Agent quarantined: this tool is restricted while the session is under review",
+                                "policy_source": policy_source,
+                                "decision": "quarantine",
                             },
                         },
                     },

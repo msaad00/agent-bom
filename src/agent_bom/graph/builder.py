@@ -2391,18 +2391,15 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
             {"source": "snowflake-objects", "privilege": grant.get("privilege", "")},
         )
 
-    # User → role memberships: the user ASSUMES the role's privileges.
+    # Users. ``role_memberships`` carry user→role grants; the live SHOW overlay
+    # also emits role→role memberships ({role, parent}) and a top-level
+    # ``users`` list (freshly-created users that have no membership yet).
     seen_users: set[str] = set()
-    for membership in payload.get("role_memberships", []) or []:
-        if not isinstance(membership, dict):
-            continue
-        user_name = _clean_graph_part(membership.get("user"))
-        role = _clean_graph_part(membership.get("role"))
-        if not user_name or not role:
-            continue
-        user_node_id = f"user:snowflake:{user_name}"
-        if user_node_id not in seen_users:
-            seen_users.add(user_node_id)
+
+    def _ensure_user(user_name: str, **extra: Any) -> str:
+        node_id = f"user:snowflake:{user_name}"
+        if node_id not in seen_users:
+            seen_users.add(node_id)
             _add_identity_node(
                 graph,
                 EntityType.USER,
@@ -2413,8 +2410,49 @@ def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: 
                 user_name=user_name,
                 cloud_provider="snowflake",
                 source="snowflake-objects",
+                **{k: v for k, v in extra.items() if v not in (None, "")},
             )
-        _add_rel_edge(graph, user_node_id, _ensure_role(role), RelationshipType.ASSUMES, {"source": "snowflake-objects"})
+        return node_id
+
+    # Standalone users (no membership row yet) so new accounts graph instantly.
+    for usr in payload.get("users", []) or []:
+        if not isinstance(usr, dict):
+            continue
+        user_name = _clean_graph_part(usr.get("name"))
+        if not user_name:
+            continue
+        _ensure_user(
+            user_name,
+            default_role=_clean_graph_part(usr.get("default_role")) or None,
+            disabled=usr.get("disabled"),
+        )
+
+    for membership in payload.get("role_memberships", []) or []:
+        if not isinstance(membership, dict):
+            continue
+        role = _clean_graph_part(membership.get("role"))
+        if not role:
+            continue
+        parent = _clean_graph_part(membership.get("parent"))
+        is_role_member = str(membership.get("member_type") or "").lower() == "role" or bool(parent)
+        if is_role_member:
+            # Role → role: the child role is a MEMBER_OF the parent and inherits
+            # (ASSUMES) its privileges, so privilege chains traverse end-to-end.
+            if not parent:
+                continue
+            child_id = _ensure_role(role)
+            parent_id = _ensure_role(parent)
+            _add_rel_edge(graph, child_id, parent_id, RelationshipType.MEMBER_OF, {"source": "snowflake-objects"})
+            _add_rel_edge(graph, child_id, parent_id, RelationshipType.ASSUMES, {"source": "snowflake-objects"})
+            continue
+        # User → role: the user is a MEMBER_OF and ASSUMES the role's privileges.
+        user_name = _clean_graph_part(membership.get("user"))
+        if not user_name:
+            continue
+        user_node_id = _ensure_user(user_name)
+        role_id = _ensure_role(role)
+        _add_rel_edge(graph, user_node_id, role_id, RelationshipType.MEMBER_OF, {"source": "snowflake-objects"})
+        _add_rel_edge(graph, user_node_id, role_id, RelationshipType.ASSUMES, {"source": "snowflake-objects"})
 
 
 _EXFIL_STAGE_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}

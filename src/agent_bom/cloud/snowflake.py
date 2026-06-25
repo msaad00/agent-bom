@@ -2039,6 +2039,294 @@ def discover_object_dependencies(
     return result
 
 
+# SHOW-based identity discovery reflects current state with no latency, unlike
+# ACCOUNT_USAGE.GRANTS_TO_* which lags 45min–2h. Object-level grants we surface
+# (so a freshly-created role hierarchy is graphed immediately).
+_LIVE_GRANT_OBJECT_TYPES = {"TABLE", "VIEW", "MATERIALIZED VIEW", "DYNAMIC TABLE", "EXTERNAL TABLE", "ICEBERG TABLE"}
+# Bound the per-role SHOW GRANTS fan-out so a pathological account can't stall a scan.
+_LIVE_MAX_ROLES = 500
+
+
+def discover_identity_live(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> dict[str, Any]:
+    """Discover the Snowflake identity graph via SHOW commands (zero latency).
+
+    ``ACCOUNT_USAGE.GRANTS_TO_ROLES`` / ``GRANTS_TO_USERS`` / role-membership
+    views lag 45min–2h, so a just-created role hierarchy is invisible on a live
+    scan. SHOW commands reflect current account state instantly. All read-only,
+    control-plane metadata only — NO passwords or secrets leave Snowflake.
+
+    Queries (all current-state, no ``ACCOUNT_USAGE`` lag):
+
+    * ``SHOW ROLES`` → the role list (capped at ``_LIVE_MAX_ROLES``).
+    * For each role: ``SHOW GRANTS TO ROLE "<role>"`` → object privilege grants
+      (privilege / granted_on / name) and role→role grants; ``SHOW GRANTS OF
+      ROLE "<role>"`` → who the role is granted to (users + roles) = memberships.
+    * ``SHOW USERS`` → user metadata (name / default_role / disabled only).
+
+    Returns a payload whose ``grants`` / ``role_memberships`` reuse the
+    :func:`discover_object_dependencies` shape so the graph builder's existing
+    Snowflake identity wiring consumes it unchanged. ``role_memberships`` carry
+    an optional ``parent``/``member_type`` so role→role edges build too.
+
+    Per-role failures degrade to warnings; the function never raises into a scan.
+
+    Raises:
+        CloudDiscoveryError: if snowflake-connector-python is not installed.
+    """
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake identity discovery. Install with: pip install 'agent-bom[snowflake]'"
+        )
+
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    result: dict[str, Any] = {
+        "status": "disabled",
+        "account": resolved_account,
+        "users": [],
+        "roles": [],
+        "role_memberships": [],
+        "grants": [],
+        "warnings": [],
+    }
+    warnings_list: list[str] = result["warnings"]
+    if not resolved_account:
+        result["status"] = "no_account"
+        warnings_list.append("SNOWFLAKE_ACCOUNT not set.")
+        return result
+
+    try:
+        conn = _get_connection(account, user, authenticator, database, schema)
+    except CloudDiscoveryError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        warnings_list.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+        return result
+
+    try:
+        roles = _live_show_roles(conn, warnings_list)
+        result["roles"] = roles
+        result["users"] = _live_show_users(conn, warnings_list)
+        grants, memberships = _live_role_grants(conn, [r["name"] for r in roles], warnings_list)
+        result["grants"] = grants
+        result["role_memberships"] = memberships
+        result["status"] = "ok"
+    finally:
+        conn.close()
+    return result
+
+
+def _live_show_roles(conn: Any, warnings_list: list[str]) -> list[dict[str, Any]]:
+    """``SHOW ROLES`` → current role list (name / owner / comment), capped."""
+    roles: list[dict[str, Any]] = []
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SHOW ROLES")
+        keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+        for row in cursor.fetchall():
+            r = dict(zip(keys, row))
+            name = str(r.get("name", "") or "")
+            if not name:
+                continue
+            roles.append({"name": name, "owner": str(r.get("owner", "") or ""), "comment": str(r.get("comment", "") or "")})
+            if len(roles) >= _LIVE_MAX_ROLES:
+                warnings_list.append(f"SHOW ROLES truncated at {_LIVE_MAX_ROLES} roles.")
+                break
+    except Exception as exc:  # noqa: BLE001
+        warnings_list.append(f"Could not list roles (SHOW ROLES): {sanitize_error(exc)}")
+    finally:
+        cursor.close()
+    return roles
+
+
+def _live_show_users(conn: Any, warnings_list: list[str]) -> list[dict[str, Any]]:
+    """``SHOW USERS`` → user metadata only (name / default_role / disabled).
+
+    NO passwords or secrets are read — only the columns the graph needs.
+    """
+    users: list[dict[str, Any]] = []
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SHOW USERS")
+        keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+        for row in cursor.fetchall():
+            r = dict(zip(keys, row))
+            name = str(r.get("name", "") or "")
+            if not name:
+                continue
+            users.append(
+                {
+                    "name": name,
+                    "default_role": str(r.get("default_role", "") or ""),
+                    "disabled": _sf_truthy(r.get("disabled")),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        # MANAGE GRANTS / USERADMIN may be absent; not fatal.
+        warnings_list.append(f"Could not list users (SHOW USERS): {sanitize_error(exc)}")
+    finally:
+        cursor.close()
+    return users
+
+
+def _live_role_grants(conn: Any, role_names: list[str], warnings_list: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Per-role ``SHOW GRANTS TO/OF ROLE`` → object grants + memberships.
+
+    ``SHOW GRANTS TO ROLE "<role>"`` yields the role's privileges: object grants
+    (``granted_on`` a TABLE/VIEW/...) become ``grants`` (role HAS_PERMISSION on
+    object); ``granted_on=ROLE`` becomes a role→role membership (this role is a
+    member of the granted parent role). ``SHOW GRANTS OF ROLE "<role>"`` yields
+    who the role is granted to (users → ``{user, role}``; roles → role→role).
+    """
+    grants: list[dict[str, Any]] = []
+    memberships: list[dict[str, Any]] = []
+    # Dedupe so the two SHOW directions don't double-emit the same role→role edge.
+    seen_member: set[tuple[str, str]] = set()
+    seen_user: set[tuple[str, str]] = set()
+    seen_grant: set[tuple[str, str, str]] = set()
+
+    def _add_role_membership(child: str, parent: str) -> None:
+        if not child or not parent or child == parent:
+            return
+        key = (child, parent)
+        if key in seen_member:
+            return
+        seen_member.add(key)
+        memberships.append({"role": child, "parent": parent, "member_type": "role"})
+
+    def _add_user_membership(user_name: str, role: str) -> None:
+        if not user_name or not role:
+            return
+        key = (user_name, role)
+        if key in seen_user:
+            return
+        seen_user.add(key)
+        memberships.append({"user": user_name, "role": role, "member_type": "user"})
+
+    for role_name in role_names:
+        try:
+            quoted = _quote_sf_identifier(role_name)
+        except ValueError as exc:
+            warnings_list.append(f"Skipping unsafe role identifier: {sanitize_error(exc)}")
+            continue
+
+        # Privileges this role holds: object grants + role→role parents.
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"SHOW GRANTS TO ROLE {quoted}")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                granted_on = str(r.get("granted_on", "") or "").upper()
+                privilege = str(r.get("privilege", "") or "")
+                obj_name = str(r.get("name", "") or "")
+                if granted_on == "ROLE" and privilege.upper() == "USAGE" and obj_name:
+                    # This role USAGE-on another role => member of that parent role.
+                    _add_role_membership(role_name, obj_name)
+                elif granted_on in _LIVE_GRANT_OBJECT_TYPES and obj_name:
+                    gkey = (role_name, privilege, obj_name)
+                    if gkey in seen_grant:
+                        continue
+                    seen_grant.add(gkey)
+                    grants.append(
+                        {
+                            "role": role_name,
+                            "privilege": privilege,
+                            "object_fqn": obj_name,
+                            "object_type": granted_on.lower(),
+                        }
+                    )
+        except Exception as exc:  # noqa: BLE001
+            warnings_list.append(f"Could not read grants TO role {role_name!r}: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+        # Who this role is granted to: users (memberships) + child roles.
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"SHOW GRANTS OF ROLE {quoted}")
+            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
+            for row in cursor.fetchall():
+                r = dict(zip(keys, row))
+                granted_to = str(r.get("granted_to", "") or "").upper()
+                grantee = str(r.get("grantee_name", "") or "")
+                if not grantee:
+                    continue
+                if granted_to == "USER":
+                    _add_user_membership(grantee, role_name)
+                elif granted_to == "ROLE":
+                    # The grantee role is a member of this role (grantee → role_name).
+                    _add_role_membership(grantee, role_name)
+        except Exception as exc:  # noqa: BLE001
+            warnings_list.append(f"Could not read grants OF role {role_name!r}: {sanitize_error(exc)}")
+        finally:
+            cursor.close()
+
+    return grants, memberships
+
+
+def merge_live_identity_into_object_graph(object_graph: dict[str, Any], live: dict[str, Any]) -> dict[str, Any]:
+    """Merge zero-latency SHOW identity into the (lagged) object-graph payload.
+
+    Live SHOW data is preferred over the ACCOUNT_USAGE rows: grants and
+    memberships from *live* replace any overlapping lagged rows and are then
+    unioned with the remainder, deduped. ``users`` (live-only) are carried
+    through so freshly-created users graph immediately. Mutates and returns
+    *object_graph*. A non-ok *live* payload is a no-op passthrough.
+    """
+    if not isinstance(object_graph, dict):
+        return object_graph
+    if not isinstance(live, dict) or live.get("status") != "ok":
+        return object_graph
+
+    # Grants keyed by (role, privilege, object_fqn); live wins on collision.
+    def _grant_key(g: dict[str, Any]) -> tuple[str, str, str]:
+        return (str(g.get("role", "")), str(g.get("privilege", "")), str(g.get("object_fqn", "")))
+
+    merged_grants: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for g in object_graph.get("grants", []) or []:
+        if isinstance(g, dict):
+            merged_grants[_grant_key(g)] = g
+    for g in live.get("grants", []) or []:
+        if isinstance(g, dict):
+            merged_grants[_grant_key(g)] = g  # live overwrites lagged
+    object_graph["grants"] = list(merged_grants.values())
+
+    # Memberships: user→role keyed (user, role); role→role keyed (role, parent).
+    def _mem_key(m: dict[str, Any]) -> tuple[str, str, str]:
+        if m.get("member_type") == "role" or m.get("parent"):
+            return ("role", str(m.get("role", "")), str(m.get("parent", "")))
+        return ("user", str(m.get("user", "")), str(m.get("role", "")))
+
+    merged_mem: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for m in object_graph.get("role_memberships", []) or []:
+        if isinstance(m, dict):
+            merged_mem[_mem_key(m)] = m
+    for m in live.get("role_memberships", []) or []:
+        if isinstance(m, dict):
+            merged_mem[_mem_key(m)] = m  # live overwrites lagged
+    object_graph["role_memberships"] = list(merged_mem.values())
+
+    # Users are live-only (object graph never had them); carry through, deduped.
+    if live.get("users"):
+        existing = {str(u.get("name", "")) for u in object_graph.get("users", []) or [] if isinstance(u, dict)}
+        users = list(object_graph.get("users", []) or [])
+        for u in live["users"]:
+            if isinstance(u, dict) and str(u.get("name", "")) not in existing:
+                users.append(u)
+                existing.add(str(u.get("name", "")))
+        object_graph["users"] = users
+
+    return object_graph
+
+
 _EXTERNAL_STAGE_SCHEMES = {"s3": "aws", "s3gov": "aws", "azure": "azure", "gcs": "gcp"}
 
 
@@ -3394,9 +3682,25 @@ def enrich_report_with_snowflake_estate(report: Any) -> None:
     """
     # Object + dependency graph: tables/views → DATA_STORE nodes,
     # OBJECT_DEPENDENCIES → DEPENDS_ON lineage edges. Best-effort.
+    #
+    # The object graph's grants/memberships come from ACCOUNT_USAGE, which lags
+    # 45min–2h, so a freshly-created role hierarchy is invisible. Overlay
+    # zero-latency SHOW-based identity (current state) and prefer it over the
+    # lagged rows so new users/roles/grants graph immediately. Best-effort.
     try:
         _sf_object_graph = discover_object_dependencies()
-        if _sf_object_graph.get("status") == "ok" and (_sf_object_graph.get("objects") or _sf_object_graph.get("dependencies")):
+        try:
+            _sf_live_identity = discover_identity_live()
+            _sf_object_graph = merge_live_identity_into_object_graph(_sf_object_graph, _sf_live_identity)
+        except Exception:  # noqa: BLE001 — live overlay is supplementary; never fail the object graph
+            pass
+        if _sf_object_graph.get("status") == "ok" and (
+            _sf_object_graph.get("objects")
+            or _sf_object_graph.get("dependencies")
+            or _sf_object_graph.get("grants")
+            or _sf_object_graph.get("role_memberships")
+            or _sf_object_graph.get("users")
+        ):
             report.snowflake_object_graph_data = _sf_object_graph
     except Exception:  # noqa: BLE001 — object graph is supplementary; never fail the scan
         pass

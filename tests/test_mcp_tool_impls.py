@@ -133,6 +133,52 @@ def test_registry_lookup_registry_error():
     assert "error" in data
 
 
+def test_registry_lookup_is_deterministic_across_registry_order():
+    """A substring query that matches several servers must return the same
+    entry regardless of dict-insertion order, so agents can cache the result."""
+    from agent_bom.mcp_tools.registry import registry_lookup_impl
+
+    def _entry(key: str) -> dict:
+        return {
+            "name": key,
+            "package": f"@scope/server-{key}",
+            "ecosystem": "npm",
+            "latest_version": "1.0.0",
+            "risk_level": "low",
+            "risk_justification": "",
+            "verified": True,
+            "tools": [],
+            "credential_env_vars": [],
+            "known_cves": [],
+            "category": "tools",
+            "license": "MIT",
+            "source_url": "",
+        }
+
+    # Both "server-alpha" and "server-beta" packages contain "server" — the
+    # query matches both, so iteration order would otherwise decide the winner.
+    names = ["beta", "gamma", "alpha"]
+    forward = {n: _entry(n) for n in names}
+    reordered = {n: _entry(n) for n in reversed(names)}
+
+    def _lookup(registry: dict) -> dict:
+        return json.loads(
+            registry_lookup_impl(
+                server_name="server",
+                package_name=None,
+                _get_registry_data=lambda: {"servers": registry},
+            )
+        )
+
+    first = _lookup(forward)
+    second = _lookup(reordered)
+    third = _lookup(forward)
+
+    assert first == second == third
+    # sorted() makes "alpha" the stable winner regardless of input order.
+    assert first["id"] == "alpha"
+
+
 @pytest.mark.asyncio
 async def test_marketplace_check_empty_package():
     from agent_bom.mcp_tools.registry import marketplace_check_impl

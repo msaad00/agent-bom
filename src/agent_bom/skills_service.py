@@ -326,9 +326,13 @@ async def _build_skill_report_async(path: Path, *, intel_source: str | None = No
     return await asyncio.to_thread(_build_skill_report, path, intel_source=intel_source)
 
 
-def _catalog_entry_for_report(report: SkillFileReport) -> dict[str, object]:
-    """Convert a file report into a persistent catalog entry."""
-    timestamp = catalog_scan_timestamp()
+def _catalog_findings_for_report(report: SkillFileReport) -> dict[str, object]:
+    """Return the deterministic, timestamp-free findings payload for a report.
+
+    Two scans of the same skill must produce a byte-identical dict here. No
+    wall-clock value may appear in this payload — provenance timestamps live in
+    the separate ``scanned_at`` block built by :func:`_catalog_entry_for_report`.
+    """
     return {
         "path": str(report.path),
         "bundle": report.bundle.to_dict(),
@@ -338,9 +342,27 @@ def _catalog_entry_for_report(report: SkillFileReport) -> dict[str, object]:
         "provenance_status": report.provenance.get("status"),
         "findings": len(report.audit.findings),
         "threat_intel": report.threat_intel.to_dict() if report.threat_intel else None,
-        "updated_at": timestamp,
-        "last_seen": timestamp,
     }
+
+
+def _catalog_entry_for_report(report: SkillFileReport) -> dict[str, object]:
+    """Convert a file report into a persistent catalog entry.
+
+    The deterministic findings payload is kept byte-identical across runs;
+    non-deterministic provenance timestamps are isolated under ``scanned_at``.
+    """
+    timestamp = catalog_scan_timestamp()
+    entry = _catalog_findings_for_report(report)
+    entry["scanned_at"] = {"updated_at": timestamp, "last_seen": timestamp}
+    return entry
+
+
+def _prior_first_seen(entry: dict[str, object]) -> object:
+    """Extract a prior ``first_seen`` value from new or legacy catalog entries."""
+    scanned_at = entry.get("scanned_at")
+    if isinstance(scanned_at, dict) and scanned_at.get("first_seen"):
+        return scanned_at["first_seen"]
+    return entry.get("first_seen")
 
 
 def _persist_catalog(reports: list[SkillFileReport], catalog_path: str | Path | None) -> str | None:
@@ -355,7 +377,9 @@ def _persist_catalog(reports: list[SkillFileReport], catalog_path: str | Path | 
         prior = entries.get(stable_id)
         prior_dict = prior if isinstance(prior, dict) else {}
         current = _catalog_entry_for_report(report)
-        current["first_seen"] = prior_dict.get("first_seen") or current["last_seen"]
+        scanned_at = current["scanned_at"]
+        assert isinstance(scanned_at, dict)
+        scanned_at["first_seen"] = _prior_first_seen(prior_dict) or scanned_at["last_seen"]
         entries[stable_id] = current
     catalog["entries"] = entries
     return str(save_skills_catalog(catalog, catalog_path))
@@ -461,7 +485,9 @@ async def _rescan_skill_catalog_async(
         async with sem:
             report = await _build_skill_report_async(path, intel_source=intel_source)
         updated = _catalog_entry_for_report(report)
-        updated["first_seen"] = entry.get("first_seen") or updated["last_seen"]
+        scanned_at = updated["scanned_at"]
+        assert isinstance(scanned_at, dict)
+        scanned_at["first_seen"] = _prior_first_seen(entry) or scanned_at["last_seen"]
         serialized_entry = {
             "bundle_stable_id": stable_id,
             "path": path_str,
@@ -473,7 +499,7 @@ async def _rescan_skill_catalog_async(
             "provenance_status": report.provenance.get("status"),
             "threat_intel": report.threat_intel.to_dict() if report.threat_intel else None,
             "findings": len(report.audit.findings),
-            "last_seen": updated["last_seen"],
+            "scanned_at": {"last_seen": scanned_at["last_seen"]},
         }
         return stable_id, updated, serialized_entry
 
@@ -487,9 +513,17 @@ async def _rescan_skill_catalog_async(
             continue
 
         status = ThreatIntelStatus.UNAVAILABLE.value
+        last_seen = catalog_scan_timestamp()
         updated = dict(entry)
         updated["status"] = status
-        updated["last_seen"] = catalog_scan_timestamp()
+        prior_scanned = updated.get("scanned_at")
+        scanned_block = dict(prior_scanned) if isinstance(prior_scanned, dict) else {}
+        scanned_block["last_seen"] = last_seen
+        scanned_block.setdefault("first_seen", _prior_first_seen(entry) or last_seen)
+        updated["scanned_at"] = scanned_block
+        updated.pop("last_seen", None)
+        updated.pop("first_seen", None)
+        updated.pop("updated_at", None)
         updated_entries[stable_id] = updated
         serialized.append(
             {
@@ -503,7 +537,7 @@ async def _rescan_skill_catalog_async(
                 "provenance_status": entry.get("provenance_status"),
                 "threat_intel": entry.get("threat_intel"),
                 "findings": entry.get("findings", 0),
-                "last_seen": updated["last_seen"],
+                "scanned_at": {"last_seen": last_seen},
                 "error": "file not found",
             }
         )

@@ -957,6 +957,15 @@ def build_unified_graph_from_report(
         data_source_tag,
     )
     _add_snowflake_services(graph, report_json.get("snowflake_services"), data_source_tag)
+    # Snowflake estate roll-up backbone (organization → accounts). Carried on the
+    # services payload under ``organization``; promoted after the services layer so
+    # the account node(s) the CONTAINS tree references already exist to stitch onto.
+    _sf_services_payload = report_json.get("snowflake_services")
+    _add_snowflake_organization(
+        graph,
+        _sf_services_payload.get("organization") if isinstance(_sf_services_payload, dict) else None,
+        data_source_tag,
+    )
     _add_snowflake_pipeline(graph, report_json.get("snowflake_pipeline"), data_source_tag)
     _add_snowflake_integrations(graph, report_json.get("snowflake_integrations"), data_source_tag)
     _add_snowflake_external_data(graph, report_json.get("snowflake_external_data"), data_source_tag)
@@ -2597,6 +2606,67 @@ def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str)
             parent_sch_id = schema_node_by_fqn.get(parent_schema)
             if parent_sch_id:
                 _add_rel_edge(graph, parent_sch_id, node.id, RelationshipType.CONTAINS, {"source": "snowflake-services"})
+
+
+def _add_snowflake_organization(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote the Snowflake Organization → Accounts roll-up into the graph.
+
+    The Snowflake analogue of :func:`_add_aws_organization` and
+    :func:`_add_gcp_organization`: multiple Snowflake accounts roll up under a
+    parent ``ORG`` node via ``CONTAINS`` so the estate is traversable top-down.
+
+    The account nodes reuse the same ``account:snowflake:<locator>`` id that
+    :func:`_add_snowflake_services` (and the rest of the Snowflake graph) emits, so
+    the org backbone stitches onto any already-inventoried account graph rather
+    than creating a parallel island. When org data is absent or non-ok the call is
+    a no-op and the account stays the root — single-account behavior is unchanged.
+
+    Never raises; a non-ok / non-dict payload is a no-op.
+    """
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return
+    accounts = payload.get("accounts") or []
+    if not accounts:
+        return
+    data_sources = sorted({data_source, "snowflake-organizations"} - {""})
+    org_name = _clean_graph_part(payload.get("org_name")) or "organization"
+    org_node_id = f"org:snowflake:{org_name}"
+    graph.add_node(
+        UnifiedNode(
+            id=org_node_id,
+            entity_type=EntityType.ORG,
+            label=f"Snowflake org: {org_name}",
+            attributes={
+                "org_name": org_name,
+                "cloud_provider": "snowflake",
+                "account_count": len([a for a in accounts if isinstance(a, dict)]),
+            },
+            data_sources=data_sources,
+            dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
+        )
+    )
+
+    for member in accounts:
+        if not isinstance(member, dict):
+            continue
+        locator = _clean_graph_part(member.get("locator"))
+        if not locator:
+            continue
+        account_node = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            locator,
+            "snowflake",
+            data_sources,
+            label=_clean_graph_part(member.get("name")) or locator,
+            account_id=locator,
+            cloud_provider="snowflake",
+            account_name=_clean_graph_part(member.get("name")),
+            region=_clean_graph_part(member.get("region")),
+            edition=_clean_graph_part(member.get("edition")),
+            source="snowflake-organizations",
+        )
+        _add_rel_edge(graph, org_node_id, account_node, RelationshipType.CONTAINS, {"source": "snowflake-organizations"})
 
 
 _SF_EXTERNAL_BUCKET_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}

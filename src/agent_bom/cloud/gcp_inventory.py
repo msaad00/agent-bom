@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
@@ -143,6 +144,78 @@ def inventory_enabled() -> bool:
     a truthy value (``1`` / ``true`` / ``yes`` / ``on``).
     """
     return os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() in _TRUTHY
+
+
+# Opt-in flag to fan a single scan across EVERY project in the org/folder tree —
+# the GCP counterpart of AWS Organizations multi-account and Azure
+# multi-subscription fan-out. Default OFF; requires AGENT_BOM_GCP_INVENTORY too.
+ALL_PROJECTS_ENV_FLAG = "AGENT_BOM_GCP_ALL_PROJECTS"
+# Defensive cap so an org with thousands of projects can't run unbounded without
+# an operator opting into a larger budget. Mirrors Azure's subscription cap.
+_MAX_PROJECTS = int(os.environ.get("AGENT_BOM_GCP_MAX_PROJECTS", "200") or "200")
+
+
+def all_projects_enabled() -> bool:
+    """Whether to fan a single scan across every project in the org/folder tree."""
+    return os.environ.get(ALL_PROJECTS_ENV_FLAG, "").strip().lower() in _TRUTHY
+
+
+def discover_all_project_inventories(credentials: Any = None, *, force: bool = False) -> list[dict[str, Any]]:
+    """Inventory EVERY project in the org/folder tree (multi-project fan-out).
+
+    The GCP counterpart of the AWS Organizations multi-account enumeration and
+    the Azure multi-subscription fan-out: discover the project set from the
+    organization → folders → projects hierarchy, then run the per-project
+    inventory for each concurrently (partitioned by ``project_id`` so the graph
+    keeps every project as a distinct account under the org ``CONTAINS`` tree).
+    Read-only; impersonated credentials are threaded into every per-project call.
+
+    Returns a LIST of per-project inventory payloads (the exact shape the graph
+    builder's ``_iter_cloud_inventories`` consumes). Falls back to the single
+    ambient ``GOOGLE_CLOUD_PROJECT`` when the org tree is unavailable (a
+    standalone project, or a credential without org-level read). Never raises.
+    """
+    if not force and not inventory_enabled():
+        return []
+
+    warnings: list[str] = []
+    resolved = _resolve_impersonation(credentials, warnings)
+
+    try:
+        from agent_bom.cloud import gcp_organizations
+
+        project_ids = gcp_organizations.list_project_ids(resolved, force=force)
+    except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade
+        logger.warning("GCP org project enumeration failed: %s", sanitize_discovery_warning(exc))
+        project_ids = []
+
+    if not project_ids:
+        single = os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip()
+        project_ids = [single] if single else []
+    if not project_ids:
+        return []
+
+    capped = project_ids[:_MAX_PROJECTS]
+    if len(project_ids) > _MAX_PROJECTS:
+        logger.warning(
+            "GCP multi-project scan capped at %d of %d projects (set AGENT_BOM_GCP_MAX_PROJECTS to raise).",
+            _MAX_PROJECTS,
+            len(project_ids),
+        )
+
+    payloads: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=min(8, len(capped))) as executor:
+        futures = {executor.submit(discover_inventory, project_id=pid, credentials=resolved, force=True): pid for pid in capped}
+        for future in as_completed(futures):
+            try:
+                payloads.append(future.result())
+            except Exception as exc:  # noqa: BLE001 — one project's failure must not sink the rest
+                logger.warning(
+                    "GCP inventory failed for project %s: %s",
+                    futures[future],
+                    sanitize_discovery_warning(exc),
+                )
+    return payloads
 
 
 def _derive_default_project() -> tuple[str, str]:
@@ -1073,7 +1146,10 @@ def _clean_labels(labels: Any) -> dict[str, str]:
 
 
 __all__ = [
+    "ALL_PROJECTS_ENV_FLAG",
     "INVENTORY_ENV_FLAG",
+    "all_projects_enabled",
+    "discover_all_project_inventories",
     "discover_inventory",
     "inventory_enabled",
 ]

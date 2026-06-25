@@ -12,22 +12,24 @@ How to publish agent-bom to each MCP ecosystem platform.
 
 ## 1. Smithery
 
-Smithery requires a publicly accessible HTTP URL for the MCP server.
+Smithery runs agent-bom as a Smithery-managed remote MCP surface. Its public
+catalog API exposes the listing, deployment URL, and tool inventory; the remote
+transport itself is OAuth-gated by Smithery and does not expose agent-bom's raw
+`/health` route. Do not use `https://server.smithery.ai/.../mcp` as an upstream
+publish URL or health endpoint.
 
-### Step 1: Deploy SSE server
+### Step 1: Keep the protected MCP deployment healthy
 
-The SSE server is deployed on Railway at `https://agent-bom-mcp.up.railway.app` (automated via `deploy-mcp-sse.yml`).
-Secure remote deployments should set `AGENT_BOM_MCP_BEARER_TOKEN` in Railway service
-variables so the MCP transport can start with built-in Bearer auth. Keep TLS at your
-ingress or platform edge.
+The primary SSE/streamable-http server is deployed on Railway at
+`https://agent-bom-mcp.up.railway.app` (automated via `deploy-mcp-sse.yml`).
+Secure remote deployments should set `AGENT_BOM_MCP_BEARER_TOKEN` in Railway
+service variables so the MCP transport starts with built-in Bearer auth. Keep TLS
+at your ingress or platform edge.
 
-If you need a public unauthenticated registry/demo endpoint, treat that as a separate,
-explicitly less-trusted deployment surface rather than weakening the primary service.
-Release automation now requires that public endpoint to be set explicitly via
-`SMITHERY_MCP_URL`. It does not fall back to the protected Railway URL, and it
-must not be the Smithery hosted proxy URL (`https://server.smithery.ai/.../mcp`).
-The variable should be the upstream public origin whose `/health` response is
-agent-bom JSON with `version`, `auth_required=false`, and `tool_count`.
+The daily deployment-freshness workflow probes this protected Railway `/health`
+surface with the configured bearer token, and probes Smithery through
+`https://api.smithery.ai/servers/agent-bom/agent-bom` for catalog liveness,
+remote deployment metadata, and non-empty tools.
 
 ### Step 2: Publish to Smithery
 
@@ -35,24 +37,25 @@ agent-bom JSON with `version`, `auth_required=false`, and `tool_count`.
 1. Go to https://smithery.ai/servers/new
 2. Namespace: `agent-bom`
 3. Server ID: `agent-bom`
-4. MCP Server URL: your separate public unauthenticated endpoint, e.g. `https://agent-bom--agent-bom.run.tools`
+4. Follow Smithery's managed remote flow for the `agent-bom/agent-bom` listing.
 5. Click **Continue**
 
 **Option B — Automated**:
 The `publish-registries.yml` workflow auto-publishes to Smithery on each release using:
 - `SMITHERY_API_TOKEN`
-- `SMITHERY_MCP_URL`
 
-The release publish workflow probes the public endpoint as best-effort context
-because Smithery rebuilds asynchronously. The daily deployment and surface
-freshness workflows own drift detection and open issues when:
-- the endpoint is unreachable
-- the endpoint reports `auth_required=true`
-- the endpoint is otherwise unsuitable for public registry publishing
+`SMITHERY_MCP_URL` is retained only for the external-upstream publish mode. It
+must never point at Smithery's hosted proxy URL. Freshness monitoring no longer
+depends on that variable; it uses the Smithery catalog API directly.
 
 ### Verification
 
-After publishing, check: https://smithery.ai/server/agent-bom/agent-bom
+After publishing, check:
+
+```bash
+curl -fsSL https://api.smithery.ai/servers/agent-bom/agent-bom \
+  | jq '{qualifiedName, remote, deploymentUrl, tool_count: (.tools | length)}'
+```
 
 ---
 

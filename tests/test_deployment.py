@@ -355,13 +355,12 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     """Deployment freshness should probe authenticated MCP health endpoints safely."""
     workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
     assert "RAILWAY_MCP_BEARER_TOKEN" in workflow
-    assert "SMITHERY_MCP_URL" in workflow
+    assert "SMITHERY_SERVER_QUALIFIED_NAME" in workflow
+    assert "api.smithery.ai/servers" in workflow
     assert "python3 -m agent_bom.deployment_probe" in workflow
     assert "tool_count" in workflow
-    assert "auth_required" in workflow
+    assert "smithery-oauth" in workflow
     assert "probe_failed=true" in workflow
-    assert "server.smithery.ai" in workflow
-    assert "invalid_smithery_proxy" in workflow
     assert "steps.railway.outputs.probe_failed != 'true'" in workflow
     assert "--resolve-only" in workflow
 

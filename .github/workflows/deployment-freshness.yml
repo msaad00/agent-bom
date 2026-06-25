@@ -1,8 +1,8 @@
 name: Deployment Freshness
 
-# Checks that the protected Railway surface and the public marketplace/Smithery
-# surface serve the latest release and that the public endpoint is not auth-gated.
-# Runs daily and on-demand. Opens an issue if stale or misconfigured.
+# Checks that the protected Railway surface serves the latest release and that
+# the Smithery catalog listing is live with a non-empty tool inventory. Runs
+# daily and on-demand. Opens an issue if stale or misconfigured.
 
 on:
   schedule:
@@ -67,73 +67,72 @@ jobs:
             echo "stale=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Check public marketplace deployment
+      - name: Check Smithery catalog listing
         id: public
         continue-on-error: true
         env:
-          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
+          SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
         run: |
-          if [ -z "${SMITHERY_MCP_URL:-}" ]; then
-            echo "::warning::SMITHERY_MCP_URL not configured — the public marketplace (Smithery) surface is UNMONITORED. A misconfiguration tracking issue will be opened."
-            echo "not_configured=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          QUALIFIED_NAME="${SMITHERY_SERVER_QUALIFIED_NAME:-agent-bom/agent-bom}"
+          RESPONSE=$(python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.parse
+          import urllib.request
 
-          DEPLOY_URL="${SMITHERY_MCP_URL}"
-          case "$DEPLOY_URL" in
-            https://server.smithery.ai/*|http://server.smithery.ai/*)
-              echo "public_version=invalid_smithery_proxy" >> "$GITHUB_OUTPUT"
-              echo "tool_count=unknown" >> "$GITHUB_OUTPUT"
-              echo "auth_required=unknown" >> "$GITHUB_OUTPUT"
-              echo "probe_failed=true" >> "$GITHUB_OUTPUT"
-              echo "::warning::SMITHERY_MCP_URL points at Smithery's hosted MCP proxy (${DEPLOY_URL}), which is OAuth-gated and does not expose agent-bom /health. Set SMITHERY_MCP_URL to the upstream public unauthenticated endpoint that serves /health."
-              exit 0
-              ;;
-          esac
-
-          RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
-            --base-url "$DEPLOY_URL" \
-            --attempts 3 \
-            --backoff-seconds 5 \
-            --timeout 15 2>/dev/null || echo '{}')
-          DEPLOYED=$(echo "$RESPONSE" | python3 -c "
-          import sys, json
+          name = os.environ.get("SMITHERY_SERVER_QUALIFIED_NAME") or "agent-bom/agent-bom"
+          if "/" not in name:
+              print(json.dumps({"error": f"invalid Smithery qualified name: {name!r}"}))
+              sys.exit(1)
+          namespace, server = name.split("/", 1)
+          url = "https://api.smithery.ai/servers/" + urllib.parse.quote(namespace, safe="") + "/" + urllib.parse.quote(server, safe="")
+          req = urllib.request.Request(
+              url,
+              headers={"Accept": "application/json", "User-Agent": "agent-bom-deployment-freshness"},
+          )
           try:
-              data = json.load(sys.stdin)
-              print(data.get('version', 'unknown'))
-          except Exception:
-              print('unknown')
-          ")
-          TOOL_COUNT=$(echo "$RESPONSE" | python3 -c "
-          import sys, json
-          try:
-              data = json.load(sys.stdin)
-              print(data.get('tool_count', data.get('mcp_metrics', {}).get('tool_count', 'unknown')))
-          except Exception:
-              print('unknown')
-          ")
-          AUTH_REQUIRED=$(echo "$RESPONSE" | python3 -c "
-          import sys, json
-          try:
-              data = json.load(sys.stdin)
-              print('true' if data.get('auth_required') else 'false')
-          except Exception:
-              print('unknown')
-          ")
-          echo "public_version=$DEPLOYED" >> "$GITHUB_OUTPUT"
-          echo "tool_count=$TOOL_COUNT" >> "$GITHUB_OUTPUT"
-          echo "auth_required=$AUTH_REQUIRED" >> "$GITHUB_OUTPUT"
-          echo "Public marketplace version: $DEPLOYED (expected: ${{ steps.expected.outputs.version }})"
-          echo "Public marketplace tool count: $TOOL_COUNT"
-          echo "Public marketplace auth_required: $AUTH_REQUIRED"
-          if [ "$DEPLOYED" = "unknown" ]; then
+              with urllib.request.urlopen(req, timeout=15) as response:
+                  data = json.loads(response.read().decode("utf-8", errors="replace"))
+          except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+              print(json.dumps({"error": str(exc), "url": url}))
+              sys.exit(1)
+          tools = data.get("tools") if isinstance(data.get("tools"), list) else []
+          print(json.dumps({
+              "qualified_name": data.get("qualifiedName"),
+              "remote": bool(data.get("remote")),
+              "deployment_url": data.get("deploymentUrl") or "",
+              "tool_count": len(tools),
+          }, separators=(",", ":")))
+          PY
+          ) || {
+            echo "public_version=unreachable" >> "$GITHUB_OUTPUT"
+            echo "tool_count=unknown" >> "$GITHUB_OUTPUT"
+            echo "auth_required=smithery-oauth" >> "$GITHUB_OUTPUT"
             echo "probe_failed=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Could not verify public marketplace version from $DEPLOY_URL"
-          elif [ "$AUTH_REQUIRED" = "true" ]; then
-            echo "auth_gate=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Public marketplace endpoint is auth-gated"
-          elif [ "$DEPLOYED" != "${{ steps.expected.outputs.version }}" ]; then
-            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Could not verify Smithery catalog listing"
+            exit 0
+          }
+          STATE=$(echo "$RESPONSE" | EXPECTED_QUALIFIED_NAME="$QUALIFIED_NAME" python3 -c "
+          import json, os, sys
+          data = json.load(sys.stdin)
+          if data.get('qualified_name') != os.environ['EXPECTED_QUALIFIED_NAME'] or not data.get('remote') or not data.get('deployment_url') or int(data.get('tool_count') or 0) < 1:
+              print('invalid')
+          else:
+              print('catalog_live')
+          ")
+          TOOL_COUNT=$(echo "$RESPONSE" | python3 -c "import json, sys; print(json.load(sys.stdin).get('tool_count', 'unknown'))")
+          DEPLOY_URL=$(echo "$RESPONSE" | python3 -c "import json, sys; print(json.load(sys.stdin).get('deployment_url', 'unknown'))")
+          echo "public_version=$STATE" >> "$GITHUB_OUTPUT"
+          echo "tool_count=$TOOL_COUNT" >> "$GITHUB_OUTPUT"
+          echo "auth_required=smithery-oauth" >> "$GITHUB_OUTPUT"
+          echo "Smithery catalog state: $STATE"
+          echo "Smithery deployment URL: $DEPLOY_URL"
+          echo "Smithery tool count: $TOOL_COUNT"
+          if [ "$STATE" != "catalog_live" ]; then
+            echo "probe_failed=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Smithery catalog listing is missing remote deployment metadata or tools"
           fi
 
       - name: Open issue if deployment surfaces drift or public endpoint is misconfigured
@@ -163,7 +162,7 @@ jobs:
           | Railway (protected) | $RAILWAY | $EXPECTED | true | — |
           | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
 
-          **Action**: Ensure Smithery points at a separate public unauthenticated endpoint, and re-run the relevant deployment or release workflow.
+          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API lists a remote deployment with tools, then re-run this workflow.
 
           This issue was auto-updated by the deployment-freshness workflow.
           EOF
@@ -182,7 +181,7 @@ jobs:
           | Railway (protected) | $RAILWAY | $EXPECTED | true | — |
           | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
 
-          **Action**: Ensure Smithery points at a separate public unauthenticated endpoint, and re-run the relevant deployment or release workflow.
+          **Action**: Ensure the protected Railway deployment is fresh and the Smithery catalog API lists a remote deployment with tools, then re-run this workflow.
 
           This issue was auto-created by the deployment-freshness workflow.
           EOF
@@ -199,7 +198,7 @@ jobs:
             const labels = ["supply-chain-drift", "security-preventive", "automated"];
 
             const unmonitored = [
-              "**Smithery / public marketplace** — set repo variable `SMITHERY_MCP_URL` (public unauthenticated MCP endpoint). Without it the public surface is never freshness-checked, which is how the listing drifted for three months unnoticed.",
+              "**Smithery / public marketplace** — set repo variable `SMITHERY_SERVER_QUALIFIED_NAME` only if the listing is not `agent-bom/agent-bom`. The monitor checks Smithery's catalog API because Smithery-hosted remotes are OAuth-gated and do not expose agent-bom `/health`.",
             ];
 
             const body = [

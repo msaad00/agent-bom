@@ -1027,6 +1027,47 @@
     ]
   },
   {
+    "name": "registry_sweep_scan",
+    "description": "Sweep a cloud registry (ECR/ACR/GAR): enumerate repos+tags, dedupe by digest, cap, scan each (read-only).",
+    "arguments": [
+      {
+        "name": "provider",
+        "type": "string",
+        "desc": "Container registry to sweep: ecr, acr, or gar"
+      },
+      {
+        "name": "region",
+        "type": "string",
+        "desc": "AWS region (ecr only)"
+      },
+      {
+        "name": "profile",
+        "type": "string",
+        "desc": "AWS credential profile (ecr only)"
+      },
+      {
+        "name": "registry",
+        "type": "string",
+        "desc": "ACR login server, e.g. myacr.azurecr.io (acr only)"
+      },
+      {
+        "name": "project",
+        "type": "string",
+        "desc": "GCP project id (gar only)"
+      },
+      {
+        "name": "location",
+        "type": "string",
+        "desc": "GAR location or multi-region, e.g. us (gar only)"
+      },
+      {
+        "name": "max_images",
+        "type": "integer",
+        "desc": "Cap on images scanned"
+      }
+    ]
+  },
+  {
     "name": "dataset_card_scan",
     "description": "Scan a directory for ML dataset card metadata and provenance \u2014 checks for license and sourcing issues.",
     "arguments": [

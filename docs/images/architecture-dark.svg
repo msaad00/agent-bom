@@ -187,7 +187,7 @@
   <g>
     <rect x="772" y="368" width="182" height="88" rx="8" fill="#0f172a" stroke="#1e3a36"/>
     <text x="786" y="392" class="node-title" fill="#5eead4">MCP server</text>
-    <text x="786" y="409" class="node-sub">69 tools · scan, intel, graph,</text>
+    <text x="786" y="409" class="node-sub">70 tools · scan, intel, graph,</text>
     <text x="786" y="422" class="node-sub">remediate, identity, shield</text>
     <text x="786" y="441" class="pill" fill="#5eead4">stdio · SSE · streamable-HTTP</text>
   </g>

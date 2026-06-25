@@ -97,6 +97,7 @@ def _minimal_args(name: str, workdir: Path) -> dict[str, Any]:
         "model_provenance_scan": {"model_id": "bert-base-uncased"},
         "policy_check": {"policy_json": "{}"},
         "prompt_scan": {"directory": p},
+        "registry_sweep_scan": {"provider": "ecr"},
         "runtime_blueprint_drift": {"blueprint_id": "bp-x"},
         "should_i_deploy": {"candidate": "requests==2.31.0"},
         "skill_trust": {"skill_path": file_target},

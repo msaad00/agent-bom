@@ -19,7 +19,7 @@ def register_specialized_ai_tools(
     truncate_response: Callable[[str], str],
 ) -> None:
     """Register specialized AI, model, and external-ingest MCP tools."""
-    from agent_bom.mcp_tools.cloud import gpu_infra_scan_impl, vector_db_scan_impl
+    from agent_bom.mcp_tools.cloud import gpu_infra_scan_impl, registry_sweep_scan_impl, vector_db_scan_impl
     from agent_bom.mcp_tools.compliance import aisvs_benchmark_impl, license_compliance_scan_impl
     from agent_bom.mcp_tools.specialized import (
         ai_inventory_scan_impl,
@@ -78,6 +78,36 @@ def register_specialized_ai_tools(
             gpu_infra_scan_impl,
             k8s_context=k8s_context,
             probe_dcgm=probe_dcgm,
+            _truncate_response=truncate_response,
+        )
+
+    @mcp.tool(annotations=read_only, title="Registry Image Sweep")
+    async def registry_sweep_scan(
+        provider: Annotated[
+            str,
+            Field(description="Container registry to sweep: 'ecr' (AWS), 'acr' (Azure), or 'gar' (GCP Artifact Registry)."),
+        ],
+        region: Annotated[str | None, Field(description="AWS region (ecr only).")] = None,
+        profile: Annotated[str | None, Field(description="AWS credential profile (ecr only).")] = None,
+        registry: Annotated[str | None, Field(description="ACR login server, e.g. 'myacr.azurecr.io' (acr only).")] = None,
+        project: Annotated[str | None, Field(description="GCP project id (gar only).")] = None,
+        location: Annotated[str | None, Field(description="GAR location/multi-region, e.g. 'us' (gar only).")] = None,
+        max_images: Annotated[
+            int | None,
+            Field(description="Cap on images scanned (default: AGENT_BOM_REGISTRY_MAX_IMAGES or 50)."),
+        ] = None,
+    ) -> str:
+        """Sweep an entire cloud container registry: enumerate every repo+tag, dedupe by digest, cap, and scan each (read-only)."""
+        return await execute_tool_async(
+            "registry_sweep_scan",
+            registry_sweep_scan_impl,
+            provider=provider,
+            region=region,
+            profile=profile,
+            registry=registry,
+            project=project,
+            location=location,
+            max_images=max_images,
             _truncate_response=truncate_response,
         )
 

@@ -44,7 +44,7 @@ material. The index below groups the canonical docs by audience.
 
 ## AI / agent developers (MCP · clients · tools)
 
-- [`MCP_SERVER.md`](MCP_SERVER.md) — run the MCP server, 69 tools
+- [`MCP_SERVER.md`](MCP_SERVER.md) — run the MCP server, 70 tools
 - [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md) — connect MCP clients
 - [`PYTHON_API.md`](PYTHON_API.md) — Python control-plane client
 

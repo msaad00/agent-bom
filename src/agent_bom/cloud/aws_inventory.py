@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
@@ -57,6 +58,17 @@ INVENTORY_ENV_FLAG = "AGENT_BOM_AWS_INVENTORY"
 # Deprecated original name. Still honoured (with a one-time warning) so existing
 # automation keeps working; remove in a future release.
 INVENTORY_ENV_FLAG_LEGACY = "AGENT_BOM_CLOUD_INVENTORY"
+
+# Multi-region fan-out gate. Default OFF — single-region remains the default so
+# existing single-region automation is unchanged. Symmetric with Azure's
+# AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS tenant-wide fan-out gate.
+ALL_REGIONS_ENV_FLAG = "AGENT_BOM_AWS_ALL_REGIONS"
+# Optional explicit region list (comma-separated). When set, it overrides
+# describe_regions enumeration so an operator can scope a multi-region scan.
+REGIONS_ENV_VAR = "AGENT_BOM_AWS_REGIONS"
+# Defensive cap so an account with a large enabled-region set can't fan out
+# unbounded without an operator opting into a larger budget.
+_MAX_REGIONS = int(os.environ.get("AGENT_BOM_AWS_MAX_REGIONS", "32") or "32")
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -145,6 +157,318 @@ def inventory_enabled() -> bool:
     return False
 
 
+def all_regions_enabled() -> bool:
+    """Whether to fan a single scan across every enabled region in the account.
+
+    Default OFF. Operators opt in by setting ``AGENT_BOM_AWS_ALL_REGIONS`` truthy
+    (or by passing an explicit ``regions`` list to
+    :func:`discover_inventory_all_regions`). Mirrors Azure's all-subscriptions
+    gate so the single-region path stays the default.
+    """
+    return os.environ.get(ALL_REGIONS_ENV_FLAG, "").strip().lower() in _TRUTHY
+
+
+def _empty_payload(*, region: str) -> dict[str, Any]:
+    """Return a fully-populated empty inventory payload (every list key present).
+
+    Shared by the single-region and multi-region paths so the payload shape the
+    graph builder consumes is defined in exactly one place.
+    """
+    return {
+        "provider": "aws",
+        "status": "disabled",
+        "account_id": None,
+        "region": region,
+        "buckets": [],
+        "instances": [],
+        "security_groups": [],
+        "roles": [],
+        "users": [],
+        "rds_instances": [],
+        "lambda_functions": [],
+        "dynamodb_tables": [],
+        "eks_clusters": [],
+        "elb_load_balancers": [],
+        "vpcs": [],
+        "kms_keys": [],
+        "secrets": [],
+        "cloudfront_distributions": [],
+        "ecr_repositories": [],
+        "redshift_clusters": [],
+        "messaging": [],
+        "warnings": [],
+        "discovery_envelope": None,
+    }
+
+
+# Region-scoped resource lists. These are concatenated across regions: each
+# item already carries its own ``location``/``region`` so the merge is a simple
+# extend, never a dedupe.
+_REGION_SCOPED_KEYS: tuple[str, ...] = (
+    "instances",
+    "security_groups",
+    "rds_instances",
+    "lambda_functions",
+    "dynamodb_tables",
+    "eks_clusters",
+    "elb_load_balancers",
+    "vpcs",
+    "kms_keys",
+    "secrets",
+    "ecr_repositories",
+    "redshift_clusters",
+    "messaging",
+)
+
+
+def _enabled_regions(session: Any, default_region: str, warnings: list[str]) -> list[str]:
+    """Resolve the region list to fan out over (read-only ``describe_regions``).
+
+    Resolution order: explicit ``AGENT_BOM_AWS_REGIONS`` env override (handled by
+    the caller) → enumerate enabled regions via ``ec2:DescribeRegions`` → fall
+    back to the single default region. Never raises: a failed enumeration
+    degrades to the single default region plus a warning.
+    """
+    try:
+        client = session.client("ec2", region_name=default_region)
+        resp = client.describe_regions(AllRegions=False)
+        regions = [
+            str(r.get("RegionName", "") or "").strip() for r in resp.get("Regions", []) or [] if str(r.get("RegionName", "") or "").strip()
+        ]
+        if regions:
+            return sorted(set(regions))
+    except Exception as exc:  # noqa: BLE001 — region enumeration must never sink a scan
+        warnings.append(f"Could not enumerate enabled AWS regions; scanning {default_region} only: {sanitize_discovery_warning(exc)}")
+    return [default_region]
+
+
+def _resolve_region_list(
+    session: Any,
+    default_region: str,
+    *,
+    regions: list[str] | None,
+    warnings: list[str],
+) -> list[str]:
+    """Return the (capped, deduped) ordered region list for a multi-region scan."""
+    if regions:
+        candidates = [str(r).strip() for r in regions if str(r).strip()]
+    else:
+        env_regions = os.environ.get(REGIONS_ENV_VAR, "").strip()
+        if env_regions:
+            candidates = [r.strip() for r in env_regions.split(",") if r.strip()]
+        else:
+            candidates = _enabled_regions(session, default_region, warnings)
+
+    ordered: list[str] = []
+    for region in candidates:
+        if region not in ordered:
+            ordered.append(region)
+    if not ordered:
+        ordered = [default_region]
+    if len(ordered) > _MAX_REGIONS:
+        warnings.append(f"Multi-region scan capped at {_MAX_REGIONS} of {len(ordered)} regions (set AGENT_BOM_AWS_MAX_REGIONS to raise).")
+        ordered = ordered[:_MAX_REGIONS]
+    return ordered
+
+
+def discover_inventory_all_regions(
+    profile: str | None = None,
+    *,
+    regions: list[str] | None = None,
+    include_s3: bool = True,
+    include_ec2: bool = True,
+    include_iam: bool = True,
+    include_data: bool = True,
+    include_compute: bool = True,
+    include_network: bool = True,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Estate-wide multi-region AWS inventory: fan out per region, merge once.
+
+    The AWS counterpart of Azure's all-subscriptions fan-out. Region-scoped
+    resources (EC2, RDS, DynamoDB, Lambda, EKS, ELB, VPC, KMS, Secrets, ECR,
+    Redshift, SNS/SQS) are discovered concurrently across the resolved region set
+    and **concatenated** (each item already carries its own ``location``).
+
+    Global resources (S3 buckets, IAM roles/users, CloudFront) are region-
+    agnostic, so they are enumerated **once** (against the default region) and
+    **deduped** by ARN/id — a multi-region scan never inflates the identity or
+    DSPM graph.
+
+    Returns the SAME payload shape as :func:`discover_inventory` so the graph
+    builder consumes it unchanged, with ``region`` set to ``"multi:<r1,r2,...>"``.
+
+    Crash-safe: a failing region degrades to a warning and contributes nothing,
+    never sinking the whole scan. boto3 absence / missing credentials degrade
+    exactly as the single-region path does.
+    """
+    if not force and not inventory_enabled():
+        return {**_empty_payload(region=""), "status": "disabled"}
+
+    try:
+        import boto3  # noqa: F401
+    except ImportError:
+        return {
+            **_empty_payload(region=""),
+            "status": "boto3_missing",
+            "warnings": ["boto3 is required for AWS inventory. Install with: pip install 'agent-bom[aws]'"],
+        }
+
+    session_kwargs: dict[str, Any] = {}
+    if profile:
+        session_kwargs["profile_name"] = profile
+    try:
+        session = boto3.Session(**session_kwargs)
+    except Exception as exc:  # noqa: BLE001 — boto profile/config errors must not crash a scan
+        return {**_empty_payload(region=""), "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
+
+    default_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+
+    warnings: list[str] = []
+    region_list = _resolve_region_list(session, default_region, regions=regions, warnings=warnings)
+
+    # Global (region-agnostic) resources are enumerated ONCE against the default
+    # region: S3 buckets + IAM principals. CloudFront is global too but is
+    # enumerated directly below so the global pass doesn't pull regional
+    # ELB/VPC/messaging (those come from the per-region fan-out). Suppressing
+    # ec2/data/compute/network here is what prevents the identity/DSPM graph from
+    # inflating across regions.
+    global_region = region_list[0] if default_region not in region_list else default_region
+    global_payload = discover_inventory(
+        region=global_region,
+        profile=profile,
+        include_s3=include_s3,
+        include_ec2=False,
+        include_iam=include_iam,
+        include_data=False,
+        include_compute=False,
+        include_network=False,
+        force=True,
+    )
+    if global_payload.get("status") in {"boto3_missing", "no_credentials"}:
+        return {**global_payload, "region": global_region}
+    warnings.extend(global_payload.get("warnings", []))
+
+    account_id = global_payload.get("account_id")
+
+    merged: dict[str, list[dict[str, Any]]] = {key: [] for key in _REGION_SCOPED_KEYS}
+
+    def _scan(region: str) -> dict[str, Any]:
+        return discover_inventory(
+            region=region,
+            profile=profile,
+            include_s3=False,
+            include_ec2=include_ec2,
+            include_iam=False,
+            include_data=include_data,
+            include_compute=include_compute,
+            include_network=include_network,
+            force=True,
+        )
+
+    region_payloads: dict[str, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(region_list)))) as executor:
+        future_to_region = {executor.submit(_scan, region): region for region in region_list}
+        for future in as_completed(future_to_region):
+            region = future_to_region[future]
+            try:
+                region_payloads[region] = future.result()
+            except Exception as exc:  # noqa: BLE001 — one bad region must not sink the scan
+                warnings.append(f"Region {region} skipped: {sanitize_discovery_warning(exc)}")
+
+    # CloudFront is global but is enumerated by each per-region scan (it rides on
+    # include_network); collect across regions, then dedupe by name below.
+    cloudfront_seen: list[dict[str, Any]] = []
+    for region in region_list:
+        payload = region_payloads.get(region)
+        if payload is None:
+            continue
+        for warning in payload.get("warnings", []):
+            warnings.append(f"[{region}] {warning}")
+        if payload.get("status") != "ok":
+            # A degraded region surfaces its warnings (above) but contributes no
+            # resources — it must never abort the merge.
+            continue
+        for key in _REGION_SCOPED_KEYS:
+            merged[key].extend(payload.get(key, []) or [])
+        cloudfront_seen.extend(payload.get("cloudfront_distributions", []) or [])
+
+    def _dedupe(items: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
+        seen: set[str] = set()
+        unique: list[dict[str, Any]] = []
+        for item in items:
+            ident = str(item.get(field, "") or "") or str(item.get("name", "") or "")
+            if ident and ident in seen:
+                continue
+            if ident:
+                seen.add(ident)
+            unique.append(item)
+        return unique
+
+    deduped_globals: dict[str, list[dict[str, Any]]] = {
+        "buckets": _dedupe(global_payload.get("buckets", []) or [], "arn"),
+        "roles": _dedupe(global_payload.get("roles", []) or [], "arn"),
+        "users": _dedupe(global_payload.get("users", []) or [], "arn"),
+        "cloudfront_distributions": _dedupe(cloudfront_seen, "name"),
+    }
+
+    region_label = f"multi:{','.join(region_list)}"
+    discovery_scope: list[str] = []
+    if account_id:
+        discovery_scope.append(f"aws:account/{account_id}")
+    for region in region_list:
+        discovery_scope.append(f"aws:region/{region}")
+
+    permissions_used: list[str] = list(_AWS_BASELINE_PERMISSIONS) + ["ec2:DescribeRegions"]
+    if include_s3:
+        permissions_used.extend(_AWS_S3_PERMISSIONS)
+    if include_ec2:
+        permissions_used.extend(_AWS_EC2_PERMISSIONS)
+    if include_iam:
+        permissions_used.extend(_AWS_IAM_PERMISSIONS)
+    if include_data:
+        permissions_used.extend(_AWS_DATA_PERMISSIONS)
+        permissions_used.extend(_AWS_SECURITY_PERMISSIONS)
+    if include_compute:
+        permissions_used.extend(_AWS_COMPUTE_PERMISSIONS)
+    if include_network:
+        permissions_used.extend(_AWS_NETWORK_PERMISSIONS)
+
+    envelope = DiscoveryEnvelope(
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        discovery_scope=tuple(discovery_scope),
+        permissions_used=tuple(sorted(set(permissions_used))),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
+
+    return {
+        "provider": "aws",
+        "status": "ok",
+        "account_id": account_id,
+        "region": region_label,
+        "regions": region_list,
+        "buckets": deduped_globals.get("buckets", []),
+        "instances": merged["instances"],
+        "security_groups": merged["security_groups"],
+        "roles": deduped_globals.get("roles", []),
+        "users": deduped_globals.get("users", []),
+        "rds_instances": merged["rds_instances"],
+        "lambda_functions": merged["lambda_functions"],
+        "dynamodb_tables": merged["dynamodb_tables"],
+        "eks_clusters": merged["eks_clusters"],
+        "elb_load_balancers": merged["elb_load_balancers"],
+        "vpcs": merged["vpcs"],
+        "kms_keys": merged["kms_keys"],
+        "secrets": merged["secrets"],
+        "cloudfront_distributions": deduped_globals.get("cloudfront_distributions", []),
+        "ecr_repositories": merged["ecr_repositories"],
+        "redshift_clusters": merged["redshift_clusters"],
+        "messaging": merged["messaging"],
+        "warnings": warnings,
+        "discovery_envelope": envelope.to_dict(),
+    }
+
+
 def discover_inventory(
     region: str | None = None,
     profile: str | None = None,
@@ -173,31 +497,7 @@ def discover_inventory(
     Never raises: boto3 absence, missing credentials, and per-service access
     denials all degrade to an empty (or partial) inventory plus warnings.
     """
-    empty: dict[str, Any] = {
-        "provider": "aws",
-        "status": "disabled",
-        "account_id": None,
-        "region": region or "",
-        "buckets": [],
-        "instances": [],
-        "security_groups": [],
-        "roles": [],
-        "users": [],
-        "rds_instances": [],
-        "lambda_functions": [],
-        "dynamodb_tables": [],
-        "eks_clusters": [],
-        "elb_load_balancers": [],
-        "vpcs": [],
-        "kms_keys": [],
-        "secrets": [],
-        "cloudfront_distributions": [],
-        "ecr_repositories": [],
-        "redshift_clusters": [],
-        "messaging": [],
-        "warnings": [],
-        "discovery_envelope": None,
-    }
+    empty = _empty_payload(region=region or "")
 
     if not force and not inventory_enabled():
         return empty
@@ -1111,7 +1411,11 @@ def _iso(value: Any) -> str:
 
 
 __all__ = [
+    "ALL_REGIONS_ENV_FLAG",
     "INVENTORY_ENV_FLAG",
+    "REGIONS_ENV_VAR",
+    "all_regions_enabled",
     "discover_inventory",
+    "discover_inventory_all_regions",
     "inventory_enabled",
 ]

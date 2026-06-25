@@ -458,3 +458,169 @@ def test_inline_policies_missing_method_degrades_to_warning() -> None:
     pols = aws_inventory._inline_policies(_NoInline(), "role", "app-role", warnings=warns)
     assert pols == []
     assert warns and "inline policy" in warns[0].lower()
+
+
+# ---------------------------------------------------------------------------
+# Multi-region fan-out (discover_inventory_all_regions)
+# ---------------------------------------------------------------------------
+
+
+class _RegionEC2:
+    """Region-aware EC2 fake: one instance per region + describe_regions."""
+
+    def __init__(self, region: str, *, enabled_regions: list[str]) -> None:
+        self._region = region
+        self._enabled = enabled_regions
+
+    def describe_regions(self, **_kwargs: Any) -> dict[str, Any]:
+        return {"Regions": [{"RegionName": r} for r in self._enabled]}
+
+    def describe_vpcs(self, **_kwargs: Any) -> dict[str, Any]:
+        return {"Vpcs": [{"VpcId": f"vpc-{self._region}", "CidrBlock": "10.0.0.0/16", "IsDefault": True, "Tags": []}]}
+
+    def get_paginator(self, op: str) -> _FakePaginator:
+        if op == "describe_instances":
+            return _FakePaginator(
+                [
+                    {
+                        "Reservations": [
+                            {
+                                "Instances": [
+                                    {
+                                        "InstanceId": f"i-{self._region}",
+                                        "InstanceType": "t3.micro",
+                                        "State": {"Name": "running"},
+                                        "SecurityGroups": [],
+                                        "Tags": [{"Key": "Name", "Value": f"host-{self._region}"}],
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            )
+        return _FakePaginator([{"SecurityGroups": []}])
+
+
+class _MultiRegionSession:
+    """Fake session whose region-scoped clients vary by region; globals are stable."""
+
+    def __init__(self, *, enabled_regions: list[str], boom_regions: set[str] | None = None, **kwargs: Any) -> None:
+        # Mirror boto3: Session(region_name=...) sets the session's region_name.
+        self.region_name = str(kwargs.get("region_name") or "us-east-1")
+        self._enabled = enabled_regions
+        self._boom = boom_regions or set()
+
+    def client(self, name: str, **kwargs: Any) -> Any:
+        region = str(kwargs.get("region_name") or self.region_name)
+        if region in self._boom:
+            # Every client in a "bad" region raises so the whole region degrades.
+            raise RuntimeError(f"region {region} unreachable")
+        if name == "ec2":
+            return _RegionEC2(region, enabled_regions=self._enabled)
+        if name == "s3":
+            return _FakeS3()
+        if name == "iam":
+            return _FakeIAM()
+        if name == "sts":
+            return _FakeSTS()
+        # Region-scoped services with no resources (paginator-driven, empty pages).
+
+        class _Empty:
+            def get_paginator(self, _op: str) -> _FakePaginator:
+                return _FakePaginator([{}])
+
+        return _Empty()
+
+
+def _install_multiregion_boto3(session_factory: Any) -> Any:
+    import types
+
+    boto3_mod = types.ModuleType("boto3")
+    boto3_mod.Session = session_factory  # type: ignore[attr-defined]
+    botocore_mod = types.ModuleType("botocore")
+    exc_mod = types.ModuleType("botocore.exceptions")
+    exc_mod.NoCredentialsError = type("NoCredentialsError", (Exception,), {})  # type: ignore[attr-defined]
+    exc_mod.ClientError = type("ClientError", (Exception,), {})  # type: ignore[attr-defined]
+    botocore_mod.exceptions = exc_mod  # type: ignore[attr-defined]
+    return patch.dict(sys.modules, {"boto3": boto3_mod, "botocore": botocore_mod, "botocore.exceptions": exc_mod})
+
+
+def test_all_regions_flag_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(aws_inventory.ALL_REGIONS_ENV_FLAG, raising=False)
+    assert aws_inventory.all_regions_enabled() is False
+    monkeypatch.setenv(aws_inventory.ALL_REGIONS_ENV_FLAG, "1")
+    assert aws_inventory.all_regions_enabled() is True
+
+
+def test_multiregion_merges_region_scoped_and_dedupes_globals(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(aws_inventory.INVENTORY_ENV_FLAG, "1")
+    monkeypatch.setenv(aws_inventory.REGIONS_ENV_VAR, "us-east-1,eu-west-1")
+
+    def _factory(**kwargs: Any) -> _MultiRegionSession:
+        return _MultiRegionSession(enabled_regions=["us-east-1", "eu-west-1"], **kwargs)
+
+    with _install_multiregion_boto3(_factory):
+        payload = aws_inventory.discover_inventory_all_regions()
+
+    assert payload["status"] == "ok"
+    assert payload["region"].startswith("multi:")
+    assert set(payload["regions"]) == {"us-east-1", "eu-west-1"}
+
+    # Region-scoped EC2 instances concatenated: one per region, each carrying its region.
+    instance_ids = {i["instance_id"] for i in payload["instances"]}
+    assert instance_ids == {"i-us-east-1", "i-eu-west-1"}
+    regions_on_instances = {i["region"] for i in payload["instances"]}
+    assert regions_on_instances == {"us-east-1", "eu-west-1"}
+    # VPCs concatenated per region too.
+    assert {v["vpc_id"] for v in payload["vpcs"]} == {"vpc-us-east-1", "vpc-eu-west-1"}
+
+    # GLOBAL S3 buckets enumerated ONCE — not duplicated per region.
+    assert sorted(b["name"] for b in payload["buckets"]) == ["private-logs", "public-data-lake"]
+    # GLOBAL IAM enumerated ONCE — one admin role, one user, no duplication.
+    assert [r["name"] for r in payload["roles"]] == ["admin-role"]
+    assert [u["name"] for u in payload["users"]] == ["alice"]
+
+    # Trust contract spans both regions.
+    scope = payload["discovery_envelope"]["discovery_scope"]
+    assert "aws:region/us-east-1" in scope
+    assert "aws:region/eu-west-1" in scope
+
+
+def test_multiregion_failing_region_degrades_to_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(aws_inventory.INVENTORY_ENV_FLAG, "1")
+    monkeypatch.setenv(aws_inventory.REGIONS_ENV_VAR, "us-east-1,eu-west-1")
+
+    def _factory(**kwargs: Any) -> _MultiRegionSession:
+        return _MultiRegionSession(enabled_regions=["us-east-1", "eu-west-1"], boom_regions={"eu-west-1"}, **kwargs)
+
+    with _install_multiregion_boto3(_factory):
+        payload = aws_inventory.discover_inventory_all_regions()
+
+    # The scan survives: status ok, the healthy region's resources are present.
+    assert payload["status"] == "ok"
+    assert {i["instance_id"] for i in payload["instances"]} == {"i-us-east-1"}
+    # The bad region surfaced a warning rather than sinking the scan.
+    assert any("eu-west-1" in w for w in payload["warnings"])
+
+
+def test_multiregion_disabled_without_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(aws_inventory.INVENTORY_ENV_FLAG, raising=False)
+    monkeypatch.delenv(aws_inventory.INVENTORY_ENV_FLAG_LEGACY, raising=False)
+    payload = aws_inventory.discover_inventory_all_regions()
+    assert payload["status"] == "disabled"
+    assert payload["instances"] == []
+
+
+def test_multiregion_enumerates_enabled_regions_when_no_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(aws_inventory.INVENTORY_ENV_FLAG, "1")
+    monkeypatch.delenv(aws_inventory.REGIONS_ENV_VAR, raising=False)
+
+    def _factory(**kwargs: Any) -> _MultiRegionSession:
+        return _MultiRegionSession(enabled_regions=["us-east-1", "ap-south-1"], **kwargs)
+
+    with _install_multiregion_boto3(_factory):
+        payload = aws_inventory.discover_inventory_all_regions(force=True)
+
+    # describe_regions drove the region set when no explicit override was given.
+    assert set(payload["regions"]) == {"us-east-1", "ap-south-1"}

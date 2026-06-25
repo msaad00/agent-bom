@@ -32,7 +32,6 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
-from agent_bom.security import sanitize_error
 
 router = APIRouter(tags=["cloud"])
 _logger = logging.getLogger(__name__)
@@ -154,8 +153,10 @@ async def cloud_inventory(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
+        # Full diagnostics go to the server log only; the client gets a generic
+        # message so no exception/stack detail is exposed over REST.
         _logger.exception("Cloud inventory failed")
-        raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
+        raise HTTPException(status_code=500, detail="Cloud inventory failed; see server logs.") from exc
 
 
 @router.get("/v1/cloud/{provider}/cis-benchmark")
@@ -215,8 +216,11 @@ async def cloud_cis_benchmark(
             # Provider SDK absent / credentials unavailable degrades to a clear
             # error envelope (HTTP 200) — exactly as the MCP cis_benchmark tool
             # does — never a 500. Keeps REST / MCP shape parity for the no-SDK path.
+            # Detail is logged server-side; the client gets a generic reason so no
+            # exception/stack detail leaks over REST.
+            _logger.warning("Cloud CIS benchmark unavailable for %s: %s", requested, exc)
             return {
-                "error": sanitize_error(exc),
+                "error": "Provider SDK or credentials unavailable for this benchmark.",
                 "provider": requested,
                 "tenant_id": tenant_id,
                 "status": "unavailable",
@@ -234,5 +238,6 @@ async def cloud_cis_benchmark(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
+        # Full diagnostics to the server log only; client gets a generic message.
         _logger.exception("Cloud CIS benchmark failed")
-        raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
+        raise HTTPException(status_code=500, detail="Cloud CIS benchmark failed; see server logs.") from exc

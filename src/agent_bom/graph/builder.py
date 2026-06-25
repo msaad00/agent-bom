@@ -3642,6 +3642,74 @@ def _add_cloud_role_assignments(graph: UnifiedGraph, inventory: Any, data_source
         )
 
 
+def _gcp_firewall_applies(firewall_attrs: dict[str, Any], instance: dict[str, Any]) -> bool:
+    """Return whether a permissive GCP firewall rule reaches *instance*.
+
+    A rule applies when it is on the instance's network AND its target scope
+    covers the instance. The target scope is: target tags (instance must carry
+    one) OR target service accounts (instance must run as one). An EMPTY target
+    set means the rule applies to ALL instances on its network — the GCP default.
+    A blank firewall network also matches (the rule scope is the whole project).
+    """
+    fw_network = _clean_graph_part(firewall_attrs.get("fw_network"))
+    inst_network = _clean_graph_part(instance.get("network"))
+    if fw_network and inst_network and fw_network != inst_network:
+        return False
+
+    target_tags = {str(t).strip() for t in (firewall_attrs.get("fw_target_tags") or []) if str(t).strip()}
+    target_sas = {str(s).strip() for s in (firewall_attrs.get("fw_target_service_accounts") or []) if str(s).strip()}
+    if not target_tags and not target_sas:
+        # No targets → the rule applies to every instance on the network.
+        return True
+    instance_tags = {str(t).strip() for t in (instance.get("network_tags") or []) if str(t).strip()}
+    if target_tags and instance_tags & target_tags:
+        return True
+    instance_sas = {str(s).strip() for s in (instance.get("service_accounts") or []) if str(s).strip()}
+    if target_sas and instance_sas & target_sas:
+        return True
+    return False
+
+
+def _apply_gcp_firewall_exposure(
+    graph: UnifiedGraph,
+    sg_node_by_id: dict[str, str],
+    instance_nodes: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """Mark GCP instances internet-exposed when a permissive firewall reaches them.
+
+    For each instance with an external IP, find every internet-facing
+    (``internet_exposed``) firewall node that applies to it (network + target
+    tags/SA match). Set ``internet_exposed=True`` on the instance node — which the
+    CNAPP overlay preserves — and add an ``EXPOSED_TO`` edge from the firewall to
+    the instance, mirroring how an AWS security group exposes an EC2 instance.
+    """
+    firewall_nodes = [(graph.nodes.get(node_id), node_id) for node_id in sg_node_by_id.values()]
+    permissive = [(node, node_id) for node, node_id in firewall_nodes if node is not None and node.attributes.get("internet_exposed")]
+    if not permissive:
+        return
+    for inst_node_id, instance in instance_nodes:
+        inst_node = graph.nodes.get(inst_node_id)
+        if inst_node is None:
+            continue
+        # Only an instance with an external/public IP can be reached from the
+        # internet; a permissive rule on a no-public-IP instance is not exposure.
+        if not _clean_graph_part(instance.get("public_ip")):
+            continue
+        for fw_node, fw_node_id in permissive:
+            if not _gcp_firewall_applies(fw_node.attributes, instance):
+                continue
+            inst_node.attributes["internet_exposed"] = True
+            graph.add_edge(
+                UnifiedEdge(
+                    source=fw_node_id,
+                    target=inst_node_id,
+                    relationship=RelationshipType.EXPOSED_TO,
+                    weight=6.0,
+                    evidence={"source": "cloud-inventory", "reason": "permissive_firewall_external_ip"},
+                )
+            )
+
+
 def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) -> None:
     """Promote estate-wide cloud inventory into first-class graph nodes.
 
@@ -3774,6 +3842,12 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     "vpc_id": _clean_graph_part(group.get("vpc_id")),
                     "internet_exposed": bool(group.get("internet_exposed")),
                     "network_exposure": list(group.get("network_exposure", []) or []),
+                    # GCP firewall scoping (empty on AWS); the instance-matching
+                    # pass below reads these to know which instances a rule covers.
+                    "fw_network": _clean_graph_part(group.get("network")),
+                    "fw_target_tags": list(group.get("target_tags", []) or []),
+                    "fw_target_service_accounts": list(group.get("target_service_accounts", []) or []),
+                    "fw_source_ranges": list(group.get("source_ranges", []) or []),
                     "account_id": account_id,
                 },
                 data_sources=data_sources,
@@ -3783,6 +3857,9 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         resource_ids.append(node_id)
 
     # ── EC2 instances → CLOUD_RESOURCE (linked to their security groups) ──
+    # Track (node_id, raw-instance) so the GCP firewall-matching pass can mark
+    # exposure by network + target tags/SA (GCP has no per-instance SG-id list).
+    instance_nodes: list[tuple[str, dict[str, Any]]] = []
     for instance in inventory.get("instances", []) or []:
         if not isinstance(instance, dict):
             continue
@@ -3815,6 +3892,11 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     "private_ip": _clean_graph_part(instance.get("private_ip")),
                     "iam_instance_profile": _clean_graph_part(instance.get("iam_instance_profile")),
                     "security_group_ids": list(instance.get("security_group_ids", []) or []),
+                    # GCP instance scoping (empty on AWS); the GCP firewall-matching
+                    # pass below reads these to decide which permissive rules apply.
+                    "network": _clean_graph_part(instance.get("network")),
+                    "network_tags": list(instance.get("network_tags", []) or []),
+                    "service_accounts": list(instance.get("service_accounts", []) or []),
                     "account_id": account_id,
                 },
                 data_sources=data_sources,
@@ -3822,6 +3904,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             )
         )
         resource_ids.append(node_id)
+        instance_nodes.append((node_id, instance))
         for sg_id in instance.get("security_group_ids", []) or []:
             sg_node_id = sg_node_by_id.get(_clean_graph_part(sg_id))
             if not sg_node_id:
@@ -3862,6 +3945,15 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                     evidence={"source": "cloud-inventory", "reason": "vm_user_assigned_identity"},
                 )
             )
+
+    # ── GCP compute exposure: match permissive firewalls to instances ──────
+    # GCP firewalls apply by network + target tags / target service accounts,
+    # not by a per-instance security-group id list (the AWS path above). Mirror
+    # AWS's EC2-exposure model: an instance with an external IP that a permissive
+    # (0.0.0.0/0) ingress rule reaches is marked internet_exposed with an
+    # EXPOSED_TO edge from the firewall — making it a first-class attack-path entry.
+    if provider == "gcp":
+        _apply_gcp_firewall_exposure(graph, sg_node_by_id, instance_nodes)
 
     # ── AWS data + compute services (RDS / DynamoDB / Lambda / EKS) ──────
     # (key, service, resource_type, kind, label, is_data_store)

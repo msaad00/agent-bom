@@ -71,7 +71,11 @@ class _FakeInstancesClient:
             zone="https://www.googleapis.com/compute/v1/projects/p/zones/us-central1-a",
             status="RUNNING",
             network_interfaces=[
-                _Obj(network_i_p="10.0.0.5", access_configs=[_Obj(nat_i_p="203.0.113.7")]),
+                _Obj(
+                    network_i_p="10.0.0.5",
+                    network="https://www.googleapis.com/compute/v1/projects/p/global/networks/default",
+                    access_configs=[_Obj(nat_i_p="203.0.113.7")],
+                ),
             ],
             service_accounts=[_Obj(email="vm-sa@p.iam.gserviceaccount.com")],
             tags=_Obj(items=["http-server"]),
@@ -121,7 +125,11 @@ class _FakeIAMClient:
         pass
 
     def list_service_accounts(self, request: Any) -> list[Any]:
-        return [_FakeServiceAccount("svc@p.iam.gserviceaccount.com", "Service Bot", "sa-unique-1")]
+        return [
+            _FakeServiceAccount("svc@p.iam.gserviceaccount.com", "Service Bot", "sa-unique-1"),
+            _FakeServiceAccount("overperm@p.iam.gserviceaccount.com", "Over-Permissioned", "sa-unique-2"),
+            _FakeServiceAccount("reader@p.iam.gserviceaccount.com", "Read Only", "sa-unique-3"),
+        ]
 
 
 class _FakeListSARequest:
@@ -134,6 +142,33 @@ class _FakeIAMAdminModule(types.ModuleType):
     ListServiceAccountsRequest = _FakeListSARequest
 
 
+# Project IAM policy: editor-bound SA → write, viewer-bound SA → read.
+class _FakeProjectsClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def get_iam_policy(self, request: Any) -> Any:
+        return _Obj(
+            bindings=[
+                {"role": "roles/editor", "members": ["serviceAccount:overperm@p.iam.gserviceaccount.com"]},
+                {"role": "roles/viewer", "members": ["serviceAccount:reader@p.iam.gserviceaccount.com"]},
+            ]
+        )
+
+
+class _FakeResourceManagerModule(types.ModuleType):
+    ProjectsClient = _FakeProjectsClient
+
+
+class _FakeGetIamPolicyRequest:
+    def __init__(self, resource: str) -> None:
+        self.resource = resource
+
+
+class _FakeIamPolicyPb2Module(types.ModuleType):
+    GetIamPolicyRequest = _FakeGetIamPolicyRequest
+
+
 def _install_fake_gcp() -> Any:
     """Return a patch.dict context installing fake google-cloud SDK modules."""
     google_mod = types.ModuleType("google")
@@ -141,6 +176,10 @@ def _install_fake_gcp() -> Any:
     storage_mod = _FakeStorageModule("google.cloud.storage")
     compute_mod = _FakeComputeModule("google.cloud.compute_v1")
     iam_mod = _FakeIAMAdminModule("google.cloud.iam_admin_v1")
+    rm_mod = _FakeResourceManagerModule("google.cloud.resourcemanager_v3")
+    iam_v1_mod = types.ModuleType("google.iam")
+    iam_v1_sub = types.ModuleType("google.iam.v1")
+    iam_policy_mod = _FakeIamPolicyPb2Module("google.iam.v1.iam_policy_pb2")
     return patch.dict(
         sys.modules,
         {
@@ -149,6 +188,10 @@ def _install_fake_gcp() -> Any:
             "google.cloud.storage": storage_mod,
             "google.cloud.compute_v1": compute_mod,
             "google.cloud.iam_admin_v1": iam_mod,
+            "google.cloud.resourcemanager_v3": rm_mod,
+            "google.iam": iam_v1_mod,
+            "google.iam.v1": iam_v1_sub,
+            "google.iam.v1.iam_policy_pb2": iam_policy_mod,
         },
     )
 
@@ -248,12 +291,23 @@ def test_inventory_enumerates_all_three_classes(monkeypatch: pytest.MonkeyPatch)
     assert firewalls["allow-ssh"]["network_exposure"][0]["from_port"] == 22
     assert firewalls["internal-https"]["internet_exposed"] is False
 
-    # Service accounts as principals.
+    # Service accounts as principals, privilege classified from project IAM bindings.
     accounts = {a["arn"]: a for a in payload["service_accounts"]}
     sa = accounts["svc@p.iam.gserviceaccount.com"]
     assert sa["principal_type"] == "service-account"
     assert sa["principal_id"] == "sa-unique-1"
+    # No project binding for svc → unknown (never inflated).
     assert sa["privilege_level"] == "unknown"
+    # roles/editor → write; roles/viewer → read.
+    assert accounts["overperm@p.iam.gserviceaccount.com"]["privilege_level"] == "write"
+    assert accounts["overperm@p.iam.gserviceaccount.com"]["roles"] == ["roles/editor"]
+    assert accounts["reader@p.iam.gserviceaccount.com"]["privilege_level"] == "read"
+
+    # Instance carries its network + structured firewall-join fields.
+    assert inst["network"] == "default"
+    # Permissive 0.0.0.0/0 firewall captures its source ranges + target scope.
+    assert firewalls["allow-ssh"]["source_ranges"] == ["0.0.0.0/0"]
+    assert firewalls["allow-ssh"]["target_tags"] == []
 
     # Per-run trust contract.
     env = payload["discovery_envelope"]
@@ -354,3 +408,142 @@ def test_graph_multiple_provider_inventories() -> None:
 def test_graph_inventory_noop_when_not_ok() -> None:
     graph = _build_graph_from_inventory({"provider": "gcp", "status": "disabled", "buckets": [], "instances": [], "firewalls": []})
     assert not any(nid.startswith("cloud_resource:gcp:") for nid in graph.nodes)
+
+
+# ---------------------------------------------------------------------------
+# Privilege classification (mirror AWS IAM privilege levels)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("role", "expected"),
+    [
+        ("roles/owner", "admin"),
+        ("roles/editor", "write"),
+        ("roles/viewer", "read"),
+        ("roles/storage.admin", "admin"),
+        ("roles/compute.admin", "admin"),
+        ("roles/storage.objectViewer", "read"),
+        ("roles/bigquery.dataViewer", "read"),
+        ("roles/logging.viewer", "read"),
+        ("roles/run.invoker", "unknown"),
+        ("", "unknown"),
+    ],
+)
+def test_classify_role_privilege(role: str, expected: str) -> None:
+    assert gcp_inventory._classify_role_privilege(role) == expected
+
+
+def test_highest_privilege_takes_max() -> None:
+    assert gcp_inventory._highest_privilege(["roles/viewer", "roles/editor"]) == "write"
+    assert gcp_inventory._highest_privilege(["roles/viewer", "roles/owner"]) == "admin"
+    assert gcp_inventory._highest_privilege([]) == "unknown"
+
+
+def test_editor_service_account_classifies_as_write(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An roles/editor-bound SA must classify as write so CIEM reasoning fires."""
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+    accounts = {a["arn"]: a for a in payload["service_accounts"]}
+    overperm = accounts["overperm@p.iam.gserviceaccount.com"]
+    assert overperm["privilege_level"] == "write"
+    # The bound role becomes a classified policy entry the graph promotes to POLICY.
+    assert overperm["policies"][0]["policy_name"] == "roles/editor"
+    assert overperm["policies"][0]["privilege_level"] == "write"
+
+
+def test_graph_promotes_editor_sa_privilege(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+    graph = _build_graph_from_inventory(payload)
+    sa_id = "service_account:gcp:overperm@p.iam.gserviceaccount.com"
+    assert sa_id in graph.nodes
+    assert graph.nodes[sa_id].attributes["privilege_level"] == "write"
+
+
+# ---------------------------------------------------------------------------
+# Compute internet-exposure (mirror AWS EC2 + security groups)
+# ---------------------------------------------------------------------------
+
+
+def test_graph_marks_instance_exposed_with_edge(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An external-IP instance + a 0.0.0.0/0 firewall on its network is exposed."""
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+    graph = _build_graph_from_inventory(payload)
+    from agent_bom.graph.types import RelationshipType
+
+    inst_id = "cloud_resource:gcp:compute:instance:123"
+    fw_id = "cloud_resource:gcp:compute:firewall:allow-ssh"
+    assert graph.nodes[inst_id].attributes["internet_exposed"] is True
+    exposed_edges = [e for e in graph.edges if e.relationship == RelationshipType.EXPOSED_TO and e.source == fw_id and e.target == inst_id]
+    assert len(exposed_edges) == 1
+    assert exposed_edges[0].evidence.get("reason") == "permissive_firewall_external_ip"
+
+
+def test_no_exposure_without_external_ip() -> None:
+    """An instance with NO public IP is not exposed even under a 0.0.0.0/0 rule."""
+    payload = {
+        "provider": "gcp",
+        "status": "ok",
+        "project_id": "proj-1",
+        "buckets": [],
+        "instances": [
+            {"instance_id": "i-private", "name": "private-1", "public_ip": "", "network": "default", "network_tags": []},
+        ],
+        "firewalls": [
+            {
+                "group_id": "allow-all",
+                "name": "allow-all",
+                "network": "default",
+                "internet_exposed": True,
+                "network_exposure": [{"scope": "internet", "from_port": 22, "to_port": 22, "protocol": "tcp"}],
+                "source_ranges": ["0.0.0.0/0"],
+                "target_tags": [],
+                "target_service_accounts": [],
+            }
+        ],
+        "service_accounts": [],
+    }
+    graph = _build_graph_from_inventory(payload)
+    from agent_bom.graph.types import RelationshipType
+
+    inst_id = "cloud_resource:gcp:compute:instance:i-private"
+    assert not graph.nodes[inst_id].attributes.get("internet_exposed")
+    assert not any(e.relationship == RelationshipType.EXPOSED_TO and e.target == inst_id for e in graph.edges)
+
+
+def test_target_tag_scopes_firewall_to_matching_instance() -> None:
+    """A target-tagged firewall exposes only instances carrying that tag."""
+    payload = {
+        "provider": "gcp",
+        "status": "ok",
+        "project_id": "proj-1",
+        "buckets": [],
+        "instances": [
+            {"instance_id": "i-web", "name": "web", "public_ip": "34.46.45.57", "network": "default", "network_tags": ["http-server"]},
+            {"instance_id": "i-db", "name": "db", "public_ip": "34.46.45.99", "network": "default", "network_tags": ["db"]},
+        ],
+        "firewalls": [
+            {
+                "group_id": "allow-http",
+                "name": "allow-http",
+                "network": "default",
+                "internet_exposed": True,
+                "network_exposure": [{"scope": "internet", "from_port": 80, "to_port": 80, "protocol": "tcp"}],
+                "source_ranges": ["0.0.0.0/0"],
+                "target_tags": ["http-server"],
+                "target_service_accounts": [],
+            }
+        ],
+        "service_accounts": [],
+    }
+    graph = _build_graph_from_inventory(payload)
+    web_id = "cloud_resource:gcp:compute:instance:i-web"
+    db_id = "cloud_resource:gcp:compute:instance:i-db"
+    assert graph.nodes[web_id].attributes["internet_exposed"] is True
+    # The db instance does not carry the http-server tag → not exposed by this rule.
+    assert not graph.nodes[db_id].attributes.get("internet_exposed")

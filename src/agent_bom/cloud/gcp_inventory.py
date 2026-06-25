@@ -62,7 +62,10 @@ _GCP_COMPUTE_PERMISSIONS: tuple[str, ...] = (
     "compute.instances.list",
     "compute.firewalls.list",
 )
-_GCP_IAM_PERMISSIONS: tuple[str, ...] = ("iam.serviceAccounts.list",)
+_GCP_IAM_PERMISSIONS: tuple[str, ...] = (
+    "iam.serviceAccounts.list",
+    "resourcemanager.projects.getIamPolicy",
+)
 
 # Open-to-the-world source ranges that mark a firewall rule as internet-facing.
 # The CNAPP overlay keys off this `network_exposure` shape.
@@ -70,6 +73,54 @@ _INTERNET_RANGES = {"0.0.0.0/0", "::/0"}
 
 # Members that mark a bucket IAM policy as publicly accessible.
 _PUBLIC_MEMBERS = {"allusers", "allauthenticatedusers"}
+
+# Privilege ranking shared with the AWS path so cross-provider CIEM reasoning
+# (OVERPERMISSIONED_TO_SENSITIVE, effective-permissions) treats levels uniformly.
+_PRIVILEGE_RANK = {"admin": 3, "write": 2, "read": 1, "unknown": 0}
+
+# Canonical predefined GCP roles → privilege level (no extra API call needed).
+_GCP_ROLE_PRIVILEGE: dict[str, str] = {
+    "roles/owner": "admin",
+    "roles/editor": "write",
+    "roles/viewer": "read",
+    "roles/browser": "read",
+}
+
+
+def _classify_role_privilege(role: str) -> str:
+    """Classify a single GCP IAM role into admin / write / read / unknown.
+
+    Mirrors the AWS managed-policy classifier: the basic Owner/Editor/Viewer
+    roles map directly; any ``*Admin`` role is admin; any ``*Viewer`` / ``*Reader``
+    role is read. Everything else stays ``unknown`` — never an inflated guess.
+    """
+    name = str(role or "").strip()
+    if not name:
+        return "unknown"
+    lowered = name.lower()
+    if lowered in _GCP_ROLE_PRIVILEGE:
+        return _GCP_ROLE_PRIVILEGE[lowered]
+    # Strip the leaf after the last dot/slash for the "*Admin"/"*Viewer" suffix test.
+    leaf = lowered.rsplit("/", 1)[-1].rsplit(".", 1)[-1]
+    if leaf.endswith("admin") or "admin" in leaf:
+        return "admin"
+    if "owner" in leaf:
+        return "admin"
+    if "editor" in leaf or leaf.endswith("writer") or leaf.endswith("write"):
+        return "write"
+    if leaf.endswith("viewer") or leaf.endswith("reader") or leaf.endswith("read") or "viewer" in leaf or "reader" in leaf:
+        return "read"
+    return "unknown"
+
+
+def _highest_privilege(roles: list[str]) -> str:
+    """Return the most-privileged level across a principal's bound roles."""
+    best = "unknown"
+    for role in roles:
+        level = _classify_role_privilege(role)
+        if _PRIVILEGE_RANK.get(level, 0) > _PRIVILEGE_RANK.get(best, 0):
+            best = level
+    return best
 
 
 def inventory_enabled() -> bool:
@@ -227,7 +278,10 @@ def discover_inventory(
         instances = _discover_instances(resolved_project, credentials=credentials, warnings=warnings)
         firewalls = _discover_firewalls(resolved_project, credentials=credentials, warnings=warnings)
     if include_iam:
-        service_accounts = _discover_service_accounts(resolved_project, credentials=credentials, warnings=warnings)
+        iam_bindings = _discover_project_iam_bindings(resolved_project, credentials=credentials, warnings=warnings)
+        service_accounts = _discover_service_accounts(
+            resolved_project, credentials=credentials, warnings=warnings, iam_bindings=iam_bindings
+        )
 
     permissions_used: list[str] = []
     if include_storage:
@@ -369,8 +423,12 @@ def _discover_instances(project_id: str, *, credentials: Any, warnings: list[str
 def _normalize_instance(instance: Any, *, name: str, project_id: str) -> dict[str, Any]:
     public_ip = ""
     private_ip = ""
+    networks: list[str] = []
     for interface in getattr(instance, "network_interfaces", None) or []:
         private_ip = private_ip or str(getattr(interface, "network_i_p", "") or getattr(interface, "network_ip", "") or "")
+        network_leaf = _leaf(getattr(interface, "network", ""))
+        if network_leaf and network_leaf not in networks:
+            networks.append(network_leaf)
         for access in getattr(interface, "access_configs", None) or []:
             nat_ip = str(getattr(access, "nat_i_p", "") or getattr(access, "nat_ip", "") or "")
             if nat_ip:
@@ -387,6 +445,10 @@ def _normalize_instance(instance: Any, *, name: str, project_id: str) -> dict[st
         "status": str(getattr(instance, "status", "") or ""),
         "public_ip": public_ip,
         "private_ip": private_ip,
+        # The network each interface attaches to — the join key a firewall rule
+        # matches on (a rule applies to instances on its target network).
+        "network": networks[0] if networks else "",
+        "networks": networks,
         "network_tags": list(getattr(getattr(instance, "tags", None), "items", None) or []),
         "service_accounts": service_accounts,
         "labels": _clean_labels(getattr(instance, "labels", None)),
@@ -417,6 +479,11 @@ def _discover_firewalls(project_id: str, *, credentials: Any, warnings: list[str
 
 def _normalize_firewall(rule: Any, *, name: str, project_id: str) -> dict[str, Any]:
     exposure = _firewall_internet_exposure(rule)
+    source_ranges = [str(r) for r in (getattr(rule, "source_ranges", None) or []) if r]
+    # Target tags / target service accounts scope a rule to specific instances.
+    # An EMPTY target set means the rule applies to ALL instances on its network.
+    target_tags = [str(t) for t in (getattr(rule, "target_tags", None) or []) if t]
+    target_service_accounts = [str(sa) for sa in (getattr(rule, "target_service_accounts", None) or []) if sa]
     return {
         "group_id": name,
         "name": name,
@@ -424,6 +491,9 @@ def _normalize_firewall(rule: Any, *, name: str, project_id: str) -> dict[str, A
         "direction": str(getattr(rule, "direction", "") or "").upper(),
         "internet_exposed": bool(exposure),
         "network_exposure": exposure,
+        "source_ranges": source_ranges,
+        "target_tags": target_tags,
+        "target_service_accounts": target_service_accounts,
         "project_id": project_id,
     }
 
@@ -474,13 +544,59 @@ def _safe_int(value: str) -> int | None:
 # ---------------------------------------------------------------------------
 
 
-def _discover_service_accounts(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_project_iam_bindings(project_id: str, *, credentials: Any, warnings: list[str]) -> dict[str, list[str]]:
+    """Read the project IAM policy (read-only) → ``{member: [roles…]}``.
+
+    Calls ``cloudresourcemanager`` ``projects.getIamPolicy`` and inverts the
+    role→members bindings into a member→roles map so each principal carries the
+    roles bound to it. The member key is the bare identity (e.g.
+    ``svc@p.iam.gserviceaccount.com``) with the ``serviceAccount:`` / ``user:`` /
+    ``group:`` prefix stripped, matching the SA email used elsewhere. Degrades to
+    an empty map plus a warning on any error — never raises.
+    """
+    bindings_by_member: dict[str, list[str]] = {}
+    try:
+        from google.cloud import resourcemanager_v3
+    except ImportError:
+        warnings.append("google-cloud-resource-manager not installed. Skipping project IAM-binding discovery.")
+        return bindings_by_member
+    try:
+        from google.iam.v1 import iam_policy_pb2
+
+        client = resourcemanager_v3.ProjectsClient(credentials=credentials)
+        request = iam_policy_pb2.GetIamPolicyRequest(resource=f"projects/{project_id}")
+        policy = client.get_iam_policy(request=request)
+        for binding in _policy_bindings(policy):
+            role = str(binding.get("role", "") or "")
+            if not role:
+                continue
+            for member in binding.get("members", []) or []:
+                key = str(member).split(":", 1)[-1].strip().lower() if ":" in str(member) else str(member).strip().lower()
+                if not key:
+                    continue
+                roles = bindings_by_member.setdefault(key, [])
+                if role not in roles:
+                    roles.append(role)
+    except Exception as exc:  # noqa: BLE001 — IAM-policy read must never sink a scan
+        warnings.append(f"Could not read project IAM policy: {sanitize_discovery_warning(exc)}")
+    return bindings_by_member
+
+
+def _discover_service_accounts(
+    project_id: str,
+    *,
+    credentials: Any,
+    warnings: list[str],
+    iam_bindings: dict[str, list[str]] | None = None,
+) -> list[dict[str, Any]]:
     """Enumerate all service accounts in the project (read-only).
 
     Each service account becomes a ``service_account`` graph node carrying its
-    unique id so the effective-permissions overlay can attach ``HAS_PERMISSION``
-    once role-binding data is wired. Privilege defaults to ``unknown`` —
-    inventory never guesses an inflated level.
+    unique id and the project IAM roles bound to it, classified into a
+    ``privilege_level`` (admin / write / read / unknown) so the
+    effective-permissions overlay and ``OVERPERMISSIONED_TO_SENSITIVE`` /
+    CIEM reasoning fire on GCP — mirroring the AWS IAM path. Privilege defaults to
+    ``unknown`` when no binding is found — inventory never guesses an inflated level.
     """
     try:
         from google.cloud import iam_admin_v1
@@ -488,6 +604,7 @@ def _discover_service_accounts(project_id: str, *, credentials: Any, warnings: l
         warnings.append("google-cloud-iam not installed. Skipping service-account inventory.")
         return []
 
+    bindings = iam_bindings or {}
     accounts: list[dict[str, Any]] = []
     try:
         client = iam_admin_v1.IAMClient(credentials=credentials)
@@ -496,6 +613,17 @@ def _discover_service_accounts(project_id: str, *, credentials: Any, warnings: l
             email = str(getattr(account, "email", "") or "").strip()
             if not email:
                 continue
+            roles = list(bindings.get(email.lower(), []))
+            policies = [
+                {
+                    "policy_id": role,
+                    "policy_name": role,
+                    "attachment_type": "iam-binding",
+                    "privilege_level": _classify_role_privilege(role),
+                    "source_field": "projects.getIamPolicy.bindings",
+                }
+                for role in roles
+            ]
             accounts.append(
                 {
                     "principal_type": "service-account",
@@ -505,9 +633,10 @@ def _discover_service_accounts(project_id: str, *, credentials: Any, warnings: l
                     "email": email,
                     "disabled": bool(getattr(account, "disabled", False)),
                     "account_id": project_id,
-                    "policies": [],
+                    "roles": roles,
+                    "policies": policies,
                     "trust_principals": [],
-                    "privilege_level": "unknown",
+                    "privilege_level": _highest_privilege(roles),
                 }
             )
     except Exception as exc:  # noqa: BLE001

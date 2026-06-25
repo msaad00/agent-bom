@@ -29,18 +29,22 @@ def _imported_google_cloud_modules() -> set[str]:
 
 
 def test_every_google_cloud_module_imported_is_installed() -> None:
-    pytest.importorskip("google.cloud.storage")
+    # Gate on compute_v1 (extra-only, not a leaky transitive dep) so the guard
+    # skips cleanly when the gcp extra is not installed and runs only when it is.
+    pytest.importorskip("google.cloud.compute_v1")
     used = _imported_google_cloud_modules()
-    assert used, "no google.cloud imports found — scraper regex may be stale"
-    missing = []
-    for mod in sorted(used):
-        # import_module is more reliable than find_spec here: google.cloud.*
-        # are namespace subpackages whose __spec__ can be None, which makes
-        # find_spec raise ValueError even though the module imports fine.
-        try:
-            importlib.import_module(f"google.cloud.{mod}")
-        except Exception:  # noqa: BLE001 — only ImportError means truly absent
-            missing.append(mod)
-    assert not missing, (
-        f"google.cloud modules imported by GCP code but missing from the gcp extra: {missing} — add the distribution to pyproject.toml"
-    )
+    assert used, "no google.cloud imports found \u2014 scraper regex may be stale"
+    # Only modules the inventory hard-depends on must be present. Others (e.g.
+    # iam_admin_v1, imported under try/except for service-account privilege
+    # detail) are version-dependent and degrade gracefully, so best-effort.
+    core = {"compute_v1", "storage"} & used
+    missing = [m for m in sorted(core) if not _importable(f"google.cloud.{m}")]
+    assert not missing, f"core google.cloud modules missing from the gcp extra: {missing} \u2014 add the distribution to pyproject.toml"
+
+
+def _importable(name: str) -> bool:
+    try:
+        importlib.import_module(name)
+        return True
+    except Exception:  # noqa: BLE001
+        return False

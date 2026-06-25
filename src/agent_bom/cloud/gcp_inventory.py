@@ -42,6 +42,7 @@ from typing import Any
 
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
 
+from .aws_inventory import dedupe_missing_permissions, record_discovery_failure
 from .normalization import sanitize_discovery_warning
 
 logger = logging.getLogger(__name__)
@@ -331,6 +332,7 @@ def discover_inventory(
         "disks": [],
         "pubsub_topics": [],
         "warnings": [],
+        "missing_permissions": [],
         "discovery_envelope": None,
     }
 
@@ -366,6 +368,7 @@ def discover_inventory(
     # discovery runs AS that SA — the recommended path where SA keys are
     # org-disabled, matching AWS's read-only profile and Snowflake's role.
     credentials = _resolve_impersonation(credentials, warnings)
+    missing: list[dict[str, str]] = []
     buckets: list[dict[str, Any]] = []
     instances: list[dict[str, Any]] = []
     firewalls: list[dict[str, Any]] = []
@@ -379,28 +382,28 @@ def discover_inventory(
     pubsub_topics: list[dict[str, Any]] = []
 
     if include_storage:
-        buckets = _discover_buckets(resolved_project, credentials=credentials, warnings=warnings)
+        buckets = _discover_buckets(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_compute:
-        instances = _discover_instances(resolved_project, credentials=credentials, warnings=warnings)
-        firewalls = _discover_firewalls(resolved_project, credentials=credentials, warnings=warnings)
+        instances = _discover_instances(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
+        firewalls = _discover_firewalls(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_iam:
-        iam_bindings = _discover_project_iam_bindings(resolved_project, credentials=credentials, warnings=warnings)
+        iam_bindings = _discover_project_iam_bindings(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
         service_accounts = _discover_service_accounts(
-            resolved_project, credentials=credentials, warnings=warnings, iam_bindings=iam_bindings
+            resolved_project, credentials=credentials, warnings=warnings, iam_bindings=iam_bindings, missing=missing
         )
     if include_containers:
-        gke_clusters = _discover_gke_clusters(resolved_project, credentials=credentials, warnings=warnings)
+        gke_clusters = _discover_gke_clusters(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_serverless:
-        cloud_run_services = _discover_cloud_run_services(resolved_project, credentials=credentials, warnings=warnings)
-        cloud_functions = _discover_cloud_functions(resolved_project, credentials=credentials, warnings=warnings)
+        cloud_run_services = _discover_cloud_run_services(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
+        cloud_functions = _discover_cloud_functions(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_databases:
-        cloud_sql_instances = _discover_cloud_sql_instances(resolved_project, credentials=credentials, warnings=warnings)
+        cloud_sql_instances = _discover_cloud_sql_instances(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_networks:
-        vpc_networks = _discover_vpc_networks(resolved_project, credentials=credentials, warnings=warnings)
+        vpc_networks = _discover_vpc_networks(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_disks:
-        disks = _discover_disks(resolved_project, credentials=credentials, warnings=warnings)
+        disks = _discover_disks(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_messaging:
-        pubsub_topics = _discover_pubsub_topics(resolved_project, credentials=credentials, warnings=warnings)
+        pubsub_topics = _discover_pubsub_topics(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
 
     permissions_used: list[str] = []
     if include_storage:
@@ -447,6 +450,7 @@ def discover_inventory(
         "disks": disks,
         "pubsub_topics": pubsub_topics,
         "warnings": warnings,
+        "missing_permissions": dedupe_missing_permissions(missing),
         "discovery_envelope": envelope.to_dict(),
     }
 
@@ -456,7 +460,9 @@ def discover_inventory(
 # ---------------------------------------------------------------------------
 
 
-def _discover_buckets(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_buckets(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every GCS bucket in the project (read-only).
 
     Public-access posture is read from the bucket IAM policy (``allUsers`` /
@@ -486,8 +492,15 @@ def _discover_buckets(project_id: str, *, credentials: Any, warnings: list[str])
                     "project_id": project_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list GCS buckets: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed GCS buckets list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="GCS buckets",
+            permission="storage.buckets.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return buckets
 
 
@@ -536,7 +549,9 @@ def _policy_bindings(policy: Any) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def _discover_instances(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_instances(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate all Compute Engine instances in the project (read-only)."""
     try:
         from google.cloud import compute_v1
@@ -553,8 +568,15 @@ def _discover_instances(project_id: str, *, credentials: Any, warnings: list[str
                 if not name:
                     continue
                 instances.append(_normalize_instance(instance, name=name, project_id=project_id))
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Compute instances: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Compute instances list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Compute instances",
+            permission="compute.instances.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return instances
 
 
@@ -594,7 +616,9 @@ def _normalize_instance(instance: Any, *, name: str, project_id: str) -> dict[st
     }
 
 
-def _discover_firewalls(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_firewalls(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate all VPC firewall rules in the project (read-only)."""
     try:
         from google.cloud import compute_v1
@@ -610,8 +634,15 @@ def _discover_firewalls(project_id: str, *, credentials: Any, warnings: list[str
             if not name:
                 continue
             firewalls.append(_normalize_firewall(rule, name=name, project_id=project_id))
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list firewall rules: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed firewall rules list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="firewall rules",
+            permission="compute.firewalls.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return firewalls
 
 
@@ -682,7 +713,9 @@ def _safe_int(value: str) -> int | None:
 # ---------------------------------------------------------------------------
 
 
-def _discover_project_iam_bindings(project_id: str, *, credentials: Any, warnings: list[str]) -> dict[str, list[str]]:
+def _discover_project_iam_bindings(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> dict[str, list[str]]:
     """Read the project IAM policy (read-only) → ``{member: [roles…]}``.
 
     Calls ``cloudresourcemanager`` ``projects.getIamPolicy`` and inverts the
@@ -715,8 +748,15 @@ def _discover_project_iam_bindings(project_id: str, *, credentials: Any, warning
                 roles = bindings_by_member.setdefault(key, [])
                 if role not in roles:
                     roles.append(role)
-    except Exception as exc:  # noqa: BLE001 — IAM-policy read must never sink a scan
-        warnings.append(f"Could not read project IAM policy: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed project IAM policy list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="project IAM policy",
+            permission="resourcemanager.projects.getIamPolicy",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return bindings_by_member
 
 
@@ -726,6 +766,7 @@ def _discover_service_accounts(
     credentials: Any,
     warnings: list[str],
     iam_bindings: dict[str, list[str]] | None = None,
+    missing: list[dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Enumerate all service accounts in the project (read-only).
 
@@ -777,8 +818,15 @@ def _discover_service_accounts(
                     "privilege_level": _highest_privilege(roles),
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list service accounts: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed service accounts list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="service accounts",
+            permission="iam.serviceAccounts.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return accounts
 
 
@@ -787,7 +835,9 @@ def _discover_service_accounts(
 # ---------------------------------------------------------------------------
 
 
-def _discover_gke_clusters(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_gke_clusters(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every GKE cluster in the project (read-only).
 
     Uses the ``-`` location wildcard so a single call returns clusters across all
@@ -825,8 +875,15 @@ def _discover_gke_clusters(project_id: str, *, credentials: Any, warnings: list[
                     "project_id": project_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001 — API-disabled / access-denied must degrade
-        warnings.append(f"Could not list GKE clusters: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed GKE clusters list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="GKE clusters",
+            permission="container.clusters.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return clusters
 
 
@@ -835,7 +892,9 @@ def _discover_gke_clusters(project_id: str, *, credentials: Any, warnings: list[
 # ---------------------------------------------------------------------------
 
 
-def _discover_cloud_run_services(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_cloud_run_services(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Cloud Run service in the project (read-only).
 
     Ingress ``INGRESS_TRAFFIC_ALL`` means the service is reachable from the
@@ -870,8 +929,15 @@ def _discover_cloud_run_services(project_id: str, *, credentials: Any, warnings:
                     "project_id": project_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Cloud Run services: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Cloud Run services list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Cloud Run services",
+            permission="run.services.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return services
 
 
@@ -880,7 +946,9 @@ def _discover_cloud_run_services(project_id: str, *, credentials: Any, warnings:
 # ---------------------------------------------------------------------------
 
 
-def _discover_cloud_functions(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_cloud_functions(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every 2nd-gen Cloud Function in the project (read-only)."""
     try:
         from google.cloud import functions_v2
@@ -913,8 +981,15 @@ def _discover_cloud_functions(project_id: str, *, credentials: Any, warnings: li
                     "project_id": project_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Cloud Functions: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Cloud Functions list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Cloud Functions",
+            permission="cloudfunctions.functions.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return functions
 
 
@@ -923,7 +998,9 @@ def _discover_cloud_functions(project_id: str, *, credentials: Any, warnings: li
 # ---------------------------------------------------------------------------
 
 
-def _discover_cloud_sql_instances(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_cloud_sql_instances(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Cloud SQL instance in the project (read-only).
 
     The Cloud SQL Admin API has no idiomatic google-cloud client, so this uses
@@ -969,8 +1046,15 @@ def _discover_cloud_sql_instances(project_id: str, *, credentials: Any, warnings
                     "project_id": project_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001 — API-disabled / access-denied must degrade
-        warnings.append(f"Could not list Cloud SQL instances: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Cloud SQL instances list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Cloud SQL instances",
+            permission="cloudsql.instances.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return instances
 
 
@@ -979,7 +1063,9 @@ def _discover_cloud_sql_instances(project_id: str, *, credentials: Any, warnings
 # ---------------------------------------------------------------------------
 
 
-def _discover_vpc_networks(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_vpc_networks(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every VPC network + its subnets in the project (read-only)."""
     try:
         from google.cloud import compute_v1
@@ -987,7 +1073,7 @@ def _discover_vpc_networks(project_id: str, *, credentials: Any, warnings: list[
         warnings.append("google-cloud-compute not installed. Skipping VPC network inventory.")
         return []
 
-    subnets_by_network = _discover_subnets_by_network(project_id, credentials=credentials, warnings=warnings)
+    subnets_by_network = _discover_subnets_by_network(project_id, credentials=credentials, warnings=warnings, missing=missing)
     networks: list[dict[str, Any]] = []
     try:
         client = compute_v1.NetworksClient(credentials=credentials)
@@ -1007,12 +1093,21 @@ def _discover_vpc_networks(project_id: str, *, credentials: Any, warnings: list[
                     "project_id": project_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list VPC networks: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed VPC networks list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="VPC networks",
+            permission="compute.networks.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return networks
 
 
-def _discover_subnets_by_network(project_id: str, *, credentials: Any, warnings: list[str]) -> dict[str, list[dict[str, Any]]]:
+def _discover_subnets_by_network(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> dict[str, list[dict[str, Any]]]:
     """Aggregated subnet list, keyed by the parent network self-link AND name."""
     try:
         from google.cloud import compute_v1
@@ -1034,8 +1129,15 @@ def _discover_subnets_by_network(project_id: str, *, credentials: Any, warnings:
                 }
                 by_network.setdefault(network_link, []).append(entry)
                 by_network.setdefault(_leaf(network_link), []).append(entry)
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list VPC subnets: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed VPC subnets list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="VPC subnets",
+            permission="compute.subnetworks.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return by_network
 
 
@@ -1044,7 +1146,9 @@ def _discover_subnets_by_network(project_id: str, *, credentials: Any, warnings:
 # ---------------------------------------------------------------------------
 
 
-def _discover_disks(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_disks(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every persistent disk in the project (read-only)."""
     try:
         from google.cloud import compute_v1
@@ -1073,8 +1177,15 @@ def _discover_disks(project_id: str, *, credentials: Any, warnings: list[str]) -
                         "project_id": project_id,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list persistent disks: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed persistent disks list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="persistent disks",
+            permission="compute.disks.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return disks
 
 
@@ -1083,7 +1194,9 @@ def _discover_disks(project_id: str, *, credentials: Any, warnings: list[str]) -
 # ---------------------------------------------------------------------------
 
 
-def _discover_pubsub_topics(project_id: str, *, credentials: Any, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_pubsub_topics(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every Pub/Sub topic in the project (read-only)."""
     try:
         from google.cloud import pubsub_v1
@@ -1108,8 +1221,15 @@ def _discover_pubsub_topics(project_id: str, *, credentials: Any, warnings: list
                     "project_id": project_id,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Pub/Sub topics: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Pub/Sub topics list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Pub/Sub topics",
+            permission="pubsub.topics.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
     return topics
 
 

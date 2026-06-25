@@ -131,6 +131,169 @@ _INTERNET_CIDRS = {"0.0.0.0/0"}
 _INTERNET_IPV6 = {"::/0"}
 
 
+# ---------------------------------------------------------------------------
+# Cross-cloud degrade-don't-crash helpers
+#
+# These are the single source of truth for turning a failed discovery call into
+# (a) a user-facing warning and (b) — when the failure is an access/permission
+# error — a SPECIFIC, actionable warning plus a structured `missing_permissions`
+# entry the product can render as "here is exactly what to grant".
+#
+# Azure and GCP inventory import these so all three providers degrade to the same
+# bar: one failed discoverer -> one warning + (when access-denied) one
+# missing_permissions entry -> `continue`, never an abort, never a silent empty
+# result. Keep secrets out of every message by routing through
+# sanitize_discovery_warning.
+# ---------------------------------------------------------------------------
+
+# Substrings that mark an exception as an access/permission failure, matched
+# case-insensitively against the SDK error code / message. Covers AWS botocore
+# (AccessDenied / UnauthorizedOperation / AccessDeniedException), Azure
+# (AuthorizationFailed / Forbidden / 403), and GCP (PermissionDenied / 403).
+_ACCESS_DENIED_MARKERS: tuple[str, ...] = (
+    "accessdenied",
+    "access denied",
+    "unauthorizedoperation",
+    "authorizationfailed",
+    "permissiondenied",
+    "permission denied",
+    "forbidden",
+    "notauthorized",
+    "not authorized",
+    "insufficient permission",
+    "insufficient_permission",
+    "iam.serviceaccounts.actas",
+)
+
+
+def _error_code(exc: BaseException) -> str:
+    """Best-effort SDK error code extraction across botocore / Azure / GCP.
+
+    - botocore ``ClientError`` exposes ``response["Error"]["Code"]``.
+    - Azure ``HttpResponseError`` exposes ``.error.code`` and ``.status_code``.
+    - GCP ``GoogleAPICallError`` exposes ``.code`` (a grpc status or int).
+
+    Never raises — a provider that does not expose these attributes returns "".
+    """
+    code = ""
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        err = response.get("Error")
+        if isinstance(err, dict):
+            code = str(err.get("Code", "") or "")
+    if not code:
+        inner = getattr(exc, "error", None)
+        inner_code = getattr(inner, "code", None)
+        if inner_code is not None:
+            code = str(inner_code)
+    if not code:
+        direct = getattr(exc, "code", None)
+        if direct is not None:
+            code = str(direct)
+    return code
+
+
+def _status_code(exc: BaseException) -> int | None:
+    """Best-effort HTTP status extraction (Azure ``status_code`` / botocore 403)."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        meta = response.get("ResponseMetadata")
+        if isinstance(meta, dict):
+            http_status = meta.get("HTTPStatusCode")
+            if isinstance(http_status, int):
+                return http_status
+    return None
+
+
+def is_access_denied_error(exc: BaseException) -> bool:
+    """Return whether *exc* is an access/permission failure (any cloud SDK).
+
+    Detection is layered so it works without importing every provider SDK:
+    a 401/403 HTTP status, a known error code, or an access-denied marker in the
+    error code / message text. Type name is also checked so SDK-specific
+    permission exceptions (e.g. GCP ``PermissionDenied`` / ``Forbidden``) are
+    caught even when the message text is sparse.
+    """
+    status = _status_code(exc)
+    if status in (401, 403):
+        return True
+    haystacks = [
+        _error_code(exc).lower(),
+        type(exc).__name__.lower(),
+        str(exc).lower(),
+    ]
+    return any(marker in field for field in haystacks for marker in _ACCESS_DENIED_MARKERS)
+
+
+def build_missing_permission(*, cloud: str, permission: str, resource_type: str) -> dict[str, str]:
+    """Return one structured ``missing_permissions`` entry.
+
+    The tuple ``(cloud, permission, resource_type)`` is the dedup key so the same
+    grant surfaced from two regions/subscriptions collapses to a single row.
+    """
+    return {
+        "cloud": cloud,
+        "permission": permission,
+        "resource_type": resource_type,
+    }
+
+
+def dedupe_missing_permissions(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Return a sorted, de-duplicated ``missing_permissions`` list.
+
+    Deterministic + idempotent: same failures (in any order) always produce the
+    same set of rows, sorted by (cloud, resource_type, permission), so report
+    output is byte-stable across runs.
+    """
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[dict[str, str]] = []
+    for item in items:
+        key = (
+            str(item.get("cloud", "") or ""),
+            str(item.get("permission", "") or ""),
+            str(item.get("resource_type", "") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append({"cloud": key[0], "permission": key[1], "resource_type": key[2]})
+    unique.sort(key=lambda row: (row["cloud"], row["resource_type"], row["permission"]))
+    return unique
+
+
+def record_discovery_failure(
+    *,
+    exc: BaseException,
+    resource_type: str,
+    permission: str,
+    cloud: str,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None = None,
+) -> None:
+    """Translate a failed discovery call into operator-facing diagnostics.
+
+    On an access/permission error this emits a SPECIFIC, actionable warning that
+    names the missing permission and the resource type being skipped, and records
+    a structured ``missing_permissions`` entry (when *missing* is provided). On
+    any other failure it emits a generic, sanitized warning. Either way the
+    skipped resource type ALWAYS produces a warning — never a silent empty
+    result. Secrets are stripped via ``sanitize_discovery_warning``.
+    """
+    detail = sanitize_discovery_warning(exc)
+    if is_access_denied_error(exc):
+        warnings.append(
+            f"Skipped {resource_type}: role lacks {permission} — "
+            f"add it to the read-only policy to cover this resource type. ({detail})"
+        )
+        if missing is not None:
+            missing.append(build_missing_permission(cloud=cloud, permission=permission, resource_type=resource_type))
+    else:
+        warnings.append(f"Could not list {resource_type}: {detail}")
+
+
 _legacy_flag_warned = False
 
 
@@ -197,6 +360,7 @@ def _empty_payload(*, region: str) -> dict[str, Any]:
         "redshift_clusters": [],
         "messaging": [],
         "warnings": [],
+        "missing_permissions": [],
         "discovery_envelope": None,
     }
 
@@ -349,6 +513,8 @@ def discover_inventory_all_regions(
         return {**global_payload, "region": global_region}
     warnings.extend(global_payload.get("warnings", []))
 
+    missing: list[dict[str, str]] = list(global_payload.get("missing_permissions", []) or [])
+
     account_id = global_payload.get("account_id")
 
     merged: dict[str, list[dict[str, Any]]] = {key: [] for key in _REGION_SCOPED_KEYS}
@@ -385,6 +551,7 @@ def discover_inventory_all_regions(
             continue
         for warning in payload.get("warnings", []):
             warnings.append(f"[{region}] {warning}")
+        missing.extend(payload.get("missing_permissions", []) or [])
         if payload.get("status") != "ok":
             # A degraded region surfaces its warnings (above) but contributes no
             # resources — it must never abort the merge.
@@ -465,6 +632,7 @@ def discover_inventory_all_regions(
         "redshift_clusters": merged["redshift_clusters"],
         "messaging": merged["messaging"],
         "warnings": warnings,
+        "missing_permissions": dedupe_missing_permissions(missing),
         "discovery_envelope": envelope.to_dict(),
     }
 
@@ -527,6 +695,7 @@ def discover_inventory(
     account_id = _resolve_account_id(session)
 
     warnings: list[str] = []
+    missing: list[dict[str, str]] = []
     buckets: list[dict[str, Any]] = []
     instances: list[dict[str, Any]] = []
     security_groups: list[dict[str, Any]] = []
@@ -547,26 +716,30 @@ def discover_inventory(
 
     try:
         if include_s3:
-            buckets = _discover_s3_buckets(session, account_id=account_id, warnings=warnings)
+            buckets = _discover_s3_buckets(session, account_id=account_id, warnings=warnings, missing=missing)
         if include_ec2:
-            instances, security_groups = _discover_ec2(session, resolved_region, account_id=account_id, warnings=warnings)
+            instances, security_groups = _discover_ec2(
+                session, resolved_region, account_id=account_id, warnings=warnings, missing=missing
+            )
         if include_iam:
-            roles, users = _discover_iam(session, account_id=account_id, warnings=warnings)
+            roles, users = _discover_iam(session, account_id=account_id, warnings=warnings, missing=missing)
         if include_data:
-            rds_instances = _discover_rds(session, resolved_region, account_id=account_id, warnings=warnings)
-            dynamodb_tables = _discover_dynamodb(session, resolved_region, account_id=account_id, warnings=warnings)
-            kms_keys = _discover_kms(session, resolved_region, account_id=account_id, warnings=warnings)
-            secrets = _discover_secrets(session, resolved_region, account_id=account_id, warnings=warnings)
-            redshift_clusters = _discover_redshift(session, resolved_region, account_id=account_id, warnings=warnings)
+            rds_instances = _discover_rds(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
+            dynamodb_tables = _discover_dynamodb(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
+            kms_keys = _discover_kms(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
+            secrets = _discover_secrets(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
+            redshift_clusters = _discover_redshift(
+                session, resolved_region, account_id=account_id, warnings=warnings, missing=missing
+            )
         if include_compute:
-            lambda_functions = _discover_lambda(session, resolved_region, account_id=account_id, warnings=warnings)
-            eks_clusters = _discover_eks(session, resolved_region, account_id=account_id, warnings=warnings)
-            ecr_repositories = _discover_ecr(session, resolved_region, account_id=account_id, warnings=warnings)
+            lambda_functions = _discover_lambda(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
+            eks_clusters = _discover_eks(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
+            ecr_repositories = _discover_ecr(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
         if include_network:
-            elb_load_balancers = _discover_elb(session, resolved_region, account_id=account_id, warnings=warnings)
-            vpcs = _discover_vpcs(session, resolved_region, account_id=account_id, warnings=warnings)
-            cloudfront_distributions = _discover_cloudfront(session, account_id=account_id, warnings=warnings)
-            messaging = _discover_messaging(session, resolved_region, account_id=account_id, warnings=warnings)
+            elb_load_balancers = _discover_elb(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
+            vpcs = _discover_vpcs(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
+            cloudfront_distributions = _discover_cloudfront(session, account_id=account_id, warnings=warnings, missing=missing)
+            messaging = _discover_messaging(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
     except NoCredentialsError:
         return {
             **empty,
@@ -626,6 +799,7 @@ def discover_inventory(
         "redshift_clusters": redshift_clusters,
         "messaging": messaging,
         "warnings": warnings,
+        "missing_permissions": dedupe_missing_permissions(missing),
         "discovery_envelope": envelope.to_dict(),
     }
 
@@ -635,7 +809,9 @@ def discover_inventory(
 # ---------------------------------------------------------------------------
 
 
-def _discover_s3_buckets(session: Any, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_s3_buckets(
+    session: Any, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate every S3 bucket in the account (read-only).
 
     Public-access posture is read from the bucket's PublicAccessBlock and
@@ -647,8 +823,10 @@ def _discover_s3_buckets(session: Any, *, account_id: str | None, warnings: list
 
     try:
         listed = s3.list_buckets().get("Buckets", [])
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list S3 buckets: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed S3 list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="S3 buckets", permission="s3:ListAllMyBuckets", cloud="aws", warnings=warnings, missing=missing
+        )
         return buckets
 
     for bucket in listed:
@@ -731,6 +909,7 @@ def _discover_ec2(
     *,
     account_id: str | None,
     warnings: list[str],
+    missing: list[dict[str, str]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Enumerate all EC2 instances and security groups in *region* (read-only).
 
@@ -748,16 +927,25 @@ def _discover_ec2(
             for reservation in page.get("Reservations", []):
                 for instance in reservation.get("Instances", []):
                     instances.append(_normalize_instance(instance, region=region, account_id=account_id))
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not describe EC2 instances: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed EC2 describe must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="EC2 instances", permission="ec2:DescribeInstances", cloud="aws", warnings=warnings, missing=missing
+        )
 
     try:
         sg_paginator = ec2.get_paginator("describe_security_groups")
         for page in sg_paginator.paginate():
             for group in page.get("SecurityGroups", []):
                 security_groups.append(_normalize_security_group(group, region=region, account_id=account_id))
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not describe EC2 security groups: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed SG describe must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="EC2 security groups",
+            permission="ec2:DescribeSecurityGroups",
+            cloud="aws",
+            warnings=warnings,
+            missing=missing,
+        )
 
     return instances, security_groups
 
@@ -842,6 +1030,7 @@ def _discover_iam(
     *,
     account_id: str | None,
     warnings: list[str],
+    missing: list[dict[str, str]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Enumerate all IAM roles and users in the account (read-only).
 
@@ -859,16 +1048,20 @@ def _discover_iam(
         for page in role_paginator.paginate():
             for role in page.get("Roles", []):
                 roles.append(_normalize_role(iam, role, account_id=account_id, warnings=warnings))
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list IAM roles: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed IAM list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="IAM roles", permission="iam:ListRoles", cloud="aws", warnings=warnings, missing=missing
+        )
 
     try:
         user_paginator = iam.get_paginator("list_users")
         for page in user_paginator.paginate():
             for user in page.get("Users", []):
                 users.append(_normalize_user(iam, user, account_id=account_id, warnings=warnings))
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list IAM users: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed IAM list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="IAM users", permission="iam:ListUsers", cloud="aws", warnings=warnings, missing=missing
+        )
 
     return roles, users
 
@@ -1031,7 +1224,9 @@ def _highest_privilege(policies: list[dict[str, Any]]) -> str:
     return best
 
 
-def _discover_rds(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_rds(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate RDS database instances (read-only). Become ``DATABASE`` data stores."""
     out: list[dict[str, Any]] = []
     try:
@@ -1054,12 +1249,16 @@ def _discover_rds(session: Any, region: str, *, account_id: str | None, warnings
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list RDS instances: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed RDS list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="RDS instances", permission="rds:DescribeDBInstances", cloud="aws", warnings=warnings, missing=missing
+        )
     return out
 
 
-def _discover_lambda(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_lambda(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate Lambda functions (read-only). Become ``SERVERLESS_FUNCTION`` resources."""
     out: list[dict[str, Any]] = []
     try:
@@ -1082,12 +1281,16 @@ def _discover_lambda(session: Any, region: str, *, account_id: str | None, warni
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Lambda functions: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Lambda list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="Lambda functions", permission="lambda:ListFunctions", cloud="aws", warnings=warnings, missing=missing
+        )
     return out
 
 
-def _discover_dynamodb(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_dynamodb(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate DynamoDB tables (read-only). Become ``DATABASE`` data stores."""
     out: list[dict[str, Any]] = []
     try:
@@ -1113,12 +1316,16 @@ def _discover_dynamodb(session: Any, region: str, *, account_id: str | None, war
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list DynamoDB tables: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed DynamoDB list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="DynamoDB tables", permission="dynamodb:ListTables", cloud="aws", warnings=warnings, missing=missing
+        )
     return out
 
 
-def _discover_eks(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_eks(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate EKS clusters (read-only). Become ``CONTAINER_CLUSTER`` resources."""
     out: list[dict[str, Any]] = []
     try:
@@ -1144,12 +1351,16 @@ def _discover_eks(session: Any, region: str, *, account_id: str | None, warnings
                     "location": region,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list EKS clusters: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed EKS list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="EKS clusters", permission="eks:ListClusters", cloud="aws", warnings=warnings, missing=missing
+        )
     return out
 
 
-def _discover_elb(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_elb(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate ALB/NLB load balancers (read-only). Internet-facing scheme = exposed."""
     out: list[dict[str, Any]] = []
     try:
@@ -1173,12 +1384,21 @@ def _discover_elb(session: Any, region: str, *, account_id: str | None, warnings
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list load balancers: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed ELB list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="load balancers",
+            permission="elasticloadbalancing:DescribeLoadBalancers",
+            cloud="aws",
+            warnings=warnings,
+            missing=missing,
+        )
     return out
 
 
-def _discover_vpcs(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_vpcs(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate VPCs (read-only). Become ``CLOUD_RESOURCE`` network nodes."""
     out: list[dict[str, Any]] = []
     try:
@@ -1201,12 +1421,16 @@ def _discover_vpcs(session: Any, region: str, *, account_id: str | None, warning
                     "location": region,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list VPCs: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed VPC list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="VPCs", permission="ec2:DescribeVpcs", cloud="aws", warnings=warnings, missing=missing
+        )
     return out
 
 
-def _discover_kms(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_kms(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate customer-managed KMS keys (read-only). Metadata only, never key material."""
     out: list[dict[str, Any]] = []
     try:
@@ -1240,12 +1464,16 @@ def _discover_kms(session: Any, region: str, *, account_id: str | None, warnings
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list KMS keys: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed KMS list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="KMS keys", permission="kms:ListKeys", cloud="aws", warnings=warnings, missing=missing
+        )
     return out
 
 
-def _discover_secrets(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_secrets(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate Secrets Manager secrets (read-only). Metadata only — never secret values."""
     out: list[dict[str, Any]] = []
     try:
@@ -1266,12 +1494,21 @@ def _discover_secrets(session: Any, region: str, *, account_id: str | None, warn
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Secrets Manager secrets: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Secrets list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Secrets Manager secrets",
+            permission="secretsmanager:ListSecrets",
+            cloud="aws",
+            warnings=warnings,
+            missing=missing,
+        )
     return out
 
 
-def _discover_cloudfront(session: Any, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_cloudfront(
+    session: Any, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate CloudFront CDN distributions (read-only, global). Internet-facing edge."""
     out: list[dict[str, Any]] = []
     try:
@@ -1295,12 +1532,21 @@ def _discover_cloudfront(session: Any, *, account_id: str | None, warnings: list
                         "location": "global",
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list CloudFront distributions: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed CloudFront list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="CloudFront distributions",
+            permission="cloudfront:ListDistributions",
+            cloud="aws",
+            warnings=warnings,
+            missing=missing,
+        )
     return out
 
 
-def _discover_ecr(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_ecr(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate ECR container registries (read-only). Become container-registry resources."""
     out: list[dict[str, Any]] = []
     try:
@@ -1322,12 +1568,21 @@ def _discover_ecr(session: Any, region: str, *, account_id: str | None, warnings
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list ECR repositories: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed ECR list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="ECR repositories",
+            permission="ecr:DescribeRepositories",
+            cloud="aws",
+            warnings=warnings,
+            missing=missing,
+        )
     return out
 
 
-def _discover_redshift(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_redshift(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate Redshift clusters (read-only). Data warehouses → ``DATA_STORE``."""
     out: list[dict[str, Any]] = []
     try:
@@ -1350,12 +1605,21 @@ def _discover_redshift(session: Any, region: str, *, account_id: str | None, war
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list Redshift clusters: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed Redshift list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Redshift clusters",
+            permission="redshift:DescribeClusters",
+            cloud="aws",
+            warnings=warnings,
+            missing=missing,
+        )
     return out
 
 
-def _discover_messaging(session: Any, region: str, *, account_id: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+def _discover_messaging(
+    session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
     """Enumerate SNS topics + SQS queues (read-only). Become messaging resources."""
     out: list[dict[str, Any]] = []
     try:
@@ -1375,8 +1639,10 @@ def _discover_messaging(session: Any, region: str, *, account_id: str | None, wa
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list SNS topics: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed SNS list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="SNS topics", permission="sns:ListTopics", cloud="aws", warnings=warnings, missing=missing
+        )
     try:
         sqs = session.client("sqs", region_name=region)
         paginator = sqs.get_paginator("list_queues")
@@ -1395,8 +1661,10 @@ def _discover_messaging(session: Any, region: str, *, account_id: str | None, wa
                         "location": region,
                     }
                 )
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"Could not list SQS queues: {sanitize_discovery_warning(exc)}")
+    except Exception as exc:  # noqa: BLE001 — one failed SQS list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="SQS queues", permission="sqs:ListQueues", cloud="aws", warnings=warnings, missing=missing
+        )
     return out
 
 

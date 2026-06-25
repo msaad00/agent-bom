@@ -39,5 +39,11 @@ def save_skills_catalog(data: dict[str, object], path: str | Path | None = None)
 
 
 def catalog_scan_timestamp() -> str:
-    """Return an ISO timestamp for catalog updates."""
+    """Return an ISO provenance timestamp for catalog updates.
+
+    This value is wall-clock and therefore NON-deterministic across runs. It
+    must only ever populate clearly-labelled provenance/metadata fields (e.g.
+    a ``scanned_at`` block) — never the deterministic findings payload, so that
+    two scans of the same skill produce byte-identical findings.
+    """
     return datetime.now(timezone.utc).isoformat()

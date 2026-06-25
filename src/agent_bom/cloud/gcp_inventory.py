@@ -102,6 +102,43 @@ def _derive_default_project() -> tuple[str, str]:
     return str(project), ""
 
 
+_IMPERSONATE_ENV = "AGENT_BOM_GCP_IMPERSONATE_SA"
+_IMPERSONATE_SCOPES = ("https://www.googleapis.com/auth/cloud-platform",)
+
+
+def _resolve_impersonation(credentials: Any, warnings: list[str]) -> Any:
+    """Return credentials impersonating the read-only SA named by the env var.
+
+    When ``AGENT_BOM_GCP_IMPERSONATE_SA`` is set and no explicit credential was
+    passed, wrap the ambient ADC in short-lived impersonated credentials for that
+    service account, so every discovery call runs as a least-privilege read-only
+    identity without a service-account key (the recommended path where keys are
+    org-disabled). Read-only and fail-safe: any error falls back to the original
+    credentials with a warning, never raises.
+    """
+    if credentials is not None:
+        return credentials
+    target = os.environ.get(_IMPERSONATE_ENV, "").strip()
+    if not target:
+        return credentials
+    try:
+        from google import auth as google_auth
+        from google.auth import impersonated_credentials
+    except ImportError:
+        warnings.append("google-auth not installed; cannot impersonate the GCP service account.")
+        return credentials
+    try:
+        source, _ = google_auth.default()
+        return impersonated_credentials.Credentials(
+            source_credentials=source,
+            target_principal=target,
+            target_scopes=list(_IMPERSONATE_SCOPES),
+        )
+    except Exception as exc:  # noqa: BLE001 — impersonation failure degrades, never crashes
+        warnings.append(f"GCP service-account impersonation of {target} failed: {sanitize_discovery_warning(exc)}")
+        return credentials
+
+
 def discover_inventory(
     project_id: str | None = None,
     *,
@@ -174,6 +211,11 @@ def discover_inventory(
     warnings: list[str] = []
     if derive_note:
         warnings.append(derive_note)
+    # Keyless least-privilege connection: when AGENT_BOM_GCP_IMPERSONATE_SA names
+    # a read-only service account, impersonate it (from the ambient ADC) so every
+    # discovery runs AS that SA — the recommended path where SA keys are
+    # org-disabled, matching AWS's read-only profile and Snowflake's role.
+    credentials = _resolve_impersonation(credentials, warnings)
     buckets: list[dict[str, Any]] = []
     instances: list[dict[str, Any]] = []
     firewalls: list[dict[str, Any]] = []

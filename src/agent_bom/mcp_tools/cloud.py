@@ -40,6 +40,36 @@ async def vector_db_scan_impl(
         return json.dumps({"error": sanitize_error(exc)})
 
 
+async def registry_sweep_scan_impl(
+    *,
+    provider: str,
+    region: str | None = None,
+    profile: str | None = None,
+    registry: str | None = None,
+    project: str | None = None,
+    location: str | None = None,
+    max_images: int | None = None,
+    _truncate_response,
+) -> str:
+    """Implementation of the registry_sweep_scan tool — read-only registry-wide image sweep."""
+    try:
+        from agent_bom.cloud.registry_sweep import sweep_registry
+
+        report = sweep_registry(
+            provider=provider,
+            region=region,
+            profile=profile,
+            registry=registry,
+            project=project,
+            location=location,
+            max_images=max_images,
+        )
+        return _truncate_response(json.dumps(report, indent=2, default=str))
+    except Exception as exc:
+        logger.exception("MCP tool error")
+        return json.dumps({"error": sanitize_error(exc)})
+
+
 async def gpu_infra_scan_impl(
     *,
     k8s_context: str | None = None,

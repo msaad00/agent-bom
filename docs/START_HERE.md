@@ -95,13 +95,13 @@ scan a repo by URL.
 
 ```bash
 pip install 'agent-bom[mcp-server]'
-agent-bom mcp server                      # stdio MCP server: 69 tools, 6 resources, 6 prompts
+agent-bom mcp server                      # stdio MCP server: 70 tools, 6 resources, 6 prompts
 ```
 
 - MCP server setup + client guides: [`MCP_SERVER.md`](MCP_SERVER.md),
   [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md)
 - Tool catalog (read-mostly; 3 audited Shield write actions): see the
-  `Tools (69)` block in
+  `Tools (70)` block in
   [`../src/agent_bom/mcp_server.py`](../src/agent_bom/mcp_server.py)
 - Typed control-plane clients: [`PYTHON_API.md`](PYTHON_API.md),
   [`../sdks/go/README.md`](../sdks/go/README.md)

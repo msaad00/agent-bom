@@ -270,6 +270,8 @@ AGENT_BOM_REPO_SCAN_ALLOWED_HOSTS
 AGENT_BOM_REPO_SCAN_TOKEN
 AGENT_BOM_REGISTRY_PASS
 AGENT_BOM_REGISTRY_USER
+AGENT_BOM_REGISTRY_MAX_IMAGES  # cap on images pulled+scanned per registry-wide sweep (default 50); read in cloud/registry_sweep.py
+AGENT_BOM_REGISTRY_MAX_TAGS_PER_REPO  # per-repo tag fan-out cap before global dedupe+cap in registry sweep (default 25); read in cloud/registry_sweep.py
 AGENT_BOM_REQUIRE_AUDIT_HMAC
 AGENT_BOM_REQUIRE_BROWSER_SESSION_SIGNING_KEY
 AGENT_BOM_REQUIRE_SCIM

@@ -228,6 +228,104 @@ def resilience_cmd(output_format: str) -> None:
 cloud_group.add_command(resilience_cmd, "resilience")
 
 
+@click.command("registry-scan")
+@click.option(
+    "--provider",
+    type=click.Choice(["ecr", "acr", "gar"]),
+    required=True,
+    help="Container registry to sweep: ecr (AWS), acr (Azure), gar (GCP Artifact Registry).",
+)
+@click.option("--region", default=None, help="AWS region (ecr only).")
+@click.option("--profile", default=None, help="AWS credential profile (ecr only).")
+@click.option("--registry", default=None, help="ACR login server, e.g. myacr.azurecr.io (acr only).")
+@click.option("--project", default=None, help="GCP project id (gar only).")
+@click.option("--location", default=None, help="GAR multi-region/location, e.g. us (gar only; all common ones by default).")
+@click.option("--max-images", type=int, default=None, help="Cap on images scanned (default: AGENT_BOM_REGISTRY_MAX_IMAGES or 50).")
+@click.option("-f", "--format", "output_format", type=click.Choice(["console", "json"]), default="console")
+def registry_scan_cmd(
+    provider: str,
+    region: Optional[str],
+    profile: Optional[str],
+    registry: Optional[str],
+    project: Optional[str],
+    location: Optional[str],
+    max_images: Optional[int],
+    output_format: str,
+) -> None:
+    """Sweep an entire cloud container registry — enumerate every repo+tag, scan each (read-only).
+
+    Enumerates all repositories and tags in the registry, dedupes images by
+    content digest, caps the work list (newest first), and runs the native image
+    scanner on each. Read-only throughout — only registry read APIs and image
+    pulls. A registry the role cannot read, or a single image that fails to pull,
+    degrades to a warning and the sweep continues.
+
+    \b
+    Examples:
+      agent-bom cloud registry-scan --provider ecr --region us-east-1
+      agent-bom cloud registry-scan --provider acr --registry myacr.azurecr.io
+      agent-bom cloud registry-scan --provider gar --project my-proj --location us
+    """
+    import json as _json
+
+    from agent_bom.cloud.registry_sweep import sweep_registry
+
+    report = sweep_registry(
+        provider=provider,
+        region=region,
+        profile=profile,
+        registry=registry,
+        project=project,
+        location=location,
+        max_images=max_images,
+    )
+
+    if output_format == "json":
+        click.echo(_json.dumps(report, indent=2, sort_keys=True, default=str))
+        return
+
+    from rich.console import Console
+    from rich.table import Table
+
+    con = Console()
+    con.print(f"\n  [bold]Registry sweep[/bold] [dim]· {report['provider']} · read-only · {report['registry'] or '—'}[/dim]")
+
+    status = str(report.get("status", "unknown"))
+    if status != "ok":
+        style = {"no_images": "yellow", "invalid_provider": "red", "all_failed": "red"}.get(status, "yellow")
+        con.print(f"  status: [{style}]{status}[/{style}]")
+
+    con.print(
+        f"  discovered=[cyan]{report['discovered_count']}[/cyan] "
+        f"scanned=[green]{report['scanned_count']}[/green] "
+        f"skipped_by_cap=[yellow]{report['skipped_by_cap']}[/yellow] "
+        f"failed=[red]{report['failed_count']}[/red] "
+        f"cap={report['max_images']}"
+    )
+
+    if report["images"]:
+        table = Table()
+        table.add_column("Image")
+        table.add_column("Packages", justify="right")
+        table.add_column("Vuln pkgs", justify="right")
+        table.add_column("Max severity")
+        for img in report["images"]:
+            table.add_row(
+                str(img["reference"]),
+                str(img["package_count"]),
+                str(img["vulnerable_package_count"]),
+                str(img["max_severity"]),
+            )
+        con.print(table)
+
+    for warning in report["warnings"]:
+        con.print(f"  [yellow]![/yellow] [dim]{warning}[/dim]")
+    con.print()
+
+
+cloud_group.add_command(registry_scan_cmd, "registry-scan")
+
+
 @click.command("inventory")
 @click.option(
     "--provider",

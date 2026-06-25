@@ -256,6 +256,11 @@ _SERVER_CARD_TOOLS = [
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "registry_sweep_scan",
+        "description": "Sweep a cloud registry (ECR/ACR/GAR): enumerate repos+tags, dedupe by digest, cap, scan each (read-only)",
+        "annotations": {"readOnlyHint": True},
+    },
+    {
         "name": "dataset_card_scan",
         "description": "Scan dataset cards (HuggingFace, DVC) for licensing, provenance, and compliance tags (LLM03, ART-10)",
         "annotations": {"readOnlyHint": True},
@@ -394,6 +399,7 @@ _TOOL_CAPABILITY_CLASSES = {
     "vector_db_scan": ["READ", "NETWORK", "RUNTIME"],
     "aisvs_benchmark": ["READ", "COMPLIANCE"],
     "gpu_infra_scan": ["READ", "NETWORK", "INFRA"],
+    "registry_sweep_scan": ["READ", "NETWORK", "INFRA"],
     "dataset_card_scan": ["READ", "LOCAL_FILE_READ", "COMPLIANCE"],
     "training_pipeline_scan": ["READ", "LOCAL_FILE_READ", "LINEAGE"],
     "browser_extension_scan": ["READ", "LOCAL_FILE_READ"],

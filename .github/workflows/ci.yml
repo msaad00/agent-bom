@@ -470,6 +470,63 @@ jobs:
       - name: Render shipped Helm profiles
         run: python3 scripts/validate_helm_profiles.py
 
+      - name: Assert ClusterRoles stay scanner-only (no write verbs)
+        run: |
+          set -euo pipefail
+          helm template agent-bom deploy/helm/agent-bom > "${RUNNER_TEMP}/rendered.yaml"
+          RENDERED_MANIFEST="${RUNNER_TEMP}/rendered.yaml" python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          WRITE_VERBS = {
+              "create",
+              "delete",
+              "deletecollection",
+              "patch",
+              "update",
+              "*",
+          }
+
+          text = Path(os.environ["RENDERED_MANIFEST"]).read_text(encoding="utf-8")
+          # Split the multi-doc stream on the YAML document separator so each
+          # manifest is inspected in isolation.
+          documents = text.split("\n---")
+          offenders: list[str] = []
+          for doc in documents:
+              lines = doc.splitlines()
+              if "kind: ClusterRole" not in lines:
+                  continue
+              # Read-only ClusterRoles back the agentless scanner posture; any
+              # write verb on a cluster-wide role is an over-broad-grant regression.
+              name = "<unknown>"
+              for line in lines:
+                  stripped = line.strip()
+                  if stripped.startswith("- "):
+                      stripped = stripped[2:].strip()
+                  if stripped.startswith("name:") and name == "<unknown>":
+                      name = stripped.split("name:", 1)[1].strip()
+                  if stripped.startswith("verbs:"):
+                      verbs_blob = stripped.split("verbs:", 1)[1]
+                      tokens = (
+                          verbs_blob.replace("[", " ")
+                          .replace("]", " ")
+                          .replace(",", " ")
+                          .replace('"', " ")
+                          .replace("'", " ")
+                          .split()
+                      )
+                      bad = WRITE_VERBS.intersection(tokens)
+                      if bad:
+                          offenders.append(f"{name}: {sorted(bad)}")
+
+          if offenders:
+              print("ClusterRole(s) grant over-broad write verbs:")
+              for offender in offenders:
+                  print(f"  - {offender}")
+              raise SystemExit(1)
+          print("ClusterRole RBAC is read-only (scanner-only posture intact)")
+          PY
+
   endpoint-packaging:
     name: Endpoint Packaging (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

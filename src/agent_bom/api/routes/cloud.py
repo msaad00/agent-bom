@@ -218,7 +218,8 @@ async def cloud_cis_benchmark(
             # does — never a 500. Keeps REST / MCP shape parity for the no-SDK path.
             # Detail is logged server-side; the client gets a generic reason so no
             # exception/stack detail leaks over REST.
-            _logger.warning("Cloud CIS benchmark unavailable for %s: %s", requested, exc)
+            safe_requested = re.sub(r"[\r\n]+", "", requested)
+            _logger.warning("Cloud CIS benchmark unavailable for %s: %s", safe_requested, exc)
             return {
                 "error": "Provider SDK or credentials unavailable for this benchmark.",
                 "provider": requested,

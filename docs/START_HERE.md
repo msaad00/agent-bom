@@ -50,6 +50,44 @@ docker compose -f deploy/docker-compose.pilot.yml up -d
 - Runtime proxy/gateway enforcement: [`MCP_SERVER.md`](MCP_SERVER.md) and the
   [runtime enforcement spread](../PROJECT_STRUCTURE.md#runtime-enforcement-spread)
 
+## Cloud / GRC — connect a cloud read-only
+
+You want estate inventory, CIS posture, and exposure paths across your clouds
+without granting write access. `agent-bom` reads **AWS, Azure, GCP, and
+Snowflake** through one connection model: a scoped read-only role per cloud,
+keyless or token auth, opt-in per provider. It never writes, reads no secret
+values, and moves no data out of your account.
+
+```bash
+# AWS — attach SecurityAudit, then:
+export AGENT_BOM_AWS_INVENTORY=1 AWS_PROFILE=<readonly-profile>
+agent-bom cloud aws --cis
+
+# Azure — assign Reader (+ Security Reader), then:
+export AGENT_BOM_AZURE_INVENTORY=1
+az login && agent-bom cloud azure --cis
+
+# GCP — impersonate a read-only service account (no key file):
+export AGENT_BOM_GCP_INVENTORY=1 AGENT_BOM_GCP_IMPERSONATE_SA=<sa-email>
+gcloud auth application-default login
+agent-bom cloud gcp --project <project-id> --cis
+
+# Snowflake — key-pair user with the ABOM_READONLY role (no password):
+export SNOWFLAKE_ACCOUNT=<org-account> SNOWFLAKE_USER=ABOM_SCANNER
+export SNOWFLAKE_AUTHENTICATOR=snowflake_jwt SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/abom_key.p8
+agent-bom agents --snowflake
+
+# Cross-cloud estate inventory (reference only, no findings):
+agent-bom cloud inventory --provider all
+```
+
+- Full grant templates, per-cloud permission catalogs, and the read-only
+  rationale: [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md)
+- CIS misconfigurations converge into findings and the exit-code gate:
+  `agent-bom agents --aws --azure --gcp --snowflake --fail-on-severity high`
+- Exposure paths and non-human identity posture: `agent-bom graph`,
+  `agent-bom identity credential-expiry`
+
 ## AI / agent developer — call it from an assistant
 
 You want strict-argument security tools your agent can call, and the ability to

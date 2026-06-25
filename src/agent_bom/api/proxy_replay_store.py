@@ -254,13 +254,18 @@ class PostgresProxyReplayStore:
 
         not_after = not_after or replay_not_after()
         row_id = str(uuid4())
+        # Persist the real capture time, mirroring the SQLite backend. Omitting
+        # captured_at lets the column fall back to DEFAULT now() (insert time),
+        # which drifts from the SQLite value and the actual moment of capture.
+        captured_at = _iso(_now_utc())
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """
-                INSERT INTO proxy_replay_log (row_id, tenant_id, not_after, record)
-                VALUES (%s, %s, %s, %s::jsonb)
+                INSERT INTO proxy_replay_log (row_id, tenant_id, captured_at, not_after, record)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (row_id) DO NOTHING
                 """,
-                (row_id, str(tenant_id or "default"), not_after, json.dumps(record)),
+                (row_id, str(tenant_id or "default"), captured_at, not_after, json.dumps(record)),
             )
             conn.commit()
         return row_id

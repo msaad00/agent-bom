@@ -23,6 +23,8 @@
 --   fleet_agents       Managed agent lifecycle with governance state
 --   gateway_policies   Runtime MCP enforcement policies
 --   policy_audit_log   Runtime policy audit trail
+--   llm_costs          Per-call LLM spend (FinOps)
+--   llm_cost_budgets   Tenant/agent/cost-center spend caps
 --   audit_log          API/enterprise audit trail
 --   trend_history      Historical posture trends
 --   scan_schedules     Recurring scan configuration
@@ -195,15 +197,67 @@ CREATE TABLE IF NOT EXISTS gateway_policies (
 );
 
 CREATE TABLE IF NOT EXISTS policy_audit_log (
-    id      SERIAL PRIMARY KEY,
-    ts      TEXT NOT NULL,
-    team_id TEXT NOT NULL DEFAULT 'default',
-    data    JSONB NOT NULL
+    id       SERIAL PRIMARY KEY,
+    entry_id TEXT,                    -- mirrors SQLite PRIMARY KEY; dedup key for idempotent re-ingestion
+    ts       TEXT NOT NULL,
+    team_id  TEXT NOT NULL DEFAULT 'default',
+    data     JSONB NOT NULL
 );
 
+-- Idempotent: add entry_id to existing policy_audit_log tables that predate
+-- the dedup key (matches the application bootstrap in api/postgres_policy.py).
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'policy_audit_log' AND column_name = 'entry_id'
+    ) THEN
+        ALTER TABLE policy_audit_log ADD COLUMN entry_id TEXT;
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON policy_audit_log(ts DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(entry_id);
 CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id);
 CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC);
+
+-- ── Tables: LLM Cost (FinOps) ─────────────────────────────────────────────────
+-- Per-call LLM spend + budgets for cluster-safe cost governance. Created at
+-- runtime by api/postgres_cost.py::_init_tables(); also bootstrapped here so
+-- fresh / replica deployments and migration-only paths (read-only app role
+-- that cannot run the app's CREATE TABLE) have these tables from first boot.
+-- Shapes must mirror postgres_cost.py.
+
+CREATE TABLE IF NOT EXISTS llm_costs (
+    tenant_id       TEXT NOT NULL,
+    call_id         TEXT NOT NULL,
+    agent           TEXT NOT NULL,
+    session_id      TEXT NOT NULL,
+    provider        TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    input_tokens    INTEGER NOT NULL,
+    output_tokens   INTEGER NOT NULL,
+    cost_usd        DOUBLE PRECISION NOT NULL,
+    priced          BOOLEAN NOT NULL,
+    observed_at     TEXT NOT NULL,
+    cost_center     TEXT NOT NULL DEFAULT '',
+    allocation_tags TEXT NOT NULL DEFAULT '{}',
+    PRIMARY KEY (tenant_id, call_id)
+);
+
+CREATE TABLE IF NOT EXISTS llm_cost_budgets (
+    tenant_id   TEXT NOT NULL,
+    agent       TEXT NOT NULL DEFAULT '',
+    limit_usd   DOUBLE PRECISION NOT NULL,
+    updated_at  TEXT NOT NULL,
+    mode        TEXT NOT NULL DEFAULT 'report',
+    cost_center TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (tenant_id, agent, cost_center)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_cost_budgets_scope ON llm_cost_budgets(tenant_id, agent, cost_center);
+CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_agent ON llm_costs(tenant_id, agent);
+CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_observed ON llm_costs(tenant_id, observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_cost_center ON llm_costs(tenant_id, cost_center);
 
 -- ── Tables: Enterprise Audit + Trend History ────────────────────────────────
 
@@ -768,6 +822,42 @@ BEGIN
 END
 $$;
 
+ALTER TABLE llm_costs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE llm_costs FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'llm_costs'
+          AND policyname = 'llm_costs_tenant_isolation'
+    ) THEN
+        CREATE POLICY llm_costs_tenant_isolation ON llm_costs
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE llm_cost_budgets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE llm_cost_budgets FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'llm_cost_budgets'
+          AND policyname = 'llm_cost_budgets_tenant_isolation'
+    ) THEN
+        CREATE POLICY llm_cost_budgets_tenant_isolation ON llm_cost_budgets
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
 ALTER TABLE scan_schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scan_schedules FORCE ROW LEVEL SECURITY;
 
@@ -1111,6 +1201,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 --   fleet_agents       — governed agent lifecycle (long-lived)
 --   gateway_policies   — runtime MCP enforcement policies
 --   policy_audit_log   — runtime policy audit trail (HMAC-verified)
+--   llm_costs          — per-call LLM spend for cluster-safe FinOps
+--   llm_cost_budgets   — tenant / agent / cost-center spend caps
 --   audit_log          — signed API/security audit trail
 --   trend_history      — persisted posture/vulnerability history
 --   scan_schedules     — recurring scan cron configuration

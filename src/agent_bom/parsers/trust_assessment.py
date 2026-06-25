@@ -678,13 +678,13 @@ def _compute_content_verdict_from_audit(audit: SkillAuditResult) -> Verdict:
     - metadata/catalog only -> benign content; provenance/review axes handle it
     """
     findings = audit.findings
-    if any(f.category in _BLOCKED_FINDING_CATEGORIES for f in findings):
+    if _escalating_categories(findings, _BLOCKED_FINDING_CATEGORIES):
         return Verdict.MALICIOUS
-    if any(f.severity == "critical" and _is_behavioral_content_finding(f.category) for f in findings):
+    if any(f.severity == "critical" and _is_behavioral_content_finding(f.category) and not _is_low_confidence_keyword(f) for f in findings):
         return Verdict.MALICIOUS
-    if any(f.category in _HIGH_RISK_FINDING_CATEGORIES for f in findings):
+    if _escalating_categories(findings, _HIGH_RISK_FINDING_CATEGORIES):
         return Verdict.SUSPICIOUS
-    if any(f.severity == "high" and _is_behavioral_content_finding(f.category) for f in findings):
+    if any(f.severity == "high" and _is_behavioral_content_finding(f.category) and not _is_low_confidence_keyword(f) for f in findings):
         return Verdict.SUSPICIOUS
     return Verdict.BENIGN
 
@@ -783,6 +783,27 @@ def _is_behavioral_content_finding(category: str) -> bool:
     return category not in _REVIEW_ONLY_FINDING_CATEGORIES
 
 
+def _is_low_confidence_keyword(finding: object) -> bool:
+    """Return whether a finding is a lone low-confidence keyword/heuristic hit.
+
+    A single descriptive keyword in prose (e.g. "subagent" in a legitimate
+    CLAUDE.md/AGENTS.md) is emitted at low severity with ``confidence="low"``.
+    Such a hit must not, by itself, escalate ``content_verdict`` to malicious
+    or ``review_verdict`` to blocked/high_risk. Corroborated injection signals
+    keep high/critical severity (and high confidence) and still escalate.
+    """
+    return getattr(finding, "confidence", "medium") == "low" and getattr(finding, "severity", "low") in {"low", "medium"}
+
+
+def _escalating_categories(findings: list, categories: frozenset[str] | set[str]) -> bool:
+    """True when any finding in ``categories`` is strong enough to escalate.
+
+    Low-confidence keyword hits are kept visible but excluded here so a single
+    descriptive feature name cannot drive the verdict.
+    """
+    return any(f.category in categories and not _is_low_confidence_keyword(f) for f in findings)
+
+
 def _compute_review_verdict(
     provenance_verdict: ProvenanceVerdict,
     content_verdict: Verdict,
@@ -791,12 +812,11 @@ def _compute_review_verdict(
 ) -> ReviewVerdict:
     """Map trust and audit signals to a handling-oriented review verdict."""
     findings = audit.findings
-    if any(
-        f.category in _BLOCKED_FINDING_CATEGORIES or (f.severity == "critical" and _is_behavioral_content_finding(f.category))
-        for f in findings
+    if _escalating_categories(findings, _BLOCKED_FINDING_CATEGORIES) or any(
+        f.severity == "critical" and _is_behavioral_content_finding(f.category) and not _is_low_confidence_keyword(f) for f in findings
     ):
         return ReviewVerdict.BLOCKED
-    if content_verdict == Verdict.MALICIOUS or any(f.category in _HIGH_RISK_FINDING_CATEGORIES for f in findings):
+    if content_verdict == Verdict.MALICIOUS or _escalating_categories(findings, _HIGH_RISK_FINDING_CATEGORIES):
         return ReviewVerdict.HIGH_RISK
     if any(f.severity == "medium" and _is_behavioral_content_finding(f.category) for f in findings):
         return ReviewVerdict.REVIEW

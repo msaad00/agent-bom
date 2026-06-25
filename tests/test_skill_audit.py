@@ -618,6 +618,19 @@ def test_behavioral_agent_delegation():
     findings = [f for f in audit.findings if f.category == "agent_delegation"]
     assert len(findings) == 1
     assert findings[0].severity == "high"
+    assert findings[0].confidence == "high"
+
+
+def test_behavioral_agent_delegation_bare_keyword_is_low_confidence():
+    """A bare "subagent"/"delegation" keyword in prose is descriptive, not a
+    spawn directive: it stays visible but is demoted to low severity/confidence
+    so it cannot escalate a legitimate instruction file's verdict."""
+    result = _make_behavioral_result("Use Agent (subagent) when a task is open-ended. Sub-agent delegation keeps the main context small.")
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "agent_delegation"]
+    assert len(findings) == 1
+    assert findings[0].severity == "low"
+    assert findings[0].confidence == "low"
 
 
 def test_behavioral_input_injection():

@@ -7,7 +7,7 @@ name: Surface Freshness
 # three months without an alert.
 #
 # Optional repo variables (Settings -> Secrets and variables -> Actions -> Variables):
-#   SMITHERY_MCP_URL   — public unauthenticated MCP endpoint (enables Smithery probe)
+#   SMITHERY_SERVER_QUALIFIED_NAME — override Smithery listing name; defaults to agent-bom/agent-bom
 #   GLAMA_LISTING_URL  — Glama public listing JSON endpoint (enables Glama probe)
 #   DOCKER_IMAGE       — override default ghcr.io/msaad00/agent-bom
 
@@ -37,7 +37,7 @@ jobs:
       - name: Probe every distribution surface
         id: probe
         env:
-          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
+          SMITHERY_SERVER_QUALIFIED_NAME: ${{ vars.SMITHERY_SERVER_QUALIFIED_NAME }}
           GLAMA_LISTING_URL: ${{ vars.GLAMA_LISTING_URL }}
           DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
         run: |
@@ -81,7 +81,7 @@ jobs:
               "- `unmonitored (misconfigured)` — a required repo variable is unset, so this surface is NOT being watched. Set the named variable.",
               "- `unreachable` — the surface URL is configured but the probe failed (network / HTTP / parse).",
               "",
-              "Required repo variables for full coverage: `SMITHERY_MCP_URL`, `GLAMA_LISTING_URL`. PyPI and Docker need no configuration.",
+              "Required repo variables for full coverage: `GLAMA_LISTING_URL`. Smithery defaults to `agent-bom/agent-bom`; set `SMITHERY_SERVER_QUALIFIED_NAME` only if the listing name changes.",
               "",
               "_Maintained automatically by the surface-freshness workflow. Self-closes when every surface is fresh and monitored._",
             ].join("\n");

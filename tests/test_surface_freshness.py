@@ -41,16 +41,27 @@ def test_glama_listing_json_contract_reports_stale_listing(monkeypatch, capsys):
     assert "missing current Glama listing token" in payload["error"]
 
 
-def test_surface_freshness_classifies_smithery_proxy_url_as_misconfigured():
+def test_surface_freshness_reads_smithery_catalog_listing(monkeypatch):
     script = _load_script("check_surface_freshness.py")
 
-    result = script.probe_smithery("0.89.2", "https://server.smithery.ai/@agent-bom/agent-bom/mcp")
+    def fake_http_json(url, **_kwargs):
+        assert url == "https://api.smithery.ai/servers/agent-bom/agent-bom"
+        return {
+            "qualifiedName": "agent-bom/agent-bom",
+            "remote": True,
+            "deploymentUrl": "https://agent-bom--agent-bom.run.tools",
+            "tools": [{"name": "scan"}, {"name": "check"}],
+        }
+
+    monkeypatch.setattr(script, "_http_json", fake_http_json)
+
+    result = script.probe_smithery("0.89.2", "agent-bom/agent-bom", timeout=1, attempts=1, backoff=0)
 
     assert result["surface"] == "Smithery"
-    assert result["status"] == "not_configured"
-    assert result["version"] == "—"
-    assert "hosted MCP proxy" in result["error"]
-    assert "exposes /health" in result["error"]
+    assert result["status"] == "fresh"
+    assert result["version"] == "catalog-live"
+    assert result["deployment_url"] == "https://agent-bom--agent-bom.run.tools"
+    assert result["tool_count"] == 2
 
 
 def test_surface_freshness_reads_paginated_ghcr_tags(monkeypatch):

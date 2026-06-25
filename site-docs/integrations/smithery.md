@@ -5,11 +5,11 @@ This page documents the field-naming convention used by Smithery's session confi
 and how those values map to the environment variables the agent-bom MCP server
 actually reads.
 
-The manifest and release workflow are ready for Smithery publication, but the
-public catalog entry is only considered live after the Smithery release workflow
-successfully publishes against a public unauthenticated MCP endpoint. Until then,
-use Glama, OpenClaw, local `uvx agent-bom mcp server`, or your own Railway/Docker
-deployment as the active MCP surfaces.
+The manifest and release workflow are ready for Smithery publication. The public
+catalog entry is considered live when Smithery's catalog API lists
+`agent-bom/agent-bom` as a remote server with a deployment URL and non-empty tool
+inventory. Smithery-hosted remotes are OAuth-gated by Smithery, so they do not
+expose agent-bom's raw `/health` route.
 
 ## Why two naming conventions exist
 

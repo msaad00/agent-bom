@@ -10,7 +10,7 @@ Surfaces probed:
     pypi      — https://pypi.org/pypi/agent-bom/json  -> info.version
     docker    — ghcr.io / Docker Hub latest tag       -> resolved via registry API
     glama     — public marketplace listing            -> scripts/check_glama_listing.py
-    smithery  — public MCP endpoint                    -> agent_bom.deployment_probe
+    smithery  — public Smithery catalog API            -> api.smithery.ai
 
 Each surface reports one of:
     fresh          — published version == expected
@@ -102,17 +102,16 @@ def _classify(name: str, published: str | None, expected: str, *, error: str | N
     return {"surface": name, "status": status, "version": published, "expected": expected}
 
 
-def _smithery_proxy_error(url: str) -> str | None:
-    """Return an actionable error when the configured URL is Smithery's proxy."""
+def _smithery_catalog_url(qualified_name: str) -> str:
+    """Return the public Smithery catalog API URL for ``namespace/server``."""
 
-    parsed = urllib.parse.urlsplit(url.strip())
-    if parsed.netloc.lower() == "server.smithery.ai":
-        return (
-            "SMITHERY_MCP_URL points at Smithery's hosted MCP proxy. Set it to "
-            "the upstream public unauthenticated endpoint that exposes /health, "
-            "not https://server.smithery.ai/.../mcp."
-        )
-    return None
+    name = qualified_name.strip()
+    if "/" not in name:
+        raise ValueError(f"invalid Smithery qualified name: {qualified_name!r}")
+    namespace, server = name.split("/", 1)
+    if not namespace or not server or "/" in server:
+        raise ValueError(f"invalid Smithery qualified name: {qualified_name!r}")
+    return f"https://api.smithery.ai/servers/{urllib.parse.quote(namespace, safe='')}/{urllib.parse.quote(server, safe='')}"
 
 
 def _parse_image_reference(image: str) -> tuple[str, str]:
@@ -230,50 +229,37 @@ def probe_glama(expected: str, **kw: Any) -> dict[str, Any]:
     }
 
 
-def probe_smithery(expected: str, url: str, **kw: Any) -> dict[str, Any]:
-    if not url:
-        return {
-            "surface": "Smithery",
-            "status": "not_configured",
-            "version": "—",
-            "expected": expected,
-            "error": "no SMITHERY_MCP_URL — set the repo variable to monitor this surface",
-        }
-    proxy_error = _smithery_proxy_error(url)
-    if proxy_error:
-        return {
-            "surface": "Smithery",
-            "status": "not_configured",
-            "version": "—",
-            "expected": expected,
-            "error": proxy_error,
-        }
+def probe_smithery(expected: str, qualified_name: str, **kw: Any) -> dict[str, Any]:
+    """Probe Smithery's public catalog listing.
+
+    Smithery-hosted remote servers are OAuth-gated and do not expose agent-bom's
+    raw `/health` route. Freshness for this surface is therefore the catalog
+    contract: the listing exists, is remote, has a deployment URL, and advertises
+    tools. Version freshness is covered by PyPI/Docker plus the protected Railway
+    health check.
+    """
+
     try:
-        proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "agent_bom.deployment_probe",
-                "--base-url",
-                url,
-                "--attempts",
-                str(kw.get("attempts", DEFAULT_ATTEMPTS)),
-                "--backoff-seconds",
-                str(kw.get("backoff", DEFAULT_BACKOFF)),
-                "--timeout",
-                str(kw.get("timeout", DEFAULT_TIMEOUT)),
-            ],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
-        )
-        if proc.returncode != 0:
-            error = (proc.stderr or proc.stdout or f"deployment_probe exited {proc.returncode}").strip()
-            return _classify("Smithery", None, expected, error=error)
-        data = json.loads(proc.stdout or "{}")
-        version = data.get("version")
-        return _classify("Smithery", version, expected)
-    except (json.JSONDecodeError, OSError, ValueError) as exc:
+        data = _http_json(_smithery_catalog_url(qualified_name), **kw)
+        tools = data.get("tools") if isinstance(data.get("tools"), list) else []
+        deployment_url = data.get("deploymentUrl")
+        if data.get("qualifiedName") != qualified_name:
+            return _classify("Smithery", "—", expected, error="catalog returned the wrong server")
+        if not data.get("remote"):
+            return _classify("Smithery", "—", expected, error="catalog listing is not marked remote")
+        if not deployment_url:
+            return _classify("Smithery", "—", expected, error="catalog listing has no deploymentUrl")
+        if not tools:
+            return _classify("Smithery", "—", expected, error="catalog listing has no tools")
+        return {
+            "surface": "Smithery",
+            "status": "fresh",
+            "version": "catalog-live",
+            "expected": expected,
+            "deployment_url": deployment_url,
+            "tool_count": len(tools),
+        }
+    except (RuntimeError, ValueError) as exc:
         return _classify("Smithery", None, expected, error=str(exc))
 
 
@@ -281,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected", default=None, help="Override expected version (defaults to pyproject.toml).")
     parser.add_argument("--docker-image", default=os.environ.get("DOCKER_IMAGE", DEFAULT_DOCKER_IMAGE))
-    parser.add_argument("--smithery-url", default=os.environ.get("SMITHERY_MCP_URL", ""))
+    parser.add_argument("--smithery-server", default=os.environ.get("SMITHERY_SERVER_QUALIFIED_NAME", "agent-bom/agent-bom"))
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--attempts", type=int, default=DEFAULT_ATTEMPTS)
     parser.add_argument("--backoff-seconds", type=float, default=DEFAULT_BACKOFF)
@@ -295,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         probe_pypi(expected, **kw),
         probe_docker(expected, args.docker_image, **kw),
         probe_glama(expected, **kw),
-        probe_smithery(expected, args.smithery_url, **kw),
+        probe_smithery(expected, args.smithery_server, **kw),
     ]
 
     drift = [s for s in surfaces if s["status"] in ALERT_STATUSES]

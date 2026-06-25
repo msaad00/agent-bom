@@ -65,7 +65,7 @@ the credential environment names in reach, and the agents that can call it.
 | Supply chain | 15 package ecosystems (npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, conda, Hex, Pub, Swift, plus OS packages apk/deb/rpm) with OSV/GHSA enrichment, transitive resolution, and dependency-confusion detection |
 | Agents + MCP | MCP clients, servers, tools, transports, trust posture, and live introspection across 29 first-class client types |
 | AI models + datasets | Malicious-model detection via safe pickle-opcode disassembly (no deserialization), model/dataset cards, and PII/PHI dataset scanning |
-| Cloud estate | Read-only, gated asset inventory across AWS, Azure, and GCP plus AI/GPU provider posture and CIS benchmarks |
+| Cloud estate | Read-only, gated asset inventory across AWS, Azure, GCP, and Snowflake plus AI/GPU provider posture and CIS benchmarks. One connection model per cloud: a scoped read-only role and keyless/token auth — see [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md) |
 | Identity (NHI) | Non-human identity discovery (Okta/Entra, gated), credential-expiry posture, and access-review recertification campaigns |
 | LLM cost | Spend forecasting, budget runway, chargeback/allocation, and seasonal-aware spend-anomaly detection |
 | Containers + IaC | Native OCI image parsing plus Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes |
@@ -225,6 +225,7 @@ Screenshot capture rules and the full manifest live in
 | IaC scan | `agent-bom iac Dockerfile k8s/ infra/main.tf` | IaC findings and policy context |
 | Cloud posture check | `agent-bom cloud aws --cis` | runtime CIS posture evidence |
 | Cloud estate inventory | `agent-bom cloud inventory --provider aws` | read-only, gated asset inventory (AWS/Azure/GCP) |
+| Snowflake AI BOM + CIS | `agent-bom agents --snowflake` | Cortex agents, Snowpark apps, and CIS posture (read-only, key-pair) |
 | LLM cost forecast | `agent-bom cost forecast` | spend burn-rate, budget runway, and chargeback posture |
 | Non-human identity posture | `agent-bom identity credential-expiry` | expiring/overdue NHI credentials and access reviews |
 | CI gate | `uses: msaad00/agent-bom@v0.89.2` | SARIF, PR summary, optional code-scanning upload |
@@ -273,6 +274,81 @@ agent-bom proxy --no-isolate --policy policy.json --detect-credentials --block-u
 agent-bom proxy --sandbox-image ghcr.io/acme/mcp-runtime@sha256:<digest> \
   --sandbox-image-pin-policy enforce --block-undeclared -- npx @mcp/server-postgres
 ```
+
+## Connect a Cloud (Read-Only)
+
+`agent-bom` reads four clouds — **AWS, Azure, GCP, and Snowflake** — through one
+connection model. Every connector is **read-only, agentless, and keyless** by
+default: only control-plane `list`/`get` (or `SHOW`/`SELECT`) APIs, no writes, no
+secret values, no data leaves your account. Each connector is **opt-in and
+default-off**, gated by a per-provider env flag; with the flag unset, agent-bom
+does zero cloud network I/O.
+
+The *only* thing that differs per cloud is the line that mints the read-only
+role — because each platform's grant primitive is different. Everything else is
+identical: enable with `AGENT_BOM_<PROVIDER>_INVENTORY=1`, authenticate with the
+cloud's own identity (never a secret handed to agent-bom), get the same graph
+and findings out.
+
+| Cloud | Read-only grant | Keyless / token auth | Enable | Scan |
+|---|---|---|---|---|
+| AWS | `SecurityAudit` managed policy | profile / SSO / instance role (boto3 chain) | `AGENT_BOM_AWS_INVENTORY=1` | `agent-bom cloud aws` |
+| Azure | `Reader` (+ `Security Reader`) | `az login` / managed identity / cert SP | `AGENT_BOM_AZURE_INVENTORY=1` | `agent-bom cloud azure` |
+| GCP | impersonated read-only service account | ADC / `gcloud` / workload identity | `AGENT_BOM_GCP_INVENTORY=1` | `agent-bom cloud gcp` |
+| Snowflake | `ABOM_READONLY` role + key-pair user | RSA key-pair JWT (no password) | — | `agent-bom agents --snowflake` |
+
+```bash
+# AWS — attach SecurityAudit to the principal, then:
+export AGENT_BOM_AWS_INVENTORY=1
+export AWS_PROFILE=<readonly-profile>
+agent-bom cloud aws --cis
+
+# Azure — assign Reader (+ Security Reader), then:
+export AGENT_BOM_AZURE_INVENTORY=1
+az login
+agent-bom cloud azure --cis
+
+# GCP — grant a read-only SA and impersonate it (no key file):
+export AGENT_BOM_GCP_INVENTORY=1
+export AGENT_BOM_GCP_IMPERSONATE_SA=<sa-email>      # e.g. abom-readonly@<project-id>.iam.gserviceaccount.com
+gcloud auth application-default login
+agent-bom cloud gcp --project <project-id> --cis
+
+# Snowflake — create ABOM_READONLY + a key-pair user (see CLOUD_CONNECT.md), then:
+export SNOWFLAKE_ACCOUNT=<org-account>
+export SNOWFLAKE_USER=ABOM_SCANNER
+export SNOWFLAKE_AUTHENTICATOR=snowflake_jwt
+export SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/abom_key.p8
+agent-bom agents --snowflake
+```
+
+A read-only **estate inventory** across the enabled clouds (reference only, no
+findings):
+
+```bash
+agent-bom cloud inventory --provider all        # or aws | azure | gcp
+```
+
+CIS misconfigurations and graph toxic-combinations converge into the same
+`Finding` stream and exit-code gate as package vulnerabilities, so a real
+exposure can fail a pipeline:
+
+```bash
+agent-bom agents --aws --azure --gcp --snowflake --fail-on-severity high
+agent-bom graph                                 # multi-hop exposure paths
+agent-bom identity credential-expiry            # non-human identity posture
+```
+
+The full grant templates, per-cloud permission catalogs, and the
+"why read-only is enough" rationale live in
+[docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md). agent-bom is a **scanner, not a
+platform** — it reads inventory and posture, normalizes it into one graph, and
+emits findings; it never writes, never reads secret contents, and never moves
+data out of your account.
+
+<!-- TODO: capture real (redacted) screenshot: cross-cloud security graph with AWS + Azure + GCP + Snowflake nodes and a multi-hop exposure path -->
+<!-- TODO: capture real (redacted) screenshot: findings table filtered to cloud CIS misconfigurations across the four providers -->
+<!-- TODO: capture real (redacted) screenshot: identity/CIEM path from a cloud principal to a sensitive data store -->
 
 ## Deploy In Your Boundary
 

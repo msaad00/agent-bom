@@ -26,6 +26,11 @@ class PostgresPolicyStore:
         self._pool = pool or _get_pool()
         self._init_tables()
 
+    def init_schema(self) -> None:
+        """Idempotently (re)create this store's tables. Satisfies the shared
+        :class:`agent_bom.storage.base.TenantScopedStore` contract."""
+        self._init_tables()
+
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
             ensure_postgres_schema_version(conn, "gateway_policies")
@@ -71,9 +76,7 @@ class PostgresPolicyStore:
                 END
                 $$;
             """)
-            conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(entry_id)"
-            )
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_audit_log_entry ON policy_audit_log(entry_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_gateway_policies_team ON gateway_policies(team_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_policy_audit_log_team_ts ON policy_audit_log(team_id, ts DESC)")
             _ensure_tenant_rls(conn, "gateway_policies", "team_id")

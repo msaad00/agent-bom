@@ -29,7 +29,12 @@ from agent_bom.api.agent_identity_store import (
     AgentJITGrant,
     ConditionalAccessPolicy,
 )
-from agent_bom.api.postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.postgres_common import (
+    _ensure_tenant_rls,
+    _get_pool,
+    _tenant_connection,
+    bypass_tenant_rls,
+)
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
@@ -215,6 +220,25 @@ class PostgresAgentIdentityStore:
         grants = [AgentJITGrant(**json.loads(r[0])) for r in rows]
         live = [g for g in grants if g.is_live(at=at)]
         return live[0] if live else None
+
+    # ── cross-tenant maintenance sweeps ─────────────────────────────────────
+
+    def iter_all_identities(self, *, limit: int = 10000) -> builtins.list[AgentIdentity]:
+        """Return identities across every tenant for the cleanup loop.
+
+        Runs under a trusted RLS bypass: the lifecycle cleanup is a control-plane
+        maintenance task that must see all tenants' identities, not just the
+        ambient one. The bypass activation is itself audit-logged in
+        ``postgres_common``.
+        """
+        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+            rows = conn.execute("SELECT data FROM agent_identities ORDER BY issued_at ASC LIMIT %s", (limit,)).fetchall()
+        return [AgentIdentity(**json.loads(r[0])) for r in rows]
+
+    def iter_all_jit_grants(self, *, limit: int = 10000) -> builtins.list[AgentJITGrant]:
+        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+            rows = conn.execute("SELECT data FROM agent_identity_jit_grants ORDER BY requested_at ASC LIMIT %s", (limit,)).fetchall()
+        return [AgentJITGrant(**json.loads(r[0])) for r in rows]
 
     # ── conditional-access policies ─────────────────────────────────────────
 

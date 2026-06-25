@@ -879,6 +879,41 @@ async def _cleanup_loop():
                 _logger.info("proxy_replay_log cleanup removed %d expired rows", removed)
         except Exception:  # noqa: BLE001
             _logger.debug("proxy_replay_log cleanup skipped", exc_info=True)
+        # NHI lifecycle enforcement (#nhi): expire lingering JIT grants, opt-in
+        # dormant-identity deprovision, advisory token rotation-due flagging.
+        # Backend-agnostic and fail-open — a store error logs and is skipped so
+        # the loop survives. Timestamp injected for deterministic, replica-safe
+        # transitions.
+        try:
+            from datetime import datetime as _dt
+            from datetime import timezone as _tz
+
+            from agent_bom.api.agent_identity_store import get_agent_identity_store, run_nhi_lifecycle_cleanup
+            from agent_bom.api.governance_audit_log import get_governance_audit_log
+
+            nhi_now = _dt.now(_tz.utc)
+            nhi_result = run_nhi_lifecycle_cleanup(
+                get_agent_identity_store(),
+                now=nhi_now,
+                audit_log=get_governance_audit_log(),
+            )
+            grants = nhi_result.get("grants", {})
+            dormant = nhi_result.get("dormant", {})
+            rotation = nhi_result.get("rotation", {})
+            acted = grants.get("expired", 0) + grants.get("pruned", 0) + dormant.get("revoked", 0) + rotation.get("flagged", 0)
+            if acted:
+                _logger.info(
+                    "nhi lifecycle cleanup: %d grants expired, %d denied pruned, %d dormant revoked, %d rotation-due",
+                    grants.get("expired", 0),
+                    grants.get("pruned", 0),
+                    dormant.get("revoked", 0),
+                    rotation.get("flagged", 0),
+                )
+        except Exception:  # noqa: BLE001 — cleanup must never crash the loop
+            _logger.warning(
+                "nhi lifecycle cleanup skipped this tick; check the agent-identity store and governance audit-log backend connectivity",
+                exc_info=True,
+            )
         # Unstick jobs that have been RUNNING for too long
         try:
             from datetime import datetime, timezone

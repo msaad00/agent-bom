@@ -1,0 +1,369 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >-
+  agent-bom one-click read-only AWS scan. Provisions a serverless AWS CodeBuild
+  project (no EC2 instance, works on free-tier-restricted accounts) that installs
+  agent-bom, runs a read-only cloud inventory + CIS benchmark against your AWS
+  account, and publishes HTML / JSON / plaintext reports to a private S3 bucket.
+  The scan role is granted only the AWS-managed SecurityAudit (and optional
+  ViewOnlyAccess) read-only policies plus write access to the single report
+  bucket. No long-lived secrets, no inbound network exposure.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Scan configuration
+        Parameters:
+          - Region
+          - FailOnSeverity
+          - AddViewOnlyAccess
+      - Label:
+          default: Build & packaging
+        Parameters:
+          - AgentBomSpec
+          - ComputeType
+          - PythonImage
+      - Label:
+          default: Report retention & scheduling
+        Parameters:
+          - ReportRetentionDays
+          - Schedule
+          - ScheduleExpression
+    ParameterLabels:
+      Region:
+        default: AWS region to scan
+      FailOnSeverity:
+        default: Fail the build on findings at or above this severity
+      AddViewOnlyAccess:
+        default: Also attach the AWS-managed ViewOnlyAccess policy
+      Schedule:
+        default: Enable recurring scheduled scans
+      ScheduleExpression:
+        default: EventBridge schedule expression for recurring scans
+
+Parameters:
+  Region:
+    Type: String
+    Default: us-east-1
+    AllowedPattern: "^[a-z]{2}(-gov)?-[a-z]+-[0-9]$"
+    Description: >-
+      AWS region passed to "agent-bom cloud aws --region". The scan reads global
+      and regional services in this region.
+
+  FailOnSeverity:
+    Type: String
+    Default: none
+    AllowedValues:
+      - none
+      - low
+      - medium
+      - high
+      - critical
+    Description: >-
+      If set above "none", the CodeBuild run exits non-zero when findings at or
+      above this severity are present. Reports are still written to S3 first.
+
+  AddViewOnlyAccess:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      Attach the AWS-managed ViewOnlyAccess policy in addition to SecurityAudit
+      for broader read-only resource discovery. Both are read-only.
+
+  AgentBomSpec:
+    Type: String
+    Default: "agent-bom[aws]"
+    AllowedPattern: "^agent-bom\\[aws\\].*$"
+    Description: >-
+      pip requirement spec installed before the scan. Pin a version for
+      reproducible runs, e.g. "agent-bom[aws]==0.89.2".
+
+  ComputeType:
+    Type: String
+    Default: BUILD_GENERAL1_SMALL
+    AllowedValues:
+      - BUILD_GENERAL1_SMALL
+      - BUILD_GENERAL1_MEDIUM
+    Description: CodeBuild compute size. SMALL is sufficient and cheapest.
+
+  PythonImage:
+    Type: String
+    Default: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+    Description: >-
+      Managed CodeBuild image providing Python 3. The default ships Python 3.11+.
+
+  ReportRetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    MaxValue: 365
+    Description: Days before report objects expire from the S3 bucket.
+
+  Schedule:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Enable an EventBridge rule that runs the scan on a recurring schedule.
+
+  ScheduleExpression:
+    Type: String
+    Default: rate(7 days)
+    Description: >-
+      EventBridge schedule expression used when Schedule=true,
+      e.g. "rate(7 days)" or "cron(0 6 ? * MON *)".
+
+Conditions:
+  AttachViewOnly: !Equals [!Ref AddViewOnlyAccess, "true"]
+  EnableSchedule: !Equals [!Ref Schedule, "true"]
+  EnforceSeverity: !Not [!Equals [!Ref FailOnSeverity, "none"]]
+
+Resources:
+  ReportBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-reports
+            Status: Enabled
+            ExpirationInDays: !Ref ReportRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: !Ref ReportRetentionDays
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  ReportBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ReportBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt ReportBucket.Arn
+              - !Sub "${ReportBucket.Arn}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  ScanRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Read-only role used by the agent-bom CodeBuild scan.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns: !If
+        - AttachViewOnly
+        - - arn:aws:iam::aws:policy/SecurityAudit
+          - arn:aws:iam::aws:policy/job-function/ViewOnlyAccess
+        - - arn:aws:iam::aws:policy/SecurityAudit
+      Policies:
+        - PolicyName: agent-bom-scan-build
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteReportsToBucket
+                Effect: Allow
+                Action:
+                  - "s3:PutObject"
+                Resource: !Sub "${ReportBucket.Arn}/*"
+              - Sid: ListReportBucket
+                Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                  - "s3:GetBucketLocation"
+                Resource: !GetAtt ReportBucket.Arn
+              - Sid: BuildLogs
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/agent-bom-scan-${AWS::StackName}"
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/agent-bom-scan-${AWS::StackName}:*"
+
+  ScanProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "agent-bom-scan-${AWS::StackName}"
+      Description: Serverless read-only agent-bom AWS scan publishing reports to S3.
+      ServiceRole: !GetAtt ScanRole.Arn
+      TimeoutInMinutes: 30
+      Artifacts:
+        Type: NO_ARTIFACTS
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Sub "/aws/codebuild/agent-bom-scan-${AWS::StackName}"
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: !Ref ComputeType
+        Image: !Ref PythonImage
+        EnvironmentVariables:
+          - Name: AGENT_BOM_AWS_INVENTORY
+            Value: "1"
+          - Name: SCAN_REGION
+            Value: !Ref Region
+          - Name: REPORT_BUCKET
+            Value: !Ref ReportBucket
+          - Name: AGENT_BOM_SPEC
+            Value: !Ref AgentBomSpec
+          - Name: FAIL_ON_SEVERITY
+            Value: !Ref FailOnSeverity
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - python3 --version
+                - python3 -m pip install --quiet --upgrade pip
+                - python3 -m pip install --quiet "${AGENT_BOM_SPEC}"
+                - agent-bom --version
+            build:
+              commands:
+                - export PREFIX="aws-scan/$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+                - echo "Scanning region ${SCAN_REGION}; reports prefix ${PREFIX}"
+                # Read-only AWS inventory + CIS benchmark. Each format is a
+                # separate read-only invocation; none mutate the account.
+                - agent-bom cloud aws --region "${SCAN_REGION}" -f html -o report.html
+                - agent-bom cloud aws --region "${SCAN_REGION}" -f json -o report.json
+                # Plaintext CLI report (no color) for grep/diff/log pipelines.
+                - agent-bom cloud aws --region "${SCAN_REGION}" -f plain -o report.txt
+                # Also capture the colorized console table to a log file.
+                - agent-bom cloud aws --region "${SCAN_REGION}" 2>&1 | tee console.log || true
+            post_build:
+              commands:
+                - |
+                  for f in report.html report.json report.txt console.log; do
+                    if [ -f "$f" ]; then
+                      aws s3 cp "$f" "s3://${REPORT_BUCKET}/${PREFIX}/$f" \
+                        --content-type "$([ "$f" = report.html ] && echo text/html || echo text/plain)"
+                    fi
+                  done
+                - echo "Reports uploaded to s3://${REPORT_BUCKET}/${PREFIX}/"
+                # Optional severity gate. Runs after reports are safely in S3 so
+                # a non-zero exit never loses the artifacts.
+                - |
+                  if [ "${FAIL_ON_SEVERITY}" != "none" ]; then
+                    echo "Enforcing fail-on-severity=${FAIL_ON_SEVERITY}"
+                    agent-bom cloud aws --region "${SCAN_REGION}" -f json -o gate.json
+                    python3 - "$FAIL_ON_SEVERITY" gate.json <<'PY'
+                  import json, sys
+                  order = ["low", "medium", "high", "critical"]
+                  threshold = sys.argv[1]
+                  try:
+                      data = json.load(open(sys.argv[2]))
+                  except Exception as exc:  # noqa: BLE001
+                      print(f"gate: could not read report ({exc}); not failing")
+                      sys.exit(0)
+                  def sevs(obj):
+                      if isinstance(obj, dict):
+                          if "severity" in obj and isinstance(obj["severity"], str):
+                              yield obj["severity"].lower()
+                          for v in obj.values():
+                              yield from sevs(v)
+                      elif isinstance(obj, list):
+                          for v in obj:
+                              yield from sevs(v)
+                  cut = order.index(threshold) if threshold in order else len(order)
+                  hits = [s for s in sevs(data) if s in order and order.index(s) >= cut]
+                  if hits:
+                      print(f"gate: {len(hits)} finding(s) at/above {threshold}")
+                      sys.exit(1)
+                  print(f"gate: no findings at/above {threshold}")
+                  PY
+                  fi
+
+  ScheduleRole:
+    Type: AWS::IAM::Role
+    Condition: EnableSchedule
+    Properties:
+      Description: Allows EventBridge to start the agent-bom scan project.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: start-scan-build
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "codebuild:StartBuild"
+                Resource: !GetAtt ScanProject.Arn
+
+  ScheduleRule:
+    Type: AWS::Events::Rule
+    Condition: EnableSchedule
+    Properties:
+      Description: Recurring agent-bom read-only AWS scan.
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: agent-bom-scan
+          Arn: !GetAtt ScanProject.Arn
+          RoleArn: !GetAtt ScheduleRole.Arn
+
+Outputs:
+  ReportBucketName:
+    Description: Private S3 bucket holding the scan reports.
+    Value: !Ref ReportBucket
+
+  CodeBuildProject:
+    Description: CodeBuild project that runs the read-only scan.
+    Value: !Ref ScanProject
+
+  StartScanCommand:
+    Description: Run an on-demand scan now.
+    Value: !Sub "aws codebuild start-build --project-name ${ScanProject} --region ${AWS::Region}"
+
+  ListReportsCommand:
+    Description: List published reports.
+    Value: !Sub "aws s3 ls s3://${ReportBucket}/aws-scan/ --recursive"
+
+  DownloadReportsCommand:
+    Description: Download all reports locally.
+    Value: !Sub "aws s3 cp s3://${ReportBucket}/aws-scan/ ./agent-bom-reports/ --recursive"
+
+  ConsoleUrl:
+    Description: S3 console URL for the report bucket.
+    Value: !Sub "https://s3.console.aws.amazon.com/s3/buckets/${ReportBucket}?region=${AWS::Region}"
+
+  SeverityGate:
+    Condition: EnforceSeverity
+    Description: Active fail-on-severity threshold for the build.
+    Value: !Ref FailOnSeverity

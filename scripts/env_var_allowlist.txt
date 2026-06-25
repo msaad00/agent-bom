@@ -133,6 +133,8 @@ AGENT_BOM_GATEWAY_POLICY_RELOAD_SECONDS
 AGENT_BOM_GATEWAY_RATE_LIMIT_PER_TENANT_PER_MINUTE
 AGENT_BOM_GATEWAY_REPLICAS
 AGENT_BOM_GATEWAY_REQUIRE_SHARED_RATE_LIMIT
+# Read-only GCP service account to impersonate (keyless, least-privilege) when set; the connector runs every call as this SA.
+AGENT_BOM_GCP_IMPERSONATE_SA
 # Opt-in (default OFF) gate for the estate-wide read-only GCP asset inventory scanner (token/ADC auth only).
 AGENT_BOM_GCP_INVENTORY
 AGENT_BOM_GRAPH_DB

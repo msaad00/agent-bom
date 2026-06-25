@@ -251,3 +251,162 @@ class TestCredentialDetection:
         assert r.exit_code == 0
         assert verified == ["aws"]
         assert "verified" in r.output
+
+
+# ── --show-passed wiring to the grouped CIS renderer ─────────────────────────
+
+
+class TestShowPassedWiring:
+    """`--show-passed` is surfaced on every cloud command and the choice rides
+    the click context ``meta`` through the ``cloud scan`` → ``scan`` invoke so
+    the grouped CIS renderer can honor it."""
+
+    def test_flag_present_in_help_for_every_command(self):
+        for command in ("scan", "aws", "azure", "gcp"):
+            r = CliRunner().invoke(cloud_group, [command, "--help"])
+            assert r.exit_code == 0
+            assert "--show-passed" in r.output, command
+
+    @staticmethod
+    def _capture_meta(monkeypatch):
+        """Capture the show-passed meta value visible to the scan callback."""
+        from agent_bom.cli.agents._cloud import CIS_SHOW_PASSED_META
+
+        seen: list[object] = []
+
+        def fake_scan(**kwargs):
+            import click
+
+            seen.append(click.get_current_context().meta.get(CIS_SHOW_PASSED_META))
+
+        monkeypatch.setattr("agent_bom.cli.agents.scan.callback", fake_scan)
+        return seen
+
+    def test_show_passed_rides_context_meta(self, monkeypatch):
+        seen = self._capture_meta(monkeypatch)
+        r = CliRunner().invoke(cloud_group, ["scan", "--provider", "aws", "--show-passed"])
+        assert r.exit_code == 0
+        assert seen == [True]
+
+    def test_default_meta_is_falsey(self, monkeypatch):
+        seen = self._capture_meta(monkeypatch)
+        r = CliRunner().invoke(cloud_group, ["scan", "--provider", "aws"])
+        assert r.exit_code == 0
+        assert seen == [False]
+
+    def test_alias_forwards_show_passed(self, monkeypatch):
+        seen = self._capture_meta(monkeypatch)
+        CliRunner().invoke(cloud_group, ["aws", "--show-passed"])
+        assert seen == [True]
+
+
+# ── grouped CIS renderer routing (run_benchmarks → print_cis_findings) ────────
+
+
+class _FakeBenchmarkReport:
+    """Minimal stand-in for a benchmark report exposing ``to_dict()``."""
+
+    def __init__(self, bundle: dict) -> None:
+        self._bundle = bundle
+
+    def to_dict(self) -> dict:
+        return self._bundle
+
+
+def _cis_bundle() -> dict:
+    """Small AWS-style bundle: 1 critical fail, 1 high fail, 2 passes."""
+    return {
+        "benchmark": "CIS AWS Foundations",
+        "pass_rate": 50.0,
+        "passed": 2,
+        "failed": 2,
+        "total": 4,
+        "checks": [
+            {
+                "check_id": "1.1",
+                "title": "Root account has no access keys",
+                "status": "fail",
+                "severity": "critical",
+                "evidence": "root key present",
+                "resource_ids": ["arn:aws:iam::1:root"],
+                "recommendation": "Delete root access keys.",
+                "remediation": {"fix_cli": "aws iam delete-access-key", "priority": 1},
+                "cis_section": "1 - IAM",
+            },
+            {
+                "check_id": "2.1",
+                "title": "CloudTrail enabled in all regions",
+                "status": "fail",
+                "severity": "high",
+                "evidence": "trail missing",
+                "resource_ids": ["trail-x"],
+                "recommendation": "Enable multi-region CloudTrail.",
+                "remediation": {"priority": 2},
+                "cis_section": "2 - Logging",
+            },
+            {"check_id": "1.2", "title": "MFA on root", "status": "pass", "severity": "high"},
+            {"check_id": "1.3", "title": "Password policy", "status": "pass", "severity": "medium"},
+        ],
+    }
+
+
+def _render_ctx_cis(monkeypatch, *, show_passed: bool) -> str:
+    """Run ``_render_cis_findings`` with one AWS bundle and capture console output."""
+    from io import StringIO
+
+    import click
+    from rich.console import Console
+
+    import agent_bom.output as output_mod
+    from agent_bom.cli.agents._cloud import CIS_SHOW_PASSED_META, _render_cis_findings
+    from agent_bom.cli.agents._context import ScanContext
+
+    buf = StringIO()
+    con = Console(file=buf, force_terminal=False, width=200)
+    monkeypatch.setattr(output_mod, "console", con)
+
+    ctx = ScanContext(con=con)
+    ctx.cis_benchmark_report = _FakeBenchmarkReport(_cis_bundle())
+
+    # --show-passed is carried on the click context meta; render under a click
+    # context that mirrors how the cloud command sets it.
+    with click.Context(click.Command("scan")) as click_ctx:
+        click_ctx.meta[CIS_SHOW_PASSED_META] = show_passed
+        _render_cis_findings(ctx)
+    return buf.getvalue()
+
+
+class TestGroupedCisRendererRouting:
+    def test_failed_first_grouped_and_passes_collapsed(self, monkeypatch):
+        out = _render_ctx_cis(monkeypatch, show_passed=False)
+        # Severity bands present, CRITICAL ahead of HIGH (failed-first ordering).
+        assert "CRITICAL" in out and "HIGH" in out
+        assert out.index("CRITICAL") < out.index("HIGH")
+        # Failed checks carry evidence + fix lines.
+        assert "evidence:" in out and "fix:" in out
+        assert "arn:aws:iam::1:root" in out
+        assert "aws iam delete-access-key" in out
+        # Passes are collapsed into a count, not listed individually.
+        assert "2 passed" in out
+        assert "--show-passed" in out
+        assert "Password policy" not in out
+
+    def test_show_passed_lists_individual_passes(self, monkeypatch):
+        out = _render_ctx_cis(monkeypatch, show_passed=True)
+        assert "Passed (2)" in out
+        assert "Password policy" in out
+
+    def test_no_cis_data_emits_nothing(self, monkeypatch):
+        from io import StringIO
+
+        from rich.console import Console
+
+        import agent_bom.output as output_mod
+        from agent_bom.cli.agents._cloud import _render_cis_findings
+        from agent_bom.cli.agents._context import ScanContext
+
+        buf = StringIO()
+        con = Console(file=buf, force_terminal=False, width=200)
+        monkeypatch.setattr(output_mod, "console", con)
+        _render_cis_findings(ScanContext(con=con))
+        assert buf.getvalue() == ""

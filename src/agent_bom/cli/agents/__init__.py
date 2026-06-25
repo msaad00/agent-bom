@@ -701,19 +701,37 @@ def scan(
         except Exception:
             pass  # DB not available, will use network
 
-    # ── Auto-refresh stale DB if enabled (skip side-effect-light modes) ───────
-    if auto_update_db and not no_scan and not dry_run:
-        from agent_bom.db.schema import db_freshness_days
-        from agent_bom.db.sync import sync_db
+    # ── Vuln-data freshness snapshot + auto-refresh ──────────────────────────
+    # Single source of truth for "where did the vuln data come from, how old is
+    # it, is it stale". Computed once here, surfaced to the user below, and
+    # attached to the report so the API/MCP can return it. Offline/airgapped
+    # callers (``--offline`` or AGENT_BOM_VULN_DB_OFFLINE) never trigger a
+    # network refresh — they use whatever cache exists.
+    from agent_bom.vuln_freshness import compute_freshness, should_refresh
 
-        freshness = db_freshness_days()
+    _vuln_freshness = None
+    try:
+        _vuln_freshness = compute_freshness(offline=offline)
+    except Exception:
+        _vuln_freshness = None  # Never block a scan on a freshness probe failure
+
+    # Auto-refresh stale/missing DB if enabled (skip side-effect-light modes,
+    # skip in offline mode). Never fail the scan on a refresh error — fall back
+    # to live API or the existing cache.
+    if auto_update_db and not no_scan and not dry_run and not offline and _vuln_freshness is not None:
         source_list = [s.strip() for s in db_sources.split(",")] if db_sources else None
-        if freshness is None or freshness >= 1 or source_list:
+        # Explicit --db-source always syncs; otherwise respect the age threshold
+        # (idempotent: a fresh cache is not re-synced).
+        if source_list or should_refresh(_vuln_freshness, offline=offline):
+            from agent_bom.db.sync import sync_db
+
             if not quiet and not no_scan:
                 src_msg = f" (sources: {', '.join(source_list)})" if source_list else ""
                 con.print(f"[dim]Refreshing local vuln DB{src_msg} …[/dim]")
             try:
                 sync_db(sources=source_list)
+                # Recompute so the surfaced freshness reflects the fresh cache.
+                _vuln_freshness = compute_freshness(offline=offline)
             except Exception as _db_exc:
                 logger.warning("Auto DB refresh failed: %s", _db_exc)
 
@@ -765,34 +783,21 @@ def scan(
         )
         return
 
-    # Pre-scan: local DB freshness check (skip in offline mode — uses scan cache instead)
-    if not no_scan and not offline:
+    # Pre-scan: surface the vuln-data freshness indicator. Replaces the bare
+    # "No local vulnerability DB found" warning with an actionable line that
+    # states the source(s) + age, and warns prominently when the cache is in a
+    # clear-danger state (very stale, or offline with nothing usable cached).
+    if not no_scan and _vuln_freshness is not None and not quiet:
         try:
-            from agent_bom.db.schema import db_freshness_days
-
-            _db_age = db_freshness_days()
-            if _db_age is None:
-                if not quiet:
-                    con.print(
-                        "[yellow]⚠ No local vulnerability DB found.[/yellow] "
-                        "Falling back to OSV API (slower). "
-                        "Run [bold]agent-bom db update[/bold] to build a local cache."
-                    )
-            elif _db_age > 7:
-                if not quiet:
-                    con.print(
-                        f"[red]⚠ Local vulnerability DB is {_db_age} days old.[/red] "
-                        "Scan results may be incomplete. "
-                        "Run [bold]agent-bom db update[/bold] before scanning."
-                    )
-            elif _db_age >= 1:
-                if not quiet:
-                    con.print(
-                        f"[yellow]⚠ Local vulnerability DB is {_db_age} days old.[/yellow] "
-                        "Run [bold]agent-bom db update[/bold] for daily security freshness."
-                    )
+            _line = _vuln_freshness.summary_line()
+            if _vuln_freshness.danger:
+                con.print(f"[red]⚠ {_line}[/red]")
+            elif _vuln_freshness.stale or _vuln_freshness.mode == "live":
+                con.print(f"[yellow]⚠ {_line}[/yellow]")
+            else:
+                con.print(f"[dim]{_line}[/dim]")
         except Exception:
-            pass  # Never block a scan due to freshness check failure
+            pass  # Never block a scan due to a freshness render failure
 
     # ── IaC-only fast path ───────────────────────────────────────────────────
     # When invoked via `agent-bom iac <paths>` (iac_paths set + no_scan=True),
@@ -1740,6 +1745,14 @@ def scan(
         for section in _scan_perf_data.values()
     ):
         report.scan_performance_data = _scan_perf_data
+
+    # Cross-surface freshness: attach the same snapshot the CLI rendered so the
+    # API and MCP tool return the vuln-data source/age/staleness verbatim.
+    if _vuln_freshness is not None:
+        try:
+            report.vuln_data_freshness = _vuln_freshness.to_dict()
+        except Exception:
+            pass
 
     # Attach skill/trust/prompt/enforcement data from context
     if ctx.skill_audit_data:

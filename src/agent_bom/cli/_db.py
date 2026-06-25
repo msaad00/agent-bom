@@ -406,6 +406,50 @@ def db_framework_status(frameworks: tuple[str, ...], stale_after_days: int, fmt:
         raise click.exceptions.Exit(1)
 
 
+@db_cmd.command("freshness")
+@click.option("--path", "db_path", type=click.Path(), default=None, help="Override DB file path.")
+@click.option(
+    "--offline",
+    is_flag=True,
+    help="Report freshness without considering a live API fallback (airgapped view).",
+)
+@click.option(
+    "--format",
+    "-f",
+    "fmt",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format.",
+)
+def db_freshness_cmd(db_path: str | None, offline: bool, fmt: str) -> None:
+    """Show the structured vuln-data freshness indicator (sources, age, staleness).
+
+    This is the same snapshot surfaced on every scan and returned by the API and
+    MCP tool, so CI and operators can verify the vuln data is up to date.
+    """
+    import json
+    from pathlib import Path
+
+    from agent_bom.vuln_freshness import compute_freshness
+
+    snapshot = compute_freshness(db_path=Path(db_path) if db_path else None, offline=offline)
+
+    if fmt == "json":
+        click.echo(json.dumps(snapshot.to_dict(), indent=2))
+        return
+
+    from rich.console import Console
+
+    con = Console()
+    line = snapshot.summary_line()
+    if snapshot.danger:
+        con.print(f"[red]⚠ {line}[/red]")
+    elif snapshot.stale or snapshot.mode == "live":
+        con.print(f"[yellow]⚠ {line}[/yellow]")
+    else:
+        con.print(f"[green]✓ {line}[/green]")
+
+
 @db_cmd.command("path")
 @click.option("--path", "db_path", type=click.Path(), default=None, help="Override DB file path.")
 def db_path_cmd(db_path: str | None) -> None:

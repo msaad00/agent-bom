@@ -240,6 +240,21 @@ CANONICAL_INTEL_SOURCES: tuple[IntelSource, ...] = (
 VENDOR_ADVISORY_SOURCE_IDS = {"nvidia_csaf", "amd_psirt", "intel_psirt"}
 _MAX_BRIEF_INPUTS = 500
 
+# Display labels for the local-cache sync_meta source ids, keyed by the value
+# stored in ``sync_meta.source``. Single source of truth for freshness labels.
+SYNC_META_SOURCE_LABELS: dict[str, str] = {
+    "osv": "OSV",
+    "ghsa": "GHSA",
+    "nvd": "NVD",
+    "epss": "EPSS",
+    "kev": "KEV",
+}
+
+
+def sync_meta_source_label(source_id: str) -> str:
+    """Map a ``sync_meta.source`` id to its human display label (OSV/GHSA/…)."""
+    return SYNC_META_SOURCE_LABELS.get(source_id.strip().lower(), source_id.upper())
+
 
 def resolve_intel_db_path() -> Path:
     """Return the local vulnerability DB path for read-only intel surfaces."""

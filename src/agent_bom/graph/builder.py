@@ -1049,6 +1049,16 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("attack-path fusion failed", exc_info=True)
 
+    # Cost (FinOps) fusion: attach LLM spend to agent/resource nodes, roll it up
+    # the CONTAINS hierarchy, and flag nodes that are BOTH high-cost AND
+    # high-risk. Runs LAST so it sees every exposure/toxic/critical flag the
+    # overlays above wrote. Cost is optional: this no-ops byte-identically when
+    # the report carries no ``llm_cost_records`` block.
+    try:
+        _apply_cost_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("cost overlay failed", exc_info=True)
+
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)
         span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")
@@ -1058,6 +1068,29 @@ def build_unified_graph_from_report(
         span.set_attribute("agent_bom.graph.edge_count", len(graph.edges))
         span.end()
     return graph
+
+
+def _apply_cost_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
+    """Fuse LLM cost into the graph from cost records carried on the report.
+
+    Reads the optional ``llm_cost_records`` block (a list of priced cost-record
+    dicts the caller loaded from the cost store — never fetched here) and hands
+    it to :func:`agent_bom.graph.cost_overlay.apply_cost_overlay`. Gated to a
+    clean no-op when the block is absent or empty, so an ordinary scan (no cost
+    data) leaves the graph byte-identical. Mirrors how ``cnapp_overlay`` /
+    ``governance_overlay`` are invoked above.
+    """
+    raw = report_json.get("llm_cost_records")
+    if not isinstance(raw, list) or not raw:
+        return
+    records = [r for r in raw if isinstance(r, dict)]
+    if not records:
+        return
+    from datetime import datetime, timezone
+
+    from agent_bom.graph.cost_overlay import apply_cost_overlay
+
+    apply_cost_overlay(graph, records, datetime.now(timezone.utc))
 
 
 def _iter_agentic_identity_graph_projections(report_json: Mapping[str, Any]) -> list[Mapping[str, Any]]:

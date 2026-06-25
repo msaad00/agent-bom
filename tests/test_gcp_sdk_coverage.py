@@ -29,7 +29,7 @@ def _imported_google_cloud_modules() -> set[str]:
 
 
 def test_every_google_cloud_module_imported_is_installed() -> None:
-    pytest.importorskip("google.cloud.storage")
+    pytest.importorskip("google.cloud.compute_v1")  # gate on a non-transitive, extra-only module
     used = _imported_google_cloud_modules()
     assert used, "no google.cloud imports found — scraper regex may be stale"
     missing = []

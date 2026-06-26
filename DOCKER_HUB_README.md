@@ -1,6 +1,6 @@
 # agent-bom
 
-**Open security scanner and self-hosted control plane for AI/MCP infrastructure.**
+**Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.**
 
 `agent-bom` follows package, agent, MCP, credential-name, cloud estate,
 non-human identity, runtime, and skill evidence into one reachability-backed AI

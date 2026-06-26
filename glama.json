@@ -5,7 +5,7 @@
   ],
   "name": "agent-bom",
   "title": "agent-bom",
-  "description": "Open security scanner and self-hosted control plane for AI/MCP infrastructure. Discovers agents, MCP servers, models, and runtime traffic; scans for vulnerable packages, prompt-injection, license violations, and risky tool capabilities; and maps blast radius across a security graph. Exposes 69 read-first MCP tools for headless security agents.",
+  "description": "Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure. Discovers agents, MCP servers, models, and runtime traffic; scans for vulnerable packages, prompt-injection, license violations, and risky tool capabilities; and maps blast radius across a security graph. Exposes 70 read-first MCP tools for headless security agents.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

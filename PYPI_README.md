@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-**Open security scanner and self-hosted control plane for AI/MCP infrastructure.**
+**Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.**
 
 Start with the demo, then choose the entrypoint that matches your first job:
 repo scan, image scan, cloud posture, fix plan, dashboard, MCP tools, or

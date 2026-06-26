@@ -8,7 +8,7 @@
     When a topic appears in both, this site is canonical for onboarding and
     `docs/` is canonical for the reference detail.
 
-**Open security scanner and self-hosted control plane for AI/MCP infrastructure.**
+**Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.**
 
 Headless agent primitives and human cockpit surfaces use the same evidence
 model.

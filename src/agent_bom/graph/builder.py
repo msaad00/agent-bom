@@ -1059,6 +1059,19 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("cost overlay failed", exc_info=True)
 
+    # ASPM (Application Security Posture Management) correlation: organise the
+    # AppSec findings already in the graph AROUND the application they belong to
+    # — derive APPLICATION roots from finding source paths, attach findings via
+    # BELONGS_TO, roll up per-app risk, dedupe duplicate CVE/rule across sources,
+    # and flag reachability from existing attack-path data. Runs LAST so it sees
+    # every attack-path / exposure signal the overlays above wrote. No scanners,
+    # no network: a pure correlation layer that no-ops byte-identically when the
+    # report carries no ``findings`` block.
+    try:
+        _apply_aspm_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("ASPM overlay failed", exc_info=True)
+
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)
         span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")
@@ -1091,6 +1104,28 @@ def _apply_cost_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> 
     from agent_bom.graph.cost_overlay import apply_cost_overlay
 
     apply_cost_overlay(graph, records, datetime.now(timezone.utc))
+
+
+def _apply_aspm_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
+    """Correlate AppSec findings around applications from the report's findings.
+
+    Reads the optional unified ``findings`` block (a list of ``Finding.to_dict()``
+    dicts the report already carries) and hands it to
+    :func:`agent_bom.graph.aspm_overlay.apply_aspm_overlay`, which derives
+    APPLICATION roots, attaches each finding via ``BELONGS_TO``, rolls up per-app
+    risk, dedupes duplicate CVE/rule across sources, and flags reachability from
+    existing attack-path data. Gated to a clean no-op when the block is absent or
+    empty, so a scan with no findings leaves the graph byte-identical. Mirrors how
+    ``_apply_cost_overlay`` is invoked above.
+    """
+    raw = report_json.get("findings")
+    if not isinstance(raw, list) or not raw:
+        return
+    from datetime import datetime, timezone
+
+    from agent_bom.graph.aspm_overlay import apply_aspm_overlay
+
+    apply_aspm_overlay(graph, dict(report_json), datetime.now(timezone.utc))
 
 
 def _iter_agentic_identity_graph_projections(report_json: Mapping[str, Any]) -> list[Mapping[str, Any]]:

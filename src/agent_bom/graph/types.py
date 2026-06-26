@@ -58,6 +58,12 @@ class EntityType(str, Enum):
     # and path-to-sensitive-data first-class for attack-path traversal.
     DATA_STORE = "data_store"  # database / bucket / data lake holding data at rest
 
+    # Application Security Posture Management (ASPM) — an application is the
+    # correlation root that AppSec findings (SCA / secrets / IaC / container /
+    # CI-CD / AI-BOM) are grouped and rolled up around. Derived per
+    # service/repo/manifest-root by the ASPM overlay (OCSF Category 5 inventory).
+    APPLICATION = "application"
+
     # Organizational hierarchy
     PROVIDER = "provider"
     ENVIRONMENT = "environment"
@@ -151,6 +157,11 @@ class RelationshipType(str, Enum):
     # they stay visible without being conflated with the strict path.
     CORRELATES_WITH = "correlates_with"  # local agent ↔ cloud agent (high)
     POSSIBLY_CORRELATES_WITH = "possibly_correlates_with"  # local ↔ cloud (low)
+
+    # ── Application Security Posture Management (ASPM) ──
+    # Finding/component → application correlation. The ASPM overlay groups every
+    # AppSec signal already in the graph around the application it belongs to.
+    BELONGS_TO = "belongs_to"  # finding/component/asset → application
 
 
 class NodeStatus(str, Enum):

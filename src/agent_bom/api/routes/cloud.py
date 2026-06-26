@@ -44,6 +44,35 @@ _INVENTORY_PROVIDERS = ("aws", "azure", "gcp")
 _CIS_PROVIDERS = ("aws", "azure", "gcp")
 _REGION_RE = re.compile(r"[a-z]{2}(-gov)?-[a-z]+-\d{1,2}")
 _PROFILE_RE = re.compile(r"[a-zA-Z0-9._-]{1,100}")
+# Audit-field allowlists. IAM action identifiers (AWS ``svc:Action``, GCP
+# ``svc.resource.verb``, Azure ``Provider/type/op``), discovery scopes (account
+# IDs, regions, project IDs, ARNs), and the discovery-mode/redaction enums are
+# all structured tokens with no whitespace or punctuation that could carry a
+# stack trace or CRLF. Matching against these patterns is the sanitizer barrier
+# that keeps any exception-derived text in a provider payload out of the REST
+# response, independent of where the value originated.
+_PERMISSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/*-]{0,200}")
+_SCOPE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/*-]{0,300}")
+_AUDIT_ENUM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,40}")
+
+
+def _clean_tokens(values: Any, pattern: re.Pattern[str], *, cap: int = 500) -> list[str]:
+    """Keep only well-formed, structured tokens — the sanitizer barrier.
+
+    Each value is coerced, stripped, and admitted only if it fully matches the
+    allowlist ``pattern``. Anything carrying whitespace, control characters, or
+    free-form prose (i.e. an exception/stack fragment) is dropped, so no
+    exception-derived text can reach the response even if it appears in a
+    provider payload field.
+    """
+    cleaned: list[str] = []
+    for value in values or []:
+        token = str(value).strip()
+        if token and pattern.fullmatch(token):
+            cleaned.append(token)
+        if len(cleaned) >= cap:
+            break
+    return cleaned
 
 
 def _tenant(request: Request) -> str:
@@ -80,12 +109,10 @@ def _audit_metadata(payloads: list[dict[str, Any]]) -> dict[str, Any]:
         envelope = payload.get("discovery_envelope")
         if not isinstance(envelope, dict):
             continue
-        permissions.extend(str(p) for p in envelope.get("permissions_used", []) or [])
-        scopes.extend(str(s) for s in envelope.get("discovery_scope", []) or [])
-        if envelope.get("redaction_status"):
-            redaction.append(str(envelope["redaction_status"]))
-        if envelope.get("scan_mode"):
-            scan_modes.append(str(envelope["scan_mode"]))
+        permissions.extend(_clean_tokens(envelope.get("permissions_used"), _PERMISSION_RE))
+        scopes.extend(_clean_tokens(envelope.get("discovery_scope"), _SCOPE_RE))
+        redaction.extend(_clean_tokens([envelope.get("redaction_status")], _AUDIT_ENUM_RE))
+        scan_modes.extend(_clean_tokens([envelope.get("scan_mode")], _AUDIT_ENUM_RE))
     return {
         "read_only": True,
         "writes_performed": False,

@@ -264,3 +264,48 @@ def test_dispatch_never_gates_read_only_tools() -> None:
 
     out = asyncio.run(mcp_server._execute_tool_async("scan", handler, destructive=False))
     assert out == "HANDLER_RAN"
+
+
+# --------------------------------------------------------------------------- #
+# Audit metadata must never surface exception-derived text (py/stack-trace).
+# --------------------------------------------------------------------------- #
+
+
+def test_audit_metadata_drops_exception_derived_text() -> None:
+    from agent_bom.api.routes.cloud import _audit_metadata
+
+    out = _audit_metadata(
+        [
+            {
+                "discovery_envelope": {
+                    "permissions_used": [
+                        "ec2:DescribeInstances",
+                        "compute.instances.list",
+                        "Traceback (most recent call last): boom",
+                        "token with spaces",
+                    ],
+                    "discovery_scope": [
+                        "us-east-1",
+                        "arn:aws:s3:::bucket",
+                        "line 154\n  raise RuntimeError('x')",
+                    ],
+                    "redaction_status": "redacted",
+                    "scan_mode": "read_only",
+                },
+                "warnings": ["AccessDenied: arn:... could not assume role: <stack>"],
+            }
+        ]
+    )
+
+    # well-formed IAM identifiers survive
+    assert "ec2:DescribeInstances" in out["permissions_used"]
+    assert "compute.instances.list" in out["permissions_used"]
+    assert "arn:aws:s3:::bucket" in out["discovery_scope"]
+    assert "us-east-1" in out["discovery_scope"]
+    assert out["redaction_status"] == ["redacted"]
+    assert out["scan_modes"] == ["read_only"]
+
+    # any value carrying whitespace / a stack fragment is dropped
+    flat = out["permissions_used"] + out["discovery_scope"]
+    assert all(" " not in tok and "\n" not in tok for tok in flat)
+    assert not any("Traceback" in tok or "raise" in tok for tok in flat)

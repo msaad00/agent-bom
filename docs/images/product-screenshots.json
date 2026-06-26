@@ -1,6 +1,6 @@
 {
   "release_version": "0.89.2",
-  "captured_at": "2026-06-03T20:30:00Z",
+  "captured_at": "2026-06-26T05:19:03Z",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
   "screenshots": [
     {

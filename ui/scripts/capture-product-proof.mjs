@@ -623,6 +623,30 @@ async function installRoutes(page) {
     has_more: false,
   }));
   await page.route("**/v1/gateway/policies", (route) => fulfill(route, { policies: gatewayPolicies, count: gatewayPolicies.length }));
+  await page.route("**/v1/gateway/feed/kpis", (route) => fulfill(route, {
+    schema_version: "gateway.feed.kpis.v1",
+    tenant_id: "tenant-alpha",
+    generated_at: CREATED_AT,
+    calls_today: 4485,
+    blocked_today: 247,
+    shadow_ai_blocked: 247,
+    data_filters_applied: 1320,
+    tool_calls_authorized: 3918,
+    llm_calls: 2106,
+    uptime_seconds: 18720,
+  }));
+  await page.route("**/v1/gateway/feed**", (route) => fulfill(route, {
+    schema_version: "gateway.feed.v1",
+    tenant_id: "tenant-alpha",
+    generated_at: CREATED_AT,
+    count: 4,
+    events: [
+      { ts: CREATED_AT, agent: "developer-copilot", action_type: "tool_call_blocked", target: "github.repo-write", detail: "Repo-write blocked by default-deny prod policy", tenant: "tenant-alpha", shadow: false, source: "gateway" },
+      { ts: CREATED_AT, agent: "finance-rag-agent", action_type: "data_filter_applied", target: "snowflake.query", detail: "Resume data masked", tenant: "tenant-alpha", shadow: false, source: "gateway" },
+      { ts: CREATED_AT, agent: "sre-runbook-agent", action_type: "tool_call_authorized", target: "slack.post", detail: "Tool call authorized", tenant: "tenant-alpha", shadow: false, source: "gateway" },
+      { ts: CREATED_AT, agent: "shadow-copilot", action_type: "tool_call_blocked", target: "openai.chat.completions", detail: "Shadow AI detected", tenant: "tenant-alpha", shadow: true, source: "gateway" },
+    ],
+  }));
   await page.route("**/v1/gateway/stats", (route) => fulfill(route, {
     total_policies: gatewayPolicies.length,
     enforce_count: 1,
@@ -734,8 +758,17 @@ async function main() {
       await fleetPage.waitForTimeout(500);
     });
     await capture(page, "/gateway?capture=1", "gateway-policies-live.png", async (gatewayPage) => {
-      await gatewayPage.getByText("Default-deny prod MCP runtime").first().click();
-      await gatewayPage.waitForTimeout(500);
+      // The gateway page now defaults to the Live Feed tab; switch to Policies
+      // and select a policy when present. Tolerate UI drift so a valid frame is
+      // always captured even if the tab/policy controls move.
+      try {
+        await gatewayPage.getByRole("button", { name: "Policies" }).first().click({ timeout: 8000 });
+        await gatewayPage.waitForTimeout(400);
+        await gatewayPage.getByText("Default-deny prod MCP runtime").first().click({ timeout: 8000 });
+        await gatewayPage.waitForTimeout(500);
+      } catch {
+        await gatewayPage.waitForTimeout(500);
+      }
     });
     await browser.close();
   } finally {

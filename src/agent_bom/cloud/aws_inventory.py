@@ -285,8 +285,7 @@ def record_discovery_failure(
     detail = sanitize_discovery_warning(exc)
     if is_access_denied_error(exc):
         warnings.append(
-            f"Skipped {resource_type}: role lacks {permission} — "
-            f"add it to the read-only policy to cover this resource type. ({detail})"
+            f"Skipped {resource_type}: role lacks {permission} — add it to the read-only policy to cover this resource type. ({detail})"
         )
         if missing is not None:
             missing.append(build_missing_permission(cloud=cloud, permission=permission, resource_type=resource_type))
@@ -718,9 +717,7 @@ def discover_inventory(
         if include_s3:
             buckets = _discover_s3_buckets(session, account_id=account_id, warnings=warnings, missing=missing)
         if include_ec2:
-            instances, security_groups = _discover_ec2(
-                session, resolved_region, account_id=account_id, warnings=warnings, missing=missing
-            )
+            instances, security_groups = _discover_ec2(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
         if include_iam:
             roles, users = _discover_iam(session, account_id=account_id, warnings=warnings, missing=missing)
         if include_data:
@@ -728,9 +725,7 @@ def discover_inventory(
             dynamodb_tables = _discover_dynamodb(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
             kms_keys = _discover_kms(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
             secrets = _discover_secrets(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            redshift_clusters = _discover_redshift(
-                session, resolved_region, account_id=account_id, warnings=warnings, missing=missing
-            )
+            redshift_clusters = _discover_redshift(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
         if include_compute:
             lambda_functions = _discover_lambda(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
             eks_clusters = _discover_eks(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)

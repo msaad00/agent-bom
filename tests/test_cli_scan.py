@@ -15,7 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import cli_main, main
-from agent_bom.cli._agent_mode import dumps_envelope, success_envelope
+from agent_bom.cli._agent_mode import dumps_envelope, success_envelope, summarize_scan_data
 from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.scanners import IncompleteScanError
 
@@ -167,6 +167,112 @@ def test_agent_mode_token_budget_bounds_large_envelope():
     assert payload["truncation"]["removed"]
     assert payload["summary"]["agents"] >= 30
     assert payload["data"]["document_type"] == "AI-BOM"
+
+
+def _provenance_heavy_report(n_packages: int = 400, n_findings: int = 60) -> dict:
+    """A report shaped like a real scan: huge inlined per-package provenance."""
+    provenance = {
+        "discovery_provenance": {
+            "source": "project",
+            "source_type": "local_discovery",
+            "observed_via": ["local_discovery"],
+            "version_provenance": {"declared_name": "pkg", "confidence": "unknown", "blob": "x" * 200},
+        }
+    }
+    packages = [{"name": f"pkg-{i}", "version": "1.0.0", "ecosystem": "npm" if i % 2 else "pypi", **provenance} for i in range(n_packages)]
+    findings = [
+        {
+            "id": f"finding-{i}",
+            "cve_id": f"CVE-2026-{i:04d}",
+            "title": f"finding {i}",
+            "effective_severity": "critical" if i < 3 else "medium",
+            "risk_score": 9.5 if i < 3 else 4.0,
+            "finding_type": "CVE",
+            "ai_summary": "y" * 300,
+        }
+        for i in range(n_findings)
+    ]
+    return {
+        "schema_version": "1",
+        "document_type": "AI-BOM",
+        "spec_version": "1.0",
+        "generated_at": "2026-01-01T00:00:00+00:00",
+        "scan_id": "scan-123",
+        "posture_grade": "B",
+        "summary": {"total_agents": 2, "total_mcp_servers": 4, "total_packages": n_packages, "total_vulnerabilities": 1},
+        "agents": [{"name": f"agent-{i}", "type": "custom", "mcp_servers": [{"name": "srv", "blob": "z" * 500}]} for i in range(2)],
+        "packages": packages,
+        "inventory_snapshot": {"packages": packages},
+        "findings": findings,
+        "blast_radius": [{"vulnerability_id": "CVE-2026-9999", "package_name": "pkg-0", "severity": "medium", "risk_score": 4.5}],
+        "ai_inventory": {"ast_analysis": {"blob": "a" * 5000}, "secrets": {"blob": "b" * 5000}},
+        "ai_bom_entities": {"blob": "c" * 5000},
+    }
+
+
+def test_agent_mode_scan_summarizes_by_default():
+    report = _provenance_heavy_report()
+    full_size = len(json.dumps(report, default=str))
+
+    payload = success_envelope(command="agents", report_json=report, exit_code=0)
+    output = dumps_envelope(payload)
+
+    # Still valid JSON, and dramatically smaller than the full report.
+    reparsed = json.loads(output)
+    assert reparsed == payload
+    assert payload["data_mode"] == "summary"
+    assert len(output) < full_size // 10
+
+    data = payload["data"]
+    # Heavy provenance dumps are omitted by default.
+    assert "ai_inventory" not in data
+    assert "ai_bom_entities" not in data
+    assert "packages" not in data  # the full package list is replaced by counts
+    assert "inventory_snapshot" not in data
+
+    # Counts + top findings ARE present.
+    assert data["counts"]["packages"] == 400
+    assert data["counts"]["packages_by_ecosystem"] == {"npm": 200, "pypi": 200}
+    assert data["counts"]["findings_by_severity"]["critical"] == 3
+    assert len(data["top_findings"]) == 10
+    assert data["top_findings"][0]["severity"] == "critical"
+    assert len(data["top_exposure_paths"]) == 1
+    assert data["full_report"]["included"] is False
+    assert "--agent-mode-full" in data["full_report"]["hint"]
+
+
+def test_agent_mode_scan_full_inlines_report():
+    report = _provenance_heavy_report()
+
+    payload = success_envelope(command="agents", report_json=report, exit_code=0, full=True)
+
+    assert payload["data_mode"] == "full"
+    data = payload["data"]
+    assert "ai_inventory" in data
+    assert "ai_bom_entities" in data
+    assert len(data["packages"]) == 400
+
+
+def test_summarize_scan_data_records_output_path():
+    report = _provenance_heavy_report()
+    summary = summarize_scan_data(report, output_path="/tmp/report.json")
+    assert summary["full_report"]["output_path"] == "/tmp/report.json"
+    # stdout sentinel is not a real on-disk path
+    assert summarize_scan_data(report, output_path="-")["full_report"]["output_path"] is None
+
+
+def test_agent_mode_scan_summary_envelope_omits_provenance_end_to_end(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_CONFIG", raising=False)
+    result = _run(["agents", "--agent-mode", "--demo", "--no-scan", "--offline", "--no-auto-update-db"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["data_mode"] == "summary"
+    data = payload["data"]
+    assert "ai_inventory" not in data
+    assert "ai_bom_entities" not in data
+    assert "counts" in data and isinstance(data["counts"]["packages"], int)
+    assert isinstance(data["top_findings"], list)
 
 
 def test_agent_mode_entry_wraps_usage_errors(monkeypatch, capsys):

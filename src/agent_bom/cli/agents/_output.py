@@ -218,6 +218,7 @@ def render_output(
     fixable_only: bool = False,
     agent_mode: bool = False,
     agent_token_budget: int = 0,
+    agent_mode_full: bool = False,
     offline_html: bool = False,
     **kwargs: Any,
 ) -> None:
@@ -287,6 +288,8 @@ def render_output(
                     report_json=to_json(report),
                     exit_code=ctx.exit_code,
                     token_budget=agent_token_budget,
+                    full=agent_mode_full,
+                    output_path=output if isinstance(output, str) else None,
                 )
                 sys.stdout.write(dumps_envelope(payload))
             else:

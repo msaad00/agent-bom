@@ -412,9 +412,11 @@ main.commands["run"].hidden = True  # Use `proxy` instead
 # ---------------------------------------------------------------------------
 # Doctor / preflight command
 # ---------------------------------------------------------------------------
+from agent_bom.cli._capabilities import capabilities_cmd  # noqa: E402
 from agent_bom.cli._doctor import doctor_cmd  # noqa: E402
 
 main.add_command(doctor_cmd, "doctor")
+main.add_command(capabilities_cmd, "capabilities")
 
 # ---------------------------------------------------------------------------
 # Deployment lifecycle command

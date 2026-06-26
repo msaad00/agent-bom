@@ -74,6 +74,13 @@ function formatUptime(seconds: number): string {
   return `${h}h ${m}m`;
 }
 
+// Format a KPI count, degrading to an em dash when the field is absent. A
+// partial KPI payload (object present, individual field missing) must render a
+// placeholder rather than crash the panel on `undefined.toLocaleString()`.
+export function fmtCount(value: number | undefined | null): string {
+  return typeof value === "number" ? value.toLocaleString() : "—";
+}
+
 function formatEventTime(ts: string): string {
   if (!ts) return "—";
   // Feed timestamps are ISO-8601 strings already normalized server-side.
@@ -186,26 +193,26 @@ export function GatewayFeedPanel() {
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
         <KpiCard
           label="Calls Today"
-          value={kpis ? kpis.calls_today.toLocaleString() : "—"}
+          value={fmtCount(kpis?.calls_today)}
           icon={Zap}
           color="text-emerald-400"
         />
         <KpiCard
           label="Blocked"
-          value={kpis ? kpis.blocked_today.toLocaleString() : "—"}
+          value={fmtCount(kpis?.blocked_today)}
           icon={Ban}
           color="text-red-400"
         />
         <KpiCard
           label="Shadow AI Blocked"
-          value={kpis ? kpis.shadow_ai_blocked.toLocaleString() : "—"}
+          value={fmtCount(kpis?.shadow_ai_blocked)}
           icon={Bot}
           color="text-orange-400"
           hint="undeclared agents + shadow MCP servers"
         />
         <KpiCard
           label="Data Filters"
-          value={kpis ? kpis.data_filters_applied.toLocaleString() : "—"}
+          value={fmtCount(kpis?.data_filters_applied)}
           icon={EyeOff}
           color="text-amber-400"
         />

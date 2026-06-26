@@ -1,0 +1,33 @@
+# Consumer-facing pre-commit hooks for agent-bom.
+#
+# Downstream repos reference these from their own .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/msaad00/agent-bom
+#       rev: v0.89.2
+#       hooks:
+#         - id: agent-bom-secrets
+#
+# (This file is distinct from .pre-commit-config.yaml, which configures
+#  agent-bom's own development hooks.)
+- id: agent-bom-secrets
+  name: agent-bom secrets/PII scan
+  description: Scan the repository for hardcoded secrets and PII before commit.
+  entry: agent-bom secrets
+  language: python
+  args: ["."]
+  pass_filenames: false
+  always_run: true
+  minimum_pre_commit_version: "2.9.0"
+
+- id: agent-bom-scan
+  name: agent-bom dependency + AI/MCP scan
+  description: >-
+    Scan project dependencies, agents, and MCP servers for known
+    vulnerabilities; fail the commit on high-or-above severity findings.
+  entry: agent-bom scan
+  language: python
+  args: ["--fail-on-severity", "high"]
+  pass_filenames: false
+  always_run: true
+  minimum_pre_commit_version: "2.9.0"

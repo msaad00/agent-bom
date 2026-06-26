@@ -213,6 +213,41 @@ pipeline {
 }
 ```
 
+#### Pre-commit hook
+
+**Use case**: Block secrets, PII, and vulnerable dependencies before they are
+committed, on the developer's machine.
+
+agent-bom publishes consumer-facing hooks in `.pre-commit-hooks.yaml`. Add them
+to your repository's `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/msaad00/agent-bom
+    rev: v0.89.2
+    hooks:
+      - id: agent-bom-secrets
+      - id: agent-bom-scan
+```
+
+Then enable the hooks:
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files   # optional: run immediately
+```
+
+Available hook ids:
+
+| Hook id | Command | Purpose |
+| --- | --- | --- |
+| `agent-bom-secrets` | `agent-bom secrets .` | Scan the working tree for hardcoded secrets and PII. |
+| `agent-bom-scan` | `agent-bom scan --fail-on-severity high` | Scan dependencies, agents, and MCP servers; fail on high-or-above findings. |
+
+pre-commit installs the `agent-bom` package itself into an isolated environment,
+so no separate install step is required for the hooks.
+
 **Pros**: Automated, fail builds on critical issues
 **Cons**: Requires CI/CD platform access
 

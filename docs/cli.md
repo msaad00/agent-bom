@@ -14,3 +14,14 @@ The canonical command reference lives in
 - `agent-bom profiles ...` manages named contexts in
   `~/.agent-bom/config.toml`; unknown profiles fail with the available profile
   list.
+- `agent-bom cloud scan` runs one cloud-aware scan across every configured
+  provider; `--provider all` (the default) auto-detects which clouds are
+  configured, and `cloud aws` / `cloud azure` / `cloud gcp` are aliases for the
+  provider-scoped form. CIS misconfigurations converge into the same `Finding`
+  stream and `--fail-on-severity` exit-code gate as package vulnerabilities.
+- `agent-bom cloud registry-scan --provider <ecr|acr|gar>` sweeps an entire
+  container registry read-only, deduping by content digest and capping the work
+  list with `AGENT_BOM_REGISTRY_MAX_IMAGES` / `AGENT_BOM_REGISTRY_MAX_TAGS_PER_REPO`.
+- `agent-bom db freshness` emits the structured vuln-data freshness indicator
+  (sources, age, staleness) — the same snapshot surfaced on every scan and
+  returned by the API and MCP tool.

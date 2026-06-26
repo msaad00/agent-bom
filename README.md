@@ -401,6 +401,34 @@ credentials handed to agent-bom.
 There is no managed cloud offering in this repository today. Product lane
 boundaries are documented in [docs/PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md).
 
+## Pre-commit Hook
+
+Block secrets, PII, and vulnerable dependencies before they are committed.
+agent-bom ships consumer-facing [pre-commit](https://pre-commit.com) hooks; add
+them to your repository's `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/msaad00/agent-bom
+    rev: v0.89.2
+    hooks:
+      - id: agent-bom-secrets
+      - id: agent-bom-scan
+```
+
+```bash
+pip install pre-commit && pre-commit install
+```
+
+| Hook id | Command | Purpose |
+| --- | --- | --- |
+| `agent-bom-secrets` | `agent-bom secrets .` | Scan the working tree for hardcoded secrets and PII. |
+| `agent-bom-scan` | `agent-bom scan --fail-on-severity high` | Scan dependencies, agents, and MCP servers; fail on high-or-above findings. |
+
+pre-commit installs the `agent-bom` package into an isolated environment, so no
+separate install step is needed. See
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#pre-commit-hook) for details.
+
 ## Trust Model
 
 - Read-only discovery by default for cloud and local inventory.

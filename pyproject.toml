@@ -361,6 +361,11 @@ module = [
     "agent_bom.backpressure",
     "agent_bom.proxy_sandbox",
     "agent_bom.capabilities",
+    "agent_bom.routing",
+    "agent_bom.orchestration",
+    "agent_bom.components.base",
+    "agent_bom.components.enricher_registry",
+    "agent_bom.components.matcher_registry",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

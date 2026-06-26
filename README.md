@@ -74,7 +74,11 @@ the credential environment names in reach, and the agents that can call it.
 
 Findings converge on one unified `Finding` model and a unified `ContextGraph`,
 so multi-hop attack-path fusion, blast radius, and exposure scoring all read
-from the same evidence.
+from the same evidence. The graph adds correlation overlays on top of that base:
+an ASPM layer that organizes AppSec findings around the application they belong
+to, LLM cost fused onto the resources that incur it, read-only cloud audit-trail
+activity as behavioral edges, and an estate-scale `CONTAINS` roll-up with
+drill-down so large clouds stay readable instead of one sprawling canvas.
 
 <p align="center">
   <picture>
@@ -217,6 +221,7 @@ Screenshot capture rules and the full manifest live in
 | Goal | Command | Artifact |
 |---|---|---|
 | Local agent and MCP inventory | `agent-bom agents` | findings, AI BOM, graph-ready JSON |
+| Read-only cloud onboarding | `agent-bom connect aws` | exact read-only grant + opt-in env var; no network I/O until you opt in |
 | Guided local onboarding | `agent-bom quickstart --dry-run --offline` | scan, sample-data, and local API/UI next steps |
 | One-command onboarding | `agent-bom quickstart --run --offline` | writes sample, runs a graph-persisting scan, seeds a baseline gateway policy |
 | Repo and lockfile scan | `agent-bom agents -p .` | package findings, SARIF/SBOM/HTML when requested |
@@ -228,6 +233,8 @@ Screenshot capture rules and the full manifest live in
 | Snowflake AI BOM + CIS | `agent-bom agents --snowflake` | Cortex agents, Snowpark apps, and CIS posture (read-only, key-pair) |
 | LLM cost forecast | `agent-bom cost forecast` | spend burn-rate, budget runway, and chargeback posture |
 | Non-human identity posture | `agent-bom identity credential-expiry` | expiring/overdue NHI credentials and access reviews |
+| Advisory remediation plan | `agent-bom remediate -p .` | prioritized, blast-radius-ordered fixes (optional `--apply` / `--open-pr`) |
+| Gated-capability readiness | `agent-bom capabilities` | every gated feature: state, why, and how to unlock |
 | CI gate | `uses: msaad00/agent-bom@v0.89.2` | SARIF, PR summary, optional code-scanning upload |
 | MCP tools | `pip install 'agent-bom[mcp-server]' && agent-bom mcp server` | strict-args security tools for MCP clients |
 | Local API/UI | `pip install 'agent-bom[ui]' && agent-bom serve` | API plus bundled dashboard |
@@ -289,6 +296,11 @@ role — because each platform's grant primitive is different. Everything else i
 identical: enable with `AGENT_BOM_<PROVIDER>_INVENTORY=1`, authenticate with the
 cloud's own identity (never a secret handed to agent-bom), get the same graph
 and findings out.
+
+`agent-bom connect aws | azure | gcp | snowflake` prints the exact read-only
+setup for each source — the Terraform module, the opt-in inventory env var, and
+whether local credentials are already detectable — without doing any network
+I/O until you opt in.
 
 | Cloud | Read-only grant | Keyless / token auth | Enable | Scan |
 |---|---|---|---|---|

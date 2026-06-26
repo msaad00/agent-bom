@@ -106,13 +106,18 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
 - AI/MCP coverage across agents, MCP, skills, AI models/datasets, runtime,
   containers, cloud, IaC, and GPU
 - Supply-chain scanning across 15 package ecosystems with OSV/GHSA enrichment
-- Cloud estate inventory (AWS/Azure/GCP, read-only), non-human identity
-  governance (NHI discovery, credential-expiry, access review), and LLM cost
-  forecasting with chargeback and spend-anomaly detection
+- Read-only, keyless cloud estate inventory (AWS/Azure/GCP/Snowflake) plus CIS
+  benchmarks, registry-wide container image sweeps (ECR/ACR/GAR), and agentless
+  AWS EBS disk side-scan (snapshot-based CWPP, read-only)
+- Non-human identity governance (NHI discovery, credential-expiry, access
+  review) and LLM cost forecasting with chargeback and spend-anomaly detection
 - Malicious-model detection via safe pickle-opcode disassembly (no execution)
 - One unified `Finding` model and `ContextGraph` across CLI, CI, API,
-  dashboard, reports, and MCP tools
-- Multi-hop attack-path fusion for humans and headless agent workflows
+  dashboard, reports, and MCP tools — with ASPM correlation around applications,
+  LLM cost fused onto resources, read-only audit-trail behavioral edges, and an
+  estate-scale `CONTAINS` roll-up with drill-down for large clouds
+- Multi-hop attack-path fusion plus advisory, blast-radius-ordered remediation
+  plans for humans and headless agent workflows
 - Runtime MCP protection — inline firewall enforcement, secure-by-default
   gateway, A2A/MCP auth-posture checks — plus tamper-evident evidence exports
 
@@ -121,7 +126,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
 The promoted self-hosted rollout is a scoped operator stack, not one forced
 runtime monolith. Teams typically deploy only the surfaces they need:
 
-- **scan**: discovery, inventory, CVE, image, IaC, Kubernetes, cloud estate, AI model/dataset, and supply-chain analysis
+- **scan**: discovery, inventory, CVE, image, IaC, Kubernetes, cloud estate (with registry-wide image sweep and agentless EBS disk side-scan), AI model/dataset, and supply-chain analysis
 - **fleet**: endpoint and collector inventory pushed into the control plane
 - **identity / cost**: non-human identity governance and LLM spend forecasting, chargeback, and anomaly detection
 - **proxy / runtime**: inline MCP firewall enforcement near selected workloads

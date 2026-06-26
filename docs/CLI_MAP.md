@@ -1,15 +1,29 @@
 # CLI Command Map
 
-`agent-bom` ships 48 top-level commands (plus an inline `upgrade`) under a
-single Click entry point. The CLI groups them into 7 help categories — run
+`agent-bom` exposes 50 visible top-level commands (plus hidden aliases such as
+`scan`, `up`, `guard`, `run`, `runtime`, and `registry`) under a single Click
+entry point. The CLI groups the visible commands into help categories — run
 `agent-bom --help` to see this layout live. Grouping is defined in
 [`../src/agent_bom/cli/_grouped_help.py`](../src/agent_bom/cli/_grouped_help.py).
 
-Many commands are themselves groups with subcommands (e.g. `cloud`, `identity`,
-`runtime`, `mcp`). This map covers the top-level surface; run `<command> --help`
-for subcommands.
+Many commands are themselves groups with subcommands (e.g. `cloud`, `connect`,
+`identity`, `runtime`, `mcp`). This map covers the top-level surface; run
+`<command> --help` for subcommands.
 
 ---
+
+## Front door (canonical verbs)
+
+The onboarding path is `connect` → `scan` → `graph` → `report`, with `up` to run
+the platform locally. These verbs front the same evidence model.
+
+| Command | What it does |
+|---|---|
+| `connect` | Read-only onboard a cloud or data source (`aws`/`azure`/`gcp`/`snowflake`). Prints the exact read-only grant + opt-in env var; performs no network I/O until you opt in. |
+| `scan` | Discover agents, extract dependencies, scan for vulnerabilities. Accepts an optional positional `PATH`. Front-door equivalent of `agents`. |
+| `graph` | Export the transitive dependency / context graph from a saved JSON scan report. |
+| `report` | Reporting group — history, diff, analytics, narrative, dashboard. |
+| `up` | Run the platform locally (API + bundled dashboard). Alias of `serve`. |
 
 ## Scanning
 
@@ -22,8 +36,9 @@ Inventory, package, image, IaC, cloud, and skills scanning entry points.
 | `image` | Scan a container image. |
 | `fs` | Scan a filesystem / disk image. |
 | `iac` | Scan IaC: Dockerfile, Terraform, CloudFormation, Helm, Kubernetes. |
-| `sbom` | Generate or scan an SBOM (CycloneDX / SPDX). |
-| `cloud` | Cloud posture + estate inventory (AWS/Azure/GCP), CIS benchmarks. |
+| `sbom` | Ingest an existing SBOM (CycloneDX / SPDX) and scan its components. |
+| `ingest` | Ingest operator-provided evidence (e.g. `ingest hardware` firmware attestation) into the graph. |
+| `cloud` | Cloud posture + estate inventory (AWS/Azure/GCP), CIS benchmarks. Group: `scan` (all configured clouds), `aws`/`azure`/`gcp` aliases, `inventory`, `registry-scan` (ECR/ACR/GAR sweep), `resilience`. |
 | `check` | Pre-install check for one package: allow / warn / block. |
 | `verify` | Package integrity + SLSA provenance verification. |
 | `secrets` | Secret detection. |
@@ -76,7 +91,9 @@ Policy, trust, fleet, FinOps, identity, API, scheduling, and control-plane ops.
 | `serve` | Run the local API + bundled dashboard. |
 | `api` | API control-plane command. |
 | `schedule` | Scheduled scans. |
-| `remediate` | Generate / apply remediation plans. |
+| `remediate` | Generate (and optionally `--apply` / `--open-pr`) a prioritized advisory remediation plan. |
+| `capabilities` | Show every gated capability: state (ENABLED/OFF/DEGRADED/UNKNOWN), why, and how to unlock. |
+| `graph-evidence` | Export retained graph history or an evidence manifest. |
 | `teardown` | Deployment teardown. |
 | `run` | Run a configured operation. |
 | `manifest` | Agent manifest operations. |
@@ -114,6 +131,8 @@ object is registered in two places so both the flat and grouped form work:
 
 | Flat (top-level) | Grouped | Notes |
 |---|---|---|
+| `agent-bom up` | `agent-bom serve` | `up` is a hidden alias of `serve` (same flags) — the canonical front-door verb for running the platform locally. |
+| `agent-bom scan` | `agent-bom agents` | `scan` is the canonical front-door verb; `agents` remains the discoverable visible command. Both discover + scan. |
 | `agent-bom proxy …` | `agent-bom runtime proxy …` | Same `proxy_cmd`. Top-level for discoverability; grouped form keeps runtime commands together. |
 | `agent-bom proxy-bootstrap` | `agent-bom runtime bootstrap` | Same command, flat + grouped. |
 | `agent-bom audit` | `agent-bom runtime audit` | Same `audit_replay_cmd` (proxy audit-log replay). |

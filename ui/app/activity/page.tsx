@@ -13,6 +13,7 @@ import {
 import { api, formatDate } from "@/lib/api";
 import type { ActivityTimeline } from "@/lib/api";
 import { IntegrationRequiredState } from "@/components/integration-required-state";
+import { GatewayLiveFeedCard } from "@/components/gateway-live-feed-card";
 import {
   ResponsiveContainer,
   BarChart,
@@ -50,16 +51,21 @@ export default function ActivityPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-zinc-400">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" />
-        Loading activity timeline...
+      <div className="space-y-6">
+        <GatewayLiveFeedCard />
+        <div className="flex items-center justify-center py-20 text-zinc-400">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          Loading activity timeline...
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <IntegrationRequiredState
+      <div className="space-y-6">
+        <GatewayLiveFeedCard />
+        <IntegrationRequiredState
         title="Activity timeline integration is not configured"
         summary="This page reconstructs agent and tool activity from query history and AI observability events. Core scanning and graph workflows work without it. The current cloud integration for this page uses Snowflake."
         requirement="Cloud telemetry integration on the API host"
@@ -69,13 +75,19 @@ export default function ActivityPage() {
           "Tool-call and model-usage activity over time",
           "Latency, status, and event volume from observability traces",
         ]}
-        detail={error}
-        onRetry={load}
-      />
+          detail={error}
+          onRetry={load}
+        />
+      </div>
     );
   }
 
-  if (!timeline) return null;
+  if (!timeline)
+    return (
+      <div className="space-y-6">
+        <GatewayLiveFeedCard />
+      </div>
+    );
 
   const filteredQueries = timeline.query_history.filter(
     (q) =>
@@ -103,6 +115,9 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-6">
+      {/* Gateway live feed (#54) */}
+      <GatewayLiveFeedCard />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

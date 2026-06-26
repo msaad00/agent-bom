@@ -221,6 +221,9 @@ Most tools are read-only; the three Shield write actions fail closed unless the
 caller supplies `operator_role=admin`, `operator_scopes=shield:write`, and an
 audit reason. CLI scan commands run local scan pipelines today and share lower
 scanner and discovery libraries with the API, but they are not API wrappers yet.
+MCP registry presence is tracked through the committed Smithery manifest and
+other registry metadata; install and liveness checks live in the integration
+docs, not this front door.
 
 ## Contributing
 

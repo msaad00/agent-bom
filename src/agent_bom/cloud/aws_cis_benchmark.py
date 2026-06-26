@@ -96,6 +96,11 @@ class CISCheckResult:
     resource_ids: list[str] = field(default_factory=list)
     recommendation: str = ""
     cis_section: str = ""
+    # Boundary attribution for multi-account / multi-subscription / multi-project
+    # fan-out. Holds the AWS account id, Azure subscription id, or GCP project id
+    # the check ran against. Empty for a single-boundary run. Lets an aggregated
+    # report keep per-boundary provenance on every finding.
+    account_id: str = ""
     # Structured network exposure (open ports/CIDR to the internet) so the graph
     # can model port-level reachability instead of keyword-matching evidence text.
     # Each entry: {"resource": str, "from_port": int, "to_port": int,

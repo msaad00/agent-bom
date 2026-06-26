@@ -127,6 +127,11 @@ class GCPCISReport:
     benchmark_version: str = "3.0"
     checks: list[CISCheckResult] = field(default_factory=list)
     project_id: str = ""
+    # Populated only by the multi-project fan-out: the projects actually
+    # evaluated and any per-project warnings (e.g. a project skipped because the
+    # credential could not read it). Empty for a single-project run.
+    projects_scanned: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> int:
@@ -152,6 +157,8 @@ class GCPCISReport:
             "benchmark": "CIS Google Cloud Platform Foundation",
             "benchmark_version": self.benchmark_version,
             "project_id": self.project_id,
+            "projects_scanned": self.projects_scanned,
+            "warnings": self.warnings,
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
             "failed": self.failed,
@@ -167,6 +174,9 @@ class GCPCISReport:
                     "recommendation": c.recommendation,
                     "remediation": c.remediation,
                     "cis_section": c.cis_section,
+                    # Per-check project attribution for the multi-project fan-out;
+                    # empty string on a single-project run.
+                    "project_id": c.account_id,
                     "attack_techniques": tag_cis_check(c),
                 }
                 for c in self.checks
@@ -2779,3 +2789,86 @@ def run_benchmark(
     attach_all(report, cloud="gcp")
 
     return report
+
+
+# Bounded concurrency for the multi-project fan-out — mirrors the GCP inventory
+# fan-out's thread pool. Each thread sets its own credential context (the context
+# is thread-local), so concurrent per-project runs do not contaminate one another.
+_MAX_CIS_FANOUT_WORKERS = 8
+
+
+def run_all_project_benchmarks(
+    credentials: Any = None,
+    checks: list[str] | None = None,
+) -> GCPCISReport:
+    """Run the CIS GCP benchmark for EVERY project in the org/folder tree.
+
+    The CIS counterpart of :func:`agent_bom.cloud.gcp_inventory.discover_all_project_inventories`:
+    it reuses the same project enumeration
+    (:func:`agent_bom.cloud.gcp_organizations.list_project_ids`) and the same
+    read-only impersonation resolution
+    (:func:`agent_bom.cloud.gcp_inventory._resolve_impersonation`) so the
+    benchmark covers the identical estate the inventory fan-out does. Each
+    project is benchmarked concurrently (bounded thread pool) and the
+    per-project results are aggregated into one :class:`GCPCISReport` with every
+    check tagged by its ``project_id``.
+
+    Read-only and partial-permission tolerant: a project the credential cannot
+    read is skipped with a warning rather than failing the whole run.
+
+    Raises:
+        CloudDiscoveryError: if no GCP SDK packages are installed and a project
+            set cannot be resolved.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from agent_bom.cloud import gcp_inventory, gcp_organizations
+
+    warnings: list[str] = []
+    resolved = gcp_inventory._resolve_impersonation(credentials, warnings)
+
+    try:
+        project_ids = gcp_organizations.list_project_ids(resolved, force=True)
+    except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade, not crash
+        logger.warning("GCP org project enumeration failed: %s", sanitize_discovery_warning(exc))
+        warnings.append(sanitize_discovery_warning(exc))
+        project_ids = []
+
+    if not project_ids:
+        single = os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip()
+        project_ids = [single] if single else []
+    if not project_ids:
+        raise CloudDiscoveryError(
+            "No GCP projects resolved for the multi-project CIS benchmark. Grant org/folder browse access or set GOOGLE_CLOUD_PROJECT."
+        )
+
+    aggregate = GCPCISReport(project_id=", ".join(project_ids))
+    aggregate.warnings.extend(warnings)
+
+    def _run_one(project_id: str) -> tuple[str, GCPCISReport]:
+        return project_id, run_benchmark(project_id=project_id, credentials=resolved, checks=checks)
+
+    # Deterministic aggregation: collect per-project reports keyed by id, then
+    # merge in enumeration order so output is stable across runs.
+    reports: dict[str, GCPCISReport] = {}
+    with ThreadPoolExecutor(max_workers=min(_MAX_CIS_FANOUT_WORKERS, len(project_ids))) as executor:
+        future_to_project = {executor.submit(_run_one, pid): pid for pid in project_ids}
+        for future in as_completed(future_to_project):
+            pid = future_to_project[future]
+            try:
+                _pid, project_report = future.result()
+                reports[pid] = project_report
+            except Exception as exc:  # noqa: BLE001 — one unreadable project must not sink the rest
+                aggregate.warnings.append(f"Project {pid} skipped: {sanitize_discovery_warning(exc)}")
+
+    for pid in project_ids:
+        merged = reports.get(pid)
+        if merged is None:
+            continue
+        aggregate.projects_scanned.append(pid)
+        for check in merged.checks:
+            check.account_id = pid
+            aggregate.checks.append(check)
+        aggregate.warnings.extend(merged.warnings)
+
+    return aggregate

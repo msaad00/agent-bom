@@ -424,6 +424,33 @@ def _subscription_ids_from_mg_tree(management_groups: list[dict[str, Any]]) -> l
     return sub_ids
 
 
+def enumerate_subscription_ids(credential: Any) -> tuple[list[str], list[str]]:
+    """Resolve every subscription id to fan a single scan across (read-only).
+
+    The single source of truth for the multi-subscription boundary set: discover
+    the management-group hierarchy, extract every subscription id from it, and
+    fall back to the configured ``AZURE_SUBSCRIPTION_ID`` when the tenant root is
+    not visible (e.g. the credential lacks Management Group Reader). Returns
+    ``(subscription_ids, warnings)``; never raises. Shared by both the inventory
+    fan-out and the CIS-benchmark fan-out so the boundary set stays identical.
+    """
+    warnings: list[str] = []
+    try:
+        management_groups, mg_warnings = _discover_management_groups(credential)
+        warnings.extend(mg_warnings)
+    except Exception as exc:  # noqa: BLE001 — MG enumeration failure must degrade, not crash
+        management_groups = []
+        warnings.append(sanitize_discovery_warning(exc))
+
+    sub_ids = _subscription_ids_from_mg_tree(management_groups)
+    if not sub_ids:
+        # No tenant-root visibility — fall back to the single configured sub.
+        single = os.environ.get("AZURE_SUBSCRIPTION_ID", "").strip()
+        if single:
+            sub_ids = [single]
+    return sub_ids, warnings
+
+
 def discover_all_subscription_inventories(credential: Any = None, *, force: bool = False) -> list[dict[str, Any]]:
     """Inventory EVERY subscription in the tenant (multi-subscription fan-out).
 
@@ -450,20 +477,7 @@ def discover_all_subscription_inventories(credential: Any = None, *, force: bool
         except Exception:  # noqa: BLE001
             return []
 
-    warnings: list[str] = []
-    try:
-        management_groups, mg_warnings = _discover_management_groups(credential)
-        warnings.extend(mg_warnings)
-    except Exception as exc:  # noqa: BLE001
-        management_groups, _ = [], None
-        warnings.append(sanitize_discovery_warning(exc))
-
-    sub_ids = _subscription_ids_from_mg_tree(management_groups)
-    if not sub_ids:
-        # No tenant-root visibility — fall back to the single configured sub.
-        single = os.environ.get("AZURE_SUBSCRIPTION_ID", "").strip()
-        if single:
-            sub_ids = [single]
+    sub_ids, _warnings = enumerate_subscription_ids(credential)
 
     payloads: list[dict[str, Any]] = []
     for sub_id in sub_ids[:_MAX_SUBSCRIPTIONS]:
@@ -1745,7 +1759,11 @@ def _clean_tags(tags: Any) -> dict[str, str]:
 
 
 __all__ = [
+    "ALL_SUBSCRIPTIONS_ENV_FLAG",
     "INVENTORY_ENV_FLAG",
+    "all_subscriptions_enabled",
+    "discover_all_subscription_inventories",
     "discover_inventory",
+    "enumerate_subscription_ids",
     "inventory_enabled",
 ]

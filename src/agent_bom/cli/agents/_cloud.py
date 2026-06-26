@@ -320,6 +320,9 @@ def run_benchmarks(
         try:
             from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_cis
 
+            # AWS multi-account CIS fan-out is out of scope here: cross-account
+            # checks require the AssumeRole broker tracked in issue #3177. This
+            # benchmark runs against the single configured account/region only.
             ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
             passed = ctx.cis_benchmark_report.passed
             failed = ctx.cis_benchmark_report.failed
@@ -355,16 +358,29 @@ def run_benchmarks(
 
         con.print("\n[bold blue]Running CIS Azure Security Benchmark v3.0...[/bold blue]\n")
         try:
-            from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_az_cis
+            from agent_bom.cloud import azure_inventory
 
-            # Forward the --subscription value; run_benchmark falls back to
-            # AZURE_SUBSCRIPTION_ID only when this is None.
-            ctx.azure_cis_benchmark_report = run_az_cis(subscription_id=azure_subscription or None)
+            # When the multi-subscription flag is on, fan the benchmark across
+            # every subscription in the tenant (same boundary set the inventory
+            # fan-out uses) and aggregate with per-subscription attribution.
+            # Off = unchanged single-subscription run.
+            if azure_inventory.all_subscriptions_enabled():
+                from agent_bom.cloud.azure_cis_benchmark import run_all_subscription_benchmarks
+
+                ctx.azure_cis_benchmark_report = run_all_subscription_benchmarks()
+            else:
+                from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_az_cis
+
+                # Forward the --subscription value; run_benchmark falls back to
+                # AZURE_SUBSCRIPTION_ID only when this is None.
+                ctx.azure_cis_benchmark_report = run_az_cis(subscription_id=azure_subscription or None)
             passed = ctx.azure_cis_benchmark_report.passed
             failed = ctx.azure_cis_benchmark_report.failed
             total = ctx.azure_cis_benchmark_report.total
             rate = ctx.azure_cis_benchmark_report.pass_rate
-            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            scanned = getattr(ctx.azure_cis_benchmark_report, "subscriptions_scanned", []) or []
+            scope = f" across {len(scanned)} subscription(s)" if len(scanned) > 1 else ""
+            con.print(f"  [green]✓[/green] {total} checks evaluated{scope} — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
         except _AZCISError as exc:
             con.print(f"  [red]CIS Azure Benchmark error: {_safe_error(exc)}[/red]")
             ctx.cloud_provider_failures.append({"provider": "azure", "stage": "cis_benchmark", "error": str(exc)})
@@ -375,14 +391,27 @@ def run_benchmarks(
 
         con.print("\n[bold blue]Running CIS GCP Foundation Benchmark v3.0...[/bold blue]\n")
         try:
-            from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
+            from agent_bom.cloud import gcp_inventory
 
-            ctx.gcp_cis_benchmark_report = run_gcp_cis()
+            # When the multi-project flag is on, fan the benchmark across every
+            # project in the org/folder tree (same boundary set the inventory
+            # fan-out uses) and aggregate with per-project attribution.
+            # Off = unchanged single-project run.
+            if gcp_inventory.all_projects_enabled():
+                from agent_bom.cloud.gcp_cis_benchmark import run_all_project_benchmarks
+
+                ctx.gcp_cis_benchmark_report = run_all_project_benchmarks()
+            else:
+                from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
+
+                ctx.gcp_cis_benchmark_report = run_gcp_cis()
             passed = ctx.gcp_cis_benchmark_report.passed
             failed = ctx.gcp_cis_benchmark_report.failed
             total = ctx.gcp_cis_benchmark_report.total
             rate = ctx.gcp_cis_benchmark_report.pass_rate
-            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            scanned = getattr(ctx.gcp_cis_benchmark_report, "projects_scanned", []) or []
+            scope = f" across {len(scanned)} project(s)" if len(scanned) > 1 else ""
+            con.print(f"  [green]✓[/green] {total} checks evaluated{scope} — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
         except _GCPCISError as exc:
             con.print(f"  [red]CIS GCP Benchmark error: {_safe_error(exc)}[/red]")
             ctx.cloud_provider_failures.append({"provider": "gcp", "stage": "cis_benchmark", "error": str(exc)})

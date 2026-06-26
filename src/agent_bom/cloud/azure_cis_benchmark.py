@@ -68,6 +68,11 @@ class AzureCISReport:
     benchmark_version: str = "3.0"
     checks: list[CISCheckResult] = field(default_factory=list)
     subscription_id: str = ""
+    # Populated only by the multi-subscription fan-out: the subscriptions actually
+    # evaluated and any per-subscription warnings (e.g. a subscription skipped
+    # because the credential could not read it). Empty for a single-sub run.
+    subscriptions_scanned: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> int:
@@ -104,6 +109,8 @@ class AzureCISReport:
             "benchmark": "CIS Microsoft Azure Foundations",
             "benchmark_version": self.benchmark_version,
             "subscription_id": self.subscription_id,
+            "subscriptions_scanned": self.subscriptions_scanned,
+            "warnings": self.warnings,
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
             "failed": self.failed,
@@ -122,6 +129,9 @@ class AzureCISReport:
                     "recommendation": c.recommendation,
                     "remediation": c.remediation,
                     "cis_section": c.cis_section,
+                    # Per-check subscription attribution for the multi-subscription
+                    # fan-out; empty string on a single-subscription run.
+                    "subscription_id": c.account_id,
                     "attack_techniques": tag_cis_check(c),
                 }
                 for c in self.checks
@@ -3141,6 +3151,7 @@ def _check_9_6(webapp_client: Any) -> CISCheckResult:
 def run_benchmark(
     subscription_id: str | None = None,
     checks: list[str] | None = None,
+    credential: Any = None,
 ) -> AzureCISReport:
     """Run CIS Azure Security Benchmark v3.0 checks.
 
@@ -3149,6 +3160,10 @@ def run_benchmark(
             AZURE_SUBSCRIPTION_ID env var.
         checks: Optional list of check IDs to run (e.g. ['1.1', '6.1']).
             Runs all checks if omitted.
+        credential: Optional Azure credential threaded into every check's
+            management client. When ``None`` a ``DefaultAzureCredential`` is
+            constructed (the prior behaviour). Passing a shared credential lets
+            the multi-subscription fan-out resolve auth once and reuse it.
 
     Returns:
         AzureCISReport with pass/fail results for each check.
@@ -3165,7 +3180,8 @@ def run_benchmark(
     if not resolved_sub:
         raise CloudDiscoveryError("Azure subscription ID required. Set AZURE_SUBSCRIPTION_ID env var or pass subscription_id.")
 
-    credential = DefaultAzureCredential()
+    if credential is None:
+        credential = DefaultAzureCredential()
     report = AzureCISReport(subscription_id=resolved_sub)
 
     # Build client map (lazy — only import what's needed)
@@ -3354,3 +3370,82 @@ def run_benchmark(
     attach_all(report, cloud="azure")
 
     return report
+
+
+# Bounded concurrency for the multi-subscription fan-out — mirrors the Azure
+# inventory fan-out's thread pool so a tenant-wide CIS run collapses the
+# per-subscription latencies instead of summing them.
+_MAX_CIS_FANOUT_WORKERS = 8
+
+
+def run_all_subscription_benchmarks(
+    checks: list[str] | None = None,
+    credential: Any = None,
+) -> AzureCISReport:
+    """Run the CIS Azure benchmark for EVERY subscription in the tenant.
+
+    The CIS counterpart of :func:`agent_bom.cloud.azure_inventory.discover_all_subscription_inventories`:
+    it reuses the exact same subscription enumeration
+    (:func:`agent_bom.cloud.azure_inventory.enumerate_subscription_ids`, which
+    walks the management-group tree) so the benchmark covers the identical
+    estate the inventory fan-out does. Each subscription is benchmarked
+    concurrently (bounded thread pool) and the per-subscription results are
+    aggregated into one :class:`AzureCISReport` with every check tagged by its
+    ``subscription_id``.
+
+    Read-only and partial-permission tolerant: a subscription the credential
+    cannot read is skipped with a warning rather than failing the whole run.
+
+    Raises:
+        CloudDiscoveryError: if azure-identity is not installed.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from agent_bom.cloud import azure_inventory
+
+    if credential is None:
+        try:
+            from azure.identity import DefaultAzureCredential
+        except ImportError:
+            raise CloudDiscoveryError("azure-identity is required for Azure CIS benchmark. Install with: pip install 'agent-bom[azure]'")
+        credential = DefaultAzureCredential()
+
+    sub_ids, warnings = azure_inventory.enumerate_subscription_ids(credential)
+    if not sub_ids:
+        raise CloudDiscoveryError(
+            "No Azure subscriptions resolved for the multi-subscription CIS benchmark. "
+            "Grant Management Group Reader or set AZURE_SUBSCRIPTION_ID."
+        )
+
+    aggregate = AzureCISReport(subscription_id=", ".join(sub_ids))
+    aggregate.warnings.extend(warnings)
+
+    def _run_one(sub_id: str) -> tuple[str, AzureCISReport]:
+        return sub_id, run_benchmark(subscription_id=sub_id, checks=checks, credential=credential)
+
+    # Deterministic aggregation: collect per-subscription reports keyed by id,
+    # then merge in the enumeration order so output is stable across runs.
+    reports: dict[str, AzureCISReport] = {}
+    with ThreadPoolExecutor(max_workers=min(_MAX_CIS_FANOUT_WORKERS, len(sub_ids))) as executor:
+        future_to_sub = {executor.submit(_run_one, sub_id): sub_id for sub_id in sub_ids}
+        for future in as_completed(future_to_sub):
+            sub_id = future_to_sub[future]
+            try:
+                _sid, sub_report = future.result()
+                reports[sub_id] = sub_report
+            except Exception as exc:  # noqa: BLE001 — one unreadable subscription must not sink the rest
+                from .normalization import sanitize_discovery_warning
+
+                aggregate.warnings.append(f"Subscription {sub_id} skipped: {sanitize_discovery_warning(exc)}")
+
+    for sub_id in sub_ids:
+        merged = reports.get(sub_id)
+        if merged is None:
+            continue
+        aggregate.subscriptions_scanned.append(sub_id)
+        for check in merged.checks:
+            check.account_id = sub_id
+            aggregate.checks.append(check)
+        aggregate.warnings.extend(merged.warnings)
+
+    return aggregate

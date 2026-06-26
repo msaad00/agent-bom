@@ -12752,6 +12752,136 @@
         ]
       }
     },
+    "/v1/graph/rollup": {
+      "get": {
+        "description": "Collapse the estate along ``CONTAINS`` into a small, readable view.\n\nPast a few hundred nodes the raw topology is an unreadable hairball. This\nendpoint rolls the graph up along the containment hierarchy\n(org -> account/project -> app -> resource) so a 1000+ node estate renders\nas a handful of top-level containers, each carrying aggregate descendant\ncounts, worst-severity, a per-severity histogram, and exposure / toxic\nflags. ``?node=<id>`` returns one level of direct children for on-demand\ndrill-down; ``?mode=attack_path`` returns the nodes/edges on materialised\nattack paths first with the rest collapsed.\n\nBackend for the UI graph-navigation surface. Read-only: never mutates the\nsource graph.",
+        "operationId": "get_graph_rollup_v1_graph_rollup_get",
+        "parameters": [
+          {
+            "description": "Scan snapshot ID; latest if omitted",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Scan snapshot ID; latest if omitted",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "description": "Drill down into a container node's direct children",
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Drill down into a container node's direct children",
+              "title": "Node"
+            }
+          },
+          {
+            "description": "Only roll up descendants at/above this severity",
+            "in": "query",
+            "name": "min_severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only roll up descendants at/above this severity",
+              "title": "Min Severity"
+            }
+          },
+          {
+            "description": "Only roll up internet-exposed descendants",
+            "in": "query",
+            "name": "exposed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only roll up internet-exposed descendants",
+              "title": "Exposed",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only roll up toxic-combination descendants",
+            "in": "query",
+            "name": "toxic",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only roll up toxic-combination descendants",
+              "title": "Toxic",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "rollup (default) or attack_path-first view",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "rollup",
+              "description": "rollup (default) or attack_path-first view",
+              "enum": [
+                "rollup",
+                "attack_path"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Graph Rollup V1 Graph Rollup Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Graph Rollup",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
     "/v1/graph/schema": {
       "get": {
         "description": "Canonical graph entity/edge taxonomy \u2014 single source of truth.\n\nDrives the TypeScript codegen at ``ui/scripts/codegen-graph-schema.mjs``,\nwhich materialises ``ui/lib/graph-schema.generated.ts``.  CI fails the\nbuild when the checked-in generated file drifts from what this endpoint\nwould emit, so adding a new ``EntityType`` or ``RelationshipType`` in\nPython automatically forces a regen + commit on the UI side.",

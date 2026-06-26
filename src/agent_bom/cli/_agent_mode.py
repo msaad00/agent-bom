@@ -344,7 +344,11 @@ def success_envelope(
     automation caller's context window. Pass ``full=True`` to inline the
     complete report (the legacy shape); ``data_mode`` records which shape was
     emitted.
+
+    Credential-keyed values are stripped from the report up front so no secret
+    can reach the serialized envelope, which automation callers routinely log.
     """
+    report_json = _redact_sensitive(report_json)
     if full:
         data, truncation = _truncate_report(report_json, token_budget)
         data_mode = "full"

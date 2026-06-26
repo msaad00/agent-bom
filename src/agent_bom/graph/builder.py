@@ -972,6 +972,19 @@ def build_unified_graph_from_report(
     _add_snowflake_governance(graph, report_json.get("snowflake_governance"), data_source_tag)
     _add_snowflake_activity(graph, report_json.get("snowflake_activity"), data_source_tag)
 
+    # ── Cloud audit-trail behavioral edges (opt-in, read-only) ───────────
+    # Observed-reach edges derived from each cloud's native audit trail
+    # (CloudTrail / Activity Log / Cloud Audit Logs). The reader already
+    # aggregated raw events into (principal, resource, action) descriptors;
+    # no raw log lines are present in the report. Accepts one payload or a
+    # per-provider list. A no-op unless an operator opted in to ingestion.
+    _audit_payload = report_json.get("cloud_audit_trail")
+    if isinstance(_audit_payload, list):
+        for _provider_audit in _audit_payload:
+            _add_cloud_audit_behavioral(graph, _provider_audit, data_source_tag)
+    else:
+        _add_cloud_audit_behavioral(graph, _audit_payload, data_source_tag)
+
     # ── Discovered non-human identities (IdP service accounts, gated) ────
     # Project NHIs enumerated by the identity connectors (Okta service apps /
     # API tokens, Entra service principals / app registrations) into the graph
@@ -3514,6 +3527,129 @@ def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: st
         )
         if account_node_id:
             _add_rel_edge(graph, account_node_id, agent_node_id, RelationshipType.OWNS, {"source": "snowflake-governance"})
+
+
+def _add_cloud_audit_behavioral(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
+    """Promote cloud audit-trail behavioral signal into observed-reach edges.
+
+    Mirrors the Snowflake ACCESS_HISTORY → ``ACCESSED`` layer
+    (:func:`_add_snowflake_governance`) for AWS CloudTrail / Azure Activity Log /
+    GCP Cloud Audit Logs. The reader
+    (:mod:`agent_bom.cloud.audit_trail`) has already collapsed raw events into
+    ``(principal, resource, action)`` aggregates carrying ``count`` and
+    ``last_seen`` — **no raw log lines reach this function**.
+
+    For each aggregate a ``principal`` node draws an observed-behavior edge to the
+    ``resource`` node:
+
+    * ``relationship == "invoked"`` → :data:`RelationshipType.INVOKED`
+      (a management/write action *taken*).
+    * otherwise → :data:`RelationshipType.ACCESSED` (a resource *reached*).
+
+    The edge carries ``observed_at`` (``last_seen``), the action, outcome
+    summary, and the observation ``count`` so attack-path/reachability can reason
+    about *who actually reached what*, not just who *can*. The principal and
+    resource node ids are scheme-stable so repeated runs of the same events
+    produce the same nodes/edges. Never raises; a non-ok payload is a no-op.
+    """
+    prepared = _prepare_cloud_payload(payload, data_source, "cloud-audit-trail")
+    if prepared is None:
+        return
+    account, data_sources = prepared
+    provider = _clean_graph_part(payload.get("provider")) or "cloud"
+
+    account_node_id = ""
+    if account:
+        account_node_id = _add_identity_node(
+            graph,
+            EntityType.ACCOUNT,
+            account,
+            provider,
+            data_sources,
+            label=account or provider,
+            account_id=account,
+            cloud_provider=provider,
+            source="cloud-audit-trail",
+        )
+
+    seen_principals: set[str] = set()
+
+    def _ensure_principal(name: str) -> str:
+        node_id = _identity_node_id(EntityType.USER, provider, name)
+        if node_id not in seen_principals:
+            seen_principals.add(node_id)
+            _add_identity_node(
+                graph,
+                EntityType.USER,
+                name,
+                provider,
+                data_sources,
+                label=f"principal: {name}",
+                user_name=name,
+                cloud_provider=provider,
+                source="cloud-audit-trail",
+            )
+            if account_node_id:
+                _add_rel_edge(
+                    graph,
+                    account_node_id,
+                    node_id,
+                    RelationshipType.OWNS,
+                    {"source": "cloud-audit-trail"},
+                )
+        return node_id
+
+    for rec in payload.get("behavioral_edges", []) or []:
+        if not isinstance(rec, dict):
+            continue
+        principal = _clean_graph_part(rec.get("principal"))
+        resource = _clean_graph_part(rec.get("resource"))
+        action = _clean_graph_part(rec.get("action"))
+        if not principal or not resource or not action:
+            continue
+        relationship = RelationshipType.INVOKED if _clean_graph_part(rec.get("relationship")) == "invoked" else RelationshipType.ACCESSED
+        resource_node_id = f"cloud_resource:{provider}:audit:resource:{resource}"
+        if resource_node_id not in graph.nodes:
+            # Thin resource node — a full cloud inventory scan, if also run, owns
+            # the rich one (a different id scheme, so no collision/duplicate).
+            graph.add_node(
+                UnifiedNode(
+                    id=resource_node_id,
+                    entity_type=EntityType.CLOUD_RESOURCE,
+                    label=f"resource: {resource}",
+                    attributes={
+                        "resource_name": resource,
+                        "resource_kind": "audit-observed-resource",
+                        "cloud_provider": provider,
+                        "is_sensitive_resource": bool(rec.get("is_sensitive_resource")),
+                    },
+                    data_sources=data_sources,
+                    dimensions=NodeDimensions(cloud_provider=provider, surface="cloud"),
+                )
+            )
+            if account_node_id:
+                _add_rel_edge(
+                    graph,
+                    account_node_id,
+                    resource_node_id,
+                    RelationshipType.OWNS,
+                    {"source": "cloud-audit-trail"},
+                )
+        _add_rel_edge(
+            graph,
+            _ensure_principal(principal),
+            resource_node_id,
+            relationship,
+            {
+                "source": "cloud-audit-trail",
+                "observed": True,
+                "action": action,
+                "observed_at": _clean_graph_part(rec.get("last_seen")),
+                "observation_count": int(rec.get("count") or 0),
+                "failure_count": int(rec.get("failure_count") or 0),
+                "is_sensitive_resource": bool(rec.get("is_sensitive_resource")),
+            },
+        )
 
 
 def _add_snowflake_activity(graph: UnifiedGraph, payload: Any, data_source: str) -> None:

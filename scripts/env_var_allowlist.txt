@@ -104,6 +104,7 @@ AGENT_BOM_TOKEN_ROTATION_DAYS
 AGENT_BOM_CORS_ALL
 AGENT_BOM_DASHBOARD_CSP_HASH_MANIFEST
 AGENT_BOM_DB
+AGENT_BOM_DELIVERY_DB  # optional SQLite path for the outbound delivery foundation (audit log + idempotency ledger + circuit-breaker state); falls back to AGENT_BOM_DB then ~/.agent-bom/db/delivery.db; read in delivery.py
 AGENT_BOM_DB_PATH
 AGENT_BOM_DB_SOURCES
 AGENT_BOM_DEFAULT_ROLE

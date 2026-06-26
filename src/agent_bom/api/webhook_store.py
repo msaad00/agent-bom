@@ -294,6 +294,46 @@ def emit_governance_event(
         return 0
 
 
+def deliver_subscription_event(
+    subscription: WebhookSubscription,
+    *,
+    event_type: str,
+    payload: dict[str, Any],
+    idempotency_key: str = "",
+    client: Any = None,
+) -> Any:
+    """Deliver one event to a subscription through the hardened delivery
+    foundation (``agent_bom.delivery.DeliveryClient``).
+
+    Returns the ``DeliveryResult``. Best-effort and non-blocking by contract:
+    the underlying client never raises for a failed send — it dead-letters and
+    returns a warning. Callers that prefer the durable retry *worker* path
+    should keep using ``emit_governance_event`` (the posture outbox); this is
+    the inline, idempotent, circuit-broken alternative for direct delivery
+    (e.g. an operator "test" or a low-volume relay).
+    """
+    from agent_bom.delivery import Delivery, Destination, get_delivery_client
+
+    delivery_client = client or get_delivery_client()
+    destination = Destination(
+        destination_id=subscription.subscription_id,
+        url=subscription.url,
+        kind="webhook",
+        signing_secret=subscription.signing_secret,
+        allow_private_networks=subscription.allow_private_networks,
+        headers={
+            "x-agent-bom-tenant-id": subscription.tenant_id,
+        },
+    )
+    delivery = Delivery(
+        destination_id=subscription.subscription_id,
+        payload=payload,
+        event_type=event_type,
+        idempotency_key=idempotency_key,
+    )
+    return delivery_client.deliver(destination, delivery)
+
+
 _WEBHOOK_SUBSCRIPTION_STORE: WebhookSubscriptionStore | None = None
 
 

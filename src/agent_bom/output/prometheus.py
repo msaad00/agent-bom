@@ -390,3 +390,101 @@ def push_otlp(
     # Force flush
     provider.force_flush(timeout_millis=timeout * 1000)
     provider.shutdown()
+
+
+# ─── OpenTelemetry OTLP traces export (optional dep) ──────────────────────
+
+
+def push_otlp_traces(
+    endpoint: str,
+    report: AIBOMReport,
+    blast_radii: Optional[list[BlastRadius]] = None,
+    timeout: int = 15,
+) -> bool:
+    """Export the scan as an OTLP **trace** (spans) over OTLP/HTTP.
+
+    Complements ``push_otlp`` (metrics). The platform already *ingests* traces
+    (``api/tracing.py``); this closes the loop by *emitting* a trace for each
+    scan so observability interop works both ways. A root ``agent_bom.scan``
+    span carries scan-level attributes; a child span is emitted per severity
+    bucket so a finding distribution is visible in any OTLP trace backend.
+
+    Opt-in and no-op-friendly:
+      * ``endpoint`` empty  → returns ``False`` (no-op), never raises.
+      * OTel packages absent → returns ``False`` (no-op), never raises.
+    Both branches let callers gate behind the existing OTLP endpoint config
+    without import-guarding at the call site.
+
+    Args:
+        endpoint: OTLP collector base URL, e.g. ``http://localhost:4318``
+                  (``/v1/traces`` is appended automatically).
+        report: The AI-BOM report to emit as a trace.
+        blast_radii: Blast radius analysis results.
+        timeout: Per-export timeout in seconds.
+
+    Returns:
+        ``True`` when a trace was emitted and flushed; ``False`` on no-op.
+
+    Raises:
+        RuntimeError: Only if the endpoint is rejected by the outbound URL
+            policy (an actionable misconfiguration, not a transient failure).
+    """
+    if not (endpoint or "").strip():
+        return False
+
+    try:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.trace import SpanKind
+    except ImportError:
+        # Graceful no-op: traces are optional. The metrics path raises ImportError
+        # for the explicit `push_otlp` request; traces are an additive emit, so we
+        # degrade silently rather than failing a scan.
+        return False
+
+    from agent_bom.security import SecurityError, validate_url
+
+    try:
+        validate_url(endpoint, allowed_schemes=("http", "https"))
+    except SecurityError as exc:
+        raise RuntimeError(f"OTLP traces endpoint rejected by outbound URL policy: {exc}") from exc
+
+    findings = cve_findings(report, blast_radii)
+    sev_counts = severity_counts(findings)
+
+    resource = Resource(
+        attributes={
+            SERVICE_NAME: "agent-bom",
+            "agent_bom.version": report.tool_version,
+        }
+    )
+
+    otlp_url = endpoint.rstrip("/") + "/v1/traces"
+    exporter = OTLPSpanExporter(endpoint=otlp_url, timeout=timeout)
+    provider = TracerProvider(resource=resource)
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    tracer = provider.get_tracer("agent_bom", report.tool_version)
+
+    kev_count = sum(1 for finding in findings if finding.is_kev)
+    fixable = sum(1 for finding in findings if finding.fixed_version)
+
+    with tracer.start_as_current_span("agent_bom.scan", kind=SpanKind.INTERNAL) as scan_span:
+        scan_span.set_attribute("agent_bom.version", report.tool_version)
+        scan_span.set_attribute("agent_bom.agents_total", report.total_agents)
+        scan_span.set_attribute("agent_bom.mcp_servers_total", report.total_servers)
+        scan_span.set_attribute("agent_bom.packages_total", report.total_packages)
+        scan_span.set_attribute("agent_bom.vulnerabilities_total", len(findings))
+        scan_span.set_attribute("agent_bom.kev_findings_total", kev_count)
+        scan_span.set_attribute("agent_bom.fixable_vulnerabilities_total", fixable)
+        for sev_value, count in sev_counts.items():
+            with tracer.start_as_current_span(f"agent_bom.severity.{sev_value}", kind=SpanKind.INTERNAL) as sev_span:
+                sev_span.set_attribute("agent_bom.severity", sev_value)
+                sev_span.set_attribute("agent_bom.count", count)
+
+    provider.force_flush(timeout_millis=timeout * 1000)
+    provider.shutdown()
+    return True

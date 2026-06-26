@@ -100,6 +100,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `db freshness` | Show the structured vuln-data freshness indicator (sources, age, staleness) surfaced on every scan, API, and MCP tool |
 | `db framework-status` | Show bundled framework catalog freshness |
 | `doctor` | Check environment readiness for scanning |
+| `capabilities` | Show every gated capability, current state, and exact unlock path without printing secret values |
 | `gateway` | Multi-MCP gateway commands |
 | `interactive` | Start an interactive command shell for repeated CLI workflows |
 | `plugins` | Inspect extension plugin registry status without loading third-party plugin code |

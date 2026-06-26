@@ -153,6 +153,16 @@ jobs:
           python -m pip install --quiet pyyaml
           python scripts/check_workflow_timeouts.py
 
+      - name: Trust-contract — provisioning stays read-only
+        # Source: scripts/check_provisioning_readonly.py
+        # The cloud-connect Terraform modules (deploy/terraform/connect-*)
+        # mint agent-bom's read-only customer-cloud grant and must stay
+        # read-only forever. Any beyond-read-only capability (e.g. the
+        # agentless EBS side-scan) must be a separate, flagged, tag-scoped,
+        # least-privilege module on the allowlist. Pure stdlib, runs before
+        # the heavier setup so a regression fails fast.
+        run: python scripts/check_provisioning_readonly.py
+
       - uses: ./.github/actions/setup-python
         with:
           python-version: '3.11'

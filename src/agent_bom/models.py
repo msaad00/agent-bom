@@ -1036,6 +1036,9 @@ class AIBOMReport:
     # Estate-wide cloud asset inventory; one provider payload or a per-provider list (opt-in AGENT_BOM_CLOUD_INVENTORY)
     cloud_inventory_data: Optional[Union[dict, list]] = None
     identity_discovery_data: Optional[dict] = None  # Discovered non-human identities (opt-in AGENT_BOM_OKTA/ENTRA_DISCOVERY)
+    # Cloud audit-trail behavioral payload(s); per-provider list of aggregated
+    # (principal, resource, action) edges + findings (opt-in AGENT_BOM_AUDIT_TRAIL, read-only)
+    cloud_audit_trail_data: Optional[Union[dict, list]] = None
     runtime_correlation: Optional[dict] = None  # Runtime ↔ scan correlation (proxy audit vs CVE findings)
     delta_data: Optional[dict] = None  # Baseline/delta comparison metadata for CI gate outputs
     scan_performance_data: Optional[dict] = None  # Cache coverage / scan latency metadata

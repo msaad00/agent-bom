@@ -20,11 +20,16 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from rich.console import Console
+
+    from agent_bom.cloud.side_scan import SideScanResult
 
 # Deterministic provider catalogue. The order here drives auto-detect ordering,
 # per-provider sectioning, and `--provider all` fan-out so the same configuration
@@ -661,3 +666,120 @@ def _asset_summary(report: dict) -> str:
 
 
 cloud_group.add_command(inventory_cmd, "inventory")
+
+
+@click.command("side-scan")
+@click.option("--instance-id", default=None, help="EC2 instance whose attached EBS volumes to scan.")
+@click.option("--volume-id", default=None, help="A specific EBS volume to scan (takes precedence over --instance-id).")
+@click.option(
+    "--collector-instance-id",
+    default=None,
+    help="In-account collector EC2 instance the temp volume is attached to (no block data leaves the account).",
+)
+@click.option("--availability-zone", default=None, help="AZ to create the temp volume in (must match the collector).")
+@click.option("--region", default=None, help="AWS region.")
+@click.option("--no-secrets", is_flag=True, help="Skip the redacted secret scan (SBOM + CVEs only).")
+@click.option("--no-sweep-orphans", is_flag=True, help="Skip the pre-run sweep of snapshots stranded by an earlier crash.")
+def side_scan_cmd(
+    instance_id: Optional[str],
+    volume_id: Optional[str],
+    collector_instance_id: Optional[str],
+    availability_zone: Optional[str],
+    region: Optional[str],
+    no_secrets: bool,
+    no_sweep_orphans: bool,
+) -> None:
+    """Agentless EBS disk side-scan — snapshot, mount read-only, SBOM + CVEs + redacted secrets.
+
+    The single opt-in, non-read-only capability in agent-bom: it takes an EBS
+    snapshot, attaches a temp volume to an *in-account collector* instance, mounts
+    it read-only, parses the package SBOM + secret type/location (never values,
+    never file contents), and tears everything down in a guaranteed cleanup. No
+    disk image or block data ever leaves the account.
+
+    Requires the scoped snapshot role (deploy/terraform/connect-aws-sidescan) and
+    an in-account collector instance. Gated by ``AGENT_BOM_SIDESCAN`` — OFF by
+    default; an unset flag prints how to enable it and exits non-zero.
+
+    \b
+    Examples:
+      AGENT_BOM_SIDESCAN=1 agent-bom cloud side-scan \\
+        --volume-id vol-0abc --collector-instance-id i-0def \\
+        --availability-zone us-east-1a --region us-east-1
+    """
+    import asyncio
+
+    from rich.console import Console
+
+    from agent_bom.cloud.base import CloudDiscoveryError
+    from agent_bom.cloud.side_scan import run_side_scan
+
+    con = Console()
+    try:
+        results: list[SideScanResult] = asyncio.run(
+            run_side_scan(
+                instance_id=instance_id,
+                volume_id=volume_id,
+                collector_instance_id=collector_instance_id,
+                availability_zone=availability_zone,
+                region=region,
+                scan_secrets_enabled=not no_secrets,
+                sweep_orphans=not no_sweep_orphans,
+            )
+        )
+    except CloudDiscoveryError as exc:
+        # Actionable, user-safe message (opt-in / config guidance). The message
+        # text is authored in the side-scan module and carries no exception
+        # internals, so it is safe to surface directly.
+        con.print(f"\n  [yellow]side-scan unavailable:[/yellow] {exc}\n")
+        raise SystemExit(1) from None
+
+    _render_side_scan_results(con, results)
+
+
+def _render_side_scan_results(con: Console, results: list[SideScanResult]) -> None:
+    """Render side-scan results in Rich tables — metadata only, no overflow."""
+    from rich.table import Table
+
+    con.print("\n  [bold]EBS side-scan[/bold] [dim]· agentless · read-only output · auto-cleaned[/dim]")
+
+    if not results:
+        con.print("  [yellow]No target volumes resolved.[/yellow] [dim]Pass --volume-id or --instance-id.[/dim]\n")
+        return
+
+    summary = Table()
+    summary.add_column("Volume")
+    summary.add_column("Instance")
+    summary.add_column("Snapshot")
+    summary.add_column("Packages", justify="right")
+    summary.add_column("Vuln pkgs", justify="right")
+    summary.add_column("Secrets", justify="right")
+    summary.add_column("Cleaned up")
+    for res in results:
+        summary.add_row(
+            str(res.volume_id or "—"),
+            str(res.instance_id or "—"),
+            str(res.snapshot_id or "—"),
+            str(len(res.packages)),
+            str(res.vulnerability_count),
+            str(len(res.secrets)),
+            "[green]yes[/green]" if res.cleaned_up else "[yellow]partial[/yellow]",
+        )
+    con.print(summary)
+
+    for res in results:
+        if res.secrets:
+            secrets = Table(title=f"Secrets · {res.volume_id} [dim](type + location only)[/dim]")
+            secrets.add_column("Type")
+            secrets.add_column("File", overflow="fold")
+            secrets.add_column("Line", justify="right")
+            secrets.add_column("Severity")
+            for sec in res.secrets:
+                secrets.add_row(sec.secret_type, sec.file_path, str(sec.line_number), sec.severity)
+            con.print(secrets)
+        for warning in res.warnings:
+            con.print(f"  [yellow]![/yellow] [dim]{warning}[/dim]")
+    con.print()
+
+
+cloud_group.add_command(side_scan_cmd, "side-scan")

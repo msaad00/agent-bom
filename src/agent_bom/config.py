@@ -405,9 +405,16 @@ REPO_SCAN_MAX_FILES = _int("AGENT_BOM_REPO_SCAN_MAX_FILES", 100_000)
 # behavioral graph edges (who *did* reach what). It is NOT a log/observability
 # platform: raw log lines are never stored — only aggregated edges. The reader
 # is disabled unless explicitly opted in, and the lookback window + event count
-# are bounded so a scan never pulls an unbounded log volume.
+# are bounded so a scan never pulls an unbounded log volume. It needs NO new IAM
+# role: it reuses the SAME existing read-only connect role (AWS SecurityAudit,
+# Azure Reader/Security Reader, GCP roles/viewer). On AWS cloudtrail:LookupEvents
+# is already in the AWS-managed SecurityAudit policy, so enabling it adds zero new
+# permission; on Azure/GCP the reads sit inside the existing Reader/viewer grants
+# in standard setups.
 
 # Master opt-in. When False (default), audit-trail ingestion is a clean no-op.
+# Reuses the existing read-only connect role — no new IAM role, and (in standard
+# setups) no new permission.
 AUDIT_TRAIL_ENABLED = _bool("AGENT_BOM_AUDIT_TRAIL", False)
 # Lookback window (hours) for audit events; the reader clamps to two weeks.
 AUDIT_TRAIL_LOOKBACK_HOURS = _int("AGENT_BOM_AUDIT_TRAIL_LOOKBACK_HOURS", 24)

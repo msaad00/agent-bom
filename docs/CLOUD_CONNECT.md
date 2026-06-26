@@ -249,6 +249,61 @@ Discoveries that need a grant you didn't give degrade to empty rather than error
 
 ---
 
+## 6a. Audit-trail behavioral edges — no new role
+
+Setting `AGENT_BOM_AUDIT_TRAIL=1` reads the security-relevant slice of each
+cloud's native audit trail (AWS CloudTrail, Azure Activity Log, GCP Cloud Audit
+Logs) into **behavioral graph edges** ("who *did* reach what"). It is opt-in,
+read-only, and drops the raw events — logs stay in your account.
+
+**It needs no new IAM role.** Audit-trail reuses the **same** read-only connect
+role you already created:
+
+| Cloud | Existing read-only role | Audit read | Already covered? |
+|-------|-------------------------|------------|------------------|
+| AWS   | `SecurityAudit` (+ `ViewOnlyAccess`) | `cloudtrail:LookupEvents` | **Yes — zero new permission.** `LookupEvents` is in the AWS-managed `SecurityAudit` policy. |
+| Azure | `Reader` / `Security Reader` | `Microsoft.Insights/eventtypes/values/read` | Yes in standard setups — sits inside the built-in `Reader` role. |
+| GCP   | `roles/viewer` | `logging.logEntries.list` | Yes in standard setups — sits inside `roles/viewer`. |
+
+Net: turning on audit-trail behavioral edges costs **no new role** and, in
+standard setups, **no new permission**.
+
+> **The one exception is the disk side-scan.** Agentless EBS side-scan
+> (`AGENT_BOM_SIDESCAN=1`) is the single deliberately non-read-only
+> capability, and it is the *only* one that needs a **separate, scoped snapshot
+> role** (`deploy/terraform/connect-aws-sidescan`) distinct from the read-only
+> scanner role, plus an in-account collector instance. Audit-trail does not.
+
+---
+
+## 6b. Agentless EBS disk side-scan (opt-in, scoped role)
+
+The disk side-scan snapshots a target EBS volume, attaches a temp volume to an
+**in-account collector** instance, mounts it read-only, and returns a
+metadata-only result — package SBOM, matched CVEs, and secret *type/location*
+(never values, never file contents). Snapshot → volume → mount are always torn
+down in a guaranteed cleanup; a pre-run sweep reaps anything a prior crash
+stranded. No disk image or block data leaves the account.
+
+It is OFF unless `AGENT_BOM_SIDESCAN=1`. Run it from the collector (or any host
+with the scoped snapshot role) with:
+
+```bash
+AGENT_BOM_SIDESCAN=1 agent-bom cloud side-scan \
+  --volume-id vol-0abc123 \
+  --collector-instance-id i-0def456 \
+  --availability-zone us-east-1a \
+  --region us-east-1
+```
+
+Use `--instance-id i-...` instead of `--volume-id` to scan every EBS volume
+attached to an instance. `--no-secrets` returns SBOM + CVEs only;
+`--no-sweep-orphans` skips the pre-run stranded-snapshot sweep. With the flag
+unset the command prints how to enable it and exits non-zero — it never starts a
+snapshot implicitly.
+
+---
+
 ## 7. Why it scales and stays accurate
 
 - **Scale:** AWS Organizations and Azure management-group fan-out discover the

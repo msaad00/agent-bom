@@ -23,6 +23,7 @@ _FLAGS = (
     "AGENT_BOM_GCP_INVENTORY",
     "AGENT_BOM_OKTA_DISCOVERY",
     "AGENT_BOM_ENTRA_DISCOVERY",
+    "AGENT_BOM_AUDIT_TRAIL",
 )
 
 
@@ -55,6 +56,96 @@ def test_flags_off_leaves_report_unenriched(monkeypatch):
 
     assert report.cloud_inventory_data is None
     assert report.identity_discovery_data is None
+
+
+# ── Audit-trail: opt-in, read-only behavioral edges ─────────────────────────
+
+
+def test_audit_trail_flag_off_is_noop(monkeypatch):
+    """With AGENT_BOM_AUDIT_TRAIL unset no reader runs and the field stays None."""
+    _clear_flags(monkeypatch)
+    import agent_bom.cloud.audit_trail as at
+
+    def _boom(*a, **k):
+        raise AssertionError("collect_audit_trail must not run when the flag is off")
+
+    monkeypatch.setattr(at, "collect_audit_trail", _boom)
+    assert enrich.collect_audit_trail() == []
+
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id="s1")
+    enrich.enrich_report_with_estate_discovery(report)
+    assert report.cloud_audit_trail_data is None
+
+
+def test_audit_trail_flag_on_attaches_payload_and_projects_edges(monkeypatch):
+    """Flag on + a credentialed provider -> ok payload attached -> graph gains edges."""
+    _clear_flags(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_AUDIT_TRAIL", "1")
+
+    import agent_bom.cloud.audit_trail as at
+    import agent_bom.cloud.auth_probe as probe
+
+    # Only AWS resolves credentials; azure/gcp are skipped (no reader call).
+    monkeypatch.setattr(probe, "provider_has_credentials", lambda p: (p == "aws", "test"))
+
+    ok_payload = {
+        "status": "ok",
+        "provider": "aws",
+        "account": "123456789012",
+        "behavioral_edges": [
+            {
+                "principal": "alice",
+                "action": "GetObject",
+                "resource": "bucket/secret-data",
+                "relationship": "accessed",
+                "count": 3,
+                "last_seen": "2026-06-24T10:00:00+00:00",
+                "failure_count": 0,
+                "is_sensitive_resource": True,
+            }
+        ],
+        "behavioral_findings": [],
+        "event_count": 3,
+        "warnings": [],
+    }
+
+    seen_providers: list[str] = []
+
+    def _fake_collect(*, provider, **kwargs):
+        seen_providers.append(provider)
+        return ok_payload if provider == "aws" else {"status": "skipped", "provider": provider}
+
+    monkeypatch.setattr(at, "collect_audit_trail", _fake_collect)
+
+    payloads = enrich.collect_audit_trail()
+    assert payloads == [ok_payload]
+    # azure/gcp credentialless -> their reader is never invoked.
+    assert seen_providers == ["aws"]
+
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id="s1")
+    enrich.enrich_report_with_estate_discovery(report)
+    assert report.cloud_audit_trail_data == [ok_payload]
+
+    # The builder's existing consumer turns the edge into observed-reach nodes.
+    report_json = to_json(report)
+    assert report_json["cloud_audit_trail"] == [ok_payload]
+    counts = _entity_types(report)
+    assert counts.get("user", 0) >= 1, counts
+    assert counts.get("cloud_resource", 0) >= 1, counts
+
+
+def test_audit_trail_reader_crash_does_not_break_scan(monkeypatch):
+    _clear_flags(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_AUDIT_TRAIL", "1")
+    import agent_bom.cloud.audit_trail as at
+    import agent_bom.cloud.auth_probe as probe
+
+    monkeypatch.setattr(probe, "provider_has_credentials", lambda p: (p == "aws", "test"))
+    monkeypatch.setattr(at, "collect_audit_trail", lambda **k: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id="s1")
+    enrich.enrich_report_with_estate_discovery(report)  # must not raise
+    assert report.cloud_audit_trail_data is None
 
 
 def test_collectors_make_no_call_when_flags_off(monkeypatch):

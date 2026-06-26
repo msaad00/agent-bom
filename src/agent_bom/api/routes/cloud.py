@@ -231,10 +231,18 @@ async def cloud_cis_benchmark(
             # Provider SDK absent / credentials unavailable degrades to a clear
             # error envelope (HTTP 200) — exactly as the MCP cis_benchmark tool
             # does — never a 500. Keeps REST / MCP shape parity for the no-SDK path.
-            # Log only the validated, CR/LF-stripped provider — no exception object
-            # (avoids both log injection and exception-detail exposure over the log).
-            safe_requested = re.sub(r"[\r\n]+", "", requested)
-            _logger.warning("Cloud CIS benchmark unavailable for %s", safe_requested)
+            # Log only a canonical allowlisted provider label — a literal chosen by
+            # comparison, never the user string or the exception (avoids log injection
+            # + exception-detail exposure; CR/LF strip alone isn't a recognized barrier).
+            if requested == "aws":
+                provider_label = "aws"
+            elif requested == "azure":
+                provider_label = "azure"
+            elif requested == "gcp":
+                provider_label = "gcp"
+            else:
+                provider_label = "unknown"
+            _logger.warning("Cloud CIS benchmark unavailable for %s", provider_label)
             return {
                 "error": "Provider SDK or credentials unavailable for this benchmark.",
                 "provider": requested,

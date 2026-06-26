@@ -623,18 +623,10 @@ async function installRoutes(page) {
     has_more: false,
   }));
   await page.route("**/v1/gateway/policies", (route) => fulfill(route, { policies: gatewayPolicies, count: gatewayPolicies.length }));
-  await page.route("**/v1/gateway/feed/kpis", (route) => fulfill(route, {
-    schema_version: "gateway.feed.kpis.v1",
-    tenant_id: "tenant-alpha",
-    generated_at: CREATED_AT,
-    calls_today: 4485,
-    blocked_today: 247,
-    shadow_ai_blocked: 247,
-    data_filters_applied: 1320,
-    tool_calls_authorized: 3918,
-    llm_calls: 2106,
-    uptime_seconds: 18720,
-  }));
+  // Register the broad feed route first so the more specific feed/kpis route
+  // below takes precedence — Playwright matches the most recently registered
+  // route, and `feed**` would otherwise also intercept the `/feed/kpis` request
+  // and return the events payload to the KPI fetch.
   await page.route("**/v1/gateway/feed**", (route) => fulfill(route, {
     schema_version: "gateway.feed.v1",
     tenant_id: "tenant-alpha",
@@ -646,6 +638,18 @@ async function installRoutes(page) {
       { ts: CREATED_AT, agent: "sre-runbook-agent", action_type: "tool_call_authorized", target: "slack.post", detail: "Tool call authorized", tenant: "tenant-alpha", shadow: false, source: "gateway" },
       { ts: CREATED_AT, agent: "shadow-copilot", action_type: "tool_call_blocked", target: "openai.chat.completions", detail: "Shadow AI detected", tenant: "tenant-alpha", shadow: true, source: "gateway" },
     ],
+  }));
+  await page.route("**/v1/gateway/feed/kpis", (route) => fulfill(route, {
+    schema_version: "gateway.feed.kpis.v1",
+    tenant_id: "tenant-alpha",
+    generated_at: CREATED_AT,
+    calls_today: 4485,
+    blocked_today: 247,
+    shadow_ai_blocked: 247,
+    data_filters_applied: 1320,
+    tool_calls_authorized: 3918,
+    llm_calls: 2106,
+    uptime_seconds: 18720,
   }));
   await page.route("**/v1/gateway/stats", (route) => fulfill(route, {
     total_policies: gatewayPolicies.length,

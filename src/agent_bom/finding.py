@@ -9,9 +9,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from agent_bom.canonical_ids import canonical_finding_id, canonical_id, source_ids
+
+if TYPE_CHECKING:
+    from agent_bom.remediation import Remediation
 
 FINDING_SCHEMA_VERSION = "1"
 
@@ -230,6 +233,10 @@ class Finding:
     # Remediation
     fixed_version: Optional[str] = None
     remediation_guidance: Optional[str] = None
+    # Structured advisory remediation (fix + least-privilege-to-apply + optional
+    # artifact). Additive + optional: findings without it serialize unchanged.
+    # Read-only forever — agent-bom recommends, the user applies.
+    remediation: Optional["Remediation"] = None
 
     # Compliance mappings (same tags as BlastRadius for parity)
     compliance_tags: list[str] = field(default_factory=list)  # all framework tags combined
@@ -402,6 +409,9 @@ class Finding:
             "is_kev": self.is_kev,
             "fixed_version": self.fixed_version,
             "remediation_guidance": self.remediation_guidance,
+            # Structured advisory remediation — emitted only when populated so
+            # findings without it keep their existing serialization shape.
+            **({"remediation": self.remediation.to_dict()} if self.remediation is not None else {}),
             "compliance_tags": self.all_compliance_tags(),
             "applicable_frameworks": list(self.applicable_frameworks),
             "controls": [tag.to_dict() for tag in self.normalized_controls()],
@@ -662,7 +672,8 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
     primary = resource_ids[0] if resource_ids else f"{provider}-account"
     attack = [str(t) for t in (check.get("attack_techniques") or []) if str(t).strip()]
     compliance = [f"CIS-{check_id}"] + [str(t) for t in (check.get("compliance_tags") or []) if str(t).strip()]
-    return Finding(
+    cis_section = sanitize_text(str(check.get("cis_section", "") or ""), max_len=200)
+    finding = Finding(
         finding_type=FindingType.CIS_FAIL,
         source=FindingSource.CLOUD_CIS,
         asset=Asset(
@@ -680,11 +691,18 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
         evidence={
             "provider": provider,
             "check_id": check_id,
-            "cis_section": check.get("cis_section", ""),
+            "cis_section": cis_section,
             "resource_ids": resource_ids,
             "benchmark": "CIS",
         },
     )
+    # Reference pattern for the advisory-remediation foundation: attach the
+    # structured fix + least-privilege-to-apply + runbook artifact. Advisory
+    # only — agent-bom recommends, the user applies.
+    from agent_bom.remediation import build_remediation as _build_remediation
+
+    finding.remediation = _build_remediation(finding)
+    return finding
 
 
 def snowflake_governance_finding_to_finding(finding: dict, account: str) -> "Finding":

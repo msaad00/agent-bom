@@ -9,6 +9,164 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Deepens the cloud/CNAPP estate from a single-provider inventory into a
+multi-account, multi-region, tenant-scale model that rolls up readably in the
+graph, adds agentless workload (CWPP), audit-trail behavioral, and ASPM
+application views, and lands a read-only-by-default connect path on every cloud.
+All cloud access stays read-only and in-account: nothing leaves the customer's
+account.
+
+### Cloud / CNAPP
+- **Estate inventory deepened across all three clouds**, with every asset wired
+  into the unified graph: AWS (RDS, DynamoDB, Lambda, EKS, ELB, VPC, KMS,
+  Secrets Manager, CloudFront, ECR, Redshift, SNS/SQS) with multi-region
+  aggregation; Azure (Key Vault, Container Registry, SQL/PostgreSQL/MySQL, AKS,
+  network topology, messaging/cache/disks/App Service, and edge/WAF — App
+  Gateway, Front Door, API Management); GCP (GKE, Cloud Run, Functions, Cloud
+  SQL, VPC, disks, Pub/Sub).
+- **Tenant-scale account hierarchy as a navigable `CONTAINS` backbone:** AWS
+  Organizations (org / OUs / accounts / SCPs), Azure management-group tree with
+  multi-subscription fan-out, GCP Org → Folders → Projects fan-out, and a
+  Snowflake organization → accounts roll-up.
+- **Normalized cross-cloud resource model** so AWS, Azure, and GCP assets share
+  one schema and ingest into the graph identically.
+- **Read-only audit-trail ingestion.** CloudTrail, Azure Activity Log, and GCP
+  Cloud Audit Logs are read via read-only APIs and reduced to behavioral
+  `ACCESSED` / `INVOKED` graph edges (principal → resource, counts and
+  last-seen only — raw events never persist). Opt-in via
+  `AGENT_BOM_AUDIT_TRAIL`.
+- **Agentless AWS EBS disk side-scan (CWPP).** Snapshots a volume, attaches it
+  to an in-account collector, and reads package/filesystem metadata. Temp
+  snapshots and volumes are cleaned up in a guaranteed `try/finally`, with an
+  orphan sweep recovering after a hard crash; no block data leaves the account.
+- **Registry-wide container image sweep** across ECR, ACR, and GAR: enumerates
+  repositories and tags via read-only APIs, deduplicates by image digest, scans
+  freshest first, and caps work at `AGENT_BOM_REGISTRY_MAX_IMAGES`.
+- **Effective-permission foundation:** AWS IAM inline-policy enumeration (not
+  just attached managed policies), Azure RBAC role-assignment inventory with
+  `HAS_PERMISSION` edges, and GCP instance internet-exposure plus IAM privilege
+  classification.
+- **Cloud data sensitivity classified from resource tags/labels** across AWS,
+  Azure, and GCP.
+- **Snowflake estate depth:** identity/auth-posture graph with login-anomaly
+  detection (impossible travel, failed-login bursts) and MITRE tagging, object
+  and dependency-lineage graph, exfil graph (shares, external stages, sensitive
+  objects), data-pipeline objects (tasks/streams/pipes), integrations, iceberg
+  and external tables, and governance/activity discovery wired into the scan.
+- **CIS posture converges into the findings stream and the gate.** Cloud CIS
+  failures now flow into the unified findings stream and the severity gate,
+  drive the verbose posture headline, and render as a grouped, readable report
+  in the terminal and HTML at estate scale.
+- **Unified cloud-aware scan runs across every configured provider in one
+  command.** Providers are detected by credential source rather than a CLI on
+  `PATH`, native GCP service-account impersonation and Azure subscription
+  auto-derivation give keyless read-only connection, and inventory tolerates
+  partial permissions instead of failing when a role lacks a single grant.
+
+### Graph
+- **Estate-scale `CONTAINS` roll-up with drill-down.** A 1000+ node estate
+  collapses along its containment tree to a handful of top-level container
+  nodes, each carrying aggregate descendant counts, a by-type breakdown,
+  worst-severity, a per-severity histogram, and internet-exposed /
+  toxic-combination flags propagated from descendants; an attack-path-first
+  view and one-level drill-down are exposed at `GET /v1/graph/rollup`.
+- **ASPM correlation layer.** AppSec findings (SCA, secrets, IaC, container,
+  SBOM, AI-BOM) are organized around `APPLICATION` nodes via `BELONGS_TO`
+  edges, deduplicated across sources, with per-application risk rolled up.
+- **Toxic-combination evaluator emits enforceable findings** rather than only
+  annotating the graph.
+- **New cloud graph edges:** normalized cloud resources ingested as nodes, an
+  internet-exposure edge (public IP → load balancer), and a VM →
+  managed-identity privilege edge (`ASSUMES`).
+
+### Cost / FinOps
+- **LLM spend fused into the unified graph.** Per-node `cost_usd` /
+  `cost_usd_30d` attributes roll up along `CONTAINS` edges into
+  `subtree_cost_usd`, and nodes that are both high-spend and high-risk are
+  flagged `cost_risk_priority` for cost × exposure triage.
+
+### Identity / NHI
+- **Lifecycle enforcement for agent identities** with JIT (time-bound) grants.
+
+### Gateway / Runtime
+- **Policy engine hardened** with fail-closed evaluation, quarantine,
+  conditional access, a plugin surface, and OCSF webhook interop.
+- **Runtime-observed incidents feed back into the unified graph**, and the
+  gateway consumes graph reachability for pre-emptive blocking.
+- **Hardened outbound delivery foundation** with OTLP trace emission.
+
+### Remediation
+- **Advisory remediation foundation with least-privilege-to-apply.** Each fix
+  carries the concrete, minimal IAM actions the operator's own apply role would
+  need, plus optional text-only runbook/Terraform artifacts. Strictly advisory:
+  `applied` and `auto_remediation` are always false — agent-bom recommends,
+  the operator applies.
+
+### AI / MCP security
+- **Adversarial red-team series:** LLM-harnessed adversarial variant
+  generation, bias/toxicity/hallucination detectors, and an adversarial-coverage
+  governance score with live-target firing.
+- **Obfuscation-resistant prompt-injection detection** (raises detection on
+  obfuscated payloads from 24% to 100% on the bundled corpus).
+- **Credentials ranked by exposure even without a CVE**, and
+  **hardware/firmware attestation evidence ingest**.
+- **Deterministic tool/skills surfaces** so agent-side caching stays stable.
+
+### CLI
+- **Canonical front-door verbs** (`connect` / `scan` / `graph` / `report` /
+  `up`) as the primary entry path.
+- **Capability doctor** surfaces every gated feature, its current state, and
+  the unlock path.
+- **`scan` accepts an optional positional `PATH`**, and scans can be grouped
+  into parent-child batches.
+
+### API
+- **REST cloud-scanning endpoints** with MCP write-tool role enforcement.
+- **Shared backend contract and selection factory** for control-plane stores.
+
+### Deploy / Packaging
+- **One-apply EKS platform module** (`deploy/terraform/platform-eks/`) plus a
+  three-tier deploy-anywhere guide ([`docs/DEPLOY_PLATFORM.md`](docs/DEPLOY_PLATFORM.md)).
+- **Connect-a-cloud Terraform modules** provision one read-only role per cloud
+  (AWS `SecurityAudit`, Azure `Reader`, GCP `roles/viewer` +
+  `iam.securityReviewer`), with keyless federated-credential options and no
+  long-lived keys; CI enforces that the connect modules stay read-only.
+- **Keyless read-only collectors for EKS / GKE / AKS** via workload identity
+  (IRSA / Azure workload identity / GCP Workload Identity Federation).
+- **CloudFormation one-click read-only AWS scan** via CodeBuild.
+
+### UI
+- **Cross-domain overview landing page** and **cloud CIS benchmark drill-down**
+  on the compliance dashboard.
+
+### Changed
+- **Vulnerability cache auto-refreshes** and surfaces a freshness indicator.
+- Flat (non-graph) outputs prefer canonical findings for consistency with the
+  graph view.
+
+### Fixed
+- **Offline coverage gaps now warn instead of discarding real findings** (was a
+  silent false-negative).
+- **Go `go.mod` block-`require` parsing** no longer emits a phantom package, and
+  **Cargo manifests parse without a lockfile** including target and workspace
+  dependencies.
+- **Hardcoded-secret findings surface in JSON and SARIF**, not only the console,
+  and **SARIF locates dependency findings at their own ecosystem's manifest**.
+- **MCP `check` tool** parses pip specifiers and flags errors, reads
+  nonexistent explicit versions as not-clean, and raises a clean error (instead
+  of crashing) on an out-of-sandbox scan path.
+- **Legacy context graph reads `credential_env_vars`** so lateral-movement
+  analysis is no longer credential-blind, and the **CLI graph export includes
+  the cloud estate** (was local-only).
+- **Subscription-scoped cloud misconfigurations anchor to their account node**
+  in the graph.
+- **CLI degrades gracefully on low disk** instead of crashing, and the **cloud
+  inventory summary counts every asset collection**.
+- **SQLite/Postgres timestamp alignment, dedup, and cost-table DDL** reconciled
+  across the two store backends.
+- Request models reject unknown fields (`extra=forbid`), and cloud API routes
+  resolve CodeQL info-exposure and log-injection findings.
+
 ---
 
 ## [0.89.2] - 2026-06-22

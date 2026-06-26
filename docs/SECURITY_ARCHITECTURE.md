@@ -31,6 +31,31 @@ agent-bom agents --offline
 
 In offline mode, **zero external API calls** are made. All scanning uses the pre-synced local database only.
 
+### Cloud connect — read-only by design
+
+Cloud scanning never moves customer data out of the account. The contract:
+
+- **One read-only role per cloud.** The connect Terraform modules grant exactly
+  one identity per provider — AWS `SecurityAudit` (optionally `ViewOnlyAccess`),
+  Azure built-in `Reader` (optionally `Security Reader`), GCP `roles/viewer`
+  plus `roles/iam.securityReviewer`. No write actions are granted, and CI
+  enforces that the connect modules stay read-only.
+- **Keyless where possible.** Collectors authenticate via workload identity
+  (IRSA, Azure workload identity, GCP Workload Identity Federation) and
+  short-lived federated credentials — no long-lived keys are created by default.
+  Providers are detected by credential source, not by a CLI on `PATH`.
+- **Metadata only leaves the collector.** Inventory emits asset metadata, CVE
+  counts, CIS results, and secret *type/location* — never file contents, secret
+  values, or raw block data. Audit-trail ingestion reduces CloudTrail / Activity
+  Log / Cloud Audit events to `(principal, resource, action)` counts and
+  last-seen timestamps; raw events never persist.
+- **Agentless workload scanning stays in-account.** The AWS EBS side-scan
+  (`src/agent_bom/cloud/side_scan.py`) snapshots a volume, attaches it to an
+  in-account collector, reads package/filesystem metadata, and deletes the temp
+  snapshot and volume in a guaranteed `try/finally`. An orphan sweep recovers
+  any leftover temp resources (tagged by the scanner) after a hard crash, so a
+  failed run leaves nothing behind. No volume bytes leave the account.
+
 ### Network Enforcement
 
 - All external calls use HTTPS with full TLS certificate verification (`verify=True`)

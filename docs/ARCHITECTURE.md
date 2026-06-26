@@ -281,6 +281,22 @@ graph LR
 
 The full contract for what the graph promises and what it does not — entity types, edge kinds, scaling tiers, re-baseline procedure, and known coverage gaps — is in [docs/graph/CONTRACT.md](graph/CONTRACT.md).
 
+### Estate-scale roll-up
+
+Past a few hundred nodes a flat topology graph is unreadable. The estate is
+organized as a `CONTAINS` containment tree (org → account/folder/project → app
+→ resource), and `src/agent_bom/graph/rollup.py` collapses the graph along that
+tree to a handful of top-level container nodes — each carrying aggregate
+descendant counts, a by-type breakdown, worst-severity, a per-severity
+histogram, and internet-exposed / toxic-combination flags propagated from every
+descendant. The UI (and `GET /v1/graph/rollup`) drills down one level at a time
+instead of loading the whole estate, with an attack-path-first view that returns
+the nodes on materialized attack paths first. The roll-up is a pure read over
+the existing `UnifiedGraph` — no new collection. Two further overlays enrich the
+same graph: an ASPM layer (`aspm_overlay.py`) that organizes AppSec findings
+around `APPLICATION` nodes, and a FinOps layer (`cost_overlay.py`) that fuses
+LLM spend onto nodes and rolls it up along `CONTAINS` into `subtree_cost_usd`.
+
 ---
 
 ## 4. Compliance Tagging
@@ -392,7 +408,12 @@ graph TB
 | Policy | `src/agent_bom/policy.py` | Policy-as-code engine (17 conditions) |
 | Proxy | `src/agent_bom/proxy.py` | Runtime MCP proxy (7 inline detectors) |
 | MCP Server | `src/agent_bom/mcp_server*.py` | FastMCP server (70 tools across core, operator, runtime-catalog, and specialized modules) |
-| Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, ClickHouse |
+| Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, ClickHouse estate inventory + CIS posture |
+| Cloud side-scan | `src/agent_bom/cloud/side_scan.py` | Agentless AWS EBS disk scan (CWPP) — in-account snapshot/volume, guaranteed `try/finally` cleanup + orphan sweep |
+| Registry sweep | `src/agent_bom/cloud/registry_sweep.py` | Registry-wide image enumeration + scan (ECR/ACR/GAR), digest-deduped, capped |
+| Audit trail | `src/agent_bom/cloud/audit_trail.py` | Read-only CloudTrail/Activity Log/Cloud Audit ingest → behavioral `ACCESSED`/`INVOKED` graph edges (counts only) |
 | Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |
 | Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis — see [Graph Contract](graph/CONTRACT.md) for entity/edge coverage, accuracy guarantees, and scaling boundaries |
+| Graph overlays | `src/agent_bom/graph/` | `rollup.py` (estate-scale `CONTAINS` roll-up + drill-down), `aspm_overlay.py` (application correlation), `cost_overlay.py` (LLM-spend fusion) |
+| Remediation | `src/agent_bom/remediation.py` | Advisory-only fixes with least-privilege-to-apply (`applied`/`auto_remediation` always false) |
 | Guard | `src/agent_bom/guard.py` | Pre-install CVE scan for pip/npm packages |

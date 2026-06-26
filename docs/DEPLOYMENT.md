@@ -397,6 +397,28 @@ agent-bom agents --azure-subscription-id xxx \
 3. Extract package dependencies
 4. Scan for vulnerabilities
 
+### Read-only cloud connect (Terraform onboarding)
+
+The maintained connect modules under `deploy/terraform/connect-{aws,azure,gcp}/`
+provision exactly **one read-only role per cloud** for onboarding — AWS
+`SecurityAudit`, Azure built-in `Reader`, GCP `roles/viewer` +
+`roles/iam.securityReviewer`. No write actions are granted, AWS enforces an
+`ExternalId`, and CI gates the modules so they cannot drift away from
+read-only. Each module can issue a **keyless federated credential** (OIDC for
+Azure, Workload Identity Federation for GCP, IRSA for AWS) so no long-lived
+key is created.
+
+In-cluster collectors authenticate the same keyless way: the EKS / GKE / AKS
+collectors use workload identity and call only `List*` / `Describe*` / `get`
+APIs. Nothing leaves the account — see
+[`SECURITY_ARCHITECTURE.md` § Cloud connect — read-only by design](SECURITY_ARCHITECTURE.md#cloud-connect--read-only-by-design).
+
+For a one-`terraform apply` control plane (VPC, EKS, RDS Postgres, IRSA, and
+the Helm release wired together), use the EKS platform module at
+`deploy/terraform/platform-eks/` — walked through in
+[`DEPLOY_PLATFORM.md`](DEPLOY_PLATFORM.md). A CloudFormation one-click read-only
+AWS scan via CodeBuild is also available for a no-infrastructure trial.
+
 ---
 
 ## 📊 Scalability Patterns

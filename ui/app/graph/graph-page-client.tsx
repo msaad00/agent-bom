@@ -922,10 +922,14 @@ function GraphPageInner() {
       preservePinnedPositions: true,
     },
     dagreLr: {
-      nodeWidth: 230,
-      nodeHeight: 84,
-      rankSep: filters.agentName ? 160 : 190,
-      nodeSep: filters.agentName ? 44 : 58,
+      // Bigger node boxes + tighter ranks keep the wide left-to-right DAG from
+      // collapsing into a thin, far-zoomed strip. The extra vertical nodeSep
+      // spreads short graphs so fitView fills the canvas instead of leaving a
+      // tall empty band above and below the topology.
+      nodeWidth: 248,
+      nodeHeight: 96,
+      rankSep: filters.agentName ? 120 : 140,
+      nodeSep: filters.agentName ? 64 : 78,
     },
   });
 

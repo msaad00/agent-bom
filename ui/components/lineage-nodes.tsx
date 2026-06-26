@@ -1,19 +1,37 @@
 "use client";
 
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { Handle, Position } from "@xyflow/react";
 import {
-  Brain,
+  Activity,
+  BadgeCheck,
+  Bot,
   Box,
+  Boxes,
+  BrainCircuit,
   Bug,
   Building2,
   Cloud,
+  Container,
   Database,
+  Fingerprint,
+  IdCard,
   KeyRound,
+  Landmark,
+  Layers,
+  Link2,
+  Network,
   Package,
+  ScrollText,
   Server,
-  ShieldAlert,
+  Share2,
+  ShieldCheck,
+  Ticket,
   TriangleAlert,
+  User,
+  UserCog,
+  Users,
+  Warehouse,
   Wrench,
 } from "lucide-react";
 
@@ -119,7 +137,6 @@ type CardProps = {
   bgClass: string;
   ringClass: string;
   shapeClass?: string;
-  icon: ComponentType<{ className?: string }>;
   iconClass: string;
   source?: boolean;
   target?: boolean;
@@ -133,17 +150,20 @@ function NodeCard({
   bgClass,
   ringClass,
   shapeClass = "rounded-xl",
-  icon: Icon,
   iconClass,
   source = true,
   target = true,
   subtitle,
   footer,
 }: CardProps) {
+  // The glyph is keyed by entity type from the shared ENTITY_ICONS map, so the
+  // node and its legend row are always the same icon — even for the renderers
+  // shared across several types (e.g. CredentialNode serves role/policy/grants).
+  const Icon = entityIcon(data.nodeType);
   return (
     <div
       title={data.label}
-      className={`${shapeClass} border-2 px-3.5 py-2.5 min-w-[188px] max-w-[280px] shadow-xl backdrop-blur transition-opacity ${borderClass} ${bgClass} ${
+      className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[300px] shadow-xl backdrop-blur transition-opacity ${borderClass} ${bgClass} ${
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? `ring-2 ${ringClass}` : ""}`}
     >
@@ -158,8 +178,8 @@ function NodeCard({
         className={`!w-2 !h-2 !bg-current ${source ? "" : "!opacity-0"}`}
       />
       <div className="flex items-center gap-2 mb-1">
-        <Icon className={`w-4 h-4 shrink-0 ${iconClass}`} />
-        <span className="text-sm font-semibold leading-5 text-zinc-950 dark:text-zinc-50 truncate">{data.label}</span>
+        <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} />
+        <span className="text-[15px] font-semibold leading-5 text-zinc-950 dark:text-zinc-50 truncate">{data.label}</span>
         <span className="ml-auto rounded border border-black/10 bg-white/70 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-zinc-600 dark:border-white/15 dark:bg-black/25 dark:text-zinc-200">
           {NODE_TYPE_BADGES[data.nodeType]}
         </span>
@@ -168,6 +188,54 @@ function NodeCard({
       {footer}
     </div>
   );
+}
+
+/**
+ * Single source of truth for entity-type → icon. The lineage node renderers,
+ * the cluster pills, and the on-canvas legend all read from this map so the
+ * glyph shown on a node is byte-for-byte the glyph shown in the legend row
+ * for the same type. Every type gets a DISTINCT, on-meaning Lucide icon.
+ */
+export type EntityIcon = ComponentType<{ className?: string; style?: CSSProperties }>;
+
+export const ENTITY_ICONS: Record<LineageNodeType, EntityIcon> = {
+  provider: Cloud,
+  agent: Bot,
+  server: Server,
+  sharedServer: Share2,
+  package: Package,
+  vulnerability: Bug,
+  misconfiguration: TriangleAlert,
+  credential: KeyRound,
+  tool: Wrench,
+  model: BrainCircuit,
+  dataset: Database,
+  container: Container,
+  cloudResource: Box,
+  org: Building2,
+  account: Landmark,
+  user: User,
+  group: Users,
+  role: IdCard,
+  policy: ScrollText,
+  serviceAccount: UserCog,
+  servicePrincipal: Fingerprint,
+  federatedIdentity: Link2,
+  environment: Layers,
+  fleet: Boxes,
+  cluster: Network,
+  managedIdentity: BadgeCheck,
+  accessGrant: Ticket,
+  accessPolicy: ShieldCheck,
+  driftIncident: Activity,
+  dataStore: Warehouse,
+};
+
+export function entityIcon(nodeType: LineageNodeType | string | undefined): EntityIcon {
+  if (nodeType && nodeType in ENTITY_ICONS) {
+    return ENTITY_ICONS[nodeType as LineageNodeType];
+  }
+  return Box;
 }
 
 const NODE_TYPE_BADGES: Record<LineageNodeType, string> = {
@@ -211,7 +279,6 @@ function AgentNode({ data }: { data: LineageNodeData }) {
       borderClass={notConfigured ? "border-yellow-500 border-dashed" : "border-emerald-500 dark:border-emerald-600"}
       bgClass={notConfigured ? "bg-yellow-50 dark:bg-yellow-950/80" : "bg-emerald-50 dark:bg-emerald-950/80"}
       ringClass="ring-emerald-400"
-      icon={ShieldAlert}
       iconClass="text-emerald-600 dark:text-emerald-400"
       target={false}
       subtitle={data.agentType}
@@ -233,7 +300,6 @@ function ProviderNode({ data }: { data: LineageNodeData }) {
       borderClass="border-zinc-300 dark:border-zinc-600"
       bgClass="bg-white dark:bg-zinc-900/90"
       ringClass="ring-zinc-400"
-      icon={Building2}
       iconClass="text-zinc-600 dark:text-zinc-400"
       target={false}
       footer={
@@ -250,7 +316,6 @@ function IdentityNode({
   borderClass,
   bgClass,
   ringClass,
-  icon,
   iconClass,
   subtitle,
 }: {
@@ -258,7 +323,6 @@ function IdentityNode({
   borderClass: string;
   bgClass: string;
   ringClass: string;
-  icon: ComponentType<{ className?: string }>;
   iconClass: string;
   subtitle?: ReactNode;
 }) {
@@ -268,7 +332,6 @@ function IdentityNode({
       borderClass={borderClass}
       bgClass={bgClass}
       ringClass={ringClass}
-      icon={icon}
       iconClass={iconClass}
       subtitle={subtitle}
     />
@@ -282,7 +345,6 @@ function UserNode({ data }: { data: LineageNodeData }) {
       borderClass="border-emerald-400 dark:border-emerald-700"
       bgClass="bg-emerald-50 dark:bg-emerald-950/60"
       ringClass="ring-emerald-400"
-      icon={ShieldAlert}
       iconClass="text-emerald-600 dark:text-emerald-300"
       subtitle={data.description}
     />
@@ -296,7 +358,6 @@ function GroupNode({ data }: { data: LineageNodeData }) {
       borderClass="border-fuchsia-400 dark:border-fuchsia-700"
       bgClass="bg-fuchsia-50 dark:bg-fuchsia-950/55"
       ringClass="ring-fuchsia-400"
-      icon={Building2}
       iconClass="text-fuchsia-600 dark:text-fuchsia-300"
       subtitle={data.description}
     />
@@ -310,7 +371,6 @@ function ServiceAccountNode({ data }: { data: LineageNodeData }) {
       borderClass="border-amber-400 dark:border-amber-700"
       bgClass="bg-amber-50 dark:bg-amber-950/55"
       ringClass="ring-amber-400"
-      icon={KeyRound}
       iconClass="text-amber-600 dark:text-amber-300"
       subtitle={data.description}
     />
@@ -322,14 +382,12 @@ function StructureNode({
   borderClass,
   bgClass,
   ringClass,
-  icon,
   iconClass,
 }: {
   data: LineageNodeData;
   borderClass: string;
   bgClass: string;
   ringClass: string;
-  icon: ComponentType<{ className?: string }>;
   iconClass: string;
 }) {
   return (
@@ -338,7 +396,6 @@ function StructureNode({
       borderClass={borderClass}
       bgClass={bgClass}
       ringClass={ringClass}
-      icon={icon}
       iconClass={iconClass}
       subtitle={data.description}
       footer={
@@ -358,7 +415,6 @@ function EnvironmentNode({ data }: { data: LineageNodeData }) {
       borderClass="border-teal-400 dark:border-teal-700"
       bgClass="bg-teal-50 dark:bg-teal-950/55"
       ringClass="ring-teal-400"
-      icon={Cloud}
       iconClass="text-teal-600 dark:text-teal-300"
     />
   );
@@ -371,7 +427,6 @@ function FleetNode({ data }: { data: LineageNodeData }) {
       borderClass="border-cyan-400 dark:border-cyan-700"
       bgClass="bg-cyan-50 dark:bg-cyan-950/55"
       ringClass="ring-cyan-400"
-      icon={Building2}
       iconClass="text-cyan-600 dark:text-cyan-300"
     />
   );
@@ -384,7 +439,6 @@ function ClusterNode({ data }: { data: LineageNodeData }) {
       borderClass="border-sky-400 dark:border-sky-700"
       bgClass="bg-sky-50 dark:bg-sky-950/55"
       ringClass="ring-sky-400"
-      icon={Server}
       iconClass="text-sky-600 dark:text-sky-300"
     />
   );
@@ -397,7 +451,6 @@ function ServerNode({ data }: { data: LineageNodeData }) {
       borderClass="border-blue-500 dark:border-blue-600"
       bgClass="bg-blue-50 dark:bg-blue-950/80"
       ringClass="ring-blue-400"
-      icon={Server}
       iconClass="text-blue-600 dark:text-blue-400"
       subtitle={data.command}
       footer={
@@ -434,7 +487,6 @@ function PackageNode({ data }: { data: LineageNodeData }) {
       borderClass={hasVulns ? "border-red-400 dark:border-red-600/60" : "border-zinc-300 dark:border-zinc-600"}
       bgClass={hasVulns ? "bg-red-50 dark:bg-red-950/40" : "bg-white dark:bg-zinc-900/80"}
       ringClass="ring-zinc-400"
-      icon={Package}
       iconClass="text-zinc-600 dark:text-zinc-400"
       subtitle={
         data.version
@@ -471,7 +523,6 @@ function FindingNode({
       bgClass={bgClass}
       ringClass="ring-white/50"
       shapeClass={data.nodeType === "misconfiguration" ? "rounded-md" : "rounded-lg"}
-      icon={data.nodeType === "misconfiguration" ? TriangleAlert : Bug}
       iconClass={accentClass}
       source={false}
       subtitle={data.description}
@@ -523,7 +574,6 @@ function CredentialNode({ data }: { data: LineageNodeData }) {
       bgClass="bg-amber-50 dark:bg-amber-950/60"
       ringClass="ring-amber-400"
       shapeClass="rounded-2xl"
-      icon={KeyRound}
       iconClass="text-amber-600 dark:text-amber-400"
       source={false}
       subtitle={data.serverName}
@@ -539,7 +589,6 @@ function ToolNode({ data }: { data: LineageNodeData }) {
       bgClass="bg-purple-50 dark:bg-purple-950/60"
       ringClass="ring-purple-400"
       shapeClass="rounded-2xl"
-      icon={Wrench}
       iconClass="text-purple-600 dark:text-purple-400"
       source={false}
       subtitle={data.description}
@@ -554,7 +603,6 @@ function ModelNode({ data }: { data: LineageNodeData }) {
       borderClass="border-violet-500 dark:border-violet-600"
       bgClass="bg-violet-50 dark:bg-violet-950/70"
       ringClass="ring-violet-400"
-      icon={Brain}
       iconClass="text-violet-600 dark:text-violet-300"
       subtitle={data.description}
     />
@@ -568,7 +616,6 @@ function DatasetNode({ data }: { data: LineageNodeData }) {
       borderClass="border-cyan-500 dark:border-cyan-600"
       bgClass="bg-cyan-50 dark:bg-cyan-950/70"
       ringClass="ring-cyan-400"
-      icon={Database}
       iconClass="text-cyan-600 dark:text-cyan-300"
       subtitle={data.description}
     />
@@ -582,7 +629,6 @@ function ContainerNode({ data }: { data: LineageNodeData }) {
       borderClass="border-indigo-500 dark:border-indigo-600"
       bgClass="bg-indigo-50 dark:bg-indigo-950/70"
       ringClass="ring-indigo-400"
-      icon={Box}
       iconClass="text-indigo-600 dark:text-indigo-300"
       subtitle={data.description}
     />
@@ -596,7 +642,6 @@ function CloudResourceNode({ data }: { data: LineageNodeData }) {
       borderClass="border-sky-500 dark:border-sky-600"
       bgClass="bg-sky-50 dark:bg-sky-950/70"
       ringClass="ring-sky-400"
-      icon={Cloud}
       iconClass="text-sky-600 dark:text-sky-300"
       subtitle={data.description}
     />
@@ -620,7 +665,7 @@ function ClusterPillNode({ data }: { data: LineageNodeData }) {
   };
   const count = cluster.count ?? 0;
   const childType = (cluster.childType ?? cluster.nodeType) as LineageNodeType;
-  const Icon = CLUSTER_PILL_ICONS[childType] ?? Box;
+  const Icon = entityIcon(childType);
   return (
     <div
       data-testid="cluster-pill"
@@ -645,25 +690,6 @@ function ClusterPillNode({ data }: { data: LineageNodeData }) {
   );
 }
 
-const CLUSTER_PILL_ICONS: Partial<Record<LineageNodeType, ComponentType<{ className?: string }>>> = {
-  agent: ShieldAlert,
-  server: Server,
-  sharedServer: Server,
-  package: Package,
-  vulnerability: Bug,
-  misconfiguration: TriangleAlert,
-  credential: KeyRound,
-  tool: Wrench,
-  model: Brain,
-  dataset: Database,
-  container: Box,
-  cloudResource: Cloud,
-  provider: Building2,
-  environment: Cloud,
-  fleet: Building2,
-  cluster: Server,
-};
-
 function SharedServerNode({ data }: { data: LineageNodeData }) {
   return (
     <NodeCard
@@ -672,7 +698,6 @@ function SharedServerNode({ data }: { data: LineageNodeData }) {
       bgClass="bg-cyan-50 dark:bg-cyan-950/80"
       ringClass="ring-cyan-300"
       shapeClass="rounded-[18px]"
-      icon={Server}
       iconClass="text-cyan-600 dark:text-cyan-300"
       subtitle={data.command}
       footer={

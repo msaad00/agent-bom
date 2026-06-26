@@ -397,3 +397,19 @@ REPO_SCAN_CLONE_TIMEOUT_SECONDS = _float("AGENT_BOM_REPO_SCAN_CLONE_TIMEOUT_SECO
 REPO_SCAN_MAX_SIZE_BYTES = _int("AGENT_BOM_REPO_SCAN_MAX_SIZE_BYTES", 1024 * 1024 * 1024)
 # Max number of files in the cloned working tree.
 REPO_SCAN_MAX_FILES = _int("AGENT_BOM_REPO_SCAN_MAX_FILES", 100_000)
+
+
+# ── Cloud audit-trail behavioral ingestion (opt-in, read-only) ───────────
+# agent-bom can read the security-relevant slice of each cloud's native audit
+# trail (AWS CloudTrail / Azure Activity Log / GCP Cloud Audit Logs) to derive
+# behavioral graph edges (who *did* reach what). It is NOT a log/observability
+# platform: raw log lines are never stored — only aggregated edges. The reader
+# is disabled unless explicitly opted in, and the lookback window + event count
+# are bounded so a scan never pulls an unbounded log volume.
+
+# Master opt-in. When False (default), audit-trail ingestion is a clean no-op.
+AUDIT_TRAIL_ENABLED = _bool("AGENT_BOM_AUDIT_TRAIL", False)
+# Lookback window (hours) for audit events; the reader clamps to two weeks.
+AUDIT_TRAIL_LOOKBACK_HOURS = _int("AGENT_BOM_AUDIT_TRAIL_LOOKBACK_HOURS", 24)
+# Per-provider event cap; the reader clamps to a hard ceiling and warns when hit.
+AUDIT_TRAIL_MAX_EVENTS = _int("AGENT_BOM_AUDIT_TRAIL_MAX_EVENTS", 2000)

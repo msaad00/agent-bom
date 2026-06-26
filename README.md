@@ -68,7 +68,7 @@ the credential environment names in reach, and the agents that can call it.
 | Cloud estate | Read-only, gated asset inventory across AWS, Azure, GCP, and Snowflake plus AI/GPU provider posture and CIS benchmarks. One connection model per cloud: a scoped read-only role and keyless/token auth — see [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md) |
 | Identity (NHI) | Non-human identity discovery (Okta/Entra, gated), credential-expiry posture, and access-review recertification campaigns |
 | LLM cost | Spend forecasting, budget runway, chargeback/allocation, and seasonal-aware spend-anomaly detection |
-| Containers + IaC | Native OCI image parsing plus Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes |
+| Containers + IaC | Native OCI image parsing plus Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes; registry-wide sweeps across ECR/ACR/GAR (`cloud registry-scan`) and agentless AWS EBS disk side-scan (CWPP, snapshot-based, read-only) |
 | Secrets + runtime | Secret detection, MCP proxy/gateway, A2A and MCP auth-posture checks, inline firewall enforcement, and redaction surfaces |
 | Compliance | Mapped governance frameworks plus ZIP evidence bundles for auditors |
 
@@ -329,6 +329,16 @@ findings):
 agent-bom cloud inventory --provider all        # or aws | azure | gcp
 ```
 
+Or run one cloud-aware scan across every configured provider at once —
+`--provider all` (the default) auto-detects which clouds are connected and
+skips the rest:
+
+```bash
+agent-bom cloud scan                            # all configured clouds, read-only
+agent-bom cloud scan --provider aws --cis --show-passed
+agent-bom cloud registry-scan --provider ecr --region us-east-1   # sweep an ECR/ACR/GAR registry
+```
+
 CIS misconfigurations and graph toxic-combinations converge into the same
 `Finding` stream and exit-code gate as package vulnerabilities, so a real
 exposure can fail a pipeline:
@@ -337,6 +347,7 @@ exposure can fail a pipeline:
 agent-bom agents --aws --azure --gcp --snowflake --fail-on-severity high
 agent-bom graph                                 # multi-hop exposure paths
 agent-bom identity credential-expiry            # non-human identity posture
+agent-bom db freshness                          # confirm vuln data is current before gating
 ```
 
 The full grant templates, per-cloud permission catalogs, and the
@@ -363,10 +374,17 @@ docker compose -f docker-compose.pilot.yml up -d
 
 Production self-hosting starts with the deployment chooser:
 
+- [Deploy anywhere guide](docs/DEPLOY_PLATFORM.md) — one product, three tiers (laptop, your Kubernetes, hosted control plane)
 - [Deployment overview](site-docs/deployment/overview.md)
 - [Helm chart](deploy/helm/agent-bom)
+- [One-apply EKS platform module](deploy/terraform/platform-eks) — `terraform apply` the full control plane (cluster, Postgres, secrets, ingress)
 - [EKS reference installer](scripts/deploy/install-eks-reference.sh)
 - [Docker Hub image](https://hub.docker.com/r/agentbom/agent-bom)
+
+For a zero-install AWS scan, deploy the
+[CloudFormation one-click template](deploy/cloudformation) — it runs a
+read-only `agent-bom cloud aws` scan in your account via CodeBuild, no local
+credentials handed to agent-bom.
 
 There is no managed cloud offering in this repository today. Product lane
 boundaries are documented in [docs/PRODUCT_BOUNDARIES.md](docs/PRODUCT_BOUNDARIES.md).

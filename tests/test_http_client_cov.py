@@ -22,6 +22,13 @@ from agent_bom.http_client import (
 def _patch_url_validation(monkeypatch):
     """Keep retry tests focused on HTTP behavior, not ambient DNS resolution."""
     monkeypatch.setattr("agent_bom.security.validate_url", lambda _url: None)
+    # The registry rate-limit breaker is global state; reset it around every
+    # test so 429-bearing cases don't leak a tripped host into later tests.
+    from agent_bom.http_client import reset_rate_limit_breaker
+
+    reset_rate_limit_breaker()
+    yield
+    reset_rate_limit_breaker()
 
 
 class TestSanitizeForLog:

@@ -112,6 +112,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_HTTP_INITIAL_BACKOFF` | `float` | `1.0` | — |
 | `AGENT_BOM_HTTP_MAX_BACKOFF` | `float` | `30.0` | — |
 | `AGENT_BOM_HTTP_MAX_RETRIES` | `int` | `3` | Used by http_client.create_client() and request_with_retry().  Defaults: 3 retries with 1s initial backoff (doubles each retry, capped at 30s).  30s per-request timeout covers most external APIs; NVD can be slow so operators may raise this. |
+| `AGENT_BOM_HTTP_RATE_LIMIT_BREAKER_THRESHOLD` | `int` | `3` | Registry rate-limit circuit breaker: number of HTTP 429 responses from a single host within one scan before live lookups to that host are short- circuited to the cached/bundled fallback path for the rest of the run. Keeps a registry throttl |
 
 ## Local Analytics
 | Env var | Type | Default | Description |

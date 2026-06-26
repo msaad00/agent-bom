@@ -24,6 +24,13 @@ The canonical command reference lives in
   configured, and `cloud aws` / `cloud azure` / `cloud gcp` are aliases for the
   provider-scoped form. CIS misconfigurations converge into the same `Finding`
   stream and `--fail-on-severity` exit-code gate as package vulnerabilities.
+  An explicitly requested provider that hard-fails discovery or its CIS
+  benchmark (missing SDK or absent/invalid credentials) makes the command exit
+  non-zero, while a genuinely empty-but-successful scan and skipped
+  auto-detected clouds still exit 0; one provider failing never aborts the
+  others.
+- `agent-bom secrets <dir>` accepts `--offline` as a no-op (secret scanning is
+  always local) for parity with `agents`/`scan` so shared CI invocations work.
 - `agent-bom cloud registry-scan --provider <ecr|acr|gar>` sweeps an entire
   container registry read-only, deduping by content digest and capping the work
   list with `AGENT_BOM_REGISTRY_MAX_IMAGES` / `AGENT_BOM_REGISTRY_MAX_TAGS_PER_REPO`.

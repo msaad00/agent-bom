@@ -124,6 +124,8 @@ verbs are additive entry points that delegate to the underlying implementations.
 - Use `agent-bom agents -f sarif -o -` when you need SARIF on stdout for piping.
 - `where` is available both as `agent-bom where` and `agent-bom mcp where`.
 - `agent-bom verify` and `agent-bom verify agent-bom` both self-verify the installed package.
+- `cloud aws` / `cloud azure` / `cloud gcp` (and `cloud scan --provider <name>`) exit non-zero when an explicitly requested provider hard-fails discovery or its CIS benchmark because the provider SDK is not installed or credentials are absent/invalid. The helpful `pip install 'agent-bom[<provider>]'` / credential-setup message is still printed. A genuinely empty-but-successful scan (credentials present, no AI resources) still exits 0, and one provider failing never aborts the others — every requested provider is still attempted, the exit code only reflects that one hard-failed. `cloud scan --provider all` only scans auto-detected configured clouds, so unconfigured clouds are skipped (not failed) and the run stays at exit 0.
+- `secrets` accepts `--offline` as a no-op for parity with `agents`/`scan`; secret scanning is always local and never makes network calls, so shared CI invocations that pass `--offline` work unchanged.
 
 ## Common flags
 

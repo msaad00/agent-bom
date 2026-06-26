@@ -365,6 +365,16 @@ def compute_exit_code(
     if not ctx.policy_passed:
         exit_code = 1
 
+    # A requested cloud provider that hard-failed discovery or benchmarking
+    # (missing SDK / absent / invalid credentials) must surface as a non-zero
+    # exit so a silent pass in CI is impossible. A genuinely empty-but-successful
+    # scan records no failure and still exits 0.
+    if ctx.cloud_provider_failures:
+        if not quiet:
+            providers = ", ".join(sorted({str(f.get("provider", "?")) for f in ctx.cloud_provider_failures}))
+            con.print(f"\n  [red]Exiting with code 1: cloud provider discovery failed for {providers} (missing SDK or credentials)[/red]")
+        exit_code = 1
+
     # Push results to central dashboard
     if push_url and report:
         try:

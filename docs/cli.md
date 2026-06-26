@@ -15,7 +15,11 @@ The canonical command reference lives in
   emitted in SARIF result messages, an `exposure_chain` property, and
   `relatedLocations`.
 - `agent-bom agents --agent-mode` writes a stable JSON envelope for assistant
-  and automation callers.
+  and automation callers. By default the envelope's `data` is a bounded summary
+  (`data_mode: "summary"`) — counts plus the top-ranked findings and exposure
+  paths — so it fits an LLM context window; the full per-package payload is
+  omitted. Add `--agent-mode-full` (`data_mode: "full"`) or write to disk with
+  `-o report.json --format json` for complete detail.
 - `agent-bom profiles ...` manages named contexts in
   `~/.agent-bom/config.toml`; unknown profiles fail with the available profile
   list.

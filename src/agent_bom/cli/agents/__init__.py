@@ -434,6 +434,7 @@ def scan(
     reproducible: bool,
     agent_mode: bool,
     agent_token_budget: int,
+    agent_mode_full: bool,
     preset: Optional[str],
     open_report: bool,
     offline_html: bool,
@@ -2461,6 +2462,7 @@ def scan(
             fixable_only=fixable_only,
             agent_mode=agent_mode,
             agent_token_budget=agent_token_budget,
+            agent_mode_full=agent_mode_full,
         )
 
     # ── Posture summary mode (--posture) ──────────────────────────────────────
@@ -2606,6 +2608,7 @@ def scan(
             fixable_only=fixable_only,
             agent_mode=agent_mode,
             agent_token_budget=agent_token_budget,
+            agent_mode_full=agent_mode_full,
         )
 
     if exit_code:

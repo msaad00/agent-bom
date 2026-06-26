@@ -234,6 +234,13 @@ def output_options(fn):
                 help="Approximate JSON token budget for --agent-mode output. 0 keeps the full report.",
             ),
             click.option(
+                "--agent-mode-full",
+                "agent_mode_full",
+                is_flag=True,
+                default=False,
+                help="With --agent-mode, inline the complete report instead of the bounded summary (large output).",
+            ),
+            click.option(
                 "--exclude-unfixable",
                 is_flag=True,
                 default=False,

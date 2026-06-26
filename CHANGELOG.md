@@ -140,11 +140,23 @@ account.
   on the compliance dashboard.
 
 ### Changed
+- **`agents --agent-mode` summarizes the scan payload by default.** The envelope
+  now emits `data_mode: "summary"` with a bounded `data` field — counts
+  (packages by ecosystem, findings/exposure by severity), the top 10 ranked
+  findings and exposure paths, and a summary-level agent inventory — instead of
+  inlining the full per-package provenance dump. For a ~877-package repo the
+  stdout envelope drops from ~27 MB to a few KB so it fits an LLM/automation
+  context window. Pass `--agent-mode-full` (`data_mode: "full"`) or write JSON to
+  disk with `-o report.json --format json` for the complete report;
+  `data.full_report` records how to obtain it.
 - **Vulnerability cache auto-refreshes** and surfaces a freshness indicator.
 - Flat (non-graph) outputs prefer canonical findings for consistency with the
   graph view.
 
 ### Fixed
+- **Fixed agent-mode summary counts.** The envelope `summary.packages` field
+  previously fell through to the full package list; it now reports an integer
+  count.
 - **Offline coverage gaps now warn instead of discarding real findings** (was a
   silent false-negative).
 - **Go `go.mod` block-`require` parsing** no longer emits a phantom package, and

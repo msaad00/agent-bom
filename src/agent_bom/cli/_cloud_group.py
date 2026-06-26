@@ -105,6 +105,7 @@ def _run_cloud_scan(
     azure_subscription: Optional[str] = None,
     gcp_project: Optional[str] = None,
     cis: bool = True,
+    show_passed: bool = False,
     output_format: str = "console",
     output_path: Optional[str] = None,
     quiet: bool = False,
@@ -157,7 +158,13 @@ def _run_cloud_scan(
             f"\n[bold]Cloud scan[/bold] [dim]· {', '.join(p.upper() for p in providers)} · {'CIS + ' if cis else ''}discovery[/dim]"
         )
 
+    # Pass --show-passed through to the grouped CIS renderer in run_benchmarks
+    # (the scan command itself has no such flag). click.Context.meta is shared
+    # across the whole context stack, so it survives the invoke into `scan`.
+    from agent_bom.cli.agents._cloud import CIS_SHOW_PASSED_META
+
     ctx = click.get_current_context()
+    ctx.meta[CIS_SHOW_PASSED_META] = show_passed
     ctx.invoke(
         scan,
         aws=aws_on,
@@ -242,6 +249,11 @@ def cloud_group(ctx: click.Context) -> None:
 @click.option("--project", default=None, help="GCP project ID (gcp only).")
 @click.option("--cis/--no-cis", default=True, show_default=True, help="Run CIS benchmark for each selected provider.")
 @click.option(
+    "--show-passed",
+    is_flag=True,
+    help="List passed CIS checks in the posture report instead of collapsing them into a count.",
+)
+@click.option(
     "--verify",
     is_flag=True,
     help="Confirm detected credentials authenticate (STS/whoami). Opt-in — makes a network call.",
@@ -260,6 +272,7 @@ def scan_cmd(
     subscription: Optional[str],
     project: Optional[str],
     cis: bool,
+    show_passed: bool,
     verify: bool,
     output_format: str,
     output_path: Optional[str],
@@ -293,6 +306,7 @@ def scan_cmd(
         azure_subscription=subscription,
         gcp_project=project,
         cis=cis,
+        show_passed=show_passed,
         output_format=output_format,
         output_path=output_path,
         quiet=quiet,
@@ -308,6 +322,7 @@ def scan_cmd(
 @click.option("--include-iam", is_flag=True, help="Enrich identity graph with IAM role policies and trust principals")
 @click.option("--cis", is_flag=True, default=True, help="Run CIS benchmark (default: on)")
 @click.option("--no-cis", is_flag=True, help="Skip CIS benchmark")
+@click.option("--show-passed", is_flag=True, help="List passed CIS checks instead of collapsing them into a count.")
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True)
@@ -320,6 +335,7 @@ def aws_cmd(
     include_iam: bool,
     cis: bool,
     no_cis: bool,
+    show_passed: bool,
     output_format: str,
     output_path: Optional[str],
     quiet: bool,
@@ -337,6 +353,7 @@ def aws_cmd(
         aws_include_ec2=include_ec2,
         aws_include_iam=include_iam,
         cis=cis and not no_cis,
+        show_passed=show_passed,
         output_format=output_format,
         output_path=output_path,
         quiet=quiet,
@@ -347,6 +364,7 @@ def aws_cmd(
 @click.option("--subscription", default=None, help="Azure subscription ID")
 @click.option("--cis", is_flag=True, default=True, help="Run CIS benchmark (default: on)")
 @click.option("--no-cis", is_flag=True, help="Skip CIS benchmark")
+@click.option("--show-passed", is_flag=True, help="List passed CIS checks instead of collapsing them into a count.")
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True)
@@ -354,6 +372,7 @@ def azure_cmd(
     subscription: Optional[str],
     cis: bool,
     no_cis: bool,
+    show_passed: bool,
     output_format: str,
     output_path: Optional[str],
     quiet: bool,
@@ -366,6 +385,7 @@ def azure_cmd(
         ["azure"],
         azure_subscription=subscription,
         cis=cis and not no_cis,
+        show_passed=show_passed,
         output_format=output_format,
         output_path=output_path,
         quiet=quiet,
@@ -376,6 +396,7 @@ def azure_cmd(
 @click.option("--project", default=None, help="GCP project ID")
 @click.option("--cis", is_flag=True, default=True, help="Run CIS benchmark (default: on)")
 @click.option("--no-cis", is_flag=True, help="Skip CIS benchmark")
+@click.option("--show-passed", is_flag=True, help="List passed CIS checks instead of collapsing them into a count.")
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True)
@@ -383,6 +404,7 @@ def gcp_cmd(
     project: Optional[str],
     cis: bool,
     no_cis: bool,
+    show_passed: bool,
     output_format: str,
     output_path: Optional[str],
     quiet: bool,
@@ -395,6 +417,7 @@ def gcp_cmd(
         ["gcp"],
         gcp_project=project,
         cis=cis and not no_cis,
+        show_passed=show_passed,
         output_format=output_format,
         output_path=output_path,
         quiet=quiet,

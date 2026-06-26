@@ -65,6 +65,24 @@ def test_secrets_command_exits_zero_when_clean(tmp_path: Path):
     assert "No secrets or PII found" in result.output
 
 
+def test_secrets_command_accepts_offline_flag_as_noop(tmp_path: Path):
+    # `--offline` is accepted for parity with scan; secret scanning is always
+    # local so it neither errors (exit 2 usage error) nor changes the result.
+    (tmp_path / "README.md").write_text("No credentials here.\n", encoding="utf-8")
+
+    result = CliRunner().invoke(main, ["secrets", str(tmp_path), "--offline"])
+
+    assert result.exit_code == 0
+    assert "No secrets or PII found" in result.output
+
+
+def test_secrets_offline_flag_listed_in_help():
+    result = CliRunner().invoke(main, ["secrets", "--help"])
+
+    assert result.exit_code == 0
+    assert "--offline" in result.output
+
+
 def test_iac_command_exits_one_for_high_findings_by_default(tmp_path: Path):
     finding = IaCFinding(
         rule_id="TF-TEST",

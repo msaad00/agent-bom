@@ -37,6 +37,12 @@ class ScanContext:
     delta_result: Any = None
     policy_passed: bool = True
     exit_code: int = 0
+    # Cloud providers that were explicitly requested but hard-failed discovery or
+    # benchmarking (missing SDK / absent / invalid credentials → CloudDiscoveryError).
+    # Recorded per provider+stage; a non-empty list forces a non-zero exit so a
+    # requested cloud silently passing in CI is impossible. One provider failing
+    # never aborts the others — every requested provider is still attempted.
+    cloud_provider_failures: list = field(default_factory=list)
     # per-step timing breakdown (step_name → seconds)
     step_timings: dict = field(default_factory=dict)
     # internal references used for AI enrichment

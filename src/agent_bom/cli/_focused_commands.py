@@ -271,6 +271,11 @@ def sbom_cmd(
     default=False,
     help="Also flag high-entropy values assigned to secret-named keys (catches novel secrets; higher recall, some false positives).",
 )
+@click.option(
+    "--offline",
+    is_flag=True,
+    help="No-op — secret scanning is always local and never makes network calls. Accepted for parity with `scan`.",
+)
 @click.option("--quiet", "-q", is_flag=True)
 def secrets_cmd(
     path: str,
@@ -280,6 +285,7 @@ def secrets_cmd(
     log_json: bool,
     log_file: Optional[str],
     detect_entropy: bool,
+    offline: bool,
     quiet: bool,
 ) -> None:
     """Scan a directory for hardcoded secrets and PII.
@@ -293,7 +299,12 @@ def secrets_cmd(
       agent-bom secrets .                   # scan current directory
       agent-bom secrets /path/to/project    # scan specific project
       agent-bom secrets . --format json     # JSON output
+      agent-bom secrets . --offline         # --offline is a no-op (always local)
     """
+    # --offline is accepted for parity with `scan` (shared CI invocations) but is
+    # inherently a no-op: secret scanning reads local files and never touches the
+    # network. Referenced here so its acceptance is explicit.
+    _ = offline
     import json as _json
 
     from rich.console import Console

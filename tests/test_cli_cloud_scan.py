@@ -410,3 +410,134 @@ class TestGroupedCisRendererRouting:
         monkeypatch.setattr(output_mod, "console", con)
         _render_cis_findings(ScanContext(con=con))
         assert buf.getvalue() == ""
+
+
+# ── requested-provider hard failure → non-zero exit (no silent CI pass) ───────
+
+
+class TestRequestedProviderHardFailExits:
+    """A provider that is explicitly requested but whose SDK or credentials are
+    missing/invalid (CloudDiscoveryError) must make the scan exit non-zero. A
+    genuinely empty-but-successful scan still exits 0, and one provider failing
+    never aborts the others."""
+
+    def test_discovery_sdk_missing_exits_nonzero(self, monkeypatch):
+        from agent_bom.cli import main
+        from agent_bom.cloud import CloudDiscoveryError
+
+        def _raise(provider, **kwargs):
+            raise CloudDiscoveryError("boto3 is required for AWS scanning. Install with pip install 'agent-bom[aws]'")
+
+        monkeypatch.setattr("agent_bom.cloud.discover_from_provider", _raise)
+
+        r = CliRunner().invoke(main, ["scan", "--aws", "--no-discover", "--offline"])
+        assert r.exit_code == 1
+        # The helpful install hint is preserved (brackets survive Rich markup),
+        # and the gate message is shown. Normalize wrapping inserted by the
+        # console at narrow widths before matching.
+        normalized = " ".join(r.output.split())
+        assert "pip install 'agent-bom[aws]'" in normalized
+        assert "cloud provider discovery failed for aws" in normalized
+
+    def test_cis_benchmark_sdk_missing_exits_nonzero(self, monkeypatch):
+        from agent_bom.cli import main
+        from agent_bom.cloud import CloudDiscoveryError
+
+        # Discovery succeeds-but-empty; the CIS benchmark is the hard failure.
+        monkeypatch.setattr("agent_bom.cloud.discover_from_provider", lambda provider, **kwargs: ([], []))
+
+        def _raise_cis(**kwargs):
+            raise CloudDiscoveryError("boto3 is required for AWS scanning.")
+
+        monkeypatch.setattr("agent_bom.cloud.aws_cis_benchmark.run_benchmark", _raise_cis)
+
+        r = CliRunner().invoke(main, ["scan", "--aws", "--aws-cis-benchmark", "--no-discover", "--offline"])
+        assert r.exit_code == 1
+        assert "cloud provider discovery failed for aws" in r.output
+
+    def test_empty_but_successful_scan_still_exits_zero(self, monkeypatch):
+        from agent_bom.cli import main
+
+        # Credentials present, provider reachable, simply no AI resources found.
+        monkeypatch.setattr("agent_bom.cloud.discover_from_provider", lambda provider, **kwargs: ([], []))
+
+        r = CliRunner().invoke(main, ["scan", "--aws", "--no-discover", "--offline"])
+        assert r.exit_code == 0
+        assert "cloud provider discovery failed" not in r.output
+
+    def test_one_provider_failing_does_not_skip_the_others(self, monkeypatch):
+        """Both requested providers are attempted even when the first hard-fails;
+        the failure is recorded once per provider and the exit code is non-zero."""
+        from rich.console import Console
+
+        from agent_bom.cli.agents._cloud import run_cloud_discovery
+        from agent_bom.cli.agents._context import ScanContext
+        from agent_bom.cli.agents._post import compute_exit_code
+        from agent_bom.cloud import CloudDiscoveryError
+
+        attempted: list[str] = []
+
+        def _raise(provider, **kwargs):
+            attempted.append(provider)
+            raise CloudDiscoveryError(f"{provider} SDK missing")
+
+        monkeypatch.setattr("agent_bom.cloud.discover_from_provider", _raise)
+
+        ctx = ScanContext(con=Console(quiet=True))
+        run_cloud_discovery(
+            ctx,
+            skill_only=False,
+            aws=True,
+            aws_region=None,
+            aws_profile=None,
+            aws_include_lambda=False,
+            aws_include_eks=False,
+            aws_include_step_functions=False,
+            aws_include_ec2=False,
+            aws_include_iam=False,
+            aws_ec2_tag=None,
+            azure_flag=True,
+            azure_subscription=None,
+            gcp_flag=False,
+            gcp_project=None,
+            coreweave_flag=False,
+            coreweave_context=None,
+            coreweave_namespace=None,
+            databricks_flag=False,
+            snowflake_flag=False,
+            snowflake_authenticator=None,
+            nebius_flag=False,
+            nebius_api_key=None,
+            nebius_project_id=None,
+            hf_flag=False,
+            hf_token=None,
+            hf_username=None,
+            hf_organization=None,
+            wandb_flag=False,
+            wandb_api_key=None,
+            wandb_entity=None,
+            wandb_project=None,
+            mlflow_flag=False,
+            mlflow_tracking_uri=None,
+            openai_flag=False,
+            openai_api_key=None,
+            openai_org_id=None,
+            ollama_flag=False,
+            ollama_host=None,
+        )
+
+        # Both requested providers were attempted (no early abort).
+        assert attempted == ["aws", "azure"]
+        failed = {f["provider"] for f in ctx.cloud_provider_failures}
+        assert failed == {"aws", "azure"}
+        code = compute_exit_code(
+            ctx,
+            fail_on_severity=None,
+            warn_on_severity=None,
+            fail_on_kev=False,
+            fail_if_ai_risk=False,
+            push_url=None,
+            push_api_key=None,
+            quiet=True,
+        )
+        assert code == 1

@@ -27,6 +27,18 @@ def _cis_status_badge(status_value: str) -> str:
     return _CIS_STATUS_STYLE.get(status_value, status_value)
 
 
+def _safe_error(exc: object) -> str:
+    """Escape an error message for Rich so bracketed install hints survive.
+
+    Provider errors carry hints like ``pip install 'agent-bom[aws]'``; without
+    escaping, Rich parses ``[aws]`` as a markup tag and drops it, mangling the
+    one piece of guidance the operator needs.
+    """
+    from rich.markup import escape
+
+    return escape(str(exc))
+
+
 def run_cloud_discovery(
     ctx: ScanContext,
     *,
@@ -139,7 +151,12 @@ def run_cloud_discovery(
             else:
                 con.print(f"  [dim]  No AI agents found in {provider_name.upper()}[/dim]")
         except CloudDiscoveryError as exc:
-            con.print(f"\n  [red]{provider_name.upper()} discovery error: {exc}[/red]")
+            con.print(f"\n  [red]{provider_name.upper()} discovery error: {_safe_error(exc)}[/red]")
+            # A requested provider whose SDK or credentials are missing/invalid is a
+            # hard failure, not a clean empty result. Record it so the final exit code
+            # is non-zero (silent CI passes are the bug). The loop continues, so the
+            # other requested providers are still scanned.
+            ctx.cloud_provider_failures.append({"provider": provider_name, "stage": "discovery", "error": str(exc)})
 
     # Step 1h2: Auto-scan container images discovered from cloud providers (Azure, GCP, etc.)
     # Cloud providers discover container refs but cannot scan them — bridge that gap here.
@@ -310,7 +327,8 @@ def run_benchmarks(
             rate = ctx.cis_benchmark_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
         except CloudDiscoveryError as exc:
-            con.print(f"  [red]CIS Benchmark error: {exc}[/red]")
+            con.print(f"  [red]CIS Benchmark error: {_safe_error(exc)}[/red]")
+            ctx.cloud_provider_failures.append({"provider": "aws", "stage": "cis_benchmark", "error": str(exc)})
 
     # Step 1x-sf: CIS Snowflake Benchmark
     if snowflake_cis_benchmark:
@@ -328,7 +346,8 @@ def run_benchmarks(
             rate = ctx.sf_cis_benchmark_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
         except _SFCISError as exc:
-            con.print(f"  [red]CIS Snowflake Benchmark error: {exc}[/red]")
+            con.print(f"  [red]CIS Snowflake Benchmark error: {_safe_error(exc)}[/red]")
+            ctx.cloud_provider_failures.append({"provider": "snowflake", "stage": "cis_benchmark", "error": str(exc)})
 
     # Step 1x-az: CIS Azure Benchmark
     if azure_cis_benchmark:
@@ -347,7 +366,8 @@ def run_benchmarks(
             rate = ctx.azure_cis_benchmark_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
         except _AZCISError as exc:
-            con.print(f"  [red]CIS Azure Benchmark error: {exc}[/red]")
+            con.print(f"  [red]CIS Azure Benchmark error: {_safe_error(exc)}[/red]")
+            ctx.cloud_provider_failures.append({"provider": "azure", "stage": "cis_benchmark", "error": str(exc)})
 
     # Step 1x-gcp: CIS GCP Benchmark
     if gcp_cis_benchmark:
@@ -364,7 +384,8 @@ def run_benchmarks(
             rate = ctx.gcp_cis_benchmark_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
         except _GCPCISError as exc:
-            con.print(f"  [red]CIS GCP Benchmark error: {exc}[/red]")
+            con.print(f"  [red]CIS GCP Benchmark error: {_safe_error(exc)}[/red]")
+            ctx.cloud_provider_failures.append({"provider": "gcp", "stage": "cis_benchmark", "error": str(exc)})
 
     # Step 1x-db: Databricks Security Best Practices
     if databricks_security:
@@ -385,7 +406,8 @@ def run_benchmarks(
             rate = ctx.databricks_security_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
         except _DBSecError as exc:
-            con.print(f"  [red]Databricks security check error: {exc}[/red]")
+            con.print(f"  [red]Databricks security check error: {_safe_error(exc)}[/red]")
+            ctx.cloud_provider_failures.append({"provider": "databricks", "stage": "security_checks", "error": str(exc)})
 
     # Step 1x-b: Vector DB scan
     if vector_db_scan:

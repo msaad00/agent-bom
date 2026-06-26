@@ -64,6 +64,17 @@ def render_posture_summary(agents: list[Any], blast_radii: list[Any]) -> None:
         lines.append(f"[bold]Fixes:[/bold]    {fixable} finding(s) have an upgrade path")
         if top_str:
             lines.append(f"[bold]Top:[/bold]      {top_str}")
+            from agent_bom.output.exposure_path import (
+                exposure_path_blast_summary,
+                exposure_path_chain,
+                exposure_path_for_blast_radius,
+            )
+
+            top_path = exposure_path_for_blast_radius(top, rank=1)
+            chain = exposure_path_chain(top_path)
+            if chain:
+                lines.append(f"[bold]Path:[/bold]     {chain}")
+                lines.append(f"             {exposure_path_blast_summary(top_path)}")
     else:
         lines.append("[bold]Risk:[/bold]     No vulnerabilities found")
     lines.append(f"[bold]Trust:[/bold]    {floating} server(s) floating on @latest, {unverified} unverified")

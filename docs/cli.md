@@ -9,6 +9,11 @@ The canonical command reference lives in
 - `agent-bom agents -f <format> -o <path>` validates output suffixes and
   appends the canonical suffix when `<path>` has no extension.
 - JSON reports include `posture_scorecard` and root `posture_grade`.
+- `agent-bom agents --posture` renders a compact card that includes the top
+  exposure path as `agent → MCP server → package@version → CVE → tool` plus its
+  blast-radius summary (`N cred(s), N tool(s) reachable`). The same chain is
+  emitted in SARIF result messages, an `exposure_chain` property, and
+  `relatedLocations`.
 - `agent-bom agents --agent-mode` writes a stable JSON envelope for assistant
   and automation callers.
 - `agent-bom profiles ...` manages named contexts in

@@ -84,6 +84,47 @@ def exposure_path_for_blast_radius(br: BlastRadius, *, rank: int | None = None) 
     return {key: value for key, value in path.items() if value is not None}
 
 
+def _chain_token(hop: str) -> str:
+    """Render a single hop ref (``server:database-server``) as a display token."""
+
+    return hop.rsplit(":", 1)[-1] if ":" in hop else hop
+
+
+def exposure_path_chain(path: dict[str, Any], *, include_tool: bool = True) -> str:
+    """Render the primary trust spine of an ExposurePath as a one-line chain.
+
+    Produces ``agent → server → package@version → finding → tool`` from the
+    already-computed ``hops``/``target`` projection. The chain is the
+    differentiating wedge (agent → MCP server → package → CVE → tool); the wider
+    reachable-tool/credential set is summarised separately via blast counts.
+    """
+
+    hops = [hop for hop in (path.get("hops") or []) if hop]
+    if not hops:
+        return ""
+
+    def first(prefix: str) -> str | None:
+        return next((hop for hop in hops if hop.startswith(prefix)), None)
+
+    spine: list[str] = [hops[0]]
+    for candidate in (first("server:"), first("pkg:"), path.get("target") or first("finding:")):
+        if candidate and candidate not in spine:
+            spine.append(candidate)
+    if include_tool:
+        tool = first("tool:")
+        if tool and tool not in spine:
+            spine.append(tool)
+    return " → ".join(_chain_token(hop) for hop in spine)
+
+
+def exposure_path_blast_summary(path: dict[str, Any]) -> str:
+    """Render ``N cred(s), N tool(s) reachable`` for a single ExposurePath."""
+
+    creds = len(path.get("exposedCredentials") or [])
+    tools = len(path.get("reachableTools") or [])
+    return f"{creds} cred(s), {tools} tool(s) reachable"
+
+
 def exposure_path_brief(br: BlastRadius, *, rank: int) -> dict[str, str]:
     """Return compact strings for Markdown/HTML investigation summaries."""
 

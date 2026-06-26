@@ -17,7 +17,11 @@ from agent_bom.asset_provenance import (
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.finding import FindingType
 from agent_bom.models import AIBOMReport, Severity
-from agent_bom.output.exposure_path import exposure_path_for_blast_radius
+from agent_bom.output.exposure_path import (
+    exposure_path_blast_summary,
+    exposure_path_chain,
+    exposure_path_for_blast_radius,
+)
 from agent_bom.security import sanitize_sensitive_payload
 
 _SARIF_SEVERITY_MAP = {
@@ -142,6 +146,32 @@ def _sanitize_sarif_text(field_name: str, value: Any, *, fallback: str = "") -> 
     if redacted is None:
         return fallback
     return str(redacted)
+
+
+def _exposure_related_locations(exposure_path: dict[str, Any]) -> list[dict]:
+    """Project an ExposurePath spine into SARIF relatedLocations.
+
+    Each hop becomes a logicalLocation so SARIF viewers can render the
+    agent → server → package → CVE → tool trust chain alongside the result.
+    """
+
+    hops = [hop for hop in (exposure_path.get("hops") or []) if isinstance(hop, str) and hop]
+    related: list[dict] = []
+    for index, hop in enumerate(hops):
+        kind, _, name = hop.partition(":")
+        related.append(
+            {
+                "id": index,
+                "logicalLocations": [
+                    {
+                        "fullyQualifiedName": _sanitize_sarif_text("title", hop, fallback=hop),
+                        "kind": _sanitize_sarif_text("title", kind or "node", fallback="node"),
+                    }
+                ],
+                "message": {"text": _sanitize_sarif_text("title", name or hop, fallback=hop)},
+            }
+        )
+    return related
 
 
 def _trust_assessment_sarif_property(data: dict[str, Any]) -> dict[str, str]:
@@ -335,9 +365,13 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             rules.append(rule)
 
         affected = ", ".join(a.name for a in br.affected_agents)
+        exposure_path = exposure_path_for_blast_radius(br, rank=rank)
         message_text = f"{vuln.id} ({vuln.severity.value}) in {br.package.name}@{br.package.version}. Affects agents: {affected}."
         if vuln.fixed_version:
             message_text += f" Fix: upgrade to {vuln.fixed_version}."
+        exposure_chain = exposure_path_chain(exposure_path)
+        if exposure_chain:
+            message_text += f" Exposure path: {exposure_chain}. Blast radius: {exposure_path_blast_summary(exposure_path)}."
 
         raw_config_path = br.affected_agents[0].config_path if br.affected_agents else "unknown"
         # SARIF requires relative paths from repo root for GitHub Security tab.
@@ -371,12 +405,19 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 }
             ],
         }
+        # Represent the agent → server → package → CVE → tool spine as SARIF
+        # relatedLocations (logicalLocations) so viewers can render the trust
+        # chain that the JSON exposure_path encodes.
+        related_locations = _exposure_related_locations(exposure_path)
+        if related_locations:
+            result["relatedLocations"] = related_locations
         # Always emit structured properties so downstream consumers get
         # the exploit_likelihood (#486) + blast metrics without needing
         # a compliance tag to trigger enrichment.
         result_properties: dict = {
             "blast_score": br.risk_score,
-            "exposure_path": exposure_path_for_blast_radius(br, rank=rank),
+            "exposure_path": exposure_path,
+            "exposure_chain": exposure_chain or None,
             "epss_score": vuln.epss_score,
             "is_kev": vuln.is_kev,
             "exploit_likelihood": vuln.exploit_likelihood,

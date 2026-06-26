@@ -25,6 +25,8 @@ from agent_bom.models import (
     AgentType,
     AIBOMReport,
     BlastRadius,
+    MCPServer,
+    MCPTool,
     Package,
     Severity,
     Vulnerability,
@@ -219,3 +221,86 @@ def test_sarif_spans_multiple_finding_families(sarif_doc: dict) -> None:
     assert any(rid.startswith("iac/") for rid in rule_ids)  # IaC
     assert any(rid.startswith("cis/") for rid in rule_ids)  # cloud CIS
     assert any(rid.startswith("ai-inventory/") for rid in rule_ids)  # AI inventory
+
+
+def _full_chain_report() -> AIBOMReport:
+    """A report whose blast radius spans agent → server → package → CVE → tool."""
+    vuln = Vulnerability(
+        id="GHSA-test-chain",
+        summary="Code execution in pillow",
+        severity=Severity.CRITICAL,
+        cvss_score=9.8,
+        fixed_version="9.0.1",
+    )
+    pkg = Package(
+        name="pillow",
+        version="9.0.0",
+        ecosystem="pypi",
+        purl="pkg:pypi/pillow@9.0.0",
+        vulnerabilities=[vuln],
+        is_direct=True,
+    )
+    server = MCPServer(
+        name="database-server",
+        tools=[MCPTool(name="run_query", description="Run a SQL query")],
+        packages=[pkg],
+    )
+    agent = Agent(
+        name="cursor",
+        agent_type=AgentType.CURSOR,
+        config_path="/tmp/cursor.json",
+        mcp_servers=[server],
+        version="1.0",
+    )
+    br = BlastRadius(
+        vulnerability=vuln,
+        package=pkg,
+        affected_servers=[server],
+        affected_agents=[agent],
+        exposed_credentials=["DATABASE_URL", "ANTHROPIC_API_KEY"],
+        exposed_tools=[MCPTool(name="run_query", description="Run a SQL query")],
+    )
+    br.calculate_risk_score()
+    return AIBOMReport(
+        agents=[agent],
+        blast_radii=[br],
+        scan_sources=["agent_discovery"],
+        scan_id="chain-test-001",
+    )
+
+
+def test_sarif_exposure_chain_in_message_and_related_locations() -> None:
+    """The agent → server → package → CVE → tool spine is human/machine visible."""
+    from agent_bom.output.sarif import to_sarif
+
+    doc = to_sarif(_full_chain_report())
+    result = next(r for r in doc["runs"][0]["results"] if r["ruleId"] == "GHSA-test-chain")
+
+    # Human-visible: the chain + blast radius land in the SARIF message text.
+    message = result["message"]["text"]
+    assert "Exposure path:" in message
+    expected_chain = "cursor → database-server → pillow@9.0.0 → GHSA-test-chain → run_query"
+    assert expected_chain in message
+    assert "Blast radius: 2 cred(s), 1 tool(s) reachable" in message
+
+    # Machine-readable: condensed chain + full exposure_path in the properties bag.
+    assert result["properties"]["exposure_chain"] == expected_chain
+    assert result["properties"]["exposure_path"]["hops"]
+
+    # Idiomatic SARIF: each hop is a relatedLocation logicalLocation.
+    related = result["relatedLocations"]
+    fq_names = [loc["logicalLocations"][0]["fullyQualifiedName"] for loc in related]
+    assert "agent:cursor" in fq_names
+    assert "server:database-server" in fq_names
+    assert "tool:run_query" in fq_names
+
+
+def test_sarif_exposure_chain_document_is_schema_valid(sarif_validator: Draft7Validator) -> None:
+    """The exposure-path enrichment keeps the document schema-valid SARIF 2.1.0."""
+    from agent_bom.output.sarif import to_sarif
+
+    doc = to_sarif(_full_chain_report())
+    errors = sorted(sarif_validator.iter_errors(doc), key=lambda e: list(e.path))
+    if errors:
+        rendered = "\n".join(f"  - {'/'.join(str(p) for p in e.path)}: {e.message}" for e in errors[:20])
+        pytest.fail(f"SARIF document is not schema-valid ({len(errors)} error(s)):\n{rendered}")

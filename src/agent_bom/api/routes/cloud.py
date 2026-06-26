@@ -50,6 +50,21 @@ def _tenant(request: Request) -> str:
     return require_request_tenant_id(request)
 
 
+def _redact_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    """Strip exception-derived free-form warnings from the external REST response.
+
+    Provider discovery warnings are built from caught exceptions
+    (``sanitize_discovery_warning(exc)``), so surfacing them verbatim over REST
+    risks exposing backend detail. Keep the ``warnings`` key (REST/MCP shape
+    parity) but replace its value with a count-derived, exception-free notice;
+    the full warnings remain available via the CLI/MCP surfaces and the server log.
+    """
+    safe = dict(summary)
+    count = len(safe.get("warnings") or [])
+    safe["warnings"] = [f"{count} provider discovery warning(s) — run via CLI/MCP or see server logs for detail."] if count else []
+    return safe
+
+
 def _audit_metadata(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     """Roll the per-provider read-only discovery envelopes into one audit block.
 
@@ -142,7 +157,7 @@ async def cloud_inventory(
             "status": "ok" if any_enabled else "disabled",
             "total_resources": sum(s["resource_count"] for s in summaries),
             "total_identities": sum(s["identity_count"] for s in summaries),
-            "providers": summaries,
+            "providers": [_redact_summary(s) for s in summaries],
             "audit_metadata": _audit_metadata(raw_payloads),
             "note": (
                 "Estate-wide inventory is opt-in per provider via AGENT_BOM_CLOUD_INVENTORY / "
@@ -212,14 +227,14 @@ async def cloud_cis_benchmark(
                 from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
 
                 report = run_gcp_cis(project_id=project_id.strip() or None, checks=check_list)
-        except CloudDiscoveryError as exc:
+        except CloudDiscoveryError:
             # Provider SDK absent / credentials unavailable degrades to a clear
             # error envelope (HTTP 200) — exactly as the MCP cis_benchmark tool
             # does — never a 500. Keeps REST / MCP shape parity for the no-SDK path.
-            # Detail is logged server-side; the client gets a generic reason so no
-            # exception/stack detail leaks over REST.
+            # Log only the validated, CR/LF-stripped provider — no exception object
+            # (avoids both log injection and exception-detail exposure over the log).
             safe_requested = re.sub(r"[\r\n]+", "", requested)
-            _logger.warning("Cloud CIS benchmark unavailable for %s: %s", safe_requested, exc)
+            _logger.warning("Cloud CIS benchmark unavailable for %s", safe_requested)
             return {
                 "error": "Provider SDK or credentials unavailable for this benchmark.",
                 "provider": requested,

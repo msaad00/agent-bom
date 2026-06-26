@@ -4,9 +4,43 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from copy import deepcopy
 from typing import Any
+
+# Keys whose value is credential material and must never appear in the
+# machine-readable envelope, which automation callers routinely capture and log.
+# Matched on the key name only, as a whole token, so reference labels and entity
+# types (e.g. a credential node's ``label`` or ``entity_type``) — which name what
+# was found without exposing its value — are preserved. Bare ``token``/``key`` are
+# intentionally excluded to avoid masking fields like ``token_budget``.
+_SENSITIVE_KEY_RE = re.compile(
+    r"(?:^|[_-])(?:password|passwd|pwd|secret|secrets|api[_-]?key|access[_-]?key|"
+    r"secret[_-]?key|private[_-]?key|client[_-]?secret|auth[_-]?token|"
+    r"session[_-]?token|bearer|registry[_-]?pass)(?:$|[_-])",
+    re.IGNORECASE,
+)
+_REDACTED = "[REDACTED]"
+
+
+def _redact_sensitive(value: Any, *, key_is_sensitive: bool = False) -> Any:
+    """Return a copy of ``value`` with credential-keyed string values masked.
+
+    Recurses through dicts and lists. A string is masked only when its own key
+    matched :data:`_SENSITIVE_KEY_RE`; structural values (lists/dicts) under a
+    sensitive key are still walked so nested non-secret fields survive. This is
+    the single sanitization barrier for every agent-mode envelope, so no provider
+    payload can leak a secret value into stdout regardless of its source.
+    """
+    if isinstance(value, dict):
+        return {key: _redact_sensitive(item, key_is_sensitive=bool(_SENSITIVE_KEY_RE.search(str(key)))) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_sensitive(item) for item in value]
+    if key_is_sensitive and isinstance(value, str) and value and value != _REDACTED:
+        return _REDACTED
+    return value
+
 
 AGENT_MODE_ENV_VAR = "AGENT_BOM_AGENT_MODE"
 AGENT_MODE_SCHEMA_VERSION = "1"
@@ -390,4 +424,4 @@ def error_envelope(*, command: str | None, message: str, exit_code: int, error_t
 
 
 def dumps_envelope(payload: dict[str, Any]) -> str:
-    return json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
+    return json.dumps(_redact_sensitive(payload), separators=(",", ":"), sort_keys=True, default=str)

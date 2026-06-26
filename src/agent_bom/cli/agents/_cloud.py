@@ -309,26 +309,6 @@ def run_benchmarks(
             total = ctx.cis_benchmark_report.total
             rate = ctx.cis_benchmark_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
-            if failed > 0:
-                from rich.table import Table
-
-                tbl = Table(title="CIS AWS Foundations Benchmark v3.0", show_lines=False, padding=(0, 1))
-                tbl.add_column("Check", style="cyan", width=6)
-                tbl.add_column("Title", min_width=30)
-                tbl.add_column("Status", width=_CIS_STATUS_WIDTH)
-                tbl.add_column("Severity", width=8)
-                tbl.add_column("Evidence", max_width=50)
-                _sev_style = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
-                for c in ctx.cis_benchmark_report.checks:
-                    tbl.add_row(
-                        c.check_id,
-                        c.title,
-                        _cis_status_badge(c.status.value),
-                        _sev_style.get(c.severity, c.severity),
-                        c.evidence,
-                    )
-                con.print()
-                con.print(tbl)
         except CloudDiscoveryError as exc:
             con.print(f"  [red]CIS Benchmark error: {exc}[/red]")
 
@@ -347,26 +327,6 @@ def run_benchmarks(
             total = ctx.sf_cis_benchmark_report.total
             rate = ctx.sf_cis_benchmark_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
-            if failed > 0:
-                from rich.table import Table
-
-                tbl = Table(title="CIS Snowflake Benchmark v1.0", show_lines=False, padding=(0, 1))
-                tbl.add_column("Check", style="cyan", width=6)
-                tbl.add_column("Title", min_width=30)
-                tbl.add_column("Status", width=_CIS_STATUS_WIDTH)
-                tbl.add_column("Severity", width=8)
-                tbl.add_column("Evidence", max_width=50)
-                _sf_sev_style = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
-                for c in ctx.sf_cis_benchmark_report.checks:
-                    tbl.add_row(
-                        c.check_id,
-                        c.title,
-                        _cis_status_badge(c.status.value),
-                        _sf_sev_style.get(c.severity, c.severity),
-                        c.evidence,
-                    )
-                con.print()
-                con.print(tbl)
         except _SFCISError as exc:
             con.print(f"  [red]CIS Snowflake Benchmark error: {exc}[/red]")
 
@@ -386,31 +346,6 @@ def run_benchmarks(
             total = ctx.azure_cis_benchmark_report.total
             rate = ctx.azure_cis_benchmark_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
-            if failed > 0:
-                from rich.table import Table
-
-                tbl = Table(title="CIS Azure Security Benchmark v3.0", show_lines=False, padding=(0, 1))
-                tbl.add_column("Check", style="cyan", width=6)
-                tbl.add_column("Title", min_width=30)
-                tbl.add_column("Status", width=_CIS_STATUS_WIDTH)
-                tbl.add_column("Severity", width=8)
-                tbl.add_column("ATT&CK", width=20)
-                tbl.add_column("Evidence", max_width=40)
-                _az_sev = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
-                from agent_bom.mitre_attack import tag_cis_check
-
-                for c in ctx.azure_cis_benchmark_report.checks:
-                    attack = ", ".join(tag_cis_check(c)) or "-"
-                    tbl.add_row(
-                        c.check_id,
-                        c.title,
-                        _cis_status_badge(c.status.value),
-                        _az_sev.get(c.severity, c.severity),
-                        attack,
-                        c.evidence,
-                    )
-                con.print()
-                con.print(tbl)
         except _AZCISError as exc:
             con.print(f"  [red]CIS Azure Benchmark error: {exc}[/red]")
 
@@ -428,31 +363,6 @@ def run_benchmarks(
             total = ctx.gcp_cis_benchmark_report.total
             rate = ctx.gcp_cis_benchmark_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
-            if failed > 0:
-                from rich.table import Table
-
-                tbl = Table(title="CIS GCP Foundation Benchmark v3.0", show_lines=False, padding=(0, 1))
-                tbl.add_column("Check", style="cyan", width=6)
-                tbl.add_column("Title", min_width=30)
-                tbl.add_column("Status", width=_CIS_STATUS_WIDTH)
-                tbl.add_column("Severity", width=8)
-                tbl.add_column("ATT&CK", width=20)
-                tbl.add_column("Evidence", max_width=40)
-                _gcp_sev = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
-                from agent_bom.mitre_attack import tag_cis_check as _tag_gcp
-
-                for c in ctx.gcp_cis_benchmark_report.checks:
-                    attack = ", ".join(_tag_gcp(c)) or "-"
-                    tbl.add_row(
-                        c.check_id,
-                        c.title,
-                        _cis_status_badge(c.status.value),
-                        _gcp_sev.get(c.severity, c.severity),
-                        attack,
-                        c.evidence,
-                    )
-                con.print()
-                con.print(tbl)
         except _GCPCISError as exc:
             con.print(f"  [red]CIS GCP Benchmark error: {exc}[/red]")
 
@@ -474,32 +384,6 @@ def run_benchmarks(
             total = ctx.databricks_security_report.total
             rate = ctx.databricks_security_report.pass_rate
             con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
-            if failed > 0:
-                from rich.table import Table
-
-                tbl = Table(title="Databricks Security Best Practices", show_lines=False, padding=(0, 1))
-                tbl.add_column("Check", style="cyan", width=6)
-                tbl.add_column("Title", min_width=30)
-                tbl.add_column("Status", width=6)
-                tbl.add_column("Severity", width=8)
-                tbl.add_column("ATT&CK", width=20)
-                tbl.add_column("Evidence", max_width=40)
-                _db_status = {"pass": "[green]PASS[/]", "fail": "[red]FAIL[/]", "error": "[yellow]ERR[/]"}
-                _db_sev = {"critical": "[red]critical[/]", "high": "[bright_red]high[/]", "medium": "[yellow]medium[/]"}
-                from agent_bom.mitre_attack import tag_cis_check as _tag_db
-
-                for c in ctx.databricks_security_report.checks:
-                    attack = ", ".join(_tag_db(c)) or "-"
-                    tbl.add_row(
-                        c.check_id,
-                        c.title,
-                        _db_status.get(c.status.value, c.status.value),
-                        _db_sev.get(c.severity, c.severity),
-                        attack,
-                        c.evidence,
-                    )
-                con.print()
-                con.print(tbl)
         except _DBSecError as exc:
             con.print(f"  [red]Databricks security check error: {exc}[/red]")
 
@@ -645,3 +529,49 @@ def run_benchmarks(
             con.print(tbl)
         except Exception as exc:
             con.print(f"  [red]AISVS benchmark error: {exc}[/red]")
+
+    # Grouped CIS posture: prioritized failed-first plan with evidence + fix
+    # per check and PASS collapsed (the flat per-provider tables above are
+    # unreadable past ~60 checks). Renders once across every benchmarked cloud.
+    _render_cis_findings(ctx)
+
+
+# click.Context.meta key the cloud command writes when --show-passed is set;
+# meta is shared across the whole context stack, so it survives the
+# ``cloud scan`` → ``scan`` invoke without a new flag on the scan command.
+CIS_SHOW_PASSED_META = "cis_show_passed"
+
+
+def _render_cis_findings(ctx: ScanContext) -> None:
+    """Route benchmarked CIS results through the grouped console renderer.
+
+    Builds a lightweight report-shaped view exposing each provider's
+    serialized bundle under the attribute name the renderer reads
+    (``*_cis_benchmark_data``), then defers to ``print_cis_findings``.
+    Honors the cloud command's ``--show-passed`` flag (carried on the click
+    context ``meta``) to list passed checks instead of collapsing them.
+    Emits nothing when no CIS data is present.
+    """
+    from types import SimpleNamespace
+    from typing import cast
+
+    import click
+
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.console_render import print_cis_findings
+
+    bundle_attrs = (
+        ("cis_benchmark_data", ctx.cis_benchmark_report),
+        ("azure_cis_benchmark_data", ctx.azure_cis_benchmark_report),
+        ("gcp_cis_benchmark_data", ctx.gcp_cis_benchmark_report),
+        ("snowflake_cis_benchmark_data", ctx.sf_cis_benchmark_report),
+        ("databricks_cis_benchmark_data", ctx.databricks_security_report),
+    )
+    # print_cis_findings reads each provider's bundle off the report via
+    # getattr(report, "<provider>_cis_benchmark_data"); a namespace carrying
+    # exactly those attributes is all it touches, so no full report is needed.
+    view = SimpleNamespace(**{attr: (rep.to_dict() if rep is not None else None) for attr, rep in bundle_attrs})
+
+    click_ctx = click.get_current_context(silent=True)
+    show_passed = bool(click_ctx.meta.get(CIS_SHOW_PASSED_META)) if click_ctx is not None else False
+    print_cis_findings(cast("AIBOMReport", view), show_passed=show_passed)

@@ -313,6 +313,7 @@ AGENT_BOM_SHUTDOWN_DRAIN_SECONDS
 AGENT_BOM_SIDECAR_PROXY_IMAGE
 AGENT_BOM_SIDECAR_TOKEN_SECRET_KEY
 AGENT_BOM_SIDECAR_TOKEN_SECRET_NAME
+AGENT_BOM_SIDESCAN  # opt-in flag (default OFF) gating the agentless EBS disk side-scan — the one deliberate non-read-only capability; read at call-time in cloud/side_scan.py
 AGENT_BOM_SIEM_FORMAT
 AGENT_BOM_SIEM_INDEX
 AGENT_BOM_SIEM_TOKEN

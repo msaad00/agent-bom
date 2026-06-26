@@ -242,6 +242,30 @@ sequenceDiagram
     Reporter-->>User: Console / JSON / SARIF / HTML / SBOM
 ```
 
+### Component model and extensibility direction
+
+The pipeline is built from four component roles: **scanners** (discover and
+produce raw findings), **enrichers** (add CVSS/EPSS/KEV/GHSA, compliance, cloud
+and cost context), **matchers/correlators** (`correlate.py`,
+`cross_env_correlation.py`, graph overlays), and a **reporter**. Scanner drivers
+are already registered through `scanners/registry.py` with capability metadata
+(surfaced by `agent-bom capabilities`), and `api/pipeline.py` (`ScanPipeline`,
+`_run_scan_sync`) runs the stages and emits per-step DAG events.
+
+Two seams are being formalized so new sources and detections plug in without
+editing core orchestration:
+
+- a **router** that resolves an input or connected source (path, image ref,
+  cloud credential, MCP config, ingested SARIF) to the scanner and provider
+  drivers that handle it, consolidating selection logic currently split across
+  the CLI, the pipeline, and `scanners/__init__.py`; and
+- an **orchestrator** that runs registered `scan → enrich → correlate → graph →
+  findings` stages, with enrichers and matchers registered through the same
+  capability-metadata pattern scanners already use.
+
+This keeps detection-as-code rule packs and additional providers additive at the
+registry boundary rather than as edits to the scan path.
+
 ---
 
 ## 3. Blast Radius Propagation

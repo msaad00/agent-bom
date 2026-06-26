@@ -145,6 +145,8 @@ The scanner covers package risk, malicious or suspicious package indicators, con
 
 Blast radius is the product center of gravity. `agent-bom` connects vulnerabilities to packages, MCP servers, agents, credential exposure, and reachable tools. Impact is CWE-aware so the reported consequences match the weakness class instead of inflating every issue into full compromise.
 
+The highest-risk trust chain is surfaced directly in the human and machine surfaces, not only the JSON report. The `--posture` card renders the top exposure path as a one-line spine (`agent → MCP server → package@version → CVE → tool`) with its blast-radius summary (`N cred(s), N tool(s) reachable`), and SARIF results carry the same chain in the result message, an `exposure_chain` property, and `relatedLocations` so it renders in code-scanning viewers.
+
 ### Trust and policy
 
 `agent-bom` scores trust with evidence, not a black-box label. It combines package and registry posture, capability risk, drift, exposed credentials, and related supply-chain signals. Policy and compliance layers can then act on those findings with clearer context.

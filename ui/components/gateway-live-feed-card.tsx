@@ -20,7 +20,6 @@
  */
 
 import { useEffect, useState } from "react";
-import { Activity } from "lucide-react";
 import {
   api,
   formatDate,
@@ -52,26 +51,6 @@ const SAMPLE_FEED_EVENTS: GatewayFeedEvent[] = [
     source: "proxy",
   },
   {
-    ts: "2026-06-26T14:30:41Z",
-    agent: "support-copilot",
-    action_type: "tool_call_authorized",
-    target: "zendesk.update_ticket",
-    detail: "authorized",
-    tenant: "support",
-    shadow: false,
-    source: "proxy",
-  },
-  {
-    ts: "2026-06-26T14:30:18Z",
-    agent: "finance-reconciliation-agent",
-    action_type: "tool_call_blocked",
-    target: "stripe.create_refund",
-    detail: "Amount exceeds policy ceiling",
-    tenant: "finance",
-    shadow: false,
-    source: "proxy",
-  },
-  {
     ts: "2026-06-26T14:29:55Z",
     agent: "data-analyst-agent",
     action_type: "llm_call",
@@ -81,30 +60,7 @@ const SAMPLE_FEED_EVENTS: GatewayFeedEvent[] = [
     shadow: false,
     source: "observability",
   },
-  {
-    ts: "2026-06-26T14:29:30Z",
-    agent: "recruiting-agent",
-    action_type: "data_filter_applied",
-    target: "workday.search_candidates",
-    detail: "PII redacted",
-    tenant: "people-ops",
-    shadow: false,
-    source: "proxy",
-  },
 ];
-
-const SAMPLE_KPIS: GatewayFeedKpis = {
-  schema_version: "1.0",
-  tenant_id: "sample",
-  generated_at: "2026-06-26T14:31:07Z",
-  calls_today: 4485,
-  blocked_today: 312,
-  shadow_ai_blocked: 247,
-  data_filters_applied: 1893,
-  tool_calls_authorized: 4173,
-  llm_calls: 1204,
-  uptime_seconds: 18732,
-};
 
 // ── Presentation helpers ─────────────────────────────────────────────────────
 
@@ -208,7 +164,7 @@ export function GatewayLiveFeedCard({
         // No live traffic (or API unreachable): show a labelled sample so the
         // card always renders something meaningful.
         setEvents(SAMPLE_FEED_EVENTS);
-        setKpis(liveKpis ?? SAMPLE_KPIS);
+        setKpis(liveKpis);
         setIsSample(true);
       }
       setLoading(false);
@@ -235,7 +191,7 @@ export function GatewayLiveFeedCard({
       {/* Header */}
       <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
         <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-zinc-200">
-          <Activity className="h-4 w-4 shrink-0 text-emerald-400" />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
           <span className="truncate">Gateway Live Feed</span>
         </h3>
         {isSample ? (

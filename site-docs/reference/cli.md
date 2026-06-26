@@ -17,6 +17,10 @@
 | `ingest` | Ingest operator-provided evidence (e.g. hardware/firmware attestation) into the unified graph |
 | `ingest hardware` | Map a hardware/firmware attestation evidence file onto host / GPU / firmware / advisory graph nodes |
 | `cloud` | Scan AWS, Azure, or GCP infrastructure posture |
+| `cloud scan` | One cloud-aware scan across every configured provider (`--provider all` auto-detects; `--show-passed` lists passed CIS checks) |
+| `cloud aws` / `cloud azure` / `cloud gcp` | Provider-scoped aliases — `cloud scan --provider <aws\|azure\|gcp>` |
+| `cloud registry-scan` | Sweep an entire cloud container registry (ECR/ACR/GAR) — enumerate every repo+tag and scan each, read-only |
+| `cloud resilience` | Show provider pagination, retry, and partial-failure tolerance evidence |
 | `check` | Check one package before install or approval |
 | `verify` | Verify package integrity / provenance or self-verify `agent-bom` |
 | `secrets` | Scan a directory for hardcoded secrets and PII |
@@ -82,6 +86,8 @@
 | Command | Description |
 |---------|-------------|
 | `db` | Manage the local vulnerability database |
+| `db freshness` | Show the structured vuln-data freshness indicator (sources, age, staleness) surfaced on every scan, API, and MCP tool |
+| `db framework-status` | Show bundled framework catalog freshness |
 | `doctor` | Check environment readiness for scanning |
 | `gateway` | Multi-MCP gateway commands |
 | `interactive` | Start an interactive command shell for repeated CLI workflows |
@@ -155,6 +161,15 @@ agent-bom agents --config-dir /path/to/configs
 
 # Self-scan (scan agent-bom's own installed dependencies)
 agent-bom agents --self-scan
+
+# Cloud — one cloud-aware scan across every configured provider (read-only)
+agent-bom cloud scan                            # --provider all, auto-detects configured clouds
+agent-bom cloud scan --provider aws --cis --show-passed
+agent-bom cloud aws                             # alias for cloud scan --provider aws
+agent-bom cloud registry-scan --provider ecr --region us-east-1   # sweep an ECR/ACR/GAR registry, read-only
+
+# Vulnerability data freshness (same indicator surfaced on every scan, API, and MCP tool)
+agent-bom db freshness
 ```
 
 The `--self-scan` flag is on the `agents` subcommand (not top-level). It walks the active Python environment via `importlib.metadata.distributions()` and emits a CVE report against agent-bom's own runtime so you can audit the tool with the tool.
@@ -185,7 +200,9 @@ Contract](remediate-output.md).
 | `NVD_API_KEY` | Increase NVD rate limit | No |
 | `SNYK_TOKEN` | Optional commercial vuln-API enrichment | No |
 | `AGENT_BOM_CLICKHOUSE_URL` | Analytics storage | No |
-| `AWS_PROFILE` | AWS CIS benchmark | Only for `cis-benchmark --provider aws` |
-| `SNOWFLAKE_ACCOUNT` | Snowflake CIS benchmark | Only for `cis-benchmark --provider snowflake` |
+| `AWS_PROFILE` | AWS CIS benchmark | Only for `cloud aws --cis` / `cloud scan --provider aws` |
+| `SNOWFLAKE_ACCOUNT` | Snowflake CIS benchmark | Only for `agents --snowflake` CIS posture |
 | `AGENT_BOM_OKTA_DISCOVERY` / `AGENT_BOM_ENTRA_DISCOVERY` | Gate `identity discover` and discovered-NHI credential expiry | Only for NHI discovery |
-| `AGENT_BOM_CLOUD_INVENTORY` / `AGENT_BOM_AZURE_INVENTORY` / `AGENT_BOM_GCP_INVENTORY` | Gate `cloud inventory` per provider | Only for estate inventory |
+| `AGENT_BOM_AWS_INVENTORY` / `AGENT_BOM_AZURE_INVENTORY` / `AGENT_BOM_GCP_INVENTORY` | Gate `cloud inventory` and `cloud scan` per provider | Only for cloud connect / estate inventory |
+| `AGENT_BOM_VULN_DB_MAX_AGE_HOURS` / `AGENT_BOM_VULN_DB_OFFLINE` | Staleness threshold and offline override behind the `db freshness` indicator | No |
+| `AGENT_BOM_REGISTRY_MAX_IMAGES` / `AGENT_BOM_REGISTRY_MAX_TAGS_PER_REPO` | Cap the `cloud registry-scan` work list | Only for registry sweeps |

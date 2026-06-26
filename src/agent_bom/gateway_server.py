@@ -1120,7 +1120,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         event is emitted to the configured audit_sink so denies and warns
         flow into the existing /v1/proxy/audit relay.
         """
-        # P1-20 v0.86.5 audit: gateway --bearer-token (or API-key store) must
+        # gateway --bearer-token (or API-key store) must
         # gate the firewall-check endpoint, not just /mcp/{server}. Otherwise
         # the policy evaluator is reachable unauthenticated on shared
         # deployments and leaks every rule via the matched_rule field.
@@ -1215,7 +1215,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         # which breaks every Prometheus scraper. Serve as `Response` with the
         # exposition media type so scrapers parse it.
         #
-        # P1-20 v0.86.5 audit: scraping endpoints carry decision counters and
+        # scraping endpoints carry decision counters and
         # tenant tags — gate them with the same bearer/API-key check that
         # protects /mcp/{server} when incoming auth is configured.
         if _gateway_requires_auth(settings):

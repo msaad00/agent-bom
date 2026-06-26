@@ -1044,7 +1044,7 @@ async def stream_scan(request: Request, job_id: str):
 @router.get("/v1/jobs", tags=["scan"])
 async def list_jobs(
     request: Request,
-    # P1-17 v0.86.5 audit: enforce limit/offset caps via Pydantic so callers
+    # enforce limit/offset caps via Pydantic so callers
     # cannot pass `?limit=10000` to fan out the in-memory scan-job list.
     limit: Annotated[int, Query(ge=1, le=1000)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -1080,7 +1080,7 @@ async def list_jobs(
 
         enriched.append(item)
     return {
-        # P1-16 v0.86.5 audit: emit schema_version on terminal list responses
+        # emit schema_version on terminal list responses
         # so downstream consumers can pin a contract independent of API path.
         "schema_version": "v1",
         "jobs": enriched,
@@ -1123,7 +1123,7 @@ async def list_findings(
     request: Request,
     severity: str | None = None,
     sort: str = "effective_reach",
-    # P1-17 v0.86.5 audit: enforce limit cap server-side instead of trusting
+    # enforce limit cap server-side instead of trusting
     # the historical `min(limit, 1000)` clamp at use-site.
     limit: Annotated[int, Query(ge=1, le=1000)] = 500,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -1153,7 +1153,7 @@ async def list_findings(
     total = len(findings)
     page = _redact_finding_page(findings[offset : offset + limit])
     return {
-        # P1-16 v0.86.5 audit: emit schema_version so consumers can pin a
+        # emit schema_version so consumers can pin a
         # contract independent of API path.
         "schema_version": "v1",
         "findings": page,
@@ -1200,7 +1200,7 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
 @router.get("/v1/inventory", tags=["scan"])
 async def list_inventory(
     request: Request,
-    # P1-17 v0.86.5 audit: enforce limit cap server-side via Pydantic.
+    # enforce limit cap server-side via Pydantic.
     limit: Annotated[int, Query(ge=1, le=1000)] = 500,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict:

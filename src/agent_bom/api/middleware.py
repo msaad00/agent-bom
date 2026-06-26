@@ -1765,7 +1765,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-# ─── P1-18 v0.86.5 audit: structured error envelope ───────────────────────────
+# ─── structured error envelope ───────────────────────────
 
 # Map HTTP status codes to stable string codes that downstream consumers can
 # pin on without parsing free-form messages. The mapping is intentionally

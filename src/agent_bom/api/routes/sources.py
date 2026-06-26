@@ -147,7 +147,7 @@ async def create_source(request: Request, body: SourceCreate) -> dict:
 @router.get("/v1/sources", tags=["sources"])
 async def list_sources(
     request: Request,
-    # P1-17 v0.86.5 audit: cap pagination so hostile callers cannot probe an
+    # cap pagination so hostile callers cannot probe an
     # entire tenant's source registry in a single request.
     limit: Annotated[int, Query(ge=1, le=1000)] = 1000,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -157,7 +157,7 @@ async def list_sources(
     total = len(all_sources)
     page = all_sources[offset : offset + limit]
     return {
-        # P1-16 v0.86.5 audit: schema_version on terminal list response.
+        # schema_version on terminal list response.
         "schema_version": "v1",
         "sources": page,
         "count": len(page),

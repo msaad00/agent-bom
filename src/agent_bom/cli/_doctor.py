@@ -130,6 +130,23 @@ def doctor_cmd() -> None:
     _print_section(console, "Runtime surfaces", runtime_checks)
     _print_section(console, "Platform integrations", platform_checks)
 
+    # Nothing-silent capability view — every gated feature with its state and
+    # unlock path, so a skipped/degraded capability is never silent.
+    try:
+        from agent_bom.capabilities import coverage_line, resolved_capabilities
+
+        console.print("  [bold]Capabilities[/bold] [dim](run `agent-bom capabilities` for unlock paths)[/dim]")
+        _state_icon = {"on": "[green]✓[/green]", "off": "[dim]○[/dim]", "degraded": "[yellow]◐[/yellow]", "unknown": "[red]?[/red]"}
+        for cap, status in resolved_capabilities():
+            icon = _state_icon.get(status.state.value, "[dim]○[/dim]")
+            console.print(f"    {icon}  {cap.name + ':':<34s} {status.detail}")
+        console.print()
+        console.print(f"  [dim]{coverage_line()}[/dim]")
+        console.print()
+    except Exception:
+        # Never let the capability view break the core preflight output.
+        pass
+
     console.print()
 
     checks = [*core_checks, *runtime_checks, *platform_checks]

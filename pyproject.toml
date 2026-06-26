@@ -360,6 +360,7 @@ module = [
     "agent_bom.models",
     "agent_bom.backpressure",
     "agent_bom.proxy_sandbox",
+    "agent_bom.capabilities",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

@@ -208,6 +208,16 @@ main.add_command(serve_cmd, "serve")
 main.add_command(api_cmd, "api")
 # mcp-server is under `mcp server` — no top-level duplicate
 
+# ---------------------------------------------------------------------------
+# Canonical front-door verbs — the narrow human entry point.
+# connect → scan → graph → report (and `up` to run the platform locally).
+# `scan`/`graph`/`report` already exist; `connect` + `up` are additive.
+# ---------------------------------------------------------------------------
+from agent_bom.cli._entry_points import connect_group, make_up_command  # noqa: E402
+
+main.add_command(connect_group, "connect")
+main.add_command(make_up_command(serve_cmd), "up")
+
 from agent_bom.cli._gateway import gateway_group  # noqa: E402
 
 main.add_command(gateway_group, "gateway")

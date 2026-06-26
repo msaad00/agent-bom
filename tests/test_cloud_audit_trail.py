@@ -246,6 +246,7 @@ class TestAWSReader:
         assert events[0].resource == "bucket/data"
 
     def test_access_denied_actionable(self):
+        pytest.importorskip("botocore")  # ClientError is built here; botocore is in the [aws] extra, not the base test env
         from botocore.exceptions import ClientError
 
         denied = ClientError({"Error": {"Code": "AccessDenied", "Message": "denied"}}, "LookupEvents")

@@ -116,9 +116,7 @@ class _FakeReplayConnection:
             tenant = params[0]
             matched = [r for r in rows.values() if r["tenant_id"] == tenant]
             matched.sort(key=lambda r: r["captured_at"], reverse=True)
-            return _FakeCursor(
-                [(r["row_id"], r["tenant_id"], r["captured_at"], r["not_after"], r["record"]) for r in matched]
-            )
+            return _FakeCursor([(r["row_id"], r["tenant_id"], r["captured_at"], r["not_after"], r["record"]) for r in matched])
         return _FakeCursor()
 
     def commit(self):
@@ -173,9 +171,7 @@ def _pg_replay_store(monkeypatch):
         lambda p: pool.connection(),
         raising=False,
     )
-    monkeypatch.setattr(
-        prs.PostgresProxyReplayStore, "_init_tables", lambda self: None, raising=True
-    )
+    monkeypatch.setattr(prs.PostgresProxyReplayStore, "_init_tables", lambda self: None, raising=True)
     return prs.PostgresProxyReplayStore(pool=pool), pool
 
 

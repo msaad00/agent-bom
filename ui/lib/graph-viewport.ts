@@ -30,24 +30,28 @@ export function graphFitViewOptions(input: GraphViewportInput): GraphFitViewOpti
   let padding = 0.16;
   let maxZoom = 1.05;
 
+  // maxZoom is the readability ceiling: when a small/medium topology is wide
+  // and short, fitView is width-bound and would otherwise zoom far out and
+  // leave the nodes tiny. A higher ceiling lets fitView scale the nodes up to
+  // a legible size before it stops.
   if (nodeCount <= 0) {
     padding = 0.18;
     maxZoom = 1;
   } else if (nodeCount <= 6) {
-    padding = 0.08;
-    maxZoom = 1.72;
+    padding = 0.06;
+    maxZoom = 2;
   } else if (nodeCount <= 16) {
-    padding = 0.1;
-    maxZoom = 1.48;
+    padding = 0.08;
+    maxZoom = 1.75;
   } else if (nodeCount <= 32) {
-    padding = 0.12;
-    maxZoom = 1.28;
+    padding = 0.1;
+    maxZoom = 1.5;
   } else if (nodeCount <= 80) {
-    padding = 0.16;
-    maxZoom = 1.08;
+    padding = 0.14;
+    maxZoom = 1.2;
   } else {
-    padding = 0.2;
-    maxZoom = 0.92;
+    padding = 0.18;
+    maxZoom = 1;
   }
 
   const density = nodeCount > 0 ? edgeCount / nodeCount : 0;

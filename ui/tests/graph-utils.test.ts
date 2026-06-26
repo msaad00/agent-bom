@@ -46,6 +46,7 @@ describe("graph utility metadata", () => {
         layer: GRAPH_NODE_KIND_META[GraphNodeKind.SERVER].layer,
         kind: "node",
         shape: "square",
+        nodeType: "sharedServer",
       },
     ]);
   });

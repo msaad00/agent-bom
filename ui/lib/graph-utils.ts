@@ -127,6 +127,9 @@ export interface LegendItem {
   kind?: "node" | "edge" | undefined;
   lineStyle?: "solid" | "dashed" | undefined;
   shape?: "dot" | "square" | "diamond" | "pill" | undefined;
+  // Entity type drives the legend glyph from the same ENTITY_ICONS map the
+  // node renderers use, so a legend row and its node always show one icon.
+  nodeType?: LineageNodeType | undefined;
 }
 
 function legendShapeForGraphShape(shape: string): LegendItem["shape"] {
@@ -184,6 +187,7 @@ export function legendItemForNodeType(nodeType: LineageNodeType): LegendItem {
       layer: GRAPH_NODE_KIND_META.server.layer,
       kind: "node",
       shape: "square",
+      nodeType: "sharedServer",
     };
   }
 
@@ -195,6 +199,7 @@ export function legendItemForNodeType(nodeType: LineageNodeType): LegendItem {
     layer: meta?.layer,
     kind: "node",
     shape: override?.shape ?? (meta ? legendShapeForGraphShape(meta.shape) : "pill"),
+    nodeType,
   };
 }
 

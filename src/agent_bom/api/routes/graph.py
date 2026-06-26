@@ -10,6 +10,7 @@ Endpoints:
   POST /v1/graph/should-i-deploy — agent-native deploy decision
   GET  /v1/graph/paths          — attack paths from a source node
   GET  /v1/graph/impact         — blast radius of a node (reverse BFS)
+  GET  /v1/graph/rollup         — estate-scale CONTAINS roll-up + drill-down
   GET  /v1/graph/search         — full-text graph search
   GET  /v1/graph/agents         — paginated agent node selector
   GET  /v1/graph/clusters       — semantic cluster rollups
@@ -2851,3 +2852,73 @@ async def delete_preset(request: Request, name: str) -> dict:
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Preset '{name}' not found")
     return {"name": name, "status": "deleted"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Estate-scale roll-up (CONTAINS) — backend for the UI graph-nav drill-down
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/v1/graph/rollup", tags=["graph"])
+async def get_graph_rollup(
+    request: Request,
+    scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
+    node: Optional[str] = Query(None, description="Drill down into a container node's direct children"),
+    min_severity: Optional[str] = Query(None, description="Only roll up descendants at/above this severity"),
+    exposed: bool = Query(False, description="Only roll up internet-exposed descendants"),
+    toxic: bool = Query(False, description="Only roll up toxic-combination descendants"),
+    mode: Literal["rollup", "attack_path"] = Query("rollup", description="rollup (default) or attack_path-first view"),
+) -> dict:
+    """Collapse the estate along ``CONTAINS`` into a small, readable view.
+
+    Past a few hundred nodes the raw topology is an unreadable hairball. This
+    endpoint rolls the graph up along the containment hierarchy
+    (org -> account/project -> app -> resource) so a 1000+ node estate renders
+    as a handful of top-level containers, each carrying aggregate descendant
+    counts, worst-severity, a per-severity histogram, and exposure / toxic
+    flags. ``?node=<id>`` returns one level of direct children for on-demand
+    drill-down; ``?mode=attack_path`` returns the nodes/edges on materialised
+    attack paths first with the rest collapsed.
+
+    Backend for the UI graph-navigation surface. Read-only: never mutates the
+    source graph.
+    """
+    from agent_bom.graph.rollup import RollupFilters, attack_path_view, drill_down, rollup_view
+
+    tenant = _tenant(request)
+    graph_store = _get_graph_store_or_503()
+    requested_scan_id = scan_id or ""
+
+    if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
+        raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
+
+    if min_severity and min_severity.lower() not in SEVERITY_RANK:
+        raise HTTPException(status_code=422, detail=f"Unsupported severity: {min_severity}")
+
+    try:
+        graph = await _graph_store_call(
+            graph_store.load_graph,
+            scan_id=requested_scan_id,
+            tenant_id=tenant,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+
+    filters = RollupFilters(
+        min_severity=(min_severity or "").lower(),
+        exposed_only=exposed,
+        toxic_only=toxic,
+    )
+
+    try:
+        if node:
+            return drill_down(graph, node, filters=filters)
+        if mode == "attack_path":
+            return attack_path_view(graph, _derived_attack_paths(graph), filters=filters)
+        return rollup_view(graph, filters=filters)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # Never leak internal exception detail in the response (CodeQL lesson).
+        logger.warning("graph rollup failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to compute graph roll-up") from exc

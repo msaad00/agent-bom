@@ -227,6 +227,21 @@ async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "da
     await expect(canvas.getByText("Desktop Agent").first()).toBeVisible();
     await expect(canvas.getByText("CVE-2026-103").first()).toBeVisible();
     await expect(page.getByText("Legend").first()).toBeVisible();
+    const application = page.getByRole("application").first();
+    // Topology with the legend collapsed — proves the nodes fill the canvas
+    // and read clearly at default zoom.
+    await application.screenshot({
+      path: testInfo.outputPath(`lineage-graph-canvas-${theme}.png`),
+    });
+    // Open the on-canvas legend so the per-entity-type icons are captured.
+    const legendToggle = page.getByRole("button", { name: /show legend/i });
+    if (await legendToggle.isVisible()) {
+      await legendToggle.click();
+    }
+    await expect(page.getByRole("button", { name: /hide legend/i })).toBeVisible();
+    await application.screenshot({
+      path: testInfo.outputPath(`lineage-graph-legend-${theme}.png`),
+    });
   }
   await page.screenshot({
     path: testInfo.outputPath(`lineage-graph-dense-${theme}.png`),

@@ -7,7 +7,6 @@
 
 import { useState, useCallback, useEffect } from "react";
 import {
-  Brain,
   Boxes,
   Bug,
   ChevronDown,
@@ -26,6 +25,7 @@ import {
 import { useReactFlow } from "@xyflow/react";
 import { api, type GraphExportFormat } from "@/lib/api";
 import type { LegendItem } from "@/lib/graph-utils";
+import { entityIcon } from "@/components/lineage-nodes";
 
 // ─── Legend Bar ──────────────────────────────────────────────────────────────
 
@@ -155,13 +155,36 @@ function LegendSection({ title, items }: { title: string; items: LegendItem[] })
             className="flex min-w-0 items-center gap-2"
             title={item.description ?? item.label}
           >
-            <LegendMarker item={item} />
-            <LegendIcon item={item} />
+            <LegendGlyph item={item} />
             <span className="min-w-0 truncate" title={item.label}>{item.label}</span>
           </span>
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * One glyph per legend row. Edge rows keep the directional line marker; node
+ * rows show the colored entity icon (falling back to the colored shape swatch
+ * only when no icon resolves, e.g. legacy static legends).
+ */
+function LegendGlyph({ item }: { item: LegendItem }) {
+  if (item.kind === "edge") {
+    return (
+      <span className="flex w-5 shrink-0 justify-center">
+        <LegendMarker item={item} />
+      </span>
+    );
+  }
+  const icon = LegendIcon({ item });
+  if (icon) {
+    return <span className="flex w-5 shrink-0 justify-center">{icon}</span>;
+  }
+  return (
+    <span className="flex w-5 shrink-0 justify-center">
+      <LegendMarker item={item} />
+    </span>
   );
 }
 
@@ -207,9 +230,19 @@ function LegendMarker({ item }: { item: LegendItem }) {
 }
 
 function LegendIcon({ item }: { item: LegendItem }) {
-  const label = item.label.toLowerCase();
   const className = "h-3.5 w-3.5 shrink-0";
 
+  // Primary path: the same entity-type → icon map the nodes render with, so a
+  // legend row and its node always carry the identical glyph.
+  if (item.kind !== "edge" && item.nodeType) {
+    const Icon = entityIcon(item.nodeType);
+    return <Icon className={className} style={{ color: item.color }} />;
+  }
+
+  // Fallback for items without a nodeType (e.g. the static STANDARD/MESH
+  // legends and relationship rows): keyword-match the label to a glyph.
+  if (item.kind === "edge") return null;
+  const label = item.label.toLowerCase();
   if (label.includes("agent")) return <Shield className={className} style={{ color: item.color }} />;
   if (label.includes("identity") || label.includes("grant") || label.includes("policy") || label.includes("permission")) {
     return <KeyRound className={className} style={{ color: item.color }} />;
@@ -219,7 +252,7 @@ function LegendIcon({ item }: { item: LegendItem }) {
   if (label.includes("cred")) return <KeyRound className={className} style={{ color: item.color }} />;
   if (label.includes("tool")) return <Wrench className={className} style={{ color: item.color }} />;
   if (label.includes("vuln") || label.includes("cve")) return <Bug className={className} style={{ color: item.color }} />;
-  if (label.includes("model")) return <Brain className={className} style={{ color: item.color }} />;
+  if (label.includes("model")) return <Database className={className} style={{ color: item.color }} />;
   if (label.includes("dataset")) return <Database className={className} style={{ color: item.color }} />;
   if (label.includes("cloud")) return <Cloud className={className} style={{ color: item.color }} />;
   if (label.includes("provider") || label.includes("fleet") || label.includes("cluster")) {

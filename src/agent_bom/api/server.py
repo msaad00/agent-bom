@@ -661,7 +661,7 @@ _apply_cors_middleware(_cors_origins)
 
 app.add_middleware(TrustHeadersMiddleware)
 
-# P1-18 v0.86.5 audit: wrap FastAPI's bare ``{"detail": ...}`` errors in the
+# wrap FastAPI's bare ``{"detail": ...}`` errors in the
 # structured ``{error: {code, message, correlation_id, details}}`` envelope.
 install_error_envelope(app)
 

@@ -153,6 +153,12 @@ jobs:
           python -m pip install --quiet pyyaml
           python scripts/check_workflow_timeouts.py
 
+      - name: Comment hygiene — no chat/POC/task-id noise in source
+        # Source: scripts/check_comment_hygiene.py
+        # Conversational comments, LLM self-references, and internal task/audit
+        # breadcrumbs must never ship in product source. Pure stdlib, fails fast.
+        run: python scripts/check_comment_hygiene.py
+
       - name: Trust-contract — provisioning stays read-only
         # Source: scripts/check_provisioning_readonly.py
         # The cloud-connect Terraform modules (deploy/terraform/connect-*)

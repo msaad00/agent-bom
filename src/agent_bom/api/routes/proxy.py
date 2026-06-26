@@ -52,7 +52,7 @@ _proxy_alerts_total: int = 0
 _proxy_metrics: dict | None = None
 _proxy_metrics_by_tenant: dict[str, dict] = {}
 
-# P1-19 v0.86.5 audit: dedupe inbound proxy alerts by event_id over a 24h
+# dedupe inbound proxy alerts by event_id over a 24h
 # window so a hostile or buggy proxy cannot replay credential-leak alerts and
 # inflate detector tallies. Per-(tenant_id, event_id) entries expire after
 # AUDIT_DEDUPE_WINDOW_SECONDS.
@@ -174,7 +174,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         # process-wide; without this tag every tenant sees every other
         # tenant's alerts on shared deployments.
         enriched.setdefault("tenant_id", tenant_id)
-        # P1-19 v0.86.5 audit: dedupe by event_id so a buggy or hostile proxy
+        # dedupe by event_id so a buggy or hostile proxy
         # cannot replay credential_leak alerts and inflate per-detector
         # tallies. Empty event_id falls through to keep legacy callers working.
         event_id = str(enriched.get("event_id") or "")
@@ -225,7 +225,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         except Exception:
             pass
 
-    # P1-19 v0.86.5 audit: count both the alerts that crossed the wire and the
+    # count both the alerts that crossed the wire and the
     # runtime_alerts surfaced via summary so credential_leak detections always
     # register, regardless of which envelope key the caller used.
     summary_runtime_alerts = 0

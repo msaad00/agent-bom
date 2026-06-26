@@ -12,6 +12,13 @@ Design contract
 * **Read-only** — only the providers' read/lookup APIs are ever called
   (``cloudtrail:LookupEvents``, ``Microsoft.Insights/eventtypes/values/read``,
   ``logging.logEntries.list``). No write/mutate API is referenced anywhere.
+* **No new IAM role** — reuses the SAME existing read-only connect role
+  (AWS ``SecurityAudit``, Azure ``Reader``/``Security Reader``, GCP
+  ``roles/viewer``). On AWS, ``cloudtrail:LookupEvents`` is already granted by
+  the AWS-managed ``SecurityAudit`` policy, so enabling this adds *zero* new
+  permission; on Azure/GCP the reads above sit inside the existing
+  ``Reader``/``viewer`` grants in standard setups. Turning on audit-trail
+  behavioral edges costs no new role and (in standard setups) no new permission.
 * **Opt-in** — disabled unless ``AGENT_BOM_AUDIT_TRAIL`` is truthy. A scan that
   does not set it is a clean no-op; nothing is read.
 * **Nothing-silent** — a missing read permission yields a clear, actionable
@@ -193,10 +200,24 @@ def _iso(value: Any) -> str:
 
 # ── Permission-guidance strings (nothing-silent) ──────────────────────────
 
+# Each string names the exact read that was denied. Audit-trail needs no new
+# IAM role: it reuses the existing read-only connect role, and these reads sit
+# inside the AWS-managed SecurityAudit / Azure Reader / GCP roles/viewer grants
+# in standard setups. The guidance covers the rare setup where the existing
+# read-only role was narrowed below the managed-policy default.
 _GRANT_GUIDANCE = {
-    "aws": "grant cloudtrail:LookupEvents to enable audit-trail behavioral edges",
-    "azure": ("grant the 'Monitoring Reader' role (Microsoft.Insights/eventtypes/values/read) to enable audit-trail behavioral edges"),
-    "gcp": "grant roles/logging.viewer (logging.logEntries.list) to enable audit-trail behavioral edges",
+    "aws": (
+        "cloudtrail:LookupEvents is included in the AWS-managed SecurityAudit policy "
+        "your read-only role already uses; confirm the policy was not narrowed"
+    ),
+    "azure": (
+        "Microsoft.Insights/eventtypes/values/read is included in the built-in Reader role "
+        "your read-only service principal already uses; confirm the Reader assignment is in place"
+    ),
+    "gcp": (
+        "logging.logEntries.list is included in roles/viewer "
+        "your read-only service account already uses; confirm the roles/viewer binding is in place"
+    ),
 }
 
 

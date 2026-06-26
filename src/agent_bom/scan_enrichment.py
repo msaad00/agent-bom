@@ -92,6 +92,40 @@ def collect_cloud_inventory() -> list[dict[str, Any]]:
     return payloads
 
 
+def collect_audit_trail() -> list[dict[str, Any]]:
+    """Run opt-in, read-only audit-trail ingestion for every credentialed cloud.
+
+    Returns a list of per-provider ``status: ok`` payloads (the shape the graph
+    builder's ``_add_cloud_audit_behavioral`` layer consumes — aggregated
+    behavioral edges + findings, never raw log lines). A no-op returning ``[]``
+    unless an operator opted in via ``AGENT_BOM_AUDIT_TRAIL``: with the flag off
+    no reader runs and no network call is made.
+
+    Only providers whose credentials resolve locally are read; a provider with no
+    credentials is skipped (its reader would only emit guidance warnings). Each
+    provider is wrapped so a reader raising never breaks a scan. Read-only
+    throughout — only the providers' lookup/list APIs are ever called.
+    """
+    from agent_bom.cloud import audit_trail
+    from agent_bom.cloud.auth_probe import provider_has_credentials
+
+    if not audit_trail.is_enabled():
+        return []
+
+    payloads: list[dict[str, Any]] = []
+    for provider in ("aws", "azure", "gcp"):
+        try:
+            has_creds, _source = provider_has_credentials(provider)
+            if not has_creds:
+                continue
+            payload = audit_trail.collect_audit_trail(provider=provider)
+            if isinstance(payload, dict) and payload.get("status") == "ok":
+                payloads.append(payload)
+        except Exception:  # noqa: BLE001 — a reader failure must never break a scan
+            _logger.warning("%s audit-trail enrichment failed", provider, exc_info=True)
+    return payloads
+
+
 def collect_identity_discovery() -> dict[str, Any] | None:
     """Run opt-in NHI discovery for every enabled IdP and merge the results.
 
@@ -157,6 +191,17 @@ def enrich_report_with_estate_discovery(report: AIBOMReport) -> None:
             report.identity_discovery_data = discovery
     except Exception:  # noqa: BLE001
         _logger.warning("Identity discovery enrichment skipped", exc_info=True)
+
+    # Cloud audit-trail behavioral edges (opt-in AGENT_BOM_AUDIT_TRAIL, read-only).
+    # Attaches one ``status: ok`` payload per credentialed provider; the graph
+    # builder already consumes ``report["cloud_audit_trail"]`` into observed-reach
+    # edges. No-op (no network) when the flag is off.
+    try:
+        audit_payloads = collect_audit_trail()
+        if audit_payloads:
+            report.cloud_audit_trail_data = audit_payloads
+    except Exception:  # noqa: BLE001
+        _logger.warning("Audit-trail enrichment skipped", exc_info=True)
 
     # AWS Organizations hierarchy (org → OUs → accounts → SCPs). Gated by the same
     # AGENT_BOM_CLOUD_INVENTORY flag; only attached when the account is in an org.

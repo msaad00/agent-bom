@@ -325,7 +325,8 @@ class TestAzureReader:
             client_factory=lambda: _FakeAzureClient(error=Exception("AuthorizationFailed")),
         )
         assert events == []
-        assert any("Monitoring Reader" in w for w in warnings)
+        # Names the exact read and the existing Reader role it reuses (no new role).
+        assert any("Microsoft.Insights/eventtypes/values/read" in w and "Reader" in w for w in warnings)
 
 
 # ── GCP Cloud Audit Logs reader (mocked) ───────────────────────────────────
@@ -374,7 +375,8 @@ class TestGCPReader:
             client_factory=lambda: _FakeGCPClient(error=Exception("PermissionDenied: logging.logEntries.list")),
         )
         assert events == []
-        assert any("roles/logging.viewer" in w for w in warnings)
+        # Names the exact read and the existing roles/viewer role it reuses (no new role).
+        assert any("logging.logEntries.list" in w and "roles/viewer" in w for w in warnings)
 
     def test_failure_outcome_from_status_code(self):
         entries = [_GCPEntry("sa@proj.iam", "storage.buckets.delete", "buckets/b", code=7)]

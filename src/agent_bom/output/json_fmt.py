@@ -1197,6 +1197,9 @@ def to_json(report: AIBOMReport) -> dict:
     if report.identity_discovery_data:
         result["identity_discovery"] = report.identity_discovery_data
 
+    if report.cloud_audit_trail_data:
+        result["cloud_audit_trail"] = report.cloud_audit_trail_data
+
     if report.cis_benchmark_data:
         result["cis_benchmark"] = report.cis_benchmark_data
 

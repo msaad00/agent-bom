@@ -52,6 +52,7 @@ class _ConnectSource:
     cred_env_vars: tuple[str, ...]
     scan_command: str
     role_summary: str
+    audit_trail_note: str = ""
 
 
 # Ordered to match the documented onboarding story (cloud → data platforms).
@@ -65,6 +66,10 @@ _CONNECT_SOURCES: dict[str, _ConnectSource] = {
         cred_env_vars=("AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE"),
         scan_command="agent-bom scan --aws",
         role_summary="IAM principal with AWS-managed SecurityAudit (+ ViewOnlyAccess). List/Describe/Get only.",
+        audit_trail_note=(
+            "Reuses this SAME SecurityAudit role — no new role. cloudtrail:LookupEvents is "
+            "already granted by the AWS-managed SecurityAudit policy, so enabling it adds zero new permission."
+        ),
     ),
     "azure": _ConnectSource(
         name="azure",
@@ -75,6 +80,10 @@ _CONNECT_SOURCES: dict[str, _ConnectSource] = {
         cred_env_vars=("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"),
         scan_command="agent-bom scan --azure",
         role_summary="Service principal with the built-in Reader role. Read-only; no write/delete grants.",
+        audit_trail_note=(
+            "Reuses this SAME Reader/Security Reader role — no new role. The Activity Log read "
+            "(Microsoft.Insights/eventtypes/values/read) sits inside the existing Reader grant in standard setups."
+        ),
     ),
     "gcp": _ConnectSource(
         name="gcp",
@@ -85,6 +94,10 @@ _CONNECT_SOURCES: dict[str, _ConnectSource] = {
         cred_env_vars=("GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT", "CLOUDSDK_CORE_PROJECT"),
         scan_command="agent-bom scan --gcp",
         role_summary="Service account with roles/viewer (+ roles/iam.securityReviewer). Read-only.",
+        audit_trail_note=(
+            "Reuses this SAME roles/viewer role — no new role. The audit-log read "
+            "(logging.logEntries.list) sits inside the existing roles/viewer grant in standard setups."
+        ),
     ),
     "snowflake": _ConnectSource(
         name="snowflake",
@@ -125,6 +138,12 @@ def _render_connect_guidance(con: object, source: _ConnectSource) -> None:
     printer("  [bold]3. Scan[/bold]")
     printer(f"     [cyan]{source.scan_command}[/cyan]")
     printer()
+
+    if source.audit_trail_note:
+        printer("  [bold]Optional: audit-trail behavioral edges[/bold] [dim](opt-in, read-only)[/dim]")
+        printer("     [cyan]export AGENT_BOM_AUDIT_TRAIL=1[/cyan]")
+        printer(f"     [dim]{source.audit_trail_note}[/dim]")
+        printer()
 
     detected = _detected_cred_vars(source)
     if detected:

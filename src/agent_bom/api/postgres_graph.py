@@ -1557,13 +1557,11 @@ class PostgresGraphStore:
         where_sql = " AND ".join(node_where)
 
         with _tenant_connection(self._pool) as conn:
-            total_nodes = int(
-                conn.execute(
-                    f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
-                    params,
-                ).fetchone()[0]
-                or 0
-            )
+            total_nodes_row = conn.execute(
+                f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
+                params,
+            ).fetchone()
+            total_nodes = int((total_nodes_row[0] if total_nodes_row else 0) or 0)
             node_type_rows = conn.execute(
                 f"SELECT entity_type, COUNT(*) FROM graph_nodes WHERE {where_sql} GROUP BY entity_type",  # nosec B608 - where_sql is built from static clause fragments
                 params,
@@ -1572,19 +1570,17 @@ class PostgresGraphStore:
                 f"SELECT severity, COUNT(*) FROM graph_nodes WHERE {where_sql} AND severity <> '' GROUP BY severity",  # nosec B608 - where_sql is built from static clause fragments
                 params,
             ).fetchall()
-            total_edges = int(
-                conn.execute(
-                    f"""
-                    SELECT COUNT(*)
-                    FROM graph_edges
-                    WHERE tenant_id = %s AND scan_id = %s
-                      AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                      AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                    """,  # nosec B608 - where_sql is built from static clause fragments
-                    [tenant_id, effective_scan_id, *params, *params],
-                ).fetchone()[0]
-                or 0
-            )
+            total_edges_row = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM graph_edges
+                WHERE tenant_id = %s AND scan_id = %s
+                  AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                  AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                """,  # nosec B608 - where_sql is built from static clause fragments
+                [tenant_id, effective_scan_id, *params, *params],
+            ).fetchone()
+            total_edges = int((total_edges_row[0] if total_edges_row else 0) or 0)
             rel_rows = conn.execute(
                 f"""
                 SELECT relationship, COUNT(*)
@@ -1647,13 +1643,11 @@ class PostgresGraphStore:
                 where.append("severity_id >= %s")
                 params.append(min_severity_rank)
             where_sql = " AND ".join(where)
-            total = int(
-                conn.execute(
-                    f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
-                    params,
-                ).fetchone()[0]
-                or 0
-            )
+            total_row = conn.execute(
+                f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
+                params,
+            ).fetchone()
+            total = int((total_row[0] if total_row else 0) or 0)
             row_params = list(params)
             cursor_clause = ""
             if cursor:
@@ -1796,7 +1790,8 @@ class PostgresGraphStore:
                  AND gn.tenant_id = gns.tenant_id
             """
             where_sql = " AND ".join(search_where)
-            total = int(conn.execute("SELECT COUNT(*) " + from_clause + " WHERE " + where_sql, params).fetchone()[0] or 0)
+            total_row = conn.execute("SELECT COUNT(*) " + from_clause + " WHERE " + where_sql, params).fetchone()
+            total = int((total_row[0] if total_row else 0) or 0)
             if total == 0:
                 return [], 0, None
             row_params = list(params)

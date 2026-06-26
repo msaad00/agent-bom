@@ -75,7 +75,7 @@ so they cannot regress silently, but they are not part of this reference.
 ## Cloud audit-trail behavioral ingestion (opt-in, read-only)
 | Env var | Type | Default | Description |
 |---|---|---|---|
-| `AGENT_BOM_AUDIT_TRAIL` | `bool` | `False` | Master opt-in. When False (default), audit-trail ingestion is a clean no-op. |
+| `AGENT_BOM_AUDIT_TRAIL` | `bool` | `False` | Master opt-in. When False (default), audit-trail ingestion is a clean no-op. Reuses the existing read-only connect role — no new IAM role, and (in standard setups) no new permission. |
 | `AGENT_BOM_AUDIT_TRAIL_LOOKBACK_HOURS` | `int` | `24` | Lookback window (hours) for audit events; the reader clamps to two weeks. |
 | `AGENT_BOM_AUDIT_TRAIL_MAX_EVENTS` | `int` | `2000` | Per-provider event cap; the reader clamps to a hard ceiling and warns when hit. |
 

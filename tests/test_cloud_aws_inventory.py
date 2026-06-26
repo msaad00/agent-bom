@@ -720,6 +720,4 @@ def test_aws_permission_denied_degrades_with_guidance(monkeypatch: pytest.Monkey
     assert payload["instances"]  # EC2 still discovered
     actionable = [w for w in payload["warnings"] if "role lacks s3:ListAllMyBuckets" in w]
     assert actionable, payload["warnings"]
-    assert payload["missing_permissions"] == [
-        {"cloud": "aws", "permission": "s3:ListAllMyBuckets", "resource_type": "S3 buckets"}
-    ]
+    assert payload["missing_permissions"] == [{"cloud": "aws", "permission": "s3:ListAllMyBuckets", "resource_type": "S3 buckets"}]

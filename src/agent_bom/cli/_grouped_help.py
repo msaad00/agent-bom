@@ -12,8 +12,12 @@ import click
 COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
     [
         (
+            "Get started",
+            ["connect", "agents", "graph", "report", "up"],
+        ),
+        (
             "Scanning",
-            ["agents", "skills", "image", "fs", "iac", "sbom", "ingest", "cloud", "check", "verify", "secrets", "code"],
+            ["skills", "image", "fs", "iac", "sbom", "ingest", "cloud", "check", "verify", "secrets", "code"],
         ),
         (
             "Runtime",
@@ -43,6 +47,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
 )
 
 CATEGORY_DESCRIPTIONS: dict[str, str] = {
+    "Get started": "The front door: connect a source (read-only) → scan → graph → report. `up` runs the platform locally.",
     "Scanning": "Inventory, package, image, IaC, cloud, and skills scanning entry points.",
     "Runtime": "Live MCP enforcement, replay, and runtime monitoring surfaces.",
     "MCP": "Discovery, inventory, introspection, and MCP server operations.",
@@ -140,7 +145,7 @@ class GroupedGroup(SuggestingGroup):
     def format_epilog(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         formatter.write_paragraph()
         formatter.write_text(
-            "Navigation tips: start with `agent-bom doctor` for readiness, "
-            "`agent-bom agents --demo` for a reproducible local run, and "
-            "`agent-bom COMMAND --help` for command-specific flags."
+            "Navigation tips: get started with connect → scan → graph → report. "
+            "Run `agent-bom doctor` for readiness, `agent-bom agents --demo` for a "
+            "reproducible local run, and `agent-bom COMMAND --help` for command-specific flags."
         )

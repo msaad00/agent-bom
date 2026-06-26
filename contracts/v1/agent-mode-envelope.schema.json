@@ -9,6 +9,10 @@
     "mode": { "const": "agent" },
     "ok": { "type": "boolean" },
     "command": { "type": ["string", "null"] },
+    "data_mode": {
+      "enum": ["summary", "full"],
+      "description": "Shape of `data`. For agent-bom agents this is `summary` (bounded counts plus top-ranked findings/exposure paths) by default, or `full` with --agent-mode-full."
+    },
     "exit_code": { "type": "integer", "minimum": 0 },
     "summary": {
       "type": "object",

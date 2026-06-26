@@ -119,7 +119,10 @@ verbs are additive entry points that delegate to the underlying implementations.
 - `report query "SELECT ..."` runs read-only SQL against the local scan analytics store.
 - `remediate` is read-only by default and supports `--format json` as the machine-readable remediation contract.
 - `remediate --apply` patches supported package dependency manifests only after confirmation; `--apply --open-pr` creates a draft PR instead of pushing to the default branch.
-- `agents --agent-mode` emits a stable JSON envelope for assistant and automation callers. It defaults to JSON stdout, reports `ok`, `exit_code`, summary counts, confidence signals, truncation metadata, and the full scan payload under `data`.
+- `agents --agent-mode` emits a stable JSON envelope for assistant and automation callers. It defaults to JSON stdout and reports `ok`, `exit_code`, `data_mode`, summary counts, confidence signals, and truncation metadata.
+  - By default `data_mode` is `summary`: the `data` field carries a bounded payload — counts (packages by ecosystem, findings/exposure by severity), the top 10 ranked findings and exposure paths, and a summary-level agent inventory. The full inlined per-package provenance dump (`ai_inventory`, `ai_bom_entities`, the complete `findings`/`packages` lists) is omitted so the payload fits an LLM/automation context window. For a ~877-package repo this drops the envelope from tens of MB to a few KB.
+  - For the complete report, add `--agent-mode-full` (sets `data_mode: "full"` and inlines the legacy full payload), or write full JSON to disk with `agent-bom agents -o report.json --format json`. `data.full_report` records this on every summary payload.
+  - `--agent-token-budget <TOKENS>` further trims either shape to an approximate JSON token budget.
 - Use `agent-bom agents -f <format> -o <path>` for SARIF, HTML, SBOM, and richer environment exports.
 - Use `agent-bom agents -f sarif -o -` when you need SARIF on stdout for piping.
 - `where` is available both as `agent-bom where` and `agent-bom mcp where`.
@@ -138,8 +141,9 @@ agent-bom report diff before.json after.json -f json -o diff.json
 agent-bom report pipeline-events scan-job.json -o pipeline-events.jsonl
 agent-bom report query "SELECT severity, COUNT(*) AS count FROM scan_findings GROUP BY severity" --format json
 
-# Assistant / automation envelope
+# Assistant / automation envelope (bounded summary by default)
 agent-bom agents --agent-mode
+agent-bom agents --agent-mode --agent-mode-full      # inline the complete report
 agent-bom agents --agent-mode --agent-token-budget 4000
 
 # Compliance

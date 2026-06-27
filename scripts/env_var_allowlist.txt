@@ -74,6 +74,8 @@ AGENT_BOM_CLICKHOUSE_URL
 AGENT_BOM_CLICKHOUSE_USER
 # Opt-in (default OFF) gate for the estate-wide read-only AWS asset inventory scanner.
 AGENT_BOM_CLOUD_INVENTORY
+# base64 Fernet key for at-rest encryption of cloud-connection secrets (ExternalId); secret, env/KMS-only, never in config.py or ENV_VARS.md
+AGENT_BOM_CONNECTIONS_KEY
 # CLI profile config path override; read at command invocation time.
 AGENT_BOM_CONFIG
 AGENT_BOM_COMPLIANCE_BUNDLE_TTL_SECONDS

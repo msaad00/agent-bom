@@ -1,10 +1,11 @@
 """Tests for the per-tenant cloud connections plane (Phase A).
 
-Covers the store (CRUD + tenant isolation), at-rest encryption (ciphertext in
-the DB column, decrypt round-trip, missing-key refuses to persist), the CRUD API
-(RBAC, no-secret responses, tenant scoping), and the credential broker (AWS
-AssumeRole with the decrypted ExternalId; non-AWS providers raise the planned
-error).
+Covers the store (CRUD + tenant isolation, ``auth_params`` migration), at-rest
+encryption (ciphertext in the DB column, decrypt round-trip, missing-key refuses
+to persist), the CRUD API (RBAC, no-secret responses, tenant scoping), and the
+credential broker for all four providers (AWS AssumeRole, Azure
+ClientSecretCredential, GCP read-only service-account credentials, Snowflake
+key-pair connection) plus the per-provider read-only scan-launch route.
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ from __future__ import annotations
 import base64
 import os
 import sqlite3
+import sys
+import types
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -133,6 +136,54 @@ def test_sqlite_store_crud_and_isolation(tmp_path: Any) -> None:
     assert [r.id for r in store.list_for_tenant("tenant-b")] == [b.id]
     assert store.delete("tenant-b", b.id) is True
     assert store.get("tenant-b", b.id) is None
+
+
+def test_sqlite_auth_params_column_present_defaults_and_round_trips(tmp_path: Any) -> None:
+    db_path = str(tmp_path / "connections.db")
+    store = SQLiteConnectionStore(db_path)
+
+    # The migrated column exists.
+    columns = {row[1] for row in sqlite3.connect(db_path).execute("PRAGMA table_info(cloud_connections)").fetchall()}
+    assert "auth_params" in columns
+
+    # A record with no auth_params defaults to an empty dict on read-back.
+    plain = _record("tenant-a")
+    store.put(plain)
+    assert store.get("tenant-a", plain.id).auth_params == {}
+
+    # A record with auth_params round-trips the JSON unchanged.
+    with_params = _record("tenant-a", provider="azure")
+    with_params.auth_params = {"tenant_id": "t-guid", "subscription_id": "s-guid"}
+    store.put(with_params)
+    assert store.get("tenant-a", with_params.id).auth_params == {"tenant_id": "t-guid", "subscription_id": "s-guid"}
+
+
+def test_sqlite_auth_params_migration_is_idempotent_on_legacy_table(tmp_path: Any) -> None:
+    """A pre-migration table (no auth_params column) is migrated and backfilled."""
+    db_path = str(tmp_path / "legacy.db")
+    raw = sqlite3.connect(db_path)
+    # Recreate the pre-auth_params schema with one legacy row.
+    raw.execute(
+        "CREATE TABLE cloud_connections (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, provider TEXT NOT NULL, "
+        "display_name TEXT NOT NULL, role_ref TEXT NOT NULL, external_id_encrypted TEXT NOT NULL DEFAULT '', "
+        "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', status_detail TEXT NOT NULL DEFAULT '', "
+        "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_scan_at TEXT, scan_interval_minutes INTEGER)"
+    )
+    raw.execute(
+        "INSERT INTO cloud_connections (id, tenant_id, provider, display_name, role_ref, created_at, updated_at) "
+        "VALUES ('legacy-1', 'tenant-a', 'aws', 'legacy', 'arn:role', '2026-06-01T00:00:00+00:00', '2026-06-01T00:00:00+00:00')"
+    )
+    raw.commit()
+    raw.close()
+
+    store = SQLiteConnectionStore(db_path)  # runs the idempotent migration
+    legacy = store.get("tenant-a", "legacy-1")
+    assert legacy is not None
+    assert legacy.auth_params == {}
+    # Re-init is a no-op (idempotent) and the backfilled column stays NOT NULL.
+    store.init_schema()
+    columns = {row[1] for row in sqlite3.connect(db_path).execute("PRAGMA table_info(cloud_connections)").fetchall()}
+    assert "auth_params" in columns
 
 
 # --------------------------------------------------------------------------- #
@@ -742,13 +793,202 @@ def test_broker_aws_assume_role_uses_decrypted_external_id(monkeypatch: pytest.M
     assert sessions["region_name"] == "us-east-1"
 
 
-def test_broker_non_aws_provider_planned_error() -> None:
+def _install_fake_module(monkeypatch: pytest.MonkeyPatch, dotted: str, leaf: types.ModuleType) -> None:
+    """Inject a fake module (and any missing parent packages) into sys.modules.
+
+    Lets the broker's lazy ``from x.y import z`` resolve a fake SDK whether or not
+    the real SDK is installed; monkeypatch restores sys.modules afterwards.
+    """
+    parts = dotted.split(".")
+    for i in range(1, len(parts) + 1):
+        name = ".".join(parts[:i])
+        module = leaf if name == dotted else sys.modules.get(name) or types.ModuleType(name)
+        monkeypatch.setitem(sys.modules, name, module)
+    for i in range(1, len(parts)):
+        parent = sys.modules[".".join(parts[:i])]
+        monkeypatch.setattr(parent, parts[i], sys.modules[".".join(parts[: i + 1])], raising=False)
+
+
+def _azure_record() -> CloudConnectionRecord:
+    record = _record("tenant-a", provider="azure")
+    record.role_ref = "app-client-id-123"
+    record.external_id_encrypted = connection_crypto.encrypt_secret("super-secret-client-secret")
+    record.auth_params = {"tenant_id": "tenant-guid", "subscription_id": "sub-guid"}
+    return record
+
+
+def _gcp_record() -> CloudConnectionRecord:
+    record = _record("tenant-a", provider="gcp")
+    record.role_ref = "sa@project.iam.gserviceaccount.com"
+    record.external_id_encrypted = connection_crypto.encrypt_secret('{"type": "service_account", "project_id": "proj"}')
+    record.auth_params = {"project_id": "proj"}
+    return record
+
+
+def _snowflake_record(pem: str) -> CloudConnectionRecord:
+    record = _record("tenant-a", provider="snowflake")
+    record.role_ref = "ACME-ACCT"
+    record.external_id_encrypted = connection_crypto.encrypt_secret(pem)
+    record.auth_params = {"user": "ABOM_SVC", "role": "ABOM_READONLY", "warehouse": "ABOM_WH"}
+    return record
+
+
+def test_broker_azure_uses_decrypted_client_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     from agent_bom.cloud import connection_broker
 
-    for provider in ("azure", "gcp", "snowflake"):
-        record = _record("tenant-a", provider=provider)
-        with pytest.raises(NotImplementedError):
-            connection_broker.broker_session(record)
+    captured: dict[str, Any] = {}
+    sentinel = object()
+
+    class _FakeClientSecretCredential:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+    def _factory(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return sentinel
+
+    fake = types.ModuleType("azure.identity")
+    fake.ClientSecretCredential = _factory  # type: ignore[attr-defined]
+    _install_fake_module(monkeypatch, "azure.identity", fake)
+
+    result = connection_broker.broker_session(_azure_record())
+    assert result is sentinel
+    assert captured["tenant_id"] == "tenant-guid"
+    assert captured["client_id"] == "app-client-id-123"
+    assert captured["client_secret"] == "super-secret-client-secret"
+
+
+def test_broker_azure_missing_tenant_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import connection_broker
+
+    fake = types.ModuleType("azure.identity")
+    fake.ClientSecretCredential = lambda **kwargs: object()  # type: ignore[attr-defined]
+    _install_fake_module(monkeypatch, "azure.identity", fake)
+
+    record = _azure_record()
+    record.auth_params = {}
+    with pytest.raises(connection_broker.ConnectionBrokerError):
+        connection_broker.broker_session(record)
+
+
+def test_broker_gcp_builds_readonly_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import connection_broker
+
+    captured: dict[str, Any] = {}
+    sentinel = object()
+
+    class _FakeCreds:
+        @classmethod
+        def from_service_account_info(cls, info: Any, scopes: Any = None) -> Any:
+            captured["info"] = info
+            captured["scopes"] = scopes
+            return sentinel
+
+    sa_mod = types.ModuleType("google.oauth2.service_account")
+    sa_mod.Credentials = _FakeCreds  # type: ignore[attr-defined]
+    _install_fake_module(monkeypatch, "google.oauth2.service_account", sa_mod)
+    oauth2 = sys.modules["google.oauth2"]
+    monkeypatch.setattr(oauth2, "service_account", sa_mod, raising=False)
+
+    result = connection_broker.broker_session(_gcp_record())
+    assert result is sentinel
+    assert captured["info"]["project_id"] == "proj"
+    # Scoped to the read-only cloud-platform scope so it cannot authorize a write.
+    assert captured["scopes"] == [connection_broker._GCP_READONLY_SCOPE]
+
+
+def test_broker_gcp_bad_key_json_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import connection_broker
+
+    sa_mod = types.ModuleType("google.oauth2.service_account")
+    sa_mod.Credentials = type("C", (), {"from_service_account_info": staticmethod(lambda *a, **k: object())})  # type: ignore[attr-defined]
+    _install_fake_module(monkeypatch, "google.oauth2.service_account", sa_mod)
+    monkeypatch.setattr(sys.modules["google.oauth2"], "service_account", sa_mod, raising=False)
+
+    record = _gcp_record()
+    record.external_id_encrypted = connection_crypto.encrypt_secret("not-json-at-all")
+    with pytest.raises(connection_broker.ConnectionBrokerError) as exc:
+        connection_broker.broker_session(record)
+    assert "not-json-at-all" not in str(exc.value)
+
+
+def _generate_test_pem() -> str:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("ascii")
+
+
+def test_broker_snowflake_keypair_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import connection_broker
+
+    captured: dict[str, Any] = {}
+    sentinel = object()
+
+    def _fake_connect(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return sentinel
+
+    connector = types.ModuleType("snowflake.connector")
+    connector.connect = _fake_connect  # type: ignore[attr-defined]
+    _install_fake_module(monkeypatch, "snowflake.connector", connector)
+
+    result = connection_broker.broker_session(_snowflake_record(_generate_test_pem()))
+    assert result is sentinel
+    assert captured["account"] == "ACME-ACCT"
+    assert captured["user"] == "ABOM_SVC"
+    assert captured["role"] == "ABOM_READONLY"
+    assert captured["warehouse"] == "ABOM_WH"
+    # Key-pair auth: the private key is presented as DER bytes, never a password.
+    assert isinstance(captured["private_key"], bytes)
+    assert "password" not in captured
+
+
+def test_broker_snowflake_bad_pem_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import connection_broker
+
+    connector = types.ModuleType("snowflake.connector")
+    connector.connect = lambda **kwargs: object()  # type: ignore[attr-defined]
+    _install_fake_module(monkeypatch, "snowflake.connector", connector)
+
+    record = _snowflake_record("-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n-----END PRIVATE KEY-----")
+    with pytest.raises(connection_broker.ConnectionBrokerError) as exc:
+        connection_broker.broker_session(record)
+    assert "not-a-real-key" not in str(exc.value)
+
+
+@pytest.mark.parametrize("provider", ["azure", "gcp", "snowflake"])
+def test_broker_secret_decrypt_failure_never_leaks(provider: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A decrypt failure fails closed with no plaintext, for every provider.
+
+    SDKs are faked so the broker reaches the decrypt step regardless of which
+    extras are installed.
+    """
+    from agent_bom.cloud import connection_broker
+
+    azure_mod = types.ModuleType("azure.identity")
+    azure_mod.ClientSecretCredential = lambda **kwargs: object()  # type: ignore[attr-defined]
+    _install_fake_module(monkeypatch, "azure.identity", azure_mod)
+    sa_mod = types.ModuleType("google.oauth2.service_account")
+    sa_mod.Credentials = type("C", (), {"from_service_account_info": staticmethod(lambda *a, **k: object())})  # type: ignore[attr-defined]
+    _install_fake_module(monkeypatch, "google.oauth2.service_account", sa_mod)
+    monkeypatch.setattr(sys.modules["google.oauth2"], "service_account", sa_mod, raising=False)
+    connector = types.ModuleType("snowflake.connector")
+    connector.connect = lambda **kwargs: object()  # type: ignore[attr-defined]
+    _install_fake_module(monkeypatch, "snowflake.connector", connector)
+
+    builders = {"azure": _azure_record, "gcp": _gcp_record, "snowflake": lambda: _snowflake_record(_generate_test_pem())}
+    record = builders[provider]()
+    # Corrupt the ciphertext so decryption fails closed.
+    record.external_id_encrypted = "garbage-token"
+    with pytest.raises(connection_broker.ConnectionBrokerError) as exc:
+        connection_broker.broker_session(record)
+    assert "garbage-token" not in str(exc.value)
 
 
 def test_broker_unknown_provider_value_error() -> None:
@@ -923,17 +1163,180 @@ def test_scan_missing_connection_404(monkeypatch: pytest.MonkeyPatch) -> None:
     assert resp.status_code == 404
 
 
-@pytest.mark.parametrize("provider", ["azure", "gcp", "snowflake"])
-def test_scan_non_aws_provider_returns_planned(provider: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_scan_mocks(monkeypatch)
-    cid = _seed_connection("tenant-alpha", provider=provider)
+class _FakeProviderCIS:
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "benchmark": "CIS Provider",
+            "benchmark_version": "1.0",
+            "pass_rate": 50.0,
+            "passed": 1,
+            "failed": 1,
+            "total": 2,
+            "checks": [],
+        }
+
+
+def _fake_inventory_payload(provider: str) -> dict[str, Any]:
+    return {
+        "provider": provider,
+        "status": "ok",
+        "account_id": "acct",
+        "subscription_id": "acct",
+        "project_id": "acct",
+        "region": "",
+        "buckets": [],
+        "instances": [],
+        "security_groups": [],
+        "roles": [],
+        "users": [],
+        "warnings": [],
+    }
+
+
+class _FakeSnowflakeConn:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_scan_azure_brokers_runs_persists_and_marks_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import azure_cis_benchmark, azure_inventory, connection_broker
+
+    calls: dict[str, Any] = {}
+    monkeypatch.setattr(connection_broker, "broker_session", lambda record, **k: _BROKER_SESSION_SENTINEL)
+
+    def _inv(subscription_id: Any = None, credential: Any = None, force: bool = False, **k: Any) -> dict[str, Any]:
+        calls["inv_cred"] = credential
+        calls["inv_force"] = force
+        return _fake_inventory_payload("azure")
+
+    def _cis(subscription_id: Any = None, credential: Any = None, **k: Any) -> Any:
+        calls["cis_cred"] = credential
+        return _FakeProviderCIS()
+
+    monkeypatch.setattr(azure_inventory, "discover_inventory", _inv)
+    monkeypatch.setattr(azure_cis_benchmark, "run_benchmark", _cis)
+
+    cid = _seed_connection("tenant-alpha", provider="azure")
     client = TestClient(_app())
     resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
-    assert resp.status_code == 501
-    assert "planned" in resp.json()["detail"].lower()
-    # The connection was not touched (still pending, no scan).
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["provider"] == "azure"
+    assert calls["inv_cred"] is _BROKER_SESSION_SENTINEL
+    assert calls["cis_cred"] is _BROKER_SESSION_SENTINEL
+    assert calls["inv_force"] is True
+    assert body["inventory"]["status"] == "ok"
+    assert body["cis_benchmark"]["total"] == 2
+
+    from agent_bom.api.stores import _get_store
+
+    assert _get_store().get(body["scan_id"], "tenant-alpha") is not None
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
-    assert fetched["status"] == STATUS_PENDING
+    assert fetched["status"] == "active"
+    assert fetched["last_scan_at"]
+
+
+def test_scan_gcp_brokers_runs_persists_and_marks_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import connection_broker, gcp_cis_benchmark, gcp_inventory
+
+    calls: dict[str, Any] = {}
+    monkeypatch.setattr(connection_broker, "broker_session", lambda record, **k: _BROKER_SESSION_SENTINEL)
+
+    def _inv(project_id: Any = None, credentials: Any = None, force: bool = False, **k: Any) -> dict[str, Any]:
+        calls["inv_creds"] = credentials
+        calls["inv_force"] = force
+        return _fake_inventory_payload("gcp")
+
+    def _cis(project_id: Any = None, credentials: Any = None, **k: Any) -> Any:
+        calls["cis_creds"] = credentials
+        return _FakeProviderCIS()
+
+    monkeypatch.setattr(gcp_inventory, "discover_inventory", _inv)
+    monkeypatch.setattr(gcp_cis_benchmark, "run_benchmark", _cis)
+
+    cid = _seed_connection("tenant-alpha", provider="gcp")
+    client = TestClient(_app())
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["provider"] == "gcp"
+    assert calls["inv_creds"] is _BROKER_SESSION_SENTINEL
+    assert calls["cis_creds"] is _BROKER_SESSION_SENTINEL
+    assert calls["inv_force"] is True
+    assert body["cis_benchmark"]["total"] == 2
+    fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
+    assert fetched["status"] == "active"
+
+
+def test_scan_snowflake_brokers_runs_persists_and_marks_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import connection_broker, snowflake_cis_benchmark
+    from agent_bom.cloud import snowflake as snowflake_discovery
+
+    calls: dict[str, Any] = {}
+    conn = _FakeSnowflakeConn()
+    monkeypatch.setattr(connection_broker, "broker_session", lambda record, **k: conn)
+
+    def _disc(conn: Any = None, **k: Any) -> Any:
+        calls["disc_conn"] = conn
+        return ([], [])
+
+    def _cis(conn: Any = None, **k: Any) -> Any:
+        calls["cis_conn"] = conn
+        return _FakeProviderCIS()
+
+    monkeypatch.setattr(snowflake_discovery, "discover", _disc)
+    monkeypatch.setattr(snowflake_cis_benchmark, "run_benchmark", _cis)
+
+    cid = _seed_connection("tenant-alpha", provider="snowflake")
+    client = TestClient(_app())
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["provider"] == "snowflake"
+    # The single brokered connection backs both discovery and CIS, and the route
+    # closes it afterwards (discover/CIS do not close an injected connection).
+    assert calls["disc_conn"] is conn
+    assert calls["cis_conn"] is conn
+    assert conn.closed is True
+    assert body["inventory"]["agent_count"] == 0
+    assert body["cis_benchmark"]["total"] == 2
+    fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
+    assert fetched["status"] == "active"
+
+
+def test_scan_sdk_missing_returns_clean_error_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A provider whose SDK extra is not installed surfaces a clean error, no secret."""
+    from agent_bom.cloud import connection_broker
+    from agent_bom.cloud.base import CloudDiscoveryError
+
+    def _broker(record: CloudConnectionRecord, **k: Any) -> Any:
+        raise CloudDiscoveryError("azure-identity is required to broker Azure connections. Install with: pip install 'agent-bom[azure]'")
+
+    monkeypatch.setattr(connection_broker, "broker_session", _broker)
+
+    cid = _seed_connection("tenant-alpha", provider="azure")
+    client = TestClient(_app())
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 502
+    assert "super-secret-external-id" not in str(resp.json())
+    fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
+    assert fetched["status"] == "error"
+
+
+def test_api_auth_params_round_trip_non_secret() -> None:
+    client = TestClient(_app())
+    body = _create_body()
+    body["provider"] = "azure"
+    body["auth_params"] = {"tenant_id": "t-guid", "subscription_id": "s-guid"}
+    created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers()).json()
+    assert created["auth_params"] == {"tenant_id": "t-guid", "subscription_id": "s-guid"}
+    # Round-trips through GET unchanged and never carries the secret.
+    fetched = client.get(f"/v1/cloud/connections/{created['id']}", headers=_proxy_headers()).json()
+    assert fetched["auth_params"] == {"tenant_id": "t-guid", "subscription_id": "s-guid"}
+    assert "external_id" not in fetched
 
 
 def test_summarize_inventory_payload_redacts_raw_warnings() -> None:

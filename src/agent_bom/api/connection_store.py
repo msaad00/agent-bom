@@ -57,6 +57,12 @@ class CloudConnectionRecord:
     updated_at: str = ""
     last_scan_at: str | None = None
     scan_interval_minutes: int | None = None
+    # Non-secret, provider-specific connection parameters (e.g. Azure
+    # tenant_id/subscription_id, GCP project_id, Snowflake user/role/warehouse).
+    # The single reversible secret per connection lives in
+    # ``external_id_encrypted``; these are deliberately NOT secret and are safe to
+    # return in API responses.
+    auth_params: dict[str, Any] = field(default_factory=dict)
 
     def to_public_dict(self) -> dict[str, Any]:
         """Non-secret representation for API responses.
@@ -64,7 +70,7 @@ class CloudConnectionRecord:
         Deliberately excludes ``external_id_encrypted`` (and never carries the
         plaintext) so no secret material can leak through a response body. Also
         surfaces ``has_external_id`` so a client can tell a secret is configured
-        without ever seeing it.
+        without ever seeing it. ``auth_params`` is non-secret and is included.
         """
         data = asdict(self)
         data.pop("external_id_encrypted", None)
@@ -108,6 +114,7 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                 "updated_at",
                 "last_scan_at",
                 "scan_interval_minutes",
+                "auth_params",
             ),
             ddl_by_backend={
                 "sqlite": (
@@ -116,7 +123,8 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "role_ref TEXT NOT NULL, external_id_encrypted TEXT NOT NULL DEFAULT '', "
                     "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', "
                     "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
-                    "updated_at TEXT NOT NULL, last_scan_at TEXT, scan_interval_minutes INTEGER)"
+                    "updated_at TEXT NOT NULL, last_scan_at TEXT, scan_interval_minutes INTEGER, "
+                    "auth_params TEXT NOT NULL DEFAULT '{}')"
                 ),
                 "postgres": (
                     "CREATE TABLE IF NOT EXISTS cloud_connections (id TEXT PRIMARY KEY, "
@@ -124,7 +132,8 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "role_ref TEXT NOT NULL, external_id_encrypted TEXT NOT NULL DEFAULT '', "
                     "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', "
                     "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
-                    "updated_at TEXT NOT NULL, last_scan_at TEXT, scan_interval_minutes INTEGER)"
+                    "updated_at TEXT NOT NULL, last_scan_at TEXT, scan_interval_minutes INTEGER, "
+                    "auth_params TEXT NOT NULL DEFAULT '{}')"
                 ),
             },
         ),
@@ -155,6 +164,23 @@ def _decode_interval(raw: Any) -> int | None:
         return None
 
 
+def _decode_auth_params(raw: Any) -> dict[str, Any]:
+    """Parse a stored ``auth_params`` JSON blob into a dict (tolerant).
+
+    Non-secret provider-specific params. Defaults to an empty dict on any
+    malformed / missing value so a legacy row (pre-migration) reads cleanly.
+    """
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(k): v for k, v in parsed.items()}
+
+
 def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
     """Map a ``cloud_connections`` row tuple to a record (shared by backends)."""
     return CloudConnectionRecord(
@@ -171,6 +197,7 @@ def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
         updated_at=row[10] or "",
         last_scan_at=row[11] if len(row) > 11 else None,
         scan_interval_minutes=_decode_interval(row[12]) if len(row) > 12 else None,
+        auth_params=_decode_auth_params(row[13]) if len(row) > 13 else {},
     )
 
 
@@ -181,7 +208,7 @@ def _copy_record(record: CloudConnectionRecord) -> CloudConnectionRecord:
     Without this the in-memory store would hand out the live reference and the
     compare-and-swap claim could never observe a concurrent change.
     """
-    return replace(record, regions=list(record.regions))
+    return replace(record, regions=list(record.regions), auth_params=dict(record.auth_params))
 
 
 class InMemoryConnectionStore:
@@ -268,6 +295,10 @@ class SQLiteConnectionStore:
         columns = {row[1] for row in self._conn.execute("PRAGMA table_info(cloud_connections)").fetchall()}
         if "scan_interval_minutes" not in columns:
             self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN scan_interval_minutes INTEGER")
+        if "auth_params" not in columns:
+            # Idempotent migration: backfill existing rows with an empty object so
+            # the column stays NOT NULL and legacy connections read as no-params.
+            self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN auth_params TEXT NOT NULL DEFAULT '{}'")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
@@ -280,8 +311,8 @@ class SQLiteConnectionStore:
             INSERT OR REPLACE INTO cloud_connections
                 (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
                  regions, status, status_detail, created_at, updated_at, last_scan_at,
-                 scan_interval_minutes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 scan_interval_minutes, auth_params)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.id,
@@ -297,6 +328,7 @@ class SQLiteConnectionStore:
                 record.updated_at,
                 record.last_scan_at,
                 record.scan_interval_minutes,
+                json.dumps(record.auth_params),
             ),
         )
         self._conn.commit()
@@ -304,7 +336,7 @@ class SQLiteConnectionStore:
     def get(self, tenant_id: str, connection_id: str) -> CloudConnectionRecord | None:
         row = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-            "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes, auth_params "
             "FROM cloud_connections WHERE tenant_id = ? AND id = ?",
             (tenant_id, connection_id),
         ).fetchone()
@@ -313,7 +345,7 @@ class SQLiteConnectionStore:
     def list_for_tenant(self, tenant_id: str) -> list[CloudConnectionRecord]:
         rows = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-            "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes, auth_params "
             "FROM cloud_connections WHERE tenant_id = ? ORDER BY created_at, id",
             (tenant_id,),
         ).fetchall()
@@ -330,7 +362,7 @@ class SQLiteConnectionStore:
     def list_schedulable(self) -> list[CloudConnectionRecord]:
         rows = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-            "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes, auth_params "
             "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
         ).fetchall()
         return [_row_to_record(row) for row in rows]

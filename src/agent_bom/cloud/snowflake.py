@@ -285,8 +285,16 @@ def discover(
     authenticator: str | None = None,
     database: str | None = None,
     schema: str | None = None,
+    conn: Any = None,
 ) -> tuple[list[Agent], list[str]]:
     """Discover Cortex agents, MCP servers, and Snowpark packages from Snowflake.
+
+    Args:
+        conn: Optional already-open Snowflake connection (e.g. brokered from a
+            stored read-only connection). When supplied it is used directly
+            instead of building one from env/args, and it is **not** closed here
+            — the caller owns its lifecycle. When ``None`` (the default) a
+            connection is built from env/args and closed before returning.
 
     Returns:
         (agents, warnings) — discovered agents and non-fatal warnings.
@@ -308,28 +316,34 @@ def discover(
     resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
     resolved_user = _env_or_value(user, "SNOWFLAKE_USER")
 
-    if not resolved_account:
+    # An injected connection (the broker path) does not require SNOWFLAKE_ACCOUNT
+    # in env; fall back to a placeholder scope label only for graph/envelope use.
+    owns_conn = conn is None
+    if owns_conn and not resolved_account:
         warnings.append("SNOWFLAKE_ACCOUNT not set. Provide --snowflake-account or set the SNOWFLAKE_ACCOUNT env var.")
         return agents, warnings
+    if not resolved_account:
+        resolved_account = "connection"
 
-    conn_kwargs: dict[str, Any] = {
-        "account": resolved_account,
-        "user": resolved_user,
-    }
-    if authenticator:
-        conn_kwargs["authenticator"] = authenticator
-    if database:
-        conn_kwargs["database"] = database
-    if schema:
-        conn_kwargs["schema"] = schema
+    if conn is None:
+        conn_kwargs: dict[str, Any] = {
+            "account": resolved_account,
+            "user": resolved_user,
+        }
+        if authenticator:
+            conn_kwargs["authenticator"] = authenticator
+        if database:
+            conn_kwargs["database"] = database
+        if schema:
+            conn_kwargs["schema"] = schema
 
-    _resolve_snowflake_auth(conn_kwargs, authenticator)
+        _resolve_snowflake_auth(conn_kwargs, authenticator)
 
-    try:
-        conn = snowflake.connector.connect(**conn_kwargs)
-    except (DatabaseError, Exception) as exc:
-        warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
-        return agents, warnings
+        try:
+            conn = snowflake.connector.connect(**conn_kwargs)
+        except (DatabaseError, Exception) as exc:
+            warnings.append(f"Could not connect to Snowflake: {sanitize_error(exc)}")
+            return agents, warnings
 
     try:
         # ── Cortex Search Services ────────────────────────────────────────
@@ -426,7 +440,10 @@ def discover(
         warnings.extend(nb_warns)
 
     finally:
-        conn.close()
+        # Only close a connection we opened; an injected (brokered) connection is
+        # the caller's to close.
+        if owns_conn:
+            conn.close()
 
     # Per-run discovery envelope (#2083 PR B). Snowflake reads through the
     # SQL surface using the user's role. We expose the role as a scope

@@ -29,62 +29,176 @@ import { useAuthState } from "@/components/auth-provider";
 import { EmptyState, ErrorBanner } from "@/components/empty-state";
 
 // ── Provider catalog ──────────────────────────────────────────────────────────
-// AWS is broker-enabled today (read-only AssumeRole). Azure / GCP / Snowflake are
-// accepted by the store but the credential broker raises a clear "planned" 501,
-// so they are surfaced as "coming soon" and disabled in the wizard.
+// All four providers are broker-enabled (read-only). Each maps its wizard fields
+// onto the connection's role_ref (plaintext principal ref), external_id (the one
+// write-only secret), and auth_params (non-secret provider params).
+
+interface ProviderField {
+  key: string;
+  label: string;
+  placeholder: string;
+  mono?: boolean;
+}
 
 interface ProviderOption {
   value: string;
   label: string;
-  enabled: boolean;
-  roleLabel: string;
-  rolePlaceholder: string;
-  secretLabel: string;
-  secretHint: string;
+  tagline: string;
+  /** Maps to role_ref (plaintext principal/account reference). */
+  roleField: ProviderField;
+  /** Map to auth_params (non-secret provider params). */
+  authFields: ProviderField[];
+  /** Maps to external_id (the single write-only secret). */
+  secretField: ProviderField & { multiline?: boolean; hint: string };
+  /** Whether regions apply (AWS only). */
+  usesRegions: boolean;
+  setupSteps: string[];
 }
 
 const PROVIDER_OPTIONS: ProviderOption[] = [
   {
     value: "aws",
     label: "Amazon Web Services",
-    enabled: true,
-    roleLabel: "Read-only role ARN",
-    rolePlaceholder: "arn:aws:iam::123456789012:role/agent-bom-readonly",
-    secretLabel: "External ID",
-    secretHint: "The ExternalId from the role's trust policy. Stored encrypted, never shown again.",
+    tagline: "Read-only AssumeRole",
+    roleField: {
+      key: "role_ref",
+      label: "Read-only role ARN",
+      placeholder: "arn:aws:iam::123456789012:role/agent-bom-readonly",
+      mono: true,
+    },
+    authFields: [],
+    secretField: {
+      key: "external_id",
+      label: "External ID",
+      placeholder: "••••••••••••",
+      hint: "The ExternalId from the role's trust policy. Stored encrypted, never shown again.",
+    },
+    usesRegions: true,
+    setupSteps: [
+      "Create an IAM role with a trust policy that allows the agent-bom control plane to assume it.",
+      "Require an ExternalId on the trust policy and keep it secret.",
+      "Attach AWS-managed ReadOnlyAccess (or SecurityAudit).",
+      "Copy the role ARN and the ExternalId into the next step.",
+    ],
   },
   {
     value: "azure",
     label: "Microsoft Azure",
-    enabled: false,
-    roleLabel: "Service principal reference",
-    rolePlaceholder: "subscription / app registration",
-    secretLabel: "Client secret reference",
-    secretHint: "Broker support is planned.",
+    tagline: "Read-only Reader credential",
+    roleField: {
+      key: "role_ref",
+      label: "Client ID (app registration)",
+      placeholder: "00000000-0000-0000-0000-000000000000",
+      mono: true,
+    },
+    authFields: [
+      {
+        key: "tenant_id",
+        label: "Tenant ID",
+        placeholder: "00000000-0000-0000-0000-000000000000",
+        mono: true,
+      },
+      {
+        key: "subscription_id",
+        label: "Subscription ID",
+        placeholder: "00000000-0000-0000-0000-000000000000",
+        mono: true,
+      },
+    ],
+    secretField: {
+      key: "external_id",
+      label: "Client secret",
+      placeholder: "••••••••••••",
+      hint: "The app registration's client secret. Stored encrypted, never shown again.",
+    },
+    usesRegions: false,
+    setupSteps: [
+      "Register an app (service principal) in Microsoft Entra ID and create a client secret.",
+      "Grant the app the built-in Reader role on the subscription (read-only).",
+      "Copy the Tenant ID, Subscription ID, and Client ID into the next step.",
+      "Paste the client secret — it is stored encrypted and never displayed again.",
+    ],
   },
   {
     value: "gcp",
     label: "Google Cloud",
-    enabled: false,
-    roleLabel: "Service account",
-    rolePlaceholder: "agent-bom@project.iam.gserviceaccount.com",
-    secretLabel: "Workload identity reference",
-    secretHint: "Broker support is planned.",
+    tagline: "Read-only service account",
+    roleField: {
+      key: "role_ref",
+      label: "Service account email",
+      placeholder: "agent-bom@project.iam.gserviceaccount.com",
+      mono: true,
+    },
+    authFields: [
+      {
+        key: "project_id",
+        label: "Project ID",
+        placeholder: "my-project-123",
+        mono: true,
+      },
+    ],
+    secretField: {
+      key: "external_id",
+      label: "Service account key (JSON)",
+      placeholder: "Paste the service-account key JSON",
+      multiline: true,
+      hint: "The service-account key JSON. Brokered with the cloud-platform.read-only scope. Stored encrypted, never shown again.",
+    },
+    usesRegions: false,
+    setupSteps: [
+      "Create a service account in the target project and grant it the read-only Viewer role.",
+      "Create a JSON key for the service account.",
+      "Copy the Project ID and the service-account email into the next step.",
+      "Paste the key JSON — it is stored encrypted and never displayed again.",
+    ],
   },
   {
     value: "snowflake",
     label: "Snowflake",
-    enabled: false,
-    roleLabel: "Account / role",
-    rolePlaceholder: "org-account / READONLY_ROLE",
-    secretLabel: "Key-pair reference",
-    secretHint: "Broker support is planned.",
+    tagline: "Read-only key-pair connection",
+    roleField: {
+      key: "role_ref",
+      label: "Account",
+      placeholder: "ORG-ACCOUNT",
+      mono: true,
+    },
+    authFields: [
+      { key: "user", label: "User", placeholder: "ABOM_SVC", mono: true },
+      { key: "role", label: "Role", placeholder: "ABOM_READONLY", mono: true },
+      {
+        key: "warehouse",
+        label: "Warehouse",
+        placeholder: "ABOM_WH",
+        mono: true,
+      },
+    ],
+    secretField: {
+      key: "external_id",
+      label: "Private key (PEM)",
+      placeholder: "Paste the PKCS#8 PEM private key…",
+      multiline: true,
+      hint: "The RSA private key (PEM) for key-pair auth. Stored encrypted, never shown again.",
+    },
+    usesRegions: false,
+    setupSteps: [
+      "Create a read-only role and a service user with key-pair authentication.",
+      "Assign the read-only role and a warehouse the user can use.",
+      "Copy the Account, User, Role, and Warehouse into the next step.",
+      "Paste the private key (PEM) — it is stored encrypted and never displayed again.",
+    ],
   },
 ];
 
 function providerLabel(value: string): string {
-  return PROVIDER_OPTIONS.find((option) => option.value === value)?.label ?? value.toUpperCase();
+  return (
+    PROVIDER_OPTIONS.find((option) => option.value === value)?.label ??
+    value.toUpperCase()
+  );
 }
+
+const SCANNABLE_PROVIDERS = new Set(
+  PROVIDER_OPTIONS.map((option) => option.value),
+);
 
 function formatWhen(value: string | null): string {
   if (!value) return "Never";
@@ -104,10 +218,18 @@ function statusTone(status: string): string {
 }
 
 function StatusPill({ status }: { status: string }) {
-  const Icon = status === "active" ? CheckCircle2 : status === "error" ? AlertTriangle : Clock;
-  const label = status === "active" ? "Active" : status === "error" ? "Error" : "Pending";
+  const Icon =
+    status === "active"
+      ? CheckCircle2
+      : status === "error"
+        ? AlertTriangle
+        : Clock;
+  const label =
+    status === "active" ? "Active" : status === "error" ? "Error" : "Pending";
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${statusTone(status)}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${statusTone(status)}`}
+    >
       <Icon className="h-3 w-3" />
       {label}
     </span>
@@ -131,7 +253,9 @@ export default function ConnectionsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [scanResults, setScanResults] = useState<Record<string, CloudConnectionScanResponse>>({});
+  const [scanResults, setScanResults] = useState<
+    Record<string, CloudConnectionScanResponse>
+  >({});
   const [scanErrors, setScanErrors] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
@@ -141,7 +265,11 @@ export default function ConnectionsPage() {
       const result = await api.listCloudConnections();
       setConnections(result.connections);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load cloud connections.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load cloud connections.",
+      );
       setConnections([]);
     } finally {
       setLoading(false);
@@ -195,13 +323,18 @@ export default function ConnectionsPage() {
       setMessage(`Removed ${connection.display_name}.`);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete connection.");
+      setError(
+        err instanceof Error ? err.message : "Failed to delete connection.",
+      );
     } finally {
       setBusyId(null);
     }
   }
 
-  const activeCount = useMemo(() => connections.filter((c) => c.status === "active").length, [connections]);
+  const activeCount = useMemo(
+    () => connections.filter((c) => c.status === "active").length,
+    [connections],
+  );
 
   return (
     <div className="space-y-6">
@@ -209,12 +342,17 @@ export default function ConnectionsPage() {
       <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] p-6 shadow-2xl shadow-black/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-400">Connections plane</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">Cloud accounts</h1>
+            <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-400">
+              Connections plane
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+              Cloud accounts
+            </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-              Connect a customer cloud account in read-only mode, then launch inventory and CIS
-              discovery against a short-lived assumed role. The connection secret is encrypted at
-              rest and is never returned to the browser.
+              Connect a customer cloud account (AWS, Azure, GCP, or Snowflake)
+              in read-only mode, then launch inventory and CIS discovery against
+              a short-lived brokered credential. The connection secret is
+              encrypted at rest and is never returned to the browser.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -237,15 +375,31 @@ export default function ConnectionsPage() {
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <MetricCard icon={Cloud} label="Connections" value={loading ? "…" : String(connections.length)} />
-          <MetricCard icon={CheckCircle2} label="Active" value={loading ? "…" : String(activeCount)} />
-          <MetricCard icon={Lock} label="Secret storage" value="Encrypted" detail="Write-only external IDs" />
+          <MetricCard
+            icon={Cloud}
+            label="Connections"
+            value={loading ? "…" : String(connections.length)}
+          />
+          <MetricCard
+            icon={CheckCircle2}
+            label="Active"
+            value={loading ? "…" : String(activeCount)}
+          />
+          <MetricCard
+            icon={Lock}
+            label="Secret storage"
+            value="Encrypted"
+            detail="Write-only external IDs"
+          />
         </div>
 
-        {message ? <p className="mt-4 text-sm text-emerald-400">{message}</p> : null}
+        {message ? (
+          <p className="mt-4 text-sm text-emerald-400">{message}</p>
+        ) : null}
         {!canManage ? (
           <p className="mt-3 text-sm text-amber-300">
-            Your role can review connections but cannot create, scan, or delete them.
+            Your role can review connections but cannot create, scan, or delete
+            them.
           </p>
         ) : null}
       </section>
@@ -257,10 +411,12 @@ export default function ConnectionsPage() {
             <ShieldCheck className="h-5 w-5 text-emerald-400" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-[var(--foreground)]">Connected accounts</h2>
+            <h2 className="text-base font-semibold text-[var(--foreground)]">
+              Connected accounts
+            </h2>
             <p className="mt-1 text-sm text-[var(--text-secondary)]">
-              Each row is a tenant-scoped, encrypted connection. Run a read-only scan to see live
-              inventory counts and CIS pass rate.
+              Each row is a tenant-scoped, encrypted connection. Run a read-only
+              scan to see live inventory counts and CIS pass rate.
             </p>
           </div>
         </div>
@@ -271,14 +427,17 @@ export default function ConnectionsPage() {
           ) : loading ? (
             <div className="space-y-2" aria-busy="true">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-14 animate-pulse rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]" />
+                <div
+                  key={i}
+                  className="h-14 animate-pulse rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]"
+                />
               ))}
             </div>
           ) : connections.length === 0 ? (
             <EmptyState
               icon={Cloud}
               title="No cloud accounts connected"
-              description="Add a read-only AWS account to launch inventory and CIS discovery from the control plane."
+              description="Add a read-only AWS, Azure, GCP, or Snowflake account to launch inventory and CIS discovery from the control plane."
             />
           ) : (
             <div className="overflow-x-auto rounded-xl border border-[color:var(--border-subtle)]">
@@ -289,7 +448,9 @@ export default function ConnectionsPage() {
                     <th className="px-4 py-3 font-medium">Provider</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Last scan</th>
-                    <th className="px-4 py-3 text-right font-medium">Actions</th>
+                    <th className="px-4 py-3 text-right font-medium">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -297,7 +458,9 @@ export default function ConnectionsPage() {
                     const isBusy = busyId === connection.id;
                     const result = scanResults[connection.id];
                     const scanError = scanErrors[connection.id];
-                    const scannable = connection.provider === "aws";
+                    const scannable = SCANNABLE_PROVIDERS.has(
+                      connection.provider,
+                    );
                     return (
                       <FragmentRow
                         key={connection.id}
@@ -307,7 +470,11 @@ export default function ConnectionsPage() {
                         scannable={scannable}
                         result={result}
                         scanError={scanError}
-                        statusDetail={connection.status === "error" ? connection.status_detail : ""}
+                        statusDetail={
+                          connection.status === "error"
+                            ? connection.status_detail
+                            : ""
+                        }
                         onScan={() => void handleScan(connection)}
                         onDelete={() => void handleDelete(connection)}
                       />
@@ -321,7 +488,10 @@ export default function ConnectionsPage() {
       </section>
 
       {wizardOpen ? (
-        <AddConnectionWizard onClose={() => setWizardOpen(false)} onCreated={handleCreated} />
+        <AddConnectionWizard
+          onClose={() => setWizardOpen(false)}
+          onCreated={handleCreated}
+        />
       ) : null}
     </div>
   );
@@ -355,8 +525,12 @@ function FragmentRow({
     <>
       <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 align-top">
         <td className="px-4 py-3">
-          <p className="font-medium text-[var(--foreground)]">{connection.display_name}</p>
-          <p className="mt-0.5 break-all font-mono text-[11px] text-[var(--text-tertiary)]">{connection.role_ref}</p>
+          <p className="font-medium text-[var(--foreground)]">
+            {connection.display_name}
+          </p>
+          <p className="mt-0.5 break-all font-mono text-[11px] text-[var(--text-tertiary)]">
+            {connection.role_ref}
+          </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {connection.has_external_id ? (
               <span className="inline-flex items-center gap-1 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">
@@ -364,24 +538,39 @@ function FragmentRow({
               </span>
             ) : null}
             {connection.regions.slice(0, 3).map((region) => (
-              <span key={region} className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
+              <span
+                key={region}
+                className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
+              >
                 {region}
               </span>
             ))}
             {connection.regions.length > 3 ? (
-              <span className="text-[10px] text-[var(--text-tertiary)]">+{connection.regions.length - 3}</span>
+              <span className="text-[10px] text-[var(--text-tertiary)]">
+                +{connection.regions.length - 3}
+              </span>
             ) : null}
           </div>
         </td>
-        <td className="px-4 py-3 text-[var(--text-secondary)]">{providerLabel(connection.provider)}</td>
-        <td className="px-4 py-3"><StatusPill status={connection.status} /></td>
-        <td className="px-4 py-3 text-[var(--text-secondary)]">{formatWhen(connection.last_scan_at)}</td>
+        <td className="px-4 py-3 text-[var(--text-secondary)]">
+          {providerLabel(connection.provider)}
+        </td>
+        <td className="px-4 py-3">
+          <StatusPill status={connection.status} />
+        </td>
+        <td className="px-4 py-3 text-[var(--text-secondary)]">
+          {formatWhen(connection.last_scan_at)}
+        </td>
         <td className="px-4 py-3">
           <div className="flex justify-end gap-2">
             <button
               onClick={onScan}
               disabled={isBusy || !canManage || !scannable}
-              title={scannable ? "Run a read-only scan" : "Scanning for this provider is planned"}
+              title={
+                scannable
+                  ? "Run a read-only scan"
+                  : "Scanning for this provider is unavailable"
+              }
               className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isBusy ? "Scanning…" : "Scan now"}
@@ -421,6 +610,10 @@ function FragmentRow({
 
 function ScanResultPanel({ result }: { result: CloudConnectionScanResponse }) {
   const { inventory, cis_benchmark: cis } = result;
+  // Snowflake reports a discovered-agent count; AWS/Azure/GCP report estate
+  // resource + identity counts. Render whichever the provider returned.
+  const isSnowflake = inventory.agent_count != null;
+  const warnings = inventory.warnings ?? [];
   return (
     <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -428,22 +621,50 @@ function ScanResultPanel({ result }: { result: CloudConnectionScanResponse }) {
           <ShieldCheck className="h-4 w-4 text-emerald-400" />
           Read-only scan complete
         </p>
-        <span className="font-mono text-[10px] text-[var(--text-tertiary)]">scan {result.scan_id.slice(0, 8)}</span>
+        <span className="font-mono text-[10px] text-[var(--text-tertiary)]">
+          scan {result.scan_id.slice(0, 8)}
+        </span>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile icon={Boxes} label="Resources" value={String(inventory.resource_count)} />
-        <StatTile icon={Fingerprint} label="Identities" value={String(inventory.identity_count)} />
+        {isSnowflake ? (
+          <StatTile
+            icon={Boxes}
+            label="Agents"
+            value={String(inventory.agent_count ?? 0)}
+          />
+        ) : (
+          <>
+            <StatTile
+              icon={Boxes}
+              label="Resources"
+              value={String(inventory.resource_count ?? 0)}
+            />
+            <StatTile
+              icon={Fingerprint}
+              label="Identities"
+              value={String(inventory.identity_count ?? 0)}
+            />
+          </>
+        )}
         <StatTile
           icon={CheckCircle2}
           label="CIS passed"
           value={cis.passed == null ? "—" : `${cis.passed}/${cis.total ?? "—"}`}
         />
-        <StatTile icon={KeyRound} label="CIS pass rate" value={formatPassRate(cis.pass_rate)} />
+        <StatTile
+          icon={KeyRound}
+          label="CIS pass rate"
+          value={formatPassRate(cis.pass_rate)}
+        />
       </div>
-      {inventory.warnings.length > 0 ? (
-        <p className="mt-3 text-[11px] leading-5 text-amber-300">{inventory.warnings.join(" · ")}</p>
+      {warnings.length > 0 ? (
+        <p className="mt-3 text-[11px] leading-5 text-amber-300">
+          {warnings.join(" · ")}
+        </p>
       ) : null}
-      <p className="mt-3 text-[11px] leading-5 text-[var(--text-tertiary)]">{result.audit_metadata.note}</p>
+      <p className="mt-3 text-[11px] leading-5 text-[var(--text-tertiary)]">
+        {result.audit_metadata.note}
+      </p>
     </div>
   );
 }
@@ -463,7 +684,9 @@ function StatTile({
         <Icon className="h-3.5 w-3.5 text-emerald-400" />
         {label}
       </div>
-      <p className="mt-1.5 text-lg font-semibold text-[var(--foreground)]">{value}</p>
+      <p className="mt-1.5 text-lg font-semibold text-[var(--foreground)]">
+        {value}
+      </p>
     </div>
   );
 }
@@ -486,11 +709,19 @@ function MetricCard({
           <Icon className="h-4 w-4 text-emerald-400" />
         </span>
         <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{label}</p>
-          <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">{value}</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+            {label}
+          </p>
+          <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+            {value}
+          </p>
         </div>
       </div>
-      {detail ? <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">{detail}</p> : null}
+      {detail ? (
+        <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+          {detail}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -503,6 +734,8 @@ interface WizardForm {
   role_ref: string;
   external_id: string;
   regions: string;
+  /** Non-secret provider params keyed by field key (tenant_id, project_id, user, …). */
+  auth: Record<string, string>;
 }
 
 const DEFAULT_WIZARD_FORM: WizardForm = {
@@ -511,6 +744,7 @@ const DEFAULT_WIZARD_FORM: WizardForm = {
   role_ref: "",
   external_id: "",
   regions: "",
+  auth: {},
 };
 
 function AddConnectionWizard({
@@ -526,12 +760,33 @@ function AddConnectionWizard({
   const [formError, setFormError] = useState<string | null>(null);
 
   const provider = useMemo(
-    () => PROVIDER_OPTIONS.find((option) => option.value === form.provider) ?? PROVIDER_OPTIONS[0]!,
+    () =>
+      PROVIDER_OPTIONS.find((option) => option.value === form.provider) ??
+      PROVIDER_OPTIONS[0]!,
     [form.provider],
   );
 
   function update<K extends keyof WizardForm>(field: K, value: WizardForm[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateAuth(key: string, value: string) {
+    setForm((current) => ({
+      ...current,
+      auth: { ...current.auth, [key]: value },
+    }));
+  }
+
+  function selectProvider(value: string) {
+    // Reset provider-specific fields so a previous provider's params don't leak.
+    setForm((current) => ({
+      ...current,
+      provider: value,
+      role_ref: "",
+      external_id: "",
+      regions: "",
+      auth: {},
+    }));
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -541,21 +796,32 @@ function AddConnectionWizard({
     const displayName = form.display_name.trim();
     const roleRef = form.role_ref.trim();
     const externalId = form.external_id;
-    const regions = form.regions
-      .split(/[\s,]+/)
-      .map((region) => region.trim())
-      .filter(Boolean);
+    const regions = provider.usesRegions
+      ? form.regions
+          .split(/[\s,]+/)
+          .map((region) => region.trim())
+          .filter(Boolean)
+      : [];
 
     if (!displayName) {
       setFormError("A display name is required.");
       return;
     }
     if (!roleRef) {
-      setFormError(`${provider.roleLabel} is required.`);
+      setFormError(`${provider.roleField.label} is required.`);
       return;
     }
+    const authParams: Record<string, string> = {};
+    for (const field of provider.authFields) {
+      const value = (form.auth[field.key] ?? "").trim();
+      if (!value) {
+        setFormError(`${field.label} is required.`);
+        return;
+      }
+      authParams[field.key] = value;
+    }
     if (!externalId.trim()) {
-      setFormError(`${provider.secretLabel} is required.`);
+      setFormError(`${provider.secretField.label} is required.`);
       return;
     }
 
@@ -565,6 +831,7 @@ function AddConnectionWizard({
       role_ref: roleRef,
       external_id: externalId,
       regions,
+      auth_params: authParams,
     };
 
     setSubmitting(true);
@@ -574,7 +841,9 @@ function AddConnectionWizard({
       setForm((current) => ({ ...current, external_id: "" }));
       onCreated(created);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to create connection.");
+      setFormError(
+        err instanceof Error ? err.message : "Failed to create connection.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -598,8 +867,12 @@ function AddConnectionWizard({
               <Cloud className="h-5 w-5 text-emerald-400" />
             </span>
             <div>
-              <h2 className="text-base font-semibold text-[var(--foreground)]">Add cloud account</h2>
-              <p className="text-xs text-[var(--text-secondary)]">Read-only connection · step {step + 1} of 3</p>
+              <h2 className="text-base font-semibold text-[var(--foreground)]">
+                Add cloud account
+              </h2>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Read-only connection · step {step + 1} of 3
+              </p>
             </div>
           </div>
           <button
@@ -617,7 +890,9 @@ function AddConnectionWizard({
 
             {step === 0 ? (
               <fieldset className="space-y-3">
-                <legend className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Choose a provider</legend>
+                <legend className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                  Choose a provider
+                </legend>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {PROVIDER_OPTIONS.map((option) => {
                     const selected = form.provider === option.value;
@@ -625,18 +900,19 @@ function AddConnectionWizard({
                       <button
                         type="button"
                         key={option.value}
-                        disabled={!option.enabled}
-                        onClick={() => update("provider", option.value)}
+                        onClick={() => selectProvider(option.value)}
                         aria-pressed={selected}
                         className={`rounded-xl border p-3 text-left transition ${
                           selected
                             ? "border-emerald-500 bg-emerald-950/20"
                             : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] hover:border-[color:var(--border-strong)]"
-                        } ${option.enabled ? "" : "cursor-not-allowed opacity-60"}`}
+                        }`}
                       >
-                        <p className="text-sm font-medium text-[var(--foreground)]">{option.label}</p>
+                        <p className="text-sm font-medium text-[var(--foreground)]">
+                          {option.label}
+                        </p>
                         <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
-                          {option.enabled ? "Read-only AssumeRole" : "Coming soon"}
+                          {option.tagline}
                         </p>
                       </button>
                     );
@@ -647,17 +923,22 @@ function AddConnectionWizard({
 
             {step === 1 ? (
               <div className="space-y-3">
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Read-only setup</p>
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                  Read-only setup
+                </p>
                 <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-xs leading-6 text-[var(--text-secondary)]">
-                  <p className="text-[var(--foreground)]">Create a read-only role agent-bom can assume:</p>
+                  <p className="text-[var(--foreground)]">
+                    Set up a read-only {provider.label} connection:
+                  </p>
                   <ol className="mt-2 list-decimal space-y-1.5 pl-4">
-                    <li>Create an IAM role with a trust policy that allows the agent-bom control plane to assume it.</li>
-                    <li>Require an <code className="rounded bg-[color:var(--surface)] px-1">ExternalId</code> on the trust policy and keep it secret.</li>
-                    <li>Attach AWS-managed <code className="rounded bg-[color:var(--surface)] px-1">ReadOnlyAccess</code> (or <code className="rounded bg-[color:var(--surface)] px-1">SecurityAudit</code>).</li>
-                    <li>Copy the role ARN and the ExternalId into the next step.</li>
+                    {provider.setupSteps.map((stepText) => (
+                      <li key={stepText}>{stepText}</li>
+                    ))}
                   </ol>
                   <p className="mt-3 inline-flex items-center gap-1.5 text-emerald-300">
-                    <Lock className="h-3.5 w-3.5" /> The ExternalId is stored encrypted and never displayed again.
+                    <Lock className="h-3.5 w-3.5" /> The{" "}
+                    {provider.secretField.label.toLowerCase()} is stored
+                    encrypted and never displayed again.
                   </p>
                 </div>
               </div>
@@ -666,59 +947,113 @@ function AddConnectionWizard({
             {step === 2 ? (
               <div className="space-y-4">
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Display name</span>
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                    Display name
+                  </span>
                   <input
                     value={form.display_name}
-                    onChange={(event) => update("display_name", event.target.value)}
+                    onChange={(event) =>
+                      update("display_name", event.target.value)
+                    }
                     placeholder="Production account"
                     className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{provider.roleLabel}</span>
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                    {provider.roleField.label}
+                  </span>
                   <input
                     value={form.role_ref}
                     onChange={(event) => update("role_ref", event.target.value)}
-                    placeholder={provider.rolePlaceholder}
-                    className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                    placeholder={provider.roleField.placeholder}
+                    className={`w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500 ${provider.roleField.mono ? "font-mono" : ""}`}
                   />
                 </label>
+                {provider.authFields.map((field) => (
+                  <label key={field.key} className="block">
+                    <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                      {field.label}
+                    </span>
+                    <input
+                      value={form.auth[field.key] ?? ""}
+                      onChange={(event) =>
+                        updateAuth(field.key, event.target.value)
+                      }
+                      placeholder={field.placeholder}
+                      className={`w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500 ${field.mono ? "font-mono" : ""}`}
+                    />
+                  </label>
+                ))}
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{provider.secretLabel}</span>
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    value={form.external_id}
-                    onChange={(event) => update("external_id", event.target.value)}
-                    placeholder="••••••••••••"
-                    className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
-                  />
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                    {provider.secretField.label}
+                  </span>
+                  {provider.secretField.multiline ? (
+                    <textarea
+                      autoComplete="off"
+                      rows={5}
+                      value={form.external_id}
+                      onChange={(event) =>
+                        update("external_id", event.target.value)
+                      }
+                      placeholder={provider.secretField.placeholder}
+                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-xs text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                    />
+                  ) : (
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={form.external_id}
+                      onChange={(event) =>
+                        update("external_id", event.target.value)
+                      }
+                      placeholder={provider.secretField.placeholder}
+                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                    />
+                  )}
                   <span className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
-                    <Lock className="h-3 w-3" /> {provider.secretHint}
+                    <Lock className="h-3 w-3" /> {provider.secretField.hint}
                   </span>
                 </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Regions (optional)</span>
-                  <input
-                    value={form.regions}
-                    onChange={(event) => update("regions", event.target.value)}
-                    placeholder="us-east-1, us-west-2"
-                    className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
-                  />
-                </label>
+                {provider.usesRegions ? (
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                      Regions (optional)
+                    </span>
+                    <input
+                      value={form.regions}
+                      onChange={(event) =>
+                        update("regions", event.target.value)
+                      }
+                      placeholder="us-east-1, us-west-2"
+                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                    />
+                  </label>
+                ) : null}
               </div>
             ) : null}
 
-            {formError ? <p className="text-sm text-red-400">{formError}</p> : null}
+            {formError ? (
+              <p className="text-sm text-red-400">{formError}</p>
+            ) : null}
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-[color:var(--border-subtle)] px-5 py-4">
             <button
               type="button"
-              onClick={() => (step === 0 ? onClose() : setStep((s) => (s - 1) as 0 | 1 | 2))}
+              onClick={() =>
+                step === 0 ? onClose() : setStep((s) => (s - 1) as 0 | 1 | 2)
+              }
               className="inline-flex items-center gap-1.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
             >
-              {step === 0 ? "Cancel" : <><ArrowLeft className="h-4 w-4" /> Back</>}
+              {step === 0 ? (
+                "Cancel"
+              ) : (
+                <>
+                  <ArrowLeft className="h-4 w-4" /> Back
+                </>
+              )}
             </button>
             {step < 2 ? (
               <button
@@ -762,8 +1097,14 @@ function StepIndicator({ step }: { step: number }) {
           >
             {index + 1}
           </span>
-          <span className={`text-xs ${index <= step ? "text-[var(--foreground)]" : "text-[var(--text-tertiary)]"}`}>{label}</span>
-          {index < labels.length - 1 ? <span className="h-px flex-1 bg-[color:var(--border-subtle)]" /> : null}
+          <span
+            className={`text-xs ${index <= step ? "text-[var(--foreground)]" : "text-[var(--text-tertiary)]"}`}
+          >
+            {label}
+          </span>
+          {index < labels.length - 1 ? (
+            <span className="h-px flex-1 bg-[color:var(--border-subtle)]" />
+          ) : null}
         </div>
       ))}
     </div>

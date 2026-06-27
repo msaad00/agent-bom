@@ -570,6 +570,7 @@ def run_benchmark(
     user: str | None = None,
     authenticator: str | None = None,
     checks: list[str] | None = None,
+    conn: Any = None,
 ) -> SnowflakeCISReport:
     """Run CIS Snowflake Benchmark v1.0 checks.
 
@@ -581,6 +582,10 @@ def run_benchmark(
         user: Snowflake user name.
         authenticator: Authentication method (externalbrowser, snowflake, etc.).
         checks: Optional list of check IDs to run (e.g. ``["1.1", "2.1"]``).
+        conn: Optional already-open Snowflake connection (e.g. brokered from a
+            stored read-only connection). When supplied it is used directly and
+            is **not** closed here — the caller owns its lifecycle. When ``None``
+            a connection is built from env/args and closed before returning.
 
     Returns:
         SnowflakeCISReport with per-check pass/fail results.
@@ -596,21 +601,25 @@ def run_benchmark(
     resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
     resolved_user = user or os.environ.get("SNOWFLAKE_USER") or ""
 
-    if not resolved_account:
+    owns_conn = conn is None
+    if owns_conn and not resolved_account:
         raise CloudDiscoveryError("SNOWFLAKE_ACCOUNT not set. Provide --snowflake-account or set the env var.")
+    if not resolved_account:
+        resolved_account = "connection"
 
-    conn_kwargs: dict[str, str] = {
-        "account": resolved_account,
-        "user": resolved_user,
-    }
-    from .snowflake import _resolve_snowflake_auth
+    if conn is None:
+        conn_kwargs: dict[str, str] = {
+            "account": resolved_account,
+            "user": resolved_user,
+        }
+        from .snowflake import _resolve_snowflake_auth
 
-    _resolve_snowflake_auth(conn_kwargs, authenticator)
+        _resolve_snowflake_auth(conn_kwargs, authenticator)
 
-    try:
-        conn = snowflake.connector.connect(**conn_kwargs)
-    except (DatabaseError, Exception) as exc:
-        raise CloudDiscoveryError(f"Could not connect to Snowflake: {exc}")
+        try:
+            conn = snowflake.connector.connect(**conn_kwargs)
+        except (DatabaseError, Exception) as exc:
+            raise CloudDiscoveryError(f"Could not connect to Snowflake: {exc}")
 
     report = SnowflakeCISReport(account=resolved_account)
 
@@ -651,7 +660,10 @@ def run_benchmark(
                     )
                 )
     finally:
-        conn.close()
+        # Only close a connection we opened; an injected (brokered) one is the
+        # caller's to close.
+        if owns_conn:
+            conn.close()
 
     # Structured remediation per #665.
     from agent_bom.cloud.cis_remediation import attach_all

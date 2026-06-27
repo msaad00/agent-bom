@@ -122,6 +122,14 @@ account.
 
 ### API
 - **REST cloud-scanning endpoints** with MCP write-tool role enforcement.
+- **Multi-cloud connection brokers.** A stored read-only cloud connection now
+  launches a read-only scan for every provider — AWS (`sts:AssumeRole` with the
+  decrypted ExternalId), Azure (`ClientSecretCredential`, Reader role), GCP
+  (service-account credentials scoped to `cloud-platform.read-only`), and
+  Snowflake (key-pair connection). Provider-specific non-secret parameters are
+  stored in a new `auth_params` column (the single reversible secret stays in the
+  encrypted `external_id`); the secret is decrypted only at broker time and never
+  logged or returned. The background scan scheduler covers all four providers.
 - **Shared backend contract and selection factory** for control-plane stores.
 
 ### Deploy / Packaging

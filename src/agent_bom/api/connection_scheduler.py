@@ -20,8 +20,8 @@ Design notes:
   one replica runs a given due scan. Bounded concurrency caps brokered scans.
 * **Safe.** Read-only scans only. A failing connection is marked ``error`` with a
   sanitized, secret-free detail and the loop continues — one bad connection never
-  stops the loop. AWS only today (the broker is AWS-only); other providers are
-  skipped, never claimed.
+  stops the loop. All four providers (AWS, Azure, GCP, Snowflake) are
+  broker-enabled and schedulable.
 """
 
 from __future__ import annotations
@@ -46,9 +46,8 @@ from agent_bom.config import (
 
 logger = logging.getLogger(__name__)
 
-# Only AWS is broker-enabled; other recognized providers are skipped (not claimed)
-# until their credential broker lands.
-_SCHEDULABLE_PROVIDERS: frozenset[str] = frozenset({"aws"})
+# Every supported provider is broker-enabled and therefore schedulable.
+_SCHEDULABLE_PROVIDERS: frozenset[str] = frozenset({"aws", "azure", "gcp", "snowflake"})
 
 
 def connections_scheduler_enabled() -> bool:
@@ -103,12 +102,13 @@ def select_due_connections(store: ConnectionStore, now: datetime) -> list[CloudC
 
 
 def claim_due_connections(store: ConnectionStore, now: datetime) -> list[CloudConnectionRecord]:
-    """Select due AWS connections and atomically claim each for this replica.
+    """Select due connections and atomically claim each for this replica.
 
-    Returns only the connections this replica won. Non-AWS providers are skipped
-    (the broker is AWS-only) and are never claimed. The claim advances
-    ``last_scan_at`` to *now* so a racing replica loses the compare-and-swap and
-    a failed scan is not retried until the next interval.
+    Returns only the connections this replica won. A provider with no broker is
+    skipped and never claimed (defensive — all supported providers are
+    broker-enabled). The claim advances ``last_scan_at`` to *now* so a racing
+    replica loses the compare-and-swap and a failed scan is not retried until the
+    next interval.
     """
     claimed_at = now.isoformat()
     won: list[CloudConnectionRecord] = []
@@ -123,8 +123,8 @@ def claim_due_connections(store: ConnectionStore, now: datetime) -> list[CloudCo
 def execute_connection_scan(record: CloudConnectionRecord) -> bool:
     """Run the broker scan for a claimed connection and persist the outcome.
 
-    Reuses the Phase B scan-launch path (``_run_aws_connection_scan``) and the
-    Phase A lifecycle mutator (``_mark_connection``). On success the connection
+    Reuses the provider-dispatching scan-launch path (``_run_connection_scan``)
+    and the lifecycle mutator (``_mark_connection``). On success the connection
     moves to ``active`` + a fresh ``last_scan_at``; on failure it is marked
     ``error`` with a sanitized, secret-free detail. Never raises — returns
     whether the scan succeeded so one bad connection cannot sink the loop.
@@ -134,12 +134,12 @@ def execute_connection_scan(record: CloudConnectionRecord) -> bool:
     from agent_bom.api.routes.cloud_connections import (
         _mark_connection,
         _now,
-        _run_aws_connection_scan,
+        _run_connection_scan,
     )
     from agent_bom.security import sanitize_error
 
     try:
-        summary = _run_aws_connection_scan(record, record.tenant_id)
+        summary = _run_connection_scan(record, record.tenant_id)
     except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
         detail = sanitize_error(exc)
         _mark_connection(record, status=STATUS_ERROR, status_detail=detail)

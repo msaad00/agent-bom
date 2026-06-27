@@ -14,16 +14,28 @@ const { apiMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+  default: ({
+    href,
+    children,
+  }: {
+    href: string;
+    children: React.ReactNode;
+  }) => <a href={href}>{children}</a>,
 }));
 
 vi.mock("@/components/auth-provider", () => ({
   useAuthState: () => ({
-    session: { authenticated: true, auth_required: true, tenant_id: "tenant-acme", role: "analyst" },
+    session: {
+      authenticated: true,
+      auth_required: true,
+      tenant_id: "tenant-acme",
+      role: "analyst",
+    },
     loading: false,
     error: null,
     refresh: vi.fn(),
-    hasCapability: (capability: string) => ["inventory.read", "scan.run"].includes(capability),
+    hasCapability: (capability: string) =>
+      ["inventory.read", "scan.run"].includes(capability),
   }),
 }));
 
@@ -65,12 +77,26 @@ describe("ConnectionsPage", () => {
     apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
     // After create, the list refresh returns the new connection.
     apiMock.listCloudConnections
-      .mockResolvedValueOnce({ schema_version: "cloud.connections.v1", tenant_id: "tenant-acme", connections: [], count: 0 })
-      .mockResolvedValue({ schema_version: "cloud.connections.v1", tenant_id: "tenant-acme", connections: [CREATED_RECORD], count: 1 });
+      .mockResolvedValueOnce({
+        schema_version: "cloud.connections.v1",
+        tenant_id: "tenant-acme",
+        connections: [],
+        count: 0,
+      })
+      .mockResolvedValue({
+        schema_version: "cloud.connections.v1",
+        tenant_id: "tenant-acme",
+        connections: [CREATED_RECORD],
+        count: 1,
+      });
 
     render(<ConnectionsPage />);
 
-    await waitFor(() => expect(screen.getByText("No cloud accounts connected")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText("No cloud accounts connected"),
+      ).toBeInTheDocument(),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Add cloud account" }));
     // Step 0 -> 1 -> 2. Advancing must NOT trigger a premature form submit.
@@ -79,14 +105,20 @@ describe("ConnectionsPage", () => {
     expect(screen.queryByText("A display name is required.")).toBeNull();
     expect(apiMock.createCloudConnection).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByPlaceholderText("Production account"), { target: { value: "Production account" } });
+    fireEvent.change(screen.getByPlaceholderText("Production account"), {
+      target: { value: "Production account" },
+    });
     fireEvent.change(screen.getByPlaceholderText(/arn:aws:iam/), {
       target: { value: "arn:aws:iam::123456789012:role/agent-bom-readonly" },
     });
-    const secretInput = screen.getByPlaceholderText("••••••••••••") as HTMLInputElement;
+    const secretInput = screen.getByPlaceholderText(
+      "••••••••••••",
+    ) as HTMLInputElement;
     expect(secretInput.type).toBe("password");
     fireEvent.change(secretInput, { target: { value: SECRET } });
-    fireEvent.change(screen.getByPlaceholderText("us-east-1, us-west-2"), { target: { value: "us-east-1" } });
+    fireEvent.change(screen.getByPlaceholderText("us-east-1, us-west-2"), {
+      target: { value: "us-east-1" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
 
@@ -97,16 +129,68 @@ describe("ConnectionsPage", () => {
         role_ref: "arn:aws:iam::123456789012:role/agent-bom-readonly",
         external_id: SECRET,
         regions: ["us-east-1"],
+        // AWS has no provider-specific params, so auth_params is an empty map.
+        auth_params: {},
       }),
     );
 
     // New connection shows up in the list with the "secret configured" affordance.
-    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Production account")).toBeInTheDocument(),
+    );
     expect(screen.getByText("Secret configured")).toBeInTheDocument();
 
     // The plaintext secret must not be present anywhere in the rendered DOM.
     expect(document.body.textContent).not.toContain(SECRET);
     expect(document.querySelector(`input[value="${SECRET}"]`)).toBeNull();
+  });
+
+  it("maps provider-specific GCP fields to role_ref / external_id / auth_params", async () => {
+    apiMock.createCloudConnection.mockResolvedValue({
+      ...CREATED_RECORD,
+      provider: "gcp",
+    });
+
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("No cloud accounts connected"),
+      ).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add cloud account" }));
+    // Step 0: choose GCP, then advance to the details step.
+    fireEvent.click(screen.getByRole("button", { name: /Google Cloud/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+
+    fireEvent.change(screen.getByPlaceholderText("Production account"), {
+      target: { value: "GCP prod" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/gserviceaccount\.com/), {
+      target: { value: "agent-bom@proj.iam.gserviceaccount.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("my-project-123"), {
+      target: { value: "proj-123" },
+    });
+    const keyInput = screen.getByPlaceholderText(
+      "Paste the service-account key JSON",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(keyInput, { target: { value: SECRET } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
+
+    await waitFor(() =>
+      expect(apiMock.createCloudConnection).toHaveBeenCalledWith({
+        provider: "gcp",
+        display_name: "GCP prod",
+        role_ref: "agent-bom@proj.iam.gserviceaccount.com",
+        external_id: SECRET,
+        regions: [],
+        auth_params: { project_id: "proj-123" },
+      }),
+    );
   });
 
   it("runs a read-only scan and shows inventory counts + CIS pass rate", async () => {
@@ -128,22 +212,49 @@ describe("ConnectionsPage", () => {
         region: "us-east-1",
         resource_count: 42,
         identity_count: 7,
-        node_summary: { buckets: 3, instances: 5, security_groups: 4, roles: 6, users: 1 },
+        node_summary: {
+          buckets: 3,
+          instances: 5,
+          security_groups: 4,
+          roles: 6,
+          users: 1,
+        },
         warnings: [],
       },
-      cis_benchmark: { benchmark: "CIS AWS", benchmark_version: "1.5", passed: 30, failed: 10, total: 40, pass_rate: 0.75 },
-      audit_metadata: { read_only: true, writes_performed: false, note: "Read-only scan." },
-      connection: { ...CREATED_RECORD, status: "active", last_scan_at: "2026-06-27T01:00:00Z" },
+      cis_benchmark: {
+        benchmark: "CIS AWS",
+        benchmark_version: "1.5",
+        passed: 30,
+        failed: 10,
+        total: 40,
+        pass_rate: 0.75,
+      },
+      audit_metadata: {
+        read_only: true,
+        writes_performed: false,
+        note: "Read-only scan.",
+      },
+      connection: {
+        ...CREATED_RECORD,
+        status: "active",
+        last_scan_at: "2026-06-27T01:00:00Z",
+      },
     });
 
     render(<ConnectionsPage />);
 
-    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Production account")).toBeInTheDocument(),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Scan now" }));
 
-    await waitFor(() => expect(apiMock.scanCloudConnection).toHaveBeenCalledWith("conn-1"));
-    await waitFor(() => expect(screen.getByText("Read-only scan complete")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(apiMock.scanCloudConnection).toHaveBeenCalledWith("conn-1"),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Read-only scan complete")).toBeInTheDocument(),
+    );
 
     expect(screen.getByText("42")).toBeInTheDocument(); // resources
     expect(screen.getByText("7")).toBeInTheDocument(); // identities
@@ -153,16 +264,36 @@ describe("ConnectionsPage", () => {
 
   it("deletes a connection through the API", async () => {
     apiMock.listCloudConnections
-      .mockResolvedValueOnce({ schema_version: "cloud.connections.v1", tenant_id: "tenant-acme", connections: [CREATED_RECORD], count: 1 })
-      .mockResolvedValue({ schema_version: "cloud.connections.v1", tenant_id: "tenant-acme", connections: [], count: 0 });
+      .mockResolvedValueOnce({
+        schema_version: "cloud.connections.v1",
+        tenant_id: "tenant-acme",
+        connections: [CREATED_RECORD],
+        count: 1,
+      })
+      .mockResolvedValue({
+        schema_version: "cloud.connections.v1",
+        tenant_id: "tenant-acme",
+        connections: [],
+        count: 0,
+      });
     apiMock.deleteCloudConnection.mockResolvedValue(undefined);
 
     render(<ConnectionsPage />);
 
-    await waitFor(() => expect(screen.getByText("Production account")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Production account")).toBeInTheDocument(),
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: /Delete Production account/ }));
-    await waitFor(() => expect(apiMock.deleteCloudConnection).toHaveBeenCalledWith("conn-1"));
-    await waitFor(() => expect(screen.getByText("No cloud accounts connected")).toBeInTheDocument());
+    fireEvent.click(
+      screen.getByRole("button", { name: /Delete Production account/ }),
+    );
+    await waitFor(() =>
+      expect(apiMock.deleteCloudConnection).toHaveBeenCalledWith("conn-1"),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText("No cloud accounts connected"),
+      ).toBeInTheDocument(),
+    );
   });
 });

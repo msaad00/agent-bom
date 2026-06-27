@@ -140,7 +140,7 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     secretField: {
       key: "external_id",
       label: "Service account key (JSON)",
-      placeholder: '{ "type": "service_account", ... }',
+      placeholder: "Paste the service-account key JSON",
       multiline: true,
       hint: "The service-account key JSON. Brokered with the cloud-platform.read-only scope. Stored encrypted, never shown again.",
     },

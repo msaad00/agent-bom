@@ -74,12 +74,16 @@ AGENT_BOM_CLICKHOUSE_URL
 AGENT_BOM_CLICKHOUSE_USER
 # Opt-in (default OFF) gate for the estate-wide read-only AWS asset inventory scanner.
 AGENT_BOM_CLOUD_INVENTORY
-# base64 Fernet key for at-rest encryption of cloud-connection secrets (ExternalId); secret, env/KMS-only, never in config.py or ENV_VARS.md. With provider=aws-kms it holds the base64 KMS-wrapped data key instead.
+# base64 Fernet key for at-rest encryption of cloud-connection secrets (ExternalId); secret, env/KMS-only, never in config.py or ENV_VARS.md. With provider=aws-kms it holds the base64 KMS-wrapped data key instead. Accepts a comma-separated list of keys for MultiFernet rotation (first key = primary/encrypt, any key decrypts).
 AGENT_BOM_CONNECTIONS_KEY
-# Selects how the connection encryption key is resolved: env (default) | aws-secrets | aws-kms; read at key-load time in api/connection_crypto.py.
+# Selects how the connection encryption key is resolved: env (default) | aws-secrets | aws-kms | vault; read at key-load time in api/connection_crypto.py.
 AGENT_BOM_CONNECTIONS_KEY_PROVIDER
-# Reference (not a secret value) to the managed connection key: the Secrets Manager secret id/ARN for provider=aws-secrets; resolved read-only at key-load time.
+# Reference (not a secret value) to the managed connection key: the Secrets Manager secret id/ARN for provider=aws-secrets, or the Vault KV v2 'mount/path#field' for provider=vault; resolved read-only at key-load time. The resolved value may be a comma-separated list of Fernet keys for rotation.
 AGENT_BOM_CONNECTIONS_KEY_REF
+# Base URL of the HashiCorp Vault server for provider=vault (e.g. https://vault.internal:8200); read-only KV v2 GET at key-load time in api/connection_crypto.py. Not a secret.
+AGENT_BOM_VAULT_ADDR
+# HashiCorp Vault token for provider=vault, sent as the X-Vault-Token header on the read-only KV v2 GET; secret, env/reference-only, never logged.
+AGENT_BOM_VAULT_TOKEN
 # opt-in flag (default OFF) enabling the background loop that re-scans due cloud connections (Phase B.2); read live in api/connection_scheduler.py
 AGENT_BOM_CONNECTIONS_SCHEDULER
 # CLI profile config path override; read at command invocation time.

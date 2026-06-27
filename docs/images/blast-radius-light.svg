@@ -1,170 +1,94 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" fill="none">
-  <style>
-    text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
-    .title { font-size: 16px; font-weight: 700; fill: #18181b; }
-    .subtitle { font-size: 10.5px; font-weight: 400; fill: #a1a1aa; }
-    .node-type { font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; }
-    .node-label { font-size: 12px; font-weight: 700; fill: #27272a; }
-    .node-detail { font-size: 9.5px; font-weight: 400; fill: #71717a; }
-    .cred-label { font-size: 10px; font-weight: 600; font-family: ui-monospace, monospace; }
-    .tool-label { font-size: 10px; font-weight: 600; font-family: ui-monospace, monospace; }
-    .impact-num { font-size: 20px; font-weight: 800; }
-    .impact-label { font-size: 10px; font-weight: 500; fill: #71717a; }
-    .fix-label { font-size: 10.5px; font-weight: 700; font-family: ui-monospace, monospace; }
-    .section-label { font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; fill: #a1a1aa; }
-  </style>
-  <defs>
-    <marker id="arrow-red" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="8" markerHeight="6" orient="auto">
-      <path d="M0 0 L8 3 L0 6Z" fill="#ef4444" opacity="0.5"/>
-    </marker>
-    <marker id="arrow-muted" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="8" markerHeight="6" orient="auto">
-      <path d="M0 0 L8 3 L0 6Z" fill="#a1a1aa" opacity="0.5"/>
-    </marker>
-  </defs>
-
-  <!-- Background -->
-  <rect width="960" height="500" rx="12" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
-
-  <!-- Title -->
-  <text x="480" y="30" text-anchor="middle" class="title">Attack-path drilldown from one vulnerable package</text>
-  <text x="480" y="46" text-anchor="middle" class="subtitle">The graph follows package → vulnerability → MCP server (tools + credential env names) → connected agents so remediation can be fix-first, not guess-first</text>
-
-  <!-- EDGES -->
-  <line x1="148" y1="218" x2="186" y2="218" stroke="#ef4444" stroke-width="2" opacity="0.4" marker-end="url(#arrow-red)"/>
-  <path d="M316 218 C340 218, 352 142, 372 142" stroke="#ef4444" stroke-width="1.5" opacity="0.25" fill="none" marker-end="url(#arrow-red)"/>
-  <path d="M316 218 C340 218, 352 300, 372 300" stroke="#ef4444" stroke-width="1.5" opacity="0.25" fill="none" marker-end="url(#arrow-red)"/>
-  <path d="M512 142 C530 142, 542 106, 560 106" stroke="#8b5cf6" stroke-width="1.5" opacity="0.25" fill="none" marker-end="url(#arrow-muted)"/>
-  <path d="M512 142 C530 142, 542 224, 560 224" stroke="#8b5cf6" stroke-width="2" opacity="0.4" fill="none" marker-end="url(#arrow-muted)"/>
-  <path d="M512 300 C530 300, 542 224, 560 224" stroke="#8b5cf6" stroke-width="2" opacity="0.4" fill="none" marker-end="url(#arrow-muted)"/>
-  <path d="M512 300 C530 300, 542 348, 560 348" stroke="#8b5cf6" stroke-width="1.5" opacity="0.25" fill="none" marker-end="url(#arrow-muted)"/>
-  <line x1="690" y1="106" x2="732" y2="99" stroke="#d4d4d8" stroke-width="1" opacity="0.3"/>
-  <line x1="690" y1="106" x2="732" y2="133" stroke="#d4d4d8" stroke-width="1" opacity="0.25"/>
-  <line x1="690" y1="224" x2="732" y2="133" stroke="#d4d4d8" stroke-width="1" opacity="0.25"/>
-  <line x1="690" y1="224" x2="732" y2="167" stroke="#d4d4d8" stroke-width="1" opacity="0.25"/>
-  <line x1="690" y1="348" x2="732" y2="167" stroke="#d4d4d8" stroke-width="1" opacity="0.2"/>
-
-  <!-- COLUMN LABELS -->
-  <text x="95" y="72" text-anchor="middle" class="section-label">PACKAGE</text>
-  <text x="252" y="72" text-anchor="middle" class="section-label">VULNERABILITY</text>
-  <text x="442" y="72" text-anchor="middle" class="section-label">MCP SERVERS</text>
-  <text x="625" y="72" text-anchor="middle" class="section-label">AI AGENTS</text>
-  <text x="825" y="72" text-anchor="middle" class="section-label">BLAST RADIUS</text>
-
-  <!-- NODE: Package (col 1) -->
-  <rect x="28" y="186" width="120" height="64" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <rect x="28" y="186" width="4" height="64" rx="2" fill="#f59e0b"/>
-  <text x="48" y="204" class="node-type" fill="#d97706">PACKAGE</text>
-  <text x="48" y="220" class="node-label">better-sqlite3</text>
-  <text x="48" y="236" class="node-detail">npm · v9.0.0</text>
-
-  <!-- NODE: CVE (col 2) -->
-  <rect x="186" y="186" width="130" height="64" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <rect x="186" y="186" width="4" height="64" rx="2" fill="#ef4444"/>
-  <text x="206" y="204" class="node-type" fill="#dc2626">CVE</text>
-  <text x="206" y="220" class="node-label" fill="#991b1b">OSV/GHSA finding</text>
-  <text x="206" y="236" class="node-detail">Critical · advisory-backed</text>
-
-  <!-- NODE: Server A -->
-  <rect x="372" y="110" width="140" height="64" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <rect x="372" y="110" width="4" height="64" rx="2" fill="#8b5cf6"/>
-  <text x="392" y="128" class="node-type" fill="#7c3aed">MCP SERVER</text>
-  <text x="392" y="144" class="node-label">sqlite-mcp</text>
-  <text x="392" y="160" class="node-detail">unverified · 3 tools · root</text>
-
-  <!-- NODE: Server B -->
-  <rect x="372" y="268" width="140" height="64" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <rect x="372" y="268" width="4" height="64" rx="2" fill="#8b5cf6"/>
-  <text x="392" y="286" class="node-type" fill="#7c3aed">MCP SERVER</text>
-  <text x="392" y="302" class="node-label">db-tools</text>
-  <text x="392" y="318" class="node-detail">verified · 5 tools</text>
-
-  <!-- NODE: Agent 1 -->
-  <rect x="560" y="78" width="130" height="56" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <rect x="560" y="78" width="4" height="56" rx="2" fill="#3b82f6"/>
-  <text x="580" y="96" class="node-type" fill="#2563eb">AI AGENT</text>
-  <text x="580" y="112" class="node-label">code-agent</text>
-  <text x="580" y="126" class="node-detail">4 servers · 12 tools</text>
-
-  <!-- NODE: Agent 2 — affected by BOTH servers -->
-  <rect x="560" y="196" width="130" height="56" rx="10" fill="#fafafa" stroke="#ef4444" stroke-width="1.5" stroke-opacity="0.35"/>
-  <rect x="560" y="196" width="4" height="56" rx="2" fill="#3b82f6"/>
-  <text x="580" y="214" class="node-type" fill="#2563eb">AI AGENT</text>
-  <text x="580" y="230" class="node-label">desktop-agent</text>
-  <text x="580" y="244" class="node-detail">3 servers · 8 tools</text>
-
-  <rect x="658" y="196" width="30" height="16" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="0.5" stroke-opacity="0.4"/>
-  <text x="673" y="207" text-anchor="middle" font-size="8" font-weight="700" fill="#dc2626" font-family="system-ui, sans-serif">2x</text>
-
-  <!-- NODE: Agent 3 -->
-  <rect x="560" y="320" width="130" height="56" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <rect x="560" y="320" width="4" height="56" rx="2" fill="#3b82f6"/>
-  <text x="580" y="338" class="node-type" fill="#2563eb">AI AGENT</text>
-  <text x="580" y="354" class="node-label">review-agent</text>
-  <text x="580" y="368" class="node-detail">2 servers · 6 tools</text>
-
-  <!-- CREDENTIALS -->
-  <rect x="732" y="86" width="118" height="26" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1"/>
-  <circle cx="746" cy="99" r="4" fill="#f59e0b" opacity="0.5"/>
-  <text x="758" y="103" class="cred-label" fill="#92400e">ANTHROPIC_KEY</text>
-
-  <rect x="732" y="120" width="118" height="26" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1"/>
-  <circle cx="746" cy="133" r="4" fill="#f59e0b" opacity="0.5"/>
-  <text x="758" y="137" class="cred-label" fill="#92400e">DB_URL</text>
-
-  <rect x="732" y="154" width="118" height="26" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1"/>
-  <circle cx="746" cy="167" r="4" fill="#f59e0b" opacity="0.5"/>
-  <text x="758" y="171" class="cred-label" fill="#92400e">AWS_SECRET</text>
-
-  <!-- TOOLS -->
-  <text x="732" y="206" class="section-label">TOOLS AT RISK</text>
-
-  <rect x="732" y="214" width="100" height="24" rx="6" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <text x="782" y="230" text-anchor="middle" class="tool-label" fill="#52525b">query_db</text>
-
-  <rect x="840" y="214" width="100" height="24" rx="6" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <text x="890" y="230" text-anchor="middle" class="tool-label" fill="#52525b">read_file</text>
-
-  <rect x="732" y="246" width="100" height="24" rx="6" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <text x="782" y="262" text-anchor="middle" class="tool-label" fill="#52525b">write_file</text>
-
-  <rect x="840" y="246" width="100" height="24" rx="6" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <text x="890" y="262" text-anchor="middle" class="tool-label" fill="#52525b">exec_sql</text>
-
-  <rect x="732" y="278" width="100" height="24" rx="6" fill="#fef2f2" stroke="#ef4444" stroke-width="1.5"/>
-  <text x="782" y="294" text-anchor="middle" class="tool-label" fill="#dc2626">run_shell</text>
-  <text x="845" y="294" font-size="8" font-weight="700" fill="#dc2626" font-family="system-ui, sans-serif">EXECUTION TOOL</text>
-
-  <!-- SHARED PATH HIGHLIGHT -->
-  <rect x="540" y="186" width="170" height="76" rx="12" stroke="#ef4444" stroke-width="1" stroke-dasharray="4 3" stroke-opacity="0.2" fill="none"/>
-  <text x="547" y="182" font-size="8" font-weight="600" fill="#ef4444" opacity="0.5" font-family="system-ui, sans-serif">HIGHEST RISK — 2 ATTACK PATHS</text>
-
-  <!-- IMPACT SUMMARY BAR -->
-  <rect x="24" y="410" width="912" height="76" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-
-  <text x="80" y="440" text-anchor="middle" class="impact-num" fill="#ef4444">3</text>
-  <text x="80" y="458" text-anchor="middle" class="impact-label">agents</text>
-  <text x="80" y="472" text-anchor="middle" class="impact-label">compromised</text>
-
-  <rect x="140" y="424" width="1" height="48" rx="0.5" fill="#e4e4e7"/>
-
-  <text x="200" y="440" text-anchor="middle" class="impact-num" fill="#d97706">3</text>
-  <text x="200" y="458" text-anchor="middle" class="impact-label">credentials</text>
-  <text x="200" y="472" text-anchor="middle" class="impact-label">exposed</text>
-
-  <rect x="260" y="424" width="1" height="48" rx="0.5" fill="#e4e4e7"/>
-
-  <text x="320" y="440" text-anchor="middle" class="impact-num" fill="#52525b">5</text>
-  <text x="320" y="458" text-anchor="middle" class="impact-label">tools</text>
-  <text x="320" y="472" text-anchor="middle" class="impact-label">reachable</text>
-
-  <rect x="380" y="424" width="1" height="48" rx="0.5" fill="#e4e4e7"/>
-
-  <text x="440" y="440" text-anchor="middle" class="impact-num" fill="#ef4444">1</text>
-  <text x="440" y="458" text-anchor="middle" class="impact-label">exec-capable</text>
-  <text x="440" y="472" text-anchor="middle" class="impact-label">tool exposed</text>
-
-  <rect x="520" y="420" width="404" height="58" rx="8" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
-  <text x="540" y="440" font-size="9" font-weight="600" fill="#059669" letter-spacing="0.05em" font-family="system-ui, sans-serif">RECOMMENDED FIX</text>
-  <text x="540" y="458" class="fix-label" fill="#047857">upgrade better-sqlite3 → 11.7.0</text>
-  <text x="540" y="474" class="node-detail" fill="#059669">Resolves all 3 agent exposures in one upgrade</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" fill="none" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+<defs>
+<marker id="ar" viewBox="0 0 10 8" refX="8" refY="4" markerWidth="9" markerHeight="7" orient="auto"><path d="M1 1 L8 4 L1 7" fill="none" stroke="#9ca3af" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>
+<marker id="arA" viewBox="0 0 10 8" refX="8" refY="4" markerWidth="9" markerHeight="7" orient="auto"><path d="M1 1 L8 4 L1 7" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+<linearGradient id="conv" gradientUnits="userSpaceOnUse" x1="734" y1="0" x2="772" y2="0"><stop offset="0" stop-color="#9ca3af"/><stop offset="1" stop-color="#ef4444"/></linearGradient>
+</defs>
+<rect x="16" y="16" width="928" height="528" rx="18" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+<text x="480" y="48" text-anchor="middle" font-size="17" font-weight="700" fill="#18181b">Attack-path blast radius from one vulnerable package</text>
+<text x="480" y="68" text-anchor="middle" font-size="11" fill="#71717a">package &#8594; finding &#8594; MCP server &#8594; AI agent &#8594; exposed credentials &amp; reachable tools</text>
+<text x="106" y="100" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.11em" fill="#a1a1aa">PACKAGE</text>
+<text x="282" y="100" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.11em" fill="#a1a1aa">FINDING</text>
+<text x="470" y="100" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.11em" fill="#a1a1aa">MCP SERVERS</text>
+<text x="660" y="100" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.11em" fill="#a1a1aa">AI AGENTS</text>
+<text x="849" y="100" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.11em" fill="#a1a1aa">BLAST RADIUS</text>
+<path d="M176 270 C194.0 270 194.0 270 212 270" stroke="#9ca3af" stroke-width="1.8" fill="none" marker-end="url(#ar)"/>
+<path d="M352 270 C374.0 270 374.0 186 396 186" stroke="#cbced4" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+<path d="M352 270 C374.0 270 374.0 354 396 354" stroke="#cbced4" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+<path d="M544 186 C565.0 186 565.0 150 586 150" stroke="#cbced4" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+<path d="M544 186 C565.0 186 565.0 270 586 270" stroke="#cbced4" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+<path d="M544 354 C565.0 354 565.0 270 586 270" stroke="#cbced4" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+<path d="M544 354 C565.0 354 565.0 390 586 390" stroke="#cbced4" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+<path d="M734 150 C753.0 150 753.0 270 772 270" stroke="url(#conv)" stroke-width="2" fill="none" marker-end="url(#arA)"/>
+<path d="M734 270 C753.0 270 753.0 270 772 270" stroke="url(#conv)" stroke-width="2" fill="none" marker-end="url(#arA)"/>
+<path d="M734 390 C753.0 390 753.0 270 772 270" stroke="url(#conv)" stroke-width="2" fill="none" marker-end="url(#arA)"/>
+<rect x="36" y="242" width="140" height="56" rx="14" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/><path d="M55 263.0 L62 267.0 V275.0 L55 279.0 L48 275.0 V267.0 Z" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M48 267.0 L55 271.0 L62 267.0 M55 271.0 V279.0" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="72" y="261" font-size="8" font-weight="700" letter-spacing="0.09em" fill="#a1a1aa">PACKAGE</text><text x="72" y="276" font-size="12.5" font-weight="700" fill="#27272a">better-sqlite3</text><text x="72" y="289" font-size="9.5" fill="#71717a">npm · v9.0.0</text>
+<rect x="212" y="242" width="140" height="56" rx="14" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/><path d="M231 262.0 L237 265.0 V270.0 C237 275.0 231 278.0 231 278.0 C231 278.0 225 275.0 225 270.0 V265.0 Z" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M231 266.0 V271.0" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="231" cy="274.0" r="0.9" fill="#52525b" stroke="none"/><text x="248" y="261" font-size="8" font-weight="700" letter-spacing="0.09em" fill="#a1a1aa">FINDING</text><text x="248" y="276" font-size="12.5" font-weight="700" fill="#27272a">OSV/GHSA</text><text x="248" y="289" font-size="9.5" fill="#71717a">Critical · advisory-backed</text>
+<rect x="396" y="158" width="148" height="56" rx="14" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/><path d="M408 190.0 a3.2 3.2 0 0 1 0.4 -6.3 a4.4 4.4 0 0 1 8.4 -1.2 a3.4 3.4 0 0 1 0.6 6.7 Z" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M414.7 191.0 V185.0 M412 187.5 L414.7 185.0 L417.4 187.5" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="432" y="177" font-size="8" font-weight="700" letter-spacing="0.09em" fill="#a1a1aa">MCP SERVER</text><text x="432" y="192" font-size="12.5" font-weight="700" fill="#27272a">sqlite-mcp</text><text x="432" y="205" font-size="9.5" fill="#71717a">unverified · 3 tools · root</text>
+<rect x="396" y="326" width="148" height="56" rx="14" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/><path d="M408 358.0 a3.2 3.2 0 0 1 0.4 -6.3 a4.4 4.4 0 0 1 8.4 -1.2 a3.4 3.4 0 0 1 0.6 6.7 Z" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M414.7 359.0 V353.0 M412 355.5 L414.7 353.0 L417.4 355.5" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="432" y="345" font-size="8" font-weight="700" letter-spacing="0.09em" fill="#a1a1aa">MCP SERVER</text><text x="432" y="360" font-size="12.5" font-weight="700" fill="#27272a">db-tools</text><text x="432" y="373" font-size="9.5" fill="#71717a">verified · 5 tools</text>
+<rect x="586" y="122" width="148" height="56" rx="14" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/><path d="M605 141.0 V144.0" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="605" cy="140.0" r="1.1" fill="#52525b" stroke="none"/><rect x="598" y="144.0" width="14" height="12" rx="3" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="602" cy="150.0" r="1.1" fill="#52525b" stroke="none"/><circle cx="608" cy="150.0" r="1.1" fill="#52525b" stroke="none"/><path d="M596 149.0 V152.0 M614 149.0 V152.0" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="622" y="141" font-size="8" font-weight="700" letter-spacing="0.09em" fill="#a1a1aa">AI AGENT</text><text x="622" y="156" font-size="12.5" font-weight="700" fill="#27272a">code-agent</text><text x="622" y="169" font-size="9.5" fill="#71717a">4 servers · 12 tools</text>
+<rect x="586" y="242" width="148" height="56" rx="14" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/><path d="M605 261.0 V264.0" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="605" cy="260.0" r="1.1" fill="#52525b" stroke="none"/><rect x="598" y="264.0" width="14" height="12" rx="3" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="602" cy="270.0" r="1.1" fill="#52525b" stroke="none"/><circle cx="608" cy="270.0" r="1.1" fill="#52525b" stroke="none"/><path d="M596 269.0 V272.0 M614 269.0 V272.0" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="622" y="261" font-size="8" font-weight="700" letter-spacing="0.09em" fill="#a1a1aa">AI AGENT</text><text x="622" y="276" font-size="12.5" font-weight="700" fill="#27272a">desktop-agent</text><text x="622" y="289" font-size="9.5" fill="#71717a">3 servers · 8 tools</text>
+<rect x="586" y="362" width="148" height="56" rx="14" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/><path d="M605 381.0 V384.0" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="605" cy="380.0" r="1.1" fill="#52525b" stroke="none"/><rect x="598" y="384.0" width="14" height="12" rx="3" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="602" cy="390.0" r="1.1" fill="#52525b" stroke="none"/><circle cx="608" cy="390.0" r="1.1" fill="#52525b" stroke="none"/><path d="M596 389.0 V392.0 M614 389.0 V392.0" stroke="#52525b" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="622" y="381" font-size="8" font-weight="700" letter-spacing="0.09em" fill="#a1a1aa">AI AGENT</text><text x="622" y="396" font-size="12.5" font-weight="700" fill="#27272a">review-agent</text><text x="622" y="409" font-size="9.5" fill="#71717a">2 servers · 6 tools</text>
+<rect x="702" y="248" width="26" height="15" rx="7.5" fill="#fef2f2" stroke="#ef4444" stroke-width="0.8"/>
+<text x="715" y="259" text-anchor="middle" font-size="8" font-weight="800" fill="#dc2626">2&#215;</text>
+<rect x="770" y="112" width="158" height="312" rx="14" fill="#fdf4f4" stroke="#ef4444" stroke-width="1.6"/>
+<text x="849" y="132" text-anchor="middle" font-size="9.5" font-weight="800" letter-spacing="0.08em" fill="#dc2626">BLAST RADIUS</text>
+<line x1="784" y1="140" x2="914" y2="140" stroke="#fca5a5" stroke-width="1" opacity="0.6"/>
+<circle cx="786" cy="270" r="2.6" fill="#ef4444"/>
+<text x="802" y="158" font-size="7.5" font-weight="700" letter-spacing="0.09em" fill="#dc2626" opacity="0.85">CREDENTIALS</text>
+<rect x="802" y="165" width="116" height="22" rx="7" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+<circle cx="811" cy="176" r="3.2" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M814 176 H822 M819 176 V179 M822 176 V179" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="828" y="179.4" font-size="9" font-weight="600" font-family="ui-monospace, monospace" fill="#dc2626">ANTHROPIC_KEY</text>
+<rect x="802" y="191" width="116" height="22" rx="7" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+<circle cx="811" cy="202" r="3.2" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M814 202 H822 M819 202 V205 M822 202 V205" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="828" y="205.4" font-size="9" font-weight="600" font-family="ui-monospace, monospace" fill="#dc2626">DB_URL</text>
+<rect x="802" y="217" width="116" height="22" rx="7" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+<circle cx="811" cy="228" r="3.2" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M814 228 H822 M819 228 V231 M822 228 V231" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="828" y="231.4" font-size="9" font-weight="600" font-family="ui-monospace, monospace" fill="#dc2626">AWS_SECRET</text>
+<text x="802" y="256" font-size="7.5" font-weight="700" letter-spacing="0.09em" fill="#dc2626" opacity="0.85">TOOLS REACHABLE</text>
+<rect x="802" y="263" width="116" height="22" rx="7" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+<path d="M821 268 a3.6 3.6 0 0 0 -4.7 4.7 L809 279 a1.6 1.6 0 0 0 2.2 2.2 L817 274.5 a3.6 3.6 0 0 0 4.7 -4.7 L818.4 272.6 L816.4 270.6 Z" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="828" y="277.4" font-size="9" font-weight="600" font-family="ui-monospace, monospace" fill="#dc2626">query_db</text>
+<rect x="802" y="289" width="116" height="22" rx="7" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+<path d="M821 294 a3.6 3.6 0 0 0 -4.7 4.7 L809 305 a1.6 1.6 0 0 0 2.2 2.2 L817 300.5 a3.6 3.6 0 0 0 4.7 -4.7 L818.4 298.6 L816.4 296.6 Z" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="828" y="303.4" font-size="9" font-weight="600" font-family="ui-monospace, monospace" fill="#dc2626">read_file</text>
+<rect x="802" y="315" width="116" height="22" rx="7" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+<path d="M821 320 a3.6 3.6 0 0 0 -4.7 4.7 L809 331 a1.6 1.6 0 0 0 2.2 2.2 L817 326.5 a3.6 3.6 0 0 0 4.7 -4.7 L818.4 324.6 L816.4 322.6 Z" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="828" y="329.4" font-size="9" font-weight="600" font-family="ui-monospace, monospace" fill="#dc2626">write_file</text>
+<rect x="802" y="341" width="116" height="22" rx="7" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+<path d="M821 346 a3.6 3.6 0 0 0 -4.7 4.7 L809 357 a1.6 1.6 0 0 0 2.2 2.2 L817 352.5 a3.6 3.6 0 0 0 4.7 -4.7 L818.4 350.6 L816.4 348.6 Z" stroke="#dc2626" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="828" y="355.4" font-size="9" font-weight="600" font-family="ui-monospace, monospace" fill="#dc2626">exec_sql</text>
+<rect x="802" y="368" width="116" height="24" rx="7" fill="#ef4444" stroke="#ef4444" stroke-width="1"/>
+<rect x="808" y="374" width="14" height="12" rx="2.4" stroke="#ffffff" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M811 378 L813.5 380 L811 382 M815.5 382.5 H819" stroke="#ffffff" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="829" y="383.4" font-size="9.5" font-weight="700" font-family="ui-monospace, monospace" fill="#ffffff">run_shell</text>
+<text x="911" y="383.2" text-anchor="end" font-size="6.5" font-weight="700" fill="#ffffff" opacity="0.9">RCE</text>
+<path d="M786 176 V380" stroke="#ef4444" stroke-width="1.3" fill="none" opacity="0.55" stroke-linecap="round"/>
+<path d="M786 176 H802" stroke="#ef4444" stroke-width="1.3" fill="none" opacity="0.55" stroke-linecap="round"/>
+<path d="M786 202 H802" stroke="#ef4444" stroke-width="1.3" fill="none" opacity="0.55" stroke-linecap="round"/>
+<path d="M786 228 H802" stroke="#ef4444" stroke-width="1.3" fill="none" opacity="0.55" stroke-linecap="round"/>
+<path d="M786 274 H802" stroke="#ef4444" stroke-width="1.3" fill="none" opacity="0.55" stroke-linecap="round"/>
+<path d="M786 300 H802" stroke="#ef4444" stroke-width="1.3" fill="none" opacity="0.55" stroke-linecap="round"/>
+<path d="M786 326 H802" stroke="#ef4444" stroke-width="1.3" fill="none" opacity="0.55" stroke-linecap="round"/>
+<path d="M786 352 H802" stroke="#ef4444" stroke-width="1.3" fill="none" opacity="0.55" stroke-linecap="round"/>
+<path d="M786 380 H802" stroke="#ef4444" stroke-width="1.3" fill="none" opacity="0.55" stroke-linecap="round"/>
+<rect x="40" y="448" width="468" height="80" rx="12" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+<text x="118" y="482" text-anchor="middle" font-size="22" font-weight="800" fill="#dc2626">3</text>
+<text x="118" y="500" text-anchor="middle" font-size="9.5" fill="#71717a">agents</text>
+<text x="118" y="513" text-anchor="middle" font-size="9.5" fill="#71717a">compromised</text>
+<line x1="173.0" y1="466" x2="173.0" y2="510" stroke="#ececef" stroke-width="1"/>
+<text x="228" y="482" text-anchor="middle" font-size="22" font-weight="800" fill="#dc2626">3</text>
+<text x="228" y="500" text-anchor="middle" font-size="9.5" fill="#71717a">credentials</text>
+<text x="228" y="513" text-anchor="middle" font-size="9.5" fill="#71717a">exposed</text>
+<line x1="283.0" y1="466" x2="283.0" y2="510" stroke="#ececef" stroke-width="1"/>
+<text x="338" y="482" text-anchor="middle" font-size="22" font-weight="800" fill="#27272a">5</text>
+<text x="338" y="500" text-anchor="middle" font-size="9.5" fill="#71717a">tools</text>
+<text x="338" y="513" text-anchor="middle" font-size="9.5" fill="#71717a">reachable</text>
+<line x1="393.0" y1="466" x2="393.0" y2="510" stroke="#ececef" stroke-width="1"/>
+<text x="448" y="482" text-anchor="middle" font-size="22" font-weight="800" fill="#dc2626">1</text>
+<text x="448" y="500" text-anchor="middle" font-size="9.5" fill="#71717a">exec-capable</text>
+<text x="448" y="513" text-anchor="middle" font-size="9.5" fill="#71717a">tool exposed</text>
+<rect x="524" y="448" width="396" height="80" rx="12" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1"/>
+<text x="544" y="474" font-size="9" font-weight="700" letter-spacing="0.06em" fill="#059669">RECOMMENDED FIX</text>
+<text x="544" y="495" font-size="12.5" font-weight="700" font-family="ui-monospace, monospace" fill="#047857">upgrade better-sqlite3 &#8594; 11.7.0</text>
+<text x="544" y="512" font-size="9.5" fill="#059669">Resolves all 3 agent exposures in one upgrade</text>
 </svg>

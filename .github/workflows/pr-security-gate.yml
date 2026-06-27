@@ -52,12 +52,6 @@ jobs:
           }
           EOF
 
-      - name: Upload scheduled config placeholder
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
-        with:
-          sarif_file: sarif/empty-agent-bom.sarif
-          category: agent-bom-scheduled
-
       - name: Upload dependency self-scan config placeholder
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         with:
@@ -256,6 +250,26 @@ jobs:
               sys.exit(1)
           if os.environ.get("SCAN_EXIT") not in {"0", None}:
               print("::warning::agent-bom self-scan returned non-zero but SARIF contains no blocking findings")
+          PY
+
+      - name: Align self-scan SARIF category
+        if: always() && hashFiles('self-scan.sarif') != ''
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          # agent-bom's SARIF formatter pre-sets runs[].automationDetails.id to
+          # "agent-bom/<scan_id>". github/codeql-action/upload-sarif only injects
+          # its `category` input when automationDetails is absent, so the pre-set
+          # id wins and GitHub derives the category from it (the part before the
+          # final "/", i.e. "agent-bom") instead of "agent-bom-self-scan". Drop it
+          # so the upload `category` below applies.
+          path = Path("self-scan.sarif")
+          data = json.loads(path.read_text())
+          for run in data.get("runs", []):
+              run.pop("automationDetails", None)
+          path.write_text(json.dumps(data, indent=2) + "\n")
           PY
 
       - name: Upload SARIF to code-scanning

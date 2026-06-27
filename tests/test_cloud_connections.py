@@ -328,6 +328,225 @@ def test_unknown_provider_fails_closed() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Key provider: HashiCorp Vault (KV v2), fail-closed, no token/key leak.
+# The shared HTTP client is mocked at the http_client.sync_get seam.
+# --------------------------------------------------------------------------- #
+
+
+class _FakeVaultResponse:
+    """Stand-in for an httpx.Response from a Vault KV v2 read."""
+
+    def __init__(self, *, status_code: int = 200, payload: Any = None, raise_json: bool = False) -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self._raise_json = raise_json
+
+    def json(self) -> Any:
+        if self._raise_json:
+            raise ValueError("not json")
+        return self._payload
+
+
+def _vault_payload(key: str, field: str = "key") -> dict[str, Any]:
+    """A well-formed KV v2 read payload carrying the Fernet key at *field*."""
+    return {"data": {"data": {field: key}, "metadata": {"version": 1}}}
+
+
+def _configure_vault(monkeypatch: Any, *, ref: str = "secret/agent-bom/conn-key") -> None:
+    monkeypatch.setenv(connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV, connection_crypto.PROVIDER_VAULT)
+    monkeypatch.setenv(connection_crypto.VAULT_ADDR_ENV, "https://vault.internal:8200")
+    monkeypatch.setenv(connection_crypto.VAULT_TOKEN_ENV, "s.super-secret-vault-token")
+    monkeypatch.setenv(connection_crypto.CONNECTIONS_KEY_REF_ENV, ref)
+    os.environ.pop(connection_crypto.CONNECTIONS_KEY_ENV, None)
+    connection_crypto.reset_key_cache()
+
+
+def _patch_vault_get(monkeypatch: Any, response: Any) -> dict[str, Any]:
+    """Patch http_client.sync_get; capture the url + headers it was called with."""
+    from agent_bom import http_client
+
+    captured: dict[str, Any] = {"calls": 0}
+
+    def _fake_get(url: str, timeout: Any = None, headers: Any = None) -> Any:
+        captured["calls"] += 1
+        captured["url"] = url
+        captured["headers"] = headers
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr(http_client, "sync_get", _fake_get)
+    return captured
+
+
+def test_vault_provider_round_trip(monkeypatch: Any) -> None:
+    _configure_vault(monkeypatch)
+    captured = _patch_vault_get(monkeypatch, _FakeVaultResponse(payload=_vault_payload(_TEST_KEY)))
+
+    assert connection_crypto.connections_key_configured() is True
+    token = connection_crypto.encrypt_secret("ext-id")
+    assert connection_crypto.decrypt_secret(token) == "ext-id"
+    # KV v2 data path + token header; resolved once then served from cache.
+    assert captured["url"] == "https://vault.internal:8200/v1/secret/data/agent-bom/conn-key"
+    assert captured["headers"]["X-Vault-Token"] == "s.super-secret-vault-token"
+    assert captured["calls"] == 1
+
+
+def test_vault_custom_field(monkeypatch: Any) -> None:
+    _configure_vault(monkeypatch, ref="secret/agent-bom/conn#fernet")
+    _patch_vault_get(monkeypatch, _FakeVaultResponse(payload=_vault_payload(_TEST_KEY, field="fernet")))
+
+    token = connection_crypto.encrypt_secret("ext-id")
+    assert connection_crypto.decrypt_secret(token) == "ext-id"
+
+
+def test_vault_missing_addr_fails_closed(monkeypatch: Any) -> None:
+    _configure_vault(monkeypatch)
+    monkeypatch.delenv(connection_crypto.VAULT_ADDR_ENV, raising=False)
+    captured = _patch_vault_get(monkeypatch, _FakeVaultResponse(payload=_vault_payload(_TEST_KEY)))
+    connection_crypto.reset_key_cache()
+
+    assert connection_crypto.connections_key_configured() is False
+    with pytest.raises(connection_crypto.ConnectionSecretError):
+        connection_crypto.encrypt_secret("ext-id")
+    assert captured["calls"] == 0  # never reached the network without an address
+
+
+def test_vault_missing_token_fails_closed(monkeypatch: Any) -> None:
+    _configure_vault(monkeypatch)
+    monkeypatch.delenv(connection_crypto.VAULT_TOKEN_ENV, raising=False)
+    captured = _patch_vault_get(monkeypatch, _FakeVaultResponse(payload=_vault_payload(_TEST_KEY)))
+    connection_crypto.reset_key_cache()
+
+    assert connection_crypto.connections_key_configured() is False
+    with pytest.raises(connection_crypto.ConnectionSecretError):
+        connection_crypto.encrypt_secret("ext-id")
+    assert captured["calls"] == 0
+
+
+def test_vault_missing_field_fails_closed(monkeypatch: Any) -> None:
+    _configure_vault(monkeypatch)
+    # Body is well-formed KV v2 but the configured field is absent.
+    _patch_vault_get(monkeypatch, _FakeVaultResponse(payload=_vault_payload(_TEST_KEY, field="other")))
+
+    with pytest.raises(connection_crypto.ConnectionSecretError):
+        connection_crypto.encrypt_secret("ext-id")
+
+
+def test_vault_non_200_fails_closed_without_leaking(monkeypatch: Any) -> None:
+    _configure_vault(monkeypatch)
+    _patch_vault_get(monkeypatch, _FakeVaultResponse(status_code=403, payload={"errors": ["permission denied"]}))
+
+    with pytest.raises(connection_crypto.ConnectionSecretError) as excinfo:
+        connection_crypto.encrypt_secret("ext-id")
+    message = str(excinfo.value)
+    assert "s.super-secret-vault-token" not in message
+    assert _TEST_KEY not in message
+    assert "permission denied" not in message
+
+
+def test_vault_malformed_body_fails_closed(monkeypatch: Any) -> None:
+    _configure_vault(monkeypatch)
+    _patch_vault_get(monkeypatch, _FakeVaultResponse(payload="not-a-dict"))
+
+    with pytest.raises(connection_crypto.ConnectionSecretError) as excinfo:
+        connection_crypto.encrypt_secret("ext-id")
+    assert "s.super-secret-vault-token" not in str(excinfo.value)
+
+
+def test_vault_unreachable_fails_closed_without_leaking(monkeypatch: Any) -> None:
+    _configure_vault(monkeypatch)
+    # sync_get returns None when retries are exhausted.
+    _patch_vault_get(monkeypatch, None)
+
+    with pytest.raises(connection_crypto.ConnectionSecretError) as excinfo:
+        connection_crypto.encrypt_secret("ext-id")
+    assert "s.super-secret-vault-token" not in str(excinfo.value)
+
+
+def test_vault_transport_error_does_not_leak_token(monkeypatch: Any) -> None:
+    _configure_vault(monkeypatch)
+    boom = RuntimeError("connect to https://vault.internal:8200 with token s.super-secret-vault-token failed")
+    _patch_vault_get(monkeypatch, boom)
+
+    with pytest.raises(connection_crypto.ConnectionSecretError) as excinfo:
+        connection_crypto.encrypt_secret("ext-id")
+    assert "s.super-secret-vault-token" not in str(excinfo.value)
+
+
+# --------------------------------------------------------------------------- #
+# MultiFernet key rotation: encrypt with the primary, decrypt with any key.
+# --------------------------------------------------------------------------- #
+
+
+def test_rotation_old_ciphertext_decrypts_after_new_primary() -> None:
+    old_key = _TEST_KEY
+    new_key = Fernet.generate_key().decode("ascii")
+
+    # Encrypt under the original single key.
+    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = old_key
+    connection_crypto.reset_key_cache()
+    token = connection_crypto.encrypt_secret("ext-id")
+
+    # Rotate: new key becomes primary, old key retained for decrypt.
+    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = f"{new_key},{old_key}"
+    connection_crypto.reset_key_cache()
+    assert connection_crypto.decrypt_secret(token) == "ext-id"
+
+
+def test_rotation_encrypts_with_primary_key() -> None:
+    new_key = Fernet.generate_key().decode("ascii")
+    old_key = _TEST_KEY
+
+    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = f"{new_key},{old_key}"
+    connection_crypto.reset_key_cache()
+    token = connection_crypto.encrypt_secret("ext-id")
+
+    # The token must decrypt under the primary (new) key alone...
+    assert Fernet(new_key.encode("ascii")).decrypt(token.encode("ascii")).decode() == "ext-id"
+    # ...and NOT under the retired (old) key alone.
+    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = old_key
+    connection_crypto.reset_key_cache()
+    with pytest.raises(connection_crypto.ConnectionSecretError):
+        connection_crypto.decrypt_secret(token)
+
+
+def test_rotation_round_trip_with_multiple_keys() -> None:
+    keys = ",".join(Fernet.generate_key().decode("ascii") for _ in range(3))
+    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = keys
+    connection_crypto.reset_key_cache()
+
+    token = connection_crypto.encrypt_secret("value-123")
+    assert token != "value-123"
+    assert connection_crypto.decrypt_secret(token) == "value-123"
+
+
+def test_single_key_unchanged_is_plain_fernet() -> None:
+    from cryptography.fernet import Fernet as _Fernet
+    from cryptography.fernet import MultiFernet as _MultiFernet
+
+    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = _TEST_KEY
+    connection_crypto.reset_key_cache()
+    cipher = connection_crypto._fernet()
+    assert isinstance(cipher, _Fernet)
+    assert not isinstance(cipher, _MultiFernet)
+
+
+def test_rotation_via_vault_resolved_list(monkeypatch: Any) -> None:
+    old_key = _TEST_KEY
+    new_key = Fernet.generate_key().decode("ascii")
+
+    # Vault returns a comma-separated rotation list in the single KV field.
+    _configure_vault(monkeypatch)
+    _patch_vault_get(monkeypatch, _FakeVaultResponse(payload=_vault_payload(f"{new_key},{old_key}")))
+
+    token = connection_crypto.encrypt_secret("ext-id")
+    # Primary (new) key encrypts; round-trips through the MultiFernet.
+    assert connection_crypto.decrypt_secret(token) == "ext-id"
+    assert Fernet(new_key.encode("ascii")).decrypt(token.encode("ascii")).decode() == "ext-id"
+
+
+# --------------------------------------------------------------------------- #
 # API: RBAC, no-secret responses, tenant scoping
 # --------------------------------------------------------------------------- #
 

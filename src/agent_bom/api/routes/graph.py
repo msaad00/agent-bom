@@ -2208,17 +2208,9 @@ _SHAPE_TO_ICON: dict[str, str] = {
 
 
 _RESERVED_GRAPH_NODE_KINDS: dict[str, tuple[list[str], str]] = {
-    EntityType.SOURCE_FILE.value: (
-        ["code_graph"],
-        "Reserved for source-code topology; static supply-chain scans do not emit file-level nodes yet.",
-    ),
     EntityType.CODE_MODULE.value: (
         ["code_graph"],
         "Reserved for source-code topology; static supply-chain scans do not emit module-level nodes yet.",
-    ),
-    EntityType.CONFIG_FILE.value: (
-        ["code_graph"],
-        "Reserved for configuration topology; static supply-chain scans do not emit config-file nodes yet.",
     ),
     EntityType.EXTERNAL_IMPORT.value: (
         ["code_graph"],
@@ -2266,6 +2258,11 @@ _RESERVED_GRAPH_EDGE_KINDS: dict[str, tuple[list[str], str]] = {
 _EMITTED_GRAPH_NODE_SURFACES: dict[str, list[str]] = {
     EntityType.TOOL_CALL.value: ["runtime_proxy", "gateway_event_projection"],
     EntityType.RESOURCE.value: ["runtime_proxy", "gateway_event_projection", "cnapp_overlay"],
+    # Repository folder/file-structure nodes emitted by the repo-structure
+    # overlay for a code / project scan (directory tree + manifest files).
+    EntityType.DIRECTORY.value: ["repo_structure_overlay"],
+    EntityType.SOURCE_FILE.value: ["repo_structure_overlay"],
+    EntityType.CONFIG_FILE.value: ["repo_structure_overlay"],
 }
 
 
@@ -2327,7 +2324,12 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
     RelationshipType.DEPENDS_ON.value: {
         "category": "inventory",
         "direction": "directed",
-        "source_types": [EntityType.SERVER.value, EntityType.CONTAINER.value],
+        "source_types": [
+            EntityType.SERVER.value,
+            EntityType.CONTAINER.value,
+            EntityType.CONFIG_FILE.value,
+            EntityType.SOURCE_FILE.value,
+        ],
         "target_types": [EntityType.PACKAGE.value],
         "traversable": True,
     },
@@ -2362,8 +2364,20 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
     RelationshipType.CONTAINS.value: {
         "category": "inventory",
         "direction": "directed",
-        "source_types": [EntityType.CONTAINER.value, EntityType.CLUSTER.value, EntityType.FLEET.value],
-        "target_types": [EntityType.PACKAGE.value, EntityType.SERVER.value, EntityType.CONTAINER.value],
+        "source_types": [
+            EntityType.CONTAINER.value,
+            EntityType.CLUSTER.value,
+            EntityType.FLEET.value,
+            EntityType.DIRECTORY.value,
+        ],
+        "target_types": [
+            EntityType.PACKAGE.value,
+            EntityType.SERVER.value,
+            EntityType.CONTAINER.value,
+            EntityType.DIRECTORY.value,
+            EntityType.SOURCE_FILE.value,
+            EntityType.CONFIG_FILE.value,
+        ],
         "traversable": True,
     },
     RelationshipType.IMPORTS.value: {
@@ -2398,7 +2412,13 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
         "category": "vulnerability",
         "direction": "directed",
         "source_types": [EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value],
-        "target_types": [EntityType.PACKAGE.value, EntityType.SERVER.value, EntityType.CONTAINER.value],
+        "target_types": [
+            EntityType.PACKAGE.value,
+            EntityType.SERVER.value,
+            EntityType.CONTAINER.value,
+            EntityType.SOURCE_FILE.value,
+            EntityType.CONFIG_FILE.value,
+        ],
         "traversable": True,
     },
     RelationshipType.VULNERABLE_TO.value: {

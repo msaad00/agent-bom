@@ -30,6 +30,7 @@ ENTITY_OCSF_MAP: dict[str, dict[str, int]] = {
     EntityType.CODE_MODULE: {"category_uid": 5, "class_uid": 4001},
     EntityType.CONFIG_FILE: {"category_uid": 5, "class_uid": 4001},
     EntityType.EXTERNAL_IMPORT: {"category_uid": 5, "class_uid": 4001},
+    EntityType.DIRECTORY: {"category_uid": 5, "class_uid": 4001},
     EntityType.CI_JOB: {"category_uid": 5, "class_uid": 4001},
     EntityType.CREDENTIAL: {"category_uid": 5, "class_uid": 4001},
     EntityType.CREDENTIAL_REF: {"category_uid": 5, "class_uid": 4001},

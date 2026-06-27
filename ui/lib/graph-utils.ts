@@ -3,7 +3,10 @@
  * Background styling used across all graph views (Lineage, Mesh, Context, Attack Flow).
  */
 
-import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
+import type {
+  LineageNodeData,
+  LineageNodeType,
+} from "@/components/lineage-nodes";
 import type { Edge } from "@xyflow/react";
 import {
   GRAPH_EDGE_KIND_META,
@@ -17,7 +20,8 @@ import {
 export const CONTROLS_CLASS =
   "!bg-zinc-900/90 !border-zinc-700 !rounded-lg !backdrop-blur-sm [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-300 [&>button:hover]:!bg-zinc-700";
 
-export const MINIMAP_CLASS = "!bg-zinc-900/90 !border-zinc-700 !rounded-lg !backdrop-blur-sm";
+export const MINIMAP_CLASS =
+  "!bg-zinc-900/90 !border-zinc-700 !rounded-lg !backdrop-blur-sm";
 export const MINIMAP_BG = "#09090b";
 export const MINIMAP_MASK = "rgba(24,24,27,0.82)";
 
@@ -26,7 +30,10 @@ export const BACKGROUND_GAP = 24;
 
 const SHARED_SERVER_COLOR = "#22d3ee";
 
-export const LINEAGE_NODE_GRAPH_KIND: Record<LineageNodeType, GraphNodeKindKey | null> = {
+export const LINEAGE_NODE_GRAPH_KIND: Record<
+  LineageNodeType,
+  GraphNodeKindKey | null
+> = {
   provider: "provider",
   agent: "agent",
   server: "server",
@@ -57,6 +64,9 @@ export const LINEAGE_NODE_GRAPH_KIND: Record<LineageNodeType, GraphNodeKindKey |
   accessPolicy: "access_policy",
   driftIncident: "drift_incident",
   dataStore: "data_store",
+  directory: "directory",
+  sourceFile: "source_file",
+  configFile: "config_file",
 };
 
 function generatedMetaForNodeType(nodeType: LineageNodeType) {
@@ -64,24 +74,37 @@ function generatedMetaForNodeType(nodeType: LineageNodeType) {
   return kind ? GRAPH_NODE_KIND_META[kind] : null;
 }
 
-const UI_NODE_LEGEND_OVERRIDES: Partial<Record<LineageNodeType, Pick<LegendItem, "label" | "color" | "shape">>> = {
-  managedIdentity: { label: "Managed Identity", color: "#0891b2", shape: "dot" },
+const UI_NODE_LEGEND_OVERRIDES: Partial<
+  Record<LineageNodeType, Pick<LegendItem, "label" | "color" | "shape">>
+> = {
+  managedIdentity: {
+    label: "Managed Identity",
+    color: "#0891b2",
+    shape: "dot",
+  },
   accessGrant: { label: "Access Grant", color: "#ca8a04", shape: "diamond" },
   accessPolicy: { label: "Access Policy", color: "#a16207", shape: "diamond" },
-  driftIncident: { label: "Drift Incident", color: "#fb923c", shape: "diamond" },
+  driftIncident: {
+    label: "Drift Incident",
+    color: "#fb923c",
+    shape: "diamond",
+  },
   dataStore: { label: "Data Store", color: "#0284c7", shape: "square" },
 };
 
 // ─── MiniMap Node Color Map ──────────────────────────────────────────────────
 
-export const NODE_COLOR_MAP: Record<LineageNodeType, string> = Object.fromEntries(
-  (Object.keys(LINEAGE_NODE_GRAPH_KIND) as LineageNodeType[]).map((nodeType) => [
-    nodeType,
-    nodeType === "sharedServer"
-      ? SHARED_SERVER_COLOR
-      : generatedMetaForNodeType(nodeType)?.color ?? "#52525b",
-  ]),
-) as Record<LineageNodeType, string>;
+export const NODE_COLOR_MAP: Record<LineageNodeType, string> =
+  Object.fromEntries(
+    (Object.keys(LINEAGE_NODE_GRAPH_KIND) as LineageNodeType[]).map(
+      (nodeType) => [
+        nodeType,
+        nodeType === "sharedServer"
+          ? SHARED_SERVER_COLOR
+          : (generatedMetaForNodeType(nodeType)?.color ?? "#52525b"),
+      ],
+    ),
+  ) as Record<LineageNodeType, string>;
 
 export function minimapNodeColor(n: { data: Record<string, unknown> }): string {
   const d = n.data as LineageNodeData;
@@ -152,6 +175,9 @@ const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
   "sharedServer",
   "server",
   "package",
+  "directory",
+  "configFile",
+  "sourceFile",
   "model",
   "dataset",
   "container",
@@ -198,14 +224,19 @@ export function legendItemForNodeType(nodeType: LineageNodeType): LegendItem {
     color: override?.color ?? meta?.color ?? "#52525b",
     layer: meta?.layer,
     kind: "node",
-    shape: override?.shape ?? (meta ? legendShapeForGraphShape(meta.shape) : "pill"),
+    shape:
+      override?.shape ?? (meta ? legendShapeForGraphShape(meta.shape) : "pill"),
     nodeType,
   };
 }
 
-const NODE_TYPE_LEGEND_ITEMS: Record<LineageNodeType, LegendItem> = Object.fromEntries(
-  NODE_TYPE_LEGEND_ORDER.map((nodeType) => [nodeType, legendItemForNodeType(nodeType)]),
-) as Record<LineageNodeType, LegendItem>;
+const NODE_TYPE_LEGEND_ITEMS: Record<LineageNodeType, LegendItem> =
+  Object.fromEntries(
+    NODE_TYPE_LEGEND_ORDER.map((nodeType) => [
+      nodeType,
+      legendItemForNodeType(nodeType),
+    ]),
+  ) as Record<LineageNodeType, LegendItem>;
 
 const RELATIONSHIP_LEGEND_ORDER = [
   "hosts",
@@ -279,25 +310,36 @@ const RELATIONSHIP_LABEL_OVERRIDES: Record<string, string> = {
 };
 
 const RELATIONSHIP_DESCRIPTION_OVERRIDES: Record<string, string> = {
-  exposes_cred: "Static evidence that a server can surface a credential or secret reference.",
-  reaches_tool: "Credential or identity can reach a tool-capable execution boundary.",
+  exposes_cred:
+    "Static evidence that a server can surface a credential or secret reference.",
+  reaches_tool:
+    "Credential or identity can reach a tool-capable execution boundary.",
   vulnerable_to: "Package or component is linked to a vulnerability finding.",
-  exploitable_via: "Finding has a reachable exploit path through agent, MCP, tool, or identity context.",
-  shares_server: "Multiple agents share an MCP server, creating a lateral movement choke point.",
+  exploitable_via:
+    "Finding has a reachable exploit path through agent, MCP, tool, or identity context.",
+  shares_server:
+    "Multiple agents share an MCP server, creating a lateral movement choke point.",
   shares_cred: "Multiple agents or servers share credential material.",
-  lateral_path: "Ranked traversal chain that connects source, tool/credential, and impacted target.",
-  authenticates_as: "Agent can operate as a managed identity or service principal.",
-  scoped_to: "Access grant is constrained to a resource, tool, or environment scope.",
-  governs: "Policy or control applies to the connected identity, tool, or environment.",
-  exhibits_drift: "Observed behavior or posture differs from expected governance state.",
+  lateral_path:
+    "Ranked traversal chain that connects source, tool/credential, and impacted target.",
+  authenticates_as:
+    "Agent can operate as a managed identity or service principal.",
+  scoped_to:
+    "Access grant is constrained to a resource, tool, or environment scope.",
+  governs:
+    "Policy or control applies to the connected identity, tool, or environment.",
+  exhibits_drift:
+    "Observed behavior or posture differs from expected governance state.",
   exposed_to: "Internet, account, or environment exposure reaches this asset.",
   stores: "Asset stores or indexes data that may be reachable from the path.",
-  has_permission: "Identity has an effective permission on the connected resource.",
+  has_permission:
+    "Identity has an effective permission on the connected resource.",
   invoked: "Runtime evidence that an agent invoked a server or tool.",
   called: "Runtime evidence of a concrete tool call.",
   accessed: "Runtime evidence that a tool or call accessed an asset.",
   used_credential: "Runtime evidence that credential material was used.",
-  delegated_to: "Runtime delegation from one actor or tool boundary to another.",
+  delegated_to:
+    "Runtime delegation from one actor or tool boundary to another.",
 };
 
 function fallbackRelationshipLabel(relationship: string): string {
@@ -312,7 +354,10 @@ export function relationshipLegendItem(relationship: string): LegendItem {
   const meta = GRAPH_EDGE_KIND_META[relationship as GraphEdgeKindKey];
   const dashed = DASHED_LEGEND_RELATIONSHIPS.has(relationship);
   return {
-    label: RELATIONSHIP_LABEL_OVERRIDES[relationship] ?? meta?.label ?? fallbackRelationshipLabel(relationship),
+    label:
+      RELATIONSHIP_LABEL_OVERRIDES[relationship] ??
+      meta?.label ??
+      fallbackRelationshipLabel(relationship),
     color: meta?.color ?? "#52525b",
     layer: meta?.category,
     description: RELATIONSHIP_DESCRIPTION_OVERRIDES[relationship],
@@ -322,8 +367,14 @@ export function relationshipLegendItem(relationship: string): LegendItem {
   };
 }
 
-const RELATIONSHIP_LEGEND_ITEMS: Record<(typeof RELATIONSHIP_LEGEND_ORDER)[number], LegendItem> = Object.fromEntries(
-  RELATIONSHIP_LEGEND_ORDER.map((relationship) => [relationship, relationshipLegendItem(relationship)]),
+const RELATIONSHIP_LEGEND_ITEMS: Record<
+  (typeof RELATIONSHIP_LEGEND_ORDER)[number],
+  LegendItem
+> = Object.fromEntries(
+  RELATIONSHIP_LEGEND_ORDER.map((relationship) => [
+    relationship,
+    relationshipLegendItem(relationship),
+  ]),
 ) as Record<(typeof RELATIONSHIP_LEGEND_ORDER)[number], LegendItem>;
 
 function isLineageNodeType(value: unknown): value is LineageNodeType {
@@ -336,15 +387,16 @@ export function legendItemsForVisibleNodes(
 ): LegendItem[] {
   const visibleTypes = new Set<LineageNodeType>();
   for (const node of nodes) {
-    const nodeType = (node.data as Partial<LineageNodeData> | undefined)?.nodeType;
+    const nodeType = (node.data as Partial<LineageNodeData> | undefined)
+      ?.nodeType;
     if (isLineageNodeType(nodeType)) {
       visibleTypes.add(nodeType);
     }
   }
 
-  const items = NODE_TYPE_LEGEND_ORDER
-    .filter((nodeType) => visibleTypes.has(nodeType))
-    .map((nodeType) => NODE_TYPE_LEGEND_ITEMS[nodeType]);
+  const items = NODE_TYPE_LEGEND_ORDER.filter((nodeType) =>
+    visibleTypes.has(nodeType),
+  ).map((nodeType) => NODE_TYPE_LEGEND_ITEMS[nodeType]);
 
   for (const extra of extras) {
     if (!items.some((item) => item.label === extra.label)) {
@@ -355,18 +407,24 @@ export function legendItemsForVisibleNodes(
   return items;
 }
 
-export function relationshipLegendItemsForVisibleEdges(edges: Array<{ data?: unknown }>): LegendItem[] {
+export function relationshipLegendItemsForVisibleEdges(
+  edges: Array<{ data?: unknown }>,
+): LegendItem[] {
   const visibleRelationships = new Set<string>();
   for (const edge of edges) {
-    const relationship = (edge.data as { relationship?: unknown } | undefined)?.relationship;
-    if (typeof relationship === "string" && relationship in RELATIONSHIP_LEGEND_ITEMS) {
+    const relationship = (edge.data as { relationship?: unknown } | undefined)
+      ?.relationship;
+    if (
+      typeof relationship === "string" &&
+      relationship in RELATIONSHIP_LEGEND_ITEMS
+    ) {
       visibleRelationships.add(relationship);
     }
   }
 
-  return RELATIONSHIP_LEGEND_ORDER
-    .filter((relationship) => visibleRelationships.has(relationship))
-    .map((relationship) => RELATIONSHIP_LEGEND_ITEMS[relationship]);
+  return RELATIONSHIP_LEGEND_ORDER.filter((relationship) =>
+    visibleRelationships.has(relationship),
+  ).map((relationship) => RELATIONSHIP_LEGEND_ITEMS[relationship]);
 }
 
 export function legendItemsForVisibleGraph(
@@ -405,7 +463,8 @@ function numericStrokeWidth(edge: Edge, fallback = 1.4): number {
 }
 
 function edgeRelationship(edge: Edge): string {
-  const relationship = (edge.data as { relationship?: unknown } | undefined)?.relationship;
+  const relationship = (edge.data as { relationship?: unknown } | undefined)
+    ?.relationship;
   return typeof relationship === "string" ? relationship : "";
 }
 
@@ -433,10 +492,18 @@ export function readableGraphEdges(
   return edges.map((edge): Edge => {
     const relationship = edgeRelationship(edge);
     const highSignal = HIGH_SIGNAL_RELATIONSHIPS.has(relationship);
-    const active = activeNodeIds ? activeNodeIds.has(edge.source) && activeNodeIds.has(edge.target) : false;
-    const captureBaseOpacity = captureMode ? Math.max(baseOpacity, 0.42) : baseOpacity;
-    const captureHighSignalOpacity = captureMode ? Math.max(highSignalOpacity, 0.68) : highSignalOpacity;
-    const captureInactiveOpacity = captureMode ? Math.max(inactiveOpacity, 0.18) : inactiveOpacity;
+    const active = activeNodeIds
+      ? activeNodeIds.has(edge.source) && activeNodeIds.has(edge.target)
+      : false;
+    const captureBaseOpacity = captureMode
+      ? Math.max(baseOpacity, 0.42)
+      : baseOpacity;
+    const captureHighSignalOpacity = captureMode
+      ? Math.max(highSignalOpacity, 0.68)
+      : highSignalOpacity;
+    const captureInactiveOpacity = captureMode
+      ? Math.max(inactiveOpacity, 0.18)
+      : inactiveOpacity;
     const opacity = activeNodeIds
       ? active
         ? activeOpacity
@@ -448,7 +515,11 @@ export function readableGraphEdges(
 
     return {
       ...edge,
-      animated: captureMode ? false : quietAnimation ? Boolean(activeNodeIds && active && edge.animated) : Boolean(edge.animated),
+      animated: captureMode
+        ? false
+        : quietAnimation
+          ? Boolean(activeNodeIds && active && edge.animated)
+          : Boolean(edge.animated),
       style: {
         ...edge.style,
         opacity,
@@ -478,5 +549,12 @@ export const CONTEXT_LEGEND: LegendItem[] = [
   { label: "Cred", color: "#f59e0b", kind: "node", shape: "dot" },
   { label: "Tool", color: "#a855f7", kind: "node", shape: "pill" },
   { label: "Vuln", color: "#ef4444", kind: "node", shape: "diamond" },
-  { label: "Lateral", color: "#f97316", kind: "edge", dashed: true, lineStyle: "dashed", shape: "diamond" },
+  {
+    label: "Lateral",
+    color: "#f97316",
+    kind: "edge",
+    dashed: true,
+    lineStyle: "dashed",
+    shape: "diamond",
+  },
 ];

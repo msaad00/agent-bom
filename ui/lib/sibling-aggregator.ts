@@ -18,7 +18,10 @@
 
 import type { Edge, Node } from "@xyflow/react";
 
-import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
+import type {
+  LineageNodeData,
+  LineageNodeType,
+} from "@/components/lineage-nodes";
 
 export const CLUSTER_PILL_NODE_TYPE = "clusterPillNode";
 export const CLUSTER_ID_PREFIX = "cluster:";
@@ -58,7 +61,10 @@ export interface SiblingAggregateResult {
    * "expand pill" callback — pop the id, add the members back to
    * `expandedClusterIds`, and re-run the aggregator.
    */
-  clusters: Map<string, { parentId: string; childType: LineageNodeType; members: string[] }>;
+  clusters: Map<
+    string,
+    { parentId: string; childType: LineageNodeType; members: string[] }
+  >;
 }
 
 /**
@@ -83,7 +89,11 @@ function siblingGroupKey(key: SiblingGroupKey): string {
   return `${key.parentId}::${key.edgeKind}::${key.childType}`;
 }
 
-function clusterId(parentId: string, childType: LineageNodeType, edgeKind: string): string {
+function clusterId(
+  parentId: string,
+  childType: LineageNodeType,
+  edgeKind: string,
+): string {
   return `${CLUSTER_ID_PREFIX}${parentId}:${childType}:${edgeKind}`;
 }
 
@@ -100,7 +110,10 @@ export function aggregateSiblings(
   edges: Edge[],
   options: SiblingAggregateOptions = {},
 ): SiblingAggregateResult {
-  const thresholdN = Math.max(2, options.thresholdN ?? FOCUSED_AGGREGATION_THRESHOLD);
+  const thresholdN = Math.max(
+    2,
+    options.thresholdN ?? FOCUSED_AGGREGATION_THRESHOLD,
+  );
   const expanded = options.expandedClusterIds ?? new Set<string>();
 
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -149,7 +162,10 @@ export function aggregateSiblings(
   const childParentCount = new Map<string, number>();
   for (const edge of edges) {
     if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) continue;
-    childParentCount.set(edge.target, (childParentCount.get(edge.target) ?? 0) + 1);
+    childParentCount.set(
+      edge.target,
+      (childParentCount.get(edge.target) ?? 0) + 1,
+    );
   }
 
   const dropNodeIds = new Set<string>();
@@ -265,12 +281,17 @@ const CHILD_TYPE_NOUNS: Partial<Record<LineageNodeType, string>> = {
   fleet: "fleet",
   cluster: "cluster",
   sharedServer: "shared server",
+  directory: "folder",
+  sourceFile: "source file",
+  configFile: "config file",
 };
 
 function readEdgeKind(edge: Edge): string {
   const data = edge.data as Record<string, unknown> | undefined;
-  if (data && typeof data["relationship"] === "string") return data["relationship"];
-  if (typeof edge.label === "string" && edge.label.trim().length > 0) return edge.label;
+  if (data && typeof data["relationship"] === "string")
+    return data["relationship"];
+  if (typeof edge.label === "string" && edge.label.trim().length > 0)
+    return edge.label;
   return edge.type ?? "edge";
 }
 
@@ -280,5 +301,7 @@ function readEdgeKind(edge: Edge): string {
  * between regular node selection and "expand cluster" behaviour.
  */
 export function isClusterPillNode(node: Node<LineageNodeData>): boolean {
-  return (node.data as unknown as ClusterPillData | undefined)?.isCluster === true;
+  return (
+    (node.data as unknown as ClusterPillData | undefined)?.isCluster === true
+  );
 }

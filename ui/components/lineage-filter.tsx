@@ -48,6 +48,9 @@ export const FOCUSED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   accessPolicy: false,
   driftIncident: true,
   dataStore: true,
+  directory: true,
+  sourceFile: true,
+  configFile: true,
 };
 
 export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
@@ -81,6 +84,9 @@ export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   accessPolicy: true,
   driftIncident: true,
   dataStore: true,
+  directory: true,
+  sourceFile: true,
+  configFile: true,
 };
 
 export type GraphScopePreset = "immediate" | "relevant" | "expanded";
@@ -97,7 +103,9 @@ export const GRAPH_SCOPE_DESCRIPTIONS: Record<GraphScopePreset, string> = {
   expanded: "Broader topology review with lower-priority context included.",
 };
 
-export function createImmediateGraphFilters(agentName: string | null = null): FilterState {
+export function createImmediateGraphFilters(
+  agentName: string | null = null,
+): FilterState {
   return {
     layers: { ...FOCUSED_LAYER_DEFAULTS },
     severity: "high",
@@ -110,7 +118,9 @@ export function createImmediateGraphFilters(agentName: string | null = null): Fi
   };
 }
 
-export function createFocusedGraphFilters(agentName: string | null = null): FilterState {
+export function createFocusedGraphFilters(
+  agentName: string | null = null,
+): FilterState {
   return {
     layers: { ...FOCUSED_LAYER_DEFAULTS },
     severity: "high",
@@ -123,7 +133,9 @@ export function createFocusedGraphFilters(agentName: string | null = null): Filt
   };
 }
 
-export function createExpandedGraphFilters(agentName: string | null = null): FilterState {
+export function createExpandedGraphFilters(
+  agentName: string | null = null,
+): FilterState {
   return {
     layers: { ...EXPANDED_LAYER_DEFAULTS },
     severity: null,
@@ -138,9 +150,17 @@ export function createExpandedGraphFilters(agentName: string | null = null): Fil
 
 export const DEFAULT_FILTERS: FilterState = createFocusedGraphFilters();
 
-export function graphScopePresetForFilters(filters: FilterState): GraphScopePreset {
-  if (filters.maxDepth <= 1 && filters.pageSize <= 25 && filters.vulnOnly) return "immediate";
-  if (filters.maxDepth <= 2 && filters.pageSize <= 50 && filters.vulnOnly && filters.severity === "high") {
+export function graphScopePresetForFilters(
+  filters: FilterState,
+): GraphScopePreset {
+  if (filters.maxDepth <= 1 && filters.pageSize <= 25 && filters.vulnOnly)
+    return "immediate";
+  if (
+    filters.maxDepth <= 2 &&
+    filters.pageSize <= 50 &&
+    filters.vulnOnly &&
+    filters.severity === "high"
+  ) {
     return "relevant";
   }
   return "expanded";
@@ -171,7 +191,10 @@ const SEVERITY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "low", label: "Low + above" },
 ];
 
-const RELATIONSHIP_SCOPE_OPTIONS: Array<{ value: FilterState["relationshipScope"]; label: string }> = [
+const RELATIONSHIP_SCOPE_OPTIONS: Array<{
+  value: FilterState["relationshipScope"];
+  label: string;
+}> = [
   { value: "all", label: "All relationships" },
   { value: "inventory", label: "Inventory only" },
   { value: "attack", label: "Attack / lateral" },
@@ -180,7 +203,10 @@ const RELATIONSHIP_SCOPE_OPTIONS: Array<{ value: FilterState["relationshipScope"
 ];
 
 /** Edge-kind sets used to decide whether a relationship-scope option is reachable. */
-const SCOPE_RELATIONSHIPS: Record<Exclude<FilterState["relationshipScope"], "all">, string[]> = {
+const SCOPE_RELATIONSHIPS: Record<
+  Exclude<FilterState["relationshipScope"], "all">,
+  string[]
+> = {
   inventory: [
     "hosts",
     "uses",
@@ -262,13 +288,23 @@ const LAYER_LABELS: { key: LineageNodeType; label: string; color: string }[] = [
   { key: "accessPolicy", label: "Policies", color: "bg-amber-700" },
   { key: "driftIncident", label: "Drift", color: "bg-orange-400" },
   { key: "dataStore", label: "Data Stores", color: "bg-sky-600" },
+  { key: "directory", label: "Folders", color: "bg-teal-600" },
+  { key: "sourceFile", label: "Source Files", color: "bg-cyan-400" },
+  { key: "configFile", label: "Config Files", color: "bg-orange-500" },
 ];
 
 const AGENT_OPTION_HEIGHT = 32;
 const AGENT_VISIBLE_ROWS = 8;
 const AGENT_OVERSCAN_ROWS = 4;
 
-export function FilterPanel({ filters, onChange, agentNames, validValues, onReset, variant = "rail" }: FilterPanelProps) {
+export function FilterPanel({
+  filters,
+  onChange,
+  agentNames,
+  validValues,
+  onReset,
+  variant = "rail",
+}: FilterPanelProps) {
   const [openSections, setOpenSections] = useState({
     layers: false,
     severity: true,
@@ -278,7 +314,10 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
     pageSize: false,
   });
   const toggle = (key: LineageNodeType) =>
-    onChange({ ...filters, layers: { ...filters.layers, [key]: !filters.layers[key] } });
+    onChange({
+      ...filters,
+      layers: { ...filters.layers, [key]: !filters.layers[key] },
+    });
   const toggleSection = (key: keyof typeof openSections) =>
     setOpenSections((current) => ({ ...current, [key]: !current[key] }));
 
@@ -315,8 +354,16 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
           : "w-48 bg-[var(--surface)] backdrop-blur-sm border-r border-[var(--border-subtle)] p-3 space-y-4 overflow-y-auto text-xs text-[var(--text-secondary)]"
       }
     >
-      <div className={variant === "panel" ? "flex items-center justify-between md:col-span-2 xl:col-span-4" : "flex items-center justify-between -mt-1 -mx-1 mb-1"}>
-        <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-tertiary)] px-1">Filters</span>
+      <div
+        className={
+          variant === "panel"
+            ? "flex items-center justify-between md:col-span-2 xl:col-span-4"
+            : "flex items-center justify-between -mt-1 -mx-1 mb-1"
+        }
+      >
+        <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-tertiary)] px-1">
+          Filters
+        </span>
         {onReset && (
           <button
             type="button"
@@ -373,7 +420,9 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
       >
         <select
           value={filters.severity ?? ""}
-          onChange={(e) => onChange({ ...filters, severity: e.target.value || null })}
+          onChange={(e) =>
+            onChange({ ...filters, severity: e.target.value || null })
+          }
           className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none focus:border-emerald-600"
         >
           {SEVERITY_OPTIONS.map(({ value, label }) => {
@@ -397,14 +446,19 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
         title="Edges"
         open={openSections.edges}
         onToggle={() => toggleSection("edges")}
-        summary={filters.relationshipScope === "all" ? "all" : filters.relationshipScope}
+        summary={
+          filters.relationshipScope === "all"
+            ? "all"
+            : filters.relationshipScope
+        }
       >
         <select
           value={filters.relationshipScope}
           onChange={(e) =>
             onChange({
               ...filters,
-              relationshipScope: e.target.value as FilterState["relationshipScope"],
+              relationshipScope: e.target
+                .value as FilterState["relationshipScope"],
             })
           }
           className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none focus:border-emerald-600"
@@ -487,7 +541,9 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
           <input
             type="checkbox"
             checked={filters.vulnOnly}
-            onChange={(e) => onChange({ ...filters, vulnOnly: e.target.checked })}
+            onChange={(e) =>
+              onChange({ ...filters, vulnOnly: e.target.checked })
+            }
             className="accent-emerald-500 w-3 h-3"
           />
           Vulnerable only
@@ -502,7 +558,9 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
       >
         <select
           value={String(filters.pageSize)}
-          onChange={(e) => onChange({ ...filters, pageSize: Number(e.target.value) })}
+          onChange={(e) =>
+            onChange({ ...filters, pageSize: Number(e.target.value) })
+          }
           className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none focus:border-emerald-600"
         >
           <option value="25">25 nodes</option>
@@ -533,16 +591,28 @@ function VirtualizedAgentPicker({
   const filteredAgents = useMemo(
     () =>
       normalizedQuery
-        ? agentNames.filter((agentName) => agentName.toLowerCase().includes(normalizedQuery))
+        ? agentNames.filter((agentName) =>
+            agentName.toLowerCase().includes(normalizedQuery),
+          )
         : agentNames,
     [agentNames, normalizedQuery],
   );
   const listHeight = AGENT_VISIBLE_ROWS * AGENT_OPTION_HEIGHT;
   const visibleCount = AGENT_VISIBLE_ROWS + AGENT_OVERSCAN_ROWS * 2;
-  const startIndex = Math.max(0, Math.floor(scrollTop / AGENT_OPTION_HEIGHT) - AGENT_OVERSCAN_ROWS);
-  const visibleAgents = filteredAgents.slice(startIndex, startIndex + visibleCount);
+  const startIndex = Math.max(
+    0,
+    Math.floor(scrollTop / AGENT_OPTION_HEIGHT) - AGENT_OVERSCAN_ROWS,
+  );
+  const visibleAgents = filteredAgents.slice(
+    startIndex,
+    startIndex + visibleCount,
+  );
   const topPadding = startIndex * AGENT_OPTION_HEIGHT;
-  const bottomPadding = Math.max(0, (filteredAgents.length - startIndex - visibleAgents.length) * AGENT_OPTION_HEIGHT);
+  const bottomPadding = Math.max(
+    0,
+    (filteredAgents.length - startIndex - visibleAgents.length) *
+      AGENT_OPTION_HEIGHT,
+  );
 
   return (
     <div className="space-y-2">
@@ -601,12 +671,15 @@ function VirtualizedAgentPicker({
             );
           })}
           {visibleAgents.length === 0 && (
-            <div className="px-2 py-3 text-[11px] text-[var(--text-tertiary)]">No agents match this filter.</div>
+            <div className="px-2 py-3 text-[11px] text-[var(--text-tertiary)]">
+              No agents match this filter.
+            </div>
           )}
         </div>
       </div>
       <p className="text-[10px] text-[var(--text-tertiary)]">
-        Showing {visibleAgents.length.toLocaleString()} of {filteredAgents.length.toLocaleString()} matches.
+        Showing {visibleAgents.length.toLocaleString()} of{" "}
+        {filteredAgents.length.toLocaleString()} matches.
       </p>
     </div>
   );
@@ -633,12 +706,26 @@ function FilterSection({
         className="flex w-full items-center justify-between px-3 py-2 text-left"
       >
         <div>
-          <h3 className="font-semibold text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">{title}</h3>
-          {summary ? <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">{summary}</p> : null}
+          <h3 className="font-semibold text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">
+            {title}
+          </h3>
+          {summary ? (
+            <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+              {summary}
+            </p>
+          ) : null}
         </div>
-        {open ? <ChevronDown className="h-3.5 w-3.5 text-[var(--text-tertiary)]" /> : <ChevronRight className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />}
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
+        )}
       </button>
-      {open ? <div className="border-t border-[var(--border-subtle)] px-3 py-3">{children}</div> : null}
+      {open ? (
+        <div className="border-t border-[var(--border-subtle)] px-3 py-3">
+          {children}
+        </div>
+      ) : null}
     </section>
   );
 }

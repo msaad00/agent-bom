@@ -57,6 +57,7 @@ export enum EntityType {
   CODE_MODULE = "code_module",
   CONFIG_FILE = "config_file",
   EXTERNAL_IMPORT = "external_import",
+  DIRECTORY = "directory",
   CI_JOB = "ci_job",
   // Finding entities (OCSF Category 2)
   VULNERABILITY = "vulnerability",
@@ -269,6 +270,7 @@ export const ENTITY_OCSF_MAP: Record<
   [EntityType.CODE_MODULE]: { category_uid: 5, class_uid: 4001 },
   [EntityType.CONFIG_FILE]: { category_uid: 5, class_uid: 4001 },
   [EntityType.EXTERNAL_IMPORT]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.DIRECTORY]: { category_uid: 5, class_uid: 4001 },
   [EntityType.CI_JOB]: { category_uid: 5, class_uid: 4001 },
   [EntityType.VULNERABILITY]: { category_uid: 2, class_uid: 2001 },
   // Credentials are INVENTORY — presence of env var is not a finding
@@ -432,43 +434,44 @@ export const EDGE_KIND_TO_RELATIONSHIP: Record<string, RelationshipType> = {
 
 /** Canonical node colors by entity type */
 export const ENTITY_COLOR_MAP: Record<string, string> = {
-  [EntityType.AGENT]: "#10b981",           // emerald
-  [EntityType.SERVER]: "#3b82f6",          // blue
-  [EntityType.PACKAGE]: "#52525b",         // zinc
-  [EntityType.TOOL]: "#a855f7",            // purple
-  [EntityType.TOOL_CALL]: "#9333ea",       // purple
-  [EntityType.MODEL]: "#8b5cf6",           // violet
-  [EntityType.DATASET]: "#06b6d4",         // cyan
-  [EntityType.CONTAINER]: "#6366f1",       // indigo
-  [EntityType.RESOURCE]: "#3b82f6",        // blue
-  [EntityType.CLOUD_RESOURCE]: "#0ea5e9",  // sky
-  [EntityType.SOURCE_FILE]: "#22d3ee",      // cyan
-  [EntityType.CODE_MODULE]: "#06b6d4",      // cyan
-  [EntityType.CONFIG_FILE]: "#f97316",      // orange
-  [EntityType.EXTERNAL_IMPORT]: "#f59e0b",  // amber
-  [EntityType.CI_JOB]: "#a855f7",           // purple
-  [EntityType.VULNERABILITY]: "#ef4444",   // red
-  [EntityType.CREDENTIAL]: "#f59e0b",      // amber
-  [EntityType.CREDENTIAL_REF]: "#facc15",  // yellow
+  [EntityType.AGENT]: "#10b981", // emerald
+  [EntityType.SERVER]: "#3b82f6", // blue
+  [EntityType.PACKAGE]: "#52525b", // zinc
+  [EntityType.TOOL]: "#a855f7", // purple
+  [EntityType.TOOL_CALL]: "#9333ea", // purple
+  [EntityType.MODEL]: "#8b5cf6", // violet
+  [EntityType.DATASET]: "#06b6d4", // cyan
+  [EntityType.CONTAINER]: "#6366f1", // indigo
+  [EntityType.RESOURCE]: "#3b82f6", // blue
+  [EntityType.CLOUD_RESOURCE]: "#0ea5e9", // sky
+  [EntityType.SOURCE_FILE]: "#22d3ee", // cyan
+  [EntityType.CODE_MODULE]: "#06b6d4", // cyan
+  [EntityType.CONFIG_FILE]: "#f97316", // orange
+  [EntityType.EXTERNAL_IMPORT]: "#f59e0b", // amber
+  [EntityType.DIRECTORY]: "#0d9488", // teal
+  [EntityType.CI_JOB]: "#a855f7", // purple
+  [EntityType.VULNERABILITY]: "#ef4444", // red
+  [EntityType.CREDENTIAL]: "#f59e0b", // amber
+  [EntityType.CREDENTIAL_REF]: "#facc15", // yellow
   [EntityType.MISCONFIGURATION]: "#f97316", // orange
-  [EntityType.ORG]: "#115e59",             // teal
-  [EntityType.ACCOUNT]: "#0f766e",         // teal
-  [EntityType.USER]: "#14b8a6",            // teal
-  [EntityType.GROUP]: "#0d9488",           // teal
-  [EntityType.ROLE]: "#ea580c",            // orange
-  [EntityType.POLICY]: "#d97706",          // amber
+  [EntityType.ORG]: "#115e59", // teal
+  [EntityType.ACCOUNT]: "#0f766e", // teal
+  [EntityType.USER]: "#14b8a6", // teal
+  [EntityType.GROUP]: "#0d9488", // teal
+  [EntityType.ROLE]: "#ea580c", // orange
+  [EntityType.POLICY]: "#d97706", // amber
   [EntityType.SERVICE_ACCOUNT]: "#0f766e", // teal
   [EntityType.SERVICE_PRINCIPAL]: "#0f766e", // teal
   [EntityType.FEDERATED_IDENTITY]: "#0e7490", // cyan
   [EntityType.MANAGED_IDENTITY]: "#0891b2", // cyan
-  [EntityType.ACCESS_GRANT]: "#ca8a04",    // amber
-  [EntityType.ACCESS_POLICY]: "#a16207",   // amber
-  [EntityType.DRIFT_INCIDENT]: "#fb923c",  // orange
-  [EntityType.DATA_STORE]: "#0284c7",      // sky
-  [EntityType.API_GATEWAY]: "#2563eb",     // blue
-  [EntityType.APPLICATION]: "#7c3aed",     // violet
-  [EntityType.PROVIDER]: "#6b7280",        // gray
-  [EntityType.ENVIRONMENT]: "#6b7280",     // gray
+  [EntityType.ACCESS_GRANT]: "#ca8a04", // amber
+  [EntityType.ACCESS_POLICY]: "#a16207", // amber
+  [EntityType.DRIFT_INCIDENT]: "#fb923c", // orange
+  [EntityType.DATA_STORE]: "#0284c7", // sky
+  [EntityType.API_GATEWAY]: "#2563eb", // blue
+  [EntityType.APPLICATION]: "#7c3aed", // violet
+  [EntityType.PROVIDER]: "#6b7280", // gray
+  [EntityType.ENVIRONMENT]: "#6b7280", // gray
 };
 
 /** Canonical edge colors by relationship type */
@@ -556,7 +559,8 @@ export function filterNodes(
     if (opts.entityTypes && !opts.entityTypes.has(n.entity_type)) return false;
     if (minRank && severityRank(n.severity) < minRank) return false;
     if (opts.status && n.status !== opts.status) return false;
-    if (opts.dataSource && !n.data_sources.includes(opts.dataSource)) return false;
+    if (opts.dataSource && !n.data_sources.includes(opts.dataSource))
+      return false;
     return true;
   });
 }
@@ -571,7 +575,8 @@ export function filterEdges(
   } = {},
 ): UnifiedEdge[] {
   return edges.filter((e) => {
-    if (opts.relationships && !opts.relationships.has(e.relationship)) return false;
+    if (opts.relationships && !opts.relationships.has(e.relationship))
+      return false;
     if (opts.traversableOnly && !e.traversable) return false;
     if (opts.minWeight != null && e.weight < opts.minWeight) return false;
     return true;
@@ -667,46 +672,141 @@ export const ENTITY_LEGEND: LegendEntry[] = [
   { key: "package", label: "Package", color: "#52525b", shape: "square" },
   { key: "tool", label: "Tool", color: "#a855f7", shape: "diamond" },
   { key: "tool_call", label: "Tool Call", color: "#9333ea", shape: "diamond" },
-  { key: "vulnerability", label: "Vulnerability", color: "#ef4444", shape: "triangle" },
-  { key: "credential", label: "Credential", color: "#f59e0b", shape: "diamond" },
-  { key: "credential_ref", label: "Credential Ref", color: "#facc15", shape: "diamond" },
-  { key: "misconfiguration", label: "Misconfiguration", color: "#f97316", shape: "triangle" },
+  {
+    key: "vulnerability",
+    label: "Vulnerability",
+    color: "#ef4444",
+    shape: "triangle",
+  },
+  {
+    key: "credential",
+    label: "Credential",
+    color: "#f59e0b",
+    shape: "diamond",
+  },
+  {
+    key: "credential_ref",
+    label: "Credential Ref",
+    color: "#facc15",
+    shape: "diamond",
+  },
+  {
+    key: "misconfiguration",
+    label: "Misconfiguration",
+    color: "#f97316",
+    shape: "triangle",
+  },
   { key: "resource", label: "Resource", color: "#3b82f6", shape: "square" },
   { key: "model", label: "Model", color: "#8b5cf6", shape: "square" },
   { key: "container", label: "Container", color: "#6366f1", shape: "square" },
-  { key: "cloud_resource", label: "Cloud Resource", color: "#0ea5e9", shape: "square" },
+  {
+    key: "cloud_resource",
+    label: "Cloud Resource",
+    color: "#0ea5e9",
+    shape: "square",
+  },
   { key: "org", label: "Organization", color: "#115e59", shape: "square" },
   { key: "account", label: "Account", color: "#0f766e", shape: "square" },
   { key: "user", label: "User", color: "#14b8a6", shape: "circle" },
   { key: "group", label: "Group", color: "#0d9488", shape: "circle" },
   { key: "role", label: "Role", color: "#ea580c", shape: "circle" },
   { key: "policy", label: "Policy", color: "#d97706", shape: "diamond" },
-  { key: "service_account", label: "Service Account", color: "#0f766e", shape: "circle" },
-  { key: "service_principal", label: "Service Principal", color: "#0f766e", shape: "circle" },
-  { key: "federated_identity", label: "Federated Identity", color: "#0e7490", shape: "circle" },
+  {
+    key: "service_account",
+    label: "Service Account",
+    color: "#0f766e",
+    shape: "circle",
+  },
+  {
+    key: "service_principal",
+    label: "Service Principal",
+    color: "#0f766e",
+    shape: "circle",
+  },
+  {
+    key: "federated_identity",
+    label: "Federated Identity",
+    color: "#0e7490",
+    shape: "circle",
+  },
 ];
 
 export const RELATIONSHIP_LEGEND: LegendEntry[] = [
   { key: "uses", label: "Uses", color: "#10b981", shape: "circle" },
   { key: "depends_on", label: "Depends On", color: "#52525b", shape: "circle" },
-  { key: "provides_tool", label: "Provides Tool", color: "#a855f7", shape: "circle" },
-  { key: "exposes_cred", label: "Exposes Credential", color: "#f59e0b", shape: "circle" },
-  { key: "reaches_tool", label: "Credential Reaches Tool", color: "#fbbf24", shape: "circle" },
-  { key: "vulnerable_to", label: "Vulnerable To", color: "#ef4444", shape: "circle" },
-  { key: "shares_server", label: "Shares Server", color: "#22d3ee", shape: "circle" },
-  { key: "shares_cred", label: "Shares Credential", color: "#f97316", shape: "circle" },
-  { key: "lateral_path", label: "Lateral Path", color: "#ea580c", shape: "circle" },
+  {
+    key: "provides_tool",
+    label: "Provides Tool",
+    color: "#a855f7",
+    shape: "circle",
+  },
+  {
+    key: "exposes_cred",
+    label: "Exposes Credential",
+    color: "#f59e0b",
+    shape: "circle",
+  },
+  {
+    key: "reaches_tool",
+    label: "Credential Reaches Tool",
+    color: "#fbbf24",
+    shape: "circle",
+  },
+  {
+    key: "vulnerable_to",
+    label: "Vulnerable To",
+    color: "#ef4444",
+    shape: "circle",
+  },
+  {
+    key: "shares_server",
+    label: "Shares Server",
+    color: "#22d3ee",
+    shape: "circle",
+  },
+  {
+    key: "shares_cred",
+    label: "Shares Credential",
+    color: "#f97316",
+    shape: "circle",
+  },
+  {
+    key: "lateral_path",
+    label: "Lateral Path",
+    color: "#ea580c",
+    shape: "circle",
+  },
   { key: "acted_as", label: "Acted As", color: "#14b8a6", shape: "circle" },
-  { key: "invoked", label: "Invoked (runtime)", color: "#10b981", shape: "circle" },
+  {
+    key: "invoked",
+    label: "Invoked (runtime)",
+    color: "#10b981",
+    shape: "circle",
+  },
   { key: "called", label: "Called", color: "#a855f7", shape: "circle" },
-  { key: "accessed", label: "Accessed (runtime)", color: "#3b82f6", shape: "circle" },
-  { key: "used_credential", label: "Used Credential", color: "#facc15", shape: "circle" },
+  {
+    key: "accessed",
+    label: "Accessed (runtime)",
+    color: "#3b82f6",
+    shape: "circle",
+  },
+  {
+    key: "used_credential",
+    label: "Used Credential",
+    color: "#facc15",
+    shape: "circle",
+  },
   { key: "assumes", label: "Assumes", color: "#ea580c", shape: "circle" },
   { key: "trusts", label: "Trusts", color: "#0891b2", shape: "circle" },
   { key: "attached", label: "Attached", color: "#d97706", shape: "circle" },
   { key: "inherits", label: "Inherits", color: "#a16207", shape: "circle" },
   { key: "can_access", label: "Can Access", color: "#dc2626", shape: "circle" },
-  { key: "cross_account_trust", label: "Cross-Account Trust", color: "#be123c", shape: "circle" },
+  {
+    key: "cross_account_trust",
+    label: "Cross-Account Trust",
+    color: "#be123c",
+    shape: "circle",
+  },
 ];
 
 /** Entity types that represent actual security findings (for SIEM export) */

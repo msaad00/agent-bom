@@ -1085,6 +1085,19 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("ASPM overlay failed", exc_info=True)
 
+    # Repository folder/file structure: materialise the directory tree, manifest
+    # files, file → dependency → vuln paths, and file → finding paths from the
+    # project inventory + file-scoped findings already in the report, so a code
+    # / repo scan visualises its folder layout the way the cloud graph
+    # visualises the cloud hierarchy. Runs after the inventory + ASPM overlays so
+    # the project servers, packages, and misconfiguration nodes it stitches onto
+    # already exist. No-op (graph byte-identical) when no project inventory and
+    # no file-scoped findings are present.
+    try:
+        _apply_repo_structure_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("repo-structure overlay failed", exc_info=True)
+
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)
         span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")
@@ -1139,6 +1152,30 @@ def _apply_aspm_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> 
     from agent_bom.graph.aspm_overlay import apply_aspm_overlay
 
     apply_aspm_overlay(graph, dict(report_json), datetime.now(timezone.utc))
+
+
+def _apply_repo_structure_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
+    """Materialise the repository folder/file structure into the graph.
+
+    Reads the optional ``project_inventory`` block (the directory tree + per-
+    directory manifest / lockfile / declaration files the project scanner already
+    emits) and hands it to
+    :func:`agent_bom.graph.repo_structure_overlay.apply_repo_structure_overlay`,
+    which builds ``DIRECTORY`` nodes with ``CONTAINS`` edges, attaches manifest
+    ``CONFIG_FILE`` nodes, links each manifest to the direct packages it declares
+    (file → package → vuln), and places file-scoped findings under their folder
+    (finding → file). Gated to a clean no-op when neither a project inventory nor
+    a file-scoped finding is present, so an unrelated scan leaves the graph
+    byte-identical. Mirrors how ``_apply_aspm_overlay`` is invoked above.
+    """
+    has_inventory = isinstance(report_json.get("project_inventory"), Mapping)
+    if not has_inventory and not any(node.entity_type == EntityType.MISCONFIGURATION for node in graph.nodes.values()):
+        return
+    from datetime import datetime, timezone
+
+    from agent_bom.graph.repo_structure_overlay import apply_repo_structure_overlay
+
+    apply_repo_structure_overlay(graph, dict(report_json), datetime.now(timezone.utc))
 
 
 def _iter_agentic_identity_graph_projections(report_json: Mapping[str, Any]) -> list[Mapping[str, Any]]:

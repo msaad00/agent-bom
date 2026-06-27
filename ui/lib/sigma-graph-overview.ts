@@ -1,7 +1,10 @@
 import Graph from "graphology";
 import type { Edge, Node } from "@xyflow/react";
 
-import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
+import type {
+  LineageNodeData,
+  LineageNodeType,
+} from "@/components/lineage-nodes";
 import type { UnifiedGraphData } from "@/lib/graph-schema";
 import {
   buildLargeGraphOverviewModel,
@@ -76,6 +79,9 @@ const SIGMA_DEFAULT_LAYERS: Record<LineageNodeType, boolean> = {
   accessPolicy: true,
   driftIncident: true,
   dataStore: true,
+  directory: true,
+  sourceFile: true,
+  configFile: true,
 };
 
 const SIGMA_DEFAULT_FILTERS: UnifiedGraphFlowFilters = {
@@ -90,7 +96,12 @@ function edgeIsHighlighted(
   source: { highlighted: boolean; forceLabel: boolean } | undefined,
   target: { highlighted: boolean; forceLabel: boolean } | undefined,
 ): boolean {
-  return Boolean(source?.highlighted || target?.highlighted || source?.forceLabel || target?.forceLabel);
+  return Boolean(
+    source?.highlighted ||
+    target?.highlighted ||
+    source?.forceLabel ||
+    target?.forceLabel,
+  );
 }
 
 export function buildSigmaGraphOverviewModel(

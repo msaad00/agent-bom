@@ -24,6 +24,14 @@ class EntityType(str, Enum):
     CONFIG_FILE = "config_file"
     EXTERNAL_IMPORT = "external_import"
     CI_JOB = "ci_job"
+    # Repository folder/file structure — a directory node forms the CODE-layer
+    # containment backbone (repo root → sub-directory → file) so a code/project
+    # scan renders folder structure the way the cloud graph renders the
+    # org → account → resource hierarchy. Materialised by the repo-structure
+    # overlay from the project inventory; CONTAINS edges build the tree and the
+    # estate roll-up collapses deep trees the same way it collapses the cloud
+    # CONTAINS hierarchy.
+    DIRECTORY = "directory"
 
     # Finding entities (OCSF Category 2)
     VULNERABILITY = "vulnerability"

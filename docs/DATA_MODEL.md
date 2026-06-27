@@ -42,7 +42,7 @@ is wired into the docs site so drift produces a visible regression.
 | `TransportType` | 4 | `stdio`, `sse`, `streamable-http`, `unknown` |
 | `ServerSurface` | 10 | `mcp-server`, `container-image`, `oci-tarball`, `filesystem`, `sbom`, `external-scan`, `os-packages`, `sast`, `ai-inventory`, `other` |
 | `AgentStatus` | 2 | `configured`, `installed-not-configured` |
-| `EntityType` | 39 | `agent`, `server`, `package`, `tool`, `tool_call`, `model`, `dataset`, `container`, `cloud_resource`, `resource`, `source_file`, `code_module`, `config_file`, `external_import`, `ci_job`, `vulnerability`, `misconfiguration`, `credential`, `credential_ref`, `org`, `account`, `user`, `group`, `role`, `policy`, `service_account`, `service_principal`, `federated_identity`, `managed_identity`, `access_grant`, `access_policy`, `drift_incident`, `data_store`, `api_gateway`, `application`, `provider`, `environment`, `fleet`, `cluster` |
+| `EntityType` | 40 | `agent`, `server`, `package`, `tool`, `tool_call`, `model`, `dataset`, `container`, `cloud_resource`, `resource`, `source_file`, `code_module`, `config_file`, `external_import`, `ci_job`, `directory`, `vulnerability`, `misconfiguration`, `credential`, `credential_ref`, `org`, `account`, `user`, `group`, `role`, `policy`, `service_account`, `service_principal`, `federated_identity`, `managed_identity`, `access_grant`, `access_policy`, `drift_incident`, `data_store`, `api_gateway`, `application`, `provider`, `environment`, `fleet`, `cluster` |
 | `RelationshipType` | 47 | `hosts`, `uses`, `depends_on`, `provides_tool`, `exposes_cred`, `reaches_tool`, `serves_model`, `contains`, `imports`, `defines`, `runs`, `configures`, `affects`, `vulnerable_to`, `exploitable_via`, `remediates`, `triggers`, `shares_server`, `shares_cred`, `lateral_path`, `manages`, `owns`, `part_of`, `member_of`, `assumes`, `trusts`, `attached`, `inherits`, `can_access`, `cross_account_trust`, `authenticates_as`, `scoped_to`, `governs`, `exhibits_drift`, `exposed_to`, `stores`, `has_permission`, `protects`, `acted_as`, `invoked`, `called`, `used_credential`, `accessed`, `delegated_to`, `correlates_with`, `possibly_correlates_with`, `belongs_to` |
 
 ### Live Schema Cross-Checks
@@ -127,16 +127,27 @@ Used for unified findings outside the SCA / blast-radius path
 The unified graph projects the canonical model into a node/edge form
 used for blast-radius traversal, dashboards, and OCSF export.
 
-### Entity types (39)
+### Entity types (40)
 
 `AGENT`, `SERVER`, `PACKAGE`, `TOOL`, `TOOL_CALL`, `MODEL`, `DATASET`,
 `CONTAINER`, `CLOUD_RESOURCE`, `RESOURCE`, `SOURCE_FILE`, `CODE_MODULE`,
-`CONFIG_FILE`, `EXTERNAL_IMPORT`, `CI_JOB`, `VULNERABILITY`,
+`CONFIG_FILE`, `EXTERNAL_IMPORT`, `DIRECTORY`, `CI_JOB`, `VULNERABILITY`,
 `MISCONFIGURATION`, `CREDENTIAL`, `CREDENTIAL_REF`, `ORG`, `ACCOUNT`,
 `USER`, `GROUP`, `ROLE`, `POLICY`, `SERVICE_ACCOUNT`, `SERVICE_PRINCIPAL`,
 `FEDERATED_IDENTITY`, `MANAGED_IDENTITY`, `ACCESS_GRANT`, `ACCESS_POLICY`,
 `DRIFT_INCIDENT`, `DATA_STORE`, `API_GATEWAY`, `APPLICATION`, `PROVIDER`,
 `ENVIRONMENT`, `FLEET`, `CLUSTER`.
+
+`DIRECTORY` is the repository folder/file-structure backbone — materialised by
+the repo-structure overlay from the project inventory, each directory and its
+ancestors become a `DIRECTORY` node linked `CONTAINS` parent → child (repo root
+→ sub-directory → file). Manifest / lockfile files become `CONFIG_FILE` nodes
+the directory `CONTAINS`; the representative manifest is linked `DEPENDS_ON` to
+the direct packages it declares so a vulnerability is traceable back through its
+package to the file and folder that introduced it, and file-scoped findings are
+placed under their folder (`AFFECTS` finding → file). The estate roll-up
+collapses deep source trees along these `CONTAINS` edges the same way it
+collapses the cloud `org → account → resource` hierarchy.
 
 `DATA_STORE` is a cloud-CNAPP primitive — a database / bucket / lake / warehouse
 holding data at rest, derived from cloud resources so path-to-sensitive-data is

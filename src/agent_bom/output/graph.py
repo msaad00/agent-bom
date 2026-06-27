@@ -476,7 +476,174 @@ def build_graph_elements(
                             }
                         )
 
+    _append_repo_structure_elements(elements, report, collapse_cves=collapse_cves, vuln_pkg_keys=vuln_pkg_keys)
     return elements
+
+
+def _norm_repo_dir(raw: object) -> str:
+    """Normalise a repo-relative directory path; root (``""``/``"."``) → ``""``."""
+    if not isinstance(raw, str):
+        return ""
+    text = raw.strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    text = text.strip("/")
+    return "" if text == "." else text
+
+
+def _append_repo_structure_elements(
+    elements: list[dict],
+    report: "AIBOMReport",
+    *,
+    collapse_cves: bool,
+    vuln_pkg_keys: set[tuple[str, str]],
+) -> None:
+    """Append the repository folder/file structure to a Cytoscape element list.
+
+    Materialises the directory tree (``directory`` nodes linked ``contains``
+    parent → child), the manifest / lockfile files each directory holds
+    (``config_file`` / ``source_file`` nodes the directory ``contains``), and a
+    ``depends_on`` edge from a directory's representative manifest to the
+    vulnerable packages discovered for that directory, so a viewer can trace a
+    finding back to the file and folder that introduced it. A no-op when the
+    report carries no project inventory.
+    """
+    inventory = report.project_inventory_data
+    if not isinstance(inventory, dict):
+        return
+    directories = inventory.get("directories")
+    if not isinstance(directories, list) or not directories:
+        return
+
+    code_ext = {
+        "py",
+        "pyi",
+        "js",
+        "jsx",
+        "ts",
+        "tsx",
+        "mjs",
+        "cjs",
+        "go",
+        "rs",
+        "rb",
+        "java",
+        "kt",
+        "kts",
+        "scala",
+        "c",
+        "cc",
+        "cpp",
+        "h",
+        "hpp",
+        "cs",
+        "php",
+        "swift",
+        "m",
+        "sh",
+        "bash",
+    }
+
+    def file_type(name: str) -> str:
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        return "source_file" if ext in code_ext else "config_file"
+
+    def dir_id(path: str) -> str:
+        return "dir:." if path == "" else f"dir:{path}"
+
+    def dir_label(path: str) -> str:
+        return "." if path == "" else path.rsplit("/", 1)[-1]
+
+    # Vulnerable package node ids discovered per directory (the legacy graph only
+    # emits vulnerable packages), keyed by normalised directory path.
+    pkgs_by_dir: dict[str, list[str]] = {}
+    for agent in report.agents:
+        for srv in agent.mcp_servers:
+            dir_path = _norm_repo_dir(srv.name)
+            for pkg in srv.packages:
+                if (pkg.name, pkg.ecosystem) not in vuln_pkg_keys:
+                    continue
+                pid = _package_node_id(pkg.name, pkg.ecosystem, agent_name=agent.name, server_name=srv.name, scoped=collapse_cves)
+                pkgs_by_dir.setdefault(dir_path, []).append(pid)
+
+    records: dict[str, dict] = {}
+    for record in directories:
+        if isinstance(record, dict) and isinstance(record.get("path"), str):
+            records[_norm_repo_dir(record.get("path"))] = record
+
+    # Every directory plus its ancestors needs a node so the tree is connected.
+    needed: set[str] = set()
+    for path in records:
+        parts = path.split("/") if path else []
+        needed.add("")
+        for i in range(1, len(parts) + 1):
+            needed.add("/".join(parts[:i]))
+
+    seen_nodes: set[str] = set()
+    seen_edges: set[tuple[str, str]] = set()
+
+    for path in sorted(needed):
+        node_id = dir_id(path)
+        if node_id in seen_nodes:
+            continue
+        seen_nodes.add(node_id)
+        record = records.get(path, {})
+        elements.append(
+            {
+                "data": {
+                    "id": node_id,
+                    "label": dir_label(path),
+                    "type": "directory",
+                    "tip": f"Directory: {path or '.'}\nPackages: {record.get('package_count', 0)}",
+                    "path": path or ".",
+                    "packageCount": record.get("package_count", 0),
+                }
+            }
+        )
+        if path != "":
+            parent = path.rsplit("/", 1)[0] if "/" in path else ""
+            key = (dir_id(parent), node_id)
+            if key not in seen_edges:
+                seen_edges.add(key)
+                elements.append({"data": {"source": key[0], "target": key[1], "type": "contains"}})
+
+    for path in sorted(records):
+        record = records[path]
+        manifest_files = [f for f in (record.get("manifest_files") or []) if isinstance(f, str)]
+        lockfiles = [f for f in (record.get("lockfile_files") or []) if isinstance(f, str)]
+        declarations = [f for f in (record.get("declaration_files") or []) if isinstance(f, str)]
+        all_files = sorted(set(manifest_files) | set(lockfiles) | set(declarations))
+        for file_name in all_files:
+            file_path = f"{path}/{file_name}" if path else file_name
+            node_id = f"file:{file_path}"
+            if node_id not in seen_nodes:
+                seen_nodes.add(node_id)
+                elements.append(
+                    {
+                        "data": {
+                            "id": node_id,
+                            "label": file_name,
+                            "type": file_type(file_name),
+                            "tip": f"File: {file_path}",
+                            "path": file_path,
+                        }
+                    }
+                )
+            key = (dir_id(path), node_id)
+            if key not in seen_edges:
+                seen_edges.add(key)
+                elements.append({"data": {"source": key[0], "target": key[1], "type": "contains"}})
+
+        # Representative manifest → the vulnerable packages this directory holds.
+        representative = sorted(declarations or manifest_files or lockfiles)
+        if representative and pkgs_by_dir.get(path):
+            rep_path = f"{path}/{representative[0]}" if path else representative[0]
+            rep_id = f"file:{rep_path}"
+            for pid in sorted(set(pkgs_by_dir[path])):
+                key = (rep_id, pid)
+                if key not in seen_edges:
+                    seen_edges.add(key)
+                    elements.append({"data": {"source": rep_id, "target": pid, "type": "depends_on"}})
 
 
 def _provider_label(source: str) -> str:
@@ -922,6 +1089,9 @@ _GRAPH_HTML_TEMPLATE = """<!DOCTYPE html>
   <div><span class="dot" style="background:#6e7681"></span> Server (clean)</div>
   <div><span class="dot" style="background:#f85149"></span> Server (vulnerable)</div>
   <div><span class="dot" style="background:#d29922"></span> Server (credentials)</div>
+  <div><span class="dot" style="background:#0d9488"></span> Directory</div>
+  <div><span class="dot" style="background:#f97316"></span> Config file</div>
+  <div><span class="dot" style="background:#22d3ee"></span> Source file</div>
   <div><span class="dot" style="background:#da3633"></span> CVE critical</div>
   <div><span class="dot" style="background:#db6d28"></span> CVE high</div>
   <div><span class="dot" style="background:#d29922"></span> CVE medium</div>
@@ -994,6 +1164,18 @@ const cy=cytoscape({{
       'background-color':'#3b1a1a','border-color':'#da3633',
       'width':'mapData(vulnCount, 1, 15, 180, 280)','height':58,'text-max-width':220
     }}}},
+    {{selector:'node[type="directory"]',style:{{
+      'background-color':'#0f2e2b','border-color':'#0d9488','border-width':2,
+      'shape':'roundrectangle','width':150,'height':42,'font-size':12
+    }}}},
+    {{selector:'node[type="config_file"]',style:{{
+      'background-color':'#3f2a0b','border-color':'#f97316','color':'#fed7aa',
+      'shape':'cut-rectangle','width':150,'height':40,'font-size':12
+    }}}},
+    {{selector:'node[type="source_file"]',style:{{
+      'background-color':'#0c2b33','border-color':'#22d3ee','color':'#a5f3fc',
+      'shape':'cut-rectangle','width':150,'height':40,'font-size':12
+    }}}},
     {{selector:'node[type="cve"][severity="critical"], node[type^="cve_critical"]',style:{{'background-color':'#ff3b30','color':'#fff',
       'shape':'diamond','width':160,'height':70}}}},
     {{selector:'node[type="cve"][severity="high"], node[type^="cve_high"]',style:{{'background-color':'#ff8a24','color':'#fff',
@@ -1019,6 +1201,7 @@ const cy=cytoscape({{
       'line-color':'#ff5d5d','target-arrow-color':'#ff5d5d','width':2.5
     }}}},
     {{selector:'edge[type="depends_on"][maxSeverity = "high"]',style:{{'line-color':'#ff8a24','target-arrow-color':'#ff8a24','width':2}}}},
+    {{selector:'edge[type="contains"]',style:{{'line-color':'#0d9488','target-arrow-color':'#0d9488','width':1.6}}}},
     {{selector:'edge[type="affects"]',style:{{'line-style':'dashed','line-color':'#ff5d5d','target-arrow-color':'#ff5d5d','width':1.8}}}},
     {{selector:'.faded',style:{{'opacity':0.08}}}},
     {{selector:'.focus',style:{{'opacity':1,'border-width':4,'border-color':'#58a6ff','z-index':9999}}}},

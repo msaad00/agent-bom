@@ -14,7 +14,10 @@ import {
   Cloud,
   Container,
   Database,
+  FileCode,
+  FileCog,
   Fingerprint,
+  Folder,
   IdCard,
   KeyRound,
   Landmark,
@@ -68,7 +71,10 @@ export type LineageNodeType =
   | "accessGrant"
   | "accessPolicy"
   | "driftIncident"
-  | "dataStore";
+  | "dataStore"
+  | "directory"
+  | "sourceFile"
+  | "configFile";
 
 export type LineageNodeData = {
   label: string;
@@ -179,12 +185,18 @@ function NodeCard({
       />
       <div className="flex items-center gap-2 mb-1">
         <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} />
-        <span className="text-[15px] font-semibold leading-5 text-zinc-950 dark:text-zinc-50 truncate">{data.label}</span>
+        <span className="text-[15px] font-semibold leading-5 text-zinc-950 dark:text-zinc-50 truncate">
+          {data.label}
+        </span>
         <span className="ml-auto rounded border border-black/10 bg-white/70 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-zinc-600 dark:border-white/15 dark:bg-black/25 dark:text-zinc-200">
           {NODE_TYPE_BADGES[data.nodeType]}
         </span>
       </div>
-      {subtitle && <div className="text-xs leading-4 text-zinc-700 dark:text-zinc-200/90 truncate">{subtitle}</div>}
+      {subtitle && (
+        <div className="text-xs leading-4 text-zinc-700 dark:text-zinc-200/90 truncate">
+          {subtitle}
+        </div>
+      )}
       {footer}
     </div>
   );
@@ -196,7 +208,10 @@ function NodeCard({
  * glyph shown on a node is byte-for-byte the glyph shown in the legend row
  * for the same type. Every type gets a DISTINCT, on-meaning Lucide icon.
  */
-export type EntityIcon = ComponentType<{ className?: string; style?: CSSProperties }>;
+export type EntityIcon = ComponentType<{
+  className?: string;
+  style?: CSSProperties;
+}>;
 
 export const ENTITY_ICONS: Record<LineageNodeType, EntityIcon> = {
   provider: Cloud,
@@ -229,9 +244,14 @@ export const ENTITY_ICONS: Record<LineageNodeType, EntityIcon> = {
   accessPolicy: ShieldCheck,
   driftIncident: Activity,
   dataStore: Warehouse,
+  directory: Folder,
+  sourceFile: FileCode,
+  configFile: FileCog,
 };
 
-export function entityIcon(nodeType: LineageNodeType | string | undefined): EntityIcon {
+export function entityIcon(
+  nodeType: LineageNodeType | string | undefined,
+): EntityIcon {
   if (nodeType && nodeType in ENTITY_ICONS) {
     return ENTITY_ICONS[nodeType as LineageNodeType];
   }
@@ -269,6 +289,9 @@ const NODE_TYPE_BADGES: Record<LineageNodeType, string> = {
   accessPolicy: "Policy",
   driftIncident: "Drift",
   dataStore: "Data",
+  directory: "Folder",
+  sourceFile: "Source",
+  configFile: "Config",
 };
 
 function AgentNode({ data }: { data: LineageNodeData }) {
@@ -276,17 +299,31 @@ function AgentNode({ data }: { data: LineageNodeData }) {
   return (
     <NodeCard
       data={data}
-      borderClass={notConfigured ? "border-yellow-500 border-dashed" : "border-emerald-500 dark:border-emerald-600"}
-      bgClass={notConfigured ? "bg-yellow-50 dark:bg-yellow-950/80" : "bg-emerald-50 dark:bg-emerald-950/80"}
+      borderClass={
+        notConfigured
+          ? "border-yellow-500 border-dashed"
+          : "border-emerald-500 dark:border-emerald-600"
+      }
+      bgClass={
+        notConfigured
+          ? "bg-yellow-50 dark:bg-yellow-950/80"
+          : "bg-emerald-50 dark:bg-emerald-950/80"
+      }
       ringClass="ring-emerald-400"
       iconClass="text-emerald-600 dark:text-emerald-400"
       target={false}
       subtitle={data.agentType}
       footer={
         <div className="flex gap-2 mt-1 text-[10px] text-zinc-600 dark:text-zinc-500">
-          {data.serverCount !== undefined && <span>{data.serverCount} srv</span>}
-          {data.packageCount !== undefined && <span>{data.packageCount} pkg</span>}
-          {(data.vulnCount ?? 0) > 0 && <span className="text-red-400">{data.vulnCount} finding</span>}
+          {data.serverCount !== undefined && (
+            <span>{data.serverCount} srv</span>
+          )}
+          {data.packageCount !== undefined && (
+            <span>{data.packageCount} pkg</span>
+          )}
+          {(data.vulnCount ?? 0) > 0 && (
+            <span className="text-red-400">{data.vulnCount} finding</span>
+          )}
         </div>
       }
     />
@@ -304,7 +341,9 @@ function ProviderNode({ data }: { data: LineageNodeData }) {
       target={false}
       footer={
         data.agentCount !== undefined ? (
-          <div className="mt-1 text-[10px] text-zinc-600 dark:text-zinc-500">{data.agentCount} agents</div>
+          <div className="mt-1 text-[10px] text-zinc-600 dark:text-zinc-500">
+            {data.agentCount} agents
+          </div>
         ) : undefined
       }
     />
@@ -400,8 +439,12 @@ function StructureNode({
       subtitle={data.description}
       footer={
         <div className="flex gap-2 mt-1 text-[10px] text-zinc-600 dark:text-zinc-500">
-          {data.agentCount !== undefined && <span>{data.agentCount} agents</span>}
-          {data.serverCount !== undefined && <span>{data.serverCount} servers</span>}
+          {data.agentCount !== undefined && (
+            <span>{data.agentCount} agents</span>
+          )}
+          {data.serverCount !== undefined && (
+            <span>{data.serverCount} servers</span>
+          )}
         </div>
       }
     />
@@ -484,8 +527,16 @@ function PackageNode({ data }: { data: LineageNodeData }) {
   return (
     <NodeCard
       data={data}
-      borderClass={hasVulns ? "border-red-400 dark:border-red-600/60" : "border-zinc-300 dark:border-zinc-600"}
-      bgClass={hasVulns ? "bg-red-50 dark:bg-red-950/40" : "bg-white dark:bg-zinc-900/80"}
+      borderClass={
+        hasVulns
+          ? "border-red-400 dark:border-red-600/60"
+          : "border-zinc-300 dark:border-zinc-600"
+      }
+      bgClass={
+        hasVulns
+          ? "bg-red-50 dark:bg-red-950/40"
+          : "bg-white dark:bg-zinc-900/80"
+      }
       ringClass="ring-zinc-400"
       iconClass="text-zinc-600 dark:text-zinc-400"
       subtitle={
@@ -522,19 +573,26 @@ function FindingNode({
       borderClass={borderClass}
       bgClass={bgClass}
       ringClass="ring-white/50"
-      shapeClass={data.nodeType === "misconfiguration" ? "rounded-md" : "rounded-lg"}
+      shapeClass={
+        data.nodeType === "misconfiguration" ? "rounded-md" : "rounded-lg"
+      }
       iconClass={accentClass}
       source={false}
       subtitle={data.description}
       footer={
         <div className="flex flex-wrap gap-1 mt-1">
           {data.severity && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${severityColor(data.severity)}`}>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded border font-mono uppercase ${severityColor(data.severity)}`}
+            >
               {data.severity}
             </span>
           )}
-          {typeof data.cvssScore === "number" && Number.isFinite(data.cvssScore) ? (
-            <span className="text-[10px] text-zinc-400">CVSS {data.cvssScore.toFixed(1)}</span>
+          {typeof data.cvssScore === "number" &&
+          Number.isFinite(data.cvssScore) ? (
+            <span className="text-[10px] text-zinc-400">
+              CVSS {data.cvssScore.toFixed(1)}
+            </span>
           ) : null}
           {data.isKev && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-900 text-red-300 border border-red-700 font-mono">
@@ -550,20 +608,40 @@ function FindingNode({
 function VulnNode({ data }: { data: LineageNodeData }) {
   const sev = data.severity ?? "medium";
   const borderClass =
-    sev === "critical" ? "border-red-500" :
-    sev === "high" ? "border-orange-500" :
-    sev === "medium" ? "border-yellow-500" :
-    "border-blue-500";
+    sev === "critical"
+      ? "border-red-500"
+      : sev === "high"
+        ? "border-orange-500"
+        : sev === "medium"
+          ? "border-yellow-500"
+          : "border-blue-500";
   const bgClass =
-    sev === "critical" ? "bg-red-100 dark:bg-red-950/80" :
-    sev === "high" ? "bg-orange-100 dark:bg-orange-950/80" :
-    sev === "medium" ? "bg-yellow-100 dark:bg-yellow-950/80" :
-    "bg-blue-100 dark:bg-blue-950/80";
-  return <FindingNode data={data} accentClass="text-red-300" borderClass={borderClass} bgClass={bgClass} />;
+    sev === "critical"
+      ? "bg-red-100 dark:bg-red-950/80"
+      : sev === "high"
+        ? "bg-orange-100 dark:bg-orange-950/80"
+        : sev === "medium"
+          ? "bg-yellow-100 dark:bg-yellow-950/80"
+          : "bg-blue-100 dark:bg-blue-950/80";
+  return (
+    <FindingNode
+      data={data}
+      accentClass="text-red-300"
+      borderClass={borderClass}
+      bgClass={bgClass}
+    />
+  );
 }
 
 function MisconfigNode({ data }: { data: LineageNodeData }) {
-  return <FindingNode data={data} accentClass="text-orange-600 dark:text-orange-300" borderClass="border-orange-500" bgClass="bg-orange-100 dark:bg-orange-950/75" />;
+  return (
+    <FindingNode
+      data={data}
+      accentClass="text-orange-600 dark:text-orange-300"
+      borderClass="border-orange-500"
+      bgClass="bg-orange-100 dark:bg-orange-950/75"
+    />
+  );
 }
 
 function CredentialNode({ data }: { data: LineageNodeData }) {
@@ -675,8 +753,16 @@ function ClusterPillNode({ data }: { data: LineageNodeData }) {
       } cluster-pill-pulse cursor-pointer`}
       title="Click to expand"
     >
-      <Handle type="target" position={Position.Left} className="!w-2 !h-2 !bg-sky-300" />
-      <Handle type="source" position={Position.Right} className="!w-2 !h-2 !bg-sky-300" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!w-2 !h-2 !bg-sky-300"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!w-2 !h-2 !bg-sky-300"
+      />
       <div className="flex items-center gap-1.5">
         <Icon className="w-3.5 h-3.5 text-sky-200" />
         <span className="text-xs font-semibold text-sky-100 whitespace-nowrap">
@@ -743,8 +829,16 @@ function SummaryNode({ data }: { data: LineageNodeData }) {
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? "ring-2 ring-sky-400" : ""}`}
     >
-      <Handle type="target" position={Position.Left} className="!w-1.5 !h-1.5" />
-      <Handle type="source" position={Position.Right} className="!w-1.5 !h-1.5" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!w-1.5 !h-1.5"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!w-1.5 !h-1.5"
+      />
       <div className="flex items-center gap-1">
         <span className="text-[10px] font-medium truncate">{data.label}</span>
         {vulnCount > 0 && (
@@ -778,8 +872,16 @@ function ClusterBubbleNode({ data }: { data: LineageNodeData }) {
         borderColor: color,
       }}
     >
-      <Handle type="target" position={Position.Left} className="!w-1 !h-1 !bg-transparent !border-0" />
-      <Handle type="source" position={Position.Right} className="!w-1 !h-1 !bg-transparent !border-0" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!w-1 !h-1 !bg-transparent !border-0"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!w-1 !h-1 !bg-transparent !border-0"
+      />
     </div>
   );
 }
@@ -815,9 +917,15 @@ const CLUSTER_BUBBLE_COLORS: Record<LineageNodeType, string> = {
   accessPolicy: "#a16207",
   driftIncident: "#fb923c",
   dataStore: "#0284c7",
+  directory: "#0d9488",
+  sourceFile: "#22d3ee",
+  configFile: "#f97316",
 };
 
-const DETAIL_RENDERERS: Record<LineageNodeType, ComponentType<{ data: LineageNodeData }>> = {
+const DETAIL_RENDERERS: Record<
+  LineageNodeType,
+  ComponentType<{ data: LineageNodeData }>
+> = {
   provider: ProviderNode,
   agent: AgentNode,
   user: UserNode,
@@ -848,6 +956,9 @@ const DETAIL_RENDERERS: Record<LineageNodeType, ComponentType<{ data: LineageNod
   accessPolicy: CredentialNode,
   driftIncident: MisconfigNode,
   dataStore: CloudResourceNode,
+  directory: ContainerNode,
+  sourceFile: PackageNode,
+  configFile: PackageNode,
 };
 
 function AdaptiveLineageNode({ data }: { data: LineageNodeData }) {

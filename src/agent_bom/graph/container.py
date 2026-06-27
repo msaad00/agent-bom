@@ -862,6 +862,7 @@ ENTITY_LEGEND: list[LegendEntry] = [
     LegendEntry(key="container", label="Container", color="#6366f1", shape="square", layer=GraphSemanticLayer.INFRA.value),
     LegendEntry(key="cloud_resource", label="Cloud Resource", color="#0ea5e9", shape="square", layer=GraphSemanticLayer.INFRA.value),
     LegendEntry(key="resource", label="Resource", color="#38bdf8", shape="square", layer=GraphSemanticLayer.ASSET.value),
+    LegendEntry(key="directory", label="Directory", color="#0d9488", shape="square", layer=GraphSemanticLayer.CODE.value),
     LegendEntry(key="source_file", label="Source File", color="#22d3ee", shape="square", layer=GraphSemanticLayer.CODE.value),
     LegendEntry(key="code_module", label="Code Module", color="#06b6d4", shape="circle", layer=GraphSemanticLayer.CODE.value),
     LegendEntry(key="config_file", label="Config File", color="#f97316", shape="square", layer=GraphSemanticLayer.CODE.value),

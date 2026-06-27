@@ -18,7 +18,11 @@ import { AlertTriangle, Loader2, Route, ShieldAlert } from "lucide-react";
 
 import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphEvaluationSummary } from "@/components/graph-evaluation-summary";
-import { GraphEvidenceExportButton, GraphLegend, FullscreenButton } from "@/components/graph-chrome";
+import {
+  GraphEvidenceExportButton,
+  GraphLegend,
+  FullscreenButton,
+} from "@/components/graph-chrome";
 import { LargeGraphOverview } from "@/components/large-graph-overview";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import {
@@ -72,7 +76,10 @@ import {
   minimapNodeColor,
   readableGraphEdges,
 } from "@/lib/graph-utils";
-import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
+import {
+  graphFitViewOptions,
+  shouldShowGraphMiniMap,
+} from "@/lib/graph-viewport";
 import {
   prettifyReachabilityType,
   summarizeReachability,
@@ -101,7 +108,10 @@ import {
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
 const SigmaGraphOverview = dynamic(
-  () => import("@/components/sigma-graph-overview").then((mod) => mod.SigmaGraphOverview),
+  () =>
+    import("@/components/sigma-graph-overview").then(
+      (mod) => mod.SigmaGraphOverview,
+    ),
   {
     ssr: false,
     loading: () => (
@@ -117,8 +127,13 @@ function PulseStyles() {
   return (
     <style jsx global>{`
       @keyframes pulse-critical {
-        0%, 100% { box-shadow: 0 0 6px rgba(239, 68, 68, 0.35); }
-        50% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.55); }
+        0%,
+        100% {
+          box-shadow: 0 0 6px rgba(239, 68, 68, 0.35);
+        }
+        50% {
+          box-shadow: 0 0 12px rgba(239, 68, 68, 0.55);
+        }
       }
       .node-critical-pulse {
         animation: none;
@@ -128,9 +143,15 @@ function PulseStyles() {
          sync — when ten or twenty nodes pulse together at the same
          phase the page reads as a flickering page-wide flash. The
          animation-delay buckets desync neighbours visually. */
-      .node-critical-pulse:nth-child(3n)   { animation-delay: -0.4s; }
-      .node-critical-pulse:nth-child(3n+1) { animation-delay: -1.2s; }
-      .node-critical-pulse:nth-child(3n+2) { animation-delay: -2.0s; }
+      .node-critical-pulse:nth-child(3n) {
+        animation-delay: -0.4s;
+      }
+      .node-critical-pulse:nth-child(3n + 1) {
+        animation-delay: -1.2s;
+      }
+      .node-critical-pulse:nth-child(3n + 2) {
+        animation-delay: -2s;
+      }
       @media (prefers-reduced-motion: reduce) {
         .node-critical-pulse {
           animation: none;
@@ -156,8 +177,13 @@ function PulseStyles() {
       /* Sibling-aggregation cluster pill pulses subtly to suggest
          "click me to expand". Honors prefers-reduced-motion. */
       @keyframes cluster-pill-pulse {
-        0%, 100% { box-shadow: 0 0 6px rgba(56, 189, 248, 0.35); }
-        50% { box-shadow: 0 0 14px rgba(56, 189, 248, 0.65); }
+        0%,
+        100% {
+          box-shadow: 0 0 6px rgba(56, 189, 248, 0.35);
+        }
+        50% {
+          box-shadow: 0 0 14px rgba(56, 189, 248, 0.65);
+        }
       }
       .cluster-pill-pulse {
         animation: none;
@@ -204,7 +230,11 @@ function getLocalNeighborhoodIds(
   return visited;
 }
 
-function addNeighbor(map: Map<string, Set<string>>, source: string, target: string): void {
+function addNeighbor(
+  map: Map<string, Set<string>>,
+  source: string,
+  target: string,
+): void {
   const existing = map.get(source);
   if (existing) {
     existing.add(target);
@@ -237,9 +267,15 @@ const LAYER_ENTITY_TYPES: Array<[LineageNodeType, EntityType]> = [
   ["accessPolicy", EntityType.ACCESS_POLICY],
   ["driftIncident", EntityType.DRIFT_INCIDENT],
   ["dataStore", EntityType.DATA_STORE],
+  ["directory", EntityType.DIRECTORY],
+  ["sourceFile", EntityType.SOURCE_FILE],
+  ["configFile", EntityType.CONFIG_FILE],
 ];
 
-const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], RelationshipType[] | undefined> = {
+const RELATIONSHIP_SCOPE_MAP: Record<
+  FilterState["relationshipScope"],
+  RelationshipType[] | undefined
+> = {
   all: undefined,
   inventory: [
     RelationshipType.HOSTS,
@@ -292,7 +328,9 @@ const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], Relations
 };
 
 function entityTypesForLayers(filters: FilterState): EntityType[] {
-  return LAYER_ENTITY_TYPES.filter(([layer]) => filters.layers[layer]).map(([, entityType]) => entityType);
+  return LAYER_ENTITY_TYPES.filter(([layer]) => filters.layers[layer]).map(
+    ([, entityType]) => entityType,
+  );
 }
 
 function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
@@ -325,17 +363,27 @@ function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
 }
 
 function lineageTypeForEntity(entityType: string): LineageNodeType {
-  return LAYER_ENTITY_TYPES.find(([, current]) => current === entityType)?.[0] ?? "server";
+  return (
+    LAYER_ENTITY_TYPES.find(([, current]) => current === entityType)?.[0] ??
+    "server"
+  );
 }
 
-function stringAttribute(attributes: Record<string, unknown> | undefined, key: string): string | undefined {
+function stringAttribute(
+  attributes: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
   const value = attributes?.[key];
   return typeof value === "string" ? value : undefined;
 }
 
-function versionProvenanceAttribute(attributes: Record<string, unknown> | undefined, key: string): string | undefined {
+function versionProvenanceAttribute(
+  attributes: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
   const value = attributes?.version_provenance;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
   const nested = (value as Record<string, unknown>)[key];
   return typeof nested === "string" ? nested : undefined;
 }
@@ -359,10 +407,16 @@ function buildFallbackNodeData(node: UnifiedNode): LineageNodeData {
       stringAttribute(attributes, "recommendation") ||
       stringAttribute(attributes, "framework") ||
       stringAttribute(attributes, "source"),
-    version: stringAttribute(attributes, "version") || stringAttribute(attributes, "hash"),
+    version:
+      stringAttribute(attributes, "version") ||
+      stringAttribute(attributes, "hash"),
     ecosystem: stringAttribute(attributes, "ecosystem"),
-    versionSource: versionProvenanceAttribute(attributes, "version_source") || stringAttribute(attributes, "version_source"),
-    versionConfidence: versionProvenanceAttribute(attributes, "confidence") || stringAttribute(attributes, "version_confidence"),
+    versionSource:
+      versionProvenanceAttribute(attributes, "version_source") ||
+      stringAttribute(attributes, "version_source"),
+    versionConfidence:
+      versionProvenanceAttribute(attributes, "confidence") ||
+      stringAttribute(attributes, "version_confidence"),
     command:
       stringAttribute(attributes, "command") ||
       stringAttribute(attributes, "transport") ||
@@ -372,7 +426,10 @@ function buildFallbackNodeData(node: UnifiedNode): LineageNodeData {
   };
 }
 
-function mergeNodeDetail(base: LineageNodeData, detail: GraphNodeDetailResponse): LineageNodeData {
+function mergeNodeDetail(
+  base: LineageNodeData,
+  detail: GraphNodeDetailResponse,
+): LineageNodeData {
   const mergedAttributes = {
     ...(base.attributes ?? {}),
     ...(detail.node.attributes ?? {}),
@@ -386,8 +443,12 @@ function mergeNodeDetail(base: LineageNodeData, detail: GraphNodeDetailResponse)
     severity: detail.node.severity || base.severity,
     firstSeen: detail.node.first_seen || base.firstSeen,
     lastSeen: detail.node.last_seen || base.lastSeen,
-    dataSources: detail.node.data_sources?.length ? detail.node.data_sources : base.dataSources,
-    complianceTags: detail.node.compliance_tags?.length ? detail.node.compliance_tags : base.complianceTags,
+    dataSources: detail.node.data_sources?.length
+      ? detail.node.data_sources
+      : base.dataSources,
+    complianceTags: detail.node.compliance_tags?.length
+      ? detail.node.compliance_tags
+      : base.complianceTags,
     attributes: mergedAttributes,
     neighborCount: detail.neighbors.length,
     sourceCount: detail.sources.length,
@@ -402,7 +463,10 @@ function mergeNodeDetail(base: LineageNodeData, detail: GraphNodeDetailResponse)
       stringAttribute(mergedAttributes, "recommendation") ||
       stringAttribute(mergedAttributes, "framework") ||
       stringAttribute(mergedAttributes, "source"),
-    version: base.version || stringAttribute(mergedAttributes, "version") || stringAttribute(mergedAttributes, "hash"),
+    version:
+      base.version ||
+      stringAttribute(mergedAttributes, "version") ||
+      stringAttribute(mergedAttributes, "hash"),
     ecosystem: base.ecosystem || stringAttribute(mergedAttributes, "ecosystem"),
     versionSource:
       base.versionSource ||
@@ -417,8 +481,10 @@ function mergeNodeDetail(base: LineageNodeData, detail: GraphNodeDetailResponse)
       stringAttribute(mergedAttributes, "command") ||
       stringAttribute(mergedAttributes, "transport") ||
       stringAttribute(mergedAttributes, "url"),
-    agentType: base.agentType || stringAttribute(mergedAttributes, "agent_type"),
-    agentStatus: base.agentStatus || stringAttribute(mergedAttributes, "status"),
+    agentType:
+      base.agentType || stringAttribute(mergedAttributes, "agent_type"),
+    agentStatus:
+      base.agentStatus || stringAttribute(mergedAttributes, "status"),
   };
 }
 
@@ -433,9 +499,17 @@ function buildPathEdgeKeys(hops: string[]): Set<string> {
   return keys;
 }
 
-function graphErrorState(message: string): { title: string; detail: string; suggestions: string[] } {
+function graphErrorState(message: string): {
+  title: string;
+  detail: string;
+  suggestions: string[];
+} {
   const lowered = message.toLowerCase();
-  if (lowered.includes("budget") || lowered.includes("limit") || lowered.includes("too large")) {
+  if (
+    lowered.includes("budget") ||
+    lowered.includes("limit") ||
+    lowered.includes("too large")
+  ) {
     return {
       title: "Graph query budget reached",
       detail: message,
@@ -457,7 +531,12 @@ function graphErrorState(message: string): { title: string; detail: string; sugg
       ],
     };
   }
-  if (lowered.includes("permission") || lowered.includes("tenant") || lowered.includes("forbidden") || lowered.includes("unauthorized")) {
+  if (
+    lowered.includes("permission") ||
+    lowered.includes("tenant") ||
+    lowered.includes("forbidden") ||
+    lowered.includes("unauthorized")
+  ) {
     return {
       title: "Graph is unavailable for this tenant or session",
       detail: message,
@@ -487,7 +566,9 @@ type InvestigationMode = {
   edgeCount: number;
 };
 
-function queryResponseToGraphResponse(response: GraphQueryResponse): UnifiedGraphResponse {
+function queryResponseToGraphResponse(
+  response: GraphQueryResponse,
+): UnifiedGraphResponse {
   return {
     scan_id: response.scan_id,
     tenant_id: response.tenant_id,
@@ -532,20 +613,30 @@ function GraphPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
   const [graphDiff, setGraphDiff] = useState<GraphDiffResponse | null>(null);
-  const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
+  const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(
+    null,
+  );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
+  const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<
+    string | null
+  >(null);
   const [autoPathDismissed, setAutoPathDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UnifiedNode[]>([]);
   const [searching, setSearching] = useState(false);
-  const [investigationMode, setInvestigationMode] = useState<InvestigationMode | null>(null);
-  const [reachabilitySummary, setReachabilitySummary] = useState<ReachabilitySummary | null>(null);
+  const [investigationMode, setInvestigationMode] =
+    useState<InvestigationMode | null>(null);
+  const [reachabilitySummary, setReachabilitySummary] =
+    useState<ReachabilitySummary | null>(null);
   const loadingReachability = false;
-  const [reachabilityError, setReachabilityError] = useState<string | null>(null);
+  const [reachabilityError, setReachabilityError] = useState<string | null>(
+    null,
+  );
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
-  const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(() => new Set());
+  const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -562,18 +653,21 @@ function GraphPageInner() {
   // auto-focus effect that picks the first agent doesn't clobber an
   // explicit ?agent= param on initial load.
   const seededFromUrlRef = useRef<boolean>(
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).toString().length > 0,
+    typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).toString().length > 0,
   );
   const requestedScanIdRef = useRef<string>(
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("scan") ||
-        new URLSearchParams(window.location.search).get("scan_id") ||
-        ""
+          new URLSearchParams(window.location.search).get("scan_id") ||
+          ""
       : "",
   );
   const requestedInvestigationRef = useRef<GraphInvestigationRequest | null>(
     typeof window !== "undefined"
-      ? decodeGraphInvestigationParams(new URLSearchParams(window.location.search))
+      ? decodeGraphInvestigationParams(
+          new URLSearchParams(window.location.search),
+        )
       : null,
   );
   const firstScanSelectionRef = useRef(true);
@@ -600,7 +694,10 @@ function GraphPageInner() {
       .finally(() => setLoadingSnapshots(false));
   }, []);
 
-  const serverEntityTypes = useMemo(() => entityTypesForLayers(filters), [filters]);
+  const serverEntityTypes = useMemo(
+    () => entityTypesForLayers(filters),
+    [filters],
+  );
 
   const serverRelationships = useMemo(
     () => RELATIONSHIP_SCOPE_MAP[filters.relationshipScope],
@@ -709,11 +806,14 @@ function GraphPageInner() {
   ]);
 
   const activeSnapshot = useMemo(
-    () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
+    () =>
+      snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
     [snapshots, selectedScanId],
   );
   const previousSnapshot = useMemo(() => {
-    const index = snapshots.findIndex((snapshot) => snapshot.scan_id === selectedScanId);
+    const index = snapshots.findIndex(
+      (snapshot) => snapshot.scan_id === selectedScanId,
+    );
     if (index < 0 || index + 1 >= snapshots.length) return null;
     return snapshots[index + 1];
   }, [snapshots, selectedScanId]);
@@ -776,7 +876,8 @@ function GraphPageInner() {
     () =>
       [...(graphData?.attack_paths ?? [])].sort(
         (left, right) =>
-          right.composite_risk - left.composite_risk || right.hops.length - left.hops.length,
+          right.composite_risk - left.composite_risk ||
+          right.hops.length - left.hops.length,
       ),
     [graphData?.attack_paths],
   );
@@ -790,21 +891,32 @@ function GraphPageInner() {
   const selectedAttackPath = useMemo(
     () =>
       effectiveSelectedAttackPathKey
-        ? attackPaths.find((path) => attackPathKey(path) === effectiveSelectedAttackPathKey) ?? null
+        ? (attackPaths.find(
+            (path) => attackPathKey(path) === effectiveSelectedAttackPathKey,
+          ) ?? null)
         : null,
     [attackPaths, effectiveSelectedAttackPathKey],
   );
 
   useEffect(() => {
     if (!selectedAttackPathKey) return;
-    if (!attackPaths.some((path) => attackPathKey(path) === selectedAttackPathKey)) {
+    if (
+      !attackPaths.some((path) => attackPathKey(path) === selectedAttackPathKey)
+    ) {
       setSelectedAttackPathKey(null);
     }
   }, [attackPaths, selectedAttackPathKey]);
 
   const flow = useMemo(() => {
     if (!graphData) {
-      return { nodes: [], edges: [], agentNames: [], legend: [], summary: null as null | ReturnType<typeof buildUnifiedFlowGraph>["summary"] };
+      return {
+        nodes: [],
+        edges: [],
+        agentNames: [],
+        legend: [],
+        summary: null as
+          null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
+      };
     }
     return buildUnifiedFlowGraph(graphData, filters);
   }, [graphData, filters]);
@@ -835,7 +947,8 @@ function GraphPageInner() {
     if (requestedWebgl === "1") {
       nextParams.set("webgl", requestedWebgl);
     }
-    const shareableInvestigation = investigationMode ?? requestedInvestigationRef.current;
+    const shareableInvestigation =
+      investigationMode ?? requestedInvestigationRef.current;
     if (shareableInvestigation) {
       nextParams.set("investigate", "1");
       nextParams.set("root", shareableInvestigation.rootId);
@@ -851,7 +964,14 @@ function GraphPageInner() {
     if (next === current) return;
     const url = next ? `${pathname}?${next}` : pathname;
     router.replace(url, { scroll: false });
-  }, [filters, investigationMode, pathname, router, searchParams, selectedScanId]);
+  }, [
+    filters,
+    investigationMode,
+    pathname,
+    router,
+    searchParams,
+    selectedScanId,
+  ]);
 
   // Constraint propagation — recompute valid values whenever graph or
   // filters change. Cheap on focused snapshots, BFS-bounded on expanded.
@@ -889,14 +1009,19 @@ function GraphPageInner() {
     [flow.nodes, flow.edges, aggregationThreshold, expandedClusterIds],
   );
   const aggregatedClusterNodes = useMemo(
-    () => aggregated.nodes.filter((node) => isClusterPillNode(node as Node<LineageNodeData>)),
+    () =>
+      aggregated.nodes.filter((node) =>
+        isClusterPillNode(node as Node<LineageNodeData>),
+      ),
     [aggregated.nodes],
   );
   const graphIdentityKey = useMemo(
     () =>
       JSON.stringify({
         nodes: flow.nodes.map((node) => node.id),
-        edges: flow.edges.map((edge) => `${edge.source}->${edge.target}:${edge.id}`),
+        edges: flow.edges.map(
+          (edge) => `${edge.source}->${edge.target}:${edge.id}`,
+        ),
       }),
     [flow.nodes, flow.edges],
   );
@@ -915,23 +1040,28 @@ function GraphPageInner() {
   // renderers upstream, so ReactFlow only ever lays out small/medium graphs
   // where dagre is the better fit.
   const graphLayoutKind = "dagre-lr";
-  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(graphLayoutKind, aggregated.nodes, aggregated.edges, {
-    force: {
-      idealEdgeLength: filters.agentName ? 168 : 196,
-      nodeRepulsion: filters.agentName ? 3600 : 4400,
-      preservePinnedPositions: true,
+  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(
+    graphLayoutKind,
+    aggregated.nodes,
+    aggregated.edges,
+    {
+      force: {
+        idealEdgeLength: filters.agentName ? 168 : 196,
+        nodeRepulsion: filters.agentName ? 3600 : 4400,
+        preservePinnedPositions: true,
+      },
+      dagreLr: {
+        // Bigger node boxes + tighter ranks keep the wide left-to-right DAG from
+        // collapsing into a thin, far-zoomed strip. The extra vertical nodeSep
+        // spreads short graphs so fitView fills the canvas instead of leaving a
+        // tall empty band above and below the topology.
+        nodeWidth: 248,
+        nodeHeight: 96,
+        rankSep: filters.agentName ? 120 : 140,
+        nodeSep: filters.agentName ? 64 : 78,
+      },
     },
-    dagreLr: {
-      // Bigger node boxes + tighter ranks keep the wide left-to-right DAG from
-      // collapsing into a thin, far-zoomed strip. The extra vertical nodeSep
-      // spreads short graphs so fitView fills the canvas instead of leaving a
-      // tall empty band above and below the topology.
-      nodeWidth: 248,
-      nodeHeight: 96,
-      rankSep: filters.agentName ? 120 : 140,
-      nodeSep: filters.agentName ? 64 : 78,
-    },
-  });
+  );
 
   // Focus mode (#2257). The "active" focus is whichever the operator
   // pinned (click) — falling back to whatever is hovered. Pinning
@@ -939,7 +1069,10 @@ function GraphPageInner() {
   // node. Hover never overrides a pin.
   const activeFocusId = pinnedFocusId ?? hoveredNodeId;
   const localNeighborhoodIds = useMemo(
-    () => (activeFocusId ? getLocalNeighborhoodIds(activeFocusId, layoutEdges) : null),
+    () =>
+      activeFocusId
+        ? getLocalNeighborhoodIds(activeFocusId, layoutEdges)
+        : null,
     [activeFocusId, layoutEdges],
   );
 
@@ -949,11 +1082,15 @@ function GraphPageInner() {
   );
 
   const attackPathEdgeKeys = useMemo(
-    () => (selectedAttackPath ? buildPathEdgeKeys(selectedAttackPath.hops) : null),
+    () =>
+      selectedAttackPath ? buildPathEdgeKeys(selectedAttackPath.hops) : null,
     [selectedAttackPath],
   );
   const attackPathNodeOrder = useMemo(
-    () => (selectedAttackPath ? new Map(selectedAttackPath.hops.map((hop, index) => [hop, index])) : null),
+    () =>
+      selectedAttackPath
+        ? new Map(selectedAttackPath.hops.map((hop, index) => [hop, index]))
+        : null,
     [selectedAttackPath],
   );
 
@@ -969,7 +1106,11 @@ function GraphPageInner() {
     focused: boolean,
     dimmed: boolean,
   ): string =>
-    [base, focused ? "lineage-node-focus" : "", dimmed ? "lineage-node-dim" : ""]
+    [
+      base,
+      focused ? "lineage-node-focus" : "",
+      dimmed ? "lineage-node-dim" : "",
+    ]
       .filter(Boolean)
       .join(" ") || "";
 
@@ -987,24 +1128,26 @@ function GraphPageInner() {
   const lineageLayoutNodes = layoutNodes as Node<LineageNodeData>[];
   const displayNodes = useMemo<Node<LineageNodeData>[]>(() => {
     if (attackPathNodeIds) {
-      return lineageLayoutNodes.filter((node) => attackPathNodeIds.has(node.id)).map((node) => {
-        const inPath = attackPathNodeIds.has(node.id);
-        const order = attackPathNodeOrder?.get(node.id) ?? 0;
-        return {
-          ...node,
-          position: {
-            x: order * 255,
-            y: order % 2 === 0 ? 0 : 96,
-          },
-          className: composeFocusClass(node.className, inPath, !inPath),
-          data: {
-            ...node.data,
-            renderBand: effectiveLodBand,
-            dimmed: !inPath,
-            highlighted: inPath,
-          },
-        };
-      });
+      return lineageLayoutNodes
+        .filter((node) => attackPathNodeIds.has(node.id))
+        .map((node) => {
+          const inPath = attackPathNodeIds.has(node.id);
+          const order = attackPathNodeOrder?.get(node.id) ?? 0;
+          return {
+            ...node,
+            position: {
+              x: order * 255,
+              y: order % 2 === 0 ? 0 : 96,
+            },
+            className: composeFocusClass(node.className, inPath, !inPath),
+            data: {
+              ...node.data,
+              renderBand: effectiveLodBand,
+              dimmed: !inPath,
+              highlighted: inPath,
+            },
+          };
+        });
     }
     if (reachabilitySummary) {
       return lineageLayoutNodes.map((node) => {
@@ -1046,7 +1189,15 @@ function GraphPageInner() {
         },
       };
     });
-  }, [lineageLayoutNodes, localNeighborhoodIds, attackPathNodeIds, attackPathNodeOrder, reachabilitySummary, activeFocusId, effectiveLodBand]);
+  }, [
+    lineageLayoutNodes,
+    localNeighborhoodIds,
+    attackPathNodeIds,
+    attackPathNodeOrder,
+    reachabilitySummary,
+    activeFocusId,
+    effectiveLodBand,
+  ]);
 
   const compressedGroupCount = aggregatedClusterNodes.length;
   const sourceNodeCount = graphData?.nodes.length ?? flow.nodes.length;
@@ -1054,40 +1205,53 @@ function GraphPageInner() {
 
   const displayEdges = useMemo(() => {
     if (attackPathEdgeKeys) {
-      return layoutEdges.filter((edge) => attackPathEdgeKeys.has(`${edge.source}=>${edge.target}`)).map((edge): Edge => {
-        const inPath = attackPathEdgeKeys.has(`${edge.source}=>${edge.target}`);
-        const relationshipLabel =
-          typeof edge.data?.relationshipLabel === "string"
-            ? edge.data.relationshipLabel
-            : typeof edge.data?.relationship === "string"
-              ? edge.data.relationship.replace(/_/g, " ")
-              : undefined;
-        return {
-          ...edge,
-          label: relationshipLabel,
-          labelShowBg: true,
-          labelBgPadding: [8, 4],
-          labelBgBorderRadius: 6,
-          labelBgStyle: {
-            fill: captureMode ? "#0a0a0a" : "rgba(24,24,27,0.92)",
-            fillOpacity: 0.94,
-          },
-          labelStyle: {
-            fill: "#f4f4f5",
-            fontSize: 11,
-            fontWeight: 600,
-          },
-          animated: captureMode ? false : Boolean(inPath || edge.animated),
-          style: {
-            ...edge.style,
-            opacity: inPath ? 1 : 0.08,
-            strokeWidth: inPath
-              ? Math.max(typeof edge.style?.strokeWidth === "number" ? edge.style.strokeWidth : 2, 3.2)
-              : 1,
-            ...(inPath ? { filter: "drop-shadow(0 0 6px rgba(249,115,22,0.55))" } : {}),
-          },
-        };
-      });
+      return layoutEdges
+        .filter((edge) =>
+          attackPathEdgeKeys.has(`${edge.source}=>${edge.target}`),
+        )
+        .map((edge): Edge => {
+          const inPath = attackPathEdgeKeys.has(
+            `${edge.source}=>${edge.target}`,
+          );
+          const relationshipLabel =
+            typeof edge.data?.relationshipLabel === "string"
+              ? edge.data.relationshipLabel
+              : typeof edge.data?.relationship === "string"
+                ? edge.data.relationship.replace(/_/g, " ")
+                : undefined;
+          return {
+            ...edge,
+            label: relationshipLabel,
+            labelShowBg: true,
+            labelBgPadding: [8, 4],
+            labelBgBorderRadius: 6,
+            labelBgStyle: {
+              fill: captureMode ? "#0a0a0a" : "rgba(24,24,27,0.92)",
+              fillOpacity: 0.94,
+            },
+            labelStyle: {
+              fill: "#f4f4f5",
+              fontSize: 11,
+              fontWeight: 600,
+            },
+            animated: captureMode ? false : Boolean(inPath || edge.animated),
+            style: {
+              ...edge.style,
+              opacity: inPath ? 1 : 0.08,
+              strokeWidth: inPath
+                ? Math.max(
+                    typeof edge.style?.strokeWidth === "number"
+                      ? edge.style.strokeWidth
+                      : 2,
+                    3.2,
+                  )
+                : 1,
+              ...(inPath
+                ? { filter: "drop-shadow(0 0 6px rgba(249,115,22,0.55))" }
+                : {}),
+            },
+          };
+        });
     }
     if (reachabilitySummary) {
       return layoutEdges.map((edge): Edge => {
@@ -1101,9 +1265,16 @@ function GraphPageInner() {
             ...edge.style,
             opacity: inReach ? 0.95 : 0.07,
             strokeWidth: inReach
-              ? Math.max(typeof edge.style?.strokeWidth === "number" ? edge.style.strokeWidth : 2, 3)
+              ? Math.max(
+                  typeof edge.style?.strokeWidth === "number"
+                    ? edge.style.strokeWidth
+                    : 2,
+                  3,
+                )
               : 1,
-            ...(inReach ? { filter: "drop-shadow(0 0 6px rgba(244,63,94,0.5))" } : {}),
+            ...(inReach
+              ? { filter: "drop-shadow(0 0 6px rgba(244,63,94,0.5))" }
+              : {}),
           },
         };
       });
@@ -1114,7 +1285,14 @@ function GraphPageInner() {
       inactiveOpacity: 0.06,
       captureMode,
     });
-  }, [layoutEdges, localNeighborhoodIds, attackPathEdgeKeys, reachabilitySummary, graphLayoutKind, captureMode]);
+  }, [
+    layoutEdges,
+    localNeighborhoodIds,
+    attackPathEdgeKeys,
+    reachabilitySummary,
+    graphLayoutKind,
+    captureMode,
+  ]);
 
   const graphEvaluation = useMemo(
     () => evaluateGraphUx(graphData, displayNodes, displayEdges),
@@ -1138,7 +1316,8 @@ function GraphPageInner() {
   );
   const showMiniMap = useMemo(
     () =>
-      !captureMode && shouldShowGraphMiniMap({
+      !captureMode &&
+      shouldShowGraphMiniMap({
         nodeCount: displayNodes.length,
         edgeCount: displayEdges.length,
         selectedNode: Boolean(selectedNode),
@@ -1148,16 +1327,18 @@ function GraphPageInner() {
   );
 
   const hasContextualGraph = useMemo(
-    () => displayNodes.some((node) => {
-      const nodeType = (node.data as LineageNodeData).nodeType;
-      return nodeType !== "vulnerability" && nodeType !== "misconfiguration";
-    }),
+    () =>
+      displayNodes.some((node) => {
+        const nodeType = (node.data as LineageNodeData).nodeType;
+        return nodeType !== "vulnerability" && nodeType !== "misconfiguration";
+      }),
     [displayNodes],
   );
 
   const graphOnlyFindings = displayNodes.length > 0 && !hasContextualGraph;
   const webglGraphEnabled =
-    searchParams?.get("renderer") === "webgl" || searchParams?.get("webgl") === "1";
+    searchParams?.get("renderer") === "webgl" ||
+    searchParams?.get("webgl") === "1";
   const graphRenderer = decideGraphRenderer({
     nodeCount: sourceNodeCount,
     edgeCount: graphData?.edges.length ?? displayEdges.length,
@@ -1167,13 +1348,16 @@ function GraphPageInner() {
     graphOnlyFindings,
     webglEnabled: webglGraphEnabled,
   });
-  const graphPanelError = error && snapshots.length > 0 ? graphErrorState(error) : null;
+  const graphPanelError =
+    error && snapshots.length > 0 ? graphErrorState(error) : null;
   const findingNodes = useMemo(
     () =>
       displayNodes
         .filter((node) => {
           const nodeType = (node.data as LineageNodeData).nodeType;
-          return nodeType === "vulnerability" || nodeType === "misconfiguration";
+          return (
+            nodeType === "vulnerability" || nodeType === "misconfiguration"
+          );
         })
         .map((node) => ({ id: node.id, data: node.data as LineageNodeData })),
     [displayNodes],
@@ -1210,15 +1394,21 @@ function GraphPageInner() {
     setHoveredNodeId(null);
   }, []);
 
-  const onLargeGraphNodeSelect = useCallback((nodeId: string) => {
-    const node = displayNodes.find((candidate) => candidate.id === nodeId);
-    if (!node) return;
-    onNodeClick({} as React.MouseEvent, node);
-  }, [displayNodes, onNodeClick]);
+  const onLargeGraphNodeSelect = useCallback(
+    (nodeId: string) => {
+      const node = displayNodes.find((candidate) => candidate.id === nodeId);
+      if (!node) return;
+      onNodeClick({} as React.MouseEvent, node);
+    },
+    [displayNodes, onNodeClick],
+  );
 
-  const onNodeMouseEnter = useCallback((_event: React.MouseEvent, node: Node) => {
-    setHoveredNodeId(node.id);
-  }, []);
+  const onNodeMouseEnter = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      setHoveredNodeId(node.id);
+    },
+    [],
+  );
 
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNodeId(null);
@@ -1261,11 +1451,14 @@ function GraphPageInner() {
   }, [filters.severity, searchQuery, selectedScanId, serverEntityTypes]);
 
   const loadRootInvestigation = useCallback(
-    async (request: GraphInvestigationRequest & { node?: UnifiedNode | undefined }) => {
+    async (
+      request: GraphInvestigationRequest & { node?: UnifiedNode | undefined },
+    ) => {
       if (!selectedScanId) return;
 
       const fallback = request.node
-        ? flowNodeDataById.get(request.node.id) ?? buildFallbackNodeData(request.node)
+        ? (flowNodeDataById.get(request.node.id) ??
+          buildFallbackNodeData(request.node))
         : null;
       if (fallback) {
         setSelectedNode({
@@ -1286,7 +1479,9 @@ function GraphPageInner() {
       setReachabilitySummary(null);
       setReachabilityError(null);
       setSearchResults([]);
-      setSearchQuery(request.rootLabel ?? request.node?.label ?? request.rootId);
+      setSearchQuery(
+        request.rootLabel ?? request.node?.label ?? request.rootId,
+      );
       setLoadingGraph(true);
       try {
         const response = await api.queryGraph({
@@ -1304,7 +1499,9 @@ function GraphPageInner() {
           include_attack_paths: true,
           relationship_types: serverRelationships,
         });
-        const rootNode = response.nodes.find((node) => node.id === request.rootId) ?? request.node;
+        const rootNode =
+          response.nodes.find((node) => node.id === request.rootId) ??
+          request.node;
         if (rootNode) {
           setSelectedNode(buildFallbackNodeData(rootNode));
         }
@@ -1328,12 +1525,20 @@ function GraphPageInner() {
         );
         setError(null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load root-centered graph");
+        setError(
+          e instanceof Error ? e.message : "Failed to load root-centered graph",
+        );
       } finally {
         setLoadingGraph(false);
       }
     },
-    [filters.runtimeMode, filters.vulnOnly, flowNodeDataById, selectedScanId, serverRelationships],
+    [
+      filters.runtimeMode,
+      filters.vulnOnly,
+      flowNodeDataById,
+      selectedScanId,
+      serverRelationships,
+    ],
   );
 
   useEffect(() => {
@@ -1364,10 +1569,16 @@ function GraphPageInner() {
     setReachabilityError(null);
   }, []);
 
-  const pageStart = graphData && graphData.pagination.total > 0 ? graphData.pagination.offset + 1 : 0;
+  const pageStart =
+    graphData && graphData.pagination.total > 0
+      ? graphData.pagination.offset + 1
+      : 0;
   const pageEnd =
     graphData && graphData.pagination.total > 0
-      ? Math.min(graphData.pagination.offset + graphData.pagination.limit, graphData.pagination.total)
+      ? Math.min(
+          graphData.pagination.offset + graphData.pagination.limit,
+          graphData.pagination.total,
+        )
       : 0;
   const pageNumber =
     graphData && graphData.pagination.limit > 0
@@ -1375,7 +1586,10 @@ function GraphPageInner() {
       : 1;
   const totalPages =
     graphData && graphData.pagination.limit > 0
-      ? Math.max(1, Math.ceil(graphData.pagination.total / graphData.pagination.limit))
+      ? Math.max(
+          1,
+          Math.ceil(graphData.pagination.total / graphData.pagination.limit),
+        )
       : 1;
   if (loadingSnapshots) {
     return (
@@ -1391,7 +1605,9 @@ function GraphPageInner() {
       <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
         <AlertTriangle className="w-8 h-8 text-amber-500" />
         <p className="text-sm">Could not load the unified graph</p>
-        <p className="text-xs text-zinc-500">Run a scan first so the API can persist graph snapshots.</p>
+        <p className="text-xs text-zinc-500">
+          Run a scan first so the API can persist graph snapshots.
+        </p>
       </div>
     );
   }
@@ -1401,7 +1617,9 @@ function GraphPageInner() {
       <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
         <ShieldAlert className="w-8 h-8 text-zinc-600" />
         <p className="text-sm">No graph snapshots found</p>
-        <p className="text-xs text-zinc-500">Run a scan to persist the unified inventory and security graph.</p>
+        <p className="text-xs text-zinc-500">
+          Run a scan to persist the unified inventory and security graph.
+        </p>
       </div>
     );
   }
@@ -1419,10 +1637,15 @@ function GraphPageInner() {
       <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-3">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Unified graph</p>
-            <h1 className="mt-1 text-lg font-semibold text-zinc-100">Lineage Graph</h1>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
+              Unified graph
+            </p>
+            <h1 className="mt-1 text-lg font-semibold text-zinc-100">
+              Lineage Graph
+            </h1>
             <p className="text-xs text-zinc-500">
-              Evidence-backed relationships across agents, servers, packages, credentials, tools, and findings.
+              Evidence-backed relationships across agents, servers, packages,
+              credentials, tools, and findings.
             </p>
           </div>
 
@@ -1431,9 +1654,21 @@ function GraphPageInner() {
               <>
                 <MetricCard value={flow.summary.agents} label="agents" />
                 <MetricCard value={flow.summary.servers} label="servers" />
-                <MetricCard value={flow.summary.findings} label="findings" accent="orange" />
-                <MetricCard value={flow.summary.critical} label="critical" accent="red" />
-                <MetricCard value={flow.summary.attackPaths} label="paths" accent="blue" />
+                <MetricCard
+                  value={flow.summary.findings}
+                  label="findings"
+                  accent="orange"
+                />
+                <MetricCard
+                  value={flow.summary.critical}
+                  label="critical"
+                  accent="red"
+                />
+                <MetricCard
+                  value={flow.summary.attackPaths}
+                  label="paths"
+                  accent="blue"
+                />
               </>
             )}
 
@@ -1444,14 +1679,17 @@ function GraphPageInner() {
             >
               {snapshots.map((snapshot) => (
                 <option key={snapshot.scan_id} value={snapshot.scan_id}>
-                  {snapshot.scan_id.slice(0, 12)} · {new Date(snapshot.created_at).toLocaleString()}
+                  {snapshot.scan_id.slice(0, 12)} ·{" "}
+                  {new Date(snapshot.created_at).toLocaleString()}
                 </option>
               ))}
             </select>
 
             <GraphEvidenceExportButton
               scanId={selectedScanId || undefined}
-              filenamePrefix={selectedScanId ? `scan-${selectedScanId}-graph` : undefined}
+              filenamePrefix={
+                selectedScanId ? `scan-${selectedScanId}-graph` : undefined
+              }
             />
             <FullscreenButton />
           </div>
@@ -1481,9 +1719,15 @@ function GraphPageInner() {
           </form>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
-            <ViewPill label="Scope" value={filters.agentName ? filters.agentName : "all agents"} />
+            <ViewPill
+              label="Scope"
+              value={filters.agentName ? filters.agentName : "all agents"}
+            />
             <ViewPill label="View" value={graphScopeLabelForFilters(filters)} />
-            <ViewPill label="Severity" value={filters.severity ? `${filters.severity}+` : "all"} />
+            <ViewPill
+              label="Severity"
+              value={filters.severity ? `${filters.severity}+` : "all"}
+            />
             {sourceNodeCount > 0 && (
               <span
                 data-testid="graph-compression-summary"
@@ -1505,48 +1749,71 @@ function GraphPageInner() {
           <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
               <div>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">View controls</span>
+                <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                  View controls
+                </span>
                 <p className="mt-1 text-xs text-zinc-400">
-                  Change scope, layers, severity, traversal, and page size without changing the persisted graph.
+                  Change scope, layers, severity, traversal, and page size
+                  without changing the persisted graph.
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">show</span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">hide</span>
+              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+                show
+              </span>
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">
+                hide
+              </span>
             </summary>
             <div className="mt-3 space-y-3">
               <div className="flex flex-wrap gap-2 text-[11px]">
-              <button
-                type="button"
-                onClick={() => setFilters(createImmediateGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))}
-                className={scopeButtonClass(activeScopePreset === "immediate")}
-                title="One-hop triage around the selected agent"
-              >
-                Immediate
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilters(createFocusedGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))}
-                className={scopeButtonClass(activeScopePreset === "relevant")}
-                title="Default fix-first graph with bounded path context"
-              >
-                Relevant paths
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilters(createExpandedGraphFilters(null))}
-                className={scopeButtonClass(activeScopePreset === "expanded")}
-                title="Broader topology review with lower-priority context included"
-              >
-                Expanded topology
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilters({ ...filters, vulnOnly: !filters.vulnOnly })}
-                className={scopeButtonClass(filters.vulnOnly)}
-                title="Limit the graph to vulnerability-bearing paths"
-              >
-                Vulnerable only
-              </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilters(
+                      createImmediateGraphFilters(
+                        filters.agentName ?? flow.agentNames[0] ?? null,
+                      ),
+                    )
+                  }
+                  className={scopeButtonClass(
+                    activeScopePreset === "immediate",
+                  )}
+                  title="One-hop triage around the selected agent"
+                >
+                  Immediate
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilters(
+                      createFocusedGraphFilters(
+                        filters.agentName ?? flow.agentNames[0] ?? null,
+                      ),
+                    )
+                  }
+                  className={scopeButtonClass(activeScopePreset === "relevant")}
+                  title="Default fix-first graph with bounded path context"
+                >
+                  Relevant paths
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilters(createExpandedGraphFilters(null))}
+                  className={scopeButtonClass(activeScopePreset === "expanded")}
+                  title="Broader topology review with lower-priority context included"
+                >
+                  Expanded topology
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilters({ ...filters, vulnOnly: !filters.vulnOnly })
+                  }
+                  className={scopeButtonClass(filters.vulnOnly)}
+                  title="Limit the graph to vulnerability-bearing paths"
+                >
+                  Vulnerable only
+                </button>
               </div>
               <FilterPanel
                 filters={filters}
@@ -1562,8 +1829,11 @@ function GraphPageInner() {
           {investigationMode && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
               <span>
-                Root-centered investigation: <span className="font-mono">{investigationMode.rootId}</span>
-                {investigationMode.truncated ? " · traversal budget reached" : ""}
+                Root-centered investigation:{" "}
+                <span className="font-mono">{investigationMode.rootId}</span>
+                {investigationMode.truncated
+                  ? " · traversal budget reached"
+                  : ""}
               </span>
               <button
                 type="button"
@@ -1575,7 +1845,9 @@ function GraphPageInner() {
             </div>
           )}
 
-          {(reachabilitySummary || loadingReachability || reachabilityError) && (
+          {(reachabilitySummary ||
+            loadingReachability ||
+            reachabilityError) && (
             <ReachabilityDrillInPanel
               summary={reachabilitySummary}
               loading={loadingReachability}
@@ -1590,7 +1862,8 @@ function GraphPageInner() {
           {searchResults.length > 0 && (
             <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2">
               <div className="mb-2 px-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-                Search respects current entity scope{filters.severity ? ` and ${filters.severity}+ severity` : ""}
+                Search respects current entity scope
+                {filters.severity ? ` and ${filters.severity}+ severity` : ""}
               </div>
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                 {searchResults.map((result) => (
@@ -1600,7 +1873,9 @@ function GraphPageInner() {
                     onClick={() => void focusSearchResult(result)}
                     className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
                   >
-                    <p className="truncate text-sm font-medium text-zinc-100">{result.label}</p>
+                    <p className="truncate text-sm font-medium text-zinc-100">
+                      {result.label}
+                    </p>
                     <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                       {String(result.entity_type)}
                     </p>
@@ -1608,7 +1883,8 @@ function GraphPageInner() {
                       {result.severity && <span>{result.severity}</span>}
                       <span>
                         risk{" "}
-                        {typeof result.risk_score === "number" && Number.isFinite(result.risk_score)
+                        {typeof result.risk_score === "number" &&
+                        Number.isFinite(result.risk_score)
                           ? result.risk_score.toFixed(1)
                           : "N/A"}
                       </span>
@@ -1625,12 +1901,15 @@ function GraphPageInner() {
             <>
               <span>{activeSnapshot.node_count} nodes</span>
               <span>{activeSnapshot.edge_count} edges</span>
-              <span>captured {new Date(activeSnapshot.created_at).toLocaleString()}</span>
+              <span>
+                captured {new Date(activeSnapshot.created_at).toLocaleString()}
+              </span>
             </>
           )}
           {graphData && graphData.pagination.total > 0 && (
             <span>
-              showing {pageStart}-{pageEnd} of {graphData.pagination.total} nodes
+              showing {pageStart}-{pageEnd} of {graphData.pagination.total}{" "}
+              nodes
             </span>
           )}
         </div>
@@ -1648,7 +1927,9 @@ function GraphPageInner() {
           <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
             <summary className="flex flex-wrap items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-3">
-                <span className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Snapshot diff</span>
+                <span className="text-[10px] uppercase tracking-[0.24em] text-sky-400">
+                  Snapshot diff
+                </span>
                 <span className="text-xs text-zinc-500">
                   {graphDiff
                     ? `+${graphDiff.nodes_added.length} −${graphDiff.nodes_removed.length} nodes · +${graphDiff.edges_added.length} −${graphDiff.edges_removed.length} edges`
@@ -1664,8 +1945,12 @@ function GraphPageInner() {
                     loading
                   </span>
                 )}
-                <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">show</span>
-                <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hidden group-open:inline">hide</span>
+                <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+                  show
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hidden group-open:inline">
+                  hide
+                </span>
               </div>
             </summary>
             {diffError ? (
@@ -1676,43 +1961,108 @@ function GraphPageInner() {
               <DiffLoadingGrid />
             ) : (
               <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
-                <DiffMetric label="nodes added" value={graphDiff?.nodes_added.length ?? 0} tone="green" />
-                <DiffMetric label="nodes removed" value={graphDiff?.nodes_removed.length ?? 0} tone="amber" />
-                <DiffMetric label="nodes changed" value={graphDiff?.nodes_changed.length ?? 0} tone="blue" />
-                <DiffMetric label="edges added" value={graphDiff?.edges_added.length ?? 0} tone="green" />
-                <DiffMetric label="edges removed" value={graphDiff?.edges_removed.length ?? 0} tone="amber" />
+                <DiffMetric
+                  label="nodes added"
+                  value={graphDiff?.nodes_added.length ?? 0}
+                  tone="green"
+                />
+                <DiffMetric
+                  label="nodes removed"
+                  value={graphDiff?.nodes_removed.length ?? 0}
+                  tone="amber"
+                />
+                <DiffMetric
+                  label="nodes changed"
+                  value={graphDiff?.nodes_changed.length ?? 0}
+                  tone="blue"
+                />
+                <DiffMetric
+                  label="edges added"
+                  value={graphDiff?.edges_added.length ?? 0}
+                  tone="green"
+                />
+                <DiffMetric
+                  label="edges removed"
+                  value={graphDiff?.edges_removed.length ?? 0}
+                  tone="amber"
+                />
               </div>
             )}
-            {graphDiff && (graphDiff.nodes_added.length > 0 || graphDiff.nodes_changed.length > 0 || graphDiff.nodes_removed.length > 0) && (
-              <div className="mt-3 grid gap-2 lg:grid-cols-3">
-                <DiffPreview label="Added" items={graphDiff.nodes_added} />
-                <DiffPreview label="Changed" items={graphDiff.nodes_changed} />
-                <DiffPreview label="Removed" items={graphDiff.nodes_removed} />
-              </div>
-            )}
+            {graphDiff &&
+              (graphDiff.nodes_added.length > 0 ||
+                graphDiff.nodes_changed.length > 0 ||
+                graphDiff.nodes_removed.length > 0) && (
+                <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                  <DiffPreview label="Added" items={graphDiff.nodes_added} />
+                  <DiffPreview
+                    label="Changed"
+                    items={graphDiff.nodes_changed}
+                  />
+                  <DiffPreview
+                    label="Removed"
+                    items={graphDiff.nodes_removed}
+                  />
+                </div>
+              )}
           </details>
         )}
 
         <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400 group">
           <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-            <span className="font-medium text-zinc-200">How to read this graph</span>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">show</span>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hidden group-open:inline">hide</span>
+            <span className="font-medium text-zinc-200">
+              How to read this graph
+            </span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+              show
+            </span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hidden group-open:inline">
+              hide
+            </span>
           </summary>
           <ul className="mt-2 space-y-1.5">
-            <li>Each snapshot is a persisted control-plane view of entities, edges, attack paths, and relationship counts at one capture time.</li>
-            <li>Node IDs are stable identifiers inside the graph model; the detail panel shows the node ID, first seen, last seen, sources, and edge counts.</li>
-            <li>Pagination changes the visible canvas, not the persisted snapshot itself. Narrow the scope when the graph gets large; page when you need broader coverage.</li>
-            <li>Relevant paths is for operator triage. Expanded is for topology review. Attack-path cards are the fix-first shortlist, not the whole graph.</li>
-            <li>Pages at or above {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} visible nodes or {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} visible edges use the limited 2D overview. Narrowing, search results, attack-path focus, and reachability drill-ins return to React Flow.</li>
-            <li>Hop depth controls how far traversal can move from the selected agent or root. Entity layers control what kinds of nodes can render, without changing the persisted graph.</li>
+            <li>
+              Each snapshot is a persisted control-plane view of entities,
+              edges, attack paths, and relationship counts at one capture time.
+            </li>
+            <li>
+              Node IDs are stable identifiers inside the graph model; the detail
+              panel shows the node ID, first seen, last seen, sources, and edge
+              counts.
+            </li>
+            <li>
+              Pagination changes the visible canvas, not the persisted snapshot
+              itself. Narrow the scope when the graph gets large; page when you
+              need broader coverage.
+            </li>
+            <li>
+              Relevant paths is for operator triage. Expanded is for topology
+              review. Attack-path cards are the fix-first shortlist, not the
+              whole graph.
+            </li>
+            <li>
+              Pages at or above{" "}
+              {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} visible
+              nodes or {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()}{" "}
+              visible edges use the limited 2D overview. Narrowing, search
+              results, attack-path focus, and reachability drill-ins return to
+              React Flow.
+            </li>
+            <li>
+              Hop depth controls how far traversal can move from the selected
+              agent or root. Entity layers control what kinds of nodes can
+              render, without changing the persisted graph.
+            </li>
           </ul>
         </details>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <button
             type="button"
-            onClick={() => setPageOffset((current) => Math.max(0, current - filters.pageSize))}
+            onClick={() =>
+              setPageOffset((current) =>
+                Math.max(0, current - filters.pageSize),
+              )
+            }
             disabled={loadingGraph || pageOffset === 0}
             className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -1720,7 +2070,9 @@ function GraphPageInner() {
           </button>
           <button
             type="button"
-            onClick={() => setPageOffset((current) => current + filters.pageSize)}
+            onClick={() =>
+              setPageOffset((current) => current + filters.pageSize)
+            }
             disabled={loadingGraph || !graphData?.pagination.has_more}
             className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -1730,7 +2082,9 @@ function GraphPageInner() {
             Page {pageNumber} of {totalPages}
           </span>
           {graphData?.pagination.has_more && (
-            <span className="text-amber-400">Large snapshot: narrow the graph or keep paging.</span>
+            <span className="text-amber-400">
+              Large snapshot: narrow the graph or keep paging.
+            </span>
           )}
         </div>
 
@@ -1741,18 +2095,27 @@ function GraphPageInner() {
           >
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.24em] text-orange-400">Attack paths</p>
+                <p className="text-[10px] uppercase tracking-[0.24em] text-orange-400">
+                  Attack paths
+                </p>
                 <p className="mt-1 text-xs text-zinc-500">
-                  {attackPaths.length} ranked path{attackPaths.length === 1 ? "" : "s"} available for focused investigation.
+                  {attackPaths.length} ranked path
+                  {attackPaths.length === 1 ? "" : "s"} available for focused
+                  investigation.
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">show queue</span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">hide queue</span>
+              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">
+                show queue
+              </span>
+              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:inline">
+                hide queue
+              </span>
             </summary>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="mt-3 text-xs text-zinc-500">
-                  Focus the current graph on a precomputed exploit chain in this filtered snapshot page.
+                  Focus the current graph on a precomputed exploit chain in this
+                  filtered snapshot page.
                 </p>
               </div>
               {selectedAttackPath && (
@@ -1806,27 +2169,58 @@ function GraphPageInner() {
                 />
                 <PathStat
                   label="Hop count"
-                  value={String(Math.max(0, selectedAttackPath.hops.length - 1))}
+                  value={String(
+                    Math.max(0, selectedAttackPath.hops.length - 1),
+                  )}
                 />
                 <PathStat
                   label="Credential exposure"
-                  value={selectedAttackPath.credential_exposure.length > 0 ? selectedAttackPath.credential_exposure.length.toString() : "none"}
-                  tone={selectedAttackPath.credential_exposure.length > 0 ? "amber" : "zinc"}
+                  value={
+                    selectedAttackPath.credential_exposure.length > 0
+                      ? selectedAttackPath.credential_exposure.length.toString()
+                      : "none"
+                  }
+                  tone={
+                    selectedAttackPath.credential_exposure.length > 0
+                      ? "amber"
+                      : "zinc"
+                  }
                 />
                 <PathStat
                   label="Tool exposure"
-                  value={selectedAttackPath.tool_exposure.length > 0 ? selectedAttackPath.tool_exposure.length.toString() : "none"}
-                  tone={selectedAttackPath.tool_exposure.length > 0 ? "blue" : "zinc"}
+                  value={
+                    selectedAttackPath.tool_exposure.length > 0
+                      ? selectedAttackPath.tool_exposure.length.toString()
+                      : "none"
+                  }
+                  tone={
+                    selectedAttackPath.tool_exposure.length > 0
+                      ? "blue"
+                      : "zinc"
+                  }
                 />
-                <PathTagList label="Summary" tags={[selectedAttackPath.summary || "No summary provided"]} wide />
+                <PathTagList
+                  label="Summary"
+                  tags={[selectedAttackPath.summary || "No summary provided"]}
+                  wide
+                />
                 {selectedAttackPath.vuln_ids.length > 0 && (
-                  <PathTagList label="Findings" tags={selectedAttackPath.vuln_ids} />
+                  <PathTagList
+                    label="Findings"
+                    tags={selectedAttackPath.vuln_ids}
+                  />
                 )}
                 {selectedAttackPath.credential_exposure.length > 0 && (
-                  <PathTagList label="Credentials" tags={selectedAttackPath.credential_exposure} />
+                  <PathTagList
+                    label="Credentials"
+                    tags={selectedAttackPath.credential_exposure}
+                  />
                 )}
                 {selectedAttackPath.tool_exposure.length > 0 && (
-                  <PathTagList label="Tools" tags={selectedAttackPath.tool_exposure} />
+                  <PathTagList
+                    label="Tools"
+                    tags={selectedAttackPath.tool_exposure}
+                  />
                 )}
               </div>
             )}
@@ -1864,7 +2258,11 @@ function GraphPageInner() {
               onSelect={selectFindingCard}
               scanId={selectedScanId || undefined}
               onExpandScope={() =>
-                setFilters(createExpandedGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))
+                setFilters(
+                  createExpandedGraphFilters(
+                    filters.agentName ?? flow.agentNames[0] ?? null,
+                  ),
+                )
               }
             />
           ) : graphRenderer.kind === "large-overview" ? (
@@ -1999,14 +2397,23 @@ function ReachabilityDrillInPanel({
         <div className="flex items-start gap-2">
           <Route className="mt-0.5 h-4 w-4 text-rose-300" />
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-rose-300">Reachability drill-in</p>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-rose-300">
+              Reachability drill-in
+            </p>
             <p className="mt-1 text-sm font-medium text-rose-50">
-              {summary ? `${summary.rootLabel} can reach ${affectedCount} node${affectedCount === 1 ? "" : "s"}` : "Loading reachable graph"}
+              {summary
+                ? `${summary.rootLabel} can reach ${affectedCount} node${affectedCount === 1 ? "" : "s"}`
+                : "Loading reachable graph"}
             </p>
             {summary?.truncated && (
-              <p className="mt-1 text-[11px] text-amber-200">Traversal budget reached; narrow the graph or inspect a smaller root.</p>
+              <p className="mt-1 text-[11px] text-amber-200">
+                Traversal budget reached; narrow the graph or inspect a smaller
+                root.
+              </p>
             )}
-            {error && <p className="mt-1 text-[11px] text-amber-200">{error}</p>}
+            {error && (
+              <p className="mt-1 text-[11px] text-amber-200">{error}</p>
+            )}
             {loading && (
               <p className="mt-1 flex items-center gap-1 text-[11px] text-rose-200">
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -2027,9 +2434,13 @@ function ReachabilityDrillInPanel({
       {summary && (
         <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
           <div className="rounded-xl border border-rose-400/20 bg-zinc-950/45 p-2">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">Affected by type</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">
+              Affected by type
+            </p>
             {Object.keys(summary.countsByType).length === 0 ? (
-              <p className="mt-2 text-zinc-400">No downstream nodes returned for this root.</p>
+              <p className="mt-2 text-zinc-400">
+                No downstream nodes returned for this root.
+              </p>
             ) : (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {Object.entries(summary.countsByType)
@@ -2047,17 +2458,27 @@ function ReachabilityDrillInPanel({
           </div>
 
           <div className="rounded-xl border border-rose-400/20 bg-zinc-950/45 p-2">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">Bounded paths</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">
+              Bounded paths
+            </p>
             {summary.pathPreviews.length === 0 ? (
-              <p className="mt-2 text-zinc-400">No path preview is available for this root.</p>
+              <p className="mt-2 text-zinc-400">
+                No path preview is available for this root.
+              </p>
             ) : (
               <div className="mt-2 grid gap-1.5">
                 {summary.pathPreviews.map((path) => (
-                  <div key={`${path.targetId}:${path.hops.join(">")}`} className="rounded-lg bg-zinc-950/70 px-2 py-1.5">
+                  <div
+                    key={`${path.targetId}:${path.hops.join(">")}`}
+                    className="rounded-lg bg-zinc-950/70 px-2 py-1.5"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-medium text-rose-50">{path.targetLabel}</span>
+                      <span className="font-medium text-rose-50">
+                        {path.targetLabel}
+                      </span>
                       <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                        {prettifyReachabilityType(path.targetType)} · {path.depth} hop{path.depth === 1 ? "" : "s"}
+                        {prettifyReachabilityType(path.targetType)} ·{" "}
+                        {path.depth} hop{path.depth === 1 ? "" : "s"}
                       </span>
                     </div>
                     <p className="mt-1 truncate font-mono text-[10px] text-zinc-400">
@@ -2100,7 +2521,9 @@ function PathStat({
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
-      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+        {label}
+      </p>
       <p className="mt-1 font-mono text-sm text-zinc-100">{value}</p>
     </div>
   );
@@ -2116,8 +2539,12 @@ function PathTagList({
   wide?: boolean;
 }) {
   return (
-    <div className={`rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 ${wide ? "lg:col-span-4" : ""}`}>
-      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+    <div
+      className={`rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 ${wide ? "lg:col-span-4" : ""}`}
+    >
+      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+        {label}
+      </p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {tags.map((tag) => (
           <span
@@ -2150,7 +2577,9 @@ function DiffMetric({
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
-      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+        {label}
+      </p>
       <p className="mt-1 font-mono text-lg text-zinc-100">{value}</p>
     </div>
   );
@@ -2158,10 +2587,24 @@ function DiffMetric({
 
 function DiffLoadingGrid() {
   return (
-    <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5" data-testid="graph-diff-loading">
-      {["nodes added", "nodes removed", "nodes changed", "edges added", "edges removed"].map((label) => (
-        <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+    <div
+      className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5"
+      data-testid="graph-diff-loading"
+    >
+      {[
+        "nodes added",
+        "nodes removed",
+        "nodes changed",
+        "edges added",
+        "edges removed",
+      ].map((label) => (
+        <div
+          key={label}
+          className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2"
+        >
+          <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+            {label}
+          </p>
           <div className="mt-2 h-6 w-12 animate-pulse rounded-full bg-zinc-800" />
         </div>
       ))}
@@ -2174,17 +2617,26 @@ function DiffPreview({ label, items }: { label: string; items: string[] }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
-        <span className="font-mono text-[11px] text-zinc-500">{items.length}</span>
+        <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+          {label}
+        </p>
+        <span className="font-mono text-[11px] text-zinc-500">
+          {items.length}
+        </span>
       </div>
       <div className="mt-2 space-y-1">
         {visible.map((item) => (
-          <p key={`${label}-${item}`} className="truncate font-mono text-[11px] text-zinc-300">
+          <p
+            key={`${label}-${item}`}
+            className="truncate font-mono text-[11px] text-zinc-300"
+          >
             {item}
           </p>
         ))}
         {items.length > visible.length && (
-          <p className="text-[11px] text-zinc-500">+{items.length - visible.length} more</p>
+          <p className="text-[11px] text-zinc-500">
+            +{items.length - visible.length} more
+          </p>
         )}
       </div>
     </div>

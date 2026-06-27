@@ -4053,6 +4053,67 @@ paths:
       summary: Get Connection
       tags:
       - cloud-connections
+  /v1/cloud/connections/{connection_id}/scan:
+    post:
+      description: "Launch a read-only cloud scan for a stored connection via the\
+        \ broker.\n\nResolves the tenant's connection (404 otherwise), uses the credential\
+        \ broker\nto assume a short-lived read-only session, and runs the same inventory\
+        \ + CIS\ndiscovery the sibling cloud routes use. Results persist through the\
+        \ existing\nscan/graph stores; the connection status moves to ``active`` +\
+        \ ``last_scan_at``\non success or ``error`` + ``status_detail`` (no secret)\
+        \ on failure. AWS only\ntoday \u2014 azure / gcp / snowflake return a clear\
+        \ 501 ``planned`` response."
+      operationId: scan_connection_v1_cloud_connections__connection_id__scan_post
+      parameters:
+      - in: path
+        name: connection_id
+        required: true
+        schema:
+          title: Connection Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Scan Connection V1 Cloud Connections  Connection Id  Scan
+                  Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Scan Connection
+      tags:
+      - cloud-connections
   /v1/cloud/{provider}/cis-benchmark:
     get:
       description: 'Run the CIS Foundations benchmark for a cloud provider over REST.

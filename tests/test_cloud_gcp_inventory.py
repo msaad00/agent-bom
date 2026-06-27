@@ -985,3 +985,91 @@ def test_gcp_missing_permissions_are_sorted_and_deduped(monkeypatch: pytest.Monk
     assert [e["resource_type"] for e in perms] == ["GCS buckets", "GKE clusters"]
     # Idempotent: re-deduping the same list is a no-op.
     assert gcp_inventory.dedupe_missing_permissions(perms + perms) == perms
+
+
+# ---------------------------------------------------------------------------
+# Role-definition resolution + group: bindings (identity/RBAC depth)
+# ---------------------------------------------------------------------------
+
+
+def test_iam_bindings_capture_group_and_member_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _group_policy(self: Any, request: Any) -> Any:
+        return _Obj(
+            bindings=[
+                {"role": "roles/owner", "members": ["group:admins@example.com"]},
+                {"role": "roles/viewer", "members": ["serviceAccount:svc@p.iam.gserviceaccount.com"]},
+            ]
+        )
+
+    with _install_fake_gcp():
+        monkeypatch.setattr(_FakeProjectsClient, "get_iam_policy", _group_policy)
+        by_member, kinds = gcp_inventory._discover_project_iam_bindings("proj-1", credentials=None, warnings=[])
+    assert by_member["admins@example.com"] == ["roles/owner"]
+    assert kinds["admins@example.com"] == "group"
+    assert kinds["svc@p.iam.gserviceaccount.com"] == "serviceaccount"
+
+
+def test_role_resolver_resolves_and_caches_permissions(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def _get_role(self: Any, request: Any) -> Any:
+        calls.append(request.name)
+        return _Obj(included_permissions=["storage.objects.get", "storage.objects.list"])
+
+    with _install_fake_gcp():
+        monkeypatch.setattr(_FakeIAMClient, "get_role", _get_role, raising=False)
+        monkeypatch.setattr(_FakeIAMAdminModule, "GetRoleRequest", _Obj, raising=False)
+        resolve = gcp_inventory._make_role_resolver(credentials=None, warnings=[])
+        first = resolve("roles/viewer")
+        second = resolve("roles/viewer")
+    assert first == ["storage.objects.get", "storage.objects.list"]
+    assert second == first
+    assert calls == ["roles/viewer"]  # cached: resolved once
+
+
+def test_build_group_principals_resolves_role_to_permissions() -> None:
+    groups = gcp_inventory._build_iam_group_principals(
+        {"admins@example.com": ["roles/owner"]},
+        {"admins@example.com": "group"},
+        project_id="proj-1",
+        role_resolver=lambda role: ["resourcemanager.projects.setIamPolicy"],
+    )
+    assert len(groups) == 1
+    grp = groups[0]
+    assert grp["principal_type"] == "group"
+    assert grp["privilege_level"] == "admin"
+    assert grp["policies"][0]["permissions"] == ["resourcemanager.projects.setIamPolicy"]
+    assert grp["members_expansion"] == "unresolved"  # Workspace Directory seam
+
+
+def test_graph_gcp_group_binding_surfaces_effective_permission() -> None:
+    from agent_bom.graph.types import EntityType, RelationshipType
+
+    payload = {
+        "provider": "gcp",
+        "status": "ok",
+        "project_id": "proj-1",
+        "account_id": "proj-1",
+        "buckets": [{"name": "data-lake", "publicly_accessible": False}],
+        "service_accounts": [],
+        "groups": [
+            {
+                "principal_type": "group",
+                "name": "admins@example.com",
+                "arn": "admins@example.com",
+                "principal_id": "admins@example.com",
+                "policies": [{"policy_id": "roles/owner", "policy_name": "roles/owner", "privilege_level": "admin"}],
+                "members": [],
+                "privilege_level": "admin",
+            }
+        ],
+    }
+    graph = _build_graph_from_inventory(payload)
+    group_node = "group:gcp:admins@example.com"
+    assert graph.nodes[group_node].entity_type == EntityType.GROUP
+    # The admin group reaches the project's bucket (effective permission).
+    bucket_node = "cloud_resource:gcp:gcs:bucket:data-lake"
+    group_perms = [
+        e for e in graph.edges if e.relationship == RelationshipType.HAS_PERMISSION and e.source == group_node and e.target == bucket_node
+    ]
+    assert group_perms

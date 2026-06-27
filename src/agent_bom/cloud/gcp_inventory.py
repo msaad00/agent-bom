@@ -67,7 +67,12 @@ _GCP_COMPUTE_PERMISSIONS: tuple[str, ...] = (
 _GCP_IAM_PERMISSIONS: tuple[str, ...] = (
     "iam.serviceAccounts.list",
     "resourcemanager.projects.getIamPolicy",
+    "iam.roles.get",
 )
+
+# Cap on the permission set captured per resolved role definition, so a single
+# broad role (e.g. owner) cannot bloat the inventory payload.
+_MAX_ROLE_PERMISSIONS = 500
 # Estate-breadth read-only permissions exercised by the extended discoverers
 # (GKE / Cloud Run / Cloud Functions / Cloud SQL / VPC / disks / Pub/Sub). Kept
 # explicit so the discovery envelope's `permissions_used` stays honest.
@@ -324,6 +329,7 @@ def discover_inventory(
         "instances": [],
         "firewalls": [],
         "service_accounts": [],
+        "groups": [],
         "gke_clusters": [],
         "cloud_run_services": [],
         "cloud_functions": [],
@@ -373,6 +379,7 @@ def discover_inventory(
     instances: list[dict[str, Any]] = []
     firewalls: list[dict[str, Any]] = []
     service_accounts: list[dict[str, Any]] = []
+    iam_groups: list[dict[str, Any]] = []
     gke_clusters: list[dict[str, Any]] = []
     cloud_run_services: list[dict[str, Any]] = []
     cloud_functions: list[dict[str, Any]] = []
@@ -387,10 +394,19 @@ def discover_inventory(
         instances = _discover_instances(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
         firewalls = _discover_firewalls(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_iam:
-        iam_bindings = _discover_project_iam_bindings(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-        service_accounts = _discover_service_accounts(
-            resolved_project, credentials=credentials, warnings=warnings, iam_bindings=iam_bindings, missing=missing
+        iam_bindings, member_kinds = _discover_project_iam_bindings(
+            resolved_project, credentials=credentials, warnings=warnings, missing=missing
         )
+        role_resolver = _make_role_resolver(credentials=credentials, warnings=warnings)
+        service_accounts = _discover_service_accounts(
+            resolved_project,
+            credentials=credentials,
+            warnings=warnings,
+            iam_bindings=iam_bindings,
+            role_resolver=role_resolver,
+            missing=missing,
+        )
+        iam_groups = _build_iam_group_principals(iam_bindings, member_kinds, project_id=resolved_project, role_resolver=role_resolver)
     if include_containers:
         gke_clusters = _discover_gke_clusters(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_serverless:
@@ -442,6 +458,7 @@ def discover_inventory(
         "instances": instances,
         "firewalls": firewalls,
         "service_accounts": service_accounts,
+        "groups": iam_groups,
         "gke_clusters": gke_clusters,
         "cloud_run_services": cloud_run_services,
         "cloud_functions": cloud_functions,
@@ -715,22 +732,26 @@ def _safe_int(value: str) -> int | None:
 
 def _discover_project_iam_bindings(
     project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
-) -> dict[str, list[str]]:
-    """Read the project IAM policy (read-only) → ``{member: [roles…]}``.
+) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """Read the project IAM policy (read-only) → ``({member: [roles…]}, {member: kind})``.
 
     Calls ``cloudresourcemanager`` ``projects.getIamPolicy`` and inverts the
     role→members bindings into a member→roles map so each principal carries the
     roles bound to it. The member key is the bare identity (e.g.
     ``svc@p.iam.gserviceaccount.com``) with the ``serviceAccount:`` / ``user:`` /
-    ``group:`` prefix stripped, matching the SA email used elsewhere. Degrades to
-    an empty map plus a warning on any error — never raises.
+    ``group:`` prefix stripped, matching the SA email used elsewhere. The second
+    map records each member's kind (``serviceaccount`` / ``user`` / ``group`` /
+    ``domain`` …) so ``group:`` bindings can be represented as group principals
+    rather than silently collapsed into the SA-only view. Degrades to empty maps
+    plus a warning on any error — never raises.
     """
     bindings_by_member: dict[str, list[str]] = {}
+    member_kinds: dict[str, str] = {}
     try:
         from google.cloud import resourcemanager_v3
     except ImportError:
         warnings.append("google-cloud-resource-manager not installed. Skipping project IAM-binding discovery.")
-        return bindings_by_member
+        return bindings_by_member, member_kinds
     try:
         from google.iam.v1 import iam_policy_pb2
 
@@ -742,9 +763,17 @@ def _discover_project_iam_bindings(
             if not role:
                 continue
             for member in binding.get("members", []) or []:
-                key = str(member).split(":", 1)[-1].strip().lower() if ":" in str(member) else str(member).strip().lower()
+                raw = str(member)
+                if ":" in raw:
+                    prefix, _, ident = raw.partition(":")
+                    key = ident.strip().lower()
+                    kind = prefix.strip().lower()
+                else:
+                    key = raw.strip().lower()
+                    kind = ""
                 if not key:
                     continue
+                member_kinds.setdefault(key, kind)
                 roles = bindings_by_member.setdefault(key, [])
                 if role not in roles:
                     roles.append(role)
@@ -757,7 +786,99 @@ def _discover_project_iam_bindings(
             warnings=warnings,
             missing=missing,
         )
-    return bindings_by_member
+    return bindings_by_member, member_kinds
+
+
+def _make_role_resolver(*, credentials: Any, warnings: list[str]) -> Any:
+    """Return a cached ``role_id -> [permission…]`` resolver (read-only ``roles.get``).
+
+    Resolves both predefined (``roles/...``) and custom
+    (``projects|organizations/.../roles/...``) role definitions to their concrete
+    ``includedPermissions`` so a binding's *actual* capabilities are known rather
+    than only its name-classified privilege level — closing the gap with the
+    Azure path, which already resolves role definitions to actions. Each role is
+    resolved at most once (cached) and the permission set is capped. Within
+    ``roles/iam.securityReviewer`` / ``viewer``. Degrades to an empty list plus a
+    warning on any error — never raises.
+    """
+    cache: dict[str, list[str]] = {}
+    client_holder: dict[str, Any] = {}
+
+    def resolve(role: str) -> list[str]:
+        name = str(role or "").strip()
+        if not name:
+            return []
+        if name in cache:
+            return cache[name]
+        permissions: list[str] = []
+        try:
+            from google.cloud import iam_admin_v1
+
+            client = client_holder.get("client")
+            if client is None:
+                client = iam_admin_v1.IAMClient(credentials=credentials)
+                client_holder["client"] = client
+            role_def = client.get_role(request=iam_admin_v1.GetRoleRequest(name=name))
+            permissions = [str(p) for p in (getattr(role_def, "included_permissions", None) or [])][:_MAX_ROLE_PERMISSIONS]
+        except Exception as exc:  # noqa: BLE001 — one failed role lookup must not sink the scan
+            warnings.append(f"GCP role-definition resolution skipped for {name}: {sanitize_discovery_warning(exc)}")
+        cache[name] = permissions
+        return permissions
+
+    return resolve
+
+
+def _role_policy_entry(role: str, *, role_resolver: Any) -> dict[str, Any]:
+    """Build one classified IAM-binding policy entry, resolved to its permissions."""
+    return {
+        "policy_id": role,
+        "policy_name": role,
+        "attachment_type": "iam-binding",
+        "privilege_level": _classify_role_privilege(role),
+        "permissions": role_resolver(role) if role_resolver is not None else [],
+        "source_field": "projects.getIamPolicy.bindings",
+    }
+
+
+def _build_iam_group_principals(
+    bindings_by_member: dict[str, list[str]],
+    member_kinds: dict[str, str],
+    *,
+    project_id: str,
+    role_resolver: Any,
+) -> list[dict[str, Any]]:
+    """Represent ``group:`` IAM-policy bindings as group principals (read-only).
+
+    A role granted to a Google group reaches every member of that group, so the
+    group must be a first-class principal carrying its bound roles (resolved to
+    permissions) — otherwise group-granted access is invisible to the
+    effective-permissions graph. Member expansion (who is in the group) needs the
+    Workspace Directory API (admin-scoped) and is left as an explicit, optional
+    seam: ``members`` stays empty here unless a gated directory connector fills it.
+    """
+    groups: list[dict[str, Any]] = []
+    for member, roles in bindings_by_member.items():
+        if member_kinds.get(member) != "group":
+            continue
+        policies = [_role_policy_entry(role, role_resolver=role_resolver) for role in roles]
+        groups.append(
+            {
+                "principal_type": "group",
+                "name": member,
+                "arn": member,
+                "principal_id": member,
+                "email": member,
+                "account_id": project_id,
+                "roles": roles,
+                "policies": policies,
+                # Seam: Workspace Directory API (admin-scoped) member expansion is
+                # optional + gated; leave empty rather than guess membership.
+                "members": [],
+                "members_expansion": "unresolved",
+                "privilege_level": _highest_privilege(roles),
+            }
+        )
+    return groups
 
 
 def _discover_service_accounts(
@@ -766,6 +887,7 @@ def _discover_service_accounts(
     credentials: Any,
     warnings: list[str],
     iam_bindings: dict[str, list[str]] | None = None,
+    role_resolver: Any = None,
     missing: list[dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Enumerate all service accounts in the project (read-only).
@@ -793,16 +915,7 @@ def _discover_service_accounts(
             if not email:
                 continue
             roles = list(bindings.get(email.lower(), []))
-            policies = [
-                {
-                    "policy_id": role,
-                    "policy_name": role,
-                    "attachment_type": "iam-binding",
-                    "privilege_level": _classify_role_privilege(role),
-                    "source_field": "projects.getIamPolicy.bindings",
-                }
-                for role in roles
-            ]
+            policies = [_role_policy_entry(role, role_resolver=role_resolver) for role in roles]
             accounts.append(
                 {
                     "principal_type": "service-account",

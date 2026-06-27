@@ -449,3 +449,123 @@ def test_azure_missing_permissions_are_sorted_and_deduped(monkeypatch: pytest.Mo
     assert [e["resource_type"] for e in perms] == ["Azure Storage Accounts", "Azure virtual machines"]
     # Idempotent: re-deduping the same list is a no-op.
     assert azure_inventory.dedupe_missing_permissions(perms + perms) == perms
+
+
+# ---------------------------------------------------------------------------
+# Entra directory read (service principals + groups) — gated, read-only
+# ---------------------------------------------------------------------------
+
+
+class _FakeGraphClient:
+    """Stand-in Microsoft Graph client (same surface EntraClient exposes)."""
+
+    def list_service_principals(self) -> list[dict[str, Any]]:
+        return [{"id": "sp-oid", "displayName": "ci-runner", "appId": "app-1", "servicePrincipalType": "Application"}]
+
+    def list_groups(self) -> list[dict[str, Any]]:
+        return [{"id": "grp-oid", "displayName": "platform-admins"}]
+
+    def list_group_members(self, group_id: str) -> list[dict[str, Any]]:
+        assert group_id == "grp-oid"
+        return [{"id": "sp-oid", "displayName": "ci-runner", "@odata.type": "#microsoft.graph.servicePrincipal"}]
+
+
+def test_entra_directory_discovers_sps_and_groups_with_injected_client() -> None:
+    warnings: list[str] = []
+    sps, groups = azure_inventory._discover_entra_directory(client=_FakeGraphClient(), warnings=warnings)
+    assert {sp["principal_id"] for sp in sps} == {"sp-oid"}
+    assert sps[0]["principal_type"] == "service-principal"
+    assert len(groups) == 1
+    grp = groups[0]
+    assert grp["principal_type"] == "group" and grp["principal_id"] == "grp-oid"
+    assert grp["members"] == [{"id": "sp-oid", "name": "ci-runner", "type": "service-principal"}]
+
+
+def test_entra_directory_disabled_is_silent_and_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.identity import entra_nhi
+
+    monkeypatch.delenv(entra_nhi._DISCOVERY_FLAG_ENV, raising=False)
+    warnings: list[str] = []
+    sps, groups = azure_inventory._discover_entra_directory(warnings=warnings)
+    # Opt-in + default OFF: an ARM-only scan is not spammed with a note every run.
+    assert sps == [] and groups == [] and warnings == []
+
+
+def test_entra_directory_gated_on_but_no_token_warns(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.identity import entra_nhi
+
+    monkeypatch.setenv(entra_nhi._DISCOVERY_FLAG_ENV, "1")
+    monkeypatch.delenv(entra_nhi._TOKEN_ENV, raising=False)
+    warnings: list[str] = []
+    sps, groups = azure_inventory._discover_entra_directory(warnings=warnings)
+    assert sps == [] and groups == []
+    assert any(entra_nhi._TOKEN_ENV in w for w in warnings)
+
+
+def test_inventory_includes_entra_directory_when_gated_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(azure_inventory.INVENTORY_ENV_FLAG, "1")
+
+    monkeypatch.setattr(
+        azure_inventory,
+        "_discover_entra_directory",
+        lambda **kw: ([{"principal_id": "sp-oid", "principal_type": "service-principal", "name": "sp", "arn": "sp-oid"}], []),
+    )
+    with _install_fake_azure():
+        payload = azure_inventory.discover_inventory(subscription_id="sub-1", credential=_FakeCredential())
+    assert payload["service_principals"][0]["principal_id"] == "sp-oid"
+    assert "Directory.Read.All" in payload["discovery_envelope"]["permissions_used"]
+
+
+def test_graph_group_scoped_assignment_reaches_members() -> None:
+    from agent_bom.graph.builder import build_unified_graph_from_report
+    from agent_bom.graph.types import EntityType, RelationshipType
+
+    payload = {
+        "provider": "azure",
+        "status": "ok",
+        "subscription_id": "sub-1",
+        "account_id": "sub-1",
+        "service_principals": [
+            {
+                "principal_type": "service-principal",
+                "name": "ci-runner",
+                "arn": "sp-oid",
+                "principal_id": "sp-oid",
+                "privilege_level": "unknown",
+                "policies": [],
+                "trust_principals": [],
+            }
+        ],
+        "entra_groups": [
+            {
+                "principal_type": "group",
+                "name": "platform-admins",
+                "arn": "grp-oid",
+                "principal_id": "grp-oid",
+                "members": [{"id": "sp-oid", "name": "ci-runner", "type": "service-principal"}],
+                "policies": [],
+                "privilege_level": "unknown",
+            }
+        ],
+        "role_assignments": [
+            {
+                "principal_id": "grp-oid",
+                "principal_type": "group",
+                "role_name": "Owner",
+                "scope": "/subscriptions/sub-1",
+                "account_id": "sub-1",
+            }
+        ],
+    }
+    graph = build_unified_graph_from_report({"agents": [], "cloud_inventory": payload})
+
+    group_node = "group:azure:grp-oid"
+    sp_node = "service_principal:azure:sp-oid"
+    account_node = "account:azure:sub-1"
+    assert graph.nodes[group_node].entity_type == EntityType.GROUP
+    assert graph.nodes[sp_node].entity_type == EntityType.SERVICE_PRINCIPAL
+    # The Owner role granted to the group reaches the member service principal.
+    member_perm = [
+        e for e in graph.edges if e.relationship == RelationshipType.HAS_PERMISSION and e.source == sp_node and e.target == account_node
+    ]
+    assert member_perm and member_perm[0].evidence.get("via_group") == "grp-oid"

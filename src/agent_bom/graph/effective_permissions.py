@@ -1,12 +1,14 @@
 """Effective-permission computation and privilege-escalation detection.
 
-The identity graph already records direct access (``CAN_ACCESS``) and
-assume/trust relationships (``TRUSTS`` / ``CROSS_ACCOUNT_TRUST`` / ``ASSUMES``)
-between principals. This overlay resolves them into *effective* access — what a
-principal can reach after assuming the roles it is allowed to assume — and emits
-``HAS_PERMISSION`` edges for the transitive closure. A principal that reaches a
-resource only by assuming another role is flagged as a privilege-escalation
-chain.
+The identity graph already records direct access (``CAN_ACCESS``), assume/trust
+relationships (``TRUSTS`` / ``CROSS_ACCOUNT_TRUST`` / ``ASSUMES``), and group
+membership (``MEMBER_OF`` into a ``GROUP``) between principals. This overlay
+resolves them into *effective* access — what a principal can reach after assuming
+the roles it is allowed to assume and inheriting the access of the groups it
+belongs to — and emits ``HAS_PERMISSION`` edges for the transitive closure. A
+principal that reaches a resource only by assuming another role is flagged as a
+privilege-escalation chain; group-inherited access is recorded as ``group`` and
+is not, by itself, an escalation.
 
 Computed over edges already in the graph; no new scanner input. Bounded for
 scale: principals and chain depth are capped.
@@ -57,6 +59,7 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
 
     direct_access: dict[str, set[str]] = defaultdict(set)
     assumes: dict[str, set[str]] = defaultdict(set)
+    member_of_groups: dict[str, set[str]] = defaultdict(set)
     attached_policy_labels: dict[str, list[str]] = defaultdict(list)
     admin_by_policy_actions: set[str] = set()
     for edge in graph.edges:
@@ -67,6 +70,13 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
                 direct_access[edge.source].add(edge.target)
         elif rel in _ASSUME_RELS and edge.source in principal_ids and edge.target in principal_ids:
             assumes[edge.source].add(edge.target)
+        elif rel == RelationshipType.MEMBER_OF and edge.source in principal_ids:
+            # A principal inherits the access of every GROUP it belongs to. Group
+            # membership is NOT an assume chain, so it is tracked separately and
+            # never flagged as privilege escalation.
+            target = graph.nodes.get(edge.target)
+            if target is not None and target.entity_type == EntityType.GROUP:
+                member_of_groups[edge.source].add(edge.target)
         elif rel == RelationshipType.ATTACHED and edge.source in principal_ids:
             policy = graph.nodes.get(edge.target)
             if policy is not None and policy.entity_type == EntityType.POLICY:
@@ -86,9 +96,29 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
         if any(kw in haystack for kw in _ADMIN_PRIVILEGE_KEYWORDS):
             admin_principals.add(p.id)
 
-    def effective(principal_id: str) -> tuple[set[str], set[str], set[str]]:
-        """Return (all_resources, via_assume_only, assumed_principal_ids)."""
+    def _group_closure(principal_id: str) -> set[str]:
+        """Return the GROUP ids a principal belongs to, transitively (nested groups)."""
+        groups: set[str] = set()
+        frontier = list(member_of_groups.get(principal_id, set()))
+        depth = 0
+        while frontier and depth < _MAX_DEPTH:
+            nxt: list[str] = []
+            for gid in frontier:
+                if gid in groups:
+                    continue
+                groups.add(gid)
+                nxt.extend(member_of_groups.get(gid, set()))
+            frontier = nxt
+            depth += 1
+        return groups
+
+    def effective(principal_id: str) -> tuple[set[str], set[str], set[str], set[str]]:
+        """Return (all_resources, via_assume_only, via_group_only, assumed_principal_ids)."""
         direct = set(direct_access.get(principal_id, set()))
+        # Access inherited from group membership (and the groups a group nests in).
+        via_group: set[str] = set()
+        for gid in _group_closure(principal_id):
+            via_group |= direct_access.get(gid, set())
         via_assume: set[str] = set()
         assumed: set[str] = set()
         visited = {principal_id}
@@ -105,19 +135,25 @@ def apply_effective_permissions(graph: UnifiedGraph) -> dict[str, int]:
                 nxt.extend(assumes.get(pid, set()))
             frontier = nxt
             depth += 1
-        return direct | via_assume, via_assume - direct, assumed
+        all_resources = direct | via_assume | via_group
+        return all_resources, via_assume - direct, via_group - direct - via_assume, assumed
 
     edges_added = 0
     escalations = 0
     seen_perm: set[tuple[str, str]] = set()
     for principal in principals:
-        all_resources, escalated, assumed = effective(principal.id)
+        all_resources, escalated, via_group_only, assumed = effective(principal.id)
         for resource_id in all_resources:
             key = (principal.id, resource_id)
             if key in seen_perm:
                 continue
             seen_perm.add(key)
-            via = "assume_chain" if resource_id in escalated else "direct"
+            if resource_id in escalated:
+                via = "assume_chain"
+            elif resource_id in via_group_only:
+                via = "group"
+            else:
+                via = "direct"
             graph.add_edge(
                 UnifiedEdge(
                     source=principal.id,

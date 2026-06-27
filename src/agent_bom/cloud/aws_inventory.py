@@ -89,12 +89,18 @@ _AWS_EC2_PERMISSIONS: tuple[str, ...] = (
 _AWS_IAM_PERMISSIONS: tuple[str, ...] = (
     "iam:ListRoles",
     "iam:ListUsers",
+    "iam:ListGroups",
+    "iam:GetGroup",
+    "iam:ListGroupsForUser",
     "iam:ListAttachedRolePolicies",
     "iam:ListAttachedUserPolicies",
+    "iam:ListAttachedGroupPolicies",
     "iam:ListRolePolicies",
     "iam:ListUserPolicies",
+    "iam:ListGroupPolicies",
     "iam:GetRolePolicy",
     "iam:GetUserPolicy",
+    "iam:GetGroupPolicy",
     "iam:GetPolicy",
     "iam:GetPolicyVersion",
 )
@@ -346,6 +352,7 @@ def _empty_payload(*, region: str) -> dict[str, Any]:
         "security_groups": [],
         "roles": [],
         "users": [],
+        "groups": [],
         "rds_instances": [],
         "lambda_functions": [],
         "dynamodb_tables": [],
@@ -575,6 +582,7 @@ def discover_inventory_all_regions(
         "buckets": _dedupe(global_payload.get("buckets", []) or [], "arn"),
         "roles": _dedupe(global_payload.get("roles", []) or [], "arn"),
         "users": _dedupe(global_payload.get("users", []) or [], "arn"),
+        "groups": _dedupe(global_payload.get("groups", []) or [], "arn"),
         "cloudfront_distributions": _dedupe(cloudfront_seen, "name"),
     }
 
@@ -618,6 +626,7 @@ def discover_inventory_all_regions(
         "security_groups": merged["security_groups"],
         "roles": deduped_globals.get("roles", []),
         "users": deduped_globals.get("users", []),
+        "groups": deduped_globals.get("groups", []),
         "rds_instances": merged["rds_instances"],
         "lambda_functions": merged["lambda_functions"],
         "dynamodb_tables": merged["dynamodb_tables"],
@@ -700,6 +709,7 @@ def discover_inventory(
     security_groups: list[dict[str, Any]] = []
     roles: list[dict[str, Any]] = []
     users: list[dict[str, Any]] = []
+    groups: list[dict[str, Any]] = []
     rds_instances: list[dict[str, Any]] = []
     lambda_functions: list[dict[str, Any]] = []
     dynamodb_tables: list[dict[str, Any]] = []
@@ -719,7 +729,7 @@ def discover_inventory(
         if include_ec2:
             instances, security_groups = _discover_ec2(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
         if include_iam:
-            roles, users = _discover_iam(session, account_id=account_id, warnings=warnings, missing=missing)
+            roles, users, groups = _discover_iam(session, account_id=account_id, warnings=warnings, missing=missing)
         if include_data:
             rds_instances = _discover_rds(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
             dynamodb_tables = _discover_dynamodb(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
@@ -781,6 +791,7 @@ def discover_inventory(
         "security_groups": security_groups,
         "roles": roles,
         "users": users,
+        "groups": groups,
         "rds_instances": rds_instances,
         "lambda_functions": lambda_functions,
         "dynamodb_tables": dynamodb_tables,
@@ -1026,17 +1037,21 @@ def _discover_iam(
     account_id: str | None,
     warnings: list[str],
     missing: list[dict[str, str]] | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Enumerate all IAM roles and users in the account (read-only).
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Enumerate all IAM roles, users, and groups in the account (read-only).
 
     Each principal carries attached managed-policy metadata classified to a
     privilege level (admin/write/read) so the effective-permissions overlay can
     consume it without an additional fetch. Roles also carry their trust
-    principals from the AssumeRole policy document.
+    principals from the AssumeRole policy document. Groups carry their attached
+    and inline policies plus their member users; each user carries the names of
+    the groups it belongs to so the graph can attribute group-granted access to
+    the member — group-based access is one of the most common privilege paths.
     """
     iam = session.client("iam")
     roles: list[dict[str, Any]] = []
     users: list[dict[str, Any]] = []
+    groups: list[dict[str, Any]] = []
 
     try:
         role_paginator = iam.get_paginator("list_roles")
@@ -1049,6 +1064,16 @@ def _discover_iam(
         )
 
     try:
+        group_paginator = iam.get_paginator("list_groups")
+        for page in group_paginator.paginate():
+            for group in page.get("Groups", []):
+                groups.append(_normalize_group(iam, group, account_id=account_id, warnings=warnings))
+    except Exception as exc:  # noqa: BLE001 — one failed IAM list must not sink the scan
+        record_discovery_failure(
+            exc=exc, resource_type="IAM groups", permission="iam:ListGroups", cloud="aws", warnings=warnings, missing=missing
+        )
+
+    try:
         user_paginator = iam.get_paginator("list_users")
         for page in user_paginator.paginate():
             for user in page.get("Users", []):
@@ -1058,7 +1083,7 @@ def _discover_iam(
             exc=exc, resource_type="IAM users", permission="iam:ListUsers", cloud="aws", warnings=warnings, missing=missing
         )
 
-    return roles, users
+    return roles, users, groups
 
 
 def _normalize_role(iam: Any, role: dict[str, Any], *, account_id: str | None, warnings: list[str]) -> dict[str, Any]:
@@ -1095,17 +1120,91 @@ def _normalize_user(iam: Any, user: dict[str, Any], *, account_id: str | None, w
         "account_id": account_id or _account_id_from_arn(user_arn),
         "path": str(user.get("Path", "") or ""),
         "policies": policies,
+        "groups": _groups_for_user(iam, user_name, warnings=warnings),
         "privilege_level": _highest_privilege(policies),
         "created_at": _iso(user.get("CreateDate")),
     }
+
+
+def _normalize_group(iam: Any, group: dict[str, Any], *, account_id: str | None, warnings: list[str]) -> dict[str, Any]:
+    """Normalize one IAM group with its attached + inline policies and members.
+
+    A group's attached/inline policies grant every member their access, so the
+    group carries the same policy shape as a user/role (classified to a privilege
+    level) plus the list of member users. The graph builder turns the group into
+    a ``GROUP`` node, attaches its policies, and wires ``MEMBER_OF`` edges from
+    each member so the effective-permissions overlay attributes group-granted
+    access to the member.
+    """
+    group_name = str(group.get("GroupName", "") or "")
+    group_arn = str(group.get("Arn", "") or "")
+    policies = _attached_policies(iam, "group", group_name, warnings=warnings)
+    policies += _inline_policies(iam, "group", group_name, warnings=warnings)
+    return {
+        "principal_type": "group",
+        "name": group_name,
+        "arn": group_arn,
+        "account_id": account_id or _account_id_from_arn(group_arn),
+        "path": str(group.get("Path", "") or ""),
+        "policies": policies,
+        "members": _group_members(iam, group_name, warnings=warnings),
+        "privilege_level": _highest_privilege(policies),
+        "created_at": _iso(group.get("CreateDate")),
+    }
+
+
+def _group_members(iam: Any, group_name: str, *, warnings: list[str]) -> list[dict[str, str]]:
+    """Return the member users of an IAM group (read-only ``GetGroup``).
+
+    Each member is recorded by ARN + name + ``user`` type so the builder can wire
+    a ``MEMBER_OF`` edge to the existing user node. Degrades to an empty list plus
+    a warning on error; never blocks enumeration.
+    """
+    if not group_name:
+        return []
+    members: list[dict[str, str]] = []
+    try:
+        paginator = iam.get_paginator("get_group")
+        for page in paginator.paginate(GroupName=group_name):
+            for user in page.get("Users", []) or []:
+                arn = str(user.get("Arn", "") or "")
+                name = str(user.get("UserName", "") or "")
+                ident = arn or name
+                if ident:
+                    members.append({"id": ident, "name": name or ident, "type": "user"})
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"IAM group membership enumeration skipped for {group_name}: {sanitize_discovery_warning(exc)}")
+    return members
+
+
+def _groups_for_user(iam: Any, user_name: str, *, warnings: list[str]) -> list[str]:
+    """Return the names of the IAM groups a user belongs to (read-only).
+
+    Group membership is the link that carries a group's policies to the member,
+    so capturing it lets the graph attribute group-granted access to each user.
+    Degrades to an empty list plus a warning on error; never blocks enumeration.
+    """
+    if not user_name:
+        return []
+    names: list[str] = []
+    try:
+        paginator = iam.get_paginator("list_groups_for_user")
+        for page in paginator.paginate(UserName=user_name):
+            for group in page.get("Groups", []) or []:
+                name = str(group.get("GroupName", "") or "")
+                if name:
+                    names.append(name)
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"IAM group-membership lookup skipped for user {user_name}: {sanitize_discovery_warning(exc)}")
+    return names
 
 
 def _attached_policies(iam: Any, principal_kind: str, principal_name: str, *, warnings: list[str]) -> list[dict[str, Any]]:
     """Return attached managed policies with a classified privilege level."""
     if not principal_name:
         return []
-    paginator_name = "list_attached_role_policies" if principal_kind == "role" else "list_attached_user_policies"
-    kwarg = "RoleName" if principal_kind == "role" else "UserName"
+    paginator_name = f"list_attached_{principal_kind}_policies"
+    kwarg = {"role": "RoleName", "user": "UserName", "group": "GroupName"}[principal_kind]
     policies: list[dict[str, Any]] = []
     try:
         paginator = iam.get_paginator(paginator_name)
@@ -1139,11 +1238,11 @@ def _inline_policies(iam: Any, principal_kind: str, principal_name: str, *, warn
     """
     if not principal_name:
         return []
-    list_op = "list_role_policies" if principal_kind == "role" else "list_user_policies"
-    kwarg = "RoleName" if principal_kind == "role" else "UserName"
+    list_op = f"list_{principal_kind}_policies"
+    kwarg = {"role": "RoleName", "user": "UserName", "group": "GroupName"}[principal_kind]
     policies: list[dict[str, Any]] = []
     try:
-        get_doc = iam.get_role_policy if principal_kind == "role" else iam.get_user_policy
+        get_doc = getattr(iam, {"role": "get_role_policy", "user": "get_user_policy", "group": "get_group_policy"}[principal_kind])
         paginator = iam.get_paginator(list_op)
         for page in paginator.paginate(**{kwarg: principal_name}):
             for name in page.get("PolicyNames", []):

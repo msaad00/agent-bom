@@ -721,3 +721,108 @@ def test_aws_permission_denied_degrades_with_guidance(monkeypatch: pytest.Monkey
     actionable = [w for w in payload["warnings"] if "role lacks s3:ListAllMyBuckets" in w]
     assert actionable, payload["warnings"]
     assert payload["missing_permissions"] == [{"cloud": "aws", "permission": "s3:ListAllMyBuckets", "resource_type": "S3 buckets"}]
+
+
+# ---------------------------------------------------------------------------
+# IAM groups + group-based access (identity/RBAC depth)
+# ---------------------------------------------------------------------------
+
+
+class _FakeIAMGroups:
+    """IAM client where `alice` is admin ONLY through the `admins` group."""
+
+    def get_paginator(self, op: str) -> _FakePaginator:
+        if op == "list_roles":
+            return _FakePaginator([{"Roles": []}])
+        if op == "list_users":
+            return _FakePaginator([{"Users": [{"UserName": "alice", "Arn": "arn:aws:iam::111122223333:user/alice", "Path": "/"}]}])
+        if op == "list_groups":
+            return _FakePaginator([{"Groups": [{"GroupName": "admins", "Arn": "arn:aws:iam::111122223333:group/admins", "Path": "/"}]}])
+        if op == "get_group":
+            return _FakePaginator([{"Users": [{"UserName": "alice", "Arn": "arn:aws:iam::111122223333:user/alice"}]}])
+        if op == "list_groups_for_user":
+            return _FakePaginator([{"Groups": [{"GroupName": "admins"}]}])
+        if op == "list_attached_group_policies":
+            return _FakePaginator(
+                [{"AttachedPolicies": [{"PolicyArn": "arn:aws:iam::aws:policy/AdministratorAccess", "PolicyName": "AdministratorAccess"}]}]
+            )
+        # All other attached/inline list ops resolve to empty.
+        return _FakePaginator([{"AttachedPolicies": [], "PolicyNames": []}])
+
+
+def test_discover_iam_enumerates_groups_and_memberships() -> None:
+    class _Sess:
+        def client(self, name: str, **_kwargs: Any) -> Any:
+            return _FakeIAMGroups()
+
+    roles, users, groups = aws_inventory._discover_iam(_Sess(), account_id="111122223333", warnings=[])
+    assert roles == []
+    by_name = {g["name"]: g for g in groups}
+    assert "admins" in by_name
+    admins = by_name["admins"]
+    assert admins["privilege_level"] == "admin"
+    assert admins["members"][0]["id"] == "arn:aws:iam::111122223333:user/alice"
+    assert admins["members"][0]["type"] == "user"
+    # The user itself has NO direct privilege but records its group membership.
+    alice = {u["name"]: u for u in users}["alice"]
+    assert alice["privilege_level"] == "unknown"
+    assert alice["groups"] == ["admins"]
+
+
+def test_graph_user_admin_via_group_surfaces_effective_permission() -> None:
+    from agent_bom.graph.types import EntityType, RelationshipType
+
+    payload = {
+        "provider": "aws",
+        "status": "ok",
+        "account_id": "111122223333",
+        "region": "us-east-1",
+        "buckets": [{"name": "prod-bucket", "arn": "arn:bucket", "publicly_accessible": False, "location": "us-east-1"}],
+        "roles": [],
+        "users": [
+            {
+                "principal_type": "user",
+                "name": "alice",
+                "arn": "arn:aws:iam::111122223333:user/alice",
+                "policies": [],
+                "groups": ["admins"],
+                "privilege_level": "unknown",
+            }
+        ],
+        "groups": [
+            {
+                "principal_type": "group",
+                "name": "admins",
+                "arn": "arn:aws:iam::111122223333:group/admins",
+                "policies": [
+                    {
+                        "policy_id": "arn:aws:iam::aws:policy/AdministratorAccess",
+                        "policy_name": "AdministratorAccess",
+                        "privilege_level": "admin",
+                    }
+                ],
+                "members": [{"id": "arn:aws:iam::111122223333:user/alice", "name": "alice", "type": "user"}],
+                "privilege_level": "admin",
+            }
+        ],
+    }
+    graph = _build_graph_from_inventory(payload)
+    nodes = graph.nodes
+
+    group_node = "group:aws:arn:aws:iam::111122223333:group/admins"
+    user_node = "user:aws:arn:aws:iam::111122223333:user/alice"
+    policy_node = "policy:aws:arn:aws:iam::aws:policy/AdministratorAccess"
+    assert nodes[group_node].entity_type == EntityType.GROUP
+    # Group + membership + group policy are all in the graph.
+    assert any(e.relationship == RelationshipType.MEMBER_OF and e.source == user_node and e.target == group_node for e in graph.edges)
+    assert any(e.relationship == RelationshipType.ATTACHED and e.source == group_node and e.target == policy_node for e in graph.edges)
+    # The user is admin ONLY via the group, yet surfaces effective access to the
+    # bucket, marked as group-inherited (not a privilege escalation).
+    bucket_node = "cloud_resource:aws:s3:bucket:prod-bucket"
+    user_perms = {
+        e.target: e.evidence.get("access")
+        for e in graph.edges
+        if e.relationship == RelationshipType.HAS_PERMISSION and e.source == user_node
+    }
+    assert user_perms.get(bucket_node) == "group"
+    assert nodes[user_node].attributes.get("can_escalate_privilege") is None

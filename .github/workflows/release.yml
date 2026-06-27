@@ -851,6 +851,26 @@ jobs:
             exit 2
           fi
 
+      - name: Align release self-scan SARIF category
+        if: always() && hashFiles('sarif/release-self-dep.sarif') != ''
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          # agent-bom's SARIF formatter pre-sets runs[].automationDetails.id to
+          # "agent-bom/<scan_id>". github/codeql-action/upload-sarif only injects
+          # its `category` input when automationDetails is absent, so the pre-set
+          # id wins and GitHub derives the category from it (the part before the
+          # final "/", i.e. "agent-bom") instead of "agent-bom-release-gate". Drop
+          # it so the upload `category` below applies.
+          path = Path("sarif/release-self-dep.sarif")
+          data = json.loads(path.read_text())
+          for run in data.get("runs", []):
+              run.pop("automationDetails", None)
+          path.write_text(json.dumps(data, indent=2) + "\n")
+          PY
+
       - name: Upload release self-scan SARIF
         if: always() && hashFiles('sarif/release-self-dep.sarif') != ''
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4

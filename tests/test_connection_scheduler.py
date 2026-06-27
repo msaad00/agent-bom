@@ -215,18 +215,16 @@ def test_claim_prevents_double_run_sqlite(tmp_path: Any) -> None:
     assert store.get(record.tenant_id, record.id).last_scan_at == claimed_at  # type: ignore[union-attr]
 
 
-def test_claim_due_connections_skips_non_aws() -> None:
+def test_claim_due_connections_claims_all_providers() -> None:
     store = InMemoryConnectionStore()
     now = _now()
-    aws = _record(provider="aws", last_scan_at=None)
-    azure = _record(provider="azure", last_scan_at=None)
-    store.put(aws)
-    store.put(azure)
+    records = [_record(provider=p, last_scan_at=None) for p in ("aws", "azure", "gcp", "snowflake")]
+    for record in records:
+        store.put(record)
 
     claimed = claim_due_connections(store, now)
-    assert [r.id for r in claimed] == [aws.id]
-    # The non-AWS connection was never claimed (last_scan_at untouched).
-    assert store.get(azure.tenant_id, azure.id).last_scan_at is None  # type: ignore[union-attr]
+    # Every supported provider is broker-enabled and therefore claimed.
+    assert {r.provider for r in claimed} == {"aws", "azure", "gcp", "snowflake"}
 
 
 # --------------------------------------------------------------------------- #
@@ -291,21 +289,45 @@ async def test_run_once_failing_connection_marked_error_and_loop_continues(monke
 
 
 @pytest.mark.asyncio
-async def test_run_once_skips_non_aws(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = _install_scan_mocks(monkeypatch)
+async def test_run_once_scans_non_aws_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-AWS provider is now broker-enabled and is scanned by the scheduler."""
+    from agent_bom.cloud import connection_broker, gcp_cis_benchmark, gcp_inventory
+
+    scanned: list[str] = []
+    monkeypatch.setattr(
+        connection_broker,
+        "broker_session",
+        lambda record, **k: scanned.append(record.id) or _BROKER_SESSION_SENTINEL,
+    )
+    monkeypatch.setattr(
+        gcp_inventory,
+        "discover_inventory",
+        lambda project_id=None, credentials=None, force=False, **k: {
+            "provider": "gcp",
+            "status": "ok",
+            "project_id": "proj",
+            "warnings": [],
+        },
+    )
+
+    class _FakeCIS:
+        def to_dict(self) -> dict[str, Any]:
+            return {"benchmark": "CIS GCP", "benchmark_version": "3.0", "pass_rate": 100.0, "passed": 2, "failed": 0, "total": 2}
+
+    monkeypatch.setattr(gcp_cis_benchmark, "run_benchmark", lambda project_id=None, credentials=None, **k: _FakeCIS())
+
     store = InMemoryConnectionStore()
     set_connection_store(store)
-    azure = _record(provider="azure", scan_interval_minutes=60, last_scan_at=None)
-    store.put(azure)
+    gcp = _record(provider="gcp", scan_interval_minutes=60, last_scan_at=None)
+    store.put(gcp)
 
     count = await run_due_scans_once(store, _now())
-    assert count == 0
-    assert calls["scanned_ids"] == []
-    # Untouched: not claimed, status unchanged, never scanned.
-    fetched = store.get(azure.tenant_id, azure.id)
+    assert count == 1
+    assert scanned == [gcp.id]
+    fetched = store.get(gcp.tenant_id, gcp.id)
     assert fetched is not None
-    assert fetched.last_scan_at is None
-    assert fetched.status == STATUS_PENDING
+    assert fetched.status == STATUS_ACTIVE
+    assert fetched.last_scan_at is not None
 
 
 # --------------------------------------------------------------------------- #

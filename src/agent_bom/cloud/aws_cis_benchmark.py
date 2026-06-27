@@ -2594,6 +2594,8 @@ def run_benchmark(
     region: str | None = None,
     profile: str | None = None,
     checks: list[str] | None = None,
+    *,
+    session: Any = None,
 ) -> CISBenchmarkReport:
     """Run CIS AWS Foundations Benchmark v3.0 checks.
 
@@ -2604,6 +2606,10 @@ def run_benchmark(
         profile: AWS credential profile name.
         checks: Optional list of check IDs to run (e.g. ``["1.4", "1.5"]``).
             Runs all checks if *None*.
+        session: Optional pre-built boto3 session (e.g. the read-only session
+            the credential broker assumes from a stored connection). When
+            supplied it is used as-is and ``region`` / ``profile`` are ignored,
+            so the same read-only checks run against the brokered credentials.
 
     Returns:
         CISBenchmarkReport with per-check pass/fail results.
@@ -2614,13 +2620,14 @@ def run_benchmark(
     except ImportError:
         raise CloudDiscoveryError("boto3 is required for CIS AWS Benchmark checks. Install with: pip install 'agent-bom[aws]'")
 
-    session_kwargs: dict[str, Any] = {}
-    if region:
-        session_kwargs["region_name"] = region
-    if profile:
-        session_kwargs["profile_name"] = profile
+    if session is None:
+        session_kwargs: dict[str, Any] = {}
+        if region:
+            session_kwargs["region_name"] = region
+        if profile:
+            session_kwargs["profile_name"] = profile
 
-    session = boto3.Session(**session_kwargs)
+        session = boto3.Session(**session_kwargs)
     resolved_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
     # Get account ID for the report

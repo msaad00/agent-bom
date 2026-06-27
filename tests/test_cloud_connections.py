@@ -323,3 +323,168 @@ def test_broker_secret_failure_does_not_leak(monkeypatch: pytest.MonkeyPatch) ->
     with pytest.raises(connection_broker.ConnectionBrokerError) as exc:
         connection_broker.broker_session(record)
     assert "super-secret-external-id" not in str(exc.value)
+
+
+# --------------------------------------------------------------------------- #
+# Phase B: launch a read-only scan from a stored connection via the broker
+# --------------------------------------------------------------------------- #
+
+
+_BROKER_SESSION_SENTINEL = object()
+
+
+def _install_scan_mocks(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False) -> dict[str, Any]:
+    """Patch the broker + AWS inventory/CIS the scan route reuses.
+
+    Captures the session each discovery call receives so a test can assert the
+    brokered session (not the local default chain) is what runs the scan.
+    """
+    from agent_bom.cloud import aws_cis_benchmark, aws_inventory, connection_broker
+
+    calls: dict[str, Any] = {}
+
+    def _fake_broker(record: CloudConnectionRecord, **kwargs: Any) -> Any:
+        calls["broker_record_id"] = record.id
+        if fail:
+            raise connection_broker.ConnectionBrokerError(f"AssumeRole failed for connection {record.id}.")
+        return _BROKER_SESSION_SENTINEL
+
+    def _fake_inventory(region: str | None = None, force: bool = False, session: Any = None, **kwargs: Any) -> dict[str, Any]:
+        calls["inventory_session"] = session
+        calls["inventory_force"] = force
+        return {
+            "provider": "aws",
+            "status": "ok",
+            "account_id": "123456789012",
+            "region": region or "us-east-1",
+            "buckets": [],
+            "instances": [],
+            "security_groups": [],
+            "roles": [],
+            "users": [],
+            "warnings": [],
+        }
+
+    class _FakeCISReport:
+        def to_dict(self) -> dict[str, Any]:
+            return {
+                "benchmark": "CIS AWS Foundations",
+                "benchmark_version": "3.0.0",
+                "account_id": "123456789012",
+                "region": "us-east-1",
+                "pass_rate": 50.0,
+                "passed": 1,
+                "failed": 1,
+                "total": 2,
+                "checks": [],
+            }
+
+    def _fake_cis(region: str | None = None, session: Any = None, **kwargs: Any) -> Any:
+        calls["cis_session"] = session
+        return _FakeCISReport()
+
+    monkeypatch.setattr(connection_broker, "broker_session", _fake_broker)
+    monkeypatch.setattr(aws_inventory, "discover_inventory", _fake_inventory)
+    monkeypatch.setattr(aws_cis_benchmark, "run_benchmark", _fake_cis)
+    return calls
+
+
+def _seed_connection(tenant: str = "tenant-alpha", *, provider: str = "aws") -> str:
+    """Create a connection through the API and return its id."""
+    client = TestClient(_app())
+    body = _create_body()
+    body["provider"] = provider
+    created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers(tenant=tenant)).json()
+    return str(created["id"])
+
+
+def test_scan_launch_brokers_runs_persists_and_marks_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _install_scan_mocks(monkeypatch)
+    client = TestClient(_app())
+    cid = _seed_connection("tenant-alpha")
+
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # The broker was used and the brokered session (not the default chain) ran both scans.
+    assert calls["broker_record_id"] == cid
+    assert calls["inventory_session"] is _BROKER_SESSION_SENTINEL
+    assert calls["cis_session"] is _BROKER_SESSION_SENTINEL
+    assert calls["inventory_force"] is True
+
+    assert body["provider"] == "aws"
+    scan_id = body["scan_id"]
+    assert scan_id
+    assert body["cis_benchmark"]["total"] == 2
+    assert body["inventory"]["status"] == "ok"
+
+    # Results persisted through the existing scan store (no parallel path).
+    from agent_bom.api.stores import _get_store
+
+    job = _get_store().get(scan_id, "tenant-alpha")
+    assert job is not None
+    assert job.result is not None
+    assert job.result.get("cloud_inventory", {}).get("provider") == "aws"
+    assert job.result.get("cis_benchmark", {}).get("total") == 2
+
+    # Connection status flipped to active with last_scan_at set, no error detail.
+    fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
+    assert fetched["status"] == "active"
+    assert fetched["last_scan_at"]
+    assert fetched["status_detail"] == ""
+    # No secret anywhere in the response surface.
+    assert "super-secret-external-id" not in str(body)
+
+
+def test_scan_failure_marks_error_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_scan_mocks(monkeypatch, fail=True)
+    client = TestClient(_app())
+    cid = _seed_connection("tenant-alpha")
+
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 502
+    assert "super-secret-external-id" not in str(resp.json())
+
+    fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
+    assert fetched["status"] == "error"
+    assert fetched["status_detail"]
+    assert "super-secret-external-id" not in fetched["status_detail"]
+    assert fetched["last_scan_at"] is None
+
+
+def test_scan_requires_scan_permission(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_scan_mocks(monkeypatch)
+    cid = _seed_connection("tenant-alpha")
+    client = TestClient(_app())
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(role="viewer", tenant="tenant-alpha"))
+    assert resp.status_code == 403
+
+
+def test_scan_is_tenant_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_scan_mocks(monkeypatch)
+    cid = _seed_connection("tenant-alpha")
+    client = TestClient(_app())
+    # Another tenant cannot scan (or even resolve) this connection.
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-beta"))
+    assert resp.status_code == 404
+
+
+def test_scan_missing_connection_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_scan_mocks(monkeypatch)
+    client = TestClient(_app())
+    resp = client.post(f"/v1/cloud/connections/{uuid.uuid4()}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 404
+
+
+@pytest.mark.parametrize("provider", ["azure", "gcp", "snowflake"])
+def test_scan_non_aws_provider_returns_planned(provider: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_scan_mocks(monkeypatch)
+    cid = _seed_connection("tenant-alpha", provider=provider)
+    client = TestClient(_app())
+    resp = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers(tenant="tenant-alpha"))
+    assert resp.status_code == 501
+    assert "planned" in resp.json()["detail"].lower()
+    # The connection was not touched (still pending, no scan).
+    fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
+    assert fetched["status"] == STATUS_PENDING

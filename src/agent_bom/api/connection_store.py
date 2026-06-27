@@ -1,0 +1,306 @@
+"""Tenant-scoped persistence for read-only cloud connections.
+
+A *connection* is a stored, encrypted record of how the control plane reaches a
+customer's cloud account in read-only mode: the role reference it assumes
+(``role_ref``) plus the encrypted ``ExternalId`` (or provider equivalent) the
+credential broker presents. The plaintext secret is encrypted at rest by
+:mod:`agent_bom.api.connection_crypto` and is the only sensitive column; it is
+never returned by the API (see :meth:`CloudConnectionRecord.to_public_dict`).
+
+Backend parity mirrors the cost / credential stores: in-memory for tests,
+SQLite as the durable single-node default, and Postgres (tenant RLS) for
+multi-replica deployments — selected by the shared storage factory.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+import threading
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass, field
+from typing import Any, Protocol
+
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.storage.base import StorageSchema, TableSchema
+
+# Providers a connection can target. AWS is broker-enabled in Phase A; the
+# others are accepted/stored and reported as "planned" by the broker.
+SUPPORTED_PROVIDERS: tuple[str, ...] = ("aws", "azure", "gcp", "snowflake")
+
+# Connection lifecycle status vocabulary.
+STATUS_PENDING = "pending"
+STATUS_ACTIVE = "active"
+STATUS_ERROR = "error"
+VALID_STATUSES: tuple[str, ...] = (STATUS_PENDING, STATUS_ACTIVE, STATUS_ERROR)
+
+
+@dataclass
+class CloudConnectionRecord:
+    """One read-only cloud connection for a tenant.
+
+    ``external_id_encrypted`` holds the Fernet ciphertext of the connection
+    secret — never the plaintext. :meth:`to_public_dict` is the only shape that
+    leaves the process over the API and it omits that column entirely.
+    """
+
+    id: str
+    tenant_id: str
+    provider: str
+    display_name: str
+    role_ref: str
+    external_id_encrypted: str
+    regions: list[str] = field(default_factory=list)
+    status: str = STATUS_PENDING
+    status_detail: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    last_scan_at: str | None = None
+
+    def to_public_dict(self) -> dict[str, Any]:
+        """Non-secret representation for API responses.
+
+        Deliberately excludes ``external_id_encrypted`` (and never carries the
+        plaintext) so no secret material can leak through a response body. Also
+        surfaces ``has_external_id`` so a client can tell a secret is configured
+        without ever seeing it.
+        """
+        data = asdict(self)
+        data.pop("external_id_encrypted", None)
+        data["has_external_id"] = bool(self.external_id_encrypted)
+        return data
+
+
+class ConnectionStore(Protocol):
+    """Tenant-scoped CRUD contract for cloud connections."""
+
+    def init_schema(self) -> None: ...
+    def put(self, record: CloudConnectionRecord) -> None: ...
+    def get(self, tenant_id: str, connection_id: str) -> CloudConnectionRecord | None: ...
+    def list_for_tenant(self, tenant_id: str) -> list[CloudConnectionRecord]: ...
+    def delete(self, tenant_id: str, connection_id: str) -> bool: ...
+
+
+# ── Portable schema seam ──────────────────────────────────────────────────────
+# Single source-of-truth table contract shared across backends. The SQLite and
+# Postgres ``_init_*`` paths below remain the executed DDL; this declaration
+# mirrors them so a parity test can assert both backends cover the same logical
+# columns and a new backend is a registration here rather than a fork.
+CONNECTION_STORAGE_SCHEMA = StorageSchema(
+    component="cloud_connections",
+    tables=(
+        TableSchema(
+            name="cloud_connections",
+            columns=(
+                "id",
+                "tenant_id",
+                "provider",
+                "display_name",
+                "role_ref",
+                "external_id_encrypted",
+                "regions",
+                "status",
+                "status_detail",
+                "created_at",
+                "updated_at",
+                "last_scan_at",
+            ),
+            ddl_by_backend={
+                "sqlite": (
+                    "CREATE TABLE IF NOT EXISTS cloud_connections (id TEXT PRIMARY KEY, "
+                    "tenant_id TEXT NOT NULL, provider TEXT NOT NULL, display_name TEXT NOT NULL, "
+                    "role_ref TEXT NOT NULL, external_id_encrypted TEXT NOT NULL DEFAULT '', "
+                    "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', "
+                    "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
+                    "updated_at TEXT NOT NULL, last_scan_at TEXT)"
+                ),
+                "postgres": (
+                    "CREATE TABLE IF NOT EXISTS cloud_connections (id TEXT PRIMARY KEY, "
+                    "tenant_id TEXT NOT NULL, provider TEXT NOT NULL, display_name TEXT NOT NULL, "
+                    "role_ref TEXT NOT NULL, external_id_encrypted TEXT NOT NULL DEFAULT '', "
+                    "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', "
+                    "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
+                    "updated_at TEXT NOT NULL, last_scan_at TEXT)"
+                ),
+            },
+        ),
+    ),
+)
+
+
+def _decode_regions(raw: Any) -> list[str]:
+    """Parse a stored regions JSON blob into a list of strings (tolerant)."""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed]
+
+
+def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
+    """Map a ``cloud_connections`` row tuple to a record (shared by backends)."""
+    return CloudConnectionRecord(
+        id=row[0],
+        tenant_id=row[1],
+        provider=row[2],
+        display_name=row[3],
+        role_ref=row[4],
+        external_id_encrypted=row[5] or "",
+        regions=_decode_regions(row[6]),
+        status=row[7] or STATUS_PENDING,
+        status_detail=row[8] or "",
+        created_at=row[9] or "",
+        updated_at=row[10] or "",
+        last_scan_at=row[11] if len(row) > 11 else None,
+    )
+
+
+class InMemoryConnectionStore:
+    """Dict-backed connection store for tests and ephemeral runs."""
+
+    def __init__(self) -> None:
+        self._rows: dict[str, CloudConnectionRecord] = {}
+        self._lock = threading.Lock()
+
+    def init_schema(self) -> None:
+        """No-op: the in-memory backend has no persistent schema."""
+
+    def put(self, record: CloudConnectionRecord) -> None:
+        with self._lock:
+            self._rows[record.id] = record
+
+    def get(self, tenant_id: str, connection_id: str) -> CloudConnectionRecord | None:
+        with self._lock:
+            record = self._rows.get(connection_id)
+        if record is None or record.tenant_id != tenant_id:
+            return None
+        return record
+
+    def list_for_tenant(self, tenant_id: str) -> list[CloudConnectionRecord]:
+        with self._lock:
+            records = [r for r in self._rows.values() if r.tenant_id == tenant_id]
+        return sorted(records, key=lambda r: (r.created_at, r.id))
+
+    def delete(self, tenant_id: str, connection_id: str) -> bool:
+        with self._lock:
+            record = self._rows.get(connection_id)
+            if record is None or record.tenant_id != tenant_id:
+                return False
+            del self._rows[connection_id]
+            return True
+
+
+class SQLiteConnectionStore:
+    """SQLite-backed connection store (durable single-node default)."""
+
+    def __init__(self, db_path: str = "agent_bom.db") -> None:
+        self._db_path = db_path
+        self._local = threading.local()
+        self._init_db()
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        if not hasattr(self._local, "conn") or self._local.conn is None:
+            self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            self._local.conn.execute("PRAGMA journal_mode=WAL")
+        conn: sqlite3.Connection = self._local.conn
+        return conn
+
+    def init_schema(self) -> None:
+        self._init_db()
+
+    def _init_db(self) -> None:
+        ensure_sqlite_schema_version(self._conn, "cloud_connections")
+        ddl = CONNECTION_STORAGE_SCHEMA.tables[0].ddl_for("sqlite")
+        if ddl:
+            self._conn.execute(ddl)
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
+        self._conn.commit()
+
+    def put(self, record: CloudConnectionRecord) -> None:
+        self._conn.execute(
+            """
+            INSERT OR REPLACE INTO cloud_connections
+                (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
+                 regions, status, status_detail, created_at, updated_at, last_scan_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.id,
+                record.tenant_id,
+                record.provider,
+                record.display_name,
+                record.role_ref,
+                record.external_id_encrypted,
+                json.dumps(record.regions),
+                record.status,
+                record.status_detail,
+                record.created_at,
+                record.updated_at,
+                record.last_scan_at,
+            ),
+        )
+        self._conn.commit()
+
+    def get(self, tenant_id: str, connection_id: str) -> CloudConnectionRecord | None:
+        row = self._conn.execute(
+            "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at "
+            "FROM cloud_connections WHERE tenant_id = ? AND id = ?",
+            (tenant_id, connection_id),
+        ).fetchone()
+        return _row_to_record(row) if row else None
+
+    def list_for_tenant(self, tenant_id: str) -> list[CloudConnectionRecord]:
+        rows = self._conn.execute(
+            "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at "
+            "FROM cloud_connections WHERE tenant_id = ? ORDER BY created_at, id",
+            (tenant_id,),
+        ).fetchall()
+        return [_row_to_record(row) for row in rows]
+
+    def delete(self, tenant_id: str, connection_id: str) -> bool:
+        cursor = self._conn.execute(
+            "DELETE FROM cloud_connections WHERE tenant_id = ? AND id = ?",
+            (tenant_id, connection_id),
+        )
+        self._conn.commit()
+        return cursor.rowcount > 0
+
+
+_CONNECTION_STORE: ConnectionStore | None = None
+
+
+def get_connection_store() -> ConnectionStore:
+    """Return the process connection store, selecting the backend via the factory.
+
+    Mirrors ``cost_store.get_cost_store``: Postgres → shared SQLite → in-memory,
+    so connections land on the same tier as every other env-ladder store.
+    """
+    global _CONNECTION_STORE
+    if _CONNECTION_STORE is not None:
+        return _CONNECTION_STORE
+    from agent_bom.storage.base import BackendKind
+    from agent_bom.storage.factory import resolve_backend
+
+    selection = resolve_backend(mode="env")
+    if selection.backend is BackendKind.POSTGRES:
+        from agent_bom.api.postgres_connection import PostgresConnectionStore
+
+        _CONNECTION_STORE = PostgresConnectionStore()
+    elif selection.backend is BackendKind.SQLITE and selection.sqlite_path:
+        _CONNECTION_STORE = SQLiteConnectionStore(selection.sqlite_path)
+    else:
+        _CONNECTION_STORE = InMemoryConnectionStore()
+    return _CONNECTION_STORE
+
+
+def set_connection_store(store: ConnectionStore | None) -> None:
+    """Swap the process connection store (tests / explicit backend wiring)."""
+    global _CONNECTION_STORE
+    _CONNECTION_STORE = store

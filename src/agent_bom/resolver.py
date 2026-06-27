@@ -12,7 +12,12 @@ from typing import Optional
 import httpx
 from rich.console import Console
 
-from agent_bom.http_client import create_client, request_with_retry
+from agent_bom.http_client import (
+    create_client,
+    registry_breaker_tripped,
+    request_with_retry,
+    reset_rate_limit_breaker,
+)
 from agent_bom.models import Package
 
 console = Console(stderr=True)
@@ -59,9 +64,14 @@ _PERF_STATS = dict(_PERF_TEMPLATE)
 
 def reset_performance_stats() -> None:
     """Reset per-scan resolver performance counters."""
+    global _NPM_RATE_LIMIT_UNTIL, _NPM_RATE_LIMIT_HITS  # noqa: PLW0603
     with _RESOLVER_STATE_LOCK:
         _PERF_STATS.clear()
         _PERF_STATS.update(_PERF_TEMPLATE)
+        _NPM_RATE_LIMIT_UNTIL = 0.0
+        _NPM_RATE_LIMIT_HITS = 0
+    # Start each scan with a fresh registry rate-limit breaker.
+    reset_rate_limit_breaker()
 
 
 def _bump_perf(key: str, delta: int = 1) -> None:
@@ -212,7 +222,10 @@ async def _get_npm_latest_doc(package_name: str, client: httpx.AsyncClient) -> d
         if cache_key in _NPM_LATEST_CACHE:
             _PERF_STATS["registry_cache_hits"] = int(_PERF_STATS.get("registry_cache_hits", 0)) + 1
             return _NPM_LATEST_CACHE[cache_key]
-        if time.monotonic() < _NPM_RATE_LIMIT_UNTIL:
+        # Skip the live lookup if the breaker is open or a cooldown is active —
+        # the http_client breaker also enforces this, but short-circuiting here
+        # avoids constructing the request/future at all.
+        if time.monotonic() < _NPM_RATE_LIMIT_UNTIL or registry_breaker_tripped(NPM_REGISTRY):
             _PERF_STATS["npm_rate_limit_short_circuits"] = int(_PERF_STATS.get("npm_rate_limit_short_circuits", 0)) + 1
             return None
         inflight = _NPM_LATEST_INFLIGHT.get(cache_key)
@@ -708,10 +721,14 @@ async def resolve_all_versions(
                         f"  [yellow]↺[/yellow] Preserved scan continuity for {fallback_count} package(s) using bundled registry versions"
                     )
             npm_rate_limit_hits = _npm_rate_limit_hits() - npm_rate_limit_hits_before
-            if npm_rate_limit_hits and not quiet:
+            breaker_open = registry_breaker_tripped(NPM_REGISTRY)
+            if (npm_rate_limit_hits or breaker_open) and not quiet:
+                fallback_count = sum(1 for p in unresolved if p.version_source == "registry_fallback")
+                breaker_note = " — circuit breaker opened, stopped live npm lookups for the rest of this scan" if breaker_open else ""
                 console.print(
-                    f"  [yellow]⚠[/yellow] npm registry rate-limited during version resolution "
-                    f"({npm_rate_limit_hits} event(s)); throttling live npm lookups and preferring cached/bundled continuity"
+                    f"  [yellow]⚠[/yellow] npm registry rate-limited "
+                    f"({npm_rate_limit_hits} event(s)){breaker_note}; "
+                    f"used cached/bundled versions for {fallback_count} package(s)"
                 )
     except asyncio.TimeoutError:
         _logger.warning(

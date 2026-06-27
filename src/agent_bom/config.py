@@ -171,6 +171,12 @@ HTTP_MAX_RETRIES = _int("AGENT_BOM_HTTP_MAX_RETRIES", 3)
 HTTP_INITIAL_BACKOFF = _float("AGENT_BOM_HTTP_INITIAL_BACKOFF", 1.0)
 HTTP_MAX_BACKOFF = _float("AGENT_BOM_HTTP_MAX_BACKOFF", 30.0)
 HTTP_DEFAULT_TIMEOUT = _float("AGENT_BOM_HTTP_DEFAULT_TIMEOUT", 30.0)
+# Registry rate-limit circuit breaker: number of HTTP 429 responses from a
+# single host within one scan before live lookups to that host are short-
+# circuited to the cached/bundled fallback path for the rest of the run. Keeps
+# a registry throttle (e.g. npm at peak) from turning into a multi-minute stall
+# and a per-package warning storm. Reset per scan via reset_rate_limit_breaker.
+HTTP_RATE_LIMIT_BREAKER_THRESHOLD = _int("AGENT_BOM_HTTP_RATE_LIMIT_BREAKER_THRESHOLD", 3)
 CLOUD_DISCOVERY_TIMEOUT = _float("AGENT_BOM_CLOUD_DISCOVERY_TIMEOUT", 45.0)
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import threading
 import time
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -20,10 +21,79 @@ from agent_bom.config import (
 from agent_bom.config import (
     HTTP_MAX_RETRIES as MAX_RETRIES,
 )
+from agent_bom.config import (
+    HTTP_RATE_LIMIT_BREAKER_THRESHOLD as RATE_LIMIT_BREAKER_THRESHOLD,
+)
 
 logger = logging.getLogger(__name__)
 
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+# ── Registry rate-limit circuit breaker ────────────────────────────────────
+# Under sustained HTTP 429s from a registry (e.g. npm at peak), retrying every
+# package through the full backoff ladder turns a throttle into a multi-minute
+# stall and a per-package warning storm. Once a host returns
+# RATE_LIMIT_BREAKER_THRESHOLD rate-limit responses within a run, the breaker
+# opens for that host: further requests short-circuit immediately — no socket,
+# no backoff, no per-call warning — so callers fall straight through to their
+# cached/bundled fallback path. State is global (shared across sync + async)
+# and reset per scan via reset_rate_limit_breaker().
+
+_BREAKER_LOCK = threading.Lock()
+_RATE_LIMIT_429_COUNTS: dict[str, int] = {}
+_RATE_LIMIT_TRIPPED: set[str] = set()
+
+
+def _host_of(url: str) -> str:
+    """Return the lowercased hostname for a URL, or '' if unparseable."""
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except (ValueError, AttributeError):
+        return ""
+
+
+def registry_breaker_tripped(url_or_host: str) -> bool:
+    """Return True if the rate-limit breaker is open for the URL's host.
+
+    Accepts either a full URL or a bare hostname.
+    """
+    host = url_or_host if "/" not in url_or_host else _host_of(url_or_host)
+    if not host:
+        return False
+    with _BREAKER_LOCK:
+        return host in _RATE_LIMIT_TRIPPED
+
+
+def _record_rate_limit(host: str) -> bool:
+    """Count a 429 for *host*; return True once the breaker is/becomes open."""
+    if not host:
+        return False
+    with _BREAKER_LOCK:
+        if host in _RATE_LIMIT_TRIPPED:
+            return True
+        count = _RATE_LIMIT_429_COUNTS.get(host, 0) + 1
+        _RATE_LIMIT_429_COUNTS[host] = count
+        if count >= RATE_LIMIT_BREAKER_THRESHOLD:
+            _RATE_LIMIT_TRIPPED.add(host)
+            return True
+        return False
+
+
+def _record_non_rate_limited(host: str) -> None:
+    """A non-429 response clears the consecutive 429 counter for a healthy host."""
+    if not host:
+        return
+    with _BREAKER_LOCK:
+        if host not in _RATE_LIMIT_TRIPPED:
+            _RATE_LIMIT_429_COUNTS.pop(host, None)
+
+
+def reset_rate_limit_breaker() -> None:
+    """Reset all registry breaker state. Call at the start of each scan."""
+    with _BREAKER_LOCK:
+        _RATE_LIMIT_429_COUNTS.clear()
+        _RATE_LIMIT_TRIPPED.clear()
 
 
 # ── Offline mode ─────────────────────────────────────────────────────────────
@@ -165,13 +235,27 @@ async def request_with_retry(
     safe_url = urlunparse(_parsed)
 
     log_url = _safe_url(safe_url)
+    host = _host_of(safe_url)
     backoff = INITIAL_BACKOFF
+
+    # Breaker already open for this host: skip the network entirely so the
+    # caller falls through to cached/bundled data without backoff or warnings.
+    if host and registry_breaker_tripped(host):
+        logger.debug("Rate-limit breaker open for %s — skipping live request to %s", host, log_url)
+        return None
 
     for attempt in range(max_retries + 1):
         try:
             response = await client.request(method, safe_url, **kwargs)
 
             if not _should_retry_status(response.status_code, safe_url):
+                _record_non_rate_limited(host)
+                return response
+
+            # Sustained 429s trip the per-host breaker: stop retrying this host
+            # immediately and return the 429 so the caller can fall back fast.
+            if response.status_code == 429 and _record_rate_limit(host):
+                logger.debug("Rate-limit breaker tripped for %s on HTTP 429 — short-circuiting %s", host, log_url)
                 return response
 
             # Retryable status — check Retry-After header
@@ -278,13 +362,23 @@ def sync_request_with_retry(
     """
     check_offline()
     log_url = _safe_url(url)
+    host = _host_of(url)
     backoff = INITIAL_BACKOFF
+
+    if host and registry_breaker_tripped(host):
+        logger.debug("Rate-limit breaker open for %s — skipping live request to %s", host, log_url)
+        return None
 
     for attempt in range(max_retries + 1):
         try:
             response = client.request(method, url, **kwargs)
 
             if not _should_retry_status(response.status_code, url):
+                _record_non_rate_limited(host)
+                return response
+
+            if response.status_code == 429 and _record_rate_limit(host):
+                logger.debug("Rate-limit breaker tripped for %s on HTTP 429 — short-circuiting %s", host, log_url)
                 return response
 
             retry_after = response.headers.get("Retry-After")

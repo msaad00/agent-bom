@@ -99,7 +99,11 @@ import type {
   CostForecast,
   CredentialExpiryReport,
   AccessReviewsResponse,
-  NhiDiscoveryResponse
+  NhiDiscoveryResponse,
+  CloudConnectionRecord,
+  CloudConnectionsResponse,
+  CloudConnectionCreateRequest,
+  CloudConnectionScanResponse
 } from "./api-types";
 export type {
   JobStatus,
@@ -277,6 +281,14 @@ export type {
   NhiDiscoveryProvider,
   DiscoveredNonHumanIdentity,
   NhiDiscoveryResponse,
+  CloudConnectionProvider,
+  CloudConnectionStatus,
+  CloudConnectionRecord,
+  CloudConnectionsResponse,
+  CloudConnectionCreateRequest,
+  CloudConnectionScanInventory,
+  CloudConnectionScanCis,
+  CloudConnectionScanResponse,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
 
@@ -960,6 +972,24 @@ export const api = {
   /** Read-only NHI discovery summary (gated by *_DISCOVERY env flags) */
   discoverNonHumanIdentities: (providers?: string[]) =>
     post<NhiDiscoveryResponse>("/v1/identities/discover", providers ? { providers } : {}),
+
+  // ── Cloud connections plane (#3175) ──
+  /** List this tenant's read-only cloud connections (non-secret metadata only). */
+  listCloudConnections: () => get<CloudConnectionsResponse>("/v1/cloud/connections"),
+  /** One connection's non-secret metadata. */
+  getCloudConnection: (id: string) =>
+    get<CloudConnectionRecord>(`/v1/cloud/connections/${encodeURIComponent(id)}`),
+  /**
+   * Create a read-only cloud connection. `external_id` is write-only: it is
+   * encrypted at rest server-side and never returned in any response.
+   */
+  createCloudConnection: (body: CloudConnectionCreateRequest) =>
+    post<CloudConnectionRecord>("/v1/cloud/connections", body),
+  /** Delete a connection owned by this tenant. */
+  deleteCloudConnection: (id: string) => del(`/v1/cloud/connections/${encodeURIComponent(id)}`),
+  /** Launch a read-only scan via the credential broker (AWS today). */
+  scanCloudConnection: (id: string) =>
+    post<CloudConnectionScanResponse>(`/v1/cloud/connections/${encodeURIComponent(id)}/scan`, {}),
 
   // ── Drift / behavior-incident cockpit ──
   listDriftIncidents: (includeResolved = false, limit = 200) =>

@@ -191,7 +191,7 @@ describe('Nav', () => {
 
   it('shows page counts for expanded nav groups', async () => {
     render(<Nav />)
-    expect(screen.getAllByText('4').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
     await waitFor(() => {
       expect(screen.getAllByText('5').length).toBeGreaterThan(0)

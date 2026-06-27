@@ -9,6 +9,7 @@ error).
 
 from __future__ import annotations
 
+import base64
 import os
 import sqlite3
 import uuid
@@ -47,10 +48,15 @@ def _connection_env() -> Iterator[None]:
         "AGENT_BOM_TRUST_PROXY_AUTH": os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH"),
         "AGENT_BOM_TRUST_PROXY_AUTH_SECRET": os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET"),
         connection_crypto.CONNECTIONS_KEY_ENV: os.environ.get(connection_crypto.CONNECTIONS_KEY_ENV),
+        connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV: os.environ.get(connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV),
+        connection_crypto.CONNECTIONS_KEY_REF_ENV: os.environ.get(connection_crypto.CONNECTIONS_KEY_REF_ENV),
     }
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
     os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
     os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = _TEST_KEY
+    os.environ.pop(connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV, None)
+    os.environ.pop(connection_crypto.CONNECTIONS_KEY_REF_ENV, None)
+    connection_crypto.reset_key_cache()
     set_connection_store(InMemoryConnectionStore())
     try:
         yield
@@ -60,6 +66,7 @@ def _connection_env() -> Iterator[None]:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+        connection_crypto.reset_key_cache()
         set_connection_store(None)
 
 
@@ -164,6 +171,160 @@ def test_invalid_key_raises_clear_error() -> None:
     os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = "not-a-valid-fernet-key"
     with pytest.raises(connection_crypto.ConnectionSecretError):
         connection_crypto.encrypt_secret("x")
+
+
+# --------------------------------------------------------------------------- #
+# Key providers: managed-key resolution (aws-secrets / aws-kms), fail-closed,
+# in-process caching. boto3 is mocked at the _boto3_client seam.
+# --------------------------------------------------------------------------- #
+
+
+class _FakeSecretsClient:
+    """Stand-in for a Secrets Manager client; counts GetSecretValue calls."""
+
+    def __init__(self, *, secret_string: str | None = None, error: Exception | None = None) -> None:
+        self.calls = 0
+        self._secret_string = secret_string
+        self._error = error
+
+    def get_secret_value(self, *, SecretId: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwarg
+        self.calls += 1
+        if self._error is not None:
+            raise self._error
+        return {"SecretString": self._secret_string}
+
+
+class _FakeKmsClient:
+    """Stand-in for a KMS client; counts Decrypt calls."""
+
+    def __init__(self, *, plaintext: bytes | None = None, error: Exception | None = None) -> None:
+        self.calls = 0
+        self._plaintext = plaintext
+        self._error = error
+
+    def decrypt(self, *, CiphertextBlob: bytes) -> dict[str, Any]:  # noqa: N803 - boto3 kwarg
+        self.calls += 1
+        if self._error is not None:
+            raise self._error
+        return {"Plaintext": self._plaintext}
+
+
+def _patch_client(monkeypatch: Any, client: Any) -> None:
+    monkeypatch.setattr(connection_crypto, "_boto3_client", lambda service, provider: client)
+
+
+def test_aws_secrets_provider_round_trip(monkeypatch: Any) -> None:
+    os.environ[connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV] = connection_crypto.PROVIDER_AWS_SECRETS
+    os.environ[connection_crypto.CONNECTIONS_KEY_REF_ENV] = "arn:aws:secretsmanager:us-east-1:123456789012:secret:agent-bom/conn-key"
+    os.environ.pop(connection_crypto.CONNECTIONS_KEY_ENV, None)
+    fake = _FakeSecretsClient(secret_string=_TEST_KEY)
+    _patch_client(monkeypatch, fake)
+    connection_crypto.reset_key_cache()
+
+    assert connection_crypto.connections_key_configured() is True
+    token = connection_crypto.encrypt_secret("ext-id")
+    assert connection_crypto.decrypt_secret(token) == "ext-id"
+    # Resolved once, then served from cache (decrypt did not re-fetch).
+    assert fake.calls == 1
+
+
+def test_aws_secrets_missing_ref_fails_closed(monkeypatch: Any) -> None:
+    os.environ[connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV] = connection_crypto.PROVIDER_AWS_SECRETS
+    os.environ.pop(connection_crypto.CONNECTIONS_KEY_REF_ENV, None)
+    fake = _FakeSecretsClient(secret_string=_TEST_KEY)
+    _patch_client(monkeypatch, fake)
+    connection_crypto.reset_key_cache()
+
+    assert connection_crypto.connections_key_configured() is False
+    with pytest.raises(connection_crypto.ConnectionSecretError):
+        connection_crypto.encrypt_secret("ext-id")
+    # Never attempted a provider call without a ref.
+    assert fake.calls == 0
+
+
+def test_aws_secrets_denial_fails_closed_without_leaking(monkeypatch: Any) -> None:
+    os.environ[connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV] = connection_crypto.PROVIDER_AWS_SECRETS
+    os.environ[connection_crypto.CONNECTIONS_KEY_REF_ENV] = "arn:aws:secretsmanager:us-east-1:123456789012:secret:agent-bom/conn-key"
+    denial = RuntimeError("AccessDeniedException: not authorized to GetSecretValue on agent-bom/conn-key")
+    fake = _FakeSecretsClient(error=denial)
+    _patch_client(monkeypatch, fake)
+    connection_crypto.reset_key_cache()
+
+    with pytest.raises(connection_crypto.ConnectionSecretError) as excinfo:
+        connection_crypto.encrypt_secret("ext-id")
+    message = str(excinfo.value)
+    assert "conn-key" not in message
+    assert "AccessDenied" not in message
+    assert _TEST_KEY not in message
+
+
+def test_aws_kms_provider_unwraps_data_key(monkeypatch: Any) -> None:
+    data_key = os.urandom(32)  # what GenerateDataKey(NumberOfBytes=32) returns
+    wrapped = base64.b64encode(b"kms-wrapped-ciphertext-blob").decode("ascii")
+    os.environ[connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV] = connection_crypto.PROVIDER_AWS_KMS
+    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = wrapped
+    fake = _FakeKmsClient(plaintext=data_key)
+    _patch_client(monkeypatch, fake)
+    connection_crypto.reset_key_cache()
+
+    assert connection_crypto.connections_key_configured() is True
+    token = connection_crypto.encrypt_secret("ext-id")
+    assert connection_crypto.decrypt_secret(token) == "ext-id"
+    assert fake.calls == 1
+
+
+def test_aws_kms_denial_fails_closed_without_leaking(monkeypatch: Any) -> None:
+    os.environ[connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV] = connection_crypto.PROVIDER_AWS_KMS
+    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = base64.b64encode(b"blob").decode("ascii")
+    denial = RuntimeError("AccessDeniedException: not authorized to Decrypt with arn:aws:kms:us-east-1:123456789012:key/abc-123")
+    fake = _FakeKmsClient(error=denial)
+    _patch_client(monkeypatch, fake)
+    connection_crypto.reset_key_cache()
+
+    with pytest.raises(connection_crypto.ConnectionSecretError) as excinfo:
+        connection_crypto.encrypt_secret("ext-id")
+    message = str(excinfo.value)
+    assert "arn:aws:kms" not in message
+    assert "AccessDenied" not in message
+
+
+def test_aws_kms_malformed_wrapped_key_fails_closed(monkeypatch: Any) -> None:
+    os.environ[connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV] = connection_crypto.PROVIDER_AWS_KMS
+    os.environ[connection_crypto.CONNECTIONS_KEY_ENV] = "not!valid!base64!!"
+    fake = _FakeKmsClient(plaintext=os.urandom(32))
+    _patch_client(monkeypatch, fake)
+    connection_crypto.reset_key_cache()
+
+    with pytest.raises(connection_crypto.ConnectionSecretError):
+        connection_crypto.encrypt_secret("ext-id")
+    # Malformed base64 is rejected before any KMS call.
+    assert fake.calls == 0
+
+
+def test_resolved_key_cached_until_reset(monkeypatch: Any) -> None:
+    os.environ[connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV] = connection_crypto.PROVIDER_AWS_SECRETS
+    os.environ[connection_crypto.CONNECTIONS_KEY_REF_ENV] = "arn:aws:secretsmanager:us-east-1:123456789012:secret:agent-bom/conn-key"
+    fake = _FakeSecretsClient(secret_string=_TEST_KEY)
+    _patch_client(monkeypatch, fake)
+    connection_crypto.reset_key_cache()
+
+    connection_crypto.encrypt_secret("a")
+    connection_crypto.encrypt_secret("b")
+    connection_crypto.decrypt_secret(connection_crypto.encrypt_secret("c"))
+    assert fake.calls == 1  # one fetch served every operation
+
+    connection_crypto.reset_key_cache()
+    connection_crypto.encrypt_secret("d")
+    assert fake.calls == 2  # reset forces a fresh resolution
+
+
+def test_unknown_provider_fails_closed() -> None:
+    os.environ[connection_crypto.CONNECTIONS_KEY_PROVIDER_ENV] = "azure-keyvault"
+    connection_crypto.reset_key_cache()
+
+    assert connection_crypto.connections_key_configured() is False
+    with pytest.raises(connection_crypto.ConnectionSecretError):
+        connection_crypto.encrypt_secret("ext-id")
 
 
 # --------------------------------------------------------------------------- #

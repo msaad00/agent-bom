@@ -19,15 +19,16 @@ Endpoints:
     DELETE /v1/cloud/connections/{id}     remove a connection
     POST   /v1/cloud/connections/{id}/scan  launch a read-only scan via the broker
 
-The ``/scan`` endpoint (Phase B) brokers the stored connection into a short-lived
-read-only cloud session (``sts:AssumeRole`` with the decrypted ExternalId) and
-runs the **same** inventory + CIS discovery the sibling ``cloud`` routes use,
-against that session. Results persist through the existing scan/graph stores —
-no parallel persistence path — and the connection's lifecycle status is updated
-(``active`` + ``last_scan_at`` on success, ``error`` + ``status_detail`` on
-failure, never carrying a secret). AWS is broker-enabled today; azure / gcp /
-snowflake return a clear "planned" 501. A connection may also carry a
-``scan_interval_minutes`` so the Phase B.2 background scheduler
+The ``/scan`` endpoint brokers the stored connection into a short-lived read-only
+cloud session / credential / connection (AWS ``sts:AssumeRole`` with the decrypted
+ExternalId; Azure ``ClientSecretCredential``; GCP read-only service-account
+credentials; Snowflake key-pair connection) and runs the **same** inventory + CIS
+discovery the sibling ``cloud`` routes use, against that session. Results persist
+through the existing scan/graph stores — no parallel persistence path — and the
+connection's lifecycle status is updated (``active`` + ``last_scan_at`` on
+success, ``error`` + ``status_detail`` on failure, never carrying a secret). All
+four providers (AWS, Azure, GCP, Snowflake) are broker-enabled. A connection may
+also carry a ``scan_interval_minutes`` so the background scheduler
 (:mod:`agent_bom.api.connection_scheduler`) re-runs this same scan path when due.
 """
 
@@ -36,6 +37,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -57,10 +59,12 @@ from agent_bom.config import CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error
 
-# Providers whose credential broker is not yet implemented (Phase B is AWS-only).
-_PLANNED_SCAN_PROVIDERS: tuple[str, ...] = ("azure", "gcp", "snowflake")
 # Cap the status_detail we persist so a verbose backend error can't bloat the row.
 _MAX_STATUS_DETAIL = 300
+# Bounds on the non-secret provider params blob so a caller can't bloat the row.
+_MAX_AUTH_PARAMS = 20
+_MAX_AUTH_PARAM_KEY_LEN = 64
+_MAX_AUTH_PARAM_VALUE_LEN = 1024
 # Upper bound on a recurring scan interval (1 week) so a typo can't park a
 # connection effectively-never-scanning while still claiming to be scheduled.
 _MAX_SCAN_INTERVAL_MINUTES = 7 * 24 * 60
@@ -87,9 +91,13 @@ class CloudConnectionCreate(BaseModel):
     provider: str
     display_name: str = Field(min_length=1, max_length=200)
     role_ref: str = Field(min_length=1, max_length=2048)
-    external_id: str = Field(min_length=1, max_length=1024)
+    external_id: str = Field(min_length=1, max_length=8192)
     regions: list[str] = Field(default_factory=list)
     scan_interval_minutes: int | None = None
+    # Non-secret provider-specific params (Azure tenant/subscription, GCP
+    # project, Snowflake user/role/warehouse). Never a secret — the one secret
+    # is ``external_id``.
+    auth_params: dict[str, str] = Field(default_factory=dict)
 
 
 class CloudConnectionUpdate(BaseModel):
@@ -138,6 +146,32 @@ def _validate_scan_interval(interval: int | None) -> int | None:
     return interval
 
 
+def _validate_auth_params(auth_params: dict[str, str]) -> dict[str, str]:
+    """Validate the non-secret provider params blob (bounds + string coercion).
+
+    Keeps the row small and predictable: caps the number of keys and the key /
+    value lengths. Values are coerced to trimmed strings. These params are never
+    secret (the one secret is ``external_id``), so they are stored and returned
+    as-is.
+    """
+    if not auth_params:
+        return {}
+    if len(auth_params) > _MAX_AUTH_PARAMS:
+        raise HTTPException(status_code=400, detail=f"Too many auth_params (max {_MAX_AUTH_PARAMS}).")
+    cleaned: dict[str, str] = {}
+    for key, value in auth_params.items():
+        key_str = str(key).strip()
+        if not key_str:
+            continue
+        if len(key_str) > _MAX_AUTH_PARAM_KEY_LEN:
+            raise HTTPException(status_code=400, detail=f"auth_params key too long (max {_MAX_AUTH_PARAM_KEY_LEN}).")
+        value_str = str(value).strip()
+        if len(value_str) > _MAX_AUTH_PARAM_VALUE_LEN:
+            raise HTTPException(status_code=400, detail=f"auth_params value too long (max {_MAX_AUTH_PARAM_VALUE_LEN}).")
+        cleaned[key_str] = value_str
+    return cleaned
+
+
 def _validate_regions(regions: list[str]) -> list[str]:
     cleaned = [r.strip() for r in regions if r.strip()]
     if len(cleaned) > _MAX_REGIONS:
@@ -166,6 +200,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
 
     regions = _validate_regions(body.regions)
     scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
+    auth_params = _validate_auth_params(body.auth_params)
 
     # Fail closed before doing anything if the store cannot encrypt the secret.
     if not connections_key_configured():
@@ -195,6 +230,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
         updated_at=now,
         last_scan_at=None,
         scan_interval_minutes=scan_interval_minutes,
+        auth_params=auth_params,
     )
     get_connection_store().put(record)
     log_action(
@@ -297,6 +333,55 @@ def _mark_connection(
     get_connection_store().put(record)
 
 
+def _cis_summary(cis_dict: dict[str, Any]) -> dict[str, Any]:
+    """Reduce a CIS report dict to the non-secret counts surfaced in the summary."""
+    return {
+        "benchmark": cis_dict.get("benchmark"),
+        "benchmark_version": cis_dict.get("benchmark_version"),
+        "passed": cis_dict.get("passed"),
+        "failed": cis_dict.get("failed"),
+        "total": cis_dict.get("total"),
+        "pass_rate": cis_dict.get("pass_rate"),
+    }
+
+
+def _persist_connection_report(record: CloudConnectionRecord, tenant_id: str, report: Any) -> str:
+    """Persist a brokered-scan report through the existing scan/graph stores.
+
+    Reuses the pipeline's persistence path (durable scan store + in-memory job
+    map + unified graph snapshot) rather than a parallel one — the same calls the
+    scan pipeline makes on completion. Returns the scan id.
+    """
+    from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+    from agent_bom.api.pipeline import _persist_graph_snapshot
+    from agent_bom.api.stores import _get_store, _jobs_put
+    from agent_bom.output import to_json
+
+    report_json = to_json(report)
+    now = _now()
+    job = ScanJob(
+        job_id=report.scan_id,
+        tenant_id=tenant_id,
+        created_at=now,
+        started_at=now,
+        completed_at=now,
+        status=JobStatus.DONE,
+        request=ScanRequest(),
+        result=report_json,
+        triggered_by=f"cloud-connection/{record.id}",
+    )
+    store = _get_store()
+    store.put(job)
+    _jobs_put(job.job_id, job, compact_terminal=True)
+    _persist_graph_snapshot(job, report_json)
+    return str(report.scan_id)
+
+
+def _scan_audit_metadata(note: str) -> dict[str, Any]:
+    """Read-only audit envelope attached to every connection-scan summary."""
+    return {"read_only": True, "writes_performed": False, "note": note}
+
+
 def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
     """Broker the connection into a read-only session and run inventory + CIS.
 
@@ -308,15 +393,11 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     """
     import uuid as _uuid
 
-    from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
-    from agent_bom.api.pipeline import _persist_graph_snapshot
-    from agent_bom.api.stores import _get_store, _jobs_put
     from agent_bom.cloud import aws_inventory
     from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_aws_cis
     from agent_bom.cloud.connection_broker import broker_session
     from agent_bom.mcp_tools.posture import _summarize_inventory_payload
     from agent_bom.models import AIBOMReport
-    from agent_bom.output import to_json
 
     region = record.regions[0] if record.regions else None
     session = broker_session(record, session_name=f"agent-bom-scan-{record.id[:8]}")
@@ -326,56 +407,179 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     cis_report = run_aws_cis(region=region, session=session)
     cis_dict = cis_report.to_dict()
 
-    scan_id = str(_uuid.uuid4())
-    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=scan_id)
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
     report.cloud_inventory_data = inventory_payload
     report.cis_benchmark_data = cis_dict
-    report_json = to_json(report)
+    scan_id = _persist_connection_report(record, tenant_id, report)
 
-    now = _now()
-    job = ScanJob(
-        job_id=scan_id,
-        tenant_id=tenant_id,
-        created_at=now,
-        started_at=now,
-        completed_at=now,
-        status=JobStatus.DONE,
-        request=ScanRequest(),
-        result=report_json,
-        triggered_by=f"cloud-connection/{record.id}",
-    )
-    # Existing persistence path: durable scan store + in-memory job map + unified
-    # graph snapshot (same calls the scan pipeline makes on completion).
-    store = _get_store()
-    store.put(job)
-    _jobs_put(job.job_id, job, compact_terminal=True)
-    _persist_graph_snapshot(job, report_json)
-
-    inv_summary = _summarize_inventory_payload("aws", inventory_payload)
     return {
         "schema_version": "cloud.connections.scan.v1",
         "connection_id": record.id,
         "tenant_id": tenant_id,
         "provider": "aws",
         "scan_id": scan_id,
-        "inventory": inv_summary,
-        "cis_benchmark": {
-            "benchmark": cis_dict.get("benchmark"),
-            "benchmark_version": cis_dict.get("benchmark_version"),
-            "passed": cis_dict.get("passed"),
-            "failed": cis_dict.get("failed"),
-            "total": cis_dict.get("total"),
-            "pass_rate": cis_dict.get("pass_rate"),
-        },
-        "audit_metadata": {
-            "read_only": True,
-            "writes_performed": False,
-            "note": (
-                "Scan ran against a short-lived read-only role assumed from the stored connection. "
-                "Inventory + CIS are read-only; no resource is mutated and no secret value is returned."
-            ),
-        },
+        "inventory": _summarize_inventory_payload("aws", inventory_payload),
+        "cis_benchmark": _cis_summary(cis_dict),
+        "audit_metadata": _scan_audit_metadata(
+            "Scan ran against a short-lived read-only role assumed from the stored connection. "
+            "Inventory + CIS are read-only; no resource is mutated and no secret value is returned."
+        ),
     }
+
+
+def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+    """Broker an Azure read-only credential and run inventory + CIS.
+
+    Uses the brokered ``ClientSecretCredential`` (Reader role) and the
+    ``subscription_id`` from the connection's ``auth_params`` so the same
+    ``azure_inventory.discover_inventory`` and Azure CIS ``run_benchmark`` the
+    sibling cloud routes use run against the customer subscription. Read-only.
+    """
+    import uuid as _uuid
+
+    from agent_bom.cloud import azure_inventory
+    from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_azure_cis
+    from agent_bom.cloud.connection_broker import broker_session
+    from agent_bom.mcp_tools.posture import _summarize_inventory_payload
+    from agent_bom.models import AIBOMReport
+
+    credential = broker_session(record, session_name=f"agent-bom-scan-{record.id[:8]}")
+    subscription_id = str(record.auth_params.get("subscription_id") or "").strip() or None
+
+    inventory_payload = azure_inventory.discover_inventory(subscription_id=subscription_id, credential=credential, force=True)
+    cis_report = run_azure_cis(subscription_id=subscription_id, credential=credential)
+    cis_dict = cis_report.to_dict()
+
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    report.cloud_inventory_data = inventory_payload
+    report.azure_cis_benchmark_data = cis_dict
+    scan_id = _persist_connection_report(record, tenant_id, report)
+
+    return {
+        "schema_version": "cloud.connections.scan.v1",
+        "connection_id": record.id,
+        "tenant_id": tenant_id,
+        "provider": "azure",
+        "scan_id": scan_id,
+        "inventory": _summarize_inventory_payload("azure", inventory_payload),
+        "cis_benchmark": _cis_summary(cis_dict),
+        "audit_metadata": _scan_audit_metadata(
+            "Scan ran against a read-only Azure Reader credential brokered from the stored connection. "
+            "Inventory + CIS are read-only; no resource is mutated and no secret value is returned."
+        ),
+    }
+
+
+def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+    """Broker GCP read-only service-account credentials and run inventory + CIS.
+
+    Uses the brokered ``service_account.Credentials`` (cloud-platform.read-only
+    scope) and the ``project_id`` from the connection's ``auth_params`` so the
+    same ``gcp_inventory.discover_inventory`` and GCP CIS ``run_benchmark`` the
+    sibling cloud routes use run against the customer project. Read-only.
+    """
+    import uuid as _uuid
+
+    from agent_bom.cloud import gcp_inventory
+    from agent_bom.cloud.connection_broker import broker_session
+    from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
+    from agent_bom.mcp_tools.posture import _summarize_inventory_payload
+    from agent_bom.models import AIBOMReport
+
+    credentials = broker_session(record, session_name=f"agent-bom-scan-{record.id[:8]}")
+    project_id = str(record.auth_params.get("project_id") or "").strip() or None
+
+    inventory_payload = gcp_inventory.discover_inventory(project_id=project_id, credentials=credentials, force=True)
+    cis_report = run_gcp_cis(project_id=project_id, credentials=credentials)
+    cis_dict = cis_report.to_dict()
+
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    report.cloud_inventory_data = inventory_payload
+    report.gcp_cis_benchmark_data = cis_dict
+    scan_id = _persist_connection_report(record, tenant_id, report)
+
+    return {
+        "schema_version": "cloud.connections.scan.v1",
+        "connection_id": record.id,
+        "tenant_id": tenant_id,
+        "provider": "gcp",
+        "scan_id": scan_id,
+        "inventory": _summarize_inventory_payload("gcp", inventory_payload),
+        "cis_benchmark": _cis_summary(cis_dict),
+        "audit_metadata": _scan_audit_metadata(
+            "Scan ran against read-only GCP service-account credentials (cloud-platform.read-only) brokered from the "
+            "stored connection. Inventory + CIS are read-only; no resource is mutated and no secret value is returned."
+        ),
+    }
+
+
+def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+    """Broker a Snowflake read-only connection and run discovery + CIS.
+
+    Opens one brokered key-pair connection and threads it into both
+    ``snowflake.discover`` and Snowflake CIS ``run_benchmark`` so a single
+    read-only session backs the whole scan; the broker's connection is closed
+    here once both have run. Read-only.
+    """
+    import uuid as _uuid
+
+    from agent_bom.cloud import snowflake as snowflake_discovery
+    from agent_bom.cloud.connection_broker import broker_session
+    from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_snowflake_cis
+    from agent_bom.models import AIBOMReport
+
+    conn = broker_session(record, session_name=f"agent-bom-scan-{record.id[:8]}")
+    try:
+        agents, _warnings = snowflake_discovery.discover(conn=conn)
+        cis_report = run_snowflake_cis(conn=conn)
+    finally:
+        # The broker connection is this function's to close (discover / CIS do
+        # not close an injected connection).
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001 - close best-effort; never mask the scan result
+            _logger.debug("Snowflake broker connection close failed for connection %s", record.id)
+    cis_dict = cis_report.to_dict()
+
+    report = AIBOMReport(agents=agents, blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    report.snowflake_cis_benchmark_data = cis_dict
+    scan_id = _persist_connection_report(record, tenant_id, report)
+
+    return {
+        "schema_version": "cloud.connections.scan.v1",
+        "connection_id": record.id,
+        "tenant_id": tenant_id,
+        "provider": "snowflake",
+        "scan_id": scan_id,
+        "inventory": {"provider": "snowflake", "status": "ok", "agent_count": len(agents)},
+        "cis_benchmark": _cis_summary(cis_dict),
+        "audit_metadata": _scan_audit_metadata(
+            "Scan ran against a read-only Snowflake key-pair connection brokered from the stored connection. "
+            "Discovery + CIS are read-only; no object is mutated and no secret value is returned."
+        ),
+    }
+
+
+# Per-provider brokered-scan dispatch. Every entry is broker-enabled and runs the
+# same read-only inventory/discovery + CIS the sibling cloud routes use.
+_SCAN_RUNNERS: dict[str, Callable[[CloudConnectionRecord, str], dict[str, Any]]] = {
+    "aws": _run_aws_connection_scan,
+    "azure": _run_azure_connection_scan,
+    "gcp": _run_gcp_connection_scan,
+    "snowflake": _run_snowflake_connection_scan,
+}
+
+
+def _run_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
+    """Dispatch a brokered read-only scan by provider.
+
+    Raises ``ValueError`` for an unknown provider (the route validates the
+    provider on create, so this is a defensive guard).
+    """
+    runner = _SCAN_RUNNERS.get((record.provider or "").strip().lower())
+    if runner is None:
+        raise ValueError(f"Unsupported provider '{record.provider}'.")
+    return runner(record, tenant_id)
 
 
 @router.post("/v1/cloud/connections/{connection_id}/scan")
@@ -383,30 +587,22 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
     """Launch a read-only cloud scan for a stored connection via the broker.
 
     Resolves the tenant's connection (404 otherwise), uses the credential broker
-    to assume a short-lived read-only session, and runs the same inventory + CIS
-    discovery the sibling cloud routes use. Results persist through the existing
-    scan/graph stores; the connection status moves to ``active`` + ``last_scan_at``
-    on success or ``error`` + ``status_detail`` (no secret) on failure. AWS only
-    today — azure / gcp / snowflake return a clear 501 ``planned`` response.
+    to obtain a short-lived read-only session / credential / connection, and runs
+    the same inventory + CIS discovery the sibling cloud routes use. Results
+    persist through the existing scan/graph stores; the connection status moves to
+    ``active`` + ``last_scan_at`` on success or ``error`` + ``status_detail`` (no
+    secret) on failure. All four providers (AWS, Azure, GCP, Snowflake) are
+    broker-enabled.
     """
     record = _require_connection(request, connection_id)
     tenant_id = record.tenant_id
     actor = _actor(request)
 
-    if record.provider in _PLANNED_SCAN_PROVIDERS:
-        # Recognized provider whose broker is not yet implemented — clear, not a crash.
-        raise HTTPException(
-            status_code=501,
-            detail=(
-                f"Cloud scan for provider '{record.provider}' is planned but not yet available (Phase B+). "
-                "AWS read-only AssumeRole scanning is supported today."
-            ),
-        )
-    if record.provider != "aws":
+    if (record.provider or "").strip().lower() not in _SCAN_RUNNERS:
         raise HTTPException(status_code=400, detail=f"Unsupported provider '{record.provider}'.")
 
     try:
-        summary = _run_aws_connection_scan(record, tenant_id)
+        summary = _run_connection_scan(record, tenant_id)
     except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
         # Persist an error status with a sanitized, secret-free detail. Full
         # diagnostics go to the server log only; the client gets a generic message.

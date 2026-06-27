@@ -156,6 +156,13 @@
         "additionalProperties": false,
         "description": "Request body for creating a connection. ``external_id`` is write-only.\n\n``scan_interval_minutes`` opts the connection into recurring background scans\n(Phase B.2). Null (the default) means manual-only \u2014 the scheduler ignores it.",
         "properties": {
+          "auth_params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Auth Params",
+            "type": "object"
+          },
           "display_name": {
             "maxLength": 200,
             "minLength": 1,
@@ -163,7 +170,7 @@
             "type": "string"
           },
           "external_id": {
-            "maxLength": 1024,
+            "maxLength": 8192,
             "minLength": 1,
             "title": "External Id",
             "type": "string"
@@ -6308,7 +6315,7 @@
     },
     "/v1/cloud/connections/{connection_id}/scan": {
       "post": {
-        "description": "Launch a read-only cloud scan for a stored connection via the broker.\n\nResolves the tenant's connection (404 otherwise), uses the credential broker\nto assume a short-lived read-only session, and runs the same inventory + CIS\ndiscovery the sibling cloud routes use. Results persist through the existing\nscan/graph stores; the connection status moves to ``active`` + ``last_scan_at``\non success or ``error`` + ``status_detail`` (no secret) on failure. AWS only\ntoday \u2014 azure / gcp / snowflake return a clear 501 ``planned`` response.",
+        "description": "Launch a read-only cloud scan for a stored connection via the broker.\n\nResolves the tenant's connection (404 otherwise), uses the credential broker\nto obtain a short-lived read-only session / credential / connection, and runs\nthe same inventory + CIS discovery the sibling cloud routes use. Results\npersist through the existing scan/graph stores; the connection status moves to\n``active`` + ``last_scan_at`` on success or ``error`` + ``status_detail`` (no\nsecret) on failure. All four providers (AWS, Azure, GCP, Snowflake) are\nbroker-enabled.",
         "operationId": "scan_connection_v1_cloud_connections__connection_id__scan_post",
         "parameters": [
           {

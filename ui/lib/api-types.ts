@@ -1,6 +1,11 @@
 /** Shared API response and request contracts. */
 
-import type { AttackPath, UnifiedEdge, UnifiedGraphData, UnifiedNode } from "./graph-schema";
+import type {
+  AttackPath,
+  UnifiedEdge,
+  UnifiedGraphData,
+  UnifiedNode,
+} from "./graph-schema";
 import type { ExposurePath } from "./exposure-path";
 
 export type JobStatus = "pending" | "running" | "done" | "failed" | "cancelled";
@@ -103,7 +108,10 @@ export interface GraphAttackPath extends AttackPath {
   exposure_path?: ExposurePath | undefined;
 }
 
-export interface UnifiedGraphResponse extends Omit<UnifiedGraphData, "attack_paths"> {
+export interface UnifiedGraphResponse extends Omit<
+  UnifiedGraphData,
+  "attack_paths"
+> {
   attack_paths: GraphAttackPath[];
   pagination: GraphPagination;
 }
@@ -358,7 +366,8 @@ export interface GraphDiffResponse {
   edges_removed: [string, string, string][];
 }
 
-export type GraphExportFormat = "json" | "dot" | "mermaid" | "graphml" | "cypher";
+export type GraphExportFormat =
+  "json" | "dot" | "mermaid" | "graphml" | "cypher";
 
 export type DeploymentMode = "local" | "fleet" | "cluster" | "hybrid";
 
@@ -421,8 +430,10 @@ export interface RemediationItem {
   risk_narrative: string;
 }
 
-export type FindingTriageQueueState = "open" | "assigned" | "reviewing" | "decided";
-export type FindingTriageDecision = "not_affected" | "affected" | "under_investigation";
+export type FindingTriageQueueState =
+  "open" | "assigned" | "reviewing" | "decided";
+export type FindingTriageDecision =
+  "not_affected" | "affected" | "under_investigation";
 export type FindingTriageJustification =
   | "component_not_present"
   | "vulnerable_code_not_present"
@@ -1106,7 +1117,15 @@ export interface AuthPolicyResponse {
     active_override: boolean;
     override_endpoint: string;
     message: string;
-    overrides: Partial<Record<"active_scan_jobs" | "retained_scan_jobs" | "fleet_agents" | "schedules", number>>;
+    overrides: Partial<
+      Record<
+        | "active_scan_jobs"
+        | "retained_scan_jobs"
+        | "fleet_agents"
+        | "schedules",
+        number
+      >
+    >;
     usage: Record<
       "active_scan_jobs" | "retained_scan_jobs" | "fleet_agents" | "schedules",
       {
@@ -1188,7 +1207,8 @@ export interface AuthPolicyResponse {
   data_access_boundaries: DataAccessBoundaries;
 }
 
-export type ApiKeyLifecycleState = "active" | "rotation_overlap" | "rotated" | "revoked" | "expired";
+export type ApiKeyLifecycleState =
+  "active" | "rotation_overlap" | "rotated" | "revoked" | "expired";
 
 export interface ApiKeyRecord {
   key_id: string;
@@ -1598,21 +1618,52 @@ export interface ComplianceResponse {
   pci_dss: ComplianceControl[];
   aisvs_benchmark: AISVSComplianceResponse;
   summary: {
-    owasp_pass: number; owasp_warn: number; owasp_fail: number;
-    owasp_mcp_pass: number; owasp_mcp_warn: number; owasp_mcp_fail: number;
-    atlas_pass: number; atlas_warn: number; atlas_fail: number;
-    nist_pass: number;  nist_warn: number;  nist_fail: number;
-    owasp_agentic_pass: number; owasp_agentic_warn: number; owasp_agentic_fail: number;
-    eu_ai_act_pass: number; eu_ai_act_warn: number; eu_ai_act_fail: number;
-    nist_csf_pass: number; nist_csf_warn: number; nist_csf_fail: number;
-    iso_27001_pass: number; iso_27001_warn: number; iso_27001_fail: number;
-    soc2_pass: number; soc2_warn: number; soc2_fail: number;
-    cis_pass: number; cis_warn: number; cis_fail: number;
-    cmmc_pass: number; cmmc_warn: number; cmmc_fail: number;
-    nist_800_53_pass: number; nist_800_53_warn: number; nist_800_53_fail: number;
-    fedramp_pass: number; fedramp_warn: number; fedramp_fail: number;
-    pci_dss_pass: number; pci_dss_warn: number; pci_dss_fail: number;
-    aisvs_pass: number; aisvs_fail: number; aisvs_error: number; aisvs_not_applicable: number;
+    owasp_pass: number;
+    owasp_warn: number;
+    owasp_fail: number;
+    owasp_mcp_pass: number;
+    owasp_mcp_warn: number;
+    owasp_mcp_fail: number;
+    atlas_pass: number;
+    atlas_warn: number;
+    atlas_fail: number;
+    nist_pass: number;
+    nist_warn: number;
+    nist_fail: number;
+    owasp_agentic_pass: number;
+    owasp_agentic_warn: number;
+    owasp_agentic_fail: number;
+    eu_ai_act_pass: number;
+    eu_ai_act_warn: number;
+    eu_ai_act_fail: number;
+    nist_csf_pass: number;
+    nist_csf_warn: number;
+    nist_csf_fail: number;
+    iso_27001_pass: number;
+    iso_27001_warn: number;
+    iso_27001_fail: number;
+    soc2_pass: number;
+    soc2_warn: number;
+    soc2_fail: number;
+    cis_pass: number;
+    cis_warn: number;
+    cis_fail: number;
+    cmmc_pass: number;
+    cmmc_warn: number;
+    cmmc_fail: number;
+    nist_800_53_pass: number;
+    nist_800_53_warn: number;
+    nist_800_53_fail: number;
+    fedramp_pass: number;
+    fedramp_warn: number;
+    fedramp_fail: number;
+    pci_dss_pass: number;
+    pci_dss_warn: number;
+    pci_dss_fail: number;
+    aisvs_pass: number;
+    aisvs_fail: number;
+    aisvs_error: number;
+    aisvs_not_applicable: number;
   };
 }
 
@@ -1675,7 +1726,12 @@ export interface AgentLifecycleResponse {
   stats: Record<string, number>;
 }
 
-export type FleetLifecycleState = "discovered" | "pending_review" | "approved" | "quarantined" | "decommissioned";
+export type FleetLifecycleState =
+  | "discovered"
+  | "pending_review"
+  | "approved"
+  | "quarantined"
+  | "decommissioned";
 
 export interface FleetAgent {
   agent_id: string;
@@ -1887,7 +1943,8 @@ export interface GatewayPolicyRuntimeSummary {
   source: string;
   source_kind: string;
   enabled_policies: number;
-  rollout_mode: "disabled" | "advisory_only" | "mixed" | "default_deny" | "blocking";
+  rollout_mode:
+    "disabled" | "advisory_only" | "mixed" | "default_deny" | "blocking";
   summary: string;
   total_rules: number;
   blocking_rules: number;
@@ -1916,7 +1973,10 @@ export interface PostureResponse {
   grade: string;
   score: number;
   summary: string;
-  dimensions: Record<string, { score: number; label: string; details?: string }>;
+  dimensions: Record<
+    string,
+    { score: number; label: string; details?: string }
+  >;
 }
 
 // ─── Cross-domain overview (landing page) ────────────────────────────────────
@@ -2196,11 +2256,7 @@ export interface CostBreakdownRow {
  * forecast never blocks a call. Every projection field is nullable: a sparse or
  * empty history yields a clear `status` and `null` projections. */
 export type CostForecastStatus =
-  | "insufficient_history"
-  | "budget_exceeded"
-  | "no_budget"
-  | "stale"
-  | "ok";
+  "insufficient_history" | "budget_exceeded" | "no_budget" | "stale" | "ok";
 
 export interface CostForecast {
   schema_version: string;
@@ -2385,12 +2441,7 @@ export interface DriftIncidentsResponse {
 // All three are reference-only and never carry secret values.
 
 export type CredentialExpiryState =
-  | "overdue"
-  | "expired"
-  | "rotation_due"
-  | "near_expiry"
-  | "unknown_age"
-  | "ok";
+  "overdue" | "expired" | "rotation_due" | "near_expiry" | "unknown_age" | "ok";
 
 export interface CredentialExpiryItem {
   id: string | null;
@@ -2431,10 +2482,7 @@ export interface CredentialExpiryReport {
 }
 
 export type AccessReviewStatus =
-  | "open"
-  | "in_progress"
-  | "completed"
-  | "overdue";
+  "open" | "in_progress" | "completed" | "overdue";
 
 export interface AccessReviewCampaign {
   campaign_id: string;
@@ -2513,6 +2561,8 @@ export interface CloudConnectionRecord {
   created_at: string;
   updated_at: string;
   last_scan_at: string | null;
+  /** Non-secret provider-specific params (Azure tenant/subscription, GCP project, Snowflake user/role/warehouse). */
+  auth_params?: Record<string, string>;
 }
 
 export interface CloudConnectionsResponse {
@@ -2529,22 +2579,29 @@ export interface CloudConnectionCreateRequest {
   role_ref: string;
   external_id: string;
   regions: string[];
+  /** Non-secret provider-specific params. Never carries a secret (that is `external_id`). */
+  auth_params?: Record<string, string>;
 }
 
 export interface CloudConnectionScanInventory {
   provider: string;
-  account: string | null;
-  region: string;
-  resource_count: number;
-  identity_count: number;
-  node_summary: {
+  /** Present for AWS/Azure/GCP; "ok" for Snowflake. */
+  status?: string;
+  account?: string | null;
+  region?: string;
+  /** AWS/Azure/GCP estate-inventory counts. */
+  resource_count?: number;
+  identity_count?: number;
+  node_summary?: {
     buckets: number;
     instances: number;
     security_groups: number;
     roles: number;
     users: number;
   };
-  warnings: string[];
+  /** Snowflake discovery count (Cortex/MCP agents). */
+  agent_count?: number;
+  warnings?: string[];
 }
 
 export interface CloudConnectionScanCis {
@@ -2556,7 +2613,7 @@ export interface CloudConnectionScanCis {
   pass_rate: number | null;
 }
 
-/** Response from `POST /v1/cloud/connections/{id}/scan` (AWS today). */
+/** Response from `POST /v1/cloud/connections/{id}/scan` (AWS, Azure, GCP, Snowflake). */
 export interface CloudConnectionScanResponse {
   schema_version: string;
   connection_id: string;

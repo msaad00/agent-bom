@@ -42,8 +42,8 @@ is wired into the docs site so drift produces a visible regression.
 | `TransportType` | 4 | `stdio`, `sse`, `streamable-http`, `unknown` |
 | `ServerSurface` | 10 | `mcp-server`, `container-image`, `oci-tarball`, `filesystem`, `sbom`, `external-scan`, `os-packages`, `sast`, `ai-inventory`, `other` |
 | `AgentStatus` | 2 | `configured`, `installed-not-configured` |
-| `EntityType` | 38 | `agent`, `server`, `package`, `tool`, `tool_call`, `model`, `dataset`, `container`, `cloud_resource`, `resource`, `source_file`, `code_module`, `config_file`, `external_import`, `ci_job`, `vulnerability`, `misconfiguration`, `credential`, `credential_ref`, `org`, `account`, `user`, `group`, `role`, `policy`, `service_account`, `service_principal`, `federated_identity`, `managed_identity`, `access_grant`, `access_policy`, `drift_incident`, `data_store`, `application`, `provider`, `environment`, `fleet`, `cluster` |
-| `RelationshipType` | 46 | `hosts`, `uses`, `depends_on`, `provides_tool`, `exposes_cred`, `reaches_tool`, `serves_model`, `contains`, `imports`, `defines`, `runs`, `configures`, `affects`, `vulnerable_to`, `exploitable_via`, `remediates`, `triggers`, `shares_server`, `shares_cred`, `lateral_path`, `manages`, `owns`, `part_of`, `member_of`, `assumes`, `trusts`, `attached`, `inherits`, `can_access`, `cross_account_trust`, `authenticates_as`, `scoped_to`, `governs`, `exhibits_drift`, `exposed_to`, `stores`, `has_permission`, `acted_as`, `invoked`, `called`, `used_credential`, `accessed`, `delegated_to`, `correlates_with`, `possibly_correlates_with`, `belongs_to` |
+| `EntityType` | 39 | `agent`, `server`, `package`, `tool`, `tool_call`, `model`, `dataset`, `container`, `cloud_resource`, `resource`, `source_file`, `code_module`, `config_file`, `external_import`, `ci_job`, `vulnerability`, `misconfiguration`, `credential`, `credential_ref`, `org`, `account`, `user`, `group`, `role`, `policy`, `service_account`, `service_principal`, `federated_identity`, `managed_identity`, `access_grant`, `access_policy`, `drift_incident`, `data_store`, `api_gateway`, `application`, `provider`, `environment`, `fleet`, `cluster` |
+| `RelationshipType` | 47 | `hosts`, `uses`, `depends_on`, `provides_tool`, `exposes_cred`, `reaches_tool`, `serves_model`, `contains`, `imports`, `defines`, `runs`, `configures`, `affects`, `vulnerable_to`, `exploitable_via`, `remediates`, `triggers`, `shares_server`, `shares_cred`, `lateral_path`, `manages`, `owns`, `part_of`, `member_of`, `assumes`, `trusts`, `attached`, `inherits`, `can_access`, `cross_account_trust`, `authenticates_as`, `scoped_to`, `governs`, `exhibits_drift`, `exposed_to`, `stores`, `has_permission`, `protects`, `acted_as`, `invoked`, `called`, `used_credential`, `accessed`, `delegated_to`, `correlates_with`, `possibly_correlates_with`, `belongs_to` |
 
 ### Live Schema Cross-Checks
 
@@ -127,7 +127,7 @@ Used for unified findings outside the SCA / blast-radius path
 The unified graph projects the canonical model into a node/edge form
 used for blast-radius traversal, dashboards, and OCSF export.
 
-### Entity types (38)
+### Entity types (39)
 
 `AGENT`, `SERVER`, `PACKAGE`, `TOOL`, `TOOL_CALL`, `MODEL`, `DATASET`,
 `CONTAINER`, `CLOUD_RESOURCE`, `RESOURCE`, `SOURCE_FILE`, `CODE_MODULE`,
@@ -135,12 +135,19 @@ used for blast-radius traversal, dashboards, and OCSF export.
 `MISCONFIGURATION`, `CREDENTIAL`, `CREDENTIAL_REF`, `ORG`, `ACCOUNT`,
 `USER`, `GROUP`, `ROLE`, `POLICY`, `SERVICE_ACCOUNT`, `SERVICE_PRINCIPAL`,
 `FEDERATED_IDENTITY`, `MANAGED_IDENTITY`, `ACCESS_GRANT`, `ACCESS_POLICY`,
-`DRIFT_INCIDENT`, `DATA_STORE`, `APPLICATION`, `PROVIDER`, `ENVIRONMENT`,
-`FLEET`, `CLUSTER`.
+`DRIFT_INCIDENT`, `DATA_STORE`, `API_GATEWAY`, `APPLICATION`, `PROVIDER`,
+`ENVIRONMENT`, `FLEET`, `CLUSTER`.
 
 `DATA_STORE` is a cloud-CNAPP primitive — a database / bucket / lake / warehouse
 holding data at rest, derived from cloud resources so path-to-sensitive-data is
 traversable.
+
+`API_GATEWAY` is a network-edge primitive in the API_GATEWAY semantic layer —
+an API gateway / managed front-door populated from live cloud inventory (AWS API
+Gateway, GCP API Gateway / Apigee, Azure API Management). Together with WAF /
+Cloud Armor web ACLs (emitted as `CLOUD_RESOURCE`), it carries a `PROTECTS` edge
+to the resource it fronts so the CNAPP overlay refines that resource's internet
+exposure verdict.
 
 `APPLICATION` is the ASPM (Application Security Posture Management) correlation
 root — derived per service / repo / manifest-root from finding source paths, it
@@ -180,7 +187,7 @@ The effective-permissions overlay inherits a principal's access through the
 access is recorded on `HAS_PERMISSION` as `access="group"` and is not, by itself,
 a privilege escalation (only assume/trust chains are).
 
-### Relationship types (46)
+### Relationship types (47)
 
 | Group | Relationships | Direction |
 |---|---|---|
@@ -190,7 +197,7 @@ a privilege escalation (only assume/trust chains are).
 | Lateral movement | `SHARES_SERVER`, `SHARES_CRED`, `LATERAL_PATH` | symmetric |
 | Ownership and identity | `MANAGES`, `OWNS`, `PART_OF`, `MEMBER_OF`, `ASSUMES`, `TRUSTS`, `ATTACHED`, `INHERITS`, `CAN_ACCESS`, `CROSS_ACCOUNT_TRUST` | hierarchical / access path |
 | Agent-identity governance | `AUTHENTICATES_AS`, `SCOPED_TO`, `GOVERNS`, `EXHIBITS_DRIFT` | agent → identity → grant → tool; agent ↔ drift |
-| Cloud-CNAPP | `EXPOSED_TO`, `STORES`, `HAS_PERMISSION` | internet exposure; data-at-rest; effective permission |
+| Cloud-CNAPP | `EXPOSED_TO`, `STORES`, `HAS_PERMISSION`, `PROTECTS` | internet exposure; data-at-rest; effective permission; WAF/gateway fronts a resource |
 | Runtime | `ACTED_AS`, `INVOKED`, `CALLED`, `USED_CREDENTIAL`, `ACCESSED`, `DELEGATED_TO` | source → target, time-stamped |
 | Cross-environment correlation | `CORRELATES_WITH`, `POSSIBLY_CORRELATES_WITH` | local ↔ cloud agent correlation |
 | ASPM | `BELONGS_TO` | finding / component → application |

@@ -895,6 +895,7 @@ ENTITY_LEGEND: list[LegendEntry] = [
     LegendEntry(key="drift_incident", label="Drift Incident", color="#fb923c", shape="triangle", layer=GraphSemanticLayer.FINDING.value),
     LegendEntry(key="data_store", label="Data Store", color="#0284c7", shape="square", layer=GraphSemanticLayer.ASSET.value),
     LegendEntry(key="application", label="Application", color="#7c3aed", shape="circle", layer=GraphSemanticLayer.APP.value),
+    LegendEntry(key="api_gateway", label="API Gateway", color="#2563eb", shape="diamond", layer=GraphSemanticLayer.API_GATEWAY.value),
 ]
 
 RELATIONSHIP_LEGEND: list[LegendEntry] = [
@@ -951,6 +952,7 @@ RELATIONSHIP_LEGEND: list[LegendEntry] = [
     LegendEntry(key="exposed_to", label="Exposed To", color="#e11d48"),
     LegendEntry(key="stores", label="Stores", color="#0284c7"),
     LegendEntry(key="has_permission", label="Has Permission", color="#dc2626"),
+    LegendEntry(key="protects", label="Protects (WAF/gateway)", color="#2563eb"),
     # ASPM
     LegendEntry(key="belongs_to", label="Belongs To (application)", color="#7c3aed"),
 ]

@@ -188,6 +188,15 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
         if edge.relationship == RelationshipType.VULNERABLE_TO:
             vulnerable_resources.add(edge.source)
 
+    # Resources fronted by a WAF / API gateway (a PROTECTS edge). A protected
+    # resource's internet exposure is mitigated — its exposure verdict is
+    # downgraded below an unprotected peer's so the graph does not score a
+    # WAF-fronted asset identically to a bare one.
+    protected_ids: set[str] = set()
+    for edge in graph.edges:
+        if edge.relationship == RelationshipType.PROTECTS:
+            protected_ids.add(edge.target)
+
     # Map a misconfiguration to the resources it AFFECTS so exposure can attach
     # to the real asset rather than the finding node.
     affected_by_misconfig: dict[str, list[str]] = {}
@@ -215,6 +224,17 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
         if node.attributes.get("internet_exposed") or _matches(_text_of(node), _EXPOSURE_KEYWORDS):
             node.attributes["internet_exposed"] = True
             exposed_ids.add(node.id)
+
+    # Record exposure mitigation on every protected + exposed resource so its
+    # verdict differs from an unprotected peer, whether or not it is vulnerable.
+    mitigated = 0
+    for resource_id in exposed_ids & protected_ids:
+        node = graph.nodes.get(resource_id)
+        if node is None:
+            continue
+        node.attributes["exposure_mitigated"] = True
+        node.attributes["protected_by_waf"] = True
+        mitigated += 1
 
     # Classify data stores and attach a DATA_STORE companion node.
     data_stores_added = 0
@@ -262,11 +282,32 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
                 )
             )
 
-    # Toxic combinations: internet-exposed AND vulnerable.
+    # Toxic combinations: internet-exposed AND vulnerable. A WAF/API-gateway in
+    # front of the resource mitigates the exposure, so the verdict is downgraded
+    # (lower risk, distinct pattern) instead of the full toxic escalation.
     toxic = 0
+    toxic_mitigated = 0
     for resource_id in sorted(exposed_ids & vulnerable_resources):
         node = graph.nodes.get(resource_id)
         if node is None:
+            continue
+        if resource_id in protected_ids:
+            node.attributes["toxic_exposed_vulnerable_mitigated"] = True
+            if node.risk_score < 6.5:
+                node.risk_score = 6.5
+            graph.interaction_risks.append(
+                InteractionRisk(
+                    pattern="internet_exposed_vulnerable_mitigated",
+                    agents=[node.label],
+                    risk_score=6.5,
+                    description=(
+                        f"{node.label} carries a known vulnerability and is internet-exposed but fronted by a WAF/API gateway "
+                        "(exposure mitigated)."
+                    ),
+                    owasp_agentic_tag=None,
+                )
+            )
+            toxic_mitigated += 1
             continue
         node.attributes["toxic_exposed_vulnerable"] = True
         if node.risk_score < 9.0:
@@ -335,6 +376,8 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
         "exposed_nodes": len(exposed_ids),
         "data_stores_added": data_stores_added,
         "toxic_combinations": toxic,
+        "toxic_combinations_mitigated": toxic_mitigated,
+        "exposure_mitigated_nodes": mitigated,
         "sensitive_data_nodes": len(sensitive_ids),
         "exposed_sensitive_data": exposed_sensitive,
     }

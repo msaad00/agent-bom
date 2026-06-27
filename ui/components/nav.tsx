@@ -36,6 +36,7 @@ import {
   Fingerprint,
   Radar,
   Compass,
+  Cloud,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
@@ -94,6 +95,7 @@ const NAV_GROUPS: NavGroup[] = [
     accent: "#f85149", // red — scanning layer
     links: [
       { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
+      { href: "/connections", label: "Cloud Accounts", icon: Cloud, capability: "scan.run" },
       { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
       { href: "/findings", label: "Findings", icon: Bug },

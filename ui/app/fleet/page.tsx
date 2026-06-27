@@ -102,7 +102,6 @@ export default function FleetPage() {
   const [fleetOffset, setFleetOffset] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [trustThreshold, setTrustThreshold] = useState(50);
-  const [autoQuarantine, setAutoQuarantine] = useState(false);
   const { counts } = useDeploymentContext();
 
   const belowThresholdCount = useMemo(
@@ -253,26 +252,6 @@ export default function FleetPage() {
             <span className="text-xs text-zinc-400">
               <span className="font-mono text-yellow-400">{belowThresholdCount}</span> agents below threshold
             </span>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-xs text-zinc-500">Auto-quarantine</span>
-              <button
-                type="button"
-                aria-label={autoQuarantine ? "Disable auto-quarantine" : "Enable auto-quarantine"}
-                onClick={() => {
-                  if (!autoQuarantine && !confirm('This will quarantine agents below the trust threshold. Continue?')) return;
-                  setAutoQuarantine((v) => !v);
-                }}
-                className={`relative w-8 h-4 rounded-full transition-colors ${
-                  autoQuarantine ? "bg-emerald-600" : "bg-zinc-700"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
-                    autoQuarantine ? "translate-x-4" : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </label>
           </div>
         </div>
       </div>

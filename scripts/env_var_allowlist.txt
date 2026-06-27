@@ -74,8 +74,12 @@ AGENT_BOM_CLICKHOUSE_URL
 AGENT_BOM_CLICKHOUSE_USER
 # Opt-in (default OFF) gate for the estate-wide read-only AWS asset inventory scanner.
 AGENT_BOM_CLOUD_INVENTORY
-# base64 Fernet key for at-rest encryption of cloud-connection secrets (ExternalId); secret, env/KMS-only, never in config.py or ENV_VARS.md
+# base64 Fernet key for at-rest encryption of cloud-connection secrets (ExternalId); secret, env/KMS-only, never in config.py or ENV_VARS.md. With provider=aws-kms it holds the base64 KMS-wrapped data key instead.
 AGENT_BOM_CONNECTIONS_KEY
+# Selects how the connection encryption key is resolved: env (default) | aws-secrets | aws-kms; read at key-load time in api/connection_crypto.py.
+AGENT_BOM_CONNECTIONS_KEY_PROVIDER
+# Reference (not a secret value) to the managed connection key: the Secrets Manager secret id/ARN for provider=aws-secrets; resolved read-only at key-load time.
+AGENT_BOM_CONNECTIONS_KEY_REF
 # CLI profile config path override; read at command invocation time.
 AGENT_BOM_CONFIG
 AGENT_BOM_COMPLIANCE_BUNDLE_TTL_SECONDS

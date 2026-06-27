@@ -2486,3 +2486,89 @@ export interface NhiDiscoveryResponse {
   identities: DiscoveredNonHumanIdentity[];
   warnings: string[];
 }
+
+// ── Cloud connections plane (#3175) ──────────────────────────────────────────
+//
+// Mirrors `src/agent_bom/api/routes/cloud_connections.py`. A connection is a
+// stored, encrypted, tenant-scoped record of how the control plane reaches a
+// customer cloud account in read-only mode. The `external_id` secret is
+// write-only: it is accepted on create, encrypted at rest, and is NEVER returned
+// by the API. `has_external_id` is the only signal that a secret is configured.
+
+export type CloudConnectionProvider = "aws" | "azure" | "gcp" | "snowflake";
+export type CloudConnectionStatus = "pending" | "active" | "error";
+
+/** Non-secret public shape of `CloudConnectionRecord.to_public_dict()`. */
+export interface CloudConnectionRecord {
+  id: string;
+  tenant_id: string;
+  provider: CloudConnectionProvider | string;
+  display_name: string;
+  role_ref: string;
+  /** True when an encrypted secret is stored. The secret itself never leaves the API. */
+  has_external_id: boolean;
+  regions: string[];
+  status: CloudConnectionStatus | string;
+  status_detail: string;
+  created_at: string;
+  updated_at: string;
+  last_scan_at: string | null;
+}
+
+export interface CloudConnectionsResponse {
+  schema_version: string;
+  tenant_id: string;
+  connections: CloudConnectionRecord[];
+  count: number;
+}
+
+/** Request body for `POST /v1/cloud/connections`. `external_id` is write-only. */
+export interface CloudConnectionCreateRequest {
+  provider: string;
+  display_name: string;
+  role_ref: string;
+  external_id: string;
+  regions: string[];
+}
+
+export interface CloudConnectionScanInventory {
+  provider: string;
+  account: string | null;
+  region: string;
+  resource_count: number;
+  identity_count: number;
+  node_summary: {
+    buckets: number;
+    instances: number;
+    security_groups: number;
+    roles: number;
+    users: number;
+  };
+  warnings: string[];
+}
+
+export interface CloudConnectionScanCis {
+  benchmark: string | null;
+  benchmark_version: string | null;
+  passed: number | null;
+  failed: number | null;
+  total: number | null;
+  pass_rate: number | null;
+}
+
+/** Response from `POST /v1/cloud/connections/{id}/scan` (AWS today). */
+export interface CloudConnectionScanResponse {
+  schema_version: string;
+  connection_id: string;
+  tenant_id: string;
+  provider: string;
+  scan_id: string;
+  inventory: CloudConnectionScanInventory;
+  cis_benchmark: CloudConnectionScanCis;
+  audit_metadata: {
+    read_only: boolean;
+    writes_performed: boolean;
+    note: string;
+  };
+  connection: CloudConnectionRecord;
+}

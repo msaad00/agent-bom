@@ -26,7 +26,9 @@ against that session. Results persist through the existing scan/graph stores —
 no parallel persistence path — and the connection's lifecycle status is updated
 (``active`` + ``last_scan_at`` on success, ``error`` + ``status_detail`` on
 failure, never carrying a secret). AWS is broker-enabled today; azure / gcp /
-snowflake return a clear "planned" 501. A recurring scheduler is Phase B.2.
+snowflake return a clear "planned" 501. A connection may also carry a
+``scan_interval_minutes`` so the Phase B.2 background scheduler
+(:mod:`agent_bom.api.connection_scheduler`) re-runs this same scan path when due.
 """
 
 from __future__ import annotations
@@ -51,6 +53,7 @@ from agent_bom.api.connection_store import (
     get_connection_store,
 )
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.config import CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error
 
@@ -58,6 +61,9 @@ from agent_bom.security import sanitize_error
 _PLANNED_SCAN_PROVIDERS: tuple[str, ...] = ("azure", "gcp", "snowflake")
 # Cap the status_detail we persist so a verbose backend error can't bloat the row.
 _MAX_STATUS_DETAIL = 300
+# Upper bound on a recurring scan interval (1 week) so a typo can't park a
+# connection effectively-never-scanning while still claiming to be scheduled.
+_MAX_SCAN_INTERVAL_MINUTES = 7 * 24 * 60
 
 router = APIRouter(tags=["cloud-connections"])
 _logger = logging.getLogger(__name__)
@@ -70,7 +76,11 @@ _MAX_REGIONS = 50
 
 
 class CloudConnectionCreate(BaseModel):
-    """Request body for creating a connection. ``external_id`` is write-only."""
+    """Request body for creating a connection. ``external_id`` is write-only.
+
+    ``scan_interval_minutes`` opts the connection into recurring background scans
+    (Phase B.2). Null (the default) means manual-only — the scheduler ignores it.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -79,6 +89,19 @@ class CloudConnectionCreate(BaseModel):
     role_ref: str = Field(min_length=1, max_length=2048)
     external_id: str = Field(min_length=1, max_length=1024)
     regions: list[str] = Field(default_factory=list)
+    scan_interval_minutes: int | None = None
+
+
+class CloudConnectionUpdate(BaseModel):
+    """Request body for updating a connection's recurring scan schedule.
+
+    ``scan_interval_minutes`` is set to the supplied value; null disables the
+    recurring scan (back to manual-only).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    scan_interval_minutes: int | None = None
 
 
 def _now() -> str:
@@ -91,6 +114,28 @@ def _tenant(request: Request) -> str:
 
 def _actor(request: Request) -> str:
     return getattr(request.state, "api_key_name", "") or getattr(request.state, "auth_method", "") or "system"
+
+
+def _validate_scan_interval(interval: int | None) -> int | None:
+    """Validate a recurring scan interval (minutes).
+
+    Null is allowed (manual-only). A set value must be at least the configured
+    minimum so the scheduler never hammers a customer account, and at most one
+    week so a typo cannot silently park a connection.
+    """
+    if interval is None:
+        return None
+    if interval < CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"scan_interval_minutes must be at least {CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES} minutes.",
+        )
+    if interval > _MAX_SCAN_INTERVAL_MINUTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"scan_interval_minutes must be at most {_MAX_SCAN_INTERVAL_MINUTES} minutes.",
+        )
+    return interval
 
 
 def _validate_regions(regions: list[str]) -> list[str]:
@@ -120,6 +165,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
         )
 
     regions = _validate_regions(body.regions)
+    scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
 
     # Fail closed before doing anything if the store cannot encrypt the secret.
     if not connections_key_configured():
@@ -148,6 +194,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
         created_at=now,
         updated_at=now,
         last_scan_at=None,
+        scan_interval_minutes=scan_interval_minutes,
     )
     get_connection_store().put(record)
     log_action(
@@ -185,6 +232,33 @@ def _require_connection(request: Request, connection_id: str) -> CloudConnection
 async def get_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> dict[str, Any]:
     """Return one connection's non-secret metadata (tenant-scoped)."""
     return _require_connection(request, connection_id).to_public_dict()
+
+
+@router.patch("/v1/cloud/connections/{connection_id}")
+async def update_connection(
+    request: Request,
+    connection_id: str,
+    body: CloudConnectionUpdate,
+    _role: Any = _SCAN_DEP,
+) -> dict[str, Any]:
+    """Update a connection's recurring scan schedule (tenant-scoped).
+
+    Sets ``scan_interval_minutes`` (null disables recurring scans). The encrypted
+    secret is untouched and never returned.
+    """
+    record = _require_connection(request, connection_id)
+    scan_interval_minutes = _validate_scan_interval(body.scan_interval_minutes)
+    record.scan_interval_minutes = scan_interval_minutes
+    record.updated_at = _now()
+    get_connection_store().put(record)
+    log_action(
+        "cloud_connection.update",
+        actor=_actor(request),
+        resource=f"cloud-connection/{record.id}",
+        tenant_id=record.tenant_id,
+        provider=record.provider,
+    )
+    return record.to_public_dict()
 
 
 @router.delete("/v1/cloud/connections/{connection_id}", status_code=204)

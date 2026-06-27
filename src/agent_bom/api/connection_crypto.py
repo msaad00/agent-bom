@@ -32,6 +32,15 @@ Providers (``AGENT_BOM_CONNECTIONS_KEY_PROVIDER``):
     32-byte data key is encoded into a ``Fernet`` key. The plaintext data key
     never touches disk.
 
+``vault``
+    The base64 ``Fernet`` key is fetched from a HashiCorp Vault **KV v2** secret
+    over a read-only ``GET {AGENT_BOM_VAULT_ADDR}/v1/{mount}/data/{path}`` with
+    an ``X-Vault-Token: {AGENT_BOM_VAULT_TOKEN}`` header.
+    ``AGENT_BOM_CONNECTIONS_KEY_REF`` names the location and field as
+    ``mount/path#field`` (the ``#field`` suffix is optional and defaults to
+    ``key``). TLS verification stays on; nothing about the key or token is
+    stored locally or logged.
+
 Planned seam: ``azure-keyvault`` and ``gcp-secret-manager`` follow the same
 resolver contract (return the base64 Fernet key, fail closed on any error) and
 can be added without touching the encrypt/decrypt API below.
@@ -40,6 +49,30 @@ The resolved key is cached in-process; :func:`reset_key_cache` clears it (used
 by tests and by an operator-driven rotation). Any resolution failure — missing
 ref, access denied, malformed material — raises :class:`ConnectionSecretError`;
 the deployment fails closed and never persists plaintext.
+
+Key rotation (MultiFernet)
+--------------------------
+
+Every provider's resolved value may be a **comma-separated list** of base64
+``Fernet`` keys. When more than one key is present the module builds a
+``MultiFernet``: it **encrypts with the first (primary) key and decrypts with
+any** key in the list. A single key stays a plain ``Fernet`` (fully backward
+compatible — existing single-key deployments are unchanged).
+
+This is the standard zero-downtime rotation procedure:
+
+1. **Add** a freshly generated key as the new *primary* (prepend it), keeping
+   the old key in the list, e.g.
+   ``AGENT_BOM_CONNECTIONS_KEY="<new>,<old>"`` (or store the comma-separated
+   list in the managed provider). New writes use ``<new>``; existing ciphertext
+   still decrypts under ``<old>``.
+2. **Re-encrypt** (optional but recommended) existing rows in the background;
+   each decrypt-then-encrypt round-trip rewraps the row under the primary key.
+3. **Remove** the retired key from the list once no ciphertext depends on it,
+   leaving only ``AGENT_BOM_CONNECTIONS_KEY="<new>"``.
+
+``reset_key_cache`` must be called after changing the configured keys so the
+next operation re-resolves the rotated list.
 """
 
 from __future__ import annotations
@@ -52,13 +85,20 @@ from typing import Any
 CONNECTIONS_KEY_ENV = "AGENT_BOM_CONNECTIONS_KEY"
 CONNECTIONS_KEY_PROVIDER_ENV = "AGENT_BOM_CONNECTIONS_KEY_PROVIDER"
 CONNECTIONS_KEY_REF_ENV = "AGENT_BOM_CONNECTIONS_KEY_REF"
+VAULT_ADDR_ENV = "AGENT_BOM_VAULT_ADDR"
+VAULT_TOKEN_ENV = "AGENT_BOM_VAULT_TOKEN"
 
 PROVIDER_ENV = "env"
 PROVIDER_AWS_SECRETS = "aws-secrets"
 PROVIDER_AWS_KMS = "aws-kms"
+PROVIDER_VAULT = "vault"
 
-# In-process cache of the resolved base64 Fernet key. ``None`` means "not yet
-# resolved"; cleared by :func:`reset_key_cache`.
+# Default field name inside a Vault KV v2 secret when ``...#field`` is omitted.
+DEFAULT_VAULT_FIELD = "key"
+
+# In-process cache of the resolved key material. ``None`` means "not yet
+# resolved"; cleared by :func:`reset_key_cache`. The value may carry a
+# comma-separated list of base64 Fernet keys (MultiFernet rotation).
 _RESOLVED_KEY: bytes | None = None
 
 
@@ -104,6 +144,12 @@ def connections_key_configured() -> bool:
         return bool(os.environ.get(CONNECTIONS_KEY_REF_ENV, "").strip())
     if provider == PROVIDER_AWS_KMS:
         return bool(os.environ.get(CONNECTIONS_KEY_ENV, "").strip())
+    if provider == PROVIDER_VAULT:
+        return bool(
+            os.environ.get(VAULT_ADDR_ENV, "").strip()
+            and os.environ.get(VAULT_TOKEN_ENV, "").strip()
+            and os.environ.get(CONNECTIONS_KEY_REF_ENV, "").strip()
+        )
     return False
 
 
@@ -185,10 +231,67 @@ def _resolve_aws_kms() -> bytes:
     return base64.urlsafe_b64encode(bytes(plaintext))
 
 
+def _parse_vault_ref(ref: str) -> tuple[str, str, str]:
+    """Parse ``mount/path#field`` into ``(mount, path, field)``.
+
+    ``#field`` is optional and defaults to :data:`DEFAULT_VAULT_FIELD`. Raises
+    :class:`ConnectionSecretError` when the mount or path is missing.
+    """
+    location, _, field = ref.partition("#")
+    field = field.strip() or DEFAULT_VAULT_FIELD
+    mount, _, path = location.strip().strip("/").partition("/")
+    if not mount or not path:
+        raise ConnectionSecretError(
+            f"{CONNECTIONS_KEY_REF_ENV} for the '{PROVIDER_VAULT}' provider must be "
+            "'mount/path[#field]' (the KV v2 mount and secret path); refusing to fall back to plaintext."
+        )
+    return mount, path, field
+
+
+def _resolve_vault() -> bytes:
+    """Fetch the base64 Fernet key from a HashiCorp Vault KV v2 secret (read-only)."""
+    addr = os.environ.get(VAULT_ADDR_ENV, "").strip().rstrip("/")
+    token = os.environ.get(VAULT_TOKEN_ENV, "").strip()
+    ref = os.environ.get(CONNECTIONS_KEY_REF_ENV, "").strip()
+    if not addr or not token or not ref:
+        raise ConnectionSecretError(
+            f"{CONNECTIONS_KEY_PROVIDER_ENV}={PROVIDER_VAULT} requires {VAULT_ADDR_ENV}, "
+            f"{VAULT_TOKEN_ENV}, and {CONNECTIONS_KEY_REF_ENV} (mount/path#field); "
+            "refusing to fall back to plaintext."
+        )
+    mount, path, field = _parse_vault_ref(ref)
+    url = f"{addr}/v1/{mount}/data/{path}"
+
+    from agent_bom import http_client
+
+    try:
+        # Read-only GET via the shared client (TLS verification on by default).
+        response = http_client.sync_get(url, headers={"X-Vault-Token": token})
+    except Exception as exc:  # noqa: BLE001 - never echo the token or transport detail
+        raise ConnectionSecretError("Unable to reach HashiCorp Vault to resolve the connection encryption key.") from exc
+    if response is None:
+        raise ConnectionSecretError("Unable to reach HashiCorp Vault to resolve the connection encryption key.")
+    if response.status_code != 200:
+        # Status only — never the body (it can carry the token/policy detail).
+        raise ConnectionSecretError(f"HashiCorp Vault returned HTTP {response.status_code} resolving the connection encryption key.")
+    try:
+        body = response.json()
+        value = body["data"]["data"][field]
+    except Exception as exc:  # noqa: BLE001 - malformed body / missing field
+        raise ConnectionSecretError(
+            "HashiCorp Vault response did not contain the connection encryption key at the configured field."
+        ) from exc
+    raw = (value or "").strip() if isinstance(value, str) else ""
+    if not raw:
+        raise ConnectionSecretError("HashiCorp Vault returned an empty connection encryption key.")
+    return raw.encode("ascii")
+
+
 _RESOLVERS: dict[str, Callable[[], bytes]] = {
     PROVIDER_ENV: _resolve_env,
     PROVIDER_AWS_SECRETS: _resolve_aws_secrets,
     PROVIDER_AWS_KMS: _resolve_aws_kms,
+    PROVIDER_VAULT: _resolve_vault,
 }
 
 
@@ -206,20 +309,39 @@ def _load_key() -> bytes:
     if resolver is None:
         raise ConnectionSecretError(
             f"{CONNECTIONS_KEY_PROVIDER_ENV}={provider!r} is not a supported key provider; "
-            f"expected one of {PROVIDER_ENV!r}, {PROVIDER_AWS_SECRETS!r}, {PROVIDER_AWS_KMS!r}."
+            f"expected one of {PROVIDER_ENV!r}, {PROVIDER_AWS_SECRETS!r}, {PROVIDER_AWS_KMS!r}, {PROVIDER_VAULT!r}."
         )
     key = resolver()
     _RESOLVED_KEY = key
     return key
 
 
+def _split_keys(material: bytes) -> list[bytes]:
+    """Split resolved key material into individual base64 Fernet keys.
+
+    Supports a comma-separated list for MultiFernet rotation; surrounding
+    whitespace and empty entries are ignored.
+    """
+    return [chunk.strip() for chunk in material.split(b",") if chunk.strip()]
+
+
 def _fernet() -> Any:
+    """Build a Fernet (single key) or MultiFernet (rotation list).
+
+    A single key stays a plain ``Fernet`` for backward compatibility. With more
+    than one key a ``MultiFernet`` encrypts under the first (primary) key and
+    decrypts under any key in the list.
+    """
     try:
-        from cryptography.fernet import Fernet
+        from cryptography.fernet import Fernet, MultiFernet
     except ImportError as exc:  # pragma: no cover - cryptography is a core dependency
         raise ConnectionSecretError("cryptography is required for connection secret encryption.") from exc
+    keys = _split_keys(_load_key())
+    if not keys:
+        raise ConnectionSecretError("No connection encryption key is configured; refusing to operate on plaintext.")
     try:
-        return Fernet(_load_key())
+        fernets = [Fernet(key) for key in keys]
+        return fernets[0] if len(fernets) == 1 else MultiFernet(fernets)
     except ConnectionSecretError:
         raise
     except Exception as exc:  # noqa: BLE001 - malformed key material

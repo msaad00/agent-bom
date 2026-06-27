@@ -471,6 +471,17 @@ async def _lifespan(app_instance: FastAPI):
 
     _scheduler_task = asyncio.create_task(scheduler_loop(_get_schedule_store(), _schedule_scan))
 
+    # ── Cloud-connection scan scheduler (Phase B.2) ──
+    # Opt-in background loop that re-scans due cloud connections so a connection
+    # with an interval keeps evaluating without a manual /scan call. Off unless
+    # AGENT_BOM_CONNECTIONS_SCHEDULER is set, so it never runs in CLI/dev.
+    global _connection_scheduler_task
+    from agent_bom.api.connection_scheduler import connection_scheduler_loop, connections_scheduler_enabled
+
+    if connections_scheduler_enabled():
+        _connection_scheduler_task = asyncio.create_task(connection_scheduler_loop())
+        _logger.info("Cloud-connection scan scheduler enabled")
+
     # ── Distributed scan dispatch ──
     # Start a per-replica claim-loop so queued scans are stolen across the
     # cluster. No-op on single-node / non-Postgres deployments.
@@ -506,6 +517,8 @@ async def _lifespan(app_instance: FastAPI):
             _logger.debug("scan worker stop skipped", exc_info=True)
     if _scheduler_task:
         _scheduler_task.cancel()
+    if _connection_scheduler_task:
+        _connection_scheduler_task.cancel()
     if _cleanup_task:
         _cleanup_task.cancel()
     # Drain in-flight scans. Honor the operator-configured drain budget so the
@@ -853,6 +866,7 @@ from agent_bom.api.routes.scan import _dataclass_to_dict, _sanitize_api_path  # 
 
 _cleanup_task: asyncio.Task | None = None
 _scheduler_task: asyncio.Task | None = None
+_connection_scheduler_task: asyncio.Task | None = None
 # Flipped to True during graceful shutdown so the /readyz probe goes red
 # and upstream load balancers stop sending new traffic while in-flight
 # requests complete under the drain budget.

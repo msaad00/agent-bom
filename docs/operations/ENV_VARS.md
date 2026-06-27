@@ -38,6 +38,9 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_API_SCAN_WORKERS` | `int` | `min(4, os.cpu_count() or 2)` | — |
 | `AGENT_BOM_API_SCAN_WORKER_RECYCLE_JOBS` | `int` | `10` | — |
 | `AGENT_BOM_BODY_MIN_BPS` | `int` | `256` | Slowloris throughput floor (audit-5 PR-C): minimum sustained body bytes/second once a request body crosses the warmup threshold inside MaxBodySizeMiddleware. 0 disables the floor entirely (escape hatch for legitimate slow clients in restric |
+| `AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY` | `int` | `4` | — |
+| `AGENT_BOM_CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES` | `int` | `15` | — |
+| `AGENT_BOM_CONNECTIONS_SCHEDULER_POLL_SECONDS` | `int` | `60` | Cloud-connection scan scheduler (Phase B.2). The background loop re-scans cloud connections that carry an interval, so "connect once, keeps evaluating" is automatic. Disabled by default (AGENT_BOM_CONNECTIONS_SCHEDULER, read live) so it nev |
 
 ## Agent-to-Agent (A2A) auth posture
 | Env var | Type | Default | Description |

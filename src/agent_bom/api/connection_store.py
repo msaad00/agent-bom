@@ -18,7 +18,7 @@ import json
 import sqlite3
 import threading
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
@@ -56,6 +56,7 @@ class CloudConnectionRecord:
     created_at: str = ""
     updated_at: str = ""
     last_scan_at: str | None = None
+    scan_interval_minutes: int | None = None
 
     def to_public_dict(self) -> dict[str, Any]:
         """Non-secret representation for API responses.
@@ -79,6 +80,8 @@ class ConnectionStore(Protocol):
     def get(self, tenant_id: str, connection_id: str) -> CloudConnectionRecord | None: ...
     def list_for_tenant(self, tenant_id: str) -> list[CloudConnectionRecord]: ...
     def delete(self, tenant_id: str, connection_id: str) -> bool: ...
+    def list_schedulable(self) -> list[CloudConnectionRecord]: ...
+    def claim_due_scan(self, record: CloudConnectionRecord, claimed_at: str) -> bool: ...
 
 
 # ── Portable schema seam ──────────────────────────────────────────────────────
@@ -104,6 +107,7 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                 "created_at",
                 "updated_at",
                 "last_scan_at",
+                "scan_interval_minutes",
             ),
             ddl_by_backend={
                 "sqlite": (
@@ -112,7 +116,7 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "role_ref TEXT NOT NULL, external_id_encrypted TEXT NOT NULL DEFAULT '', "
                     "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', "
                     "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
-                    "updated_at TEXT NOT NULL, last_scan_at TEXT)"
+                    "updated_at TEXT NOT NULL, last_scan_at TEXT, scan_interval_minutes INTEGER)"
                 ),
                 "postgres": (
                     "CREATE TABLE IF NOT EXISTS cloud_connections (id TEXT PRIMARY KEY, "
@@ -120,7 +124,7 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "role_ref TEXT NOT NULL, external_id_encrypted TEXT NOT NULL DEFAULT '', "
                     "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', "
                     "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
-                    "updated_at TEXT NOT NULL, last_scan_at TEXT)"
+                    "updated_at TEXT NOT NULL, last_scan_at TEXT, scan_interval_minutes INTEGER)"
                 ),
             },
         ),
@@ -141,6 +145,16 @@ def _decode_regions(raw: Any) -> list[str]:
     return [str(item) for item in parsed]
 
 
+def _decode_interval(raw: Any) -> int | None:
+    """Parse a stored ``scan_interval_minutes`` value into an int (tolerant)."""
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return None
+
+
 def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
     """Map a ``cloud_connections`` row tuple to a record (shared by backends)."""
     return CloudConnectionRecord(
@@ -156,7 +170,18 @@ def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
         created_at=row[9] or "",
         updated_at=row[10] or "",
         last_scan_at=row[11] if len(row) > 11 else None,
+        scan_interval_minutes=_decode_interval(row[12]) if len(row) > 12 else None,
     )
+
+
+def _copy_record(record: CloudConnectionRecord) -> CloudConnectionRecord:
+    """Return an independent copy so callers cannot mutate stored state in place.
+
+    Mirrors the durable backends, which deserialize a fresh object on every read.
+    Without this the in-memory store would hand out the live reference and the
+    compare-and-swap claim could never observe a concurrent change.
+    """
+    return replace(record, regions=list(record.regions))
 
 
 class InMemoryConnectionStore:
@@ -171,18 +196,18 @@ class InMemoryConnectionStore:
 
     def put(self, record: CloudConnectionRecord) -> None:
         with self._lock:
-            self._rows[record.id] = record
+            self._rows[record.id] = _copy_record(record)
 
     def get(self, tenant_id: str, connection_id: str) -> CloudConnectionRecord | None:
         with self._lock:
             record = self._rows.get(connection_id)
-        if record is None or record.tenant_id != tenant_id:
-            return None
-        return record
+            if record is None or record.tenant_id != tenant_id:
+                return None
+            return _copy_record(record)
 
     def list_for_tenant(self, tenant_id: str) -> list[CloudConnectionRecord]:
         with self._lock:
-            records = [r for r in self._rows.values() if r.tenant_id == tenant_id]
+            records = [_copy_record(r) for r in self._rows.values() if r.tenant_id == tenant_id]
         return sorted(records, key=lambda r: (r.created_at, r.id))
 
     def delete(self, tenant_id: str, connection_id: str) -> bool:
@@ -192,6 +217,28 @@ class InMemoryConnectionStore:
                 return False
             del self._rows[connection_id]
             return True
+
+    def list_schedulable(self) -> list[CloudConnectionRecord]:
+        with self._lock:
+            return [_copy_record(r) for r in self._rows.values() if r.scan_interval_minutes is not None]
+
+    def claim_due_scan(self, record: CloudConnectionRecord, claimed_at: str) -> bool:
+        """Atomically claim a due scan, gated on the last-seen ``last_scan_at``.
+
+        Returns True only if the stored row still carries the ``last_scan_at``
+        the caller observed — a compare-and-swap so exactly one replica wins a
+        given due scan even when several poll the same connection concurrently.
+        """
+        with self._lock:
+            current = self._rows.get(record.id)
+            if current is None or current.tenant_id != record.tenant_id:
+                return False
+            if current.last_scan_at != record.last_scan_at:
+                return False
+            current.last_scan_at = claimed_at
+            current.updated_at = claimed_at
+        record.last_scan_at = claimed_at
+        return True
 
 
 class SQLiteConnectionStore:
@@ -218,7 +265,13 @@ class SQLiteConnectionStore:
         ddl = CONNECTION_STORAGE_SCHEMA.tables[0].ddl_for("sqlite")
         if ddl:
             self._conn.execute(ddl)
+        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(cloud_connections)").fetchall()}
+        if "scan_interval_minutes" not in columns:
+            self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN scan_interval_minutes INTEGER")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
+        )
         self._conn.commit()
 
     def put(self, record: CloudConnectionRecord) -> None:
@@ -226,8 +279,9 @@ class SQLiteConnectionStore:
             """
             INSERT OR REPLACE INTO cloud_connections
                 (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
-                 regions, status, status_detail, created_at, updated_at, last_scan_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 regions, status, status_detail, created_at, updated_at, last_scan_at,
+                 scan_interval_minutes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.id,
@@ -242,6 +296,7 @@ class SQLiteConnectionStore:
                 record.created_at,
                 record.updated_at,
                 record.last_scan_at,
+                record.scan_interval_minutes,
             ),
         )
         self._conn.commit()
@@ -249,7 +304,7 @@ class SQLiteConnectionStore:
     def get(self, tenant_id: str, connection_id: str) -> CloudConnectionRecord | None:
         row = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-            "regions, status, status_detail, created_at, updated_at, last_scan_at "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes "
             "FROM cloud_connections WHERE tenant_id = ? AND id = ?",
             (tenant_id, connection_id),
         ).fetchone()
@@ -258,7 +313,7 @@ class SQLiteConnectionStore:
     def list_for_tenant(self, tenant_id: str) -> list[CloudConnectionRecord]:
         rows = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-            "regions, status, status_detail, created_at, updated_at, last_scan_at "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes "
             "FROM cloud_connections WHERE tenant_id = ? ORDER BY created_at, id",
             (tenant_id,),
         ).fetchall()
@@ -271,6 +326,38 @@ class SQLiteConnectionStore:
         )
         self._conn.commit()
         return cursor.rowcount > 0
+
+    def list_schedulable(self) -> list[CloudConnectionRecord]:
+        rows = self._conn.execute(
+            "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes "
+            "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
+        ).fetchall()
+        return [_row_to_record(row) for row in rows]
+
+    def claim_due_scan(self, record: CloudConnectionRecord, claimed_at: str) -> bool:
+        """Atomically claim a due scan via a compare-and-swap on ``last_scan_at``.
+
+        The conditional UPDATE only matches while the stored ``last_scan_at``
+        equals the value the caller observed, so two replicas racing the same
+        due connection cannot both win — the loser's WHERE no longer matches
+        after the winner commits the new claim timestamp.
+        """
+        if record.last_scan_at is None:
+            cursor = self._conn.execute(
+                "UPDATE cloud_connections SET last_scan_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND last_scan_at IS NULL",
+                (claimed_at, claimed_at, record.id, record.tenant_id),
+            )
+        else:
+            cursor = self._conn.execute(
+                "UPDATE cloud_connections SET last_scan_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND last_scan_at = ?",
+                (claimed_at, claimed_at, record.id, record.tenant_id, record.last_scan_at),
+            )
+        self._conn.commit()
+        won = cursor.rowcount == 1
+        if won:
+            record.last_scan_at = claimed_at
+        return won
 
 
 _CONNECTION_STORE: ConnectionStore | None = None

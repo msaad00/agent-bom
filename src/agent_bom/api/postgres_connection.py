@@ -12,7 +12,13 @@ from __future__ import annotations
 import json
 
 from agent_bom.api.connection_store import CloudConnectionRecord, _row_to_record
-from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.postgres_common import (
+    ConnectionPool,
+    _ensure_tenant_rls,
+    _get_pool,
+    _tenant_connection,
+    bypass_tenant_rls,
+)
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
@@ -42,10 +48,15 @@ class PostgresConnectionStore:
                     status_detail         TEXT NOT NULL DEFAULT '',
                     created_at            TEXT NOT NULL,
                     updated_at            TEXT NOT NULL,
-                    last_scan_at          TEXT
+                    last_scan_at          TEXT,
+                    scan_interval_minutes INTEGER
                 )
             """)
+            conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS scan_interval_minutes INTEGER")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
+            )
             _ensure_tenant_rls(conn, "cloud_connections", "tenant_id")
             conn.commit()
 
@@ -55,8 +66,9 @@ class PostgresConnectionStore:
                 """
                 INSERT INTO cloud_connections
                     (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
-                     regions, status, status_detail, created_at, updated_at, last_scan_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     regions, status, status_detail, created_at, updated_at, last_scan_at,
+                     scan_interval_minutes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     provider = EXCLUDED.provider,
                     display_name = EXCLUDED.display_name,
@@ -66,7 +78,8 @@ class PostgresConnectionStore:
                     status = EXCLUDED.status,
                     status_detail = EXCLUDED.status_detail,
                     updated_at = EXCLUDED.updated_at,
-                    last_scan_at = EXCLUDED.last_scan_at
+                    last_scan_at = EXCLUDED.last_scan_at,
+                    scan_interval_minutes = EXCLUDED.scan_interval_minutes
                 """,
                 (
                     record.id,
@@ -81,6 +94,7 @@ class PostgresConnectionStore:
                     record.created_at,
                     record.updated_at,
                     record.last_scan_at,
+                    record.scan_interval_minutes,
                 ),
             )
             conn.commit()
@@ -89,7 +103,7 @@ class PostgresConnectionStore:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-                "regions, status, status_detail, created_at, updated_at, last_scan_at "
+                "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes "
                 "FROM cloud_connections WHERE tenant_id = %s AND id = %s",
                 (tenant_id, connection_id),
             ).fetchone()
@@ -99,7 +113,7 @@ class PostgresConnectionStore:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-                "regions, status, status_detail, created_at, updated_at, last_scan_at "
+                "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes "
                 "FROM cloud_connections WHERE tenant_id = %s ORDER BY created_at, id",
                 (tenant_id,),
             ).fetchall()
@@ -113,3 +127,47 @@ class PostgresConnectionStore:
             )
             conn.commit()
             return bool(cursor.rowcount > 0)
+
+    def list_schedulable(self) -> list[CloudConnectionRecord]:
+        """Cross-tenant fetch of connections with an interval set (scheduler use).
+
+        Runs with tenant RLS bypassed because the background scheduler is a
+        trusted internal task that must see every tenant's schedulable
+        connections; tenant identity is preserved on each returned record.
+        """
+        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
+                "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes "
+                "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
+            ).fetchall()
+        return [_row_to_record(row) for row in rows]
+
+    def claim_due_scan(self, record: CloudConnectionRecord, claimed_at: str) -> bool:
+        """Atomically claim a due scan via a compare-and-swap on ``last_scan_at``.
+
+        The conditional UPDATE only matches while the stored ``last_scan_at``
+        equals the value the caller observed. Postgres row locking serializes
+        two replicas racing the same due connection: the first to commit
+        advances ``last_scan_at`` so the second's WHERE no longer matches and it
+        loses the claim. Runs RLS-bypassed (trusted scheduler) with the explicit
+        tenant id retained in the predicate.
+        """
+        with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
+            if record.last_scan_at is None:
+                cursor = conn.execute(
+                    "UPDATE cloud_connections SET last_scan_at = %s, updated_at = %s "
+                    "WHERE id = %s AND tenant_id = %s AND last_scan_at IS NULL",
+                    (claimed_at, claimed_at, record.id, record.tenant_id),
+                )
+            else:
+                cursor = conn.execute(
+                    "UPDATE cloud_connections SET last_scan_at = %s, updated_at = %s "
+                    "WHERE id = %s AND tenant_id = %s AND last_scan_at = %s",
+                    (claimed_at, claimed_at, record.id, record.tenant_id, record.last_scan_at),
+                )
+            conn.commit()
+        won = bool(cursor.rowcount == 1)
+        if won:
+            record.last_scan_at = claimed_at
+        return won

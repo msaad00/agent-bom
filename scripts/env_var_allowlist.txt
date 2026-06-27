@@ -80,6 +80,8 @@ AGENT_BOM_CONNECTIONS_KEY
 AGENT_BOM_CONNECTIONS_KEY_PROVIDER
 # Reference (not a secret value) to the managed connection key: the Secrets Manager secret id/ARN for provider=aws-secrets; resolved read-only at key-load time.
 AGENT_BOM_CONNECTIONS_KEY_REF
+# opt-in flag (default OFF) enabling the background loop that re-scans due cloud connections (Phase B.2); read live in api/connection_scheduler.py
+AGENT_BOM_CONNECTIONS_SCHEDULER
 # CLI profile config path override; read at command invocation time.
 AGENT_BOM_CONFIG
 AGENT_BOM_COMPLIANCE_BUNDLE_TTL_SECONDS

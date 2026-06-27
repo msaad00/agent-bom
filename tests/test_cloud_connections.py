@@ -413,6 +413,72 @@ def test_api_missing_key_fails_closed_503() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# API: recurring scan schedule (scan_interval_minutes) — Phase B.2
+# --------------------------------------------------------------------------- #
+
+
+def test_api_create_default_interval_is_manual_only() -> None:
+    client = TestClient(_app())
+    created = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers()).json()
+    assert created["scan_interval_minutes"] is None
+
+
+def test_api_create_with_interval_persists() -> None:
+    client = TestClient(_app())
+    body = _create_body()
+    body["scan_interval_minutes"] = 60
+    created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers()).json()
+    assert created["scan_interval_minutes"] == 60
+
+
+def test_api_create_rejects_interval_below_minimum() -> None:
+    client = TestClient(_app())
+    body = _create_body()
+    body["scan_interval_minutes"] = 5
+    resp = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers())
+    assert resp.status_code == 400
+
+
+def test_api_patch_sets_and_clears_interval() -> None:
+    client = TestClient(_app())
+    cid = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers()).json()["id"]
+
+    set_resp = client.patch(
+        f"/v1/cloud/connections/{cid}",
+        json={"scan_interval_minutes": 120},
+        headers=_proxy_headers(),
+    )
+    assert set_resp.status_code == 200
+    assert set_resp.json()["scan_interval_minutes"] == 120
+
+    clear_resp = client.patch(
+        f"/v1/cloud/connections/{cid}",
+        json={"scan_interval_minutes": None},
+        headers=_proxy_headers(),
+    )
+    assert clear_resp.status_code == 200
+    assert clear_resp.json()["scan_interval_minutes"] is None
+
+
+def test_api_patch_rejects_interval_below_minimum() -> None:
+    client = TestClient(_app())
+    cid = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers()).json()["id"]
+    resp = client.patch(f"/v1/cloud/connections/{cid}", json={"scan_interval_minutes": 1}, headers=_proxy_headers())
+    assert resp.status_code == 400
+
+
+def test_api_patch_requires_scan_permission() -> None:
+    client = TestClient(_app())
+    cid = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers()).json()["id"]
+    resp = client.patch(
+        f"/v1/cloud/connections/{cid}",
+        json={"scan_interval_minutes": 60},
+        headers=_proxy_headers(role="viewer"),
+    )
+    assert resp.status_code == 403
+
+
+# --------------------------------------------------------------------------- #
 # Broker: AWS AssumeRole with the decrypted ExternalId; non-AWS planned
 # --------------------------------------------------------------------------- #
 

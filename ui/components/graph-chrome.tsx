@@ -5,7 +5,7 @@
  * Used across all graph views for consistent UX.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import {
   Boxes,
   Bug,
@@ -81,17 +81,16 @@ export function GraphLegend({
   defaultOpen?: boolean;
   embedded?: boolean;
 }) {
+  // ``defaultOpen`` seeds the initial state only; the toggle then fully controls
+  // visibility. (Previously ``visible = open || defaultOpen`` plus an effect that
+  // re-forced open made the Hide button inert whenever ``defaultOpen`` was set.)
   const [open, setOpen] = useState(defaultOpen);
-
-  useEffect(() => {
-    if (defaultOpen) setOpen(true);
-  }, [defaultOpen]);
 
   if (items.length === 0) return null;
 
   const nodeItems = items.filter((item) => item.kind !== "edge");
   const edgeItems = items.filter((item) => item.kind === "edge");
-  const visible = open || defaultOpen || embedded;
+  const visible = embedded || open;
 
   return (
     <div className="relative">

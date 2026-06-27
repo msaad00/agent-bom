@@ -1925,7 +1925,7 @@ function GraphPageInner() {
               {/* Dock legend on the canvas itself so node-color -> entity-type
                   is one glance away. */}
               <Panel position="top-right" className="!m-2">
-                <GraphLegend items={legendItems} defaultOpen={captureMode} />
+                <GraphLegend items={legendItems} />
               </Panel>
             </ReactFlow>
           )}

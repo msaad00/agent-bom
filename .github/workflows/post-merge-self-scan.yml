@@ -126,34 +126,32 @@ jobs:
               print(f"... {len(findings) - 20} additional findings omitted from log")
           PY
 
-      - name: Upload dep scan SARIF
-        if: always() && hashFiles('sarif/self-dep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
-        with:
-          sarif_file: sarif/self-dep.sarif
-          category: agent-bom-self-dep
-
-      - name: Prepare legacy scheduled SARIF category
+      - name: Align dep scan SARIF category
         if: always() && hashFiles('sarif/self-dep.sarif') != ''
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          source = Path("sarif/self-dep.sarif")
-          target = Path("sarif/self-dep-scheduled.sarif")
-          data = json.loads(source.read_text())
+          # agent-bom's SARIF formatter pre-sets runs[].automationDetails.id to
+          # "agent-bom/<scan_id>". github/codeql-action/upload-sarif only injects
+          # its `category` input when automationDetails is absent, so the pre-set
+          # id wins and GitHub derives the category from it (the part before the
+          # final "/", i.e. "agent-bom") instead of the intended
+          # "agent-bom-self-dep". Drop it so the upload `category` below applies.
+          path = Path("sarif/self-dep.sarif")
+          data = json.loads(path.read_text())
           for run in data.get("runs", []):
-              run.setdefault("automationDetails", {})["id"] = "agent-bom-scheduled"
-          target.write_text(json.dumps(data, indent=2) + "\n")
+              run.pop("automationDetails", None)
+          path.write_text(json.dumps(data, indent=2) + "\n")
           PY
 
-      - name: Refresh legacy scheduled SARIF category
-        if: always() && hashFiles('sarif/self-dep-scheduled.sarif') != ''
+      - name: Upload dep scan SARIF
+        if: always() && hashFiles('sarif/self-dep.sarif') != ''
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         with:
-          sarif_file: sarif/self-dep-scheduled.sarif
-          category: agent-bom-scheduled
+          sarif_file: sarif/self-dep.sarif
+          category: agent-bom-self-dep
 
       - name: Fail on critical (optional, only when explicitly requested)
         if: inputs.fail_on_critical == true

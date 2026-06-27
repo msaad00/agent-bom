@@ -512,7 +512,7 @@ export default function ContextPage() {
           </div>
 
           <FullscreenButton />
-          <GraphLegend items={legendItems} defaultOpen={captureMode} />
+          <GraphLegend items={legendItems} />
         </div>
       </div>
 

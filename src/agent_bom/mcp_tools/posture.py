@@ -125,6 +125,14 @@ async def nhi_discover_impl(
 
 _INVENTORY_RESOURCE_KEYS = ("buckets", "instances", "security_groups")
 _INVENTORY_IDENTITY_KEYS = ("roles", "users")
+_PUBLIC_INVENTORY_STATUSES = {
+    "ok",
+    "unknown",
+    "disabled",
+    "boto3_missing",
+    "no_credentials",
+    "partial",
+}
 
 
 def _summarize_inventory_payload(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -144,9 +152,11 @@ def _summarize_inventory_payload(provider: str, payload: dict[str, Any]) -> dict
     # exception-free notice instead; full warnings stay in the server log.
     warning_count = len(payload.get("warnings") or [])
     public_warnings = [f"{warning_count} provider discovery warning(s) — see server logs for detail."] if warning_count else []
+    raw_status = str(payload.get("status", "unknown") or "unknown").strip().lower()
+    public_status = raw_status if raw_status in _PUBLIC_INVENTORY_STATUSES else "unknown"
     return {
         "provider": provider,
-        "status": payload.get("status", "unknown"),
+        "status": public_status,
         "account": payload.get("account_id") or payload.get("subscription_id") or payload.get("project_id") or None,
         "region": payload.get("region") or "",
         "resource_count": resource_count,

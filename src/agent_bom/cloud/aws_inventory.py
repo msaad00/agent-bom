@@ -656,6 +656,7 @@ def discover_inventory(
     include_compute: bool = True,
     include_network: bool = True,
     force: bool = False,
+    session: Any = None,
 ) -> dict[str, Any]:
     """Enumerate the general AWS estate (S3, EC2 + security groups, IAM).
 
@@ -669,6 +670,11 @@ def discover_inventory(
     - ``"boto3_missing"``   — boto3 is not installed.
     - ``"no_credentials"``  — no AWS credentials resolved.
     - ``"ok"``              — enumeration ran (possibly with per-service warnings).
+
+    When ``session`` is supplied (e.g. the read-only session the credential
+    broker assumes from a stored connection), it is used as-is and the
+    ``region`` / ``profile`` arguments are ignored — the same read-only code path
+    runs against the brokered credentials instead of the local default chain.
 
     Never raises: boto3 absence, missing credentials, and per-service access
     denials all degrade to an empty (or partial) inventory plus warnings.
@@ -688,16 +694,17 @@ def discover_inventory(
             "warnings": ["boto3 is required for AWS inventory. Install with: pip install 'agent-bom[aws]'"],
         }
 
-    session_kwargs: dict[str, Any] = {}
-    if region:
-        session_kwargs["region_name"] = region
-    if profile:
-        session_kwargs["profile_name"] = profile
+    if session is None:
+        session_kwargs: dict[str, Any] = {}
+        if region:
+            session_kwargs["region_name"] = region
+        if profile:
+            session_kwargs["profile_name"] = profile
 
-    try:
-        session = boto3.Session(**session_kwargs)
-    except Exception as exc:  # noqa: BLE001 — boto profile/config errors must not crash a scan
-        return {**empty, "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
+        try:
+            session = boto3.Session(**session_kwargs)
+        except Exception as exc:  # noqa: BLE001 — boto profile/config errors must not crash a scan
+            return {**empty, "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
 
     resolved_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
     account_id = _resolve_account_id(session)

@@ -138,6 +138,12 @@ def _summarize_inventory_payload(provider: str, payload: dict[str, Any]) -> dict
     normalized = _normalize_cloud_inventory(payload)
     resource_count = sum(len(normalized.get(key) or []) for key in _INVENTORY_RESOURCE_KEYS)
     identity_count = sum(len(normalized.get(key) or []) for key in _INVENTORY_IDENTITY_KEYS)
+    # Provider discovery warnings are built from caught exceptions
+    # (``sanitize_discovery_warning(exc)``), so they must not be surfaced verbatim
+    # in a summary that flows to REST/MCP responses. Emit a count-derived,
+    # exception-free notice instead; full warnings stay in the server log.
+    warning_count = len(payload.get("warnings") or [])
+    public_warnings = [f"{warning_count} provider discovery warning(s) — see server logs for detail."] if warning_count else []
     return {
         "provider": provider,
         "status": payload.get("status", "unknown"),
@@ -152,7 +158,7 @@ def _summarize_inventory_payload(provider: str, payload: dict[str, Any]) -> dict
             "roles": len(normalized.get("roles") or []),
             "users": len(normalized.get("users") or []),
         },
-        "warnings": list(payload.get("warnings") or []),
+        "warnings": public_warnings,
     }
 
 

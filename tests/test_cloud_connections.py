@@ -488,3 +488,22 @@ def test_scan_non_aws_provider_returns_planned(provider: str, monkeypatch: pytes
     # The connection was not touched (still pending, no scan).
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
     assert fetched["status"] == STATUS_PENDING
+
+
+def test_summarize_inventory_payload_redacts_raw_warnings() -> None:
+    """Inventory summary must not echo exception-derived warnings (py/stack-trace-exposure)."""
+    from agent_bom.mcp_tools.posture import _summarize_inventory_payload
+
+    payload = {
+        "status": "ok",
+        "account_id": "030225640638",
+        "warnings": [
+            "Could not list roles: Traceback (most recent call last): RuntimeError boom",
+            "AccessDenied: arn:aws:iam::...:user/x — assume failed: <stack>",
+        ],
+    }
+    summary = _summarize_inventory_payload("aws", payload)
+    warnings = summary["warnings"]
+    assert warnings == ["2 provider discovery warning(s) — see server logs for detail."]
+    blob = " ".join(warnings)
+    assert "Traceback" not in blob and "AccessDenied" not in blob and "arn:aws:iam" not in blob

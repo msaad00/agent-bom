@@ -2315,6 +2315,7 @@ def _normalize_azure_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
         instances.append({**vm, "_service": "compute", "_kind": "azure-vm", "_label": "vm"})
     principals = [p for p in inventory.get("managed_identities", []) or [] if isinstance(p, dict)]
     principals.extend(p for p in inventory.get("service_principals", []) or [] if isinstance(p, dict))
+    identity_groups = [g for g in inventory.get("entra_groups", []) or [] if isinstance(g, dict)]
     return {
         **inventory,
         "buckets": buckets,
@@ -2322,6 +2323,7 @@ def _normalize_azure_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
         "instances": instances,
         "roles": [],
         "users": principals,
+        "groups": identity_groups,
     }
 
 
@@ -2344,6 +2346,7 @@ def _normalize_gcp_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
             continue
         instances.append({**instance, "_service": "compute", "_kind": "gce-instance", "_label": "gce"})
     principals = [p for p in inventory.get("service_accounts", []) or [] if isinstance(p, dict)]
+    identity_groups = [g for g in inventory.get("groups", []) or [] if isinstance(g, dict)]
     return {
         **inventory,
         "buckets": buckets,
@@ -2351,6 +2354,7 @@ def _normalize_gcp_inventory(inventory: dict[str, Any]) -> dict[str, Any]:
         "instances": instances,
         "roles": [],
         "users": principals,
+        "groups": identity_groups,
     }
 
 
@@ -3720,7 +3724,7 @@ _RBAC_PRINCIPAL_ENTITY = {
     "serviceprincipal": EntityType.SERVICE_PRINCIPAL,
     "service_principal": EntityType.SERVICE_PRINCIPAL,
     "user": EntityType.USER,
-    "group": EntityType.SERVICE_ACCOUNT,
+    "group": EntityType.GROUP,
     "managedidentity": EntityType.MANAGED_IDENTITY,
     "managed_identity": EntityType.MANAGED_IDENTITY,
 }
@@ -4036,6 +4040,16 @@ def _add_cloud_role_assignments(graph: UnifiedGraph, inventory: Any, data_source
             if arm:
                 resource_by_arm[arm.lower()] = node.id
 
+    # Index group → member principals from the MEMBER_OF edges the inventory pass
+    # already added (it runs before this one). A role granted to a group reaches
+    # every member, so a group-scoped assignment is expanded to its members.
+    group_members: dict[str, list[str]] = defaultdict(list)
+    for edge in graph.edges:
+        if edge.relationship == RelationshipType.MEMBER_OF:
+            target = graph.nodes.get(edge.target)
+            if target is not None and target.entity_type == EntityType.GROUP:
+                group_members[edge.target].append(edge.source)
+
     def _scope_target(scope: str) -> str:
         s = scope.rstrip("/")
         low = s.lower()
@@ -4109,20 +4123,41 @@ def _add_cloud_role_assignments(graph: UnifiedGraph, inventory: Any, data_source
             )
         )
         roles = entry["roles"]
+        scope_target = _scope_target(scope)
+        privileged = any(r.lower() in _RBAC_PRIVILEGED_ROLES for r in roles)
         graph.add_edge(
             UnifiedEdge(
                 source=principal_node_id,
-                target=_scope_target(scope),
+                target=scope_target,
                 relationship=RelationshipType.HAS_PERMISSION,
                 evidence={
                     "source": "cloud-rbac",
                     "roles": roles,
                     "role": roles[0] if roles else "",
-                    "privileged": any(r.lower() in _RBAC_PRIVILEGED_ROLES for r in roles),
+                    "privileged": privileged,
                     "scope": scope,
                 },
             )
         )
+        # A role granted to a group reaches every member: expand the assignment to
+        # each member principal so group-granted RBAC access is not invisible.
+        if entity == EntityType.GROUP:
+            for member_node_id in group_members.get(principal_node_id, []):
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=member_node_id,
+                        target=scope_target,
+                        relationship=RelationshipType.HAS_PERMISSION,
+                        evidence={
+                            "source": "cloud-rbac",
+                            "roles": roles,
+                            "role": roles[0] if roles else "",
+                            "privileged": privileged,
+                            "scope": scope,
+                            "via_group": principal_id,
+                        },
+                    )
+                )
 
 
 def _gcp_firewall_applies(firewall_attrs: dict[str, Any], instance: dict[str, Any]) -> bool:
@@ -4574,6 +4609,18 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                 graph, principal, provider=provider, account_node_id=account_node_id, resource_ids=resource_ids, data_sources=data_sources
             )
 
+    # ── IAM / Entra groups → GROUP nodes + MEMBER_OF edges from members ──
+    # A group carries its members' shared access (its attached policies / bound
+    # roles). Wiring the group as a principal with CAN_ACCESS, plus MEMBER_OF
+    # edges from each member, lets the effective-permissions overlay attribute
+    # group-granted access to the member — group-based access is one of the most
+    # common privilege paths and was invisible before.
+    for group in inventory.get("groups", []) or []:
+        if isinstance(group, dict):
+            _add_inventory_group(
+                graph, group, provider=provider, account_node_id=account_node_id, resource_ids=resource_ids, data_sources=data_sources
+            )
+
 
 def _add_management_group_hierarchy(graph: UnifiedGraph, inventory: dict[str, Any], *, provider: str, data_sources: list[str]) -> None:
     """Build the management-group → subscription hierarchy as ORG nodes + CONTAINS edges.
@@ -4871,6 +4918,113 @@ def _add_inventory_principal(
                     evidence={"source": "cloud-inventory", "basis": f"{privilege}_privilege"},
                 )
             )
+
+
+def _add_inventory_group(
+    graph: UnifiedGraph,
+    group: dict[str, Any],
+    *,
+    provider: str,
+    account_node_id: str,
+    resource_ids: list[str],
+    data_sources: list[str],
+) -> None:
+    """Emit one IAM/Entra group as a ``GROUP`` node with policies + membership.
+
+    The group node carries its attached/bound policies (``ATTACHED``) and, when
+    it is admin/write-privileged, a ``CAN_ACCESS`` edge to each inventoried
+    resource — the same baseline the effective-permissions overlay applies to a
+    user/role. ``MEMBER_OF`` edges run from each member principal to the group so
+    the overlay attributes group-granted access to the member. Members are created
+    as thin nodes when a per-principal scan has not already added them.
+    """
+    group_id = _clean_graph_part(group.get("arn")) or _clean_graph_part(group.get("name"))
+    if not group_id:
+        return
+    group_name = _clean_graph_part(group.get("name")) or group_id
+    group_node_id = _identity_node_id(EntityType.GROUP, provider, group_id)
+    privilege = _clean_graph_part(group.get("privilege_level")) or "unknown"
+    graph.add_node(
+        UnifiedNode(
+            id=group_node_id,
+            entity_type=EntityType.GROUP,
+            label=group_name,
+            attributes={
+                "principal_id": group_id,
+                "principal_name": group_name,
+                "principal_type": "group",
+                "cloud_provider": provider,
+                "privilege_level": privilege,
+                "iam_path": _clean_graph_part(group.get("path")),
+                "source": "cloud-inventory",
+            },
+            data_sources=data_sources,
+            dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+        )
+    )
+    if account_node_id:
+        _add_rel_edge(
+            graph, group_node_id, account_node_id, RelationshipType.MEMBER_OF, {"source": "cloud-inventory", "principal_type": "group"}
+        )
+
+    # Group-attached policies (privilege already classified by the scanner).
+    for policy in _policy_entries(group):
+        policy_node_id = _add_identity_node(
+            graph,
+            EntityType.POLICY,
+            policy["id"],
+            provider,
+            data_sources,
+            label=policy["name"],
+            policy_id=policy["id"],
+            policy_name=policy["name"],
+            privilege_level=policy.get("privilege_level", "unknown"),
+            cloud_provider=provider,
+        )
+        _add_rel_edge(
+            graph, group_node_id, policy_node_id, RelationshipType.ATTACHED, {"source": "cloud-inventory", "principal_type": "group"}
+        )
+
+    # Admin/write group → baseline same-account CAN_ACCESS, so the overlay can
+    # inherit it to members via MEMBER_OF (mirrors the user/role baseline).
+    if privilege in ("admin", "write"):
+        for resource_id in resource_ids:
+            _add_rel_edge(
+                graph,
+                group_node_id,
+                resource_id,
+                RelationshipType.CAN_ACCESS,
+                {"source": "cloud-inventory", "basis": f"{privilege}_privilege"},
+            )
+
+    # Members → MEMBER_OF the group. Each member may be a user / service principal
+    # / nested group; create a thin node when the member was not separately
+    # inventoried so the membership edge always lands on a real node.
+    for member in group.get("members", []) or []:
+        if not isinstance(member, dict):
+            continue
+        member_id = _clean_graph_part(member.get("id"))
+        if not member_id:
+            continue
+        member_entity = _identity_entity_type(_clean_graph_part(member.get("type")) or "user")
+        member_node_id = _identity_node_id(member_entity, provider, member_id)
+        if member_node_id not in graph.nodes:
+            _add_identity_node(
+                graph,
+                member_entity,
+                member_id,
+                provider,
+                data_sources,
+                label=_clean_graph_part(member.get("name")) or member_id,
+                principal_id=member_id,
+                principal_name=_clean_graph_part(member.get("name")) or member_id,
+                principal_type=_clean_graph_part(member.get("type")) or "user",
+                cloud_provider=provider,
+                source="cloud-inventory",
+            )
+        _add_rel_edge(
+            graph, member_node_id, group_node_id, RelationshipType.MEMBER_OF, {"source": "cloud-inventory", "membership": "group"}
+        )
 
 
 def _add_cross_env_correlation(

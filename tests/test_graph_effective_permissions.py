@@ -82,3 +82,35 @@ def test_escalation_to_admin_role_is_higher_risk():
     assert g.nodes["user:dev"].attributes.get("escalates_to_admin") is True
     esc = [r for r in g.interaction_risks if r.pattern == "privilege_escalation"]
     assert esc and esc[0].risk_score == 9.0 and "admin-privileged" in esc[0].description
+
+
+def test_group_membership_inherits_access_without_escalation():
+    # A user with no direct access of its own reaches a resource only because the
+    # GROUP it belongs to can access it. The user must surface that effective
+    # permission, marked "group", and NOT be flagged as privilege escalation.
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:alice", entity_type=EntityType.USER, label="alice"))
+    g.add_node(UnifiedNode(id="group:admins", entity_type=EntityType.GROUP, label="admins"))
+    g.add_node(UnifiedNode(id="cloud:bucket", entity_type=EntityType.CLOUD_RESOURCE, label="bucket"))
+    g.add_edge(UnifiedEdge(source="user:alice", target="group:admins", relationship=RelationshipType.MEMBER_OF))
+    g.add_edge(UnifiedEdge(source="group:admins", target="cloud:bucket", relationship=RelationshipType.CAN_ACCESS))
+
+    stats = apply_effective_permissions(g)
+    assert stats["privilege_escalations"] == 0
+    assert _perm(g, "user:alice").get("cloud:bucket") == "group"
+    assert g.nodes["user:alice"].attributes.get("can_escalate_privilege") is None
+
+
+def test_nested_group_membership_is_bounded_and_inherited():
+    # alice → team → org-admins (nested groups); org-admins can access the secret.
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:alice", entity_type=EntityType.USER, label="alice"))
+    g.add_node(UnifiedNode(id="group:team", entity_type=EntityType.GROUP, label="team"))
+    g.add_node(UnifiedNode(id="group:org-admins", entity_type=EntityType.GROUP, label="org-admins"))
+    g.add_node(UnifiedNode(id="data:secret", entity_type=EntityType.DATA_STORE, label="secret"))
+    g.add_edge(UnifiedEdge(source="user:alice", target="group:team", relationship=RelationshipType.MEMBER_OF))
+    g.add_edge(UnifiedEdge(source="group:team", target="group:org-admins", relationship=RelationshipType.MEMBER_OF))
+    g.add_edge(UnifiedEdge(source="group:org-admins", target="data:secret", relationship=RelationshipType.CAN_ACCESS))
+
+    apply_effective_permissions(g)
+    assert _perm(g, "user:alice").get("data:secret") == "group"

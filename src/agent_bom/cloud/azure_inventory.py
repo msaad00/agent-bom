@@ -194,6 +194,7 @@ def discover_inventory(
         "managed_identities": [],
         "role_assignments": [],
         "service_principals": [],
+        "entra_groups": [],
         "key_vaults": [],
         "container_registries": [],
         "databases": [],
@@ -343,6 +344,19 @@ def discover_inventory(
         management_groups, mg_warnings = _discover_management_groups(credential)
         warnings.extend(mg_warnings)
 
+    # Entra (Azure AD) directory read — service principals + groups + memberships.
+    # Tenant-scoped and uses a Microsoft Graph token (not the ARM credential), so
+    # it runs once outside the per-subscription pool. Opt-in + degrades to empty:
+    # the ARM scan above is complete regardless of whether this grant is present.
+    service_principals: list[dict[str, Any]] = []
+    entra_groups: list[dict[str, Any]] = []
+    entra_ran = False
+    if include_identity:
+        entra_missing: list[dict[str, str]] = []
+        service_principals, entra_groups = _discover_entra_directory(warnings=warnings, missing=entra_missing)
+        missing.extend(entra_missing)
+        entra_ran = bool(service_principals or entra_groups or entra_missing)
+
     permissions_used: list[str] = []
     if include_storage:
         permissions_used.extend(_AZURE_STORAGE_PERMISSIONS)
@@ -356,6 +370,11 @@ def discover_inventory(
         permissions_used.extend(_AZURE_NETWORK_PERMISSIONS)
     if include_hierarchy:
         permissions_used.append("Microsoft.Management/managementGroups/read")
+    if entra_ran:
+        # Additional read-only Microsoft Graph grant beyond the ARM Reader role.
+        from agent_bom.identity.entra_nhi import ENTRA_READ_PERMISSIONS
+
+        permissions_used.extend(ENTRA_READ_PERMISSIONS)
 
     envelope = DiscoveryEnvelope(
         scan_mode=ScanMode.CLOUD_READ_ONLY,
@@ -376,7 +395,8 @@ def discover_inventory(
         "security_groups": security_groups,
         "managed_identities": managed_identities,
         "role_assignments": role_assignments,
-        "service_principals": [],
+        "service_principals": service_principals,
+        "entra_groups": entra_groups,
         "key_vaults": key_vaults,
         "container_registries": container_registries,
         "databases": databases,
@@ -875,6 +895,162 @@ def _discover_role_assignments(
             missing=missing,
         )
     return assignments
+
+
+# Microsoft Graph directory-read fan-out caps. A hostile/huge tenant must not be
+# able to make group-membership expansion run unbounded.
+_ENTRA_MAX_GROUPS_EXPANDED = int(os.environ.get("AGENT_BOM_ENTRA_MAX_GROUPS", "500") or "500")
+
+# Map a Microsoft Graph ``@odata.type`` to the canonical principal type the graph
+# builder understands, so a group member resolves to the right node entity.
+_ENTRA_MEMBER_TYPE: dict[str, str] = {
+    "#microsoft.graph.user": "user",
+    "#microsoft.graph.serviceprincipal": "service-principal",
+    "#microsoft.graph.group": "group",
+}
+
+
+def entra_directory_enabled() -> bool:
+    """Whether the opt-in Microsoft Graph directory-read path is enabled.
+
+    Reuses the existing Entra NHI discovery gate (``AGENT_BOM_ENTRA_DISCOVERY``)
+    so service-principal + Entra-group discovery shares one opt-in switch. This
+    needs Microsoft Graph ``Directory.Read.All`` — a read-only grant the ARM
+    ``Reader`` role does NOT include — so it stays default OFF and additive.
+    """
+    from agent_bom.identity import entra_nhi
+
+    return entra_nhi._is_truthy(os.environ.get(entra_nhi._DISCOVERY_FLAG_ENV))
+
+
+def _discover_entra_directory(
+    *,
+    client: Any = None,
+    force: bool = False,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Discover Entra service principals + groups (with members) — opt-in, read-only.
+
+    Returns ``(service_principals, entra_groups)``. A service principal that holds
+    a dangerous role is invisible to RBAC analysis unless it is a node, and a role
+    granted to a group only reaches its members once membership is known — this
+    closes both gaps.
+
+    Permission posture: this calls Microsoft Graph (``servicePrincipals`` /
+    ``groups`` / ``groups/{id}/members``) which requires ``Directory.Read.All``,
+    NOT covered by the ARM ``Reader`` role. It is therefore gated behind the same
+    ``AGENT_BOM_ENTRA_DISCOVERY`` flag (token via ``AGENT_BOM_ENTRA_TOKEN``) as
+    the Entra NHI path and is purely additive. When the gate is off, the token is
+    missing, or the Graph permission is denied, it warns and returns empty so the
+    rest of the ARM scan proceeds unaffected.
+    """
+    from agent_bom.identity import entra_nhi
+
+    gate_on = force or client is not None or entra_directory_enabled()
+    if not gate_on:
+        # Opt-in feature, default OFF: stay silent so a normal ARM-only scan is not
+        # spammed with a note every run. The grant requirement is documented; a
+        # warning is reserved for "enabled but the token/permission is missing".
+        return [], []
+
+    if client is None:
+        token = (os.environ.get(entra_nhi._TOKEN_ENV) or "").strip()
+        if not token:
+            warnings.append(f"Entra directory discovery enabled but {entra_nhi._TOKEN_ENV} is not set; skipping (ARM scan continues).")
+            return [], []
+        try:
+            client = entra_nhi.EntraClient(token)
+        except Exception as exc:  # noqa: BLE001 — client init failure must not sink the scan
+            warnings.append(f"Could not initialise the Microsoft Graph client for directory discovery: {sanitize_discovery_warning(exc)}")
+            return [], []
+
+    service_principals: list[dict[str, Any]] = []
+    entra_groups: list[dict[str, Any]] = []
+
+    try:
+        for sp in client.list_service_principals() or []:
+            if not isinstance(sp, dict):
+                continue
+            sp_id = str(sp.get("id") or "").strip()
+            if not sp_id:
+                continue
+            service_principals.append(
+                {
+                    "principal_type": "service-principal",
+                    "name": str(sp.get("displayName") or sp_id),
+                    "arn": sp_id,
+                    "principal_id": sp_id,
+                    "app_id": str(sp.get("appId") or ""),
+                    "service_principal_type": str(sp.get("servicePrincipalType") or ""),
+                    "policies": [],
+                    "trust_principals": [],
+                    "privilege_level": "unknown",
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — Graph SP listing failure degrades to a warning
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Entra service principals",
+            permission="Directory.Read.All",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
+
+    try:
+        raw_groups = list(client.list_groups() or [])
+    except Exception as exc:  # noqa: BLE001 — Graph group listing failure degrades to a warning
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Entra groups",
+            permission="Directory.Read.All",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
+        raw_groups = []
+
+    expanded = 0
+    for group in raw_groups:
+        if not isinstance(group, dict):
+            continue
+        group_id = str(group.get("id") or "").strip()
+        if not group_id:
+            continue
+        members: list[dict[str, str]] = []
+        if expanded < _ENTRA_MAX_GROUPS_EXPANDED:
+            expanded += 1
+            try:
+                for member in client.list_group_members(group_id) or []:
+                    if not isinstance(member, dict):
+                        continue
+                    member_id = str(member.get("id") or "").strip()
+                    if not member_id:
+                        continue
+                    odata = str(member.get("@odata.type") or "").strip().lower()
+                    members.append(
+                        {
+                            "id": member_id,
+                            "name": str(member.get("displayName") or member_id),
+                            "type": _ENTRA_MEMBER_TYPE.get(odata, "user"),
+                        }
+                    )
+            except Exception as exc:  # noqa: BLE001 — one group's member read must not sink the rest
+                warnings.append(f"Entra group-member read skipped for {group_id}: {sanitize_discovery_warning(exc)}")
+        entra_groups.append(
+            {
+                "principal_type": "group",
+                "name": str(group.get("displayName") or group_id),
+                "arn": group_id,
+                "principal_id": group_id,
+                "members": members,
+                "policies": [],
+                "privilege_level": "unknown",
+            }
+        )
+
+    return service_principals, entra_groups
 
 
 # ---------------------------------------------------------------------------

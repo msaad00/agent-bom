@@ -155,6 +155,31 @@ identity and drift stores onto the inventory so attack paths can traverse
 `agent → managed_identity → access_grant → tool → vulnerable package` and
 `agent ↔ drift_incident → tool`.
 
+`GROUP` and `SERVICE_PRINCIPAL` carry identity/RBAC depth so group- and
+SP-granted access is visible to effective-permissions / privilege-escalation
+analysis:
+
+- **AWS** — IAM groups, user→group memberships, and group attached + inline
+  policies (`iam:ListGroups` / `GetGroup` / `ListGroupsForUser` /
+  `ListGroupPolicies` / `ListAttachedGroupPolicies`, all within the read-only
+  `SecurityAudit` role). Each group becomes a `GROUP` node with `ATTACHED`
+  policies and `MEMBER_OF` edges from its members.
+- **Azure** — Entra service principals + groups and group memberships, discovered
+  via Microsoft Graph. This needs `Directory.Read.All` (NOT in the ARM `Reader`
+  role), so it is **opt-in** behind the existing Entra gate
+  (`AGENT_BOM_ENTRA_DISCOVERY` + `AGENT_BOM_ENTRA_TOKEN`) and degrades to a
+  warning when absent. A role assigned to a group is expanded to its members so
+  the assignment reaches each principal.
+- **GCP** — predefined + custom role definitions are resolved to their permission
+  sets (`iam.roles.get`, within `securityReviewer`/`viewer`) and `group:`
+  bindings are captured as `GROUP` principals. Member expansion via the Workspace
+  Directory API is an optional, gated seam (members stay unresolved otherwise).
+
+The effective-permissions overlay inherits a principal's access through the
+`GROUP`s it is `MEMBER_OF` (transitively, for nested groups). Group-inherited
+access is recorded on `HAS_PERMISSION` as `access="group"` and is not, by itself,
+a privilege escalation (only assume/trust chains are).
+
 ### Relationship types (46)
 
 | Group | Relationships | Direction |

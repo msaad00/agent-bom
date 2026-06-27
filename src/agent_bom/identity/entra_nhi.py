@@ -113,6 +113,22 @@ class EntraClient:
         """List application registrations (carry credential end dates)."""
         return self._get(f"/applications?$top={_PAGE_LIMIT}")
 
+    def list_groups(self) -> list[dict[str, Any]]:
+        """List Entra (Azure AD) groups — directory read, no membership expansion."""
+        return self._get(f"/groups?$top={_PAGE_LIMIT}")
+
+    def list_group_members(self, group_id: str) -> list[dict[str, Any]]:
+        """List the direct members of one Entra group (users / SPs / nested groups).
+
+        Read-only ``GET /groups/{id}/members``. Each member carries its object id
+        and ``@odata.type`` so the caller can resolve the principal kind without a
+        second fetch.
+        """
+        gid = str(group_id or "").strip()
+        if not gid:
+            return []
+        return self._get(f"/groups/{gid}/members?$top={_PAGE_LIMIT}")
+
 
 def _is_truthy(value: str | None) -> bool:
     return value is not None and value.strip().lower() in _TRUTHY

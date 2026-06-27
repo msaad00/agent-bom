@@ -88,6 +88,9 @@ const LAYER_TO_ENTITY: Record<LineageNodeType, EntityType | string> = {
   accessPolicy: EntityType.ACCESS_POLICY,
   driftIncident: EntityType.DRIFT_INCIDENT,
   dataStore: EntityType.DATA_STORE,
+  directory: EntityType.DIRECTORY,
+  sourceFile: EntityType.SOURCE_FILE,
+  configFile: EntityType.CONFIG_FILE,
 };
 
 const ENTITY_TO_LAYER: Map<string, LineageNodeType> = new Map();
@@ -99,7 +102,10 @@ for (const [layer, entity] of Object.entries(LAYER_TO_ENTITY)) {
   }
 }
 
-const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], Set<string> | null> = {
+const RELATIONSHIP_SCOPE_MAP: Record<
+  FilterState["relationshipScope"],
+  Set<string> | null
+> = {
   all: null,
   inventory: new Set<string>([
     RelationshipType.HOSTS,
@@ -164,7 +170,10 @@ const RUNTIME_RELATIONSHIPS: Set<string> = new Set([
 // Predicates — each represents one filter dimension
 // ───────────────────────────────────────────────────────────────────────
 
-function severityPasses(node: UnifiedNode, minSeverity: string | null): boolean {
+function severityPasses(
+  node: UnifiedNode,
+  minSeverity: string | null,
+): boolean {
   if (!minSeverity) return true;
   const minRank = SEVERITY_RANK[minSeverity.toLowerCase()] ?? 0;
   if (minRank === 0) return true;
@@ -179,7 +188,10 @@ function severityPasses(node: UnifiedNode, minSeverity: string | null): boolean 
   return rank >= minRank;
 }
 
-function layerPasses(node: UnifiedNode, layers: Record<LineageNodeType, boolean>): boolean {
+function layerPasses(
+  node: UnifiedNode,
+  layers: Record<LineageNodeType, boolean>,
+): boolean {
   const layer = ENTITY_TO_LAYER.get(String(node.entity_type));
   if (!layer) return true; // unmapped entity types pass through
   return Boolean(layers[layer]);
@@ -214,7 +226,10 @@ function vulnOnlyPasses(
  * misconfiguration over the given edges (undirected). Computed once per
  * filter pass when vuln-only is active.
  */
-function buildVulnReachSet(nodes: UnifiedNode[], edges: UnifiedEdge[]): Set<string> {
+function buildVulnReachSet(
+  nodes: UnifiedNode[],
+  edges: UnifiedEdge[],
+): Set<string> {
   const reach = new Set<string>();
   const seeds = nodes.filter(
     (n) =>
@@ -257,7 +272,10 @@ function relationshipScopePasses(
   return allowed.has(String(edge.relationship));
 }
 
-function runtimeModePasses(edge: UnifiedEdge, mode: FilterState["runtimeMode"]): boolean {
+function runtimeModePasses(
+  edge: UnifiedEdge,
+  mode: FilterState["runtimeMode"],
+): boolean {
   if (mode === "all") return true;
   const isRuntime = RUNTIME_RELATIONSHIPS.has(String(edge.relationship));
   if (mode === "static") return !isRuntime;
@@ -350,7 +368,10 @@ function passEdges(
   opts: FilterPassOptions,
 ): UnifiedEdge[] {
   return edges.filter((e) => {
-    if (!opts.skipRelationship && !relationshipScopePasses(e, filters.relationshipScope)) {
+    if (
+      !opts.skipRelationship &&
+      !relationshipScopePasses(e, filters.relationshipScope)
+    ) {
       return false;
     }
     if (!runtimeModePasses(e, filters.runtimeMode)) return false;
@@ -365,12 +386,18 @@ function passNodes(
   opts: FilterPassOptions,
 ): { nodes: UnifiedNode[]; reachIndex: ReachIndex } {
   const reachIndex = buildAgentReachIndex(nodes, edgeSubset, filters.maxDepth);
-  const vulnReach = filters.vulnOnly ? buildVulnReachSet(nodes, edgeSubset) : null;
+  const vulnReach = filters.vulnOnly
+    ? buildVulnReachSet(nodes, edgeSubset)
+    : null;
   const filtered = nodes.filter((n) => {
     if (!opts.skipLayer && !layerPasses(n, filters.layers)) return false;
-    if (!opts.skipSeverity && !severityPasses(n, filters.severity)) return false;
+    if (!opts.skipSeverity && !severityPasses(n, filters.severity))
+      return false;
     if (!vulnOnlyPasses(n, filters.vulnOnly, vulnReach)) return false;
-    if (!opts.skipAgent && !nodeIsInAgentNeighborhood(n, filters.agentName, reachIndex)) {
+    if (
+      !opts.skipAgent &&
+      !nodeIsInAgentNeighborhood(n, filters.agentName, reachIndex)
+    ) {
       return false;
     }
     return true;
@@ -378,7 +405,10 @@ function passNodes(
   return { nodes: filtered, reachIndex };
 }
 
-function pruneEdgesToNodes(edges: UnifiedEdge[], nodeIds: Set<string>): UnifiedEdge[] {
+function pruneEdgesToNodes(
+  edges: UnifiedEdge[],
+  nodeIds: Set<string>,
+): UnifiedEdge[] {
   return edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
 }
 
@@ -438,7 +468,9 @@ export function computeValidValues(
 ): FilterValidValues {
   // Severity — drop severity, keep the rest.
   const sevPassEdges = passEdges(edges, filters, {});
-  const { nodes: sevNodes } = passNodes(nodes, sevPassEdges, filters, { skipSeverity: true });
+  const { nodes: sevNodes } = passNodes(nodes, sevPassEdges, filters, {
+    skipSeverity: true,
+  });
   const severities = new Set<string>();
   for (const n of sevNodes) {
     if (!n.severity) continue;
@@ -613,7 +645,12 @@ export function decodeFiltersFromParams(
 
   const layers = get("layers");
   if (layers !== null) {
-    const enabled = new Set(layers.split(",").map((s) => s.trim()).filter(Boolean));
+    const enabled = new Set(
+      layers
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
     const next = {} as Record<LineageNodeType, boolean>;
     for (const key of URL_LAYER_KEYS) {
       next[key] = enabled.has(key);

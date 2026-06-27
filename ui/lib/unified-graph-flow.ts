@@ -1,7 +1,15 @@
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 
-import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
-import { readReachBreakdown, readReachScore, reachEdgeWidth, reachStrokeColor } from "@/lib/effective-reach";
+import type {
+  LineageNodeData,
+  LineageNodeType,
+} from "@/components/lineage-nodes";
+import {
+  readReachBreakdown,
+  readReachScore,
+  reachEdgeWidth,
+  reachStrokeColor,
+} from "@/lib/effective-reach";
 import { relationshipLegendItem, type LegendItem } from "@/lib/graph-utils";
 import {
   EntityType,
@@ -32,9 +40,14 @@ export interface UnifiedGraphFlowSummary {
 function safeGraphConnection(value: string): string {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:" ? `${url.protocol}//${url.host}${url.pathname}` : value;
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? `${url.protocol}//${url.host}${url.pathname}`
+      : value;
   } catch {
-    return value.replace(/(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}|(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}/gi, "<redacted>");
+    return value.replace(
+      /(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}|(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}/gi,
+      "<redacted>",
+    );
   }
 }
 
@@ -46,7 +59,9 @@ export interface UnifiedGraphFlowResult {
   summary: UnifiedGraphFlowSummary;
 }
 
-const ENTITY_TO_NODE_TYPE: Partial<Record<EntityType | string, LineageNodeType>> = {
+const ENTITY_TO_NODE_TYPE: Partial<
+  Record<EntityType | string, LineageNodeType>
+> = {
   [EntityType.PROVIDER]: "provider",
   [EntityType.AGENT]: "agent",
   [EntityType.ORG]: "org",
@@ -80,6 +95,12 @@ const ENTITY_TO_NODE_TYPE: Partial<Record<EntityType | string, LineageNodeType>>
   [EntityType.ACCESS_POLICY]: "accessPolicy",
   [EntityType.DRIFT_INCIDENT]: "driftIncident",
   [EntityType.DATA_STORE]: "dataStore",
+  // Repository folder/file-structure nodes (CODE layer) so a repo / project
+  // scan renders its directory tree, manifest files, and file → dependency →
+  // vuln paths.
+  [EntityType.DIRECTORY]: "directory",
+  [EntityType.SOURCE_FILE]: "sourceFile",
+  [EntityType.CONFIG_FILE]: "configFile",
 };
 
 const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
@@ -113,6 +134,9 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   accessPolicy: "accessPolicyNode",
   driftIncident: "driftIncidentNode",
   dataStore: "dataStoreNode",
+  directory: "containerNode",
+  sourceFile: "packageNode",
+  configFile: "packageNode",
 };
 
 const NODE_LABELS: Record<LineageNodeType, string> = {
@@ -146,6 +170,9 @@ const NODE_LABELS: Record<LineageNodeType, string> = {
   accessPolicy: "Access Policy",
   driftIncident: "Drift Incident",
   dataStore: "Data Store",
+  directory: "Directory",
+  sourceFile: "Source File",
+  configFile: "Config File",
 };
 
 const NODE_COLORS: Record<LineageNodeType, string> = {
@@ -179,6 +206,9 @@ const NODE_COLORS: Record<LineageNodeType, string> = {
   accessPolicy: "#a16207",
   driftIncident: "#fb923c",
   dataStore: "#0284c7",
+  directory: "#0d9488",
+  sourceFile: "#22d3ee",
+  configFile: "#f97316",
 };
 
 const NODE_LAYERS: Record<LineageNodeType, string> = {
@@ -212,9 +242,15 @@ const NODE_LAYERS: Record<LineageNodeType, string> = {
   accessPolicy: "identity",
   driftIncident: "finding",
   dataStore: "asset",
+  directory: "code",
+  sourceFile: "code",
+  configFile: "code",
 };
 
-const FINDING_NODE_TYPES = new Set<LineageNodeType>(["vulnerability", "misconfiguration"]);
+const FINDING_NODE_TYPES = new Set<LineageNodeType>([
+  "vulnerability",
+  "misconfiguration",
+]);
 const RUNTIME_RELATIONSHIPS = new Set<string>([
   RelationshipType.INVOKED,
   RelationshipType.CALLED,
@@ -281,7 +317,10 @@ export function buildUnifiedFlowGraph(
 
   const prePrunedNodeIds = new Set(nodes.map((node) => node.id));
   const prePrunedEdges: Edge[] = graph.edges
-    .filter((edge) => prePrunedNodeIds.has(edge.source) && prePrunedNodeIds.has(edge.target))
+    .filter(
+      (edge) =>
+        prePrunedNodeIds.has(edge.source) && prePrunedNodeIds.has(edge.target),
+    )
     .map((edge) => toFlowEdge(edge));
 
   const connectedNodeIds = new Set<string>();
@@ -291,14 +330,25 @@ export function buildUnifiedFlowGraph(
   }
   const anchorNodeIds = new Set(
     nodes
-      .filter((node) => node.data.nodeType === "agent" || FINDING_NODE_TYPES.has(node.data.nodeType))
+      .filter(
+        (node) =>
+          node.data.nodeType === "agent" ||
+          FINDING_NODE_TYPES.has(node.data.nodeType),
+      )
       .map((node) => node.id),
   );
-  const prunedNodes = nodes.filter((node) => connectedNodeIds.has(node.id) || anchorNodeIds.has(node.id));
+  const prunedNodes = nodes.filter(
+    (node) => connectedNodeIds.has(node.id) || anchorNodeIds.has(node.id),
+  );
   const visibleNodeIds = new Set(prunedNodes.map((node) => node.id));
-  const edges = prePrunedEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target));
+  const edges = prePrunedEdges.filter(
+    (edge) =>
+      visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target),
+  );
 
-  const visibleNodeTypes = new Set(prunedNodes.map((node) => node.data.nodeType));
+  const visibleNodeTypes = new Set(
+    prunedNodes.map((node) => node.data.nodeType),
+  );
   const summary = buildSummary(prunedNodes, graph);
   const legend = legendForNodeTypes(visibleNodeTypes);
 
@@ -314,11 +364,21 @@ function deriveVisibleNodeIds(
 
   if (filters.agentName) {
     const seeds = graph.nodes
-      .filter((node) => node.entity_type === EntityType.AGENT && node.label === filters.agentName)
+      .filter(
+        (node) =>
+          node.entity_type === EntityType.AGENT &&
+          node.label === filters.agentName,
+      )
       .map((node) => node.id);
     if (seeds.length > 0) {
-      const agentDepth = filters.vulnOnly || filters.severity ? Math.max(filters.maxDepth, 3) : Math.max(filters.maxDepth, 2);
-      visible = intersectSets(visible, collectNeighborhood(seeds, undirected, agentDepth));
+      const agentDepth =
+        filters.vulnOnly || filters.severity
+          ? Math.max(filters.maxDepth, 3)
+          : Math.max(filters.maxDepth, 2);
+      visible = intersectSets(
+        visible,
+        collectNeighborhood(seeds, undirected, agentDepth),
+      );
     }
   }
 
@@ -331,7 +391,8 @@ function deriveVisibleNodeIds(
         return meetsSeverityThreshold(node.severity, filters.severity);
       })
       .sort((left, right) => {
-        const severityDiff = severityRank(right.severity) - severityRank(left.severity);
+        const severityDiff =
+          severityRank(right.severity) - severityRank(left.severity);
         if (severityDiff !== 0) return severityDiff;
         return (right.risk_score ?? 0) - (left.risk_score ?? 0);
       })
@@ -341,7 +402,14 @@ function deriveVisibleNodeIds(
     // using a shallow finding-side neighborhood kept only middle nodes
     // (server/package) and dropped the endpoints an operator needs to explain
     // the path: the source agent and the CVE/finding.
-    visible = intersectSets(visible, collectNeighborhood(findingSeeds, undirected, Math.max(3, filters.maxDepth)));
+    visible = intersectSets(
+      visible,
+      collectNeighborhood(
+        findingSeeds,
+        undirected,
+        Math.max(3, filters.maxDepth),
+      ),
+    );
   }
 
   visible = new Set(
@@ -393,13 +461,27 @@ function toLineageData(
 
   switch (nodeType) {
     case "provider":
-      data.agentCount = countOutgoing(node.id, outgoing, RelationshipType.HOSTS);
+      data.agentCount = countOutgoing(
+        node.id,
+        outgoing,
+        RelationshipType.HOSTS,
+      );
       break;
     case "agent":
       data.agentType = stringAttr(node, "agent_type");
       data.agentStatus = stringAttr(node, "status");
-      data.serverCount = countOutgoing(node.id, outgoing, RelationshipType.USES);
-      data.packageCount = countReachableTypes(node.id, outgoing, nodeById, new Set([EntityType.PACKAGE]), 3);
+      data.serverCount = countOutgoing(
+        node.id,
+        outgoing,
+        RelationshipType.USES,
+      );
+      data.packageCount = countReachableTypes(
+        node.id,
+        outgoing,
+        nodeById,
+        new Set([EntityType.PACKAGE]),
+        3,
+      );
       data.vulnCount = countReachableTypes(
         node.id,
         outgoing,
@@ -424,14 +506,42 @@ function toLineageData(
         stringAttr(node, "provider") ||
         stringAttr(node, "cluster_type") ||
         stringAttr(node, "description");
-      data.agentCount = countReachableTypes(node.id, outgoing, nodeById, new Set([EntityType.AGENT]), 4);
-      data.serverCount = countReachableTypes(node.id, outgoing, nodeById, new Set([EntityType.SERVER]), 4);
+      data.agentCount = countReachableTypes(
+        node.id,
+        outgoing,
+        nodeById,
+        new Set([EntityType.AGENT]),
+        4,
+      );
+      data.serverCount = countReachableTypes(
+        node.id,
+        outgoing,
+        nodeById,
+        new Set([EntityType.SERVER]),
+        4,
+      );
       break;
     case "server":
-      data.command = safeGraphConnection(stringAttr(node, "command") || stringAttr(node, "transport") || stringAttr(node, "url"));
-      data.toolCount = countOutgoing(node.id, outgoing, RelationshipType.PROVIDES_TOOL);
-      data.credentialCount = countOutgoing(node.id, outgoing, RelationshipType.EXPOSES_CRED);
-      data.packageCount = countOutgoing(node.id, outgoing, RelationshipType.DEPENDS_ON);
+      data.command = safeGraphConnection(
+        stringAttr(node, "command") ||
+          stringAttr(node, "transport") ||
+          stringAttr(node, "url"),
+      );
+      data.toolCount = countOutgoing(
+        node.id,
+        outgoing,
+        RelationshipType.PROVIDES_TOOL,
+      );
+      data.credentialCount = countOutgoing(
+        node.id,
+        outgoing,
+        RelationshipType.EXPOSES_CRED,
+      );
+      data.packageCount = countOutgoing(
+        node.id,
+        outgoing,
+        RelationshipType.DEPENDS_ON,
+      );
       data.vulnCount = countReachableTypes(
         node.id,
         outgoing,
@@ -443,15 +553,23 @@ function toLineageData(
     case "package":
       data.ecosystem = stringAttr(node, "ecosystem");
       data.version = stringAttr(node, "version");
-      data.versionSource = versionProvenanceString(node, "version_source") || stringAttr(node, "version_source");
+      data.versionSource =
+        versionProvenanceString(node, "version_source") ||
+        stringAttr(node, "version_source");
       data.versionConfidence = versionProvenanceString(node, "confidence");
-      data.vulnCount = countOutgoing(node.id, outgoing, RelationshipType.VULNERABLE_TO);
+      data.vulnCount = countOutgoing(
+        node.id,
+        outgoing,
+        RelationshipType.VULNERABLE_TO,
+      );
       break;
     case "vulnerability":
       data.cvssScore = numberAttr(node, "cvss_score");
       data.epssScore = numberAttr(node, "epss_score");
       data.isKev = booleanAttr(node, "is_kev");
-      data.effectiveReach = readReachBreakdown(node.attributes?.effective_reach);
+      data.effectiveReach = readReachBreakdown(
+        node.attributes?.effective_reach,
+      );
       data.fixedVersion = stringAttr(node, "fixed_version");
       data.owaspTags = complianceSubset(node.compliance_tags, "OWASP");
       data.atlasTags = complianceSubset(node.compliance_tags, "ATLAS");
@@ -464,7 +582,12 @@ function toLineageData(
         stringAttr(node, "check_id");
       break;
     case "credential":
-      data.serverName = firstLinkedLabel(node.id, incoming, nodeById, EntityType.SERVER);
+      data.serverName = firstLinkedLabel(
+        node.id,
+        incoming,
+        nodeById,
+        EntityType.SERVER,
+      );
       break;
     case "managedIdentity":
       data.description =
@@ -505,18 +628,23 @@ function toLineageData(
       data.description = stringAttr(node, "description");
       break;
     case "model":
-      data.description = stringAttr(node, "framework") || stringAttr(node, "source");
+      data.description =
+        stringAttr(node, "framework") || stringAttr(node, "source");
       data.version = stringAttr(node, "hash");
       break;
     case "dataset":
-      data.description = stringAttr(node, "description") || stringAttr(node, "source_url");
+      data.description =
+        stringAttr(node, "description") || stringAttr(node, "source_url");
       data.version = stringAttr(node, "version");
       break;
     case "container":
-      data.description = stringAttr(node, "container_image") || stringAttr(node, "framework");
+      data.description =
+        stringAttr(node, "container_image") || stringAttr(node, "framework");
       break;
     case "cloudResource":
-      data.description = stringAttr(node, "cloud_provider") || stringAttr(node, "source_section");
+      data.description =
+        stringAttr(node, "cloud_provider") ||
+        stringAttr(node, "source_section");
       break;
     default:
       break;
@@ -533,7 +661,10 @@ function toFlowEdge(edge: UnifiedEdge): Edge {
   const reachColor = reachStrokeColor(reachScore);
   const strokeColor = reachColor ?? color;
   const dashed = DASHED_RELATIONSHIPS.has(relationship);
-  const animated = ANIMATED_RELATIONSHIPS.has(relationship) || edge.weight >= 4 || (reachScore ?? 0) >= 90;
+  const animated =
+    ANIMATED_RELATIONSHIPS.has(relationship) ||
+    edge.weight >= 4 ||
+    (reachScore ?? 0) >= 90;
   const runtime = RUNTIME_RELATIONSHIPS.has(relationship);
 
   return {
@@ -550,7 +681,10 @@ function toFlowEdge(edge: UnifiedEdge): Edge {
     animated,
     style: {
       stroke: strokeColor,
-      strokeWidth: Math.max(Math.min(Math.max(edge.weight, 1.2), 4.5), reachEdgeWidth(reachScore)),
+      strokeWidth: Math.max(
+        Math.min(Math.max(edge.weight, 1.2), 4.5),
+        reachEdgeWidth(reachScore),
+      ),
       opacity: animated ? 0.95 : 0.82,
       strokeDasharray: dashed ? "6 3" : undefined,
     },
@@ -567,11 +701,14 @@ function buildSummary(
   nodes: Node<LineageNodeData>[],
   graph: UnifiedGraphData,
 ): UnifiedGraphFlowSummary {
-  const findings = nodes.filter((node) => FINDING_NODE_TYPES.has(node.data.nodeType)).length;
+  const findings = nodes.filter((node) =>
+    FINDING_NODE_TYPES.has(node.data.nodeType),
+  ).length;
   const critical = nodes.filter(
     (node) =>
       FINDING_NODE_TYPES.has(node.data.nodeType) &&
-      (node.data.severity?.toLowerCase() === "critical" || node.data.isCritical),
+      (node.data.severity?.toLowerCase() === "critical" ||
+        node.data.isCritical),
   ).length;
   const visibleNodeIds = new Set(nodes.map((node) => node.id));
   const runtimeEdges = graph.edges.filter(
@@ -623,7 +760,9 @@ function legendForNodeTypes(nodeTypes: Set<LineageNodeType>): LegendItem[] {
     "misconfiguration",
     "driftIncident",
   ]
-    .filter((nodeType): nodeType is LineageNodeType => nodeTypes.has(nodeType as LineageNodeType))
+    .filter((nodeType): nodeType is LineageNodeType =>
+      nodeTypes.has(nodeType as LineageNodeType),
+    )
     .map((nodeType) => ({
       label: NODE_LABELS[nodeType],
       color: NODE_COLORS[nodeType],
@@ -632,7 +771,10 @@ function legendForNodeTypes(nodeTypes: Set<LineageNodeType>): LegendItem[] {
     }));
 }
 
-function buildAdjacency(edges: UnifiedEdge[], side: "source" | "target"): Map<string, UnifiedEdge[]> {
+function buildAdjacency(
+  edges: UnifiedEdge[],
+  side: "source" | "target",
+): Map<string, UnifiedEdge[]> {
   const map = new Map<string, UnifiedEdge[]>();
   for (const edge of edges) {
     const key = side === "source" ? edge.source : edge.target;
@@ -646,7 +788,9 @@ function buildAdjacency(edges: UnifiedEdge[], side: "source" | "target"): Map<st
   return map;
 }
 
-function buildUndirectedAdjacency(edges: UnifiedEdge[]): Map<string, Set<string>> {
+function buildUndirectedAdjacency(
+  edges: UnifiedEdge[],
+): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
   for (const edge of edges) {
     addNeighbor(map, edge.source, edge.target);
@@ -683,7 +827,9 @@ function countOutgoing(
   outgoing: Map<string, UnifiedEdge[]>,
   relationship: RelationshipType,
 ): number {
-  return (outgoing.get(nodeId) ?? []).filter((edge) => edge.relationship === relationship).length;
+  return (outgoing.get(nodeId) ?? []).filter(
+    (edge) => edge.relationship === relationship,
+  ).length;
 }
 
 function countReachableTypes(
@@ -756,7 +902,11 @@ function meetsSeverityThreshold(
   return severityRank(severity) >= severityRank(threshold);
 }
 
-function addNeighbor(map: Map<string, Set<string>>, source: string, target: string): void {
+function addNeighbor(
+  map: Map<string, Set<string>>,
+  source: string,
+  target: string,
+): void {
   const existing = map.get(source);
   if (existing) {
     existing.add(target);
@@ -765,8 +915,11 @@ function addNeighbor(map: Map<string, Set<string>>, source: string, target: stri
   }
 }
 
-function legendShapeForNodeType(nodeType: LineageNodeType): LegendItem["shape"] {
-  if (nodeType === "vulnerability" || nodeType === "misconfiguration") return "diamond";
+function legendShapeForNodeType(
+  nodeType: LineageNodeType,
+): LegendItem["shape"] {
+  if (nodeType === "vulnerability" || nodeType === "misconfiguration")
+    return "diamond";
   if (nodeType === "role" || nodeType === "policy") return "diamond";
   if (
     nodeType === "server" ||
@@ -777,7 +930,13 @@ function legendShapeForNodeType(nodeType: LineageNodeType): LegendItem["shape"] 
   ) {
     return "square";
   }
-  if (nodeType === "package" || nodeType === "tool" || nodeType === "model" || nodeType === "dataset") return "pill";
+  if (
+    nodeType === "package" ||
+    nodeType === "tool" ||
+    nodeType === "model" ||
+    nodeType === "dataset"
+  )
+    return "pill";
   return "dot";
 }
 
@@ -806,9 +965,13 @@ function booleanAttr(node: UnifiedNode, key: string): boolean {
   return node.attributes?.[key] === true;
 }
 
-function evidenceTierAttr(attributes: Record<string, unknown>): "safe_to_store" | "replay_only" | undefined {
+function evidenceTierAttr(
+  attributes: Record<string, unknown>,
+): "safe_to_store" | "replay_only" | undefined {
   const value = attributes.evidence_tier ?? attributes.tier;
-  return value === "safe_to_store" || value === "replay_only" ? value : undefined;
+  return value === "safe_to_store" || value === "replay_only"
+    ? value
+    : undefined;
 }
 
 function complianceSubset(tags: string[], prefix: string): string[] {
@@ -817,5 +980,7 @@ function complianceSubset(tags: string[], prefix: string): string[] {
 
 function isCriticalNode(node: UnifiedNode): boolean {
   if (node.severity?.toLowerCase() === "critical") return true;
-  return booleanAttr(node, "is_kev") || (numberAttr(node, "risk_score") ?? 0) >= 8;
+  return (
+    booleanAttr(node, "is_kev") || (numberAttr(node, "risk_score") ?? 0) >= 8
+  );
 }

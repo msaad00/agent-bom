@@ -4,15 +4,24 @@
  */
 
 import { type Node, type Edge, MarkerType } from "@xyflow/react";
-import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
-import { readReachBreakdown, readReachScore, reachEdgeWidth, reachStrokeColor } from "@/lib/effective-reach";
+import type {
+  LineageNodeData,
+  LineageNodeType,
+} from "@/components/lineage-nodes";
+import {
+  readReachBreakdown,
+  readReachScore,
+  reachEdgeWidth,
+  reachStrokeColor,
+} from "@/lib/effective-reach";
 import { RELATIONSHIP_COLOR_MAP } from "@/lib/graph-schema";
 
 // ─── Types (mirror Python context_graph.to_serializable) ────────────────────
 
 export interface ContextGraphNode {
   id: string;
-  kind: "agent" | "server" | "credential" | "tool" | "vulnerability" | "iam_role";
+  kind:
+    "agent" | "server" | "credential" | "tool" | "vulnerability" | "iam_role";
   entity_type?: string;
   label: string;
   metadata: Record<string, unknown>;
@@ -116,21 +125,24 @@ const NODE_TYPE_TO_RENDERER: Record<LineageNodeType, string> = {
   accessPolicy: "accessPolicyNode",
   driftIncident: "driftIncidentNode",
   dataStore: "dataStoreNode",
+  directory: "containerNode",
+  sourceFile: "packageNode",
+  configFile: "packageNode",
 };
 
 // ─── Edge colors ─────────────────────────────────────────────────────────────
 
 const EDGE_COLORS: Record<string, string> = {
-  uses: "#10b981",          // emerald  agent→server
-  exposes: "#f59e0b",       // amber    server→credential
-  exposes_cred: "#f59e0b",  // amber    server→credential
-  provides: "#a855f7",      // purple   server→tool
+  uses: "#10b981", // emerald  agent→server
+  exposes: "#f59e0b", // amber    server→credential
+  exposes_cred: "#f59e0b", // amber    server→credential
+  provides: "#a855f7", // purple   server→tool
   provides_tool: "#a855f7", // purple   server→tool
   vulnerable_to: "#ef4444", // red      server→vulnerability
   shares_server: "#22d3ee", // cyan     agent↔agent
   shares_credential: "#f97316", // orange agent↔agent
-  shares_cred: "#f97316",   // orange   agent↔agent
-  member_of: "#60a5fa",     // blue     identity→agent
+  shares_cred: "#f97316", // orange   agent↔agent
+  member_of: "#60a5fa", // blue     identity→agent
 };
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
@@ -142,7 +154,7 @@ const EDGE_COLORS: Record<string, string> = {
  */
 export function buildContextFlowGraph(
   data: ContextGraphData,
-  selectedAgent?: string
+  selectedAgent?: string,
 ): { nodes: Node[]; edges: Edge[] } {
   // Collect IDs on the selected agent's lateral paths
   const pathNodeIds = new Set<string>();
@@ -166,9 +178,10 @@ export function buildContextFlowGraph(
       if (edge.target === seedId) pathNodeIds.add(edge.source);
     }
   }
-  const visibleIds = selectedAgent && pathNodeIds.size > 0
-    ? pathNodeIds
-    : new Set(data.nodes.map((node) => node.id));
+  const visibleIds =
+    selectedAgent && pathNodeIds.size > 0
+      ? pathNodeIds
+      : new Set(data.nodes.map((node) => node.id));
 
   // Shared server IDs
   const sharedServerNames = new Set<string>();
@@ -183,29 +196,31 @@ export function buildContextFlowGraph(
   const nodes: Node[] = data.nodes
     .filter((node) => visibleIds.has(node.id))
     .map((n) => {
-    const graphKind = n.entity_type ?? n.kind;
-    let nodeType = KIND_TO_NODE_TYPE[graphKind] ?? "server";
-    if (n.kind === "server" && sharedServerNames.has(n.label)) {
-      nodeType = "sharedServer";
-    }
+      const graphKind = n.entity_type ?? n.kind;
+      let nodeType = KIND_TO_NODE_TYPE[graphKind] ?? "server";
+      if (n.kind === "server" && sharedServerNames.has(n.label)) {
+        nodeType = "sharedServer";
+      }
 
-    const dimmed = selectedAgent ? !pathNodeIds.has(n.id) && pathNodeIds.size > 0 : false;
-    const highlighted = selectedAgent ? pathNodeIds.has(n.id) : false;
+      const dimmed = selectedAgent
+        ? !pathNodeIds.has(n.id) && pathNodeIds.size > 0
+        : false;
+      const highlighted = selectedAgent ? pathNodeIds.has(n.id) : false;
 
-    const nodeData: LineageNodeData = {
-      nodeType,
-      label: n.label,
-      dimmed,
-      highlighted,
-      severity: (n.metadata?.severity as string) ?? undefined,
-      cvssScore: (n.metadata?.cvss_score as number) ?? undefined,
-      epssScore: (n.metadata?.epss_score as number) ?? undefined,
-      isKev: n.metadata?.is_kev === true,
-      effectiveReach: readReachBreakdown(n.metadata?.effective_reach),
-      description: (n.metadata?.description as string) ?? undefined,
-      serverName: (n.metadata?.agent as string) ?? undefined,
-      serverCount: (n.metadata?.server_count as number) ?? undefined,
-    };
+      const nodeData: LineageNodeData = {
+        nodeType,
+        label: n.label,
+        dimmed,
+        highlighted,
+        severity: (n.metadata?.severity as string) ?? undefined,
+        cvssScore: (n.metadata?.cvss_score as number) ?? undefined,
+        epssScore: (n.metadata?.epss_score as number) ?? undefined,
+        isKev: n.metadata?.is_kev === true,
+        effectiveReach: readReachBreakdown(n.metadata?.effective_reach),
+        description: (n.metadata?.description as string) ?? undefined,
+        serverName: (n.metadata?.agent as string) ?? undefined,
+        serverCount: (n.metadata?.server_count as number) ?? undefined,
+      };
 
       return {
         id: n.id,
@@ -216,14 +231,19 @@ export function buildContextFlowGraph(
     });
 
   const edges: Edge[] = data.edges
-    .filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target))
+    .filter(
+      (edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target),
+    )
     .map((e, i) => {
-    const isOnPath = pathEdgePairs.has(`${e.source}→${e.target}`);
-    const relationship = e.relationship ?? e.kind;
-    const baseColor = RELATIONSHIP_COLOR_MAP[relationship] ?? EDGE_COLORS[relationship] ?? "#52525b";
-    const reachScore = readReachScore(e.metadata?.effective_reach_score);
-    const reachColor = reachStrokeColor(reachScore);
-    const strokeColor = isOnPath ? "#f97316" : reachColor ?? baseColor;
+      const isOnPath = pathEdgePairs.has(`${e.source}→${e.target}`);
+      const relationship = e.relationship ?? e.kind;
+      const baseColor =
+        RELATIONSHIP_COLOR_MAP[relationship] ??
+        EDGE_COLORS[relationship] ??
+        "#52525b";
+      const reachScore = readReachScore(e.metadata?.effective_reach_score);
+      const reachColor = reachStrokeColor(reachScore);
+      const strokeColor = isOnPath ? "#f97316" : (reachColor ?? baseColor);
 
       return {
         id: `ctx-edge-${i}`,
@@ -233,14 +253,21 @@ export function buildContextFlowGraph(
         data: {
           relationship,
           relationshipLabel: relationship.replace(/_/g, " "),
-          evidenceMode: isOnPath ? "selected_path" : relationship.includes("runtime") ? "runtime" : "static",
+          evidenceMode: isOnPath
+            ? "selected_path"
+            : relationship.includes("runtime")
+              ? "runtime"
+              : "static",
         },
         animated: isOnPath,
         style: {
           stroke: strokeColor,
-          strokeWidth: isOnPath ? 2.5 : Math.max(1.5, reachEdgeWidth(reachScore)),
+          strokeWidth: isOnPath
+            ? 2.5
+            : Math.max(1.5, reachEdgeWidth(reachScore)),
           strokeDasharray: isOnPath ? "8 4" : undefined,
-          opacity: selectedAgent && pathNodeIds.size > 0 && !isOnPath ? 0.15 : 1,
+          opacity:
+            selectedAgent && pathNodeIds.size > 0 && !isOnPath ? 0.15 : 1,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -248,11 +275,13 @@ export function buildContextFlowGraph(
           width: 12,
           height: 12,
         },
-        label: relationship === "shares_server"
-          ? `shared: ${(e.metadata?.server as string) ?? ""}`
-          : relationship === "shares_credential" || relationship === "shares_cred"
-          ? `shared: ${(e.metadata?.credential as string) ?? ""}`
-          : undefined,
+        label:
+          relationship === "shares_server"
+            ? `shared: ${(e.metadata?.server as string) ?? ""}`
+            : relationship === "shares_credential" ||
+                relationship === "shares_cred"
+              ? `shared: ${(e.metadata?.credential as string) ?? ""}`
+              : undefined,
         labelStyle: { fontSize: 9, fill: "#71717a" },
       };
     });

@@ -9,6 +9,9 @@ import {
   Cloud,
   Database,
   ExternalLink,
+  FileCode,
+  FileCog,
+  Folder,
   Hourglass,
   KeyRound,
   Lock,
@@ -61,6 +64,9 @@ const TYPE_ICON = {
   accessPolicy: KeyRound,
   driftIncident: TriangleAlert,
   dataStore: Database,
+  directory: Folder,
+  sourceFile: FileCode,
+  configFile: FileCog,
 } as const;
 
 const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
@@ -94,6 +100,9 @@ const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
   accessPolicy: "Access Policy",
   driftIncident: "Drift Incident",
   dataStore: "Data Store",
+  directory: "Directory",
+  sourceFile: "Source File",
+  configFile: "Config File",
 };
 
 const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
@@ -127,6 +136,9 @@ const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
   accessPolicy: "border-amber-700",
   driftIncident: "border-orange-700",
   dataStore: "border-sky-700",
+  directory: "border-teal-700",
+  sourceFile: "border-cyan-700",
+  configFile: "border-orange-700",
 };
 
 export function LineageDetailPanel({
@@ -137,37 +149,42 @@ export function LineageDetailPanel({
   onClose: () => void;
 }) {
   const Icon = TYPE_ICON[data.nodeType];
-  const osvUrl = data.nodeType === "vulnerability" ? getOsvVulnerabilityUrl(data.label) : null;
-  const extraAttributes = Object.entries(data.attributes ?? {}).filter(([key]) => {
-    return !new Set([
-      "agent_type",
-      "status",
-      "version",
-      "ecosystem",
-      "description",
-      "framework",
-      "source",
-      "hash",
-      "verified",
-      "container_image",
-      "cloud_provider",
-      "resource_id",
-      "source_section",
-      "rule_id",
-      "check_id",
-      "recommendation",
-      "evidence",
-      "path",
-      "file_path",
-      "line",
-      "start_line",
-      "end_line",
-      "cvss_score",
-      "epss_score",
-      "is_kev",
-      "fixed_version",
-    ]).has(key);
-  });
+  const osvUrl =
+    data.nodeType === "vulnerability"
+      ? getOsvVulnerabilityUrl(data.label)
+      : null;
+  const extraAttributes = Object.entries(data.attributes ?? {}).filter(
+    ([key]) => {
+      return !new Set([
+        "agent_type",
+        "status",
+        "version",
+        "ecosystem",
+        "description",
+        "framework",
+        "source",
+        "hash",
+        "verified",
+        "container_image",
+        "cloud_provider",
+        "resource_id",
+        "source_section",
+        "rule_id",
+        "check_id",
+        "recommendation",
+        "evidence",
+        "path",
+        "file_path",
+        "line",
+        "start_line",
+        "end_line",
+        "cvss_score",
+        "epss_score",
+        "is_kev",
+        "fixed_version",
+      ]).has(key);
+    },
+  );
 
   return (
     <div
@@ -181,7 +198,9 @@ export function LineageDetailPanel({
             </span>
             <div className="flex items-center gap-2 mt-0.5">
               <Icon className="w-4 h-4 text-zinc-400" />
-              <h3 className="text-sm font-semibold text-zinc-100">{data.label}</h3>
+              <h3 className="text-sm font-semibold text-zinc-100">
+                {data.label}
+              </h3>
             </div>
           </div>
           <button
@@ -207,13 +226,23 @@ export function LineageDetailPanel({
                     : "border-emerald-800 bg-emerald-950 text-emerald-400"
                 }`}
               >
-                {data.agentStatus === "installed-not-configured" ? "Not Configured" : "Configured"}
+                {data.agentStatus === "installed-not-configured"
+                  ? "Not Configured"
+                  : "Configured"}
               </div>
             )}
-            {data.serverCount !== undefined && <Row label="Servers" value={data.serverCount} />}
-            {data.packageCount !== undefined && <Row label="Packages" value={data.packageCount} />}
+            {data.serverCount !== undefined && (
+              <Row label="Servers" value={data.serverCount} />
+            )}
+            {data.packageCount !== undefined && (
+              <Row label="Packages" value={data.packageCount} />
+            )}
             {(data.vulnCount ?? 0) > 0 && (
-              <Row label="Findings" value={data.vulnCount ?? 0} className="text-red-400" />
+              <Row
+                label="Findings"
+                value={data.vulnCount ?? 0}
+                className="text-red-400"
+              />
             )}
           </div>
         )}
@@ -236,9 +265,15 @@ export function LineageDetailPanel({
             {data.command && (
               <CodeBlock label="Connection" value={data.command} />
             )}
-            {data.toolCount !== undefined && data.toolCount > 0 && <Row label="Tools" value={data.toolCount} />}
+            {data.toolCount !== undefined && data.toolCount > 0 && (
+              <Row label="Tools" value={data.toolCount} />
+            )}
             {data.credentialCount !== undefined && data.credentialCount > 0 && (
-              <Row label="Credentials" value={data.credentialCount} className="text-amber-400" />
+              <Row
+                label="Credentials"
+                value={data.credentialCount}
+                className="text-amber-400"
+              />
             )}
             {data.packageCount !== undefined && data.packageCount > 0 && (
               <Row label="Packages" value={data.packageCount} />
@@ -256,7 +291,9 @@ export function LineageDetailPanel({
             {data.sharedAgents && data.sharedAgents.length > 0 && (
               <TagList label="Connected Agents" tags={data.sharedAgents} />
             )}
-            {data.command && <CodeBlock label="Connection" value={data.command} />}
+            {data.command && (
+              <CodeBlock label="Connection" value={data.command} />
+            )}
           </div>
         )}
 
@@ -264,12 +301,22 @@ export function LineageDetailPanel({
           <div className="space-y-3">
             {data.ecosystem && <Row label="Ecosystem" value={data.ecosystem} />}
             {data.version && <Row label="Version" value={data.version} />}
-            {data.versionSource && <Row label="Version source" value={data.versionSource} />}
-            {data.versionConfidence && <Row label="Version confidence" value={data.versionConfidence} />}
+            {data.versionSource && (
+              <Row label="Version source" value={data.versionSource} />
+            )}
+            {data.versionConfidence && (
+              <Row label="Version confidence" value={data.versionConfidence} />
+            )}
             {(data.vulnCount ?? 0) > 0 ? (
-              <Row label="Findings" value={data.vulnCount ?? 0} className="text-red-400" />
+              <Row
+                label="Findings"
+                value={data.vulnCount ?? 0}
+                className="text-red-400"
+              />
             ) : (
-              <div className="text-xs text-emerald-400">No known findings on this package node</div>
+              <div className="text-xs text-emerald-400">
+                No known findings on this package node
+              </div>
             )}
           </div>
         )}
@@ -283,31 +330,41 @@ export function LineageDetailPanel({
                 {data.severity}
               </span>
             )}
-            {typeof data.cvssScore === "number" && Number.isFinite(data.cvssScore) && (
-              <Row label="CVSS" value={data.cvssScore.toFixed(1)} />
-            )}
+            {typeof data.cvssScore === "number" &&
+              Number.isFinite(data.cvssScore) && (
+                <Row label="CVSS" value={data.cvssScore.toFixed(1)} />
+              )}
             {typeof data.epssScore === "number" && data.epssScore > 0 && (
-              <Row label="EPSS" value={`${(data.epssScore * 100).toFixed(1)}%`} />
+              <Row
+                label="EPSS"
+                value={`${(data.epssScore * 100).toFixed(1)}%`}
+              />
             )}
             {data.isKev && (
               <div className="text-xs px-2 py-1 rounded bg-red-900 text-red-300 border border-red-700 font-mono inline-block">
                 CISA Known Exploited
               </div>
             )}
-            {data.fixedVersion && <Row label="Fix version" value={data.fixedVersion} className="text-emerald-400" />}
+            {data.fixedVersion && (
+              <Row
+                label="Fix version"
+                value={data.fixedVersion}
+                className="text-emerald-400"
+              />
+            )}
             {data.effectiveReach && (
               <div className="space-y-1.5">
                 <Label>Effective reach</Label>
                 <div className="flex items-center gap-2">
                   <span
                     className={`inline-block w-2.5 h-2.5 rounded-full ${reachColorClass(
-                      data.effectiveReach.band
+                      data.effectiveReach.band,
                     )}`}
                     aria-label={`reach band ${data.effectiveReach.band}`}
                   />
                   <span
                     className={`text-xs font-mono ${reachTextClass(
-                      data.effectiveReach.band
+                      data.effectiveReach.band,
                     )}`}
                   >
                     {data.effectiveReach.composite.toFixed(1)} / 100 ·{" "}
@@ -337,8 +394,12 @@ export function LineageDetailPanel({
                   )}
               </div>
             )}
-            {data.owaspTags && data.owaspTags.length > 0 && <TagList label="OWASP" tags={data.owaspTags} />}
-            {data.atlasTags && data.atlasTags.length > 0 && <TagList label="ATLAS" tags={data.atlasTags} />}
+            {data.owaspTags && data.owaspTags.length > 0 && (
+              <TagList label="OWASP" tags={data.owaspTags} />
+            )}
+            {data.atlasTags && data.atlasTags.length > 0 && (
+              <TagList label="ATLAS" tags={data.atlasTags} />
+            )}
             {osvUrl && (
               <a
                 href={osvUrl}
@@ -362,14 +423,21 @@ export function LineageDetailPanel({
                 {data.severity}
               </span>
             )}
-            {data.description && <div className="text-xs text-zinc-400">{data.description}</div>}
+            {data.description && (
+              <div className="text-xs text-zinc-400">{data.description}</div>
+            )}
           </div>
         )}
 
         {data.nodeType === "credential" && (
           <div className="space-y-3">
-            <div className="text-xs text-amber-400">Environment variable or credential-like secret exposed in configuration.</div>
-            {data.serverName && <Row label="Linked server" value={data.serverName} />}
+            <div className="text-xs text-amber-400">
+              Environment variable or credential-like secret exposed in
+              configuration.
+            </div>
+            {data.serverName && (
+              <Row label="Linked server" value={data.serverName} />
+            )}
           </div>
         )}
 
@@ -394,11 +462,17 @@ export function LineageDetailPanel({
         )}
 
         {data.nodeType === "container" && (
-          <GenericAssetSection description={data.description} attributes={data.attributes} />
+          <GenericAssetSection
+            description={data.description}
+            attributes={data.attributes}
+          />
         )}
 
         {data.nodeType === "cloudResource" && (
-          <GenericAssetSection description={data.description} attributes={data.attributes} />
+          <GenericAssetSection
+            description={data.description}
+            attributes={data.attributes}
+          />
         )}
 
         <EvidenceTierBadge
@@ -407,22 +481,35 @@ export function LineageDetailPanel({
           notAfter={data.evidenceNotAfter}
         />
 
-        {(data.status || data.riskScore != null || data.firstSeen || data.lastSeen) && (
+        {(data.status ||
+          data.riskScore != null ||
+          data.firstSeen ||
+          data.lastSeen) && (
           <div className="space-y-2">
             <Label>Lifecycle</Label>
             {data.status && <Row label="Status" value={data.status} />}
-            {data.riskScore != null && <Row label="Risk score" value={data.riskScore.toFixed(1)} />}
-            {data.firstSeen && <Row label="First seen" value={shortDate(data.firstSeen)} />}
-            {data.lastSeen && <Row label="Last seen" value={shortDate(data.lastSeen)} />}
+            {data.riskScore != null && (
+              <Row label="Risk score" value={data.riskScore.toFixed(1)} />
+            )}
+            {data.firstSeen && (
+              <Row label="First seen" value={shortDate(data.firstSeen)} />
+            )}
+            {data.lastSeen && (
+              <Row label="Last seen" value={shortDate(data.lastSeen)} />
+            )}
           </div>
         )}
 
-        {typeof data.attributes?.node_id === "string" && data.attributes.node_id && (
-          <div className="space-y-2">
-            <Label>Identifier</Label>
-            <CodeBlock label="Node ID" value={String(data.attributes.node_id)} />
-          </div>
-        )}
+        {typeof data.attributes?.node_id === "string" &&
+          data.attributes.node_id && (
+            <div className="space-y-2">
+              <Label>Identifier</Label>
+              <CodeBlock
+                label="Node ID"
+                value={String(data.attributes.node_id)}
+              />
+            </div>
+          )}
 
         {(data.neighborCount != null ||
           data.sourceCount != null ||
@@ -431,12 +518,28 @@ export function LineageDetailPanel({
           data.impactCount != null) && (
           <div className="space-y-2">
             <Label>Graph Context</Label>
-            {data.neighborCount != null && <Row label="Neighbors" value={data.neighborCount} />}
-            {data.sourceCount != null && <Row label="Sources" value={data.sourceCount} />}
-            {data.incomingEdgeCount != null && <Row label="Incoming edges" value={data.incomingEdgeCount} />}
-            {data.outgoingEdgeCount != null && <Row label="Outgoing edges" value={data.outgoingEdgeCount} />}
-            {data.impactCount != null && <Row label="Affected nodes" value={data.impactCount} className="text-orange-300" />}
-            {data.maxImpactDepth != null && <Row label="Impact depth" value={data.maxImpactDepth} />}
+            {data.neighborCount != null && (
+              <Row label="Neighbors" value={data.neighborCount} />
+            )}
+            {data.sourceCount != null && (
+              <Row label="Sources" value={data.sourceCount} />
+            )}
+            {data.incomingEdgeCount != null && (
+              <Row label="Incoming edges" value={data.incomingEdgeCount} />
+            )}
+            {data.outgoingEdgeCount != null && (
+              <Row label="Outgoing edges" value={data.outgoingEdgeCount} />
+            )}
+            {data.impactCount != null && (
+              <Row
+                label="Affected nodes"
+                value={data.impactCount}
+                className="text-orange-300"
+              />
+            )}
+            {data.maxImpactDepth != null && (
+              <Row label="Impact depth" value={data.maxImpactDepth} />
+            )}
           </div>
         )}
 
@@ -481,7 +584,11 @@ export function LineageDetailPanel({
             <Label>Attributes</Label>
             <div className="space-y-1.5">
               {extraAttributes.slice(0, 10).map(([key, value]) => (
-                <Row key={key} label={prettifyKey(key)} value={formatValue(value)} />
+                <Row
+                  key={key}
+                  label={prettifyKey(key)}
+                  value={formatValue(value)}
+                />
               ))}
             </div>
           </div>
@@ -502,7 +609,9 @@ function GenericAssetSection({
 }) {
   return (
     <div className="space-y-3">
-      {description && <div className="text-xs text-zinc-400">{description}</div>}
+      {description && (
+        <div className="text-xs text-zinc-400">{description}</div>
+      )}
       {version && <Row label="Version / hash" value={version} />}
       {typeof attributes?.verified === "boolean" && (
         <Row label="Verified" value={attributes.verified ? "yes" : "no"} />
@@ -530,7 +639,7 @@ function TagList({
     <div>
       <Label>{label}</Label>
       <div className="flex flex-wrap gap-1 mt-1">
-        {tags.map((tag) => (
+        {tags.map((tag) =>
           linkBuilder ? (
             <Link
               key={tag}
@@ -540,11 +649,14 @@ function TagList({
               {tag}
             </Link>
           ) : (
-            <span key={tag} className={`text-[10px] px-1.5 py-0.5 rounded border ${toneClass}`}>
+            <span
+              key={tag}
+              className={`text-[10px] px-1.5 py-0.5 rounded border ${toneClass}`}
+            >
               {tag}
             </span>
-          )
-        ))}
+          ),
+        )}
       </div>
     </div>
   );
@@ -562,7 +674,11 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
 }
 
 function Label({ children }: { children: ReactNode }) {
-  return <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">{children}</div>;
+  return (
+    <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">
+      {children}
+    </div>
+  );
 }
 
 function Row({
@@ -577,7 +693,11 @@ function Row({
   return (
     <div className="flex items-center justify-between gap-4 text-xs">
       <span className="text-zinc-500">{label}</span>
-      <span className={`text-zinc-300 font-mono text-right break-all ${className}`}>{value}</span>
+      <span
+        className={`text-zinc-300 font-mono text-right break-all ${className}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -591,8 +711,13 @@ function shortDate(value: string): string {
 function formatValue(value: unknown): string {
   if (value == null) return "—";
   if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) return value.slice(0, 4).map((item) => String(item)).join(", ");
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  if (Array.isArray(value))
+    return value
+      .slice(0, 4)
+      .map((item) => String(item))
+      .join(", ");
   return JSON.stringify(value);
 }
 
@@ -643,14 +768,19 @@ function EvidenceTierBadge({
   if (notAfter) {
     const expiry = new Date(notAfter).getTime();
     if (!Number.isNaN(expiry)) {
-      const deltaDays = Math.max(0, Math.floor((expiry - Date.now()) / 86_400_000));
+      const deltaDays = Math.max(
+        0,
+        Math.floor((expiry - Date.now()) / 86_400_000),
+      );
       rotatesIn = deltaDays;
     }
   }
   return (
     <div className="flex items-center gap-1.5 rounded border border-amber-800 bg-amber-950 px-2 py-1 text-[10px] font-mono text-amber-300">
       <Hourglass className="w-3 h-3" />
-      <span>{rotatesIn != null ? `Rotates in ${rotatesIn} days` : "Replay only"}</span>
+      <span>
+        {rotatesIn != null ? `Rotates in ${rotatesIn} days` : "Replay only"}
+      </span>
     </div>
   );
 }

@@ -102,6 +102,7 @@ export enum GraphNodeKind {
   CREDENTIAL_REF = "credential_ref",
   DATA_STORE = "data_store",
   DATASET = "dataset",
+  DIRECTORY = "directory",
   DRIFT_INCIDENT = "drift_incident",
   ENVIRONMENT = "environment",
   EXTERNAL_IMPORT = "external_import",
@@ -127,9 +128,9 @@ export enum GraphNodeKind {
   VULNERABILITY = "vulnerability",
 }
 
-export type GraphNodeKindKey = "access_grant" | "access_policy" | "account" | "agent" | "api_gateway" | "application" | "ci_job" | "cloud_resource" | "cluster" | "code_module" | "config_file" | "container" | "credential" | "credential_ref" | "data_store" | "dataset" | "drift_incident" | "environment" | "external_import" | "federated_identity" | "fleet" | "group" | "managed_identity" | "misconfiguration" | "model" | "org" | "package" | "policy" | "provider" | "resource" | "role" | "server" | "service_account" | "service_principal" | "source_file" | "tool" | "tool_call" | "user" | "vulnerability";
+export type GraphNodeKindKey = "access_grant" | "access_policy" | "account" | "agent" | "api_gateway" | "application" | "ci_job" | "cloud_resource" | "cluster" | "code_module" | "config_file" | "container" | "credential" | "credential_ref" | "data_store" | "dataset" | "directory" | "drift_incident" | "environment" | "external_import" | "federated_identity" | "fleet" | "group" | "managed_identity" | "misconfiguration" | "model" | "org" | "package" | "policy" | "provider" | "resource" | "role" | "server" | "service_account" | "service_principal" | "source_file" | "tool" | "tool_call" | "user" | "vulnerability";
 
-export const GRAPH_NODE_KINDS: readonly GraphNodeKindKey[] = ["access_grant", "access_policy", "account", "agent", "api_gateway", "application", "ci_job", "cloud_resource", "cluster", "code_module", "config_file", "container", "credential", "credential_ref", "data_store", "dataset", "drift_incident", "environment", "external_import", "federated_identity", "fleet", "group", "managed_identity", "misconfiguration", "model", "org", "package", "policy", "provider", "resource", "role", "server", "service_account", "service_principal", "source_file", "tool", "tool_call", "user", "vulnerability"] as const;
+export const GRAPH_NODE_KINDS: readonly GraphNodeKindKey[] = ["access_grant", "access_policy", "account", "agent", "api_gateway", "application", "ci_job", "cloud_resource", "cluster", "code_module", "config_file", "container", "credential", "credential_ref", "data_store", "dataset", "directory", "drift_incident", "environment", "external_import", "federated_identity", "fleet", "group", "managed_identity", "misconfiguration", "model", "org", "package", "policy", "provider", "resource", "role", "server", "service_account", "service_principal", "source_file", "tool", "tool_call", "user", "vulnerability"] as const;
 
 export interface GraphNodeKindMeta {
   label: string;
@@ -282,6 +283,15 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "color": "#06b6d4",
     "shape": "square",
     "layer": "asset",
+    "icon": "square",
+    "category_uid": 5,
+    "class_uid": 4001
+  },
+  "directory": {
+    "label": "Directory",
+    "color": "#0d9488",
+    "shape": "square",
+    "layer": "code",
     "icon": "square",
     "category_uid": 5,
     "class_uid": 4001
@@ -610,7 +620,9 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "target_types": [
       "package",
       "server",
-      "container"
+      "container",
+      "source_file",
+      "config_file"
     ],
     "traversable": true
   },
@@ -742,12 +754,16 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "source_types": [
       "container",
       "cluster",
-      "fleet"
+      "fleet",
+      "directory"
     ],
     "target_types": [
       "package",
       "server",
-      "container"
+      "container",
+      "directory",
+      "source_file",
+      "config_file"
     ],
     "traversable": true
   },
@@ -820,7 +836,9 @@ export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> =
     "direction": "directed",
     "source_types": [
       "server",
-      "container"
+      "container",
+      "config_file",
+      "source_file"
     ],
     "target_types": [
       "package"

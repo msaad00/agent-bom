@@ -45,6 +45,11 @@ _CONTAINER_TYPES: frozenset[str] = frozenset(
         EntityType.SERVER.value,
         EntityType.CONTAINER.value,
         EntityType.CLOUD_RESOURCE.value,
+        # A directory is a CODE-layer container: the repo folder tree collapses
+        # along its CONTAINS edges (repo root → sub-directory → file) exactly the
+        # way the cloud org → account → resource hierarchy does, so a deep
+        # source tree renders as a handful of top-level folders with drill-down.
+        EntityType.DIRECTORY.value,
     }
 )
 

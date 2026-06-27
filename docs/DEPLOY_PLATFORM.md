@@ -19,7 +19,7 @@ Across every tier the posture is the same:
   is the platform's own Postgres, backup bucket, and secret containers — all in
   your account.
 
-## The control-plane / collector seam (open-core)
+## The control-plane / collector seam
 
 The product is built around a single architectural seam:
 
@@ -32,10 +32,8 @@ The product is built around a single architectural seam:
 This seam is what makes "deploy anywhere" work. The **control plane** is the
 same chart/image in all three tiers. The **collector side** is just read-only
 connect roles (`deploy/terraform/connect-*`). In the hosted tier the control
-plane runs in our account and customers apply a connect role pointing back to
-it; in the self-hosted tiers both sides live in your account. The open-core
-line sits at the graph store: the control plane and scanner are open; managed
-hosting and the multi-tenant control plane operations are the commercial layer.
+plane runs in one account and connected clouds apply a read-only connect role
+pointing back to it; in the self-hosted tiers both sides live in your account.
 
 ---
 

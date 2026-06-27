@@ -79,7 +79,7 @@ Goal: deepen package and lockfile coverage without losing the MCP-aware and runt
 
 ---
 
-## Phase 4: MCP, Runtime, and Skills to 9/10
+## Phase 4: MCP, Runtime, and Skills
 
 Goal: keep the most differentiated surfaces ahead of the market.
 

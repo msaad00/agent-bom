@@ -46,6 +46,26 @@ describe("GraphLegend", () => {
     expect(screen.getByText("Orchestration")).toBeInTheDocument();
     expect(screen.getByText("Relationships")).toBeInTheDocument();
   });
+
+  it("lets the toggle collapse a defaultOpen legend (defaultOpen only seeds initial state)", () => {
+    render(
+      <GraphLegend
+        defaultOpen
+        items={[
+          { label: "Agent", color: "#10b981", layer: "orchestration", kind: "node", shape: "dot" },
+          { label: "Uses", color: "#10b981", kind: "edge", lineStyle: "solid" },
+        ]}
+      />,
+    );
+
+    const toggle = screen.getByRole("button", { name: /hide legend/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(toggle);
+
+    expect(screen.getByRole("button", { name: /show legend/i })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Orchestration")).not.toBeInTheDocument();
+  });
 });
 
 describe("GraphEvidenceExportButton", () => {

@@ -58,6 +58,13 @@ class EntityType(str, Enum):
     # and path-to-sensitive-data first-class for attack-path traversal.
     DATA_STORE = "data_store"  # database / bucket / data lake holding data at rest
 
+    # Network-edge primitive — an API gateway / managed front-door that fronts an
+    # exposed resource. Populated from live cloud inventory (AWS API Gateway, GCP
+    # API Gateway/Apigee, Azure API Management) so the API_GATEWAY semantic layer
+    # carries real nodes and a WAF/gateway in front of a resource refines its
+    # exposure verdict via the PROTECTS edge.
+    API_GATEWAY = "api_gateway"
+
     # Application Security Posture Management (ASPM) — an application is the
     # correlation root that AppSec findings (SCA / secrets / IaC / container /
     # CI-CD / AI-BOM) are grouped and rolled up around. Derived per
@@ -141,6 +148,7 @@ class RelationshipType(str, Enum):
     EXPOSED_TO = "exposed_to"  # resource/server/agent → network/resource (public/internet reach)
     STORES = "stores"  # cloud_resource/data_store/server → dataset/data_store (data at rest)
     HAS_PERMISSION = "has_permission"  # principal/managed_identity → resource/data_store/tool (effective)
+    PROTECTS = "protects"  # waf/api_gateway → resource it fronts (mitigates internet exposure)
 
     # ── Runtime events (dynamic) ──
     ACTED_AS = "acted_as"  # user/service principal → agent (runtime identity)

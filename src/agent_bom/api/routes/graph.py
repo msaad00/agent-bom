@@ -2718,6 +2718,13 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
         "target_types": [EntityType.CLOUD_RESOURCE.value, EntityType.DATA_STORE.value, EntityType.RESOURCE.value, EntityType.TOOL.value],
         "traversable": True,
     },
+    RelationshipType.PROTECTS.value: {
+        "category": "exposure",
+        "direction": "directed",
+        "source_types": [EntityType.API_GATEWAY.value, EntityType.CLOUD_RESOURCE.value],
+        "target_types": [EntityType.CLOUD_RESOURCE.value, EntityType.DATA_STORE.value, EntityType.RESOURCE.value],
+        "traversable": True,
+    },
     RelationshipType.BELONGS_TO.value: {
         "category": "aspm",
         "direction": "directed",

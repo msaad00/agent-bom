@@ -53,6 +53,8 @@ ENTITY_OCSF_MAP: dict[str, dict[str, int]] = {
     EntityType.DRIFT_INCIDENT: {"category_uid": 2, "class_uid": 2004},
     # Cloud-CNAPP data primitive (Category 5 — inventory)
     EntityType.DATA_STORE: {"category_uid": 5, "class_uid": 4001},
+    # Network-edge primitive (Category 5 — inventory)
+    EntityType.API_GATEWAY: {"category_uid": 5, "class_uid": 4001},
     # ASPM application root (Category 5 — inventory)
     EntityType.APPLICATION: {"category_uid": 5, "class_uid": 4001},
     # Organizational (virtual)

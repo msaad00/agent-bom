@@ -335,6 +335,13 @@ def discover_inventory(
         "cloud_functions": [],
         "cloud_sql_instances": [],
         "vpc_networks": [],
+        "subnets": [],
+        "load_balancers": [],
+        "web_acls": [],
+        "api_gateways": [],
+        "nat_gateways": [],
+        "route_tables": [],
+        "ip_addresses": [],
         "disks": [],
         "pubsub_topics": [],
         "warnings": [],
@@ -385,6 +392,13 @@ def discover_inventory(
     cloud_functions: list[dict[str, Any]] = []
     cloud_sql_instances: list[dict[str, Any]] = []
     vpc_networks: list[dict[str, Any]] = []
+    subnets: list[dict[str, Any]] = []
+    load_balancers: list[dict[str, Any]] = []
+    web_acls: list[dict[str, Any]] = []
+    api_gateways: list[dict[str, Any]] = []
+    nat_gateways: list[dict[str, Any]] = []
+    route_tables: list[dict[str, Any]] = []
+    ip_addresses: list[dict[str, Any]] = []
     disks: list[dict[str, Any]] = []
     pubsub_topics: list[dict[str, Any]] = []
 
@@ -415,7 +429,22 @@ def discover_inventory(
     if include_databases:
         cloud_sql_instances = _discover_cloud_sql_instances(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_networks:
-        vpc_networks = _discover_vpc_networks(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
+        subnets_by_network = _discover_subnets_by_network(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
+        vpc_networks = _discover_vpc_networks(
+            resolved_project, credentials=credentials, warnings=warnings, missing=missing, subnets_by_network=subnets_by_network
+        )
+        subnets = _discover_subnets(subnets_by_network, project_id=resolved_project)
+        load_balancers, backends_by_policy = _discover_load_balancers(
+            resolved_project, credentials=credentials, warnings=warnings, missing=missing
+        )
+        web_acls = _discover_security_policies(
+            resolved_project, credentials=credentials, warnings=warnings, missing=missing, backends_by_policy=backends_by_policy
+        )
+        api_gateways = _discover_api_gateways(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
+        nat_gateways, route_tables = _discover_routers(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
+        ip_addresses = _discover_ip_addresses(
+            resolved_project, credentials=credentials, warnings=warnings, missing=missing, instances=instances
+        )
     if include_disks:
         disks = _discover_disks(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
     if include_messaging:
@@ -435,7 +464,21 @@ def discover_inventory(
     if include_databases:
         permissions_used.append("cloudsql.instances.list")
     if include_networks:
-        permissions_used.extend(("compute.networks.list", "compute.subnetworks.list"))
+        permissions_used.extend(
+            (
+                "compute.networks.list",
+                "compute.subnetworks.list",
+                "compute.securityPolicies.list",
+                "compute.backendServices.list",
+                "compute.urlMaps.list",
+                "compute.forwardingRules.list",
+                "compute.targetHttpProxies.list",
+                "compute.targetHttpsProxies.list",
+                "compute.routers.list",
+                "compute.addresses.list",
+                "apigateway.gateways.list",
+            )
+        )
     if include_disks:
         permissions_used.append("compute.disks.list")
     if include_messaging:
@@ -464,6 +507,13 @@ def discover_inventory(
         "cloud_functions": cloud_functions,
         "cloud_sql_instances": cloud_sql_instances,
         "vpc_networks": vpc_networks,
+        "subnets": subnets,
+        "load_balancers": load_balancers,
+        "web_acls": web_acls,
+        "api_gateways": api_gateways,
+        "nat_gateways": nat_gateways,
+        "route_tables": route_tables,
+        "ip_addresses": ip_addresses,
         "disks": disks,
         "pubsub_topics": pubsub_topics,
         "warnings": warnings,
@@ -1177,16 +1227,27 @@ def _discover_cloud_sql_instances(
 
 
 def _discover_vpc_networks(
-    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+    project_id: str,
+    *,
+    credentials: Any,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None = None,
+    subnets_by_network: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Enumerate every VPC network + its subnets in the project (read-only)."""
+    """Enumerate every VPC network + its subnets in the project (read-only).
+
+    ``subnets_by_network`` may be supplied by the caller to reuse a single
+    aggregated subnet query (the flat ``subnets`` list shares the same data);
+    when ``None`` the subnets are queried here.
+    """
     try:
         from google.cloud import compute_v1
     except ImportError:
         warnings.append("google-cloud-compute not installed. Skipping VPC network inventory.")
         return []
 
-    subnets_by_network = _discover_subnets_by_network(project_id, credentials=credentials, warnings=warnings, missing=missing)
+    if subnets_by_network is None:
+        subnets_by_network = _discover_subnets_by_network(project_id, credentials=credentials, warnings=warnings, missing=missing)
     networks: list[dict[str, Any]] = []
     try:
         client = compute_v1.NetworksClient(credentials=credentials)
@@ -1234,8 +1295,11 @@ def _discover_subnets_by_network(
             for subnet in getattr(scoped_list, "subnetworks", None) or []:
                 network_link = str(getattr(subnet, "network", "") or "")
                 flow_logs = getattr(subnet, "enable_flow_logs", None)
+                subnet_name = str(getattr(subnet, "name", "") or "")
                 entry = {
-                    "name": str(getattr(subnet, "name", "") or ""),
+                    "id": str(getattr(subnet, "self_link", "") or "") or str(getattr(subnet, "id", "") or "") or subnet_name,
+                    "name": subnet_name,
+                    "network": network_link,
                     "region": _leaf(getattr(subnet, "region", "")),
                     "cidr": str(getattr(subnet, "ip_cidr_range", "") or ""),
                     "flow_logs": bool(flow_logs) if flow_logs is not None else False,
@@ -1252,6 +1316,480 @@ def _discover_subnets_by_network(
             missing=missing,
         )
     return by_network
+
+
+# ---------------------------------------------------------------------------
+# Subnets (flat list, reusing the aggregated subnet query)
+# ---------------------------------------------------------------------------
+
+
+def _discover_subnets(subnets_by_network: dict[str, list[dict[str, Any]]], *, project_id: str) -> list[dict[str, Any]]:
+    """Flatten the aggregated subnet map into a top-level ``subnets`` list.
+
+    Reuses the data already produced by ``_discover_subnets_by_network`` (which
+    keys each subnet under both its network self-link and the network leaf name),
+    so each subnet object is deduplicated by identity rather than re-queried.
+    """
+    seen: set[int] = set()
+    subnets: list[dict[str, Any]] = []
+    for entries in subnets_by_network.values():
+        for entry in entries:
+            marker = id(entry)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            name = str(entry.get("name", "") or "")
+            subnets.append(
+                {
+                    "id": str(entry.get("id", "") or "") or name,
+                    "name": name,
+                    "vpc_id": str(entry.get("network", "") or ""),
+                    "cidr": str(entry.get("cidr", "") or ""),
+                    "is_public": False,
+                    "location": str(entry.get("region", "") or ""),
+                    "account_id": project_id,
+                }
+            )
+    return subnets
+
+
+# ---------------------------------------------------------------------------
+# Load balancers (compute_v1: backend services / URL maps / forwarding rules /
+# target proxies) — normalized into one list, distinguished by ``lb_type``.
+# ---------------------------------------------------------------------------
+
+
+def _discover_load_balancers(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    """Enumerate the load-balancing data plane (read-only).
+
+    Backend services, URL maps, forwarding rules, and target HTTP(S) proxies are
+    normalized into a single list, each tagged with ``lb_type``. Also returns a
+    ``{security_policy_leaf: [backend_id…]}`` map so a Cloud Armor policy can list
+    the backend services it protects. Each resource class is queried in its own
+    try/except so one missing permission degrades only that class.
+    """
+    try:
+        from google.cloud import compute_v1
+    except ImportError:
+        warnings.append("google-cloud-compute not installed. Skipping load-balancer inventory.")
+        return [], {}
+
+    load_balancers: list[dict[str, Any]] = []
+    backends_by_policy: dict[str, list[str]] = {}
+
+    try:
+        client = compute_v1.BackendServicesClient(credentials=credentials)
+        for _scope, scoped_list in client.aggregated_list(project=project_id):
+            for backend in getattr(scoped_list, "backend_services", None) or []:
+                name = str(getattr(backend, "name", "") or "").strip()
+                if not name:
+                    continue
+                scheme = str(getattr(backend, "load_balancing_scheme", "") or "").upper()
+                backend_id = str(getattr(backend, "id", "") or "") or name
+                load_balancers.append(
+                    {
+                        "name": name,
+                        "id": backend_id,
+                        "lb_type": "backend-service",
+                        "scheme": scheme,
+                        "internet_exposed": "EXTERNAL" in scheme,
+                        "location": _leaf(getattr(backend, "region", "")) or "global",
+                        "account_id": project_id,
+                    }
+                )
+                policy_leaf = _leaf(getattr(backend, "security_policy", ""))
+                if policy_leaf:
+                    backends_by_policy.setdefault(policy_leaf, []).append(backend_id)
+    except Exception as exc:  # noqa: BLE001 — one failed backend-services list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="backend services",
+            permission="compute.backendServices.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
+
+    try:
+        client = compute_v1.UrlMapsClient(credentials=credentials)
+        for url_map in client.list(project=project_id):
+            name = str(getattr(url_map, "name", "") or "").strip()
+            if not name:
+                continue
+            load_balancers.append(
+                {
+                    "name": name,
+                    "id": str(getattr(url_map, "id", "") or "") or name,
+                    "lb_type": "url-map",
+                    "scheme": "",
+                    "internet_exposed": False,
+                    "location": _leaf(getattr(url_map, "region", "")) or "global",
+                    "account_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed URL-maps list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="URL maps",
+            permission="compute.urlMaps.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
+
+    try:
+        client = compute_v1.ForwardingRulesClient(credentials=credentials)
+        for _scope, scoped_list in client.aggregated_list(project=project_id):
+            for rule in getattr(scoped_list, "forwarding_rules", None) or []:
+                name = str(getattr(rule, "name", "") or "").strip()
+                if not name:
+                    continue
+                scheme = str(getattr(rule, "load_balancing_scheme", "") or "").upper()
+                load_balancers.append(
+                    {
+                        "name": name,
+                        "id": str(getattr(rule, "id", "") or "") or name,
+                        "lb_type": "forwarding-rule",
+                        "scheme": scheme,
+                        "internet_exposed": "EXTERNAL" in scheme,
+                        "location": _leaf(getattr(rule, "region", "")) or "global",
+                        "account_id": project_id,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001 — one failed forwarding-rules list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="forwarding rules",
+            permission="compute.forwardingRules.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
+
+    load_balancers.extend(_discover_target_proxies(project_id, credentials=credentials, warnings=warnings, missing=missing))
+    return load_balancers, backends_by_policy
+
+
+def _discover_target_proxies(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Enumerate target HTTP + HTTPS proxies (read-only), normalized as LBs."""
+    try:
+        from google.cloud import compute_v1
+    except ImportError:
+        return []
+
+    proxies: list[dict[str, Any]] = []
+    try:
+        client = compute_v1.TargetHttpProxiesClient(credentials=credentials)
+        for proxy in client.list(project=project_id):
+            name = str(getattr(proxy, "name", "") or "").strip()
+            if not name:
+                continue
+            proxies.append(
+                {
+                    "name": name,
+                    "id": str(getattr(proxy, "id", "") or "") or name,
+                    "lb_type": "target-proxy",
+                    "scheme": "",
+                    "internet_exposed": False,
+                    "location": "global",
+                    "account_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed target-HTTP-proxies list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="target HTTP proxies",
+            permission="compute.targetHttpProxies.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
+
+    try:
+        client = compute_v1.TargetHttpsProxiesClient(credentials=credentials)
+        for proxy in client.list(project=project_id):
+            name = str(getattr(proxy, "name", "") or "").strip()
+            if not name:
+                continue
+            proxies.append(
+                {
+                    "name": name,
+                    "id": str(getattr(proxy, "id", "") or "") or name,
+                    "lb_type": "target-proxy",
+                    "scheme": "",
+                    "internet_exposed": False,
+                    "location": "global",
+                    "account_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed target-HTTPS-proxies list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="target HTTPS proxies",
+            permission="compute.targetHttpsProxies.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
+    return proxies
+
+
+# ---------------------------------------------------------------------------
+# Cloud Armor security policies (compute_v1) — GCP's WAF → web_acls
+# ---------------------------------------------------------------------------
+
+
+def _discover_security_policies(
+    project_id: str,
+    *,
+    credentials: Any,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None = None,
+    backends_by_policy: dict[str, list[str]] | None = None,
+) -> list[dict[str, Any]]:
+    """Enumerate Cloud Armor security policies (read-only) → ``web_acls`` shape.
+
+    ``protected_targets`` is resolved from the backend services that reference
+    each policy (passed in via ``backends_by_policy``) so the graph can link a
+    policy to the resources it shields.
+    """
+    try:
+        from google.cloud import compute_v1
+    except ImportError:
+        warnings.append("google-cloud-compute not installed. Skipping Cloud Armor inventory.")
+        return []
+
+    by_policy = backends_by_policy or {}
+    policies: list[dict[str, Any]] = []
+    try:
+        client = compute_v1.SecurityPoliciesClient(credentials=credentials)
+        for policy in client.list(project=project_id):
+            name = str(getattr(policy, "name", "") or "").strip()
+            if not name:
+                continue
+            policies.append(
+                {
+                    "name": name,
+                    "id": str(getattr(policy, "id", "") or "") or name,
+                    "arn": "",
+                    "scope": "cloud-armor",
+                    "protected_targets": list(by_policy.get(name, [])),
+                    "location": "global",
+                    "account_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed Cloud Armor policies list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Cloud Armor policies",
+            permission="compute.securityPolicies.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
+    return policies
+
+
+# ---------------------------------------------------------------------------
+# API Gateway (apigateway_v1) — GCP managed API front door → api_gateways
+# ---------------------------------------------------------------------------
+
+
+def _discover_api_gateways(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Enumerate API Gateway gateways in the project (read-only).
+
+    Gateways front backend services with a public default hostname, so each is
+    marked ``internet_exposed``. Degrades to ``[]`` plus a warning when the
+    apigateway SDK is absent.
+    """
+    try:
+        from google.cloud import apigateway_v1
+    except ImportError:
+        warnings.append("google-cloud-api-gateway not installed. Skipping API Gateway inventory.")
+        return []
+
+    gateways: list[dict[str, Any]] = []
+    try:
+        client = apigateway_v1.ApiGatewayServiceClient(credentials=credentials)
+        request = apigateway_v1.ListGatewaysRequest(parent=f"projects/{project_id}/locations/-")
+        for gateway in client.list_gateways(request=request):
+            full_name = str(getattr(gateway, "name", "") or "").strip()
+            name = _leaf(full_name)
+            if not name:
+                continue
+            api_config = _leaf(getattr(gateway, "api_config", ""))
+            gateways.append(
+                {
+                    "name": name,
+                    "id": full_name or name,
+                    "arn": "",
+                    "protocol": "apigateway",
+                    "endpoint": str(getattr(gateway, "default_hostname", "") or ""),
+                    "internet_exposed": True,
+                    "stages": [],
+                    "protected_targets": [api_config] if api_config else [],
+                    "location": _segment(full_name, "locations"),
+                    "account_id": project_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed API Gateway list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="API gateways",
+            permission="apigateway.gateways.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
+    return gateways
+
+
+# ---------------------------------------------------------------------------
+# Cloud routers + Cloud NAT (compute_v1 RoutersClient.aggregated_list)
+# ---------------------------------------------------------------------------
+
+
+def _discover_routers(
+    project_id: str, *, credentials: Any, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Enumerate Cloud routers + their NAT configs (read-only).
+
+    Returns ``(nat_gateways, route_tables)``: each router becomes a route-table
+    entry (``has_internet_route`` True when it carries a NAT egress config), and
+    each NAT config on a router becomes a NAT-gateway entry.
+    """
+    try:
+        from google.cloud import compute_v1
+    except ImportError:
+        warnings.append("google-cloud-compute not installed. Skipping router/NAT inventory.")
+        return [], []
+
+    nat_gateways: list[dict[str, Any]] = []
+    route_tables: list[dict[str, Any]] = []
+    try:
+        client = compute_v1.RoutersClient(credentials=credentials)
+        for _scope, scoped_list in client.aggregated_list(project=project_id):
+            for router in getattr(scoped_list, "routers", None) or []:
+                name = str(getattr(router, "name", "") or "").strip()
+                if not name:
+                    continue
+                network = _leaf(getattr(router, "network", ""))
+                region = _leaf(getattr(router, "region", ""))
+                router_id = str(getattr(router, "id", "") or "") or name
+                nats = list(getattr(router, "nats", None) or [])
+                route_tables.append(
+                    {
+                        "id": router_id,
+                        "name": name,
+                        "vpc_id": network,
+                        "has_internet_route": bool(nats),
+                        "location": region,
+                        "account_id": project_id,
+                    }
+                )
+                for nat in nats:
+                    nat_name = str(getattr(nat, "name", "") or "").strip()
+                    if not nat_name:
+                        continue
+                    nat_gateways.append(
+                        {
+                            "id": f"{name}/{nat_name}",
+                            "name": nat_name,
+                            "vpc_id": network,
+                            "subnet_id": "",
+                            "location": region,
+                            "account_id": project_id,
+                        }
+                    )
+    except Exception as exc:  # noqa: BLE001 — one failed routers list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="routers",
+            permission="compute.routers.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
+    return nat_gateways, route_tables
+
+
+# ---------------------------------------------------------------------------
+# External IP addresses (reserved via AddressesClient + ephemeral from instances)
+# ---------------------------------------------------------------------------
+
+
+def _discover_ip_addresses(
+    project_id: str,
+    *,
+    credentials: Any,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None = None,
+    instances: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Enumerate reserved external IPs + ephemeral external IPs (read-only).
+
+    Reserved addresses come from ``AddressesClient.aggregated_list``; ephemeral
+    external IPs are read from the already-discovered instances' access configs
+    (their ``public_ip``) and de-duplicated against the reserved set so a static
+    IP attached to a VM is not double-counted.
+    """
+    try:
+        from google.cloud import compute_v1
+    except ImportError:
+        warnings.append("google-cloud-compute not installed. Skipping IP-address inventory.")
+        return []
+
+    ip_addresses: list[dict[str, Any]] = []
+    reserved_values: set[str] = set()
+    try:
+        client = compute_v1.AddressesClient(credentials=credentials)
+        for _scope, scoped_list in client.aggregated_list(project=project_id):
+            for address in getattr(scoped_list, "addresses", None) or []:
+                value = str(getattr(address, "address", "") or "").strip()
+                if not value:
+                    continue
+                reserved_values.add(value)
+                users = [_leaf(u) for u in (getattr(address, "users", None) or []) if u]
+                ip_addresses.append(
+                    {
+                        "address": value,
+                        "kind": "reserved",
+                        "attached_to": users[0] if users else "",
+                        "location": _leaf(getattr(address, "region", "")) or "global",
+                        "account_id": project_id,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001 — one failed addresses list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="reserved IP addresses",
+            permission="compute.addresses.list",
+            cloud="gcp",
+            warnings=warnings,
+            missing=missing,
+        )
+
+    for instance in instances or []:
+        public_ip = str(instance.get("public_ip", "") or "").strip()
+        if not public_ip or public_ip in reserved_values:
+            continue
+        reserved_values.add(public_ip)
+        ip_addresses.append(
+            {
+                "address": public_ip,
+                "kind": "ephemeral",
+                "attached_to": str(instance.get("name", "") or instance.get("instance_id", "") or ""),
+                "location": str(instance.get("zone", "") or ""),
+                "account_id": project_id,
+            }
+        )
+    return ip_addresses
 
 
 # ---------------------------------------------------------------------------

@@ -154,12 +154,142 @@ class _FakeDisksClient:
         return [("zones/us-central1-a", _Obj(disks=[disk]))]
 
 
+class _FakeBackendServicesClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def aggregated_list(self, project: str) -> list[Any]:
+        ext = _Obj(
+            name="ext-backend",
+            id="be-1",
+            load_balancing_scheme="EXTERNAL_MANAGED",
+            region="",
+            security_policy="https://www.googleapis.com/compute/v1/projects/p/global/securityPolicies/armor-policy",
+        )
+        internal = _Obj(
+            name="int-backend",
+            id="be-2",
+            load_balancing_scheme="INTERNAL_MANAGED",
+            region="https://www.googleapis.com/compute/v1/projects/p/regions/us-central1",
+            security_policy="",
+        )
+        return [("global", _Obj(backend_services=[ext, internal]))]
+
+
+class _FakeUrlMapsClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list(self, project: str) -> list[Any]:
+        return [_Obj(name="web-urlmap", id="um-1", region="")]
+
+
+class _FakeForwardingRulesClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def aggregated_list(self, project: str) -> list[Any]:
+        rule = _Obj(
+            name="ext-fr",
+            id="fr-1",
+            load_balancing_scheme="EXTERNAL",
+            region="https://www.googleapis.com/compute/v1/projects/p/regions/us-central1",
+        )
+        return [("regions/us-central1", _Obj(forwarding_rules=[rule]))]
+
+
+class _FakeTargetHttpProxiesClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list(self, project: str) -> list[Any]:
+        return [_Obj(name="http-proxy", id="tp-1")]
+
+
+class _FakeTargetHttpsProxiesClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list(self, project: str) -> list[Any]:
+        return [_Obj(name="https-proxy", id="tps-1")]
+
+
+class _FakeSecurityPoliciesClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list(self, project: str) -> list[Any]:
+        return [_Obj(name="armor-policy", id="sp-1")]
+
+
+class _FakeRoutersClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def aggregated_list(self, project: str) -> list[Any]:
+        router = _Obj(
+            name="nat-router",
+            id="rt-1",
+            network="https://www.googleapis.com/compute/v1/projects/p/global/networks/default",
+            region="https://www.googleapis.com/compute/v1/projects/p/regions/us-central1",
+            nats=[_Obj(name="nat-gw-1")],
+        )
+        return [("regions/us-central1", _Obj(routers=[router]))]
+
+
+class _FakeAddressesClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def aggregated_list(self, project: str) -> list[Any]:
+        addr = _Obj(
+            address="34.120.0.1",
+            name="reserved-ip",
+            region="https://www.googleapis.com/compute/v1/projects/p/regions/us-central1",
+            users=["https://www.googleapis.com/compute/v1/projects/p/regions/us-central1/forwardingRules/ext-fr"],
+        )
+        return [("regions/us-central1", _Obj(addresses=[addr]))]
+
+
 class _FakeComputeModule(types.ModuleType):
     InstancesClient = _FakeInstancesClient
     FirewallsClient = _FakeFirewallsClient
     NetworksClient = _FakeNetworksClient
     SubnetworksClient = _FakeSubnetworksClient
     DisksClient = _FakeDisksClient
+    BackendServicesClient = _FakeBackendServicesClient
+    UrlMapsClient = _FakeUrlMapsClient
+    ForwardingRulesClient = _FakeForwardingRulesClient
+    TargetHttpProxiesClient = _FakeTargetHttpProxiesClient
+    TargetHttpsProxiesClient = _FakeTargetHttpsProxiesClient
+    SecurityPoliciesClient = _FakeSecurityPoliciesClient
+    RoutersClient = _FakeRoutersClient
+    AddressesClient = _FakeAddressesClient
+
+
+# --- API Gateway ------------------------------------------------------------
+class _FakeApiGatewayServiceClient:
+    def __init__(self, credentials: Any = None) -> None:
+        pass
+
+    def list_gateways(self, request: Any) -> list[Any]:
+        return [
+            _Obj(
+                name="projects/proj-1/locations/us-central1/gateways/public-gw",
+                default_hostname="public-gw-abc.uc.gateway.dev",
+                api_config="projects/proj-1/locations/global/apis/api1/configs/cfg1",
+            ),
+        ]
+
+
+class _FakeListGatewaysRequest:
+    def __init__(self, parent: str) -> None:
+        self.parent = parent
+
+
+class _FakeApiGatewayModule(types.ModuleType):
+    ApiGatewayServiceClient = _FakeApiGatewayServiceClient
+    ListGatewaysRequest = _FakeListGatewaysRequest
 
 
 class _FakeServiceAccount:
@@ -385,6 +515,7 @@ def _install_fake_gcp() -> Any:
     run_mod = _FakeRunModule("google.cloud.run_v2")
     functions_mod = _FakeFunctionsModule("google.cloud.functions_v2")
     pubsub_mod = _FakePubsubModule("google.cloud.pubsub_v1")
+    apigateway_mod = _FakeApiGatewayModule("google.cloud.apigateway_v1")
     apiclient_mod = types.ModuleType("googleapiclient")
     discovery_mod = types.ModuleType("googleapiclient.discovery")
     discovery_mod.build = _fake_discovery_build  # type: ignore[attr-defined]
@@ -404,6 +535,7 @@ def _install_fake_gcp() -> Any:
             "google.cloud.run_v2": run_mod,
             "google.cloud.functions_v2": functions_mod,
             "google.cloud.pubsub_v1": pubsub_mod,
+            "google.cloud.apigateway_v1": apigateway_mod,
             "googleapiclient": apiclient_mod,
             "googleapiclient.discovery": discovery_mod,
         },
@@ -1073,3 +1205,176 @@ def test_graph_gcp_group_binding_surfaces_effective_permission() -> None:
         e for e in graph.edges if e.relationship == RelationshipType.HAS_PERMISSION and e.source == group_node and e.target == bucket_node
     ]
     assert group_perms
+
+
+# ---------------------------------------------------------------------------
+# Network-edge breadth: Cloud Armor / API Gateway / load balancers / NAT /
+# routers / subnets / IP addresses
+# ---------------------------------------------------------------------------
+
+
+def test_inventory_enumerates_network_edge(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+
+    assert payload["status"] == "ok"
+
+    # Cloud Armor → web_acls, scoped cloud-armor, fronting the backend that refs it.
+    acls = {a["name"]: a for a in payload["web_acls"]}
+    assert set(acls) == {"armor-policy"}
+    assert acls["armor-policy"]["scope"] == "cloud-armor"
+    assert acls["armor-policy"]["protected_targets"] == ["be-1"]
+
+    # API Gateway: public default hostname → internet_exposed.
+    gws = {g["name"]: g for g in payload["api_gateways"]}
+    assert set(gws) == {"public-gw"}
+    assert gws["public-gw"]["protocol"] == "apigateway"
+    assert gws["public-gw"]["internet_exposed"] is True
+    assert gws["public-gw"]["endpoint"] == "public-gw-abc.uc.gateway.dev"
+    assert gws["public-gw"]["location"] == "us-central1"
+
+    # Load balancers: backend services / url map / forwarding rule / target proxies.
+    lbs = payload["load_balancers"]
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for lb in lbs:
+        by_type.setdefault(lb["lb_type"], []).append(lb)
+    assert len(by_type["backend-service"]) == 2
+    assert len(by_type["url-map"]) == 1
+    assert len(by_type["forwarding-rule"]) == 1
+    assert len(by_type["target-proxy"]) == 2
+    backends = {b["name"]: b for b in by_type["backend-service"]}
+    assert backends["ext-backend"]["internet_exposed"] is True
+    assert backends["int-backend"]["internet_exposed"] is False
+    assert by_type["forwarding-rule"][0]["internet_exposed"] is True
+
+    # Subnets: flat list, reusing the aggregated subnet query (no double-count).
+    subnets = payload["subnets"]
+    assert len(subnets) == 1
+    assert subnets[0]["name"] == "default-sub"
+    assert subnets[0]["cidr"] == "10.0.0.0/20"
+    assert subnets[0]["location"] == "us-central1"
+    assert subnets[0]["account_id"] == "proj-1"
+
+    # Cloud NAT + routers.
+    nats = {n["name"]: n for n in payload["nat_gateways"]}
+    assert nats["nat-gw-1"]["vpc_id"] == "default"
+    assert nats["nat-gw-1"]["location"] == "us-central1"
+    routers = {r["name"]: r for r in payload["route_tables"]}
+    assert routers["nat-router"]["has_internet_route"] is True
+    assert routers["nat-router"]["vpc_id"] == "default"
+
+    # IP addresses: reserved (with attachment) + ephemeral (from instance).
+    ips = {i["address"]: i for i in payload["ip_addresses"]}
+    assert ips["34.120.0.1"]["kind"] == "reserved"
+    assert ips["34.120.0.1"]["attached_to"] == "ext-fr"
+    assert ips["203.0.113.7"]["kind"] == "ephemeral"
+    assert ips["203.0.113.7"]["attached_to"] == "web-1"
+
+    # Per-run trust contract picks up the network-edge permissions.
+    env = payload["discovery_envelope"]
+    for perm in (
+        "compute.securityPolicies.list",
+        "compute.backendServices.list",
+        "compute.urlMaps.list",
+        "compute.forwardingRules.list",
+        "compute.targetHttpProxies.list",
+        "compute.targetHttpsProxies.list",
+        "compute.routers.list",
+        "compute.addresses.list",
+        "apigateway.gateways.list",
+    ):
+        assert perm in env["permissions_used"]
+
+
+def test_inventory_payload_has_network_edge_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+    for key in ("subnets", "load_balancers", "web_acls", "api_gateways", "nat_gateways", "route_tables", "ip_addresses"):
+        assert key in payload
+        assert isinstance(payload[key], list)
+
+
+def test_network_edge_gated_off_with_include_networks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1", include_networks=False)
+    assert payload["web_acls"] == []
+    assert payload["load_balancers"] == []
+    assert payload["api_gateways"] == []
+    assert payload["nat_gateways"] == []
+    assert payload["route_tables"] == []
+    assert payload["ip_addresses"] == []
+    assert payload["subnets"] == []
+    env = payload["discovery_envelope"]
+    assert "compute.securityPolicies.list" not in env["permissions_used"]
+    assert "apigateway.gateways.list" not in env["permissions_used"]
+
+
+def test_api_gateway_sdk_missing_degrades(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An absent apigateway SDK degrades to [] + a warning, never a crash."""
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+    import builtins
+
+    original = builtins.__import__
+
+    def _no_apigw(name: str, *args: Any, **kwargs: Any) -> Any:
+        fromlist = kwargs.get("fromlist") or (args[2] if len(args) > 2 and args[2] else ())
+        if name == "google.cloud" and "apigateway_v1" in (fromlist or ()):
+            raise ImportError("mocked")
+        return original(name, *args, **kwargs)
+
+    with _install_fake_gcp(), patch("builtins.__import__", side_effect=_no_apigw):
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+    assert payload["status"] == "ok"
+    assert payload["api_gateways"] == []
+    assert any("API Gateway" in w for w in payload["warnings"])
+    # Other network-edge types still enumerate.
+    assert payload["web_acls"]
+    assert payload["load_balancers"]
+
+
+def test_cloud_armor_permission_denied_degrades(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+
+    def _denied(self: Any, project: str) -> Any:
+        raise PermissionDenied()
+
+    monkeypatch.setattr(_FakeSecurityPoliciesClient, "list", _denied)
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+
+    assert payload["status"] == "ok"
+    # The denied discoverer degrades to empty…
+    assert payload["web_acls"] == []
+    # …while the rest of the scan survives.
+    assert {b["name"] for b in payload["buckets"]} == {"public-lake", "private-logs"}
+    assert payload["load_balancers"]
+    # Actionable warning naming the missing permission.
+    actionable = [w for w in payload["warnings"] if "role lacks" in w and "Cloud Armor policies" in w]
+    assert actionable, payload["warnings"]
+    assert "compute.securityPolicies.list" in actionable[0]
+    # Structured missing_permissions entry.
+    entries = [e for e in payload["missing_permissions"] if e["resource_type"] == "Cloud Armor policies"]
+    assert entries == [{"cloud": "gcp", "permission": "compute.securityPolicies.list", "resource_type": "Cloud Armor policies"}]
+
+
+def test_load_balancer_partial_permission_denied(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One denied LB sub-resource degrades only that class, others survive."""
+    monkeypatch.setenv(gcp_inventory.INVENTORY_ENV_FLAG, "1")
+
+    def _denied(self: Any, project: str) -> Any:
+        raise PermissionDenied()
+
+    monkeypatch.setattr(_FakeForwardingRulesClient, "aggregated_list", _denied)
+    with _install_fake_gcp():
+        payload = gcp_inventory.discover_inventory(project_id="proj-1")
+
+    assert payload["status"] == "ok"
+    types_present = {lb["lb_type"] for lb in payload["load_balancers"]}
+    # Forwarding rules denied, but backend services / url maps / target proxies remain.
+    assert "forwarding-rule" not in types_present
+    assert {"backend-service", "url-map", "target-proxy"} <= types_present
+    entries = [e for e in payload["missing_permissions"] if e["resource_type"] == "forwarding rules"]
+    assert entries == [{"cloud": "gcp", "permission": "compute.forwardingRules.list", "resource_type": "forwarding rules"}]

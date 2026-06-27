@@ -82,10 +82,16 @@ _AZURE_DATA_PERMISSIONS: tuple[str, ...] = (
 )
 _AZURE_NETWORK_PERMISSIONS: tuple[str, ...] = (
     "Microsoft.Network/virtualNetworks/read",
+    "Microsoft.Network/virtualNetworks/subnets/read",
     "Microsoft.Network/publicIPAddresses/read",
     "Microsoft.Network/loadBalancers/read",
     "Microsoft.Network/applicationGateways/read",
     "Microsoft.Network/frontDoors/read",
+    "Microsoft.Network/azureFirewalls/read",
+    "Microsoft.Network/natGateways/read",
+    "Microsoft.Network/routeTables/read",
+    "Microsoft.Network/networkInterfaces/read",
+    "Microsoft.Network/privateEndpoints/read",
     "Microsoft.ApiManagement/service/read",
 )
 
@@ -199,10 +205,17 @@ def discover_inventory(
         "container_registries": [],
         "databases": [],
         "virtual_networks": [],
+        "subnets": [],
         "public_ips": [],
+        "ip_addresses": [],
+        "network_interfaces": [],
         "load_balancers": [],
         "application_gateways": [],
         "front_doors": [],
+        "azure_firewalls": [],
+        "nat_gateways": [],
+        "route_tables": [],
+        "private_endpoints": [],
         "api_management": [],
         "event_hubs": [],
         "service_bus_namespaces": [],
@@ -277,10 +290,17 @@ def discover_inventory(
         discovery_tasks.append(("redis_caches", _discover_redis_caches))
     if include_network:
         discovery_tasks.append(("virtual_networks", _discover_virtual_networks))
+        discovery_tasks.append(("subnets", _discover_subnets))
         discovery_tasks.append(("public_ips", _discover_public_ips))
+        discovery_tasks.append(("ip_addresses", _discover_ip_addresses))
+        discovery_tasks.append(("network_interfaces", _discover_network_interfaces))
         discovery_tasks.append(("load_balancers", _discover_load_balancers))
         discovery_tasks.append(("application_gateways", _discover_application_gateways))
         discovery_tasks.append(("front_doors", _discover_front_doors))
+        discovery_tasks.append(("azure_firewalls", _discover_azure_firewalls))
+        discovery_tasks.append(("nat_gateways", _discover_nat_gateways))
+        discovery_tasks.append(("route_tables", _discover_route_tables))
+        discovery_tasks.append(("private_endpoints", _discover_private_endpoints))
         discovery_tasks.append(("api_management", _discover_api_management))
 
     collected: dict[str, list[dict[str, Any]]] = {}
@@ -326,10 +346,17 @@ def discover_inventory(
     container_registries = collected.get("container_registries", [])
     databases = collected.get("databases", [])
     virtual_networks = collected.get("virtual_networks", [])
+    subnets = collected.get("subnets", [])
     public_ips = collected.get("public_ips", [])
+    ip_addresses = collected.get("ip_addresses", [])
+    network_interfaces = collected.get("network_interfaces", [])
     load_balancers = collected.get("load_balancers", [])
     application_gateways = collected.get("application_gateways", [])
     front_doors = collected.get("front_doors", [])
+    azure_firewalls = collected.get("azure_firewalls", [])
+    nat_gateways = collected.get("nat_gateways", [])
+    route_tables = collected.get("route_tables", [])
+    private_endpoints = collected.get("private_endpoints", [])
     api_management = collected.get("api_management", [])
     event_hubs = collected.get("event_hubs", [])
     service_bus_namespaces = collected.get("service_bus_namespaces", [])
@@ -401,10 +428,17 @@ def discover_inventory(
         "container_registries": container_registries,
         "databases": databases,
         "virtual_networks": virtual_networks,
+        "subnets": subnets,
         "public_ips": public_ips,
+        "ip_addresses": ip_addresses,
+        "network_interfaces": network_interfaces,
         "load_balancers": load_balancers,
         "application_gateways": application_gateways,
         "front_doors": front_doors,
+        "azure_firewalls": azure_firewalls,
+        "nat_gateways": nat_gateways,
+        "route_tables": route_tables,
+        "private_endpoints": private_endpoints,
         "api_management": api_management,
         "event_hubs": event_hubs,
         "service_bus_namespaces": service_bus_namespaces,
@@ -1374,6 +1408,387 @@ def _discover_public_ips(
     return public_ips
 
 
+def _discover_ip_addresses(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Surface allocated public IP *addresses* and the resource each is bound to.
+
+    The symmetric counterpart of the NIC ``public_ip`` capture: from the
+    public-IP resource side, record the address value and the ARM id of the IP
+    configuration it is attached to (a NIC / load-balancer / gateway frontend),
+    so the graph can wire the address to its bearer from either direction.
+    """
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping IP-address inventory.")
+        return []
+
+    addresses: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for pip in client.public_ip_addresses.list_all():
+            address = str(getattr(pip, "ip_address", "") or "")
+            ip_config = getattr(pip, "ip_configuration", None)
+            attached_to = str(getattr(ip_config, "id", "") or "") if ip_config else ""
+            addresses.append(
+                {
+                    "address": address,
+                    "kind": "public",
+                    "attached_to": attached_to,
+                    "location": str(getattr(pip, "location", "") or ""),
+                    "account_id": subscription_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed Azure public IPs list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure IP addresses",
+            permission="Microsoft.Network/publicIPAddresses/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
+    return addresses
+
+
+def _discover_subnets(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Enumerate every subnet across the subscription's VNets (read-only).
+
+    Subnets are not listable subscription-wide directly, so they are read from
+    each VNet's expanded ``subnets`` collection. ``is_public`` is a conservative,
+    provable signal: a subnet with an attached NAT gateway has an explicit
+    internet egress path. The shared builder can refine exposure by joining a
+    subnet's route table against ``route_tables`` (``has_internet_route``).
+    """
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping subnet inventory.")
+        return []
+
+    subnets: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for vnet in client.virtual_networks.list_all():
+            vnet_id = str(getattr(vnet, "id", "") or "")
+            for subnet in getattr(vnet, "subnets", None) or []:
+                subnet_id = str(getattr(subnet, "id", "") or "")
+                name = str(getattr(subnet, "name", "") or "").strip()
+                if not name:
+                    continue
+                cidr = str(getattr(subnet, "address_prefix", "") or "")
+                if not cidr:
+                    prefixes = list(getattr(subnet, "address_prefixes", None) or [])
+                    cidr = str(prefixes[0]) if prefixes else ""
+                nat_gateway = getattr(subnet, "nat_gateway", None)
+                subnets.append(
+                    {
+                        "id": subnet_id,
+                        "name": name,
+                        "vpc_id": vnet_id,
+                        "cidr": cidr,
+                        "is_public": nat_gateway is not None,
+                        "location": str(getattr(vnet, "location", "") or ""),
+                        "account_id": subscription_id,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001 — one failed Azure subnets list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure subnets",
+            permission="Microsoft.Network/virtualNetworks/subnets/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
+    return subnets
+
+
+def _discover_network_interfaces(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Enumerate every NIC in the subscription with its IP-config topology (read-only).
+
+    Each NIC binds a VM to a subnet (hence a VNet) and may carry an NSG plus a
+    private and/or public IP — the edge data the graph needs to attach a VM to
+    its network position and exposure. Control-plane only; never any secrets.
+    """
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping network-interface inventory.")
+        return []
+
+    nics: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for nic in client.network_interfaces.list_all():
+            nic_id = str(getattr(nic, "id", "") or "")
+            name = str(getattr(nic, "name", "") or "").strip()
+            if not name:
+                continue
+            nics.append(_normalize_network_interface(nic, nic_id=nic_id, name=name, subscription_id=subscription_id))
+    except Exception as exc:  # noqa: BLE001 — one failed Azure network interfaces list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure network interfaces",
+            permission="Microsoft.Network/networkInterfaces/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
+    return nics
+
+
+def _normalize_network_interface(nic: Any, *, nic_id: str, name: str, subscription_id: str) -> dict[str, Any]:
+    vm_ref = getattr(nic, "virtual_machine", None)
+    instance_id = str(getattr(vm_ref, "id", "") or "") if vm_ref else ""
+    nsg_ref = getattr(nic, "network_security_group", None)
+    nsg_id = str(getattr(nsg_ref, "id", "") or "") if nsg_ref else ""
+    subnet_id = ""
+    private_ip = ""
+    public_ip = ""
+    for ip_config in getattr(nic, "ip_configurations", None) or []:
+        if not private_ip:
+            private_ip = str(getattr(ip_config, "private_ip_address", "") or "")
+        if not subnet_id:
+            subnet_ref = getattr(ip_config, "subnet", None)
+            subnet_id = str(getattr(subnet_ref, "id", "") or "") if subnet_ref else ""
+        if not public_ip:
+            public_ip = _public_ip_ref_value(getattr(ip_config, "public_ip_address", None))
+    return {
+        "id": nic_id,
+        "name": name,
+        "instance_id": instance_id,
+        "subnet_id": subnet_id,
+        "vpc_id": _vnet_id_from_subnet_id(subnet_id),
+        "security_group_ids": [nsg_id] if nsg_id else [],
+        "private_ip": private_ip,
+        "public_ip": public_ip,
+        "location": str(getattr(nic, "location", "") or ""),
+        "account_id": subscription_id,
+    }
+
+
+def _discover_azure_firewalls(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Enumerate Azure Firewalls in the subscription (read-only).
+
+    Captures the firewall's private IP and the public IPs it fronts — the
+    network-edge choke point for north/south traffic. Control-plane only.
+    """
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping Azure Firewall inventory.")
+        return []
+
+    firewalls: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for fw in client.azure_firewalls.list_all():
+            fw_id = str(getattr(fw, "id", "") or "")
+            name = str(getattr(fw, "name", "") or "").strip()
+            if not name:
+                continue
+            private_ip = ""
+            public_ips: list[str] = []
+            for ip_config in getattr(fw, "ip_configurations", None) or []:
+                if not private_ip:
+                    private_ip = str(getattr(ip_config, "private_ip_address", "") or "")
+                value = _public_ip_ref_value(getattr(ip_config, "public_ip_address", None))
+                if value:
+                    public_ips.append(value)
+            firewalls.append(
+                {
+                    "id": fw_id,
+                    "name": name,
+                    "location": str(getattr(fw, "location", "") or ""),
+                    "account_id": subscription_id,
+                    "private_ip": private_ip,
+                    "public_ips": public_ips,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed Azure Firewalls list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure Firewalls",
+            permission="Microsoft.Network/azureFirewalls/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
+    return firewalls
+
+
+def _discover_nat_gateways(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Enumerate NAT gateways in the subscription (read-only).
+
+    A NAT gateway gives its associated subnet(s) an explicit outbound internet
+    path; the first associated subnet (and its VNet) is recorded so the graph can
+    attach the egress edge. Control-plane only.
+    """
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping NAT-gateway inventory.")
+        return []
+
+    gateways: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for nat in client.nat_gateways.list_all():
+            nat_id = str(getattr(nat, "id", "") or "")
+            name = str(getattr(nat, "name", "") or "").strip()
+            if not name:
+                continue
+            subnet_id = ""
+            for subnet_ref in getattr(nat, "subnets", None) or []:
+                subnet_id = str(getattr(subnet_ref, "id", "") or "")
+                if subnet_id:
+                    break
+            gateways.append(
+                {
+                    "id": nat_id,
+                    "name": name,
+                    "vpc_id": _vnet_id_from_subnet_id(subnet_id),
+                    "subnet_id": subnet_id,
+                    "location": str(getattr(nat, "location", "") or ""),
+                    "account_id": subscription_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed Azure NAT gateways list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure NAT gateways",
+            permission="Microsoft.Network/natGateways/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
+    return gateways
+
+
+def _discover_route_tables(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Enumerate route tables in the subscription (read-only).
+
+    ``has_internet_route`` is the exposure-relevant signal: any user-defined
+    route whose next hop is the Internet (a default ``0.0.0.0/0`` route to the
+    internet). Control-plane only.
+    """
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping route-table inventory.")
+        return []
+
+    tables: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for rt in client.route_tables.list_all():
+            rt_id = str(getattr(rt, "id", "") or "")
+            name = str(getattr(rt, "name", "") or "").strip()
+            if not name:
+                continue
+            vpc_id = ""
+            for subnet_ref in getattr(rt, "subnets", None) or []:
+                vpc_id = _vnet_id_from_subnet_id(str(getattr(subnet_ref, "id", "") or ""))
+                if vpc_id:
+                    break
+            tables.append(
+                {
+                    "id": rt_id,
+                    "name": name,
+                    "vpc_id": vpc_id,
+                    "has_internet_route": _route_table_has_internet_route(getattr(rt, "routes", None)),
+                    "location": str(getattr(rt, "location", "") or ""),
+                    "account_id": subscription_id,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed Azure route tables list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure route tables",
+            permission="Microsoft.Network/routeTables/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
+    return tables
+
+
+def _route_table_has_internet_route(routes: Any) -> bool:
+    """True if any route sends traffic straight to the internet (next hop Internet)."""
+    for route in routes or []:
+        next_hop = str(getattr(route, "next_hop_type", "") or "").lower()
+        prefix = str(getattr(route, "address_prefix", "") or "").strip()
+        if next_hop == "internet":
+            return True
+        if prefix == "0.0.0.0/0" and next_hop == "internet":
+            return True
+    return False
+
+
+def _discover_private_endpoints(
+    credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Enumerate private endpoints in the subscription (read-only).
+
+    A private endpoint places a private IP for a target PaaS resource inside a
+    subnet (the private-link inbound path). The subnet and the target resource id
+    are recorded so the graph can wire the private connection. Control-plane only.
+    """
+    try:
+        from azure.mgmt.network import NetworkManagementClient
+    except ImportError:
+        warnings.append("azure-mgmt-network not installed. Skipping private-endpoint inventory.")
+        return []
+
+    endpoints: list[dict[str, Any]] = []
+    try:
+        client = NetworkManagementClient(credential, subscription_id)
+        for pe in client.private_endpoints.list_all():
+            pe_id = str(getattr(pe, "id", "") or "")
+            name = str(getattr(pe, "name", "") or "").strip()
+            if not name:
+                continue
+            subnet_ref = getattr(pe, "subnet", None)
+            subnet_id = str(getattr(subnet_ref, "id", "") or "") if subnet_ref else ""
+            target_resource = ""
+            for conn in getattr(pe, "private_link_service_connections", None) or []:
+                target_resource = str(getattr(conn, "private_link_service_id", "") or "")
+                if target_resource:
+                    break
+            endpoints.append(
+                {
+                    "id": pe_id,
+                    "name": name,
+                    "location": str(getattr(pe, "location", "") or ""),
+                    "account_id": subscription_id,
+                    "subnet_id": subnet_id,
+                    "target_resource": target_resource,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one failed Azure private endpoints list must not sink the scan
+        record_discovery_failure(
+            exc=exc,
+            resource_type="Azure private endpoints",
+            permission="Microsoft.Network/privateEndpoints/read",
+            cloud="azure",
+            warnings=warnings,
+            missing=missing,
+        )
+    return endpoints
+
+
 def _discover_load_balancers(
     credential: Any, subscription_id: str, *, warnings: list[str], missing: list[dict[str, str]] | None = None
 ) -> list[dict[str, Any]]:
@@ -1917,6 +2332,29 @@ def _vm_user_assigned_identity_ids(vm: Any) -> list[str]:
     if not isinstance(user_assigned, dict):
         return []
     return [str(arm_id) for arm_id in user_assigned if arm_id]
+
+
+def _vnet_id_from_subnet_id(subnet_id: str) -> str:
+    """Derive the parent VNet ARM id from a subnet ARM id, else ''.
+
+    A subnet id is ``.../virtualNetworks/<vnet>/subnets/<subnet>``; the VNet id is
+    everything up to and including the ``virtualNetworks/<vnet>`` segment.
+    """
+    text = str(subnet_id or "")
+    marker = "/subnets/"
+    index = text.lower().find(marker)
+    return text[:index] if index != -1 else ""
+
+
+def _public_ip_ref_value(ref: Any) -> str:
+    """Resolve a public-IP sub-resource reference to its address, else its ARM id.
+
+    A NIC / firewall IP configuration usually carries only the public IP's ``id``
+    in a list response; the actual address is preferred when present.
+    """
+    if ref is None:
+        return ""
+    return str(getattr(ref, "ip_address", "") or getattr(ref, "id", "") or "")
 
 
 def _resource_group_from_id(resource_id: str) -> str:

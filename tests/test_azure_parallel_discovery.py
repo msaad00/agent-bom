@@ -25,26 +25,35 @@ def _stub_azure_sdk(monkeypatch):
     monkeypatch.setitem(sys.modules, "azure.identity", identity_mod)
 
 
+# Every per-subscription discoverer registered in azure_inventory's discovery_tasks,
+# in registration order (the order warnings come out). Keep in sync with that list.
 _SERVICES = [
     "_discover_storage_accounts",
     "_discover_vms",
     "_discover_aks_clusters",
+    "_discover_managed_disks",
+    "_discover_app_services",
     "_discover_nsgs",
     "_discover_managed_identities",
     "_discover_role_assignments",
     "_discover_key_vaults",
     "_discover_container_registries",
     "_discover_databases",
-    "_discover_virtual_networks",
-    "_discover_public_ips",
-    "_discover_load_balancers",
-    "_discover_managed_disks",
-    "_discover_app_services",
     "_discover_event_hubs",
     "_discover_service_bus",
     "_discover_redis_caches",
+    "_discover_virtual_networks",
+    "_discover_subnets",
+    "_discover_public_ips",
+    "_discover_ip_addresses",
+    "_discover_network_interfaces",
+    "_discover_load_balancers",
     "_discover_application_gateways",
     "_discover_front_doors",
+    "_discover_azure_firewalls",
+    "_discover_nat_gateways",
+    "_discover_route_tables",
+    "_discover_private_endpoints",
     "_discover_api_management",
 ]
 

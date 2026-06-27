@@ -4473,6 +4473,12 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
     if provider == "gcp":
         _apply_gcp_firewall_exposure(graph, sg_node_by_id, instance_nodes)
 
+    instance_node_by_id: dict[str, str] = {}
+    for inst_node_id, instance in instance_nodes:
+        iid = _clean_graph_part(instance.get("instance_id")) or _clean_graph_part(instance.get("id"))
+        if iid:
+            instance_node_by_id[iid] = inst_node_id
+
     # ── AWS data + compute services (RDS / DynamoDB / Lambda / EKS) ──────
     # (key, service, resource_type, kind, label, is_data_store)
     for coll_key, svc, rtype, kind, label, is_data in (
@@ -4597,6 +4603,20 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         region=region,
         data_sources=data_sources,
         resource_ids=resource_ids,
+    )
+
+    # ── Network edge: WAF, API gateways, ENIs/NICs, subnets, NAT/IGW, IPs ──
+    _add_network_edge_inventory(
+        graph,
+        inventory,
+        provider=provider,
+        account_id=account_id,
+        account_node_id=account_node_id,
+        region=region,
+        data_sources=data_sources,
+        resource_ids=resource_ids,
+        sg_node_by_id=sg_node_by_id,
+        instance_node_by_id=instance_node_by_id,
     )
 
     # ── Management-group hierarchy (org → subscription CONTAINS tree) ──
@@ -4791,6 +4811,320 @@ def _add_normalized_cloud_resources(
                         evidence={"source": "cloud-inventory", "reason": "public_ip_frontend"},
                     )
                 )
+
+
+# Generic network-edge collections promoted as CLOUD_RESOURCE inventory nodes.
+# (payload key, cloud service, resource_type, resource_kind, label, id field)
+# Load balancers are intentionally NOT here: AWS uses ``elb_load_balancers`` and
+# Azure routes them through the normalized-resource path; only GCP's new
+# ``load_balancers`` key is ingested here, gated to GCP below.
+_NETWORK_EDGE_COLLECTIONS: tuple[tuple[str, str, str, str, str, str], ...] = (
+    ("nat_gateways", "network", "nat_gateway", "nat-gateway", "nat gateway", "id"),
+    ("internet_gateways", "network", "internet_gateway", "internet-gateway", "internet gateway", "id"),
+    ("vpc_endpoints", "network", "vpc_endpoint", "vpc-endpoint", "vpc endpoint", "id"),
+    ("route_tables", "network", "route_table", "route-table", "route table", "id"),
+    ("network_acls", "network", "network_acl", "network-acl", "network acl", "id"),
+)
+_GCP_LB_COLLECTION: tuple[str, str, str, str, str, str] = (
+    "load_balancers",
+    "network",
+    "load_balancer",
+    "load-balancer",
+    "load balancer",
+    "id",
+)
+
+
+def _add_network_edge_inventory(
+    graph: UnifiedGraph,
+    inventory: dict[str, Any],
+    *,
+    provider: str,
+    account_id: str,
+    account_node_id: str,
+    region: str,
+    data_sources: list[str],
+    resource_ids: list[str],
+    sg_node_by_id: dict[str, str],
+    instance_node_by_id: dict[str, str],
+) -> None:
+    """Promote network-edge inventory into nodes + exposure-relevant edges.
+
+    Emits, from the live inventory payload (all three clouds):
+
+    - **API gateways** (AWS API Gateway, GCP API Gateway/Apigee, Azure API
+      Management) → ``API_GATEWAY`` nodes in the API_GATEWAY semantic layer.
+    - **WAF / Cloud Armor** web ACLs → ``CLOUD_RESOURCE`` nodes.
+    - A ``PROTECTS`` edge from each WAF / API gateway to the resource it fronts,
+      so the CNAPP overlay can refine the fronted resource's exposure verdict.
+    - **Subnets** → ``CLOUD_RESOURCE``; a public subnet is ``internet_exposed``.
+    - **ENIs / NICs** → ``CLOUD_RESOURCE`` wired ``PART_OF`` their instance,
+      subnet, and security group(s) so the network path is traversable; an ENI
+      carrying a public IP marks its instance internet-reachable.
+    - NAT/internet gateways, route tables, network ACLs, VPC endpoints, load
+      balancers, and IP addresses → ``CLOUD_RESOURCE`` inventory nodes.
+
+    Never raises into the builder; missing/empty collections are a no-op.
+    """
+    # Index existing resource nodes by their native id/arn/name so a WAF / API
+    # gateway's protected-target reference resolves to the real node.
+    ref_to_node: dict[str, str] = {}
+    for nid in resource_ids:
+        node = graph.nodes.get(nid)
+        if node is None:
+            continue
+        for key in ("resource_id", "resource_name"):
+            ref = _clean_graph_part(node.attributes.get(key))
+            if ref:
+                ref_to_node.setdefault(ref, nid)
+
+    def _emit_resource(*, node_id: str, service: str, rtype: str, kind: str, label: str, name: str, attrs: dict[str, Any]) -> None:
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"{label}: {name}",
+                attributes={
+                    "resource_name": name,
+                    "resource_type": rtype,
+                    "resource_kind": kind,
+                    "cloud_provider": provider,
+                    "cloud_service": service,
+                    "location": _clean_graph_part(attrs.get("location")) or region,
+                    "account_id": account_id,
+                    **attrs,
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="network"),
+            )
+        )
+        resource_ids.append(node_id)
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
+                )
+            )
+
+    def _protect(source_node_id: str, targets: list[Any], reason: str) -> None:
+        for target_ref in targets or []:
+            ref = _clean_graph_part(target_ref)
+            target_node_id = ref_to_node.get(ref)
+            if not target_node_id:
+                continue
+            graph.add_edge(
+                UnifiedEdge(
+                    source=source_node_id,
+                    target=target_node_id,
+                    relationship=RelationshipType.PROTECTS,
+                    weight=4.0,
+                    evidence={"source": "cloud-inventory", "reason": reason},
+                )
+            )
+
+    # ── Subnets (public subnet = internet-reachable) ──
+    subnet_node_by_id: dict[str, str] = {}
+    for sn in inventory.get("subnets", []) or []:
+        if not isinstance(sn, dict):
+            continue
+        sn_id = _clean_graph_part(sn.get("id"))
+        if not sn_id:
+            continue
+        node_id = f"cloud_resource:{provider}:network:subnet:{sn_id}"
+        subnet_node_by_id[sn_id] = node_id
+        _emit_resource(
+            node_id=node_id,
+            service="network",
+            rtype="subnet",
+            kind="subnet",
+            label="subnet",
+            name=_clean_graph_part(sn.get("name")) or sn_id,
+            attrs={
+                "resource_id": sn_id,
+                "vpc_id": _clean_graph_part(sn.get("vpc_id")),
+                "cidr": _clean_graph_part(sn.get("cidr")),
+                "is_public": bool(sn.get("is_public")),
+                "internet_exposed": bool(sn.get("is_public")),
+            },
+        )
+
+    # ── Generic edge resources (NAT/IGW/route-table/NACL/VPCe + GCP LB) ──
+    collections = list(_NETWORK_EDGE_COLLECTIONS)
+    if provider == "gcp":
+        collections.append(_GCP_LB_COLLECTION)
+    for coll_key, svc, rtype, kind, label, id_field in collections:
+        for item in inventory.get(coll_key, []) or []:
+            if not isinstance(item, dict):
+                continue
+            ident = _clean_graph_part(item.get(id_field)) or _clean_graph_part(item.get("name"))
+            if not ident:
+                continue
+            node_id = f"cloud_resource:{provider}:{svc}:{rtype}:{ident}"
+            _emit_resource(
+                node_id=node_id,
+                service=svc,
+                rtype=rtype,
+                kind=kind,
+                label=label,
+                name=_clean_graph_part(item.get("name")) or ident,
+                attrs={
+                    "resource_id": ident,
+                    "vpc_id": _clean_graph_part(item.get("vpc_id")),
+                    "internet_exposed": bool(item.get("internet_exposed")),
+                    "has_internet_route": bool(item.get("has_internet_route")),
+                },
+            )
+
+    # ── IP addresses (Elastic/reserved/public) ──
+    for ip in inventory.get("ip_addresses", []) or []:
+        if not isinstance(ip, dict):
+            continue
+        address = _clean_graph_part(ip.get("address"))
+        if not address:
+            continue
+        node_id = f"cloud_resource:{provider}:network:ip_address:{address}"
+        _emit_resource(
+            node_id=node_id,
+            service="network",
+            rtype="ip_address",
+            kind="ip-address",
+            label="ip address",
+            name=address,
+            attrs={
+                "resource_id": address,
+                "ip_kind": _clean_graph_part(ip.get("kind")),
+                "attached_to": _clean_graph_part(ip.get("attached_to")),
+                "internet_exposed": True,
+            },
+        )
+
+    # ── ENIs / NICs → PART_OF instance + subnet + security group(s) ──
+    for eni in inventory.get("network_interfaces", []) or []:
+        if not isinstance(eni, dict):
+            continue
+        eni_id = _clean_graph_part(eni.get("id"))
+        if not eni_id:
+            continue
+        node_id = f"cloud_resource:{provider}:network:network_interface:{eni_id}"
+        public_ip = _clean_graph_part(eni.get("public_ip"))
+        _emit_resource(
+            node_id=node_id,
+            service="network",
+            rtype="network_interface",
+            kind="network-interface",
+            label="network interface",
+            name=_clean_graph_part(eni.get("name")) or eni_id,
+            attrs={
+                "resource_id": eni_id,
+                "vpc_id": _clean_graph_part(eni.get("vpc_id")),
+                "subnet_id": _clean_graph_part(eni.get("subnet_id")),
+                "private_ip": _clean_graph_part(eni.get("private_ip")),
+                "public_ip": public_ip,
+                "internet_exposed": bool(public_ip),
+            },
+        )
+        instance_node_id = instance_node_by_id.get(_clean_graph_part(eni.get("instance_id")))
+        if instance_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=node_id, target=instance_node_id, relationship=RelationshipType.PART_OF, evidence={"source": "cloud-inventory"}
+                )
+            )
+            # A public IP on the ENI makes the attached instance internet-reachable.
+            if public_ip:
+                inst_node = graph.nodes.get(instance_node_id)
+                if inst_node is not None:
+                    inst_node.attributes["internet_exposed"] = True
+        subnet_node_id = subnet_node_by_id.get(_clean_graph_part(eni.get("subnet_id")))
+        if subnet_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=node_id, target=subnet_node_id, relationship=RelationshipType.PART_OF, evidence={"source": "cloud-inventory"}
+                )
+            )
+        for sg_id in eni.get("security_group_ids", []) or []:
+            sg_node_id = sg_node_by_id.get(_clean_graph_part(sg_id))
+            if sg_node_id:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=node_id, target=sg_node_id, relationship=RelationshipType.PART_OF, evidence={"source": "cloud-inventory"}
+                    )
+                )
+
+    # ── WAF / Cloud Armor web ACLs → CLOUD_RESOURCE + PROTECTS ──
+    for acl in inventory.get("web_acls", []) or []:
+        if not isinstance(acl, dict):
+            continue
+        acl_id = _clean_graph_part(acl.get("id")) or _clean_graph_part(acl.get("arn")) or _clean_graph_part(acl.get("name"))
+        if not acl_id:
+            continue
+        name = _clean_graph_part(acl.get("name")) or acl_id
+        node_id = f"cloud_resource:{provider}:waf:web_acl:{acl_id}"
+        _emit_resource(
+            node_id=node_id,
+            service="waf",
+            rtype="waf",
+            kind="web-acl",
+            label="waf",
+            name=name,
+            attrs={"resource_id": _clean_graph_part(acl.get("arn")) or acl_id, "scope": _clean_graph_part(acl.get("scope"))},
+        )
+        _protect(node_id, acl.get("protected_targets", []), "waf_web_acl_association")
+
+    # ── API gateways → API_GATEWAY nodes (+ Azure API Management) + PROTECTS ──
+    api_gateway_items = list(inventory.get("api_gateways", []) or [])
+    for apim in inventory.get("api_management", []) or []:
+        if isinstance(apim, dict):
+            api_gateway_items.append(
+                {
+                    "name": apim.get("name"),
+                    "id": apim.get("id") or apim.get("name"),
+                    "protocol": "apim",
+                    "endpoint": apim.get("gateway_url") or apim.get("endpoint") or "",
+                    "internet_exposed": True,
+                    "stages": [],
+                    "protected_targets": apim.get("protected_targets", []),
+                    "location": apim.get("location"),
+                }
+            )
+    for api in api_gateway_items:
+        if not isinstance(api, dict):
+            continue
+        api_id = _clean_graph_part(api.get("id")) or _clean_graph_part(api.get("arn")) or _clean_graph_part(api.get("name"))
+        if not api_id:
+            continue
+        name = _clean_graph_part(api.get("name")) or api_id
+        node_id = f"api_gateway:{provider}:{api_id}"
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.API_GATEWAY,
+                label=f"api gateway: {name}",
+                attributes={
+                    "resource_id": _clean_graph_part(api.get("arn")) or api_id,
+                    "resource_name": name,
+                    "resource_type": "api_gateway",
+                    "cloud_provider": provider,
+                    "protocol": _clean_graph_part(api.get("protocol")),
+                    "endpoint": _clean_graph_part(api.get("endpoint")),
+                    "stages": list(api.get("stages", []) or []),
+                    "internet_exposed": bool(api.get("internet_exposed")),
+                    "location": _clean_graph_part(api.get("location")) or region,
+                    "account_id": account_id,
+                    "semantic_layer": "api_gateway",
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=provider, surface="api_gateway"),
+            )
+        )
+        resource_ids.append(node_id)
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id, target=node_id, relationship=RelationshipType.OWNS, evidence={"source": "cloud-inventory"}
+                )
+            )
+        _protect(node_id, api.get("protected_targets", []), "api_gateway_frontend")
 
 
 def _add_inventory_principal(

@@ -110,7 +110,10 @@ components:
       type: object
     CloudConnectionCreate:
       additionalProperties: false
-      description: Request body for creating a connection. ``external_id`` is write-only.
+      description: "Request body for creating a connection. ``external_id`` is write-only.\n\
+        \n``scan_interval_minutes`` opts the connection into recurring background\
+        \ scans\n(Phase B.2). Null (the default) means manual-only \u2014 the scheduler\
+        \ ignores it."
       properties:
         display_name:
           maxLength: 200
@@ -135,12 +138,33 @@ components:
           minLength: 1
           title: Role Ref
           type: string
+        scan_interval_minutes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Scan Interval Minutes
       required:
       - provider
       - display_name
       - role_ref
       - external_id
       title: CloudConnectionCreate
+      type: object
+    CloudConnectionUpdate:
+      additionalProperties: false
+      description: 'Request body for updating a connection''s recurring scan schedule.
+
+
+        ``scan_interval_minutes`` is set to the supplied value; null disables the
+
+        recurring scan (back to manual-only).'
+      properties:
+        scan_interval_minutes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Scan Interval Minutes
+      title: CloudConnectionUpdate
       type: object
     ComplianceAuditIntegrity:
       properties:
@@ -4051,6 +4075,70 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Get Connection
+      tags:
+      - cloud-connections
+    patch:
+      description: 'Update a connection''s recurring scan schedule (tenant-scoped).
+
+
+        Sets ``scan_interval_minutes`` (null disables recurring scans). The encrypted
+
+        secret is untouched and never returned.'
+      operationId: update_connection_v1_cloud_connections__connection_id__patch
+      parameters:
+      - in: path
+        name: connection_id
+        required: true
+        schema:
+          title: Connection Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloudConnectionUpdate'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Update Connection V1 Cloud Connections  Connection
+                  Id  Patch
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Update Connection
       tags:
       - cloud-connections
   /v1/cloud/connections/{connection_id}/scan:

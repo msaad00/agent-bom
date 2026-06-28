@@ -44,6 +44,7 @@ jobs:
         id: release
         run: |
           set -euo pipefail
+          MAIN_SHA=$(git rev-parse HEAD)
           git fetch --tags --force
           TAG=$(git tag -l 'v*.*.*' --sort=-version:refname | head -n1)
           if [ -z "$TAG" ]; then
@@ -53,7 +54,21 @@ jobs:
           VERSION="${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
           git checkout "$TAG"
+
+      - name: Apply current runtime security overlay
+        run: |
+          set -euo pipefail
+          # The application code and version stay pinned to the latest release tag,
+          # but the floating `latest` image is rebuilt daily to absorb base/runtime
+          # security-only refreshes such as patched pip hashes. Without this overlay,
+          # an old release tag can keep rebuilding a known-vulnerable container even
+          # after the default branch has the safe runtime pin.
+          git checkout "${{ steps.release.outputs.main_sha }}" -- \
+            deploy/docker/pip-requirements.txt \
+            .image-scan-ignore \
+            security/image-exceptions.yaml
 
       - name: Verify pyproject version matches release tag
         run: |

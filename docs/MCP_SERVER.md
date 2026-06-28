@@ -108,6 +108,10 @@ Connect any SSE-capable MCP client to `https://your-server/sse`.
 For non-loopback SSE or Streamable HTTP binds, `agent-bom` now fails closed unless you set
 `--bearer-token` / `AGENT_BOM_MCP_BEARER_TOKEN` or explicitly pass
 `--allow-insecure-no-auth`. Keep TLS at your proxy or ingress for remote deployments.
+The regular bearer token is read-only. To enable audited Shield or identity
+write tools, configure a separate `AGENT_BOM_MCP_OPERATOR_TOKEN`; write calls
+still need `operator_role=admin`, the matching `operator_scopes` value, and an
+audit reason, but those arguments no longer authorize the write by themselves.
 
 ### Enterprise Control-Plane Contract
 
@@ -206,9 +210,8 @@ live runtime traffic rather than static reachability.
 ## Security Model
 
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
-  Shield write tools require `operator_role=admin`, `operator_scopes=shield:write`,
-  plus a reason and are
-  audit-logged.
+  Shield and identity write tools require an authenticated MCP operator token
+  plus admin role, write scope, and audit reason; they are audit-logged.
 - **No credential storage**: Never stores, logs, or transmits your credentials.
 - **No network exfiltration**: Scans local configs, queries public CVE databases.
 - **Agentless**: No agents installed on targets.

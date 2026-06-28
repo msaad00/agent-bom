@@ -91,4 +91,5 @@ def test_mcp_server_instructions_do_not_overclaim_read_only_surface() -> None:
 
     assert "Read-only, agentless, no credentials required." not in factory
     assert "Scanner and posture tools are read-only" in factory
-    assert "Shield write actions require admin role, shield:write scope, and an audit reason" in factory
+    assert "write actions require an authenticated operator token" in factory
+    assert "operator_role is audit metadata" in factory

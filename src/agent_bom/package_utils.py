@@ -118,6 +118,38 @@ def canonical_package_key(name: str, version: str, ecosystem: str, purl: str | N
 
 
 @lru_cache(maxsize=4096)
+def debian_release_branch(distro_version: str) -> str:
+    """Normalize Debian ``VERSION_ID`` to the advisory release key.
+
+    Debian security data is release-major scoped (``debian:12``), while
+    container metadata may carry point releases such as ``12.5``. The scanner
+    must collapse those to the major release before querying OSV/local DB rows.
+    """
+    raw = (distro_version or "").strip()
+    if not raw:
+        return raw
+    return raw.split(".", 1)[0]
+
+
+@lru_cache(maxsize=4096)
+def ubuntu_release_branch(distro_version: str) -> str:
+    """Normalize Ubuntu ``VERSION_ID`` to the advisory release key.
+
+    Ubuntu advisory ecosystems are keyed by major.minor branch
+    (``Ubuntu:22.04``), not point releases. Official images usually expose
+    ``22.04``, but derivative metadata can include ``22.04.4``; truncate that
+    to ``22.04`` so release-scoped lookups do not silently miss advisory rows.
+    """
+    raw = (distro_version or "").strip()
+    if not raw:
+        return raw
+    parts = raw.split(".")
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f"{parts[0]}.{parts[1]}"
+    return raw
+
+
+@lru_cache(maxsize=4096)
 def alpine_release_branch(distro_version: str) -> str:
     """Normalize an Alpine ``VERSION_ID`` to its secdb branch key (``v{major}.{minor}``).
 
@@ -159,9 +191,11 @@ __all__ = [
     "alpine_release_branch",
     "canonical_package_identity",
     "canonical_package_key",
+    "debian_release_branch",
     "host_matches_domain",
     "normalize_package_ecosystem",
     "normalize_package_name",
     "parse_debian_source_name",
     "reference_host_and_path",
+    "ubuntu_release_branch",
 ]

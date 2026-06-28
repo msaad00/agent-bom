@@ -963,6 +963,14 @@ def _run_scan_sync(job: ScanJob) -> None:
         except Exception as mcp_auth_exc:  # noqa: BLE001
             _logger.warning("MCP auth posture evaluation skipped: %s", sanitize_error(mcp_auth_exc))
         report = AIBOMReport(agents=agents, blast_radii=blast_radii, findings=report_findings, scan_id=job.job_id)
+        try:
+            from agent_bom.scanners import consume_coverage_warnings
+
+            _coverage_warnings = consume_coverage_warnings()
+            if _coverage_warnings:
+                report.coverage_warnings = _coverage_warnings
+        except Exception as cov_exc:  # noqa: BLE001
+            _logger.debug("coverage-warning attach skipped: %s", sanitize_error(cov_exc))
 
         # Opt-in estate enrichment (cloud inventory + NHI discovery). Default
         # OFF: no-op and no network I/O unless the per-provider env flags are

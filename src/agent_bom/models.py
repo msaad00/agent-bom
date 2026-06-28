@@ -1063,6 +1063,14 @@ class AIBOMReport:
     # determine which UI panels, compliance frameworks, and graphs apply.
     scan_sources: list[str] = field(default_factory=list)  # e.g. ["agent_discovery", "image", "sbom"]
 
+    # Per-release vulnerability-coverage gaps detected during the scan. Each item
+    # is a serialized agent_bom.coverage.CoverageWarning (ecosystem, release,
+    # reason, detail, package_count, advisory_rows). A non-empty list means the
+    # data source does not carry advisories for an OS release present in the scan
+    # target (typically end-of-life) — a low/zero count there must NOT be read as
+    # a clean bill of health.
+    coverage_warnings: list[dict] = field(default_factory=list)
+
     @property
     def has_mcp_context(self) -> bool:
         """True if scan discovered real MCP servers (not synthetic SBOM/image wrappers).

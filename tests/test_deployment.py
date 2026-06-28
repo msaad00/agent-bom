@@ -457,6 +457,17 @@ def test_refresh_latest_container_keeps_release_code_but_applies_runtime_securit
     assert "The application code and version stay pinned to the latest release tag" in workflow
 
 
+def test_refresh_latest_container_has_publish_budget_and_buildkit_cache():
+    """Daily latest refresh should not rebuild multi-arch images from cold every run."""
+    workflow = (ROOT / ".github" / "workflows" / "refresh-latest-container.yml").read_text()
+
+    assert workflow.count("timeout-minutes: 30") >= 2
+    assert "cache-from: type=gha,scope=refresh-api-latest" in workflow
+    assert "cache-to: type=gha,mode=max,scope=refresh-api-latest" in workflow
+    assert "cache-from: type=gha,scope=refresh-ui-latest" in workflow
+    assert "cache-to: type=gha,mode=max,scope=refresh-ui-latest" in workflow
+
+
 def test_deploy_mcp_sse_workflow_uses_bearer_token_for_health_check():
     """Post-deploy health verification should use the same auth contract as Railway."""
     workflow = (ROOT / ".github" / "workflows" / "deploy-mcp-sse.yml").read_text()

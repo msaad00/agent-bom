@@ -863,19 +863,20 @@ def _run_scan_sync(job: ScanJob) -> None:
             try:
                 blast_radii = scan_agents_sync(agents, enable_enrichment=effective_enrich, offline=req.offline)
             except Exception as scan_exc:  # noqa: BLE001
+                safe_scan_error = sanitize_error(scan_exc)
                 if req.offline:
-                    _logger.warning("Offline scan phase error: %s", scan_exc)
-                    pipeline.update_step("scanning", f"Offline scan error: {sanitize_error(scan_exc)}")
-                    warnings_all.append(f"Offline CVE scanning failed: {sanitize_error(scan_exc)}")
+                    _logger.warning("Offline scan phase error: %s", safe_scan_error)
+                    pipeline.update_step("scanning", f"Offline scan error: {safe_scan_error}")
+                    warnings_all.append(f"Offline CVE scanning failed: {safe_scan_error}")
                     blast_radii = []
                 else:
                     # Log but don't crash — return what we have with warning
-                    _logger.warning("Scan phase error (retrying without enrichment): %s", scan_exc)
-                    pipeline.update_step("scanning", f"Scan error: {sanitize_error(scan_exc)} — retrying without enrichment")
+                    _logger.warning("Scan phase error (retrying without enrichment): %s", safe_scan_error)
+                    pipeline.update_step("scanning", f"Scan error: {safe_scan_error} — retrying without enrichment")
                     try:
                         blast_radii = scan_agents_sync(agents, enable_enrichment=False, offline=False)
                     except Exception as retry_exc:  # noqa: BLE001
-                        _logger.error("Scan retry also failed: %s", retry_exc)
+                        _logger.error("Scan retry also failed: %s", sanitize_error(retry_exc))
                         blast_radii = []
                         warnings_all.append(f"CVE scanning failed: {sanitize_error(retry_exc)}")
             total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)

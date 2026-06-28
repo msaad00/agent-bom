@@ -207,6 +207,11 @@ _AUTH_ENV_VARS = (
     "AGENT_BOM_SCIM_BEARER_TOKENS_JSON",
 )
 
+_STORAGE_ENV_VARS = (
+    "AGENT_BOM_POSTGRES_URL",
+    "AGENT_BOM_POSTGRES_DSN",
+)
+
 
 @pytest.fixture(autouse=True)
 def reset_global_test_state():
@@ -225,10 +230,11 @@ def reset_global_test_state():
     # auth and skips its own cleanup (e.g. on an assertion error) cannot leak a
     # 401-inducing env var into the next test on the same worker.
     auth_env_snapshot = {var: os.environ.get(var) for var in _AUTH_ENV_VARS}
+    storage_env_snapshot = {var: os.environ.get(var) for var in _STORAGE_ENV_VARS}
 
     yield
 
-    for var, value in auth_env_snapshot.items():
+    for var, value in {**auth_env_snapshot, **storage_env_snapshot}.items():
         if value is None:
             os.environ.pop(var, None)
         else:

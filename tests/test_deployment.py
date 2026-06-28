@@ -443,6 +443,20 @@ def test_publish_registries_workflow_validates_smithery_best_effort_and_curated_
     assert '_publish_skill "integrations/openclaw" "agent-bom"' not in workflow
 
 
+def test_refresh_latest_container_keeps_release_code_but_applies_runtime_security_overlay():
+    """Daily latest refresh can patch runtime CVEs without changing app code."""
+    workflow = (ROOT / ".github" / "workflows" / "refresh-latest-container.yml").read_text()
+
+    assert "main_sha=$MAIN_SHA" in workflow
+    assert "git checkout \"$TAG\"" in workflow
+    assert "Apply current runtime security overlay" in workflow
+    assert 'git checkout "${{ steps.release.outputs.main_sha }}" -- \\' in workflow
+    assert "deploy/docker/pip-requirements.txt \\" in workflow
+    assert ".image-scan-ignore \\" in workflow
+    assert "security/image-exceptions.yaml" in workflow
+    assert "The application code and version stay pinned to the latest release tag" in workflow
+
+
 def test_deploy_mcp_sse_workflow_uses_bearer_token_for_health_check():
     """Post-deploy health verification should use the same auth contract as Railway."""
     workflow = (ROOT / ".github" / "workflows" / "deploy-mcp-sse.yml").read_text()

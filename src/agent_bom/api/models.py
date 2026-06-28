@@ -246,6 +246,12 @@ class ComplianceEvidenceItem(BaseModel):
     package: str | None = None
     severity: str | None = None
     scan_id: str | None = None
+    scan_input: dict[str, Any] = Field(default_factory=dict)
+    scanner_version: str | None = None
+    scan_started_at: str | None = None
+    scan_completed_at: str | None = None
+    policy_decisions: list[dict[str, Any]] = Field(default_factory=list)
+    provenance: dict[str, Any] = Field(default_factory=dict)
     fixed_version: str | None = None
     agents_at_risk: list[str] = Field(default_factory=list)
 
@@ -254,6 +260,8 @@ class ComplianceReportControl(BaseModel):
     control_id: str | None = None
     control_name: str | None = None
     status: str = "unknown"
+    source_status: str | None = None
+    evidence_state: str = "not_evaluated"
     finding_count: int = 0
     evidence: list[ComplianceEvidenceItem] = Field(default_factory=list)
 
@@ -264,6 +272,7 @@ class ComplianceReportScope(BaseModel):
     control_count: int = 0
     finding_count: int = 0
     audit_event_count: int = 0
+    completed_scan_count: int = 0
 
 
 class ComplianceReportSummary(BaseModel):
@@ -272,6 +281,8 @@ class ComplianceReportSummary(BaseModel):
     passed: int = Field(alias="pass")
     warning: int = 0
     fail: int = 0
+    incomplete: int = 0
+    not_evaluated: int = 0
     score: float = 100.0
 
 

@@ -1057,11 +1057,30 @@ def _evidence_for_control(
                     "package": br.get("package"),
                     "severity": br.get("severity"),
                     "scan_id": br.get("scan_id"),
+                    "scan_input": br.get("scan_input") or {},
+                    "scanner_version": br.get("scanner_version"),
+                    "scan_started_at": br.get("scan_started_at"),
+                    "scan_completed_at": br.get("scan_completed_at"),
+                    "policy_decisions": br.get("policy_decisions") or [],
+                    "provenance": br.get("provenance") or {},
                     "fixed_version": br.get("fixed_version"),
                     "agents_at_risk": br.get("affected_agents") or [],
                 }
             )
     return evidence
+
+
+def _scan_request_payload(job: Any) -> dict:
+    request = getattr(job, "request", None)
+    if request is None:
+        return {}
+    if hasattr(request, "model_dump"):
+        return request.model_dump(exclude_none=True)
+    if hasattr(request, "dict"):
+        return request.dict(exclude_none=True)
+    if isinstance(request, dict):
+        return {k: v for k, v in request.items() if v is not None}
+    return {}
 
 
 def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
@@ -1071,8 +1090,17 @@ def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
         if job.status != JobStatus.DONE or not job.result:
             continue
         scan_id = job.result.get("scan_id") or job.job_id
+        scan_context = {
+            "scan_id": scan_id,
+            "scan_input": _scan_request_payload(job),
+            "scanner_version": job.result.get("scanner_version") or job.result.get("agent_bom_version"),
+            "scan_started_at": getattr(job, "created_at", None),
+            "scan_completed_at": getattr(job, "completed_at", None),
+            "policy_decisions": job.result.get("policy_decisions") or [],
+            "provenance": job.result.get("provenance") or job.result.get("scan_provenance") or {},
+        }
         for br in job.result.get("blast_radius", []):
-            br_with_scan = {**br, "scan_id": scan_id}
+            br_with_scan = {**br, **scan_context}
             for tag_field in (
                 "owasp_tags",
                 "owasp_mcp_tags",
@@ -1092,6 +1120,19 @@ def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
                 for tag in br.get(tag_field, []) or []:
                     by_tag.setdefault(tag, []).append(br_with_scan)
     return by_tag
+
+
+def _bundle_control_status(source_status: str, evidence: list[dict], *, has_completed_scans: bool) -> tuple[str, str]:
+    status = (source_status or "unknown").lower()
+    if not has_completed_scans:
+        return "not_evaluated", "missing_scan"
+    if status in {"pass", "warning", "fail"} and not evidence:
+        return "incomplete", "missing_control_evidence"
+    if evidence:
+        return status, "complete"
+    if status in {"not_evaluated", "incomplete"}:
+        return status, status
+    return "not_evaluated", "missing_control_evidence"
 
 
 def _verify_audit_entries(entries: list) -> tuple[int, int]:
@@ -1172,7 +1213,8 @@ async def export_compliance_report(
     tenant_id = _tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
 
-    blast_by_tag = _index_blast_radii_by_tag(_tenant_jobs(request))
+    tenant_jobs = _tenant_jobs(request)
+    blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
 
     from agent_bom.api.audit_log import get_audit_log, log_action
 
@@ -1184,24 +1226,34 @@ async def export_compliance_report(
     audit_in_window = [e for e in audit_entries if audit_since_iso <= (e.timestamp or "") <= until_iso]
     verified, tampered = _verify_audit_entries(audit_in_window)
 
-    pass_count = sum(1 for c in controls if c.get("status") == "pass")
-    warn_count = sum(1 for c in controls if c.get("status") == "warning")
-    fail_count = sum(1 for c in controls if c.get("status") == "fail")
-
     enriched_controls: list[dict] = []
     total_findings = 0
+    completed_scan_count = sum(1 for job in tenant_jobs if job.status == JobStatus.DONE and bool(job.result))
     for control in controls:
         evidence = _evidence_for_control(control, blast_by_tag)
         total_findings += len(evidence)
+        source_status = str(control.get("status", "unknown")).lower()
+        bundle_status, evidence_state = _bundle_control_status(
+            source_status,
+            evidence,
+            has_completed_scans=completed_scan_count > 0,
+        )
         enriched_controls.append(
             {
                 "control_id": control.get("control_id") or control.get("id"),
                 "control_name": control.get("name") or control.get("title"),
-                "status": control.get("status", "unknown"),
+                "status": bundle_status,
+                "source_status": source_status,
+                "evidence_state": evidence_state,
                 "finding_count": len(evidence),
                 "evidence": evidence,
             }
         )
+    pass_count = sum(1 for c in enriched_controls if c.get("status") == "pass")
+    warn_count = sum(1 for c in enriched_controls if c.get("status") == "warning")
+    fail_count = sum(1 for c in enriched_controls if c.get("status") == "fail")
+    incomplete_count = sum(1 for c in enriched_controls if c.get("status") == "incomplete")
+    not_evaluated_count = sum(1 for c in enriched_controls if c.get("status") == "not_evaluated")
 
     # Replay-protection envelope: every bundle carries a fresh 128-bit nonce
     # and an explicit expiry. The signature is computed over the canonical
@@ -1237,12 +1289,15 @@ async def export_compliance_report(
             "control_count": len(controls),
             "finding_count": total_findings,
             "audit_event_count": len(audit_in_window),
+            "completed_scan_count": completed_scan_count,
         },
         "summary": {
             "pass": pass_count,
             "warning": warn_count,
             "fail": fail_count,
-            "score": round((pass_count / len(controls)) * 100, 1) if controls else 100.0,
+            "incomplete": incomplete_count,
+            "not_evaluated": not_evaluated_count,
+            "score": round((pass_count / len(controls)) * 100, 1) if controls else 0.0,
         },
         "controls": enriched_controls,
         "audit_events": [entry.to_dict() for entry in audit_in_window],

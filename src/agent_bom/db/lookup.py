@@ -173,7 +173,7 @@ def lookup_package(
                     severity=row["severity"],
                     cvss_score=row["cvss_score"],
                     cvss_vector=row["cvss_vector"],
-                    fixed_version=row["fixed_version"] or row["fixed"],
+                    fixed_version=_resolve_fixed_version(row),
                     epss_probability=epss_prob,
                     epss_percentile=epss_pct,
                     is_kev=kev_date is not None,
@@ -221,6 +221,31 @@ _ECO_FAMILY_TO_COMPARATOR = {
     "rpm": "rpm",
     "linux": "rpm",
 }
+
+
+def _is_distro_release_ecosystem(ecosystem: str) -> bool:
+    """True for release-scoped OS ecosystems (``debian:10``, ``alpine:v3.18``, …).
+
+    For these the authoritative fixed version is the *per-release* ``affected.fixed``
+    column, not the cross-release ``vulns.fixed_version`` rollup. Debian/distro
+    advisories assign a different (backported) fix — or no fix at all — per release,
+    so reusing the global rollup both displays a wrong-release version and, worse,
+    makes a no-fix-for-this-release entry look fixed, defeating the default
+    unfixed-advisory suppression.
+    """
+    return _comparator_ecosystem(ecosystem) in ("deb", "apk", "rpm")
+
+
+def _resolve_fixed_version(row: sqlite3.Row) -> Optional[str]:
+    """Pick the fixed version to report for a matched affected row.
+
+    Distro releases use the per-release ``affected.fixed`` (empty means *no fix for
+    this release*); application ecosystems keep the existing rollup-then-range
+    preference so a missing range fix can fall back to the advisory-level fix.
+    """
+    if _is_distro_release_ecosystem(row["ecosystem"]):
+        return (row["fixed"] or "").strip() or None
+    return row["fixed_version"] or row["fixed"]
 
 
 def _comparator_ecosystem(ecosystem: str) -> str:
@@ -423,7 +448,7 @@ def lookup_packages_batch(
                         severity=row["severity"],
                         cvss_score=row["cvss_score"],
                         cvss_vector=row["cvss_vector"],
-                        fixed_version=row["fixed_version"] or row["fixed"],
+                        fixed_version=_resolve_fixed_version(row),
                         epss_probability=epss_prob,
                         epss_percentile=epss_pct,
                         is_kev=kev_date is not None,

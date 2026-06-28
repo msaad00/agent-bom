@@ -25,9 +25,11 @@ def db_cmd() -> None:
     "--source",
     "sources",
     multiple=True,
-    type=click.Choice(["osv", "alpine", "epss", "kev", "ghsa", "nvd"], case_sensitive=False),
-    help="Which sources to sync (default: osv, alpine, epss, kev). Repeatable. "
+    type=click.Choice(["osv", "alpine", "debian", "epss", "kev", "ghsa", "nvd"], case_sensitive=False),
+    help="Which sources to sync (default: osv, alpine, debian, epss, kev). Repeatable. "
     "Use --source alpine to sync Alpine package secfix data from Alpine secdb. "
+    "Use --source debian to sync the Debian Security Tracker (authoritative per-release "
+    "status + backported fixes, including end-of-life releases such as buster/Debian 10). "
     "Use --source ghsa to sync GitHub Security Advisories (all ecosystems). "
     "Use --source nvd to enrich unknown-severity CVEs from NVD (slow without NVD_API_KEY).",
 )
@@ -70,7 +72,10 @@ def db_update(
 ) -> None:
     """Download and sync the local vulnerability database.
 
-    Pulls from OSV.dev (bulk export), Alpine secdb, FIRST EPSS scores, and CISA KEV catalog by default.
+    Pulls from OSV.dev (bulk export), Alpine secdb, the Debian Security Tracker,
+    FIRST EPSS scores, and CISA KEV catalog by default. The Debian Security Tracker
+    provides authoritative per-release status and backported fix versions, including
+    end-of-life releases (e.g. buster/Debian 10) that OSV no longer carries.
     Pass --source ghsa to also fetch GitHub Security Advisories across all supported
     ecosystems (pip, npm, go, maven, nuget, rubygems, cargo, composer, swift,
     pub, erlang, actions).
@@ -87,7 +92,7 @@ def db_update(
     from agent_bom.db.sync import sync_db
 
     con = Console()
-    selected = list(sources) or ["osv", "alpine", "epss", "kev"]
+    selected = list(sources) or ["osv", "alpine", "debian", "epss", "kev"]
     con.print(f"[bold]Syncing local vuln DB[/bold] — sources: {', '.join(selected)}")
 
     try:

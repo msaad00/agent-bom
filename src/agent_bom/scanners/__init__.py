@@ -641,6 +641,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         severity=severity,
         severity_source=severity_source,
         cvss_score=cvss_score,
+        cvss_vector=cvss_vector if isinstance(cvss_vector, str) and cvss_vector else None,
         fixed_version=lv.fixed_version if _is_valid_fix_version(lv.fixed_version or "") else None,
         epss_score=lv.epss_probability,
         epss_percentile=lv.epss_percentile,

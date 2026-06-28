@@ -54,6 +54,33 @@ def _graph_public_exposed_vulnerable() -> UnifiedGraph:
     return _graph([res, vuln], [_edge("res:web", "vuln:cve", RelationshipType.VULNERABLE_TO)])
 
 
+def _graph_public_exposed_kev() -> UnifiedGraph:
+    res = _node("res:web", EntityType.CLOUD_RESOURCE, severity="high", toxic_exposed_vulnerable=True, internet_exposed=True)
+    vuln = _node("vuln:cve", EntityType.VULNERABILITY, severity="critical", is_kev=True)
+    return _graph([res, vuln], [_edge("res:web", "vuln:cve", RelationshipType.VULNERABLE_TO)])
+
+
+def _graph_public_exposed_rce() -> UnifiedGraph:
+    res = _node("res:web", EntityType.CLOUD_RESOURCE, severity="high", toxic_exposed_vulnerable=True, internet_exposed=True)
+    vuln = _node("vuln:cve", EntityType.VULNERABILITY, severity="critical", impact_category="code-execution")
+    return _graph([res, vuln], [_edge("res:web", "vuln:cve", RelationshipType.VULNERABLE_TO)])
+
+
+def _graph_public_exposed_network_exploitable() -> UnifiedGraph:
+    res = _node("res:web", EntityType.CLOUD_RESOURCE, severity="high", toxic_exposed_vulnerable=True, internet_exposed=True)
+    vuln = _node(
+        "vuln:cve",
+        EntityType.VULNERABILITY,
+        severity="critical",
+        attack_vector="network",
+        attack_complexity="low",
+        privileges_required="none",
+        user_interaction="none",
+        network_exploitable=True,
+    )
+    return _graph([res, vuln], [_edge("res:web", "vuln:cve", RelationshipType.VULNERABLE_TO)])
+
+
 def _graph_public_to_sensitive() -> UnifiedGraph:
     res = _node("res:bucket", EntityType.CLOUD_RESOURCE, severity="high", internet_exposed=True)
     store = _node(
@@ -113,6 +140,37 @@ def test_public_exposed_vulnerable_rule():
     assert "T1190" in f.attack_tags
     assert set(f.evidence["node_ids"]) == {"res:web", "vuln:cve"}
     assert f.asset.name == "res:web"
+
+
+def test_public_exposed_kev_rule():
+    findings = build_toxic_combination_findings(_graph_public_exposed_kev())
+    hits = _by_rule(findings, "PUBLIC_EXPOSED_KEV")
+    assert len(hits) == 1
+    f = hits[0]
+    assert f.severity == "critical"
+    assert "T1190" in f.attack_tags
+    assert "CISA KEV" in f.title
+    assert set(f.evidence["node_ids"]) == {"res:web", "vuln:cve"}
+
+
+def test_public_exposed_rce_rule_requires_cwe_backed_impact():
+    findings = build_toxic_combination_findings(_graph_public_exposed_rce())
+    hits = _by_rule(findings, "PUBLIC_EXPOSED_RCE")
+    assert len(hits) == 1
+    f = hits[0]
+    assert f.severity == "critical"
+    assert {"T1190", "T1059"}.issubset(set(f.attack_tags))
+    assert "RCE" in f.title
+
+
+def test_public_exposed_network_exploitable_rule_uses_cvss_attack_vector():
+    findings = build_toxic_combination_findings(_graph_public_exposed_network_exploitable())
+    hits = _by_rule(findings, "PUBLIC_EXPOSED_NETWORK_EXPLOITABLE")
+    assert len(hits) == 1
+    f = hits[0]
+    assert f.severity == "critical"
+    assert "CVSS AV:N" in f.title
+    assert set(f.evidence["node_ids"]) == {"res:web", "vuln:cve"}
 
 
 def test_public_to_sensitive_data_rule():
@@ -221,7 +279,7 @@ def test_dedupe_by_rule_and_node_set():
 def test_all_rules_have_unique_ids_and_mitre():
     ids = [r.id for r in TOXIC_RULES]
     assert len(ids) == len(set(ids))
-    assert len(TOXIC_RULES) == 5
+    assert len(TOXIC_RULES) == 8
     for rule in TOXIC_RULES:
         assert rule.mitre, f"{rule.id} missing MITRE tag"
 

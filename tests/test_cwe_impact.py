@@ -11,6 +11,7 @@ from agent_bom.cwe_impact import (
     IMPACT_FILE_ACCESS,
     IMPACT_INJECTION,
     IMPACT_SSRF,
+    IMPACT_UNKNOWN,
     build_attack_vector_summary,
     classify_cwe_impact,
     filter_credentials_by_impact,
@@ -20,14 +21,14 @@ from agent_bom.cwe_impact import (
 # ── classify_cwe_impact ──────────────────────────────────────────────────────
 
 
-def test_no_cwe_returns_code_execution():
-    """Conservative default: no CWE data assumes worst case."""
-    assert classify_cwe_impact([]) == IMPACT_CODE_EXECUTION
+def test_no_cwe_returns_unknown():
+    """Missing CWE data must not be labeled as RCE."""
+    assert classify_cwe_impact([]) == IMPACT_UNKNOWN
 
 
-def test_unknown_cwe_returns_code_execution():
-    """Unrecognized CWE IDs assume worst case."""
-    assert classify_cwe_impact(["CWE-999999"]) == IMPACT_CODE_EXECUTION
+def test_unknown_cwe_returns_unknown():
+    """Unrecognized CWE IDs must not be labeled as RCE."""
+    assert classify_cwe_impact(["CWE-999999"]) == IMPACT_UNKNOWN
 
 
 def test_single_rce_cwe():
@@ -164,6 +165,11 @@ def test_empty_creds_returns_empty():
     assert result == []
 
 
+def test_unknown_impact_returns_no_creds():
+    result = filter_credentials_by_impact(IMPACT_UNKNOWN, _TEST_CREDS)
+    assert result == []
+
+
 # ── filter_tools_by_impact ───────────────────────────────────────────────────
 
 
@@ -178,6 +184,11 @@ _TEST_TOOLS = [_MockTool("run_query"), _MockTool("execute_sql"), _MockTool("read
 def test_code_execution_returns_all_tools():
     result = filter_tools_by_impact(IMPACT_CODE_EXECUTION, _TEST_TOOLS)
     assert len(result) == 4
+
+
+def test_unknown_impact_returns_no_tools():
+    result = filter_tools_by_impact(IMPACT_UNKNOWN, _TEST_TOOLS)
+    assert result == []
 
 
 def test_client_side_returns_no_tools():

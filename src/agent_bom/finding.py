@@ -227,6 +227,12 @@ class Finding:
     cve_id: Optional[str] = None  # e.g. "CVE-2024-1234"
     cwe_ids: list[str] = field(default_factory=list)  # e.g. ["CWE-79"]
     cvss_score: Optional[float] = None
+    cvss_vector: Optional[str] = None
+    attack_vector: Optional[str] = None
+    attack_complexity: Optional[str] = None
+    privileges_required: Optional[str] = None
+    user_interaction: Optional[str] = None
+    network_exploitable: bool = False
     epss_score: Optional[float] = None
     is_kev: bool = False  # CISA Known Exploited Vulnerability
 
@@ -405,6 +411,12 @@ class Finding:
             "cve_id": self.cve_id,
             "cwe_ids": self.cwe_ids,
             "cvss_score": self.cvss_score,
+            "cvss_vector": self.cvss_vector,
+            "attack_vector": self.attack_vector,
+            "attack_complexity": self.attack_complexity,
+            "privileges_required": self.privileges_required,
+            "user_interaction": self.user_interaction,
+            "network_exploitable": self.network_exploitable,
             "epss_score": self.epss_score,
             "is_kev": self.is_kev,
             "fixed_version": self.fixed_version,
@@ -808,6 +820,12 @@ def blast_radius_to_finding(br: object) -> "Finding":
         "published_at": getattr(vuln, "published_at", None),
         "modified_at": getattr(vuln, "modified_at", None),
         "severity_source": getattr(vuln, "severity_source", None),
+        "cvss_vector": getattr(vuln, "cvss_vector", None),
+        "attack_vector": getattr(vuln, "attack_vector", None),
+        "attack_complexity": getattr(vuln, "attack_complexity", None),
+        "privileges_required": getattr(vuln, "privileges_required", None),
+        "user_interaction": getattr(vuln, "user_interaction", None),
+        "network_exploitable": getattr(vuln, "network_exploitable", False),
         "epss_percentile": getattr(vuln, "epss_percentile", None),
         "kev_date_added": getattr(vuln, "kev_date_added", None),
         "kev_due_date": getattr(vuln, "kev_due_date", None),
@@ -821,6 +839,18 @@ def blast_radius_to_finding(br: object) -> "Finding":
         evidence["references"] = _sanitized_evidence_field(vuln.references[:5])
 
     sev = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
+    from agent_bom.exploitability import fused_triage_priority
+
+    evidence["triage_priority"] = fused_triage_priority(
+        severity=sev,
+        is_kev=bool(vuln.is_kev),
+        epss_score=getattr(vuln, "epss_score", None),
+        network_exploitable=bool(getattr(vuln, "network_exploitable", False)),
+        impact_category=getattr(br, "impact_category", None),
+        reachable=getattr(br, "graph_reachable", None),
+        exposed_credential_count=len(br.exposed_credentials),
+        exposed_tool_count=len(br.exposed_tools),
+    )
 
     from agent_bom.compliance_hub import apply_hub_classification
 
@@ -836,6 +866,12 @@ def blast_radius_to_finding(br: object) -> "Finding":
         cve_id=vuln.id,  # Vulnerability.id is the CVE/OSV ID
         cwe_ids=list(getattr(vuln, "cwe_ids", []) or []),
         cvss_score=vuln.cvss_score,
+        cvss_vector=getattr(vuln, "cvss_vector", None),
+        attack_vector=getattr(vuln, "attack_vector", None),
+        attack_complexity=getattr(vuln, "attack_complexity", None),
+        privileges_required=getattr(vuln, "privileges_required", None),
+        user_interaction=getattr(vuln, "user_interaction", None),
+        network_exploitable=bool(getattr(vuln, "network_exploitable", False)),
         epss_score=vuln.epss_score,
         is_kev=bool(vuln.is_kev),
         fixed_version=vuln.fixed_version,

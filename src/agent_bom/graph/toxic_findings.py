@@ -209,6 +209,19 @@ def _is_write_permission(edge_evidence: dict) -> bool:
 
 def _match_public_exposed_vulnerable(graph: UnifiedGraph) -> list[ToxicMatch]:
     """Internet-exposed resource that also carries a known vulnerability."""
+    return _match_public_exposed_vulnerability_where(
+        graph,
+        predicate=lambda _vuln: True,
+        detail="is reachable from the public internet and carries a known vulnerability.",
+    )
+
+
+def _match_public_exposed_vulnerability_where(
+    graph: UnifiedGraph,
+    *,
+    predicate: Callable[[UnifiedNode], bool],
+    detail: str,
+) -> list[ToxicMatch]:
     matches: list[ToxicMatch] = []
     for node in graph.nodes.values():
         if not node.attributes.get("toxic_exposed_vulnerable"):
@@ -217,7 +230,10 @@ def _match_public_exposed_vulnerable(graph: UnifiedGraph) -> list[ToxicMatch]:
             e.target
             for e in graph.adjacency.get(node.id, [])
             if e.relationship == RelationshipType.VULNERABLE_TO and graph.nodes.get(e.target) is not None
+            and predicate(graph.nodes[e.target])
         ]
+        if not vuln_ids:
+            continue
         node_ids = (node.id, *sorted(set(vuln_ids)))
         sevs = (_node_severity(node), *(_node_severity(graph.nodes[v]) for v in vuln_ids if v in graph.nodes))
         matches.append(
@@ -226,10 +242,34 @@ def _match_public_exposed_vulnerable(graph: UnifiedGraph) -> list[ToxicMatch]:
                 node_ids=node_ids,
                 path=("internet_exposed", RelationshipType.VULNERABLE_TO.value),
                 severities=sevs or (_node_severity(node),),
-                detail=f"{node.label} is reachable from the public internet and carries a known vulnerability.",
+                detail=f"{node.label} {detail}",
             )
         )
     return matches
+
+
+def _match_public_exposed_kev(graph: UnifiedGraph) -> list[ToxicMatch]:
+    return _match_public_exposed_vulnerability_where(
+        graph,
+        predicate=lambda vuln: bool(vuln.attributes.get("is_kev")),
+        detail="is reachable from the public internet and carries a CISA KEV vulnerability.",
+    )
+
+
+def _match_public_exposed_rce(graph: UnifiedGraph) -> list[ToxicMatch]:
+    return _match_public_exposed_vulnerability_where(
+        graph,
+        predicate=lambda vuln: vuln.attributes.get("impact_category") == "code-execution",
+        detail="is reachable from the public internet and carries a CWE-backed code-execution vulnerability.",
+    )
+
+
+def _match_public_exposed_network_exploitable(graph: UnifiedGraph) -> list[ToxicMatch]:
+    return _match_public_exposed_vulnerability_where(
+        graph,
+        predicate=lambda vuln: bool(vuln.attributes.get("network_exploitable")) or vuln.attributes.get("attack_vector") == "network",
+        detail="is reachable from the public internet and carries a CVSS AV:N network-exploitable vulnerability.",
+    )
 
 
 def _match_public_to_sensitive_data(graph: UnifiedGraph) -> list[ToxicMatch]:
@@ -396,6 +436,55 @@ def _match_public_permission_lateral(graph: UnifiedGraph) -> list[ToxicMatch]:
 # ── Rule registry (data-driven — add a 6th by appending one entry) ───────────
 
 TOXIC_RULES: tuple[ToxicRule, ...] = (
+    ToxicRule(
+        id="PUBLIC_EXPOSED_KEV",
+        title="Public, internet-exposed resource with a CISA KEV vulnerability",
+        severity="critical",
+        mitre=("T1190",),
+        description=(
+            "A resource reachable from the public internet carries a vulnerability "
+            "listed in CISA Known Exploited Vulnerabilities. This is observed "
+            "exploitation plus public reachability."
+        ),
+        remediation=(
+            "Patch or remove the vulnerable component immediately and remove public "
+            "exposure until remediation is verified."
+        ),
+        match=_match_public_exposed_kev,
+        owasp_tags=("A06:2021",),
+    ),
+    ToxicRule(
+        id="PUBLIC_EXPOSED_RCE",
+        title="Public, internet-exposed resource with a CWE-backed RCE vulnerability",
+        severity="critical",
+        mitre=("T1190", "T1059"),
+        description=(
+            "A resource reachable from the public internet carries a vulnerability "
+            "whose CWE/advisory metadata supports code execution."
+        ),
+        remediation=(
+            "Patch the vulnerable component or remove the public path before leaving "
+            "the workload in service."
+        ),
+        match=_match_public_exposed_rce,
+        owasp_tags=("A06:2021",),
+    ),
+    ToxicRule(
+        id="PUBLIC_EXPOSED_NETWORK_EXPLOITABLE",
+        title="Public, internet-exposed resource with a CVSS AV:N vulnerability",
+        severity="critical",
+        mitre=("T1190",),
+        description=(
+            "A resource reachable from the public internet carries a vulnerability "
+            "whose CVSS vector says the attack vector is network."
+        ),
+        remediation=(
+            "Restrict the public network path or patch the network-exploitable "
+            "component; prioritize when paired with low complexity or no privileges."
+        ),
+        match=_match_public_exposed_network_exploitable,
+        owasp_tags=("A06:2021",),
+    ),
     ToxicRule(
         id="PUBLIC_EXPOSED_VULNERABLE",
         title="Public, internet-exposed resource with a known vulnerability",

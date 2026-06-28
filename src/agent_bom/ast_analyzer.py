@@ -41,6 +41,7 @@ from agent_bom.ast_python_analysis import (
     _SKIP_FILE_PATTERNS,
     _analyze_file,
     _build_call_graph,
+    _build_dependency_symbol_reach,
     _build_taint_findings,
 )
 from agent_bom.ast_python_analysis import (
@@ -157,6 +158,7 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
     result.call_edges.extend(python_call_edges)
     result.flow_findings.extend(interprocedural_findings)
+    result.dependency_symbol_reach.extend(_build_dependency_symbol_reach(function_analyses))
     result.flow_findings.extend(_build_taint_findings(function_analyses))
     js_ts_call_edges, js_ts_interprocedural_findings = _build_js_ts_flow_findings(
         functions=js_ts_functions,

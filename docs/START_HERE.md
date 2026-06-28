@@ -52,38 +52,42 @@ docker compose -f deploy/docker-compose.pilot.yml up -d
 
 ## Cloud / GRC — connect a cloud read-only
 
-You want estate inventory, CIS posture, and exposure paths across your clouds
-without granting write access. `agent-bom` reads **AWS, Azure, GCP, and
-Snowflake** through one connection model: a scoped read-only role per cloud,
-keyless or token auth, opt-in per provider. It never writes, reads no secret
-values, and moves no data out of your account.
+You want estate inventory, CIS posture, and exposure paths without granting
+write access. `agent-bom connect` covers **AWS, Azure, GCP, and Snowflake**
+through one connection model: a scoped read-only role per source, keyless or
+token auth, opt-in per provider. It never writes, reads no secret values, and
+moves no data out of your account.
 
 ```bash
-# AWS — attach SecurityAudit, then:
+# AWS — print the read-only grant, attach SecurityAudit, then:
+agent-bom connect aws
 export AGENT_BOM_AWS_INVENTORY=1 AWS_PROFILE=<readonly-profile>
 agent-bom cloud aws --cis
 
-# Azure — assign Reader (+ Security Reader), then:
+# Azure — print the read-only grant, assign Reader (+ Security Reader), then:
+agent-bom connect azure
 export AGENT_BOM_AZURE_INVENTORY=1
 az login && agent-bom cloud azure --cis
 
-# GCP — impersonate a read-only service account (no key file):
+# GCP — print the read-only grant, impersonate a read-only service account:
+agent-bom connect gcp
 export AGENT_BOM_GCP_INVENTORY=1 AGENT_BOM_GCP_IMPERSONATE_SA=<sa-email>
 gcloud auth application-default login
 agent-bom cloud gcp --project <project-id> --cis
 
-# Snowflake — key-pair user with the ABOM_READONLY role (no password):
+# Snowflake — read-only governance role + key-pair user, never password:
+agent-bom connect snowflake
 export SNOWFLAKE_ACCOUNT=<org-account> SNOWFLAKE_USER=ABOM_SCANNER
 export SNOWFLAKE_AUTHENTICATOR=snowflake_jwt SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/abom_key.p8
 agent-bom agents --snowflake
 
-# Cross-cloud estate inventory (reference only, no findings):
+# Cross-cloud estate inventory for AWS/Azure/GCP (reference counts):
 agent-bom cloud inventory --provider all
 ```
 
 - Full grant templates, per-cloud permission catalogs, and the read-only
   rationale: [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md)
-- CIS misconfigurations converge into findings and the exit-code gate:
+- Cloud CIS misconfigurations and Snowflake posture converge into findings:
   `agent-bom agents --aws --azure --gcp --snowflake --fail-on-severity high`
 - Exposure paths and non-human identity posture: `agent-bom graph`,
   `agent-bom identity credential-expiry`

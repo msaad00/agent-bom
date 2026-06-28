@@ -1,13 +1,14 @@
 # Connecting Clouds to agent-bom
 
-How agent-bom reads, ingests, and integrates AWS, Azure, and Snowflake — and
-**why** every step is read-only, least-privilege, and zero-trust by design.
+How agent-bom reads, ingests, and integrates AWS, Azure, GCP, and Snowflake —
+and **why** every step is read-only, least-privilege, and zero-trust by design.
 
-agent-bom is a **scanner, not a platform**. It connects to a cloud with the
-least privilege that still lets it *see*, reads inventory and posture through
-control-plane list/get APIs only, normalizes what it sees into one graph, and
-emits findings. It never writes, never reads secret contents, never moves data
-out of your account, and never stores a password.
+agent-bom is a **scanner and self-hosted control plane**, not a hosted data
+mover. It connects to each source with the least privilege that still lets it
+*see*, reads inventory and posture through control-plane list/get APIs only,
+normalizes what it sees into one graph, and emits findings. It never writes,
+never reads secret contents, never moves data out of your account, and never
+stores a password.
 
 ---
 
@@ -15,23 +16,24 @@ out of your account, and never stores a password.
 
 | Principle | What it means here |
 |-----------|--------------------|
-| **Read-only** | Only `List*` / `Describe*` / `Get*` (AWS), `list` / `get` ARM (Azure), and `SELECT` / `SHOW` over `ACCOUNT_USAGE` (Snowflake). No create/update/delete, ever. |
-| **Least privilege** | A single read-only managed role per cloud (AWS `SecurityAudit`, Azure `Reader`/`Security Reader`, Snowflake `ABOM_READONLY`). Nothing broader. |
+| **Read-only** | Only `List*` / `Describe*` / `Get*` (AWS), `list` / `get` ARM (Azure), Google Cloud list/get permissions (GCP), and `SELECT` / `SHOW` over `ACCOUNT_USAGE` (Snowflake). No create/update/delete, ever. |
+| **Least privilege** | A single read-only managed role per source (AWS `SecurityAudit`, Azure `Reader`/`Security Reader`, GCP `roles/viewer` + `roles/iam.securityReviewer`, Snowflake `ABOM_READONLY`). Nothing broader. |
 | **Zero trust / no passwords** | Short-lived tokens, key-pairs, or federated identity only. No long-lived password is ever accepted (Snowflake password auth is deprecated and warns). |
 | **No data exfiltration** | Secret *metadata* is read (a secret exists, when it rotated) but never secret *values*. No object/blob/row data is read. Errors are sanitized before display. |
 | **Customer-owned** | Findings stay in your environment. agent-bom has no phone-home; the discovery envelope on every payload records `ScanMode.CLOUD_READ_ONLY` and the exact permissions used. |
 | **Accurate** | Coverage is provable: a guard test asserts every SDK client used is real; misconfigurations converge into the same findings stream and exit-code gate as vulnerabilities, so nothing is "shown but unenforced". |
 
-All three connectors are **opt-in and default-off**, gated by per-provider env
-flags. With the flags unset, agent-bom does zero cloud network I/O.
+All four connectors are **opt-in and default-off**, gated by per-provider env
+flags. With the flags unset, agent-bom does zero cloud or warehouse network I/O.
 
-**One pattern, not three.** The *only* thing that differs per cloud is the one
+**One pattern, not four.** The *only* thing that differs per source is the one
 line that mints the read-only role — because each platform's grant primitive is
-different (AWS IAM policy, Azure RBAC role, Snowflake role+grant). Everything
-else is identical: enable with `AGENT_BOM_<PROVIDER>_INVENTORY=1`, authenticate
-with the cloud's own identity (never a secret handed to agent-bom), get the same
-graph and findings out. This mirrors how connector-based scanners work — a
-per-cloud role template, one uniform flow around it.
+different (AWS IAM policy, Azure RBAC role, GCP IAM role binding, Snowflake
+role+grant). Everything else is identical: enable with
+`AGENT_BOM_<PROVIDER>_INVENTORY=1`, authenticate with the provider's own
+identity (never a password handed to agent-bom), get the same graph and findings
+out. This mirrors how connector-based scanners work — a per-provider role
+template, one uniform flow around it.
 
 ---
 
@@ -182,7 +184,50 @@ service account gets a unique, non-guessable name.
 
 ---
 
-## 5. Snowflake — connect with a key-pair, never a password
+## 5. GCP — connect with viewer + security reviewer
+
+**Grant** (read-only, predefined): bind the scanner service account to
+**`roles/viewer`** for inventory and **`roles/iam.securityReviewer`** for IAM
+relationship and policy visibility. For fleet-wide scans, grant the same roles
+at the organization or folder level and enable project fan-out.
+
+**Authenticate** through Application Default Credentials — no password, pick
+one:
+- `gcloud auth application-default login` for an operator-run scan, or
+- service account impersonation (`AGENT_BOM_GCP_IMPERSONATE_SA`), or
+- Workload Identity Federation for CI/Kubernetes without a key file.
+
+```bash
+export AGENT_BOM_GCP_INVENTORY=1
+export AGENT_BOM_GCP_ALL_PROJECTS=1        # fan out across org/folders/projects
+export AGENT_BOM_GCP_IMPERSONATE_SA=agent-bom-readonly@PROJECT_ID.iam.gserviceaccount.com
+agent-bom cloud gcp --project PROJECT_ID --cis
+```
+
+**What it reads:** projects, folders, organization hierarchy, IAM policies and
+service accounts, Cloud Run, Vertex AI, GKE, Compute Engine, Artifact Registry,
+Cloud SQL, Cloud Storage, Pub/Sub, KMS, Secret Manager metadata, VPC/firewall
+posture, logging posture, and CIS checks.
+
+**Org scale:** with `AGENT_BOM_GCP_ALL_PROJECTS=1` the connector discovers the
+organization → folders → projects hierarchy, runs each project scan separately,
+and writes graph nodes under the right org/folder/project parent so exposures
+stay drillable at tenant scale. `AGENT_BOM_GCP_MAX_PROJECTS` bounds the run.
+
+**Secure-by-default provisioning** (`deploy/terraform/connect-gcp`): the module
+mints a unique read-only service account and binds only `roles/viewer` plus
+`roles/iam.securityReviewer`. Optional Workload Identity Federation is locked to
+a scoped `attribute_condition`, pinned audiences, and a specific
+`principalSet`; broad wildcard federation is rejected.
+
+**Why read-only is enough:** the connector uses list/get style APIs and IAM
+policy reads. Secret Manager values, object contents, and table rows are not
+read. Missing optional APIs degrade to provider warnings so partial permissions
+are visible without turning one blocked service into a failed estate scan.
+
+---
+
+## 6. Snowflake — connect with a key-pair, never a password
 
 **Grant** (read-only role + key-pair user). Run once as `ACCOUNTADMIN`:
 
@@ -243,7 +288,7 @@ Discoveries that need a grant you didn't give degrade to empty rather than error
 
 ---
 
-## 6. Security guarantees, restated
+## 7. Security guarantees, restated
 
 - **No writes.** No connector calls a create/update/delete API in any cloud.
 - **No secret contents.** Secret/Key-Vault/Secrets-Manager *metadata* only.
@@ -272,7 +317,7 @@ Discoveries that need a grant you didn't give degrade to empty rather than error
 
 ---
 
-## 6a. Audit-trail behavioral edges — no new role
+## 7a. Audit-trail behavioral edges — no new role
 
 Setting `AGENT_BOM_AUDIT_TRAIL=1` reads the security-relevant slice of each
 cloud's native audit trail (AWS CloudTrail, Azure Activity Log, GCP Cloud Audit
@@ -299,7 +344,7 @@ standard setups, **no new permission**.
 
 ---
 
-## 6b. Agentless EBS disk side-scan (opt-in, scoped role)
+## 7b. Agentless EBS disk side-scan (opt-in, scoped role)
 
 The disk side-scan snapshots a target EBS volume, attaches a temp volume to an
 **in-account collector** instance, mounts it read-only, and returns a
@@ -327,11 +372,12 @@ snapshot implicitly.
 
 ---
 
-## 7. Why it scales and stays accurate
+## 8. Why it scales and stays accurate
 
-- **Scale:** AWS Organizations and Azure management-group fan-out discover the
-  whole estate; the graph partitions by account so multi-account/multi-tenant
-  estates stay separable, with explicit caps to bound a run.
+- **Scale:** AWS Organizations, Azure management-group fan-out, and GCP
+  org/folder/project fan-out discover the whole estate; the graph partitions by
+  account, subscription, or project so multi-account/multi-tenant estates stay
+  separable, with explicit caps to bound a run.
 - **Alignment:** every datum a connector collects is wired end-to-end —
   data model → graph nodes/edges → JSON output → CLI/API → tests — so nothing is
   "collected but dropped". A guard test keeps the AWS SDK surface honest.

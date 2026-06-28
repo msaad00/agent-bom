@@ -207,7 +207,36 @@ def _version_affected(
     """Ecosystem-aware version-in-range check."""
     from agent_bom.version_utils import version_in_range
 
-    return version_in_range(version, introduced, fixed, last_affected, ecosystem)
+    return version_in_range(version, introduced, fixed, last_affected, _comparator_ecosystem(ecosystem))
+
+
+# Map a (possibly release-suffixed) DB ecosystem to a base family the version
+# comparator understands.
+_ECO_FAMILY_TO_COMPARATOR = {
+    "debian": "deb",
+    "ubuntu": "deb",
+    "deb": "deb",
+    "alpine": "apk",
+    "apk": "apk",
+    "rpm": "rpm",
+    "linux": "rpm",
+}
+
+
+def _comparator_ecosystem(ecosystem: str) -> str:
+    """Normalise a DB ecosystem to a key the version comparator can order.
+
+    DB ``affected`` rows store distro ecosystems with a release suffix
+    (``debian:10``, ``alpine:v3.18``, ``ubuntu:22.04``). The ecosystem-aware
+    version comparator only recognises the base families (``deb``/``apk``/
+    ``rpm``); handed the suffixed form it cannot pick a distro comparator and
+    returns "unknown" for every range. That silently flips already-fixed distro
+    advisories into conservative false positives (e.g. ``bash 5.0-4`` reported
+    against a fix of ``4.3-9.1``). Normalising to the base family restores
+    correct version ordering.
+    """
+    base = (ecosystem or "").split(":", 1)[0].strip().lower()
+    return _ECO_FAMILY_TO_COMPARATOR.get(base, base)
 
 
 @lru_cache(maxsize=131072)
@@ -260,7 +289,7 @@ def _version_match_state(
     ecosystem: str = "",
 ) -> str:
     """Return ``affected``, ``unaffected``, or ``unknown`` for one affected-range row."""
-    return _cached_version_match_state(version, introduced, fixed, last_affected, ecosystem)
+    return _cached_version_match_state(version, introduced, fixed, last_affected, _comparator_ecosystem(ecosystem))
 
 
 def _select_vulnerability_rows(rows: list[sqlite3.Row], version: Optional[str]) -> list[sqlite3.Row]:

@@ -238,6 +238,76 @@ def test_docker_save_python_packages():
     assert "requests" in names
 
 
+_PKG_INFO_SETUPTOOLS = b"""Metadata-Version: 1.0
+Name: setuptools
+Version: 50.0.0
+Summary: Easily download, build, install, upgrade, and uninstall Python packages
+"""
+
+
+def test_docker_save_egg_info_python_packages():
+    """Legacy ``*.egg-info/PKG-INFO`` packages are extracted as pypi.
+
+    Older base images (e.g. Debian buster) ship setuptools/pip/wheel as
+    egg-info rather than dist-info; the parser must read both layouts.
+    """
+    tar = _make_docker_save_tar([{"usr/lib/python3.9/dist-packages/setuptools-50.0.egg-info/PKG-INFO": _PKG_INFO_SETUPTOOLS}])
+    result = parse_oci_tarball(tar)
+    pkg = next((p for p in result.packages if p.name == "setuptools"), None)
+    assert pkg is not None
+    assert pkg.version == "50.0.0"
+    assert pkg.ecosystem == "pypi"
+
+
+def test_docker_save_egg_info_and_dist_info_deduped():
+    """A package present as both egg-info and dist-info is recorded once."""
+    tar = _make_docker_save_tar(
+        [
+            {
+                "site-packages/requests-2.31.0.dist-info/METADATA": _METADATA_REQUESTS,
+                "site-packages/requests-2.31.0.egg-info/PKG-INFO": _METADATA_REQUESTS,
+            }
+        ]
+    )
+    result = parse_oci_tarball(tar)
+    requests_pkgs = [p for p in result.packages if p.name == "requests" and p.ecosystem == "pypi"]
+    assert len(requests_pkgs) == 1
+
+
+def test_lower_layer_whiteout_does_not_drop_readded_package():
+    """A file re-created in a higher layer survives a lower-layer whiteout.
+
+    This is the overlay-semantics bug that silently dropped pip/setuptools
+    dist-info on Debian-based images: a base layer whites out site-packages
+    and a later layer reinstalls the package at the same path.
+    """
+    base = {"site-packages/.wh.requests-2.31.0.dist-info": b""}
+    top = {"site-packages/requests-2.31.0.dist-info/METADATA": _METADATA_REQUESTS}
+    tar = _make_docker_save_tar([base, top])
+    result = parse_oci_tarball(tar)
+    assert any(p.name == "requests" for p in result.packages)
+
+
+def test_higher_layer_whiteout_drops_package():
+    """A package deleted by a strictly-higher layer whiteout is dropped."""
+    base = {"site-packages/flask-3.0.0.dist-info/METADATA": _METADATA_FLASK}
+    top = {"site-packages/.wh.flask-3.0.0.dist-info": b""}
+    tar = _make_docker_save_tar([base, top])
+    result = parse_oci_tarball(tar)
+    assert not any(p.name.lower() == "flask" for p in result.packages)
+
+
+def test_os_release_usr_lib_detects_distro():
+    """Distro is detected from usr/lib/os-release (the /etc symlink target)."""
+    os_release = b'ID=debian\nVERSION_ID="10"\n'
+    tar = _make_docker_save_tar([{"var/lib/dpkg/status": _DPKG_STATUS, "usr/lib/os-release": os_release}])
+    result = parse_oci_tarball(tar)
+    bash = next((p for p in result.packages if p.name == "bash"), None)
+    assert bash is not None
+    assert bash.distro_name == "debian"
+    assert bash.distro_version == "10"
+
+
 def test_docker_save_node_packages():
     tar = _make_docker_save_tar([{"usr/lib/node_modules/express/package.json": _PACKAGE_JSON_EXPRESS}])
     result = parse_oci_tarball(tar)

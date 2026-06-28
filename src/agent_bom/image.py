@@ -413,55 +413,71 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
     """Extract packages from a container filesystem tar archive.
 
     Scans for:
-    - Python: site-packages RECORD/METADATA files
+    - Python: ``*.dist-info/METADATA`` (modern) and legacy
+      ``*.egg-info/PKG-INFO`` / ``*.egg-info/METADATA`` (setuptools/pip on
+      older base images)
     - Node: node_modules/*/package.json (name + version)
     - OS packages: /var/lib/dpkg/status (Debian/Ubuntu)
     - OS packages: /var/lib/rpm/Packages (handled via sqlite3 in Python)
+
+    OS-package entries are tagged with the distribution detected from
+    ``os-release`` so downstream CVE matching pins the correct distro release.
     """
     packages: list[Package] = []
+    os_packages: list[Package] = []
     seen: set[tuple[str, str]] = set()
 
     def _add(name: str, version: str, ecosystem: str, purl: Optional[str] = None) -> None:
         key = (name, ecosystem)
         if key not in seen:
             seen.add(key)
-            packages.append(
-                Package(
-                    name=name,
-                    version=version,
-                    ecosystem=ecosystem,
-                    purl=purl or f"pkg:{ecosystem}/{name}@{version}",
-                    is_direct=False,
-                    resolved_from_registry=False,
-                )
+            pkg = Package(
+                name=name,
+                version=version,
+                ecosystem=ecosystem,
+                purl=purl or f"pkg:{ecosystem}/{name}@{version}",
+                is_direct=False,
+                resolved_from_registry=False,
             )
+            packages.append(pkg)
+            if ecosystem in ("deb", "apk", "rpm"):
+                os_packages.append(pkg)
 
     try:
         with tarfile.open(tar_path, "r") as tf:
             names = tf.getnames()
 
-            # --- Python: dist-info METADATA ---
+            # --- Python: dist-info METADATA (modern) + egg-info PKG-INFO/METADATA (legacy) ---
+            # Older base images (e.g. Debian buster) ship pip/setuptools/wheel
+            # as ``*.egg-info/PKG-INFO`` instead of ``*.dist-info/METADATA``.
+            # Both use the same RFC822 headers; ``_add`` de-dupes by name so a
+            # package present in both layouts is counted once.
             for member_name in names:
                 if member_name.endswith(".dist-info/METADATA"):
-                    try:
-                        member = tf.getmember(member_name)
-                        f = tf.extractfile(member)
-                        if f is None:
-                            continue
-                        pkg_name = pkg_version = ""
-                        for raw_line in f:
-                            line = raw_line.decode("utf-8", errors="ignore").strip()
-                            if line.startswith("Name:"):
-                                pkg_name = line.split(":", 1)[1].strip()
-                            elif line.startswith("Version:"):
-                                pkg_version = line.split(":", 1)[1].strip()
-                            if pkg_name and pkg_version:
-                                break
-                        if pkg_name and pkg_version:
-                            _add(pkg_name, pkg_version, "pypi")
-                    except Exception:
-                        _logger.debug("Skipped Python package in %s: %s", member_name, Exception)
+                    pass
+                elif member_name.endswith(".egg-info/PKG-INFO") or member_name.endswith(".egg-info/METADATA"):
+                    pass
+                else:
+                    continue
+                try:
+                    member = tf.getmember(member_name)
+                    f = tf.extractfile(member)
+                    if f is None:
                         continue
+                    pkg_name = pkg_version = ""
+                    for raw_line in f:
+                        line = raw_line.decode("utf-8", errors="ignore").strip()
+                        if line.startswith("Name:"):
+                            pkg_name = line.split(":", 1)[1].strip()
+                        elif line.startswith("Version:"):
+                            pkg_version = line.split(":", 1)[1].strip()
+                        if pkg_name and pkg_version:
+                            break
+                    if pkg_name and pkg_version:
+                        _add(pkg_name, pkg_version, "pypi")
+                except Exception:
+                    _logger.debug("Skipped Python package metadata in %s", member_name)
+                    continue
 
             # --- Node: node_modules/*/package.json ---
             for member_name in names:
@@ -558,6 +574,36 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                                     _add(rpm_name, rpm_ver, "rpm", f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}")
                 except Exception:
                     _logger.debug("Failed to parse rpm manifest from container")
+
+            # --- Distro detection (os-release) ---
+            # Tag OS packages with the distribution release so CVE matching
+            # pins the correct distro (e.g. Debian 10) instead of falling back
+            # to scanning every supported release. ``/etc/os-release`` is a
+            # symlink to ``/usr/lib/os-release`` on Debian/Ubuntu, so probe the
+            # canonical file too.
+            distro_name = distro_version = None
+            for os_release_path in ("etc/os-release", "usr/lib/os-release"):
+                if os_release_path not in names:
+                    continue
+                try:
+                    member = tf.getmember(os_release_path)
+                    f = tf.extractfile(member)
+                    if f is None:
+                        continue
+                    for raw_line in f:
+                        line = raw_line.decode("utf-8", errors="ignore").strip()
+                        if line.startswith("ID="):
+                            distro_name = line.split("=", 1)[1].strip().strip('"').strip("'").lower() or None
+                        elif line.startswith("VERSION_ID="):
+                            distro_version = line.split("=", 1)[1].strip().strip('"').strip("'") or None
+                    if distro_name or distro_version:
+                        break
+                except Exception:
+                    _logger.debug("Failed to parse os-release from container: %s", os_release_path)
+            if distro_name or distro_version:
+                for pkg in os_packages:
+                    pkg.distro_name = pkg.distro_name or distro_name
+                    pkg.distro_version = pkg.distro_version or distro_version
 
     except tarfile.TarError as e:
         raise ImageScanError(f"Failed to read container filesystem: {e}")

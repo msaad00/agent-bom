@@ -72,6 +72,9 @@ def _seed_jobs_with_findings(tenant_id: str = "tenant-alpha") -> list[ScanJob]:
     )
     job_a.result = {
         "scan_id": "scan-a",
+        "scanner_version": "0.90.0-test",
+        "policy_decisions": [{"decision": "blocked", "policy": "runtime.tool.write"}],
+        "provenance": {"source": "test-seed", "scanner": "agent-bom"},
         "blast_radius": [
             {
                 "vulnerability_id": "CVE-2024-0001",
@@ -265,13 +268,18 @@ def test_report_json_signature_matches_canonical_body() -> None:
     # Pass/warning/fail summary
     assert body["summary"]["fail"] == 1
     assert body["summary"]["warning"] == 1
-    assert body["summary"]["pass"] == 1
+    assert body["summary"]["pass"] == 0
+    assert body["summary"]["incomplete"] == 1
 
     # Evidence wired to the right control
     by_id = {c["control_id"]: c for c in body["controls"]}
     assert by_id["LLM01"]["finding_count"] == 1
+    assert by_id["LLM01"]["status"] == "fail"
+    assert by_id["LLM01"]["evidence_state"] == "complete"
     assert by_id["LLM01"]["evidence"][0]["vulnerability_id"] == "CVE-2024-0001"
     assert by_id["LLM03"]["finding_count"] == 0
+    assert by_id["LLM03"]["status"] == "incomplete"
+    assert by_id["LLM03"]["evidence_state"] == "missing_control_evidence"
 
     # HMAC signature header matches canonical body
     sig = resp.headers["X-Agent-Bom-Compliance-Report-Signature"]
@@ -315,6 +323,11 @@ def test_real_compliance_export_wires_control_tags_and_non_empty_evidence() -> N
     assert exported["LLM01"]["finding_count"] == 1
     assert exported["LLM01"]["evidence"][0]["control_tag"] == "LLM01"
     assert exported["LLM01"]["evidence"][0]["vulnerability_id"] == "CVE-2024-0001"
+    assert exported["LLM01"]["evidence"][0]["scanner_version"] == "0.90.0-test"
+    assert exported["LLM01"]["evidence"][0]["scan_started_at"]
+    assert exported["LLM01"]["evidence"][0]["scan_completed_at"]
+    assert exported["LLM01"]["evidence"][0]["policy_decisions"] == [{"decision": "blocked", "policy": "runtime.tool.write"}]
+    assert exported["LLM01"]["evidence"][0]["provenance"] == {"source": "test-seed", "scanner": "agent-bom"}
 
 
 def test_compliance_report_route_exports_real_evidence_end_to_end() -> None:
@@ -343,6 +356,7 @@ def test_compliance_report_route_exports_real_evidence_end_to_end() -> None:
         assert llm01["evidence"]
         assert llm01["evidence"][0]["control_tag"] == "LLM01"
         assert llm01["evidence"][0]["scan_id"] == "scan-a"
+        assert llm01["evidence"][0]["scanner_version"] == "0.90.0-test"
         assert llm01["evidence"][0]["vulnerability_id"] == "CVE-2024-0001"
         assert {entry["details"]["tenant_id"] for entry in body["audit_events"]} == {"tenant-alpha"}
 
@@ -351,6 +365,56 @@ def test_compliance_report_route_exports_real_evidence_end_to_end() -> None:
     finally:
         set_job_store(original_store)
         set_audit_log(original_audit_log)
+
+
+def test_report_with_no_completed_scans_marks_controls_not_evaluated() -> None:
+    _setup_audit_log()
+    req = _request("tenant-alpha")
+    payload = {
+        "owasp_llm_top10": [
+            {"control_id": "LLM01", "name": "Prompt Injection", "status": "pass", "tags": ["LLM01"]},
+        ]
+    }
+
+    with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
+        with _patched_get_compliance_returns(payload):
+            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+
+    body = json.loads(resp.body)
+    assert body["scope"]["completed_scan_count"] == 0
+    assert body["summary"]["pass"] == 0
+    assert body["summary"]["not_evaluated"] == 1
+    assert body["summary"]["score"] == 0.0
+    control = body["controls"][0]
+    assert control["source_status"] == "pass"
+    assert control["status"] == "not_evaluated"
+    assert control["evidence_state"] == "missing_scan"
+    assert control["evidence"] == []
+
+
+def test_report_with_missing_control_evidence_is_incomplete_not_pass() -> None:
+    _setup_audit_log()
+    req = _request("tenant-alpha")
+    payload = {
+        "owasp_llm_top10": [
+            {"control_id": "LLM99", "name": "Unmapped Control", "status": "pass", "tags": ["LLM99"]},
+        ]
+    }
+
+    with patch.object(compliance_routes, "_tenant_jobs", return_value=_seed_jobs_with_findings()):
+        with _patched_get_compliance_returns(payload):
+            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+
+    body = json.loads(resp.body)
+    assert body["scope"]["completed_scan_count"] == 1
+    assert body["summary"]["pass"] == 0
+    assert body["summary"]["incomplete"] == 1
+    assert body["summary"]["score"] == 0.0
+    control = body["controls"][0]
+    assert control["source_status"] == "pass"
+    assert control["status"] == "incomplete"
+    assert control["evidence_state"] == "missing_control_evidence"
+    assert control["finding_count"] == 0
 
 
 # ─── Replay-protection envelope ──────────────────────────────────────────────

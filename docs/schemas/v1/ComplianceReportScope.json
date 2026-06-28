@@ -5,6 +5,11 @@
       "title": "Audit Event Count",
       "type": "integer"
     },
+    "completed_scan_count": {
+      "default": 0,
+      "title": "Completed Scan Count",
+      "type": "integer"
+    },
     "control_count": {
       "default": 0,
       "title": "Control Count",

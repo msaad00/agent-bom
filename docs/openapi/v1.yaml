@@ -210,11 +210,40 @@ components:
           - type: string
           - type: 'null'
           title: Package
+        policy_decisions:
+          items:
+            additionalProperties: true
+            type: object
+          title: Policy Decisions
+          type: array
+        provenance:
+          additionalProperties: true
+          title: Provenance
+          type: object
+        scan_completed_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scan Completed At
         scan_id:
           anyOf:
           - type: string
           - type: 'null'
           title: Scan Id
+        scan_input:
+          additionalProperties: true
+          title: Scan Input
+          type: object
+        scan_started_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scan Started At
+        scanner_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scanner Version
         severity:
           anyOf:
           - type: string
@@ -311,10 +340,19 @@ components:
             $ref: '#/components/schemas/ComplianceEvidenceItem'
           title: Evidence
           type: array
+        evidence_state:
+          default: not_evaluated
+          title: Evidence State
+          type: string
         finding_count:
           default: 0
           title: Finding Count
           type: integer
+        source_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Status
         status:
           default: unknown
           title: Status
@@ -326,6 +364,10 @@ components:
         audit_event_count:
           default: 0
           title: Audit Event Count
+          type: integer
+        completed_scan_count:
+          default: 0
+          title: Completed Scan Count
           type: integer
         control_count:
           default: 0
@@ -351,6 +393,14 @@ components:
         fail:
           default: 0
           title: Fail
+          type: integer
+        incomplete:
+          default: 0
+          title: Incomplete
+          type: integer
+        not_evaluated:
+          default: 0
+          title: Not Evaluated
           type: integer
         pass:
           title: Pass

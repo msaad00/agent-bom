@@ -86,7 +86,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/|\.github/workflows/ci\.yml$)'; then
             alpine_full=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_)'; then
             postgres=true
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|\.github/workflows/ci\.yml$|site-docs/deployment/aws-company-rollout\.md$)'; then

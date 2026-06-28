@@ -65,6 +65,16 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: exception-sanitization-guard
+        name: exception sanitization (no raw exception text in HTTP responses or logs)
+        # Rejects new detail=str(exc) / detail=f"...{exc}" HTTPException bodies and
+        # raw-exception log f-strings on API/cloud/runtime paths. Raw exception
+        # strings carry secrets, ARNs, paths, and connection strings; they must go
+        # through agent_bom.security.sanitize_error / sanitize_text. Pure stdlib.
+        entry: python3 scripts/check_exception_sanitization.py
+        language: system
+        pass_filenames: false
+        files: ^(src/agent_bom/(api|cloud|runtime)/.*\.py|src/agent_bom/proxy\.py|scripts/check_exception_sanitization\.py)$
       - id: duplicate-artifact-guard
         name: Finder duplicate artifact guard
         # --working-tree also catches untracked Finder copies (e.g. 'nav 2.tsx')

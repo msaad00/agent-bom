@@ -14,6 +14,7 @@ from agent_bom.api.audit_log import log_action
 from agent_bom.api.dataset_version_store import get_dataset_version_store
 from agent_bom.api.evaluation_store import EvaluationRunRecord, get_evaluation_run_store
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.security import sanitize_error
 
 router = APIRouter()
 
@@ -110,7 +111,7 @@ def _validate_path_id(value: str, field_name: str) -> str:
     try:
         return _validate_stable_label(value, field_name)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
 
 
 def _validate_dataset_link(tenant_id: str, body: EvaluationRunCreate) -> None:

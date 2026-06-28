@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 from agent_bom.api.models import ProxyAuditIngestRequest
 from agent_bom.api.stores import _get_idempotency_store
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
-from agent_bom.security import sanitize_sensitive_payload
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 router = APIRouter()
 
@@ -152,7 +152,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
                 request_hash=request_hash,
             )
         except IdempotencyConflictError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
         if cached is not None:
             cached["idempotent_replay"] = True
             return cached

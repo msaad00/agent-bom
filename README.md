@@ -39,6 +39,44 @@ and exposure scoring all read from the same evidence. That evidence is reachable
 through CLI/CI, a REST API, MCP tools, and a self-hosted dashboard; runtime
 proxy/gateway enforcement is optional and scoped to where it earns its cost.
 
+## How It Works
+
+`agent-bom` is a read-only collection and evidence engine first: it discovers
+assets, matches and enriches risk signals, normalizes everything into one graph,
+then serves the same evidence through CLI, CI, API, UI, MCP, reports, and
+runtime controls.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom workflow from read-only intake through scan engine, evidence graph, control plane, and outputs" width="980" />
+  </picture>
+</p>
+
+<details>
+<summary><b>Control-plane architecture — sources, backend, API, MCP, UI, and consumers</b></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="agent-bom architecture showing sources, scan engine, unified model, control plane, and consumers" width="980" />
+  </picture>
+</p>
+
+</details>
+
+<details>
+<summary><b>Scan pipeline — discover, match, enrich, evaluate, normalize, report</b></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg" alt="agent-bom scan pipeline from discovery through vulnerability matching, enrichment, analysis, reporting, and enforcement" width="980" />
+  </picture>
+</p>
+
+</details>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
@@ -163,7 +201,7 @@ agent-bom cloud aws --cis
 agent-bom cloud scan --fail-on-severity high
 ```
 
-Azure, GCP, and Snowflake setup, the full grant templates, per-cloud permission
+AWS, Azure, GCP, and Snowflake setup, the full grant templates, per-cloud permission
 catalogs, and the "why read-only is enough" rationale live in
 [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md). agent-bom is a **scanner, not a
 platform** — it reads inventory and posture, normalizes it into one graph, and

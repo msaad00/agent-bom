@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import tempfile
 import threading
 import time
@@ -144,6 +145,58 @@ def set_offline_mode(value: bool) -> None:
     from agent_bom.http_client import set_offline
 
     set_offline(value)
+
+
+# OS/distro ecosystems whose advisories are release-status driven. For these,
+# the Debian/Ubuntu/Alpine/RPM security trackers only assign a fixed version
+# when the maintainers actually ship a fix for the affected release. An entry
+# with no fix is therefore the tracker's "no-dsa / won't-fix / unimportant /
+# end-of-life (open)" verdict — not an actionable, patchable finding.
+_OS_DISTRO_ECOSYSTEMS = frozenset({"deb", "apk", "rpm"})
+
+# When False (default), distro advisories with no fix available for the scanned
+# release are suppressed so OS-package reporting matches mainstream scanner
+# conventions. Opt back in with set_include_unfixed(True) or the
+# AGENT_BOM_INCLUDE_UNFIXED env var.
+include_unfixed: bool = False
+
+
+def set_include_unfixed(value: bool) -> None:
+    """Toggle surfacing of unfixed (no-dsa/won't-fix) OS-package advisories."""
+    global include_unfixed  # noqa: PLW0603
+    include_unfixed = value
+
+
+def _include_unfixed_enabled() -> bool:
+    if include_unfixed:
+        return True
+    raw = os.environ.get("AGENT_BOM_INCLUDE_UNFIXED", "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _suppress_unfixed_os_advisories(packages: list[Package]) -> int:
+    """Drop unfixed OS-package advisories from ``packages`` in place.
+
+    Returns the number of vulnerabilities removed. Distro security trackers
+    mark a vulnerability as fixed only once a patched package version exists for
+    that release; entries left without a fix are the tracker's no-dsa / won't-
+    fix / end-of-life (open) verdicts, which mainstream scanners suppress by
+    default. Application-ecosystem advisories (PyPI, npm, …) are never touched —
+    an unfixed app CVE is still actionable (pin, remove, or mitigate).
+    """
+    if _include_unfixed_enabled():
+        return 0
+    removed = 0
+    for pkg in packages:
+        if pkg.ecosystem.lower() not in _OS_DISTRO_ECOSYSTEMS:
+            continue
+        vulns = getattr(pkg, "vulnerabilities", None)
+        if not vulns:
+            continue
+        kept = [v for v in vulns if (v.fixed_version or "").strip()]
+        removed += len(vulns) - len(kept)
+        pkg.vulnerabilities = kept
+    return removed
 
 
 # When True, prefer local DB results and only fall back to OSV API for
@@ -1137,6 +1190,22 @@ async def scan_packages(
             if confusion_warning and not pkg.is_malicious:
                 pkg.is_malicious = True
                 pkg.malicious_reason = confusion_warning
+
+    # Align OS-package reporting with mainstream scanner conventions: distro
+    # advisories with no fix for the scanned release (no-dsa / won't-fix /
+    # end-of-life open) are suppressed by default. Surface them with
+    # set_include_unfixed(True) or AGENT_BOM_INCLUDE_UNFIXED=1.
+    unfixed_suppressed = _suppress_unfixed_os_advisories(scannable)
+    if unfixed_suppressed:
+        total_vulns -= unfixed_suppressed
+        _logger.info(
+            "Suppressed %d unfixed OS-package advisory finding(s) (no-dsa/won't-fix); set AGENT_BOM_INCLUDE_UNFIXED=1 to include them",
+            unfixed_suppressed,
+        )
+        console.print(
+            f"  [dim]Suppressed {unfixed_suppressed} unfixed OS-package finding(s) "
+            f"(no-dsa/won't-fix) — set AGENT_BOM_INCLUDE_UNFIXED=1 to include[/dim]"
+        )
 
     # Apply .agent-bom-ignore suppression rules
     try:

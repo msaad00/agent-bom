@@ -142,6 +142,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_MCP_MAX_TOOL_METRICS` | `int` | `128` | — |
 | `AGENT_BOM_MCP_TOOL_TIMEOUT_SECONDS` | `float` | `30.0` | — |
 
+## OS-package reporting
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_INCLUDE_UNFIXED` | `bool` | `False` | When False (default), OS/distro advisories with no fix for the scanned release (no-dsa / won't-fix / end-of-life open) are suppressed so container reporting matches mainstream scanner conventions. Set AGENT_BOM_INCLUDE_UNFIXED=1 to surface  |
+
 ## PostgreSQL Control Plane Tuning
 | Env var | Type | Default | Description |
 |---|---|---|---|

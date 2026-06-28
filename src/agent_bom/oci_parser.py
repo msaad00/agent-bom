@@ -10,7 +10,9 @@ Supported image formats:
 - **OCI image layout directory** — same structure, unarchived (for skopeo/crane output).
 
 Package ecosystems extracted from each layer filesystem:
-- Python: ``*.dist-info/METADATA``
+- Python: ``*.dist-info/METADATA`` (modern wheels) and the legacy
+  ``*.egg-info/PKG-INFO`` / ``*.egg-info/METADATA`` (setuptools/pip on older
+  base images such as Debian buster ship pip/setuptools/wheel this way)
 - Node: ``node_modules/*/package.json``
 - Debian/Ubuntu: ``var/lib/dpkg/status``
 - Alpine Linux: ``lib/apk/db/installed``
@@ -534,9 +536,41 @@ def _add_package(
         package.occurrences.append(occurrence)
 
 
+def _parse_rfc822_name_version(fileobj: IO[bytes]) -> tuple[str, str]:
+    """Extract ``Name``/``Version`` from an RFC822 Python metadata stream.
+
+    Shared by the modern ``*.dist-info/METADATA`` and the legacy
+    ``*.egg-info/PKG-INFO`` (or ``*.egg-info/METADATA``) parsers — both use the
+    same header format, only the file location differs.
+    """
+    pkg_name = pkg_version = ""
+    for raw_line in fileobj:
+        line = raw_line.decode("utf-8", errors="ignore").strip()
+        if line.startswith("Name:"):
+            pkg_name = line.split(":", 1)[1].strip()
+        elif line.startswith("Version:"):
+            pkg_version = line.split(":", 1)[1].strip()
+        if pkg_name and pkg_version:
+            break
+    return pkg_name, pkg_version
+
+
 def _read_os_release_from_layer(layer_tf: tarfile.TarFile, deleted_paths: set[str]) -> tuple[str | None, str | None]:
-    """Read distro metadata from ``etc/os-release`` inside a layer."""
-    for os_release_path in ("etc/os-release", "./etc/os-release"):
+    """Read distro metadata from ``os-release`` inside a layer.
+
+    Probes both the canonical ``usr/lib/os-release`` location and the historic
+    ``etc/os-release`` path. On Debian/Ubuntu ``/etc/os-release`` is a symlink
+    to ``/usr/lib/os-release``; the parser refuses to follow symlinks, so the
+    real file under ``usr/lib`` must be probed directly or distro detection
+    silently fails (which mis-routes OS-package CVE matching to the wrong
+    distribution release).
+    """
+    for os_release_path in (
+        "etc/os-release",
+        "./etc/os-release",
+        "usr/lib/os-release",
+        "./usr/lib/os-release",
+    ):
         if os_release_path in deleted_paths:
             continue
         member = _safe_getmember(layer_tf, os_release_path)
@@ -608,9 +642,18 @@ def _extract_packages_from_layer(
                 return True
         return False
 
-    # --- Python: dist-info METADATA ---
+    # --- Python: dist-info METADATA (modern) + egg-info PKG-INFO/METADATA (legacy) ---
+    # Older base images (e.g. Debian buster) ship pip/setuptools/wheel as
+    # ``*.egg-info/PKG-INFO`` rather than ``*.dist-info/METADATA``. Both formats
+    # use the same RFC822 ``Name:``/``Version:`` headers. De-duplication is
+    # handled by ``_add_package`` (keyed on name+ecosystem), so a package found
+    # via both layouts is recorded once.
     for member_name in names:
-        if not member_name.endswith(".dist-info/METADATA"):
+        if member_name.endswith(".dist-info/METADATA"):
+            metadata_kind = "dist-info"
+        elif member_name.endswith(".egg-info/PKG-INFO") or member_name.endswith(".egg-info/METADATA"):
+            metadata_kind = "egg-info"
+        else:
             continue
         if _is_deleted(member_name):
             continue
@@ -618,19 +661,11 @@ def _extract_packages_from_layer(
             f = _safe_extractfile(layer_tf, member_name)
             if f is None:
                 continue
-            pkg_name = pkg_version = ""
-            for raw_line in f:
-                line = raw_line.decode("utf-8", errors="ignore").strip()
-                if line.startswith("Name:"):
-                    pkg_name = line.split(":", 1)[1].strip()
-                elif line.startswith("Version:"):
-                    pkg_version = line.split(":", 1)[1].strip()
-                if pkg_name and pkg_version:
-                    break
+            pkg_name, pkg_version = _parse_rfc822_name_version(f)
             if pkg_name and pkg_version:
                 _add_package(packages_by_key, packages, pkg_name, pkg_version, "pypi", layer=layer, package_path=member_name)
         except Exception:
-            _logger.debug("Skipped Python dist-info: %s", member_name)
+            _logger.debug("Skipped Python %s metadata: %s", metadata_kind, member_name)
 
     # --- Node: node_modules/*/package.json ---
     for member_name in names:
@@ -1075,6 +1110,54 @@ def _extract_packages_from_layer(
     return whiteouts
 
 
+def _occurrence_whiteout_deleted(
+    package_path: str | None,
+    layer_index: int,
+    whiteouts_by_index: dict[int, set[str]],
+) -> bool:
+    """Return True iff ``package_path`` is removed by a whiteout in a HIGHER layer.
+
+    Per the OCI overlay spec a whiteout deletes paths from layers *below* it
+    only. A file re-created in a higher layer therefore survives a lower-layer
+    whiteout for the same path. Applying whiteouts as a post-filter scoped to
+    strictly-higher layer indices captures both cases: genuine deletion (file in
+    a low layer, whiteout above it) and re-add (file in the same or a higher
+    layer than the whiteout — kept).
+    """
+    if not package_path:
+        return False
+    for whiteout_layer, paths in whiteouts_by_index.items():
+        if whiteout_layer <= layer_index:
+            continue
+        for w in paths:
+            if w.endswith("/"):
+                if package_path == w[:-1] or package_path.startswith(w):
+                    return True
+            elif package_path == w or package_path.startswith(w + "/"):
+                return True
+    return False
+
+
+def _drop_whiteout_deleted_packages(
+    packages: list[Package],
+    whiteouts_by_index: dict[int, set[str]],
+) -> list[Package]:
+    """Drop packages whose every occurrence was deleted by a higher-layer whiteout."""
+    if not whiteouts_by_index:
+        return packages
+    kept: list[Package] = []
+    for pkg in packages:
+        occurrences = pkg.occurrences
+        if not occurrences:
+            kept.append(pkg)
+            continue
+        survivors = [occ for occ in occurrences if not _occurrence_whiteout_deleted(occ.package_path, occ.layer_index, whiteouts_by_index)]
+        if survivors:
+            pkg.occurrences = survivors
+            kept.append(pkg)
+    return kept
+
+
 # ─── Docker save tarball format ───────────────────────────────────────────────
 
 
@@ -1128,11 +1211,11 @@ def _parse_layers_from_tarball(
     detected_distro_version: str | None = None
     layer_metadata = layer_metadata or _build_layer_metadata(layer_paths)
 
-    # First pass: collect all whiteouts per layer (in order)
-    # Then second pass: extract packages respecting accumulated deletions.
-    # For simplicity: single-pass, accumulate deletions from current layer
-    # only. Full whiteout handling would require two passes.
-    all_deleted: set[str] = set()
+    # Whiteouts are applied as a post-filter (see _drop_whiteout_deleted_packages)
+    # scoped to strictly-higher layers, so a file re-created in a higher layer is
+    # not wrongly suppressed by a lower-layer whiteout for the same path (the bug
+    # that silently dropped pip/setuptools dist-info on Debian-based images).
+    whiteouts_by_index: dict[int, set[str]] = {}
 
     for layer_path, layer in zip(layer_paths, layer_metadata, strict=False):
         member = _resolve_tar_member(outer_tf, layer_path)
@@ -1162,16 +1245,19 @@ def _parse_layers_from_tarball(
                 if _decompression_ratio_exceeded(uncompressed_bytes, member.size):
                     warnings.append(f"Layer {layer_path} exceeds decompression ratio limit — skipped")
                     continue
-                layer_distro_name, layer_distro_version = _read_os_release_from_layer(layer_tf, all_deleted)
+                layer_distro_name, layer_distro_version = _read_os_release_from_layer(layer_tf, set())
                 if layer_distro_name:
                     detected_distro_name = layer_distro_name
                 if layer_distro_version:
                     detected_distro_version = layer_distro_version
-                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, all_deleted, layer)
-                all_deleted.update(whiteouts)
+                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, set(), layer)
+                if whiteouts:
+                    whiteouts_by_index.setdefault(layer.layer_index, set()).update(whiteouts)
         except tarfile.TarError as e:
             warnings.append(f"Failed to read layer {layer_path}: {e}")
             continue
+
+    packages = _drop_whiteout_deleted_packages(packages, whiteouts_by_index)
 
     if detected_distro_name or detected_distro_version:
         for pkg in packages:
@@ -1359,7 +1445,9 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
     packages_by_key: dict[tuple[str, str], Package] = {}
     packages: list[Package] = []
     warnings: list[str] = []
-    all_deleted: set[str] = set()
+    detected_distro_name: str | None = None
+    detected_distro_version: str | None = None
+    whiteouts_by_index: dict[int, set[str]] = {}
 
     for layer_hash, layer in zip(layer_digests, layer_metadata, strict=False):
         blob_path = path / "blobs" / "sha256" / layer_hash
@@ -1376,10 +1464,24 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
                 if _decompression_ratio_exceeded(uncompressed_bytes, compressed_bytes):
                     warnings.append(f"Layer {layer_hash[:12]} exceeds decompression ratio limit — skipped")
                     continue
-                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, all_deleted, layer)
-                all_deleted.update(whiteouts)
+                layer_distro_name, layer_distro_version = _read_os_release_from_layer(layer_tf, set())
+                if layer_distro_name:
+                    detected_distro_name = layer_distro_name
+                if layer_distro_version:
+                    detected_distro_version = layer_distro_version
+                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, set(), layer)
+                if whiteouts:
+                    whiteouts_by_index.setdefault(layer.layer_index, set()).update(whiteouts)
         except tarfile.TarError as e:
             warnings.append(f"Failed to read layer blob {layer_hash[:12]}: {e}")
+
+    packages = _drop_whiteout_deleted_packages(packages, whiteouts_by_index)
+
+    if detected_distro_name or detected_distro_version:
+        for pkg in packages:
+            if pkg.ecosystem in {"deb", "apk", "rpm"}:
+                pkg.distro_name = pkg.distro_name or detected_distro_name
+                pkg.distro_version = pkg.distro_version or detected_distro_version
 
     return OCIParseResult(
         packages=packages,

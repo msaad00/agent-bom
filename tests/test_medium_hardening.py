@@ -219,6 +219,50 @@ glibc-2.34-83.el9.x86_64
     assert "5.2.26" in bash.version
 
 
+def _make_tar_with_files(files: dict[str, str]) -> bytes:
+    """Create an in-memory tar archive from a {path: content} mapping."""
+    buf = BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tf:
+        for path, content in files.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=path)
+            info.size = len(data)
+            tf.addfile(info, BytesIO(data))
+    return buf.getvalue()
+
+
+def test_egg_info_python_extraction():
+    """Legacy ``*.egg-info/PKG-INFO`` is parsed from container tar as pypi."""
+    from agent_bom.image import _packages_from_tar
+
+    pkg_info = "Metadata-Version: 1.0\nName: setuptools\nVersion: 50.0.0\n"
+    tar_bytes = _make_tar_with_files({"usr/lib/python3.9/dist-packages/setuptools-50.0.egg-info/PKG-INFO": pkg_info})
+    with tempfile.NamedTemporaryFile(suffix=".tar") as tmp:
+        tmp.write(tar_bytes)
+        tmp.flush()
+        packages = _packages_from_tar(tmp.name)
+
+    pypi = [p for p in packages if p.ecosystem == "pypi"]
+    assert any(p.name == "setuptools" and p.version == "50.0.0" for p in pypi)
+
+
+def test_packages_from_tar_tags_distro_from_usr_lib_os_release():
+    """OS packages are tagged with the distro detected from usr/lib/os-release."""
+    from agent_bom.image import _packages_from_tar
+
+    dpkg = "Package: bash\nVersion: 5.0-4\nStatus: install ok installed\n\n"
+    os_release = 'ID=debian\nVERSION_ID="10"\n'
+    tar_bytes = _make_tar_with_files({"var/lib/dpkg/status": dpkg, "usr/lib/os-release": os_release})
+    with tempfile.NamedTemporaryFile(suffix=".tar") as tmp:
+        tmp.write(tar_bytes)
+        tmp.flush()
+        packages = _packages_from_tar(tmp.name)
+
+    bash = next(p for p in packages if p.name == "bash")
+    assert bash.distro_name == "debian"
+    assert bash.distro_version == "10"
+
+
 # ── M5: Pre-release version filtering ────────────────────────────────────────
 
 

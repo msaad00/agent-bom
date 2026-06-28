@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Optional
 
 from agent_bom.models import Package, PermissionProfile, Severity, Vulnerability
+from agent_bom.package_utils import parse_debian_source_name
 from agent_bom.sbom import parse_cyclonedx
 from agent_bom.scanners.risk import cvss_to_severity, severity_from_label
 from agent_bom.security import validate_image_ref
@@ -427,7 +428,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
     os_packages: list[Package] = []
     seen: set[tuple[str, str]] = set()
 
-    def _add(name: str, version: str, ecosystem: str, purl: Optional[str] = None) -> None:
+    def _add(name: str, version: str, ecosystem: str, purl: Optional[str] = None, source_package: Optional[str] = None) -> None:
         key = (name, ecosystem)
         if key not in seen:
             seen.add(key)
@@ -438,6 +439,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                 purl=purl or f"pkg:{ecosystem}/{name}@{version}",
                 is_direct=False,
                 resolved_from_registry=False,
+                source_package=source_package,
             )
             packages.append(pkg)
             if ecosystem in ("deb", "apk", "rpm"):
@@ -504,15 +506,27 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                     f = tf.extractfile(member)
                     if f:
                         content = f.read().decode("utf-8", errors="ignore")
-                        pkg_name = pkg_version = ""
+                        pkg_name = pkg_version = pkg_source = ""
                         for line in content.splitlines():
                             if line.startswith("Package:"):
                                 pkg_name = line.split(":", 1)[1].strip()
+                            elif line.startswith("Source:"):
+                                # Debian/Ubuntu advisories (OSV + Security Tracker)
+                                # are keyed by source package; the dpkg DB only
+                                # ships binary names, so capture Source for
+                                # binary→source matching (e.g. libc6 → glibc).
+                                pkg_source = parse_debian_source_name(line.split(":", 1)[1].strip()) or ""
                             elif line.startswith("Version:"):
                                 pkg_version = line.split(":", 1)[1].strip()
                             elif line == "" and pkg_name and pkg_version:
-                                _add(pkg_name, pkg_version, "deb", f"pkg:deb/debian/{pkg_name}@{pkg_version}")
-                                pkg_name = pkg_version = ""
+                                _add(
+                                    pkg_name,
+                                    pkg_version,
+                                    "deb",
+                                    f"pkg:deb/debian/{pkg_name}@{pkg_version}",
+                                    source_package=pkg_source or None,
+                                )
+                                pkg_name = pkg_version = pkg_source = ""
                 except Exception:
                     _logger.debug("Failed to parse dpkg status from container")
 

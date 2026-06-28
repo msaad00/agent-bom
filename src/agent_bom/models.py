@@ -1007,6 +1007,7 @@ class AIBOMReport:
     executive_summary: Optional[str] = None  # LLM-generated executive summary
     ai_threat_chains: list[str] = field(default_factory=list)  # LLM-generated threat chain analyses
     mcp_config_analysis: Optional[dict] = None  # LLM-powered MCP config security analysis
+    ai_enrichment_metadata: Optional[dict] = None  # Non-secret provider/model provenance for AI-generated fields
     skill_audit_data: Optional[dict] = None  # Serialized SkillAuditResult (set by CLI)
     trust_assessment_data: Optional[dict] = None  # Serialized TrustAssessmentResult (set by CLI)
     prompt_scan_data: Optional[dict] = None  # Serialized PromptScanResult (set by CLI)

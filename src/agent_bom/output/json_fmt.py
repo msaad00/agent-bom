@@ -13,6 +13,7 @@ from agent_bom.asset_provenance import (
     sanitize_discovery_provenance,
 )
 from agent_bom.compliance_utils import effective_blast_radius_tags
+from agent_bom.exploitability import fused_triage_priority
 from agent_bom.finding import FINDING_SCHEMA_VERSION
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
@@ -1092,6 +1093,26 @@ def to_json(report: AIBOMReport) -> dict:
                 "exposed_credentials": br.exposed_credentials,
                 "exposed_tools": [t.name for t in br.exposed_tools],
                 "impact_category": getattr(br, "impact_category", "code-execution"),
+                "cvss_vector": getattr(br.vulnerability, "cvss_vector", None),
+                "attack_vector": getattr(br.vulnerability, "attack_vector", None),
+                "attack_complexity": getattr(br.vulnerability, "attack_complexity", None),
+                "privileges_required": getattr(br.vulnerability, "privileges_required", None),
+                "user_interaction": getattr(br.vulnerability, "user_interaction", None),
+                "network_exploitable": getattr(br.vulnerability, "network_exploitable", False),
+                "triage_priority": fused_triage_priority(
+                    severity=(
+                        br.vulnerability.severity.value
+                        if hasattr(br.vulnerability.severity, "value")
+                        else str(br.vulnerability.severity)
+                    ),
+                    is_kev=bool(br.vulnerability.is_kev),
+                    epss_score=getattr(br.vulnerability, "epss_score", None),
+                    network_exploitable=bool(getattr(br.vulnerability, "network_exploitable", False)),
+                    impact_category=getattr(br, "impact_category", None),
+                    reachable=getattr(br, "graph_reachable", None),
+                    exposed_credential_count=len(br.exposed_credentials),
+                    exposed_tool_count=len(br.exposed_tools),
+                ),
                 "all_server_credentials": getattr(br, "all_server_credentials", []),
                 "attack_vector_summary": getattr(br, "attack_vector_summary", None),
                 "fixed_version": br.vulnerability.fixed_version,

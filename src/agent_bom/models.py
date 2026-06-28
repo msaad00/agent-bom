@@ -139,10 +139,24 @@ class Vulnerability:
         default_factory=dict
     )  # CVE-level framework tags, e.g. {"nist_csf": ["ID.RA-01"], "cis": ["CIS-02.3"]}
     advisory_sources: list[str] = field(default_factory=list)  # osv / ghsa / nvidia_csaf / nvd / epss / cisa_kev
+    cvss_vector: Optional[str] = None
+    attack_vector: Optional[str] = None
+    attack_complexity: Optional[str] = None
+    privileges_required: Optional[str] = None
+    user_interaction: Optional[str] = None
+    network_exploitable: bool = False
 
     def __post_init__(self) -> None:
         """Sanitize fixed_version — filter git SHAs and non-version strings."""
         self.advisory_sources = merge_advisory_sources(*self.advisory_sources)
+        from agent_bom.exploitability import parse_cvss_vector_signals
+
+        signals = parse_cvss_vector_signals(self.cvss_vector)
+        self.attack_vector = self.attack_vector or signals.attack_vector
+        self.attack_complexity = self.attack_complexity or signals.attack_complexity
+        self.privileges_required = self.privileges_required or signals.privileges_required
+        self.user_interaction = self.user_interaction or signals.user_interaction
+        self.network_exploitable = bool(self.network_exploitable or signals.network_exploitable)
         if self.fixed_version:
             v = self.fixed_version.lstrip("v")
             # Git SHA (40 hex chars)
@@ -272,6 +286,8 @@ def compute_confidence(vuln: Vulnerability) -> float:
     score = 0.0
     if vuln.cvss_score is not None:
         score += 0.25
+    if vuln.cvss_vector:
+        score += 0.05
     if vuln.epss_score is not None:
         score += 0.20
     if vuln.severity_source and vuln.severity_source != "unknown":

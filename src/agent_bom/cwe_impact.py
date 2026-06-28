@@ -5,8 +5,9 @@ credentials and tools a vulnerability can realistically reach.
 A CWE-79 (XSS) client-side bug does not expose server-side DATABASE_URL.
 A CWE-94 (code injection) RCE does.
 
-Conservative default: when CWE data is missing, assume worst case
-(code-execution) so no risk is hidden.
+Unknown default: when CWE data is missing, return ``unknown`` instead of
+labeling the finding as RCE. Risk scoring still uses severity/KEV/EPSS/reach,
+but the RCE label only appears when CWE/advisory data supports it.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ IMPACT_SSRF = "ssrf"
 IMPACT_DATA_LEAK = "data-leak"
 IMPACT_AVAILABILITY = "availability"
 IMPACT_CLIENT_SIDE = "client-side"
+IMPACT_UNKNOWN = "unknown"
 
 # Ordered from most to least severe — used for worst-case selection
 _IMPACT_SEVERITY_ORDER = [
@@ -149,11 +151,11 @@ def classify_cwe_impact(cwe_ids: list[str]) -> str:
     """Classify the worst-case impact category from a list of CWE IDs.
 
     Returns the most severe impact category found. If no CWE data is
-    available, returns ``code-execution`` (conservative default — we don't
-    hide risk we can't disprove).
+    available or no supplied CWE is recognized, returns ``unknown`` so RCE is
+    never inferred from missing metadata.
     """
     if not cwe_ids:
-        return IMPACT_CODE_EXECUTION
+        return IMPACT_UNKNOWN
 
     best_rank = len(_IMPACT_SEVERITY_ORDER)
     for cwe in cwe_ids:
@@ -167,8 +169,8 @@ def classify_cwe_impact(cwe_ids: list[str]) -> str:
     if best_rank < len(_IMPACT_SEVERITY_ORDER):
         return _IMPACT_SEVERITY_ORDER[best_rank]
 
-    # CWE IDs present but none recognized — conservative default
-    return IMPACT_CODE_EXECUTION
+    # CWE IDs present but none recognized — do not infer RCE from unknown data.
+    return IMPACT_UNKNOWN
 
 
 # ── Credential filters ───────────────────────────────────────────────────────
@@ -238,8 +240,8 @@ def filter_credentials_by_impact(
         # No server-side credential access
         return []
 
-    # Unknown category — conservative default
-    return list(all_credentials)
+    # Unknown category — do not assert credential reach without CWE support.
+    return []
 
 
 def filter_tools_by_impact(
@@ -277,7 +279,8 @@ def filter_tools_by_impact(
         # No tool access
         return []
 
-    return list(all_tools)
+    # Unknown category — do not assert tool reach without CWE support.
+    return []
 
 
 def build_attack_vector_summary(
@@ -328,6 +331,10 @@ def build_attack_vector_summary(
         IMPACT_CLIENT_SIDE: (
             f"{kev_prefix}Client-side vulnerability ({cwe_str}) affects end-user browsers. "
             "Does not expose server-side credentials or tools."
+        ),
+        IMPACT_UNKNOWN: (
+            f"{kev_prefix}Vulnerability ({cwe_str}) has unknown impact because CWE/advisory metadata is missing or unsupported. "
+            "No credential or tool reach is asserted without evidence."
         ),
     }
 

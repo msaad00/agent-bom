@@ -83,13 +83,13 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/actions/setup-python/|\.github/workflows/ci\.yml$)'; then
             alpine=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/)'; then
             alpine_full=true
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_)'; then
             postgres=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|\.github/workflows/ci\.yml$|site-docs/deployment/aws-company-rollout\.md$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|site-docs/deployment/aws-company-rollout\.md$)'; then
             endpoint=true
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py|\.github/workflows/ci\.yml$)'; then

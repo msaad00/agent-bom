@@ -115,6 +115,7 @@ def image_cmd(
         images=(image_ref,) if image_ref else (),
         image_tars=(image_tar,) if image_tar else (),
         _image_only=True,
+        no_skill=True,
         image_platform=platform,
         output_format=output_format,
         output=output_path,

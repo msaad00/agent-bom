@@ -260,12 +260,14 @@ def parse_apk_installed(installed_file: Path) -> list[Package]:
             if current.get("P") and current.get("V"):
                 name = current["P"]
                 version = current["V"]
+                source_package = current.get("o") or current.get("O")
                 packages.append(
                     Package(
                         name=name,
                         version=version,
                         ecosystem="apk",
                         purl=f"pkg:apk/alpine/{name}@{version}",
+                        source_package=source_package,
                         is_direct=True,
                     )
                 )
@@ -279,12 +281,14 @@ def parse_apk_installed(installed_file: Path) -> list[Package]:
     if current.get("P") and current.get("V"):
         name = current["P"]
         version = current["V"]
+        source_package = current.get("o") or current.get("O")
         packages.append(
             Package(
                 name=name,
                 version=version,
                 ecosystem="apk",
                 purl=f"pkg:apk/alpine/{name}@{version}",
+                source_package=source_package,
                 is_direct=True,
             )
         )

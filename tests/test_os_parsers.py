@@ -49,6 +49,7 @@ T:the musl c library
 
 P:busybox
 V:1.36.1-r19
+o:busybox
 T:size optimized toolbox of many common UNIX utilities
 
 """
@@ -263,14 +264,15 @@ def test_parse_rpm_packages_purl_format(tmp_path: Path) -> None:
 
 def test_parse_apk_packages_uses_command(tmp_path: Path) -> None:
     """When apk list --installed succeeds, packages are returned."""
-    mock_stdout = "musl-1.2.4-r2 {musl} (MIT) [installed]\nbusybox-1.36.1-r19 {busybox} (GPL-2.0-only) [installed]\n"
+    mock_stdout = "musl-utils-1.2.4-r2 {musl} (MIT) [installed]\nbusybox-1.36.1-r19 {busybox} (GPL-2.0-only) [installed]\n"
     mock_result = type("R", (), {"returncode": 0, "stdout": mock_stdout})()
     with patch("subprocess.run", return_value=mock_result):
         packages = parse_apk_packages(tmp_path)
     assert len(packages) == 2
-    assert packages[0].name == "musl"
+    assert packages[0].name == "musl-utils"
     assert packages[0].version == "1.2.4-r2"
     assert packages[0].ecosystem == "apk"
+    assert packages[0].source_package == "musl"
 
 
 def test_parse_apk_packages_from_db(tmp_path: Path) -> None:
@@ -283,6 +285,7 @@ def test_parse_apk_packages_from_db(tmp_path: Path) -> None:
     assert packages[0].name == "musl"
     assert packages[0].version == "1.2.4-r2"
     assert packages[1].name == "busybox"
+    assert packages[1].source_package == "busybox"
 
 
 def test_parse_apk_packages_from_db_no_trailing_blank(tmp_path: Path) -> None:
@@ -333,6 +336,12 @@ def test_scan_os_packages_alpine(tmp_path: Path) -> None:
         packages = scan_os_packages(tmp_path)
     assert len(packages) == 2
     assert all(p.ecosystem == "apk" for p in packages)
+
+
+def test_scan_os_packages_almalinux(tmp_path: Path) -> None:
+    (tmp_path / "etc").mkdir()
+    (tmp_path / "etc/os-release").write_text("ID=almalinux\nVERSION_ID=9.3\n")
+    assert detect_os_type(tmp_path) == "rpm"
 
 
 def test_scan_os_packages_unknown_os_no_data(tmp_path: Path) -> None:

@@ -539,17 +539,33 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                     if f:
                         content = f.read().decode("utf-8", errors="ignore")
                         pkg_name = pkg_version = ""
+                        source_package: str | None = None
                         for line in content.splitlines():
                             if line.startswith("P:"):
                                 pkg_name = line[2:].strip()
                             elif line.startswith("V:"):
                                 pkg_version = line[2:].strip()
+                            elif line.startswith("o:") or line.startswith("O:"):
+                                source_package = line[2:].strip() or None
                             elif line == "" and pkg_name and pkg_version:
-                                _add(pkg_name, pkg_version, "apk", f"pkg:apk/alpine/{pkg_name}@{pkg_version}")
+                                _add(
+                                    pkg_name,
+                                    pkg_version,
+                                    "apk",
+                                    f"pkg:apk/alpine/{pkg_name}@{pkg_version}",
+                                    source_package=source_package,
+                                )
                                 pkg_name = pkg_version = ""
+                                source_package = None
                         # Handle last entry if file doesn't end with blank line
                         if pkg_name and pkg_version:
-                            _add(pkg_name, pkg_version, "apk", f"pkg:apk/alpine/{pkg_name}@{pkg_version}")
+                            _add(
+                                pkg_name,
+                                pkg_version,
+                                "apk",
+                                f"pkg:apk/alpine/{pkg_name}@{pkg_version}",
+                                source_package=source_package,
+                            )
                 except Exception:
                     _logger.debug("Failed to parse Alpine apk db from container")
 

@@ -20,7 +20,7 @@ from agent_bom.db.lookup import lookup_packages_batch
 from agent_bom.db.schema import init_db
 from agent_bom.models import Package
 from agent_bom.package_utils import alpine_release_branch
-from agent_bom.scanners import _db_ecosystems_for_package, _osv_ecosystems_for_package
+from agent_bom.scanners import _db_ecosystems_for_package, _osv_ecosystems_for_package, _scan_packages_db_conn
 
 
 @pytest.mark.parametrize(
@@ -130,5 +130,84 @@ def test_three_part_version_resolves_branch_advisory():
         # And the older, buggy full-VERSION_ID key resolves nothing.
         empty = lookup_packages_batch(conn, [("alpine:v3.16.9", "busybox", "1.35.0-r17")])
         assert empty[("alpine:v3.16.9", "busybox", "1.35.0-r17")] == []
+    finally:
+        conn.close()
+
+
+def test_alpine_subpackage_matches_source_package_advisory_individual_path():
+    """Alpine secdb advisories are keyed by origin/source package.
+
+    Installed apk packages such as ``musl-utils`` and ``ssl_client`` are
+    subpackages. Their advisories live under ``musl`` and ``busybox`` in secdb,
+    so source-package candidates must be used for exact local DB lookup.
+    """
+    conn = init_db(Path(":memory:"))
+    try:
+        conn.execute(
+            "INSERT INTO vulns(id, summary, severity, source) VALUES (?, ?, ?, ?)",
+            ("CVE-2025-26519", "musl issue", "high", "alpine-secdb"),
+        )
+        conn.execute(
+            "INSERT INTO affected(vuln_id, ecosystem, package_name, introduced, fixed) VALUES (?, ?, ?, ?, ?)",
+            ("CVE-2025-26519", "alpine:v3.16", "musl", "0", "1.2.3-r4"),
+        )
+        conn.commit()
+
+        pkg = Package(
+            name="musl-utils",
+            version="1.2.3-r3",
+            ecosystem="apk",
+            source_package="musl",
+            distro_name="alpine",
+            distro_version="3.16.9",
+        )
+        covered: set[str] = set()
+
+        assert _scan_packages_db_conn(conn, [pkg], covered) == 1
+        assert [v.id for v in pkg.vulnerabilities] == ["CVE-2025-26519"]
+        assert "apk:musl-utils@1.2.3-r3" in covered
+    finally:
+        conn.close()
+
+
+def test_alpine_subpackage_matches_source_package_advisory_batch_path():
+    """Batch local DB lookup must use the same source-package candidates."""
+    conn = init_db(Path(":memory:"))
+    try:
+        conn.execute(
+            "INSERT INTO vulns(id, summary, severity, source) VALUES (?, ?, ?, ?)",
+            ("CVE-2023-42366", "busybox issue", "medium", "alpine-secdb"),
+        )
+        conn.execute(
+            "INSERT INTO affected(vuln_id, ecosystem, package_name, introduced, fixed) VALUES (?, ?, ?, ?, ?)",
+            ("CVE-2023-42366", "alpine:v3.16", "busybox", "0", "1.35.0-r18"),
+        )
+        conn.commit()
+
+        packages = [
+            Package(
+                name="ssl_client",
+                version="1.35.0-r17",
+                ecosystem="apk",
+                source_package="busybox",
+                distro_name="alpine",
+                distro_version="3.16.9",
+            )
+        ]
+        packages.extend(
+            Package(
+                name=f"filler-{idx}",
+                version="1.0.0-r0",
+                ecosystem="apk",
+                distro_name="alpine",
+                distro_version="3.16.9",
+            )
+            for idx in range(55)
+        )
+        covered: set[str] = set()
+
+        assert _scan_packages_db_conn(conn, packages, covered) == 1
+        assert [v.id for v in packages[0].vulnerabilities] == ["CVE-2023-42366"]
+        assert "apk:ssl_client@1.35.0-r17" in covered
     finally:
         conn.close()

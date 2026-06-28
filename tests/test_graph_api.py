@@ -2499,17 +2499,45 @@ class TestGraphStoreBackendSelection:
         recording_graph_store.graph.add_edge(
             UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO, traversable=True)
         )
-        client = TestClient(app)
 
-        response = client.get("/v1/graph?relationships=vulnerable_to")
+        # The /v1/graph route overlays the governance control plane (drift /
+        # identity nodes) on top of the scan graph. Seed a drift incident so the
+        # overlay injects a drift node connected only by exhibits_drift — a
+        # vulnerable_to-scoped view must prune it, not surface it as an orphan.
+        from agent_bom.api.drift_incident_store import (
+            DriftIncident,
+            InMemoryDriftIncidentStore,
+            set_drift_incident_store,
+        )
+
+        drift_store = InMemoryDriftIncidentStore()
+        drift_store.upsert(
+            DriftIncident(
+                incident_id="inc-prune",
+                tenant_id="default",
+                blueprint_id="a",
+                status="drift_detected",
+                drift_score=0.8,
+                violation_count=1,
+                warning_count=0,
+                top_violations=[{"tool_name": "read_file", "type": "unauthorized_tool"}],
+                first_detected_at="2026-06-01T00:00:00Z",
+                last_detected_at="2026-06-02T00:00:00Z",
+            )
+        )
+        set_drift_incident_store(drift_store)
+        try:
+            client = TestClient(app)
+
+            response = client.get("/v1/graph?relationships=vulnerable_to")
+        finally:
+            set_drift_incident_store(None)
 
         assert response.status_code == 200
         body = response.json()
         node_ids = {node["id"] for node in body["nodes"]}
-        assert {"server:s", "vuln:cve"} <= node_ids
-        assert "agent:a" not in node_ids
-        assert "agent:orphan" not in node_ids
-        assert ("server:s", "vuln:cve") in {(edge["source"], edge["target"]) for edge in body["edges"]}
+        assert node_ids == {"server:s", "vuln:cve"}
+        assert {(edge["source"], edge["target"]) for edge in body["edges"]} == {("server:s", "vuln:cve")}
 
     def test_graph_query_rejects_unknown_relationship(self, recording_graph_store):
         client = TestClient(app)

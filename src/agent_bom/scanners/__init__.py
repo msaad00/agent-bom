@@ -46,7 +46,12 @@ from agent_bom.nist_csf import tag_blast_radius as tag_nist_csf
 from agent_bom.owasp import tag_blast_radius
 from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
-from agent_bom.package_utils import canonical_package_identity, canonical_package_key, normalize_package_name
+from agent_bom.package_utils import (
+    alpine_release_branch,
+    canonical_package_identity,
+    canonical_package_key,
+    normalize_package_name,
+)
 from agent_bom.scanners.blast_radius import _HOP_RISK_FACTORS, expand_blast_radius_hops
 from agent_bom.scanners.osv import candidate_package_names as _candidate_package_names
 from agent_bom.scanners.osv import enrich_results_if_needed as _enrich_results_if_needed_impl
@@ -280,8 +285,9 @@ def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
     if eco_key == "apk":
         distro_version = (pkg.distro_version or "").strip()
         if distro_version:
-            normalized = distro_version if distro_version.startswith("v") else f"v{distro_version}"
-            return [f"Alpine:{normalized}"]
+            # Alpine advisories are keyed by minor branch (``v3.16``), so a full
+            # VERSION_ID (``3.16.9``) must be truncated or every lookup returns 0 rows.
+            return [f"Alpine:{alpine_release_branch(distro_version)}"]
         return list(_ALPINE_OSV_FALLBACKS)
 
     osv_ecosystem = ECOSYSTEM_MAP.get(eco_key)

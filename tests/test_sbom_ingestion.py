@@ -270,3 +270,169 @@ def test_parse_sbom_document_autodetects_spdx_2():
 def test_load_sbom_file_not_found():
     with pytest.raises(FileNotFoundError):
         load_sbom("/nonexistent/path/sbom.json")
+
+
+# ─── SPDX 3.0 round-trip (emit → ingest) ──────────────────────────────────────
+
+
+def _round_trip_report():
+    from datetime import datetime, timezone
+
+    from agent_bom.models import (
+        Agent,
+        AgentStatus,
+        AgentType,
+        AIBOMReport,
+        MCPServer,
+        Package,
+        Severity,
+        TransportType,
+        Vulnerability,
+    )
+
+    pkg = Package(
+        name="requests",
+        version="2.28.0",
+        ecosystem="pypi",
+        purl="pkg:pypi/requests@2.28.0",
+        license="Apache-2.0",
+        supplier="PSF",
+        description="HTTP for humans",
+        homepage="https://requests.dev",
+        is_direct=True,
+    )
+    pkg2 = Package(
+        name="urllib3",
+        version="1.26.0",
+        ecosystem="pypi",
+        purl="pkg:pypi/urllib3@1.26.0",
+        is_direct=False,
+    )
+    pkg.vulnerabilities.append(
+        Vulnerability(
+            id="CVE-2023-1234",
+            summary="boom",
+            severity=Severity.HIGH,
+            cvss_score=7.5,
+            fixed_version="2.31.0",
+            is_kev=True,
+            epss_score=0.42,
+            cwe_ids=["CWE-79"],
+        )
+    )
+    server = MCPServer(name="srv1", command="x", transport=TransportType.STDIO, packages=[pkg, pkg2])
+    agent = Agent(
+        name="agent1",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/c.json",
+        status=AgentStatus.CONFIGURED,
+        mcp_servers=[server],
+    )
+    return AIBOMReport(
+        agents=[agent],
+        blast_radii=[],
+        generated_at=datetime.now(timezone.utc),
+        scan_id="rt",
+        tool_version="0.0.0-test",
+    )
+
+
+def test_spdx_round_trip_preserves_packages():
+    from agent_bom.output.spdx_fmt import to_spdx
+
+    report = _round_trip_report()
+    spdx = to_spdx(report)
+    packages = parse_spdx(spdx)
+
+    # Agents and MCP servers (APPLICATION purpose) must NOT be ingested as packages.
+    by_name = {p.name: p for p in packages}
+    assert set(by_name) == {"requests", "urllib3"}
+
+    # name + version + purl + ecosystem survive for every package (set equality).
+    emitted = {
+        ("requests", "2.28.0", "pkg:pypi/requests@2.28.0", "pypi"),
+        ("urllib3", "1.26.0", "pkg:pypi/urllib3@1.26.0", "pypi"),
+    }
+    assert {(p.name, p.version, p.purl, p.ecosystem) for p in packages} == emitted
+
+    # Supply-chain metadata survives.
+    requests_pkg = by_name["requests"]
+    assert requests_pkg.license == "Apache-2.0"
+    assert requests_pkg.supplier == "PSF"
+    assert requests_pkg.homepage == "https://requests.dev"
+
+
+def test_spdx_round_trip_preserves_vulnerability_assessments():
+    from agent_bom.models import Severity
+    from agent_bom.output.spdx_fmt import to_spdx
+
+    report = _round_trip_report()
+    packages = parse_spdx(to_spdx(report))
+    requests_pkg = next(p for p in packages if p.name == "requests")
+
+    assert len(requests_pkg.vulnerabilities) == 1
+    vuln = requests_pkg.vulnerabilities[0]
+    assert vuln.id == "CVE-2023-1234"
+    assert vuln.severity == Severity.HIGH
+    assert vuln.cvss_score == 7.5
+    assert vuln.fixed_version == "2.31.0"
+    assert vuln.is_kev is True
+    assert vuln.epss_score == 0.42
+    assert vuln.cwe_ids == ["CWE-79"]
+
+
+def test_spdx_round_trip_via_parse_sbom_document():
+    from agent_bom.output.spdx_fmt import to_spdx
+
+    report = _round_trip_report()
+    packages, fmt, _name = parse_sbom_document(to_spdx(report))
+    assert fmt == "spdx-3"
+    assert {p.name for p in packages} == {"requests", "urllib3"}
+
+
+def test_parse_spdx3_external_identifier_list():
+    """agent-bom emits externalIdentifier as a list — must not crash."""
+    data = {
+        "spdxVersion": "SPDX-3.0",
+        "elements": [
+            {
+                "type": "SOFTWARE_PACKAGE",
+                "spdxId": "SPDXRef-Pkg-1",
+                "name": "lodash",
+                "versionInfo": "4.17.21",
+                "primaryPurpose": "LIBRARY",
+                "externalIdentifier": [{"type": "PackageURL", "identifier": "pkg:npm/lodash@4.17.21"}],
+            }
+        ],
+    }
+    packages = parse_spdx(data)
+    assert len(packages) == 1
+    assert packages[0].name == "lodash"
+    assert packages[0].version == "4.17.21"
+    assert packages[0].purl == "pkg:npm/lodash@4.17.21"
+    assert packages[0].ecosystem == "npm"
+
+
+def test_parse_spdx3_minimal_external_document_no_crash():
+    """A minimal hand-written third-party SPDX 3.0 doc extracts packages and does not crash."""
+    data = {
+        "spdxVersion": "SPDX-3.0",
+        "SPDXID": "SPDXRef-DOCUMENT",
+        "elements": [
+            {
+                "type": "software/Package",
+                "spdxId": "SPDXRef-a",
+                "name": "openssl",
+                "software/packageVersion": "3.0.0",
+                "software/packageUrl": "pkg:generic/openssl@3.0.0",
+                # Fields agent-bom never emits — must be tolerated.
+                "verifiedUsing": [{"algorithm": "sha256", "hashValue": "deadbeef"}],
+                "builtTime": "2024-01-01T00:00:00Z",
+            },
+            {"type": "Person", "spdxId": "SPDXRef-author", "name": "Some Maintainer"},
+        ],
+    }
+    packages = parse_spdx(data)
+    assert len(packages) == 1
+    assert packages[0].name == "openssl"
+    assert packages[0].version == "3.0.0"

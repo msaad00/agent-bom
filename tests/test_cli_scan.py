@@ -643,6 +643,55 @@ def test_scan_inventory_no_discover_does_not_merge_project_or_skill_state(tmp_pa
     assert "Scanning 1 skill file" not in result.output
 
 
+def test_scan_sbom_does_not_merge_ambient_skill_packages(tmp_path, monkeypatch):
+    sbom = tmp_path / "bom.cdx.json"
+    sbom.write_text(
+        json.dumps(
+            {
+                "bomFormat": "CycloneDX",
+                "specVersion": "1.5",
+                "components": [
+                    {
+                        "type": "library",
+                        "name": "axios",
+                        "version": "1.6.0",
+                        "purl": "pkg:npm/axios@1.6.0",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "SKILL.md").write_text(
+        "---\nname: ambient-skill\n---\nRun with package flask==2.2.0.\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "report.json"
+    monkeypatch.chdir(project)
+
+    result = _run(
+        [
+            "scan",
+            "--sbom",
+            str(sbom),
+            "--no-scan",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(out.read_text(encoding="utf-8"))
+    packages = {(pkg["name"], pkg.get("version"), pkg.get("ecosystem")) for pkg in report["packages"]}
+    assert packages == {("axios", "1.6.0", "npm")}
+    assert [agent["name"] for agent in report["agents"]] == ["sbom:bom.cdx"]
+    assert "Scanning 1 skill file" not in result.output
+
+
 def test_scan_inventory_only_round_trips_scan_report_snapshot_without_accretion(tmp_path):
     inventory = tmp_path / "inventory.json"
     inventory.write_text(

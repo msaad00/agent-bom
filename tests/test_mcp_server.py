@@ -88,6 +88,22 @@ def test_create_mcp_server_enables_static_bearer_auth():
     assert server.settings.auth.required_scopes == []
 
 
+def test_static_bearer_verifier_keeps_read_and_operator_tokens_separate():
+    """Read bearer tokens must not authorize MCP write tools."""
+    from agent_bom.mcp_server import _StaticBearerTokenVerifier
+
+    verifier = _StaticBearerTokenVerifier("read-token", operator_token="operator-token")
+    read_access = _run(verifier.verify_token("read-token"))
+    operator_access = _run(verifier.verify_token("operator-token"))
+
+    assert read_access is not None
+    assert read_access.client_id == "agent-bom-static-token"
+    assert read_access.scopes == ["read"]
+    assert operator_access is not None
+    assert operator_access.client_id == "agent-bom-operator-token"
+    assert set(operator_access.scopes) == {"admin", "shield:write", "identity:write"}
+
+
 # ---------------------------------------------------------------------------
 # Tool: registry_lookup (no mocking needed — reads local JSON)
 # ---------------------------------------------------------------------------

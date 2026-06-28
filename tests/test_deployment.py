@@ -256,6 +256,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
     assert "35 security tools" not in docs
     assert f"{len(card['tools'])} MCP tools" in docs
     assert "Most tools are read-only" in docs
+    assert "AGENT_BOM_MCP_OPERATOR_TOKEN" in docs
     assert "Shield write actions require `operator_role=admin`" in docs
     assert "operator_scopes=shield:write" in docs
     assert "Identity write actions require `operator_role=admin`" in docs

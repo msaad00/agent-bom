@@ -15,7 +15,8 @@ def _server_instructions(version: str) -> str:
         "checks security policies, and maps to 14 compliance frameworks"
         "(OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST AI RMF/CSF/800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2). "
         "Discovers 29 first-class MCP client types plus dynamic/project surfaces. "
-        "Scanner and posture tools are read-only; Shield write actions require admin role, shield:write scope, and an audit reason."
+        "Scanner and posture tools are read-only; Shield and identity write actions require an authenticated operator token, "
+        "admin role, write scope, and an audit reason; operator_role is audit metadata, not authentication."
     )
 
 

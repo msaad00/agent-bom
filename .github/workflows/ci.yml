@@ -80,7 +80,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom|policy)\.json$)'; then
             action=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/actions/setup-python/|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/actions/setup-python/)'; then
             alpine=true
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/)'; then
@@ -92,7 +92,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|site-docs/deployment/aws-company-rollout\.md$)'; then
             endpoint=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py)'; then
             ui=true
           fi
           {

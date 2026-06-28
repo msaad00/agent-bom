@@ -32,6 +32,7 @@ def test_duplicate_artifact_guard_ignores_untracked_noise_prefixes() -> None:
         "ui/node_modules/package 2/index.js",
         "ui/out/graph 2/index.html",
         "site/deployment/docker 2/index.html",
+        ".claude/worktrees/agent-a/src/agent_bom/graph/repo_structure_overlay 2.py",
         ".venv/lib/python/site-packages/pkg 2.py",
         "src/agent_bom/model_advisories.py",
     ]
@@ -59,9 +60,13 @@ def test_duplicate_artifact_guard_working_tree_mode_detects_untracked_copies(
     ignored = tmp_path / "node_modules" / "package 2" / "index.js"
     ignored.parent.mkdir(parents=True)
     ignored.write_text("", encoding="utf-8")
+    claude_worktree = tmp_path / ".claude" / "worktrees" / "agent-a" / "src" / "agent_bom" / "model 2.py"
+    claude_worktree.parent.mkdir(parents=True)
+    claude_worktree.write_text("", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
     assert main(["--working-tree"]) == 1
     captured = capsys.readouterr()
     assert "ui/components/command-palette 2.tsx" in captured.err
     assert "node_modules/package 2/index.js" not in captured.err
+    assert ".claude/worktrees/agent-a/src/agent_bom/model 2.py" not in captured.err

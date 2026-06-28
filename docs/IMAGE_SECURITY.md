@@ -60,6 +60,39 @@ The target for a "most stable" public release is:
 
 If a public image still carries an unresolved `CRITICAL`, the release is not treated as a clean security release even if the risk is documented.
 
+## Incomplete-coverage warnings (end-of-life OS releases)
+
+Advisory data sources stop carrying end-of-life distro releases. When that
+happens, the local vulnerability DB holds (near-)zero advisory rows for the
+release even though the image is full of packages from it — so a scan can report
+a deceptively low or zero vulnerability count for a release that is, in reality,
+unpatched and unsupported.
+
+`agent-bom` detects this after distro detection and emits a loud, structured
+warning so the result is never mistaken for a clean bill of health. The check is
+data-source-agnostic and threshold-based: for any detected `ecosystem:release`
+(for example `debian:10`, `ubuntu:18.04`, `alpine:v3.9`) where the image carries
+many OS packages of that release but the local DB has (near-)zero advisory rows
+*while it clearly carries the same distro family at other releases*, the release
+is flagged as uncovered. The family gate keeps the check quiet for a default
+online scan against an empty local DB, where every release legitimately has zero
+local rows and the remote API is the live source.
+
+The warning surfaces on every output:
+
+- **Console** — a red "Incomplete vulnerability coverage" panel in the scan
+  summary plus an inline warning line.
+- **JSON report** — a `coverage_warnings` array (also mirrored under
+  `summary.coverage_warnings`). Each entry is
+  `{ecosystem, release, reason, detail, package_count, advisory_rows}`.
+- **Scan summary / warnings** — counted in the standard "scan completed with N
+  warning(s)" line.
+
+The warning is informational only: it does not change version matching, advisory
+selection, or suppression. The per-release matching is correct; the data is
+absent. Re-scan against a source that tracks end-of-life releases for a complete
+result.
+
 ## Multi-arch requirements
 
 Every supported architecture must be validated independently:

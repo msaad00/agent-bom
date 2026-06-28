@@ -839,7 +839,9 @@ def to_json(report: AIBOMReport) -> dict:
             "unique_packages": len(ai_bom_entities.get("packages", [])),
             "total_vulnerabilities": report.total_vulnerabilities,
             "critical_findings": len(report.critical_vulns),
+            "coverage_warnings": list(report.coverage_warnings),
         },
+        "coverage_warnings": list(report.coverage_warnings),
         "inventory_snapshot": inventory_snapshot,
         "agents": [
             {

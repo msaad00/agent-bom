@@ -186,6 +186,29 @@ def print_summary(report: AIBOMReport) -> None:
 
     _console().print(table)
 
+    coverage_warnings = getattr(report, "coverage_warnings", None) or []
+    if coverage_warnings:
+        lines = [
+            (
+                f"[bold yellow]⚠ {w.get('release', '?')}[/bold yellow] — "
+                f"{w.get('package_count', 0)} package(s) present, "
+                f"{w.get('advisory_rows', 0)} advisory row(s) in the data source"
+            )
+            for w in coverage_warnings
+        ]
+        body = "\n".join(lines) + (
+            "\n\n[dim]Vulnerability coverage for the release(s) above is incomplete — likely "
+            "end-of-life and no longer carried by the data source. Results may UNDER-report; a "
+            "low or zero count is NOT a clean bill of health.[/dim]"
+        )
+        _console().print(
+            Panel.fit(
+                body,
+                title="[bold red]Incomplete vulnerability coverage[/bold red]",
+                border_style="red",
+            )
+        )
+
 
 def print_scan_performance_summary(report: AIBOMReport) -> None:
     """Print a compact cache/performance summary when available."""

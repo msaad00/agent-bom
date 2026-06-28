@@ -36,6 +36,14 @@ def _scan_warnings_state() -> list[str]:
     return warnings
 
 
+def _coverage_warnings_state() -> list[dict]:
+    warnings = getattr(_scan_state_local, "coverage_warnings", None)
+    if warnings is None:
+        warnings = []
+        _scan_state_local.coverage_warnings = warnings
+    return warnings
+
+
 def _scan_performance_state() -> dict[str, int]:
     perf = getattr(_scan_state_local, "performance", None)
     if perf is None:
@@ -46,6 +54,7 @@ def _scan_performance_state() -> dict[str, int]:
 
 def reset_scan_warnings() -> None:
     _scan_state_local.warnings = []
+    _scan_state_local.coverage_warnings = []
 
 
 def record_scan_warning(message: str) -> None:
@@ -58,6 +67,22 @@ def consume_scan_warnings() -> list[str]:
     warnings_state = _scan_warnings_state()
     warnings = list(warnings_state)
     _scan_state_local.warnings = []
+    return warnings
+
+
+def record_coverage_warning(warning: dict) -> None:
+    """Record a structured per-release coverage-gap warning (deduped by release)."""
+    warnings = _coverage_warnings_state()
+    release = warning.get("release")
+    if any(existing.get("release") == release for existing in warnings):
+        return
+    warnings.append(warning)
+
+
+def consume_coverage_warnings() -> list[dict]:
+    warnings_state = _coverage_warnings_state()
+    warnings = list(warnings_state)
+    _scan_state_local.coverage_warnings = []
     return warnings
 
 

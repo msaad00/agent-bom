@@ -112,6 +112,19 @@ account.
   **hardware/firmware attestation evidence ingest**.
 - **Deterministic tool/skills surfaces** so agent-side caching stays stable.
 
+### Scanner
+- **Incomplete-coverage warnings for end-of-life OS releases.** After distro
+  detection, image/filesystem scans flag any `ecosystem:release` (e.g.
+  `debian:10`, `ubuntu:18.04`, `alpine:v3.x`) that has many OS packages present
+  but (near-)zero advisory rows in the local DB while the data source clearly
+  carries the same distro family at other releases — the signature of an EOL
+  release the feed has dropped. The warning surfaces on the console (a red
+  panel), in the JSON report (`coverage_warnings`, mirrored under
+  `summary.coverage_warnings`), and in the scan-warning count, so a low or zero
+  count for an uncovered release is never read as a clean bill of health. The
+  check is threshold-based and data-source-agnostic; it does not change matching
+  or suppression.
+
 ### CLI
 - **Canonical front-door verbs** (`connect` / `scan` / `graph` / `report` /
   `up`) as the primary entry path.

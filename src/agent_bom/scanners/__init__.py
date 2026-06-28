@@ -76,8 +76,10 @@ from agent_bom.scanners.risk import (
 from agent_bom.scanners.state import (
     _bump_scan_perf,
     _get_api_semaphore,
+    consume_coverage_warnings,
     consume_scan_performance,
     consume_scan_warnings,
+    record_coverage_warning,
     record_scan_warning,
     reset_scan_performance,
     reset_scan_warnings,
@@ -1029,6 +1031,27 @@ async def scan_packages(
         local_label = "vulnerability found" if local_count == 1 else "vulnerabilities found"
         source_label = "Demo advisory DB" if scan_options.demo_advisories else "Local DB"
         console.print(f"  [green]✓[/green] {source_label}: {local_count} {local_label} (offline)")
+
+    # ── Coverage-gap detection (warning only) ─────────────────────────────────
+    # Flag OS releases whose advisory data the local DB does not carry (typically
+    # end-of-life releases dropped by the data source). A low or zero count for
+    # such a release is NOT a clean bill of health — surface it loudly so it is
+    # never mistaken for a secure result. Detection never alters matching or the
+    # vulnerabilities already attached to packages.
+    try:
+        from agent_bom.coverage import detect_release_coverage_gaps
+
+        for gap in detect_release_coverage_gaps(scannable):
+            record_coverage_warning(gap)
+            record_scan_warning(f"incomplete vulnerability coverage for {gap['release']} (likely end-of-life; results may under-report)")
+            console.print(
+                f"  [yellow]⚠[/yellow] [bold]Incomplete coverage:[/bold] {gap['release']} — "
+                f"{gap['package_count']} package(s) present but the data source carries only "
+                f"{gap['advisory_rows']} advisory row(s) for this release. Likely end-of-life; "
+                "results may UNDER-report. A low or zero count is not a clean bill of health."
+            )
+    except Exception as exc:  # noqa: BLE001
+        _logger.debug("coverage-gap detection skipped: %s", exc)
 
     # Only call OSV for packages not already covered by the local DB
     osv_targets = [p for p in scannable if _db_key(p) not in db_covered]

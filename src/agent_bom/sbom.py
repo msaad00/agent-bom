@@ -269,6 +269,161 @@ def parse_cyclonedx(data: dict) -> list[Package]:
 
 # ─── SPDX ────────────────────────────────────────────────────────────────────
 
+# Element-level keys that may carry a package version across SPDX 3.0 emitters.
+# agent-bom emits ``versionInfo``; third-party tools emit the expanded
+# ``software/packageVersion`` / ``software_packageVersion`` / ``packageVersion``.
+_SPDX3_VERSION_KEYS = ("versionInfo", "software/packageVersion", "software_packageVersion", "packageVersion")
+# Element-level keys that may carry a flat PackageURL string.
+_SPDX3_PURL_KEYS = ("software/packageUrl", "software_packageUrl", "packageUrl")
+
+
+def _spdx3_version(elem: dict) -> str:
+    """Return the package version from an SPDX 3.0 element, or ``"unknown"``."""
+    for key in _SPDX3_VERSION_KEYS:
+        value = elem.get(key)
+        if value:
+            return str(value)
+    return "unknown"
+
+
+def _spdx3_purl(elem: dict) -> str:
+    """Return the PackageURL for an SPDX 3.0 element.
+
+    Handles every shape agent-bom and third-party tools produce:
+    - a flat ``software/packageUrl`` (or aliases) string, or
+    - an ``externalIdentifier`` that is either a single object or a list of
+      objects, each ``{"type": "PackageURL", "identifier": "pkg:..."}``.
+    """
+    for key in _SPDX3_PURL_KEYS:
+        value = elem.get(key)
+        if isinstance(value, str) and value:
+            return value
+
+    ext = elem.get("externalIdentifier")
+    candidates = ext if isinstance(ext, list) else [ext] if isinstance(ext, dict) else []
+    fallback = ""
+    for entry in candidates:
+        if not isinstance(entry, dict):
+            continue
+        identifier = entry.get("identifier") or ""
+        if not identifier:
+            continue
+        id_type = str(entry.get("type") or "").lower()
+        if id_type in ("packageurl", "purl") or identifier.startswith("pkg:"):
+            return identifier
+        if not fallback:
+            fallback = identifier
+    return fallback
+
+
+def _spdx3_primary_purpose(elem: dict) -> str:
+    """Return the (upper-cased) primaryPurpose for an SPDX 3.0 element."""
+    for key in ("primaryPurpose", "software/primaryPurpose", "software_primaryPurpose"):
+        value = elem.get(key)
+        if isinstance(value, str) and value:
+            return value.upper()
+    return ""
+
+
+def _spdx3_annotation_kv(elem: dict) -> dict[str, str]:
+    """Parse ``agent-bom:key=value`` annotation statements into a dict."""
+    kv: dict[str, str] = {}
+    annotations = elem.get("annotation")
+    if isinstance(annotations, dict):
+        annotations = [annotations]
+    for ann in annotations or []:
+        if not isinstance(ann, dict):
+            continue
+        statement = ann.get("statement") or ""
+        if statement.startswith("agent-bom:") and "=" in statement:
+            key, _, value = statement[len("agent-bom:") :].partition("=")
+            kv[key] = value
+    return kv
+
+
+def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
+    """Attach SPDX 3.0 vulnerability assessments (AFFECTS) to packages in place.
+
+    agent-bom emits each vulnerability as a ``security/Vulnerability`` element and
+    links it to the affected package via a ``security/VulnAssessmentRelationship``
+    (``relationshipType: AFFECTS``) in the top-level ``relationships`` array. The
+    severity/fix/KEV/EPSS/CWE enrichments ride on the relationship and on the
+    vulnerability element's annotations.
+    """
+    elements = data.get("elements", [])
+    vuln_elems: dict[str, dict] = {}
+    for elem in elements:
+        if isinstance(elem, dict) and str(elem.get("type") or "").lower().endswith("vulnerability"):
+            spdx_id = elem.get("spdxId") or elem.get("SPDXID")
+            if spdx_id:
+                vuln_elems[spdx_id] = elem
+
+    # AFFECTS relationships can live in the top-level array or among elements.
+    relationships = list(data.get("relationships", []))
+    relationships += [e for e in elements if isinstance(e, dict) and "Relationship" in str(e.get("type") or "")]
+
+    for rel in relationships:
+        if not isinstance(rel, dict) or rel.get("relationshipType") != "AFFECTS":
+            continue
+        vuln_elem = vuln_elems.get(rel.get("from", ""))
+        if vuln_elem is None:
+            continue
+        targets = rel.get("to", [])
+        if isinstance(targets, str):
+            targets = [targets]
+
+        vuln_id = vuln_elem.get("name") or ""
+        raw_score = vuln_elem.get("score")
+        score_obj: dict = raw_score if isinstance(raw_score, dict) else {}
+        sev_str = rel.get("severity") or score_obj.get("severity") or "unknown"
+        try:
+            severity = Severity(str(sev_str).lower())
+        except ValueError:
+            severity = Severity.UNKNOWN
+        cvss_score: float | None = None
+        if score_obj.get("score") is not None:
+            try:
+                cvss_score = float(score_obj["score"])
+            except (TypeError, ValueError):
+                cvss_score = None
+
+        fixed_version = None
+        remediation = rel.get("remediation") or ""
+        if remediation.startswith("Upgrade to "):
+            fixed_version = remediation[len("Upgrade to ") :].strip() or None
+
+        ann = _spdx3_annotation_kv(vuln_elem)
+        cwe_ids = [v for k, v in ann.items() if k == "cwe"]
+
+        def _as_float(value: str | None) -> float | None:
+            try:
+                return float(value) if value is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        for pkg_id in targets:
+            pkg = pkg_by_id.get(pkg_id)
+            if pkg is None or not vuln_id:
+                continue
+            if any(existing.id == vuln_id for existing in pkg.vulnerabilities):
+                continue
+            pkg.vulnerabilities.append(
+                Vulnerability(
+                    id=vuln_id,
+                    summary=vuln_elem.get("description") or "",
+                    severity=severity,
+                    cvss_score=cvss_score,
+                    fixed_version=fixed_version,
+                    severity_source=ann.get("severity-source"),
+                    epss_score=_as_float(ann.get("epss-score")),
+                    epss_percentile=_as_float(ann.get("epss-percentile")),
+                    is_kev=ann.get("kev") == "true",
+                    kev_date_added=ann.get("kev-date-added"),
+                    kev_due_date=ann.get("kev-due-date"),
+                    cwe_ids=cwe_ids,
+                )
+            )
+
 
 def parse_spdx(data: dict) -> list[Package]:
     """Parse an SPDX 2.x or 3.0 JSON document into Package objects.
@@ -279,28 +434,35 @@ def parse_spdx(data: dict) -> list[Package]:
     """
     packages: list[Package] = []
 
-    # SPDX 3.0: build direct dependency set from relationship elements
+    # SPDX 3.0: build direct dependency set from DEPENDS_ON relationships. These
+    # may sit among the elements (third-party emitters) or in the top-level
+    # ``relationships`` array (agent-bom). Root → package edges mark direct deps.
     _spdx3_direct_ids: set[str] = set()
-    for elem in data.get("elements", []):
-        if isinstance(elem, dict) and elem.get("type") in ("Relationship", "relationship"):
-            if elem.get("relationshipType") == "DEPENDS_ON":
-                from_id = elem.get("from", "")
-                # Root element's DEPENDS_ON targets are direct deps
-                if from_id and from_id == data.get("SPDXID", ""):
-                    _spdx3_direct_ids.update(elem.get("to", []) if isinstance(elem.get("to"), list) else [elem.get("to", "")])
+    _doc_id = data.get("SPDXID", "")
+    for rel in [*data.get("elements", []), *data.get("relationships", [])]:
+        if not isinstance(rel, dict) or rel.get("relationshipType") != "DEPENDS_ON":
+            continue
+        if rel.get("from", "") == _doc_id and _doc_id:
+            to = rel.get("to", [])
+            _spdx3_direct_ids.update(to if isinstance(to, list) else [to])
 
     # SPDX 3.0 format
     if "spdxVersion" in data and data.get("spdxVersion", "").startswith("SPDX-3"):
+        pkg_by_id: dict[str, Package] = {}
         for elem in data.get("elements", []):
             if not isinstance(elem, dict):
                 continue
             if elem.get("type") not in ("software/Package", "SOFTWARE_PACKAGE"):
                 continue
+            # Skip non-library elements (agent-bom emits agents and MCP servers as
+            # SOFTWARE_PACKAGE/APPLICATION; only LIBRARY-purpose elements are deps).
+            if _spdx3_primary_purpose(elem) == "APPLICATION":
+                continue
             name = elem.get("name", "")
-            version = str(elem.get("software/packageVersion", elem.get("packageVersion", "unknown")) or "unknown")
-            purl = elem.get("software/packageUrl", elem.get("externalIdentifier", {}).get("identifier", ""))
             if not name:
                 continue
+            version = _spdx3_version(elem)
+            purl = _spdx3_purl(elem)
             ecosystem = _ecosystem_from_purl(purl) if purl else "unknown"
 
             # Extract SPDX 3.0 metadata
@@ -310,23 +472,30 @@ def parse_spdx(data: dict) -> list[Package]:
                 supplier_3 = supplier_3.get("name")
             desc_3 = elem.get("description") or elem.get("software/description") or None
             copyright_3 = elem.get("copyrightText") or None
+            homepage_3 = elem.get("homepage") or None
+            download_3 = elem.get("downloadLocation") or None
 
             elem_spdxid = elem.get("spdxId", elem.get("SPDXID", ""))
             _is_direct_3 = elem_spdxid in _spdx3_direct_ids if _spdx3_direct_ids else True
 
-            packages.append(
-                Package(
-                    name=name,
-                    version=version,
-                    ecosystem=ecosystem,
-                    purl=purl or None,
-                    is_direct=_is_direct_3,
-                    license=lic_3 if isinstance(lic_3, str) else None,
-                    supplier=supplier_3 if isinstance(supplier_3, str) else None,
-                    description=desc_3[:300] if desc_3 else None,
-                    copyright_text=copyright_3 if isinstance(copyright_3, str) else None,
-                )
+            pkg = Package(
+                name=name,
+                version=version,
+                ecosystem=ecosystem,
+                purl=purl or None,
+                is_direct=_is_direct_3,
+                license=lic_3 if isinstance(lic_3, str) else None,
+                supplier=supplier_3 if isinstance(supplier_3, str) else None,
+                description=desc_3[:300] if desc_3 else None,
+                homepage=homepage_3 if isinstance(homepage_3, str) else None,
+                download_url=download_3 if isinstance(download_3, str) else None,
+                copyright_text=copyright_3 if isinstance(copyright_3, str) else None,
             )
+            packages.append(pkg)
+            if elem_spdxid:
+                pkg_by_id[elem_spdxid] = pkg
+
+        _spdx3_vulnerabilities(data, pkg_by_id)
         return packages
 
     # SPDX 2.x: build direct dependency set from relationships

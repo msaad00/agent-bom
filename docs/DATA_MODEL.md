@@ -545,7 +545,7 @@ represent, but the canonical report keeps everything.
 | JSON | `json_fmt.py` | Full report, lossless | nothing |
 | SARIF 2.1 | `sarif.py` | Findings, locations, fix recommendations | runtime trace, fleet membership |
 | CycloneDX 1.6 (+ ML BOM) | `cyclonedx_fmt.py` | Components, vulnerabilities, services, ML-BOM `model` blocks | dashboard-only attributes |
-| SPDX 3.0 | `spdx_fmt.py` | Packages, relationships, licenses | runtime + agent context |
+| SPDX 3.0 | `spdx_fmt.py` | Packages, relationships, licenses, vulnerability assessments | runtime + agent context |
 | HTML | `html.py` | Interactive dashboard view | suitable for emailed PDF |
 | Graph JSON | `graph_export.py` | `UnifiedGraph` nodes/edges/paths | textual narratives |
 | Graph HTML | `graph.py` | Cytoscape-rendered graph | — |
@@ -561,6 +561,30 @@ represent, but the canonical report keeps everything.
 | Attack Flow | `attack_flow.py` | MITRE Attack Flow JSON | non-attack-path nodes |
 | Plain text | `__init__.py` | Console summary | everything except top-line stats |
 | **OCSF** (event delivery) | `ocsf.py` | Findings as OCSF events for SIEM / security-lake | Used for streaming, not as a `-f ocsf` report option |
+
+### SBOM round-trip fidelity (emit → `agent-bom sbom` ingest)
+
+`agent_bom/sbom.py` ingests CycloneDX and SPDX 2.x/3.0. For SPDX 3.0 — the
+format agent-bom emits — the emit→ingest→emit path is **lossless for the
+package-level fields agent-bom models**:
+
+- **Round-trips:** every package's `name`, `version`, `purl`, `ecosystem`,
+  `license`, `supplier`, `description`, `homepage`, `download_url`,
+  `copyright_text`, plus vulnerability assessments (`AFFECTS`) with `id`,
+  `summary`, `severity`, `cvss_score`, `fixed_version`, KEV/EPSS/CWE
+  enrichments carried as annotations.
+- **Intentionally not round-tripped:** the agent → MCP-server → package
+  dependency tree (`CONTAINS`/server-scoped `DEPENDS_ON`) and per-package
+  `is_direct`/`dependency_depth`. Ingestion deliberately produces a **flat
+  package list** (`list[Package]`) with no agent/server hierarchy, so the
+  tree is not reconstructed; agents and MCP servers are emitted as
+  `APPLICATION`-purpose elements and skipped on ingest rather than being
+  re-imported as packages. Direct-dependency status is recovered only from
+  document → package `DEPENDS_ON` edges present in third-party SPDX.
+
+Ingestion also tolerates third-party SPDX 3.0 emitter variants
+(`software/packageVersion`, `software/packageUrl`, single-object or list
+`externalIdentifier`) and ignores fields agent-bom does not model.
 
 ---
 

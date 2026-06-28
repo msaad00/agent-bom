@@ -15,6 +15,7 @@ from agent_bom.asset_provenance import (
     sanitize_discovery_provenance,
 )
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.exploitability import exploitability_tags, parse_cvss_vector_signals
 from agent_bom.finding import FindingType
 from agent_bom.models import AIBOMReport, Severity
 from agent_bom.output.exposure_path import (
@@ -343,11 +344,19 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 rule_props["epss-score"] = round(vuln.epss_score, 5)
             if vuln.is_kev:
                 rule_props["kev"] = True
+            if vuln.cvss_vector:
+                rule_props["cvss_vector"] = vuln.cvss_vector
+            rule_props["attack_vector"] = vuln.attack_vector
+            rule_props["attack_complexity"] = vuln.attack_complexity
+            rule_props["privileges_required"] = vuln.privileges_required
+            rule_props["user_interaction"] = vuln.user_interaction
+            rule_props["network_exploitable"] = bool(vuln.network_exploitable)
             # exploit_likelihood (issue #486) — graded signal computed
             # from KEV + EPSS percentile / probability.
             rule_props["exploit_likelihood"] = vuln.exploit_likelihood
-            if vuln.cwe_ids:
-                rule_props["tags"] = vuln.cwe_ids
+            tags = [*vuln.cwe_ids, *exploitability_tags(parse_cvss_vector_signals(vuln.cvss_vector))]
+            if tags:
+                rule_props["tags"] = tags
             rule: dict = {
                 "id": rule_id,
                 "shortDescription": {
@@ -420,6 +429,12 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             "exposure_chain": exposure_chain or None,
             "epss_score": vuln.epss_score,
             "is_kev": vuln.is_kev,
+            "cvss_vector": vuln.cvss_vector,
+            "attack_vector": vuln.attack_vector,
+            "attack_complexity": vuln.attack_complexity,
+            "privileges_required": vuln.privileges_required,
+            "user_interaction": vuln.user_interaction,
+            "network_exploitable": bool(vuln.network_exploitable),
             "exploit_likelihood": vuln.exploit_likelihood,
             "exposed_credentials": br.exposed_credentials,
             "impact_category": getattr(br, "impact_category", "code-execution"),

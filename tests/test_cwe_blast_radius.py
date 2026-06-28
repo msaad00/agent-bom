@@ -103,9 +103,12 @@ def test_sqli_gets_injection_category():
     assert br.impact_category == "injection"
 
 
-def test_no_cwe_defaults_to_code_execution():
+def test_no_cwe_defaults_to_unknown():
     br = _make_blast_radius([])
-    assert br.impact_category == "code-execution"
+    assert br.impact_category == "unknown"
+    assert br.exposed_credentials == []
+    assert br.exposed_tools == []
+    assert "unknown impact" in br.attack_vector_summary.lower()
 
 
 # ── Credential filtering per CWE type ───────────────────────────────────────

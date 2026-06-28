@@ -1,9 +1,8 @@
 # CLI Command Map
 
-`agent-bom` exposes 50 visible top-level commands (plus hidden aliases such as
-`scan`, `up`, `guard`, `run`, `runtime`, and `registry`) under a single Click
-entry point. The CLI groups the visible commands into help categories — run
-`agent-bom --help` to see this layout live. Grouping is defined in
+`agent-bom` exposes a grouped command surface under a single Click entry point.
+The CLI groups visible commands into help categories — run `agent-bom --help`
+to see the current layout live. Grouping is defined in
 [`../src/agent_bom/cli/_grouped_help.py`](../src/agent_bom/cli/_grouped_help.py).
 
 Many commands are themselves groups with subcommands (e.g. `cloud`, `connect`,
@@ -38,7 +37,7 @@ Inventory, package, image, IaC, cloud, and skills scanning entry points.
 | `iac` | Scan IaC: Dockerfile, Terraform, CloudFormation, Helm, Kubernetes. |
 | `sbom` | Ingest an existing SBOM (CycloneDX / SPDX) and scan its components. |
 | `ingest` | Ingest operator-provided evidence (e.g. `ingest hardware` firmware attestation) into the graph. |
-| `cloud` | Cloud posture + estate inventory (AWS/Azure/GCP), CIS benchmarks. Group: `scan` (all configured clouds), `aws`/`azure`/`gcp` aliases, `inventory`, `registry-scan` (ECR/ACR/GAR sweep), `resilience`. |
+| `cloud` | Cloud posture + estate inventory for AWS/Azure/GCP, CIS benchmarks, and cloud registry sweeps. Group: `scan` (all configured clouds), `aws`/`azure`/`gcp` aliases, `inventory`, `registry-scan` (ECR/ACR/GAR sweep), `resilience`, and AWS EBS `side-scan`. |
 | `check` | Pre-install check for one package: allow / warn / block. |
 | `verify` | Package integrity + SLSA provenance verification. |
 | `secrets` | Secret detection. |
@@ -142,3 +141,19 @@ object is registered in two places so both the flat and grouped form work:
 These are deliberate ergonomic aliases, not duplicate logic. The grouped
 (`runtime …`) form is the organizing home; the flat forms exist because runtime
 enforcement and audit are common enough first steps to deserve top-level verbs.
+
+---
+
+## Cloud and Data-Source Boundary
+
+`agent-bom connect` is the common onboarding door for all read-only sources:
+AWS, Azure, GCP, and Snowflake. The operational scan surface then splits by what
+the source is:
+
+| Source | Command home | Why |
+|---|---|---|
+| AWS / Azure / GCP | `agent-bom cloud ...` | provider APIs expose estate inventory, IAM, network posture, CIS checks, registry sweeps, and side-scan workflows |
+| Snowflake | `agent-bom agents --snowflake` plus `connect snowflake` | Snowflake is a warehouse/governance source: Cortex, grants, query/activity evidence, lineage, and CIS/posture metadata |
+
+Both paths normalize into the same `Finding` and `ContextGraph` model; the
+split is only the operator command and provider API boundary.

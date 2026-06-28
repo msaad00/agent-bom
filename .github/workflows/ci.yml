@@ -159,6 +159,14 @@ jobs:
         # breadcrumbs must never ship in product source. Pure stdlib, fails fast.
         run: python scripts/check_comment_hygiene.py
 
+      - name: Exception sanitization — no raw exception text in HTTP responses or logs
+        # Source: scripts/check_exception_sanitization.py
+        # Raw exception strings carry secrets, ARNs, paths, and connection
+        # strings. New detail=str(exc) / detail=f"...{exc}" HTTPException bodies
+        # and raw-exception log f-strings on API/cloud/runtime paths must route
+        # through agent_bom.security.sanitize_error / sanitize_text. Pure stdlib.
+        run: python scripts/check_exception_sanitization.py
+
       - name: Trust-contract — provisioning stays read-only
         # Source: scripts/check_provisioning_readonly.py
         # The cloud-connect Terraform modules (deploy/terraform/connect-*)

@@ -207,6 +207,15 @@ Minimum verification matrix:
   dark themes and avoid dense unreadable canvases as the first view.
 - For auth, tenant, audit, firewall, gateway, and proxy changes, document
   fail-open/fail-closed behavior explicitly.
+- Never surface a raw exception string to an HTTP response body or a log line on
+  API / cloud / runtime paths — raw exceptions carry secrets, ARNs, paths, and
+  connection strings. Route response text through
+  `agent_bom.security.sanitize_error(exc)` (use `generic=True` on
+  auth/secret/encryption/session/broker paths) and log text through
+  `sanitize_text(...)`. The `scripts/check_exception_sanitization.py` guard
+  (pre-commit + CI) fails on new `detail=str(exc)` / `detail=f"...{exc}"` bodies
+  and raw-exception log f-strings; use `# exc-safe: <reason>` only for a vetted
+  exception.
 - For docs, avoid vague capability lists. Prefer "first command -> artifact ->
   next step."
 

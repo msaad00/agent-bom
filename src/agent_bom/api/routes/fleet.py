@@ -24,7 +24,7 @@ from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_fleet_agents_quota, tenant_quota_guard
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
-from agent_bom.security import sanitize_command_args, sanitize_security_warnings, sanitize_text, sanitize_url
+from agent_bom.security import sanitize_command_args, sanitize_error, sanitize_security_warnings, sanitize_text, sanitize_url
 
 router = APIRouter()
 
@@ -283,7 +283,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                 request_hash=request_hash,
             )
         except IdempotencyConflictError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
         if cached is not None:
             cached["idempotent_replay"] = True
             return cached

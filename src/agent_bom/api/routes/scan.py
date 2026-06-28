@@ -193,12 +193,12 @@ def _sanitize_api_path(user_path: str) -> str:
 
 
 def _api_scan_path_or_400(user_path: str) -> str:
-    from agent_bom.security import SecurityError
+    from agent_bom.security import SecurityError, sanitize_text
 
     try:
         return _sanitize_api_path(user_path)
     except SecurityError as exc:
-        _logger.warning("blocked local API scan path: %s", exc)
+        _logger.warning("blocked local API scan path: %s", sanitize_text(exc))
         raise HTTPException(status_code=400, detail="Invalid scan path") from exc
 
 

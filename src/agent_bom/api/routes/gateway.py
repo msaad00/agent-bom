@@ -31,6 +31,7 @@ from agent_bom.api.stores import _get_firewall_decision_store, _get_policy_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.gateway_upstreams import is_gateway_compatible_upstream_transport
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.security import sanitize_error
 
 if TYPE_CHECKING:
     from agent_bom.api.policy_store import GatewayPolicy
@@ -125,7 +126,7 @@ def _load_control_plane_firewall_policy() -> tuple[Any, dict[str, Any]]:
             try:
                 policy = load_firewall_policy_file(policy_path)
             except FirewallPolicyError as exc:
-                raise HTTPException(status_code=503, detail=f"Firewall policy invalid: {exc}") from exc
+                raise HTTPException(status_code=503, detail=f"Firewall policy invalid: {sanitize_error(exc)}") from exc
             loaded_at = datetime.now(timezone.utc).isoformat()
             _FIREWALL_POLICY_CACHE.update(
                 {

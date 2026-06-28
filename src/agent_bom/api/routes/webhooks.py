@@ -21,6 +21,7 @@ from agent_bom.api.webhook_store import (
     set_subscription_status,
 )
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.security import sanitize_error
 
 router = APIRouter(tags=["webhooks"])
 
@@ -68,7 +69,7 @@ async def create_webhook_subscription(request: Request, body: dict) -> dict[str,
             allow_private_networks=bool(body.get("allow_private_networks", False)),
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"invalid webhook URL: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"invalid webhook URL: {sanitize_error(exc)}") from exc
     log_action(
         "webhook.subscription_created",
         actor=_actor(request),

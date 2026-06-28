@@ -44,7 +44,7 @@ from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_li
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
-from agent_bom.security import validate_arguments, validate_command
+from agent_bom.security import sanitize_text, validate_arguments, validate_command
 
 logger = logging.getLogger(__name__)
 
@@ -527,7 +527,7 @@ def _load_gateway_policy_cache_signer() -> _GatewayPolicyCacheSigner | None:
         return _gateway_policy_cache_signer
     except Exception as exc:  # noqa: BLE001
         _gateway_policy_cache_signer_error = str(exc)
-        logger.error("%s could not be parsed: %s", _PROXY_POLICY_CACHE_SIGNING_ENV_VAR, exc)
+        logger.error("%s could not be parsed: %s", _PROXY_POLICY_CACHE_SIGNING_ENV_VAR, sanitize_text(exc))
         return None
 
 
@@ -552,7 +552,7 @@ def _load_cached_gateway_policies(
     except FileNotFoundError:
         return None, None
     except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("Ignoring unreadable gateway policy cache %s: %s", cache_path, exc)
+        logger.warning("Ignoring unreadable gateway policy cache %s: %s", cache_path, sanitize_text(exc))
         return None, None
 
     fetched_at = payload.get("fetched_at")
@@ -583,7 +583,7 @@ def _load_cached_gateway_policies(
             logger.warning("Ignoring unsigned gateway policy cache %s because signing is required", cache_path)
             return None, None
         except (KeyError, TypeError, json.JSONDecodeError, OSError) as exc:
-            logger.warning("Ignoring unreadable gateway policy cache signature %s: %s", signature_path, exc)
+            logger.warning("Ignoring unreadable gateway policy cache signature %s: %s", signature_path, sanitize_text(exc))
             return None, None
         if key_id != signer.key_id:
             logger.warning(
@@ -596,13 +596,13 @@ def _load_cached_gateway_policies(
         try:
             signer.verify(_canonicalize_gateway_policy_cache(payload), signature_hex)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Ignoring gateway policy cache %s with invalid signature: %s", cache_path, exc)
+            logger.warning("Ignoring gateway policy cache %s with invalid signature: %s", cache_path, sanitize_text(exc))
             return None, None
 
     try:
         policies = [GatewayPolicy(**item) for item in payload.get("policies", [])]
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Ignoring invalid gateway policy cache %s: %s", cache_path, exc)
+        logger.warning("Ignoring invalid gateway policy cache %s: %s", cache_path, sanitize_text(exc))
         return None, None
     return policies, payload.get("etag")
 
@@ -654,7 +654,7 @@ def _persist_gateway_policies_cache(
                 temp_sig_path = Path(handle.name)
             temp_sig_path.replace(signature_path)
     except OSError as exc:
-        logger.warning("Failed to persist gateway policy cache %s: %s", cache_path, exc)
+        logger.warning("Failed to persist gateway policy cache %s: %s", cache_path, sanitize_text(exc))
 
 
 async def _fetch_enabled_gateway_policies(
@@ -751,7 +751,7 @@ async def _send_webhook(url: str, payload: dict) -> None:
     try:
         validate_url(url)
     except SecurityError as e:
-        logger.warning("Webhook URL rejected: %s", e)
+        logger.warning("Webhook URL rejected: %s", sanitize_text(e))
         return
 
     try:
@@ -802,7 +802,7 @@ async def _proxy_sse_server(
 
             policy = validate_json_file(Path(policy_path))
         except (json.JSONDecodeError, OSError, SecurityError) as exc:
-            logger.error("Failed to load policy from %s: %s", policy_path, exc)
+            logger.error("Failed to load policy from %s: %s", policy_path, sanitize_text(exc))
             return 1
 
     # Open audit log
@@ -853,7 +853,7 @@ async def _proxy_sse_server(
                             span.set_attribute("agent_bom.proxy.declared_tool_count", len(declared_tools))
                         logger.info("SSE proxy: discovered %d declared tools", len(declared_tools))
             except Exception as exc:  # noqa: BLE001
-                logger.warning("SSE proxy: could not fetch tools/list from %s: %s", url, exc)
+                logger.warning("SSE proxy: could not fetch tools/list from %s: %s", url, sanitize_text(exc))
 
             # Read JSON-RPC from stdin and forward through protection engine
             reader = await create_async_stdin_reader()
@@ -888,7 +888,7 @@ async def _proxy_sse_server(
                         sys.stdout.buffer.write((json.dumps(fwd.json()) + "\n").encode())
                         sys.stdout.buffer.flush()
                     except Exception as exc:  # noqa: BLE001
-                        logger.debug("SSE proxy: pass-through failed: %s", exc)
+                        logger.debug("SSE proxy: pass-through failed: %s", sanitize_text(exc))
                     continue
 
                 tool_name, arguments = policy_subject
@@ -1093,13 +1093,13 @@ async def _proxy_sse_server(
                     resp.raise_for_status()
                     response_data = resp.json()
                 except httpx.HTTPStatusError as exc:
-                    logger.warning("SSE proxy: server returned %d for %s: %s", exc.response.status_code, tool_name, exc)
+                    logger.warning("SSE proxy: server returned %d for %s: %s", exc.response.status_code, tool_name, sanitize_text(exc))
                     error_resp = make_error_response(msg_id, -32603, f"Upstream server error: {exc.response.status_code}")
                     sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                     sys.stdout.buffer.flush()
                     continue
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning("SSE proxy: connection error for %s: %s", tool_name, exc)
+                    logger.warning("SSE proxy: connection error for %s: %s", tool_name, sanitize_text(exc))
                     error_resp = make_error_response(msg_id, -32603, f"Upstream connection error: {exc}")
                     sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                     sys.stdout.buffer.flush()
@@ -1182,7 +1182,7 @@ async def run_proxy(
 
             policy = validate_json_file(Path(policy_path))
         except (json.JSONDecodeError, OSError, SecurityError) as exc:
-            logger.error("Failed to load policy from %s: %s", policy_path, exc)
+            logger.error("Failed to load policy from %s: %s", policy_path, sanitize_text(exc))
             raise SystemExit(1) from exc
 
     # Open audit log with restricted permissions (0o600)
@@ -1340,10 +1340,10 @@ async def run_proxy(
                         exc,
                     )
                 else:
-                    logger.error("Failed to load enabled gateway policies from %s: %s", control_plane_url, exc)
+                    logger.error("Failed to load enabled gateway policies from %s: %s", control_plane_url, sanitize_text(exc))
                     raise SystemExit(1) from exc
             else:
-                logger.warning("Gateway policy refresh failed: %s", exc)
+                logger.warning("Gateway policy refresh failed: %s", sanitize_text(exc))
                 return
         if policies is not None:
             control_plane_policies = policies
@@ -1383,7 +1383,7 @@ async def run_proxy(
             )
         except Exception as exc:  # noqa: BLE001
             metrics.record_audit_push_failure()
-            logger.warning("Proxy audit push failed: %s", exc)
+            logger.warning("Proxy audit push failed: %s", sanitize_text(exc))
             async with audit_lock:
                 audit_buffer[:0] = alerts
                 audit_buffer_bytes += in_memory_bytes
@@ -1417,7 +1417,7 @@ async def run_proxy(
             try:
                 firewall_local_policy = load_firewall_policy_file(Path(firewall_local_policy_path))
             except FirewallPolicyError as exc:
-                logger.error("invalid firewall policy at %s: %s", firewall_local_policy_path, exc)
+                logger.error("invalid firewall policy at %s: %s", firewall_local_policy_path, sanitize_text(exc))
                 raise SystemExit(1) from exc
         try:
             fw_fail_mode = FirewallFailMode(firewall_fail_mode)
@@ -2046,7 +2046,7 @@ async def run_proxy(
         for result in results:
             if isinstance(result, Exception) and not isinstance(result, (BrokenPipeError, ConnectionResetError, asyncio.CancelledError)):
                 metrics.relay_errors += 1
-                logger.warning("Relay task exited with unexpected error: %s", result)
+                logger.warning("Relay task exited with unexpected error: %s", sanitize_text(result))
                 if log_file:
                     err_entry = {
                         "ts": datetime.now(timezone.utc).isoformat(),

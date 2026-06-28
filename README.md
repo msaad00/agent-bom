@@ -114,6 +114,25 @@ resources that incur it, read-only cloud audit-trail activity as behavioral
 edges, and an estate-scale `CONTAINS` roll-up with drill-down so large clouds
 stay readable.
 
+## Product Map
+
+Use this map when you are deciding where to start. Every lane writes into the
+same `Finding` and `ContextGraph` model; the difference is the entry point,
+credential boundary, and operator surface.
+
+| Need | Surface | First action | Auth / data boundary | Main artifact |
+|---|---|---|---|---|
+| Scan a repo, image, or local agent config | CLI / CI | `agent-bom agents -p .` | local files only unless an opt-in connector is enabled | JSON, SARIF, SBOM, HTML |
+| Connect cloud and data estates | Cloud connectors | `agent-bom connect aws` then `agent-bom cloud scan` | read-only provider credentials; no secret values read or stored | cloud assets, CIS findings, graph edges |
+| Review posture as a team | API + dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` | API key/OIDC/SAML/SCIM where configured; tenant-scoped state | findings, graph, audit, compliance |
+| Give agents security tools | MCP server | `agent-bom mcp server` | read-mostly tools; Shield writes require admin role, scope, and audit reason | strict MCP tool responses |
+| Govern runtime tool calls | Proxy / gateway | configure proxy or gateway policy | inline policy checks; redacted, auditable decisions | allow/warn/block audit trail |
+| Package evidence for security and audit | Reports / exports | `agent-bom agents -p . -f html -o report.html` | caller-controlled export path | SARIF, CycloneDX, SPDX, OCSF, compliance bundle |
+
+See [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md) for the longer workflow map,
+including backend choices, auth modes, and where each capability lives in the
+CLI, API, MCP server, dashboard, and deployment docs.
+
 <details>
 <summary><b>Product proof — dashboard, graph, and identity surfaces</b></summary>
 

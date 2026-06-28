@@ -749,7 +749,8 @@ def run_local_discovery(
                 skill_file_list.extend(discover_skill_files(p))
             else:
                 skill_file_list.append(p)
-        if not no_discover:
+        explicit_target_scan = bool(sbom_file or images or image_tars or filesystem_paths)
+        if not no_discover and not explicit_target_scan:
             # Auto-discover skill files in project directory
             search_dir = Path(project) if project else Path.cwd()
             auto_skills = discover_skill_files(search_dir)

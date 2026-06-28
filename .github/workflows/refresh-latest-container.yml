@@ -15,7 +15,7 @@ jobs:
   refresh-latest:
     name: Rebuild and publish latest from latest release tag
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
@@ -125,6 +125,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           build-args: VERSION=${{ steps.release.outputs.version }}
+          cache-from: type=gha,scope=refresh-api-latest
+          cache-to: type=gha,mode=max,scope=refresh-api-latest
           provenance: true
           sbom: true
           tags: |
@@ -171,7 +173,7 @@ jobs:
   refresh-ui-latest:
     name: Rebuild and publish UI latest from latest release tag
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
@@ -286,6 +288,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             NEXT_PUBLIC_API_URL=
+          cache-from: type=gha,scope=refresh-ui-latest
+          cache-to: type=gha,mode=max,scope=refresh-ui-latest
           provenance: true
           sbom: true
           tags: |

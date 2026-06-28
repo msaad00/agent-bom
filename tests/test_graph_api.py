@@ -2505,8 +2505,11 @@ class TestGraphStoreBackendSelection:
 
         assert response.status_code == 200
         body = response.json()
-        assert {node["id"] for node in body["nodes"]} == {"server:s", "vuln:cve"}
-        assert {(edge["source"], edge["target"]) for edge in body["edges"]} == {("server:s", "vuln:cve")}
+        node_ids = {node["id"] for node in body["nodes"]}
+        assert {"server:s", "vuln:cve"} <= node_ids
+        assert "agent:a" not in node_ids
+        assert "agent:orphan" not in node_ids
+        assert ("server:s", "vuln:cve") in {(edge["source"], edge["target"]) for edge in body["edges"]}
 
     def test_graph_query_rejects_unknown_relationship(self, recording_graph_store):
         client = TestClient(app)

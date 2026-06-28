@@ -45,12 +45,17 @@ def collect_cloud_inventory() -> list[dict[str, Any]]:
     """
     payloads: list[dict[str, Any]] = []
 
-    # AWS — AGENT_BOM_CLOUD_INVENTORY
+    # AWS — AGENT_BOM_AWS_INVENTORY (+ AGENT_BOM_AWS_ORG_INVENTORY to fan across
+    # every member account of the organization, like Azure does for subscriptions
+    # and GCP does for projects). The fan-out assumes a read-only role per account.
     try:
-        from agent_bom.cloud import aws_inventory
+        from agent_bom.cloud import aws_inventory, aws_organizations
 
         if aws_inventory.inventory_enabled():
-            payloads.append(aws_inventory.discover_inventory())
+            if aws_organizations.org_fanout_enabled():
+                payloads.extend(aws_inventory.discover_all_account_inventories())
+            else:
+                payloads.append(aws_inventory.discover_inventory())
     except Exception:  # noqa: BLE001 — a connector failure must never break a scan
         _logger.warning("AWS estate inventory enrichment failed", exc_info=True)
 
@@ -203,14 +208,25 @@ def enrich_report_with_estate_discovery(report: AIBOMReport) -> None:
     except Exception:  # noqa: BLE001
         _logger.warning("Audit-trail enrichment skipped", exc_info=True)
 
-    # AWS Organizations hierarchy (org → OUs → accounts → SCPs). Gated by the same
-    # AGENT_BOM_CLOUD_INVENTORY flag; only attached when the account is in an org.
+    # AWS Organizations hierarchy (org → OUs → accounts → SCPs). Gated by the AWS
+    # inventory flag (checked here); ``force=True`` so the modern
+    # AGENT_BOM_AWS_INVENTORY flag drives it, not only the legacy alias. Only
+    # attached when the account is in an org.
     try:
         from agent_bom.cloud import aws_inventory, aws_organizations
 
         if aws_inventory.inventory_enabled():
-            org = aws_organizations.discover_organization()
+            org = aws_organizations.discover_organization(force=True)
             if isinstance(org, dict) and org.get("status") == "ok":
+                # When the multi-account fan-out ran, fold a scanned/skipped/errored
+                # summary onto the org block so the report surfaces per-account
+                # coverage alongside the org → OU → account hierarchy.
+                if aws_organizations.org_fanout_enabled():
+                    raw_inventory = report.cloud_inventory_data
+                    inventory_list = raw_inventory if isinstance(raw_inventory, list) else []
+                    aws_payloads = [item for item in inventory_list if isinstance(item, dict) and item.get("provider") == "aws"]
+                    if aws_payloads:
+                        org["account_scan"] = aws_organizations.summarize_account_scan(aws_payloads)
                 report.aws_organization_data = org
     except Exception:  # noqa: BLE001 — org enrichment must never break a scan
         _logger.warning("AWS organization enrichment skipped", exc_info=True)

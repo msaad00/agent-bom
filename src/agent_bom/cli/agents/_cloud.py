@@ -318,17 +318,28 @@ def run_benchmarks(
 
         con.print("\n[bold blue]Running CIS AWS Foundations Benchmark v3.0...[/bold blue]\n")
         try:
-            from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_cis
+            from agent_bom.cloud import aws_organizations
 
-            # AWS multi-account CIS fan-out is out of scope here: cross-account
-            # checks require the AssumeRole broker tracked in issue #3177. This
-            # benchmark runs against the single configured account/region only.
-            ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
+            # When the org fan-out flag is on, fan the benchmark across every
+            # member account of the organization (same boundary set the inventory
+            # fan-out uses) and aggregate with per-account attribution. Each
+            # account is reached via a read-only AssumeRole; an account that denies
+            # the role is skipped. Off = unchanged single-account/region run.
+            if aws_organizations.org_fanout_enabled():
+                from agent_bom.cloud.aws_cis_benchmark import run_all_account_benchmarks
+
+                ctx.cis_benchmark_report = run_all_account_benchmarks(profile=aws_profile)
+            else:
+                from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_cis
+
+                ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
             passed = ctx.cis_benchmark_report.passed
             failed = ctx.cis_benchmark_report.failed
             total = ctx.cis_benchmark_report.total
             rate = ctx.cis_benchmark_report.pass_rate
-            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            scanned = getattr(ctx.cis_benchmark_report, "accounts_scanned", []) or []
+            scope = f" across {len(scanned)} account(s)" if len(scanned) > 1 else ""
+            con.print(f"  [green]✓[/green] {total} checks evaluated{scope} — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
         except CloudDiscoveryError as exc:
             con.print(f"  [red]CIS Benchmark error: {_safe_error(exc)}[/red]")
             ctx.cloud_provider_failures.append({"provider": "aws", "stage": "cis_benchmark", "error": str(exc)})

@@ -18,7 +18,8 @@ const BUDGETS = {
   // Includes the cloud CIS benchmark drill-down (per-cloud checks + remediation) on the compliance dashboard.
   // Includes the cross-domain overview landing page entrypoint and API client contract.
   // Includes the self-service cloud-connections page + Add Cloud Account wizard.
-  totalClientJsBytes: 3_055_000,
+  // Includes the repo folder/file structure graph layer icons and code-layer filters.
+  totalClientJsBytes: 3_065_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

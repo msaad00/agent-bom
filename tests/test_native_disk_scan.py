@@ -340,11 +340,13 @@ APK_INSTALLED = """\
 P:busybox
 V:1.36.1-r6
 A:x86_64
+o:busybox
 T:Size optimized toolbox of many common UNIX utilities
 
-P:musl
+P:musl-utils
 V:1.2.4_git20230717-r4
 A:x86_64
+o:musl
 T:the musl c library (libc) implementation
 
 P:zlib
@@ -361,7 +363,7 @@ class TestParseApkInstalled:
         pkgs = parse_apk_installed(f)
         assert len(pkgs) == 3
         names = {p.name for p in pkgs}
-        assert names == {"busybox", "musl", "zlib"}
+        assert names == {"busybox", "musl-utils", "zlib"}
 
     def test_ecosystem_is_apk(self, tmp_path):
         f = tmp_path / "installed"
@@ -375,6 +377,8 @@ class TestParseApkInstalled:
         pkgs = parse_apk_installed(f)
         bb = next(p for p in pkgs if p.name == "busybox")
         assert bb.purl == "pkg:apk/alpine/busybox@1.36.1-r6"
+        musl_utils = next(p for p in pkgs if p.name == "musl-utils")
+        assert musl_utils.source_package == "musl"
 
     def test_missing_file_returns_empty(self, tmp_path):
         assert parse_apk_installed(tmp_path / "nonexistent") == []

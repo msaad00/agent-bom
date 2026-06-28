@@ -744,11 +744,14 @@ def _extract_packages_from_layer(
             if f:
                 content = f.read().decode("utf-8", errors="ignore")
                 pkg_name = pkg_version = ""
+                apk_source_package: str | None = None
                 for line in content.splitlines():
                     if line.startswith("P:"):
                         pkg_name = line[2:].strip()
                     elif line.startswith("V:"):
                         pkg_version = line[2:].strip()
+                    elif line.startswith("o:") or line.startswith("O:"):
+                        apk_source_package = line[2:].strip() or None
                     elif line == "" and pkg_name and pkg_version:
                         _add_package(
                             packages_by_key,
@@ -757,10 +760,12 @@ def _extract_packages_from_layer(
                             pkg_version,
                             "apk",
                             f"pkg:apk/alpine/{pkg_name}@{pkg_version}",
+                            source_package=apk_source_package,
                             layer=layer,
                             package_path=apk_path,
                         )
                         pkg_name = pkg_version = ""
+                        apk_source_package = None
                 if pkg_name and pkg_version:
                     _add_package(
                         packages_by_key,
@@ -769,6 +774,7 @@ def _extract_packages_from_layer(
                         pkg_version,
                         "apk",
                         f"pkg:apk/alpine/{pkg_name}@{pkg_version}",
+                        source_package=apk_source_package,
                         layer=layer,
                         package_path=apk_path,
                     )

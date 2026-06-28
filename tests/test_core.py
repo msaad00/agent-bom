@@ -1303,6 +1303,7 @@ def test_cli_image_accepts_tarball_without_image_ref(monkeypatch):
     assert seen[0]["images"] == ()
     assert seen[0]["image_tars"] == ("image.tar",)
     assert seen[0]["_image_only"] is True
+    assert seen[0]["no_skill"] is True
 
 
 def test_cli_image_rejects_reference_and_tarball_together(monkeypatch):

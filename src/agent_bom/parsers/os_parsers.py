@@ -250,12 +250,17 @@ def parse_apk_packages(root: Path = Path("/")) -> list[Package]:
             for line in result.stdout.splitlines():
                 m = re.match(r"^([a-z0-9._+-]+)-(\d[^\s{}]*)\s", line)
                 if m:
+                    name = m.group(1)
+                    version = m.group(2)
+                    origin_match = re.search(r"\{([^}]+)\}", line)
+                    source_package = origin_match.group(1).strip() if origin_match else None
                     packages.append(
                         Package(
-                            name=m.group(1),
-                            version=m.group(2),
+                            name=name,
+                            version=version,
                             ecosystem="apk",
-                            purl=f"pkg:apk/alpine/{m.group(1)}@{m.group(2)}",
+                            purl=f"pkg:apk/alpine/{name}@{version}",
+                            source_package=source_package,
                         )
                     )
             if packages:
@@ -269,11 +274,14 @@ def parse_apk_packages(root: Path = Path("/")) -> list[Package]:
         try:
             content = installed_db.read_text(errors="ignore")
             pkg_name = pkg_version = ""
+            source_package = None
             for line in content.splitlines():
                 if line.startswith("P:"):
                     pkg_name = line[2:].strip()
                 elif line.startswith("V:"):
                     pkg_version = line[2:].strip()
+                elif line.startswith("o:") or line.startswith("O:"):
+                    source_package = line[2:].strip() or None
                 elif line == "" and pkg_name and pkg_version:
                     packages.append(
                         Package(
@@ -281,9 +289,11 @@ def parse_apk_packages(root: Path = Path("/")) -> list[Package]:
                             version=pkg_version,
                             ecosystem="apk",
                             purl=f"pkg:apk/alpine/{pkg_name}@{pkg_version}",
+                            source_package=source_package,
                         )
                     )
                     pkg_name = pkg_version = ""
+                    source_package = None
             # Handle last stanza without trailing blank line
             if pkg_name and pkg_version:
                 packages.append(
@@ -292,6 +302,7 @@ def parse_apk_packages(root: Path = Path("/")) -> list[Package]:
                         version=pkg_version,
                         ecosystem="apk",
                         purl=f"pkg:apk/alpine/{pkg_name}@{pkg_version}",
+                        source_package=source_package,
                     )
                 )
         except OSError:
@@ -323,7 +334,7 @@ def detect_os_type(root: Path = Path("/")) -> str | None:
                 os_id = line.split("=", 1)[1].strip().strip('"').lower()
                 if os_id in ("debian", "ubuntu", "linuxmint", "pop"):
                     return "deb"
-                if os_id in ("fedora", "rhel", "centos", "rocky", "alma", "ol"):
+                if os_id in ("fedora", "rhel", "centos", "rocky", "alma", "almalinux", "ol"):
                     return "rpm"
                 if os_id == "alpine":
                     return "apk"

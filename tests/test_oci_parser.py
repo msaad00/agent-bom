@@ -204,11 +204,18 @@ Architecture: amd64
 
 _APK_INSTALLED = b"""P:busybox
 V:1.36.1-r0
+o:busybox
 T:Size optimized toolbox of many common UNIX utilities
 
 P:musl
 V:1.2.4-r2
+o:musl
 T:the musl c library (libc) implementation
+
+P:ssl_client
+V:1.36.1-r0
+o:busybox
+T:SSL client for busybox
 
 """
 
@@ -329,6 +336,8 @@ def test_docker_save_alpine_packages():
     names = {p.name for p in result.packages}
     assert "busybox" in names
     assert "musl" in names
+    ssl_client = next(p for p in result.packages if p.name == "ssl_client")
+    assert ssl_client.source_package == "busybox"
 
 
 def test_docker_save_multi_layer_dedup():

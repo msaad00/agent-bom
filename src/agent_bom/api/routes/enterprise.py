@@ -357,7 +357,7 @@ def _set_browser_session_cookie(
             max_age_seconds=max_age,
         )
     except BrowserSessionError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
     secure = _session_cookie_secure(request)
     response.set_cookie(
         SESSION_COOKIE_NAME,

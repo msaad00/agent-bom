@@ -38,6 +38,7 @@ from agent_bom.api.stores import (
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.security import sanitize_text
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
@@ -577,7 +578,7 @@ async def cis_benchmark_trends(
                     "days": days_clamped,
                 }
         except Exception as exc:  # noqa: BLE001
-            _logger.warning("Postgres CIS aggregation failed; trying analytics store: %s", exc)
+            _logger.warning("Postgres CIS aggregation failed; trying analytics store: %s", sanitize_text(exc))
 
     analytics_store = _get_analytics_store()
     analytics_aggregate = getattr(analytics_store, "aggregate_cis_benchmark_checks", None)
@@ -601,7 +602,7 @@ async def cis_benchmark_trends(
                     "days": days_clamped,
                 }
         except Exception as exc:  # noqa: BLE001
-            _logger.warning("ClickHouse CIS aggregation failed: %s", exc)
+            _logger.warning("ClickHouse CIS aggregation failed: %s", sanitize_text(exc))
 
     # In-memory fallback: aggregate the tenant's recent scan results
     # locally so even single-node and SQLite-only deployments answer.

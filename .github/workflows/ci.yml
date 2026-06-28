@@ -86,7 +86,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/|\.github/workflows/ci\.yml$)'; then
             alpine_full=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_)'; then
             postgres=true
           fi
           if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|\.github/workflows/ci\.yml$|site-docs/deployment/aws-company-rollout\.md$)'; then
@@ -158,6 +158,14 @@ jobs:
         # Conversational comments, LLM self-references, and internal task/audit
         # breadcrumbs must never ship in product source. Pure stdlib, fails fast.
         run: python scripts/check_comment_hygiene.py
+
+      - name: Exception sanitization — no raw exception text in HTTP responses or logs
+        # Source: scripts/check_exception_sanitization.py
+        # Raw exception strings carry secrets, ARNs, paths, and connection
+        # strings. New detail=str(exc) / detail=f"...{exc}" HTTPException bodies
+        # and raw-exception log f-strings on API/cloud/runtime paths must route
+        # through agent_bom.security.sanitize_error / sanitize_text. Pure stdlib.
+        run: python scripts/check_exception_sanitization.py
 
       - name: Trust-contract — provisioning stays read-only
         # Source: scripts/check_provisioning_readonly.py

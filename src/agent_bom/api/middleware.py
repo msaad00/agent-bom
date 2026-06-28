@@ -40,6 +40,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
 from agent_bom.api.dashboard_csp import dashboard_csp_header, describe_dashboard_csp_posture
+from agent_bom.security import sanitize_text
 
 _logger = logging.getLogger(__name__)
 _RATE_LIMIT_FINGERPRINT_FALLBACK = secrets.token_bytes(32)
@@ -1111,7 +1112,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 )
             except OIDCError as exc:
                 record_oidc_decode_failure()
-                _logger.debug("OIDC verification failed: %s", exc)
+                _logger.debug("OIDC verification failed: %s", sanitize_text(exc))
                 # Fall through to API key check — OIDC failure is non-fatal if keys also configured
 
         # RBAC mode: check against KeyStore

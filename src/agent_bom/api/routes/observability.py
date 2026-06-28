@@ -523,7 +523,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     try:
         _persist_graph_snapshot(job, job_result)
     except Exception as exc:  # noqa: BLE001
-        _logger.warning("Pushed-result graph persistence failed: %s", exc)
+        _logger.warning("Pushed-result graph persistence failed: %s", sanitize_text(exc))
         job.progress.append(f"Graph persistence skipped: {sanitize_error(exc)}")
     # Per-tenant quota lock keeps (check + insert) atomic (audit-4 P1).
     with tenant_quota_guard(tenant_id, lambda: enforce_retained_jobs_quota(tenant_id)):
@@ -551,7 +551,7 @@ async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
         if normalized_events:
             _get_analytics_store().record_events(normalized_events, tenant_id=tenant_id)
     except Exception as exc:  # noqa: BLE001
-        _logger.warning("OCSF analytics ingest skipped: %s", exc)
+        _logger.warning("OCSF analytics ingest skipped: %s", sanitize_text(exc))
     _persist_runtime_observations(normalized_events, tenant_id=tenant_id, source="ocsf")
 
     source_ids = sorted({str(event.get("source_id", "")).strip() for event in normalized_events if str(event.get("source_id", "")).strip()})

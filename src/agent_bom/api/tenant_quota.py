@@ -22,6 +22,7 @@ from agent_bom.config import (
     API_MAX_RETAINED_JOBS_PER_TENANT,
     API_MAX_SCHEDULES_PER_TENANT,
 )
+from agent_bom.security import sanitize_text
 
 _logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ def _maybe_postgres_advisory_lock(tenant_id: str) -> Iterator[None]:
             with conn.cursor() as cur:
                 cur.execute("SELECT pg_advisory_unlock(%s)", (key,))
         except Exception as exc:  # noqa: BLE001
-            _logger.warning("pg_advisory_unlock failed for tenant=%s: %s", tenant_id, exc)
+            _logger.warning("pg_advisory_unlock failed for tenant=%s: %s", tenant_id, sanitize_text(exc))
         try:
             pool.putconn(conn)
         except Exception:  # noqa: BLE001

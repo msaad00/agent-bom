@@ -43,6 +43,7 @@ from typing import Any, Optional, Protocol
 from agent_bom.filesystem import scan_disk_path_native
 from agent_bom.models import Package
 from agent_bom.secret_scanner import SecretScanResult, scan_secrets
+from agent_bom.security import sanitize_error
 
 from .base import CloudDiscoveryError
 
@@ -435,7 +436,7 @@ class AwsEbsSideScanner:
         try:
             scan_result: SecretScanResult = scan_secrets(mount_point)
         except Exception as exc:  # noqa: BLE001 — secret scan is best-effort enrichment
-            logger.warning("side-scan: secret scan failed (continuing): %s", exc)
+            logger.warning("side-scan: secret scan failed (continuing): %s", sanitize_error(exc))
             return []
         return [
             SideScanSecret(

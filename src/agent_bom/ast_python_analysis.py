@@ -10,6 +10,7 @@ from pathlib import Path
 from agent_bom.ast_models import (
     CallEdge,
     ControlFlowEdge,
+    DependencySymbolReach,
     DetectedGuardrail,
     ExtractedPrompt,
     FlowFinding,
@@ -1127,6 +1128,41 @@ def _resolve_called_function(
     return None
 
 
+def _resolve_external_dependency_symbol(caller: _FunctionAnalysis, raw_name: str) -> tuple[str, str, str] | None:
+    """Resolve an imported dependency call to ``(package, module, symbol)``.
+
+    This is intentionally conservative: it reports only explicit imports
+    visible in the scanned source file. It does not infer dynamic imports,
+    package metadata, or type-dispatched calls.
+    """
+    if not raw_name:
+        return None
+    if raw_name in caller.imported_functions:
+        module_name, symbol = caller.imported_functions[raw_name]
+        package = module_name.split(".", 1)[0]
+        return package, module_name, symbol
+
+    head, _, tail = raw_name.partition(".")
+    imported_target = caller.imported_functions.get(head)
+    if imported_target and tail:
+        module_name, symbol = imported_target
+        package = module_name.split(".", 1)[0]
+        return package, module_name, f"{symbol}.{tail}"
+
+    for alias, module_name in sorted(caller.imported_modules.items(), key=lambda item: len(item[0]), reverse=True):
+        if raw_name == alias:
+            package = module_name.split(".", 1)[0]
+            return package, module_name, module_name.rsplit(".", 1)[-1]
+        if not raw_name.startswith(f"{alias}."):
+            continue
+        symbol = raw_name[len(alias) + 1 :]
+        if not symbol:
+            continue
+        package = module_name.split(".", 1)[0]
+        return package, module_name, symbol
+    return None
+
+
 def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFinding]:
     """Build taint/data-flow findings from tool entrypoints into sinks and LLM calls."""
     by_name: dict[str, list[_FunctionAnalysis]] = {}
@@ -1641,6 +1677,65 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
             aggregated_findings.append(finding)
 
     return aggregated_findings
+
+
+def _build_dependency_symbol_reach(functions: list[_FunctionAnalysis]) -> list[DependencySymbolReach]:
+    """Build bounded tool-entrypoint → imported dependency symbol reach evidence."""
+    by_name: dict[str, list[_FunctionAnalysis]] = {}
+    by_module_and_name: dict[tuple[str, str], _FunctionAnalysis] = {}
+    for func in functions:
+        by_name.setdefault(func.simple_name, []).append(func)
+        if func.module_name:
+            by_module_and_name[(func.module_name, func.simple_name)] = func
+
+    adjacency: dict[str, list[_FunctionAnalysis]] = {func.qualified_name: [] for func in functions}
+    for func in functions:
+        for raw_name, _line_num in func.called_names:
+            callee = _resolve_called_function(func, raw_name, by_name, by_module_and_name)
+            if callee is not None:
+                adjacency[func.qualified_name].append(callee)
+
+    function_by_id = {func.qualified_name: func for func in functions}
+    max_depth = _max_taint_depth()
+    reached: list[DependencySymbolReach] = []
+    seen: set[tuple[str, str, str, str, int]] = set()
+    for tool in functions:
+        if not tool.is_tool:
+            continue
+        queue: list[tuple[str, list[str]]] = [(tool.qualified_name, [tool.simple_name])]
+        visited: set[str] = set()
+        while queue:
+            current_id, path = queue.pop(0)
+            if len(path) > max_depth:
+                continue
+            if current_id in visited:
+                continue
+            visited.add(current_id)
+            current = function_by_id[current_id]
+            for raw_name, line_num in current.called_names:
+                external = _resolve_external_dependency_symbol(current, raw_name)
+                if external is None:
+                    continue
+                package, module_name, symbol = external
+                dedup_key = (tool.simple_name, module_name, symbol, current.file_path, line_num)
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                reached.append(
+                    DependencySymbolReach(
+                        entrypoint=tool.simple_name,
+                        package=package,
+                        module=module_name,
+                        symbol=symbol,
+                        file_path=current.file_path,
+                        line_number=line_num,
+                        call_path=[*path, f"{module_name}.{symbol}"],
+                        depth=max(0, len(path) - 1),
+                    )
+                )
+            for child in adjacency.get(current_id, []):
+                queue.append((child.qualified_name, [*path, child.simple_name]))
+    return reached
 
 
 def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge], list[FlowFinding]]:

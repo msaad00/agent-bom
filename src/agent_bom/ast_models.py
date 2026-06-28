@@ -82,6 +82,21 @@ class FlowFinding:
 
 
 @dataclass
+class DependencySymbolReach:
+    """Imported dependency symbol reachable from a tool entrypoint."""
+
+    entrypoint: str
+    package: str
+    module: str
+    symbol: str
+    file_path: str
+    line_number: int
+    call_path: list[str] = field(default_factory=list)
+    depth: int = 0
+    confidence: str = "import-symbol"
+
+
+@dataclass
 class ASTAnalysisResult:
     """Complete AST analysis result for a project."""
 
@@ -91,6 +106,7 @@ class ASTAnalysisResult:
     call_edges: list[CallEdge] = field(default_factory=list)
     cfg_edges: list[ControlFlowEdge] = field(default_factory=list)
     flow_findings: list[FlowFinding] = field(default_factory=list)
+    dependency_symbol_reach: list[DependencySymbolReach] = field(default_factory=list)
     frameworks_detected: list[str] = field(default_factory=list)
     files_analyzed: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -166,6 +182,20 @@ class ASTAnalysisResult:
                 }
                 for finding in self.flow_findings
             ],
+            "dependency_symbol_reach": [
+                {
+                    "entrypoint": reach.entrypoint,
+                    "package": reach.package,
+                    "module": reach.module,
+                    "symbol": reach.symbol,
+                    "file": reach.file_path,
+                    "line": reach.line_number,
+                    "call_path": reach.call_path,
+                    "depth": reach.depth,
+                    "confidence": reach.confidence,
+                }
+                for reach in self.dependency_symbol_reach
+            ],
             "frameworks": self.frameworks_detected,
             "files_analyzed": self.files_analyzed,
             "warnings": self.warnings,
@@ -176,6 +206,7 @@ class ASTAnalysisResult:
                 "total_call_edges": len(self.call_edges),
                 "total_cfg_edges": len(self.cfg_edges),
                 "total_flow_findings": len(self.flow_findings),
+                "total_dependency_symbol_reach": len(self.dependency_symbol_reach),
                 "prompts_with_risks": sum(1 for p in self.prompts if p.risk_flags),
             },
         }

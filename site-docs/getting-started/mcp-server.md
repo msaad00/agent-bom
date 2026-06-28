@@ -8,6 +8,9 @@ Most tools are read-only. Shield write actions require `operator_role=admin`,
 Identity write actions require `operator_role=admin`, `operator_scopes=identity:write`, and an audit reason —
 the same admin/scope/audit contract for issuing, rotating, and revoking
 identities and granting or revoking just-in-time access.
+For remote SSE/HTTP deployments, those write arguments are audit context only:
+the request must authenticate with `AGENT_BOM_MCP_OPERATOR_TOKEN`. The regular
+`AGENT_BOM_MCP_BEARER_TOKEN` is read-only.
 
 ## Local (stdio)
 

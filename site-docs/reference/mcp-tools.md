@@ -252,25 +252,28 @@ shield_status(session_id="default")
 ```
 
 ### shield_start
-Start Shield enforcement for a session. Requires `operator_role="admin"`,
-`operator_scopes="shield:write"`, and an audit reason of at least eight
-characters.
+Start Shield enforcement for a session. Remote MCP requests must authenticate
+with `AGENT_BOM_MCP_OPERATOR_TOKEN`; the call also requires
+`operator_role="admin"`, `operator_scopes="shield:write"`, and an audit reason
+of at least eight characters.
 ```
 shield_start(session_id="default", operator_role="admin", operator_scopes="shield:write", reason="incident response")
 ```
 
 ### shield_unblock
-Unblock Shield enforcement for a session. Requires `operator_role="admin"`,
-`operator_scopes="shield:write"`, and an audit reason of at least eight
-characters.
+Unblock Shield enforcement for a session. Remote MCP requests must authenticate
+with `AGENT_BOM_MCP_OPERATOR_TOKEN`; the call also requires
+`operator_role="admin"`, `operator_scopes="shield:write"`, and an audit reason
+of at least eight characters.
 ```
 shield_unblock(session_id="default", operator_role="admin", operator_scopes="shield:write", reason="validated unblock")
 ```
 
 ### shield_break_glass
-Activate the Shield emergency override. Requires `operator_role="admin"`,
-`operator_scopes="shield:write"`, and an audit reason of at least eight
-characters. The action is audit logged.
+Activate the Shield emergency override. Remote MCP requests must authenticate
+with `AGENT_BOM_MCP_OPERATOR_TOKEN`; the call also requires
+`operator_role="admin"`, `operator_scopes="shield:write"`, and an audit reason
+of at least eight characters. The action is audit logged.
 ```
 shield_break_glass(session_id="default", operator_role="admin", operator_scopes="shield:write", reason="approved emergency override")
 ```

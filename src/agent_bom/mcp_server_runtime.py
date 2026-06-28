@@ -190,16 +190,29 @@ def current_tool_request(request_ctx_getter: Callable[[], Any]) -> dict[str, str
     try:
         current_request = request_ctx_getter()
     except LookupError:
-        return {"caller": "local", "client_id": None, "request_id": None}
+        return {"caller": "local", "client_id": None, "request_id": None, "auth_scopes": ""}
 
     meta = getattr(current_request, "meta", None)
     client_id = getattr(meta, "client_id", None) if meta else None
     session = getattr(current_request, "session", None)
     session_label = f"session-{id(session) % 1_000_000}" if session is not None else "local"
+    auth_scopes: set[str] = set()
+    for holder_name in ("access_token", "auth", "token"):
+        holder = getattr(current_request, holder_name, None)
+        scopes = getattr(holder, "scopes", None)
+        if isinstance(scopes, list | tuple | set):
+            auth_scopes.update(str(scope).strip().lower() for scope in scopes if str(scope).strip())
+    experimental = getattr(current_request, "experimental", None)
+    for holder_name in ("access_token", "auth", "token"):
+        holder = getattr(experimental, holder_name, None) if experimental is not None else None
+        scopes = getattr(holder, "scopes", None)
+        if isinstance(scopes, list | tuple | set):
+            auth_scopes.update(str(scope).strip().lower() for scope in scopes if str(scope).strip())
     return {
         "caller": client_id or session_label,
         "client_id": client_id,
         "request_id": str(getattr(current_request, "request_id", "")) or None,
+        "auth_scopes": ",".join(sorted(auth_scopes)),
     }
 
 
@@ -263,13 +276,10 @@ def record_tool_request(
 
 
 # Write / destructive MCP tools (``destructiveHint: true`` / ``readOnlyHint:
-# false``) accept ``operator_role`` + ``operator_scopes`` parameters. Today each
-# write impl enforces those, but the metadata only *hints* at the dispatch layer.
-# ``authorize_destructive_tool`` makes the dispatch fail closed: a destructive
-# tool invoked without an admin operator role (or with an insufficient scope) is
-# rejected before the handler runs, regardless of whether the impl re-checks.
-# Read-only tools are never gated here.
-_WRITE_SCOPE_WILDCARDS = ("*", "admin", "admin:*", "write", "*:write")
+# false``) accept ``operator_role`` + ``operator_scopes`` as audit/request
+# context, but dispatch authorization is bound to the authenticated MCP request
+# scopes. A tool argument can no longer self-assert admin authority.
+_WRITE_SCOPE_WILDCARDS = ("*", "admin:*", "write", "*:write")
 
 
 def _scope_set(operator_scopes: str) -> set[str]:
@@ -281,16 +291,28 @@ def authorize_destructive_tool(
     *,
     operator_role: str,
     operator_scopes: str,
+    auth_scopes: str = "",
     required_scope: str | None = None,
 ) -> dict[str, Any] | None:
     """Authorize a destructive MCP tool. Return an error payload, or None if allowed.
 
-    Fails closed: a destructive tool requires an ``admin`` operator role. When a
-    ``required_scope`` is supplied, the operator scopes must include it (or a
-    recognized wildcard). Mirrors the per-impl write-tool gate so the dispatch
-    layer enforces the ``destructiveHint`` metadata instead of merely hinting it.
+    Fails closed: a destructive tool requires an authenticated admin/operator
+    token. ``operator_role`` and ``operator_scopes`` are retained for audit
+    context and handler compatibility, but cannot authorize a write by
+    themselves. When ``required_scope`` is supplied, the authenticated scopes
+    must include it (or a recognized wildcard).
     """
     normalized_role = (operator_role or "").strip().lower()
+    trusted_scopes = _scope_set(auth_scopes)
+    has_authenticated_admin = bool(trusted_scopes & {"admin", "operator", "admin:*", "*"})
+    if not has_authenticated_admin:
+        return {
+            "error": f"tool '{tool_name}' is a write action and requires an authenticated operator token",
+            "tool": tool_name,
+            "status": "blocked",
+            "required_role": "admin",
+            "provided_role": normalized_role or "unset",
+        }
     if normalized_role != "admin":
         return {
             "error": f"tool '{tool_name}' is a write action and requires admin operator role",
@@ -300,10 +322,9 @@ def authorize_destructive_tool(
             "provided_role": normalized_role or "unset",
         }
     if required_scope:
-        scopes = _scope_set(operator_scopes)
         wanted = required_scope.strip().lower()
         family = wanted.split(":", 1)[0]
-        allowed = scopes & ({wanted, f"{family}:*", *(_WRITE_SCOPE_WILDCARDS)})
+        allowed = trusted_scopes & ({wanted, f"{family}:*", *(_WRITE_SCOPE_WILDCARDS)})
         if not allowed:
             return {
                 "error": f"tool '{tool_name}' requires the '{wanted}' scope",
@@ -333,15 +354,16 @@ async def execute_tool_async(
     required_scope: str | None = None,
     **kwargs,
 ) -> _ToolReturn | str:
+    request_meta = request_meta_factory()
     if destructive:
         denial = authorize_destructive_tool(
             tool_name,
             operator_role=str(kwargs.get("operator_role", "") or ""),
             operator_scopes=str(kwargs.get("operator_scopes", "") or ""),
+            auth_scopes=str(request_meta.get("auth_scopes", "") or ""),
             required_scope=required_scope,
         )
         if denial is not None:
-            request_meta = request_meta_factory()
             log_caller = _log_value(request_meta["caller"])
             log_role = _log_value(str(kwargs.get("operator_role", "") or "unset"))
             record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="forbidden")
@@ -361,7 +383,6 @@ async def execute_tool_async(
                 log_role,
             )
             return truncate_response_fn(json.dumps(denial))
-    request_meta = request_meta_factory()
     log_caller = _log_value(request_meta["caller"])
     log_request_id = _log_value(request_meta["request_id"])
     retry_after = check_caller_rate_limit_fn(request_meta["caller"] or "local")

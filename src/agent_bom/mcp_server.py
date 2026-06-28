@@ -85,6 +85,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
+import os
 import re
 import time
 from collections import OrderedDict, deque
@@ -151,16 +152,29 @@ _GHSA_RE = re.compile(r"^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$", re.IGNORECA
 
 
 class _StaticBearerTokenVerifier:
-    """FastMCP token verifier backed by a single configured bearer token."""
+    """FastMCP token verifier backed by configured bearer tokens.
 
-    def __init__(self, token: str):
+    The primary MCP bearer token authenticates read-only callers. A separate
+    operator token can be configured for write tools so a tool argument cannot
+    self-assert administrative authority.
+    """
+
+    def __init__(self, token: str, operator_token: str | None = None):
         self._token = token
+        self._operator_token = operator_token
 
     async def verify_token(self, token: str):
         from mcp.server.auth.provider import AccessToken
 
+        if self._operator_token and token and hmac.compare_digest(token, self._operator_token):
+            return AccessToken(
+                token=token,
+                client_id="agent-bom-operator-token",
+                scopes=["admin", "shield:write", "identity:write"],
+                resource=None,
+            )
         if token and hmac.compare_digest(token, self._token):
-            return AccessToken(token=token, client_id="agent-bom-static-token", scopes=[], resource=None)
+            return AccessToken(token=token, client_id="agent-bom-static-token", scopes=["read"], resource=None)
         return None
 
 
@@ -406,7 +420,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         port=port,
         bearer_token=bearer_token,
         version=__version__,
-        token_verifier_factory=_StaticBearerTokenVerifier,
+        token_verifier_factory=lambda token: _StaticBearerTokenVerifier(token, os.environ.get("AGENT_BOM_MCP_OPERATOR_TOKEN")),
     )
 
     # Import tool implementations

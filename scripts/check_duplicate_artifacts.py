@@ -11,6 +11,7 @@ tools such as pytest.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -18,6 +19,7 @@ from pathlib import Path
 
 _DUPLICATE_COMPONENT_RE = re.compile(r"^.+ [2-9](?:\.[^.\\/]+)?$")
 _IGNORED_PREFIXES = (
+    ".claude/",
     ".git/",
     ".venv/",
     "venv/",
@@ -33,6 +35,7 @@ _IGNORED_PREFIXES = (
     "site/",
 )
 _IGNORED_DIR_NAMES = {
+    ".claude",
     ".git",
     ".mypy_cache",
     ".pytest_cache",
@@ -60,15 +63,17 @@ def _tracked_paths() -> list[str]:
 
 def _working_tree_paths(root: Path) -> list[str]:
     paths: list[str] = []
-    for path in root.rglob("*"):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if name not in _IGNORED_DIR_NAMES]
+        current = Path(dirpath)
         try:
-            relative = path.relative_to(root)
+            current_relative = current.relative_to(root)
         except ValueError:
             continue
-        parts = relative.parts
-        if any(part in _IGNORED_DIR_NAMES for part in parts):
-            continue
-        paths.append(relative.as_posix())
+        if current_relative != Path("."):
+            paths.append(current_relative.as_posix())
+        for filename in filenames:
+            paths.append((current_relative / filename).as_posix())
     return paths
 
 

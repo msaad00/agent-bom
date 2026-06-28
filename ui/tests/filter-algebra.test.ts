@@ -331,11 +331,14 @@ describe("applyFilters — constraint propagation", () => {
     // attack edges: VULNERABLE_TO ×2, AFFECTS ×2.
     // Surviving nodes are only those connected by attack edges:
     // pkg-A1, pkg-B1, cve-1, cve-2, agent-A, agent-B (via AFFECTS).
-    // Other nodes still PASS the layer + severity + vulnOnly + agent
-    // predicates so they remain in `nodes` — but the algebra prunes
-    // edges to attack-scope only. So node count is unchanged (no
-    // node-level attack predicate).
-    expect(result.nodes).toHaveLength(20);
+    expect(result.nodes.map((node) => node.id).sort()).toEqual([
+      "agent-A",
+      "agent-B",
+      "cve-1",
+      "cve-2",
+      "pkg-A1",
+      "pkg-B1",
+    ]);
     // But every surviving edge must be attack scope.
     const allowed = new Set([
       "affects",

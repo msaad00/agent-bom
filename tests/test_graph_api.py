@@ -2479,6 +2479,35 @@ class TestGraphStoreBackendSelection:
         assert response.status_code == 422
         assert "Unsupported graph relationship type" in response.json()["detail"]
 
+    def test_graph_get_relationship_filter_prunes_unconnected_nodes(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:cve",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                severity_id=5,
+            )
+        )
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:orphan", entity_type=EntityType.AGENT, label="orphan"))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO, traversable=True)
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph?relationships=vulnerable_to")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert {node["id"] for node in body["nodes"]} == {"server:s", "vuln:cve"}
+        assert {(edge["source"], edge["target"]) for edge in body["edges"]} == {("server:s", "vuln:cve")}
+
     def test_graph_query_rejects_unknown_relationship(self, recording_graph_store):
         client = TestClient(app)
 

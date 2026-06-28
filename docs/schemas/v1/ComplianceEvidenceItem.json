@@ -39,6 +39,31 @@
       "default": null,
       "title": "Package"
     },
+    "policy_decisions": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Policy Decisions",
+      "type": "array"
+    },
+    "provenance": {
+      "additionalProperties": true,
+      "title": "Provenance",
+      "type": "object"
+    },
+    "scan_completed_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scan Completed At"
+    },
     "scan_id": {
       "anyOf": [
         {
@@ -50,6 +75,35 @@
       ],
       "default": null,
       "title": "Scan Id"
+    },
+    "scan_input": {
+      "additionalProperties": true,
+      "title": "Scan Input",
+      "type": "object"
+    },
+    "scan_started_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scan Started At"
+    },
+    "scanner_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scanner Version"
     },
     "severity": {
       "anyOf": [

@@ -5,6 +5,16 @@
       "title": "Fail",
       "type": "integer"
     },
+    "incomplete": {
+      "default": 0,
+      "title": "Incomplete",
+      "type": "integer"
+    },
+    "not_evaluated": {
+      "default": 0,
+      "title": "Not Evaluated",
+      "type": "integer"
+    },
     "pass": {
       "title": "Pass",
       "type": "integer"

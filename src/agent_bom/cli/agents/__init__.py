@@ -71,7 +71,13 @@ from agent_bom.output import (
 from agent_bom.parsers import extract_packages
 from agent_bom.resolver import consume_performance_stats as consume_resolution_performance
 from agent_bom.resolver import resolve_all_versions_sync
-from agent_bom.scanners import IncompleteScanError, consume_scan_performance, consume_scan_warnings, scan_agents_sync
+from agent_bom.scanners import (
+    IncompleteScanError,
+    consume_coverage_warnings,
+    consume_scan_performance,
+    consume_scan_warnings,
+    scan_agents_sync,
+)
 
 
 def _docker_image_ref(pkg: Any) -> str:
@@ -474,6 +480,11 @@ def scan(
         get_policy_path,
         load_project_config,
     )
+
+    # Always bind at function scope: the scan/consume site below sits in a nested
+    # block that early-return paths (dry-run, format validation) never enter, but
+    # the report-build site at the outer scope always references it.
+    _coverage_warnings: list[dict] = []
 
     _scan_start = _time.monotonic()
 
@@ -1434,6 +1445,7 @@ def scan(
                         posture=posture,
                     )
             scan_warnings = consume_scan_warnings()
+            _coverage_warnings = consume_coverage_warnings()
             if scan_warnings:
                 con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
             if blast_radii:
@@ -1714,6 +1726,9 @@ def scan(
         **_report_kwargs,
     )
     from agent_bom.advisory_sources import summarize_advisory_coverage
+
+    if _coverage_warnings:
+        report.coverage_warnings = _coverage_warnings
 
     _resolver_perf = consume_resolution_performance()
     _scan_perf = consume_scan_performance()

@@ -12,6 +12,23 @@
     "ai_bom_version": { "type": "string" },
     "generated_at": { "type": "string", "format": "date-time" },
     "scan_sources": { "type": "array", "items": { "type": "string" } },
+    "coverage_warnings": {
+      "type": "array",
+      "description": "OS releases whose vulnerability data the source does not carry (typically end-of-life); a low/zero count for these must not be read as clean.",
+      "items": {
+        "type": "object",
+        "required": ["ecosystem", "release", "reason", "detail"],
+        "properties": {
+          "ecosystem": { "type": "string" },
+          "release": { "type": "string" },
+          "reason": { "type": "string" },
+          "detail": { "type": "string" },
+          "package_count": { "type": "integer", "minimum": 0 },
+          "advisory_rows": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    },
     "summary": {
       "type": "object",
       "required": ["total_agents", "total_mcp_servers", "total_packages", "total_vulnerabilities"],
@@ -20,7 +37,8 @@
         "total_mcp_servers": { "type": "integer", "minimum": 0 },
         "total_packages": { "type": "integer", "minimum": 0 },
         "total_vulnerabilities": { "type": "integer", "minimum": 0 },
-        "critical_findings": { "type": "integer", "minimum": 0 }
+        "critical_findings": { "type": "integer", "minimum": 0 },
+        "coverage_warnings": { "type": "array", "items": { "type": "object" } }
       },
       "additionalProperties": true
     },

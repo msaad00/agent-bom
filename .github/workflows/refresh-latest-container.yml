@@ -27,6 +27,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.11'
+
+      - name: Install agent-bom scanner (snapshot from default branch)
+        # The job later checks out the released tag to rebuild the image, so the
+        # scanner is installed non-editably from the default-branch tree FIRST
+        # into an isolated venv. This keeps the image gate on the current scanner
+        # implementation regardless of which tag is being refreshed.
+        run: |
+          uv venv "${RUNNER_TEMP}/abom-scanner"
+          uv pip install --python "${RUNNER_TEMP}/abom-scanner/bin/python" .
+
       - name: Resolve latest release tag
         id: release
         run: |
@@ -79,14 +92,15 @@ jobs:
         run: docker run --rm agent-bom:latest-refresh-test --version
 
       - name: Image vulnerability refresh gate
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
-        with:
-          image-ref: agent-bom:latest-refresh-test
-          format: table
-          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
-          ignore-unfixed: true
-          exit-code: "1"
-          trivyignores: .image-scan-ignore
+        # Self-hosted image gate (dogfood) using the snapshot scanner. Native
+        # OS-layer (apk) + app-dependency scanning at MEDIUM+ severity
+        # (agent-bom has no separate UNKNOWN tier), unfixable findings excluded
+        # (= ignore-unfixed), and the .image-scan-ignore CVE allowlist.
+        run: |
+          "${RUNNER_TEMP}/abom-scanner/bin/agent-bom" image agent-bom:latest-refresh-test \
+            --ignore .image-scan-ignore \
+            --exclude-unfixable \
+            --fail-on-severity medium
 
       - name: Build and push refreshed latest
         id: build-push
@@ -153,6 +167,19 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.11'
+
+      - name: Install agent-bom scanner (snapshot from default branch)
+        # The job later checks out the released tag to rebuild the image, so the
+        # scanner is installed non-editably from the default-branch tree FIRST
+        # into an isolated venv. This keeps the image gate on the current scanner
+        # implementation regardless of which tag is being refreshed.
+        run: |
+          uv venv "${RUNNER_TEMP}/abom-scanner"
+          uv pip install --python "${RUNNER_TEMP}/abom-scanner/bin/python" .
 
       - name: Resolve latest release tag
         id: release
@@ -223,14 +250,16 @@ jobs:
           }
 
       - name: UI image vulnerability refresh gate
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
-        with:
-          image-ref: agent-bom-ui:latest-refresh-test
-          format: table
-          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
-          ignore-unfixed: true
-          exit-code: "1"
-          trivyignores: .image-scan-ignore
+        # Self-hosted image gate (dogfood) using the snapshot scanner. The UI
+        # image is Debian (node:bookworm-slim) based; native OS-layer (dpkg) +
+        # app-dependency scanning at MEDIUM+ severity (agent-bom has no separate
+        # UNKNOWN tier), unfixable findings excluded (= ignore-unfixed), and the
+        # .image-scan-ignore CVE allowlist.
+        run: |
+          "${RUNNER_TEMP}/abom-scanner/bin/agent-bom" image agent-bom-ui:latest-refresh-test \
+            --ignore .image-scan-ignore \
+            --exclude-unfixable \
+            --fail-on-severity medium
 
       - name: Build and push refreshed UI latest
         id: build-push-ui

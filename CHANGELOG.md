@@ -119,6 +119,22 @@ account.
   the unlock path.
 - **`scan` accepts an optional positional `PATH`**, and scans can be grouped
   into parent-child batches.
+- **`agent-bom image` / `agent-bom fs` gained `--ignore FILE`** to suppress
+  named advisories (CVE / GHSA / OSV) from both the report and the
+  `--fail-on-severity` gate. `FILE` may be a flat newline-delimited id list
+  (`#` comments allowed, e.g. `.image-scan-ignore`) or a structured
+  `.agent-bom-ignore.yaml`. ID matching is alias-aware (a GHSA id suppresses its
+  aliased CVE and vice versa).
+- **`--exclude-unfixable` now applies to the report and gate**, not just SARIF:
+  findings with no available fix are dropped from console/JSON output and from
+  the `--fail-on-severity` gate (an "ignore unfixed" policy).
+
+### CI / Tooling
+- **Image and filesystem vulnerability gates are self-hosted on agent-bom**
+  (dogfooding). The CI/release/container-rescan/refresh workflows now run
+  `agent-bom image` / `agent-bom fs` (OS-layer dpkg/rpm/apk + application
+  dependencies) and `agent-bom secrets` in place of the previous third-party
+  image/filesystem scanner; no workflow depends on an external scanner.
 
 ### API
 - **REST cloud-scanning endpoints** with MCP write-tool role enforcement.

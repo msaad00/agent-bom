@@ -224,16 +224,24 @@ jobs:
             echo "::warning::osv-scanner found only unfixable TypeScript SDK lockfile CVEs (no upstream fix) — passing"
           }
 
-      - name: Filesystem vulnerability scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: table
-          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
-          ignore-unfixed: true
-          exit-code: '1'
-          trivyignores: .image-scan-ignore
+      - name: Filesystem vulnerability scan (agent-bom — dogfood)
+        # Self-hosted filesystem dependency gate. Mirrors the previous
+        # third-party scanner: MEDIUM+ severity (agent-bom has no separate
+        # UNKNOWN tier), unfixable findings excluded (= ignore-unfixed), and
+        # the known-unfixable OS CVE allowlist in .image-scan-ignore.
+        run: |
+          uv run agent-bom fs . \
+            --ignore .image-scan-ignore \
+            --exclude-unfixable \
+            --fail-on-severity medium
+
+      - name: Filesystem secret scan (agent-bom — informational)
+        # Dogfoods agent-bom's secret/PII scanner over the tree, matching the
+        # secret-scanning the previous filesystem scanner performed. The
+        # authoritative blocking secret gate is the dedicated gitleaks workflow
+        # (.github/workflows/gitleaks.yml); this step is informational so
+        # committed test fixtures and PII heuristics do not double-gate CI.
+        run: uv run agent-bom secrets . || true
 
       - name: Validate npm lockfiles
         run: python scripts/check_npm_lockfile.py ui/package-lock.json sdks/typescript/package-lock.json
@@ -991,15 +999,24 @@ jobs:
       - name: Smoke test
         run: docker run --rm agent-bom:test --version
 
-      - name: Image vulnerability scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+      - uses: ./.github/actions/setup-python
         with:
-          image-ref: agent-bom:test
-          format: table
-          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
-          ignore-unfixed: true
-          exit-code: '1'
-          trivyignores: .image-scan-ignore
+          python-version: '3.11'
+
+      - name: Install agent-bom for image scan gate
+        run: uv sync --frozen --extra dev
+
+      - name: Image vulnerability scan (agent-bom — dogfood)
+        # Self-hosted image gate over the locally loaded agent-bom:test image
+        # (agent-bom shells `docker save` to read it). Native OS-layer
+        # (dpkg/rpm/apk) + app-dependency scanning at MEDIUM+ severity
+        # (no separate UNKNOWN tier), unfixable findings excluded
+        # (= ignore-unfixed), and the .image-scan-ignore CVE allowlist.
+        run: |
+          uv run agent-bom image agent-bom:test \
+            --ignore .image-scan-ignore \
+            --exclude-unfixable \
+            --fail-on-severity medium
 
       - name: agent-bom native image tar scan gate
         run: |

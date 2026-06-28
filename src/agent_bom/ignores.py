@@ -51,10 +51,33 @@ _DEFAULT_IGNORE_FILE = ".agent-bom-ignore.yaml"
 
 
 def load_ignore_file(path: str | Path | None = None) -> list[dict[str, Any]]:
-    """Load and parse an ignore file.  Returns empty list if file not found."""
+    """Load and parse an ignore file.  Returns empty list if file not found.
+
+    Two formats are accepted:
+
+    * **Structured YAML** — a mapping with an ``ignores:`` list (see the module
+      docstring).  Supports per-entry reason/expiry/package/path metadata.
+    * **Flat id list** — a newline-delimited list of CVE / GHSA / OSV ids, one
+      per line, with ``#`` comments allowed (e.g. ``.image-scan-ignore``).
+      Each id becomes ``{"id": <id>}`` and suppresses that advisory wherever it
+      appears.  Used by CI image/filesystem gates that carry known-unfixable
+      base-image CVEs.
+    """
     target = Path(path) if path else Path(_DEFAULT_IGNORE_FILE)
     if not target.exists():
         return []
+
+    try:
+        text = target.read_text()
+    except OSError as exc:
+        raise ValueError(f"Could not read ignore file {target}: {exc}") from exc
+
+    # Flat newline-delimited id lists are detected before YAML parsing because
+    # multiple bare scalars on consecutive lines fold into a single YAML string
+    # rather than the mapping the structured loader expects.
+    if _looks_like_flat_id_list(text):
+        return _parse_flat_id_list(text)
+
     try:
         import yaml  # type: ignore[import]
     except ImportError:
@@ -66,10 +89,7 @@ def load_ignore_file(path: str | Path | None = None) -> list[dict[str, Any]]:
         return _parse_minimal_yaml(target)
 
     try:
-        with target.open() as fh:
-            data = yaml.safe_load(fh) or {}
-    except OSError as exc:
-        raise ValueError(f"Could not read ignore file {target}: {exc}") from exc
+        data = yaml.safe_load(text) or {}
     except yaml.YAMLError as exc:
         raise ValueError(f"Invalid YAML in ignore file {target}: {exc}") from exc
     if not isinstance(data, dict):
@@ -77,6 +97,40 @@ def load_ignore_file(path: str | Path | None = None) -> list[dict[str, Any]]:
     entries = data.get("ignores", [])
     if not isinstance(entries, list):
         raise ValueError(f"Ignore file {target} field 'ignores' must be a list")
+    return entries
+
+
+def _looks_like_flat_id_list(text: str) -> bool:
+    """Return True when *text* is a bare newline-delimited advisory-id list.
+
+    A flat list has at least one meaningful line and no YAML mapping/sequence
+    syntax (``key:`` mappings or ``-`` list items).  ``#`` comments and blank
+    lines are ignored.
+    """
+    saw_id = False
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("-") or line.endswith(":") or ": " in line:
+            return False
+        saw_id = True
+    return saw_id
+
+
+def _parse_flat_id_list(text: str) -> list[dict[str, Any]]:
+    """Parse a newline-delimited CVE/GHSA/OSV id list into ignore entries."""
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        key = line.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append({"id": line, "reason": "Suppressed via flat ignore list"})
     return entries
 
 
@@ -113,12 +167,16 @@ def _matches_blast_radius(entry: dict[str, Any], br: "BlastRadius") -> bool:
     vuln = br.vulnerability
     pkg = br.package
 
-    # CVE/OSV ID match
+    # CVE/OSV/GHSA ID match — checks the canonical id and any cross-source
+    # aliases (e.g. a GHSA id suppresses its aliased CVE and vice versa).
     cve_id = entry.get("id")
-    if cve_id and vuln.id.upper() != str(cve_id).upper():
-        return False
     if cve_id:
-        return True  # ID match is sufficient
+        wanted = str(cve_id).upper()
+        candidate_ids = {vuln.id.upper()}
+        aliases = getattr(vuln, "aliases", None)
+        if isinstance(aliases, (list, tuple, set)):
+            candidate_ids.update(str(alias).upper() for alias in aliases)
+        return wanted in candidate_ids
 
     # Package name / version match
     pkg_spec = entry.get("package")
@@ -186,6 +244,23 @@ def _matches_finding_type(finding_type: str, br: "BlastRadius") -> bool:
     if ft == "credential_exposure":
         return bool(br.exposed_credentials)
     return False
+
+
+def drop_unfixable(
+    blast_radii: list["BlastRadius"],
+) -> tuple[list["BlastRadius"], int]:
+    """Drop blast-radius findings whose vulnerability has no available fix.
+
+    Returns ``(kept, dropped_count)``.  A finding with no ``fixed_version``
+    cannot be remediated by an upgrade; excluding it is the gate-level
+    equivalent of an "ignore unfixed" policy.
+    """
+    kept: list["BlastRadius"] = []
+    for br in blast_radii:
+        fixed = getattr(br.vulnerability, "fixed_version", None)
+        if isinstance(fixed, str) and fixed.strip():
+            kept.append(br)
+    return kept, len(blast_radii) - len(kept)
 
 
 def apply_ignores(

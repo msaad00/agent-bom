@@ -244,7 +244,8 @@ def output_options(fn):
                 "--exclude-unfixable",
                 is_flag=True,
                 default=False,
-                help="Exclude findings with no available fix from SARIF output (reduces GitHub Security tab noise)",
+                help="Exclude findings with no available fix from output, SARIF, and the "
+                "--fail-on-severity gate (an 'ignore unfixed' policy; reduces GitHub Security tab noise)",
             ),
             click.option(
                 "--fixable-only",

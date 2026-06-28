@@ -269,7 +269,7 @@ class TestToolMetrics:
         assert all("req-1\r\nforged=true" not in message for message in messages)
 
     def test_current_tool_request_defaults_to_local_without_context(self):
-        assert _current_tool_request() == {"caller": "local", "client_id": None, "request_id": None}
+        assert _current_tool_request() == {"caller": "local", "client_id": None, "request_id": None, "auth_scopes": ""}
 
     def test_check_caller_rate_limit_enforces_window(self, monkeypatch):
         import agent_bom.mcp_server as mod

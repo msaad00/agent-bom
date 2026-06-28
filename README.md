@@ -274,9 +274,10 @@ References: [Threat model](docs/THREAT_MODEL.md) ·
 | Python / TypeScript clients | services and agent runtimes | typed helpers for stable REST endpoints |
 
 MCP server mode advertises 70 MCP tools, 6 resources, and 6 workflow prompts.
-Most tools are read-only; the three Shield write actions fail closed unless the
-caller supplies `operator_role=admin`, `operator_scopes=shield:write`, and an
-audit reason. CLI scan commands run local scan pipelines today and share lower
+Most tools are read-only; Shield and identity write actions fail closed unless
+the MCP request is authenticated with `AGENT_BOM_MCP_OPERATOR_TOKEN` and the
+tool call includes the matching admin role, write scope, and audit reason. CLI
+scan commands run local scan pipelines today and share lower
 scanner and discovery libraries with the API, but they are not API wrappers yet.
 MCP registry presence is tracked through the committed Smithery manifest and
 other registry metadata; install and liveness checks live in the integration

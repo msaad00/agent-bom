@@ -8,6 +8,13 @@ Most tools are read-only. Shield write actions require `operator_role=admin`,
 Identity write actions require `operator_role=admin`, `operator_scopes=identity:write`, and an audit reason —
 the same admin/scope/audit contract for issuing, rotating, and revoking
 identities and granting or revoking just-in-time access.
+Those write arguments are audit context only — they no longer authorize the
+write by themselves. The request must authenticate with a separate
+`AGENT_BOM_MCP_OPERATOR_TOKEN` (the regular `AGENT_BOM_MCP_BEARER_TOKEN` is
+read-only). Because the local stdio transport has no token channel, Shield and
+identity **write** tools are unavailable over stdio — run those actions from the
+CLI or the authenticated REST control plane instead. Read-only tools work over
+stdio as before.
 
 ## Local (stdio)
 

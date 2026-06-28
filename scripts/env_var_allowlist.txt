@@ -53,8 +53,16 @@ AGENT_BOM_AUTO_UPDATE_DB
 AGENT_BOM_AWS_ALL_REGIONS
 # Opt-in (default OFF) gate for the estate-wide read-only Azure asset inventory scanner (token/credential auth only).
 AGENT_BOM_AWS_INVENTORY
+# Defensive cap on the number of member accounts a single AWS Organizations scan fans out over (default 200).
+AGENT_BOM_AWS_MAX_ACCOUNTS
 # Defensive cap on the number of regions a single multi-region AWS inventory scan fans out over.
 AGENT_BOM_AWS_MAX_REGIONS
+# Opt-in (default OFF) gate to fan the read-only AWS inventory + CIS benchmark across every member account of the organization (cross-account AssumeRole fan-out).
+AGENT_BOM_AWS_ORG_INVENTORY
+# Name of the read-only role assumed in each member account during the AWS Organizations fan-out (default agent-bom-readonly; StackSet-deployed).
+AGENT_BOM_AWS_ORG_ROLE_NAME
+# Optional confused-deputy ExternalId presented to every per-account sts:AssumeRole during the AWS Organizations fan-out.
+AGENT_BOM_AWS_ORG_EXTERNAL_ID
 # Explicit comma-separated region override for the multi-region AWS inventory fan-out (else enabled regions are enumerated).
 AGENT_BOM_AWS_REGIONS
 AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS

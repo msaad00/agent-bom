@@ -82,8 +82,9 @@ covers every action the scanner needs.
 
 ```bash
 export AGENT_BOM_AWS_INVENTORY=1            # opt-in (per-provider, symmetric)
+export AGENT_BOM_AWS_ORG_INVENTORY=1        # fan out across every member account
 export AWS_PROFILE=abom-readonly            # SecurityAudit-attached profile
-agent-bom agents --preset enterprise --aws
+agent-bom agents --preset enterprise --aws --aws-cis-benchmark
 ```
 
 **What it reads** (all read-only): S3, EC2 + security groups, IAM
@@ -91,6 +92,28 @@ roles/users/policies and the permission edges between them, RDS, DynamoDB,
 Lambda, EKS, ELB/ALB/NLB, VPCs, KMS, Secrets Manager (metadata only), CloudFront,
 ECR, Redshift, SNS/SQS — plus AWS **Organizations** (OU tree → accounts → SCPs)
 for multi-account estates, and **60 CIS checks**.
+
+**Org scale (cross-account fan-out):** with `AGENT_BOM_AWS_ORG_INVENTORY=1` the
+connector enumerates every member account of the organization, assumes a
+read-only role in each via `sts:AssumeRole` from the management /
+delegated-admin account (keyless, short-lived, ExternalId-capable), and runs the
+inventory + CIS benchmark against each — partitioned in the graph by account
+under the org → OU `CONTAINS` tree so cross-account attack paths correlate. This
+is the AWS analogue of `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS` and
+`AGENT_BOM_GCP_ALL_PROJECTS`. Partial-permission tolerant: an account that denies
+the role is skipped with a warning, never a hard failure; the report's
+`aws_organization.account_scan` block summarises accounts scanned / skipped /
+errored. A defensive `AGENT_BOM_AWS_MAX_ACCOUNTS` cap (default 200) bounds blast
+radius.
+
+> **Read-only role expectation.** The conventional `OrganizationAccountAccessRole`
+> is full-admin and is *not* used. Deploy a least-privilege read-only role
+> (SecurityAudit / ViewOnlyAccess) named `agent-bom-readonly` to every account —
+> a CloudFormation **StackSet** targeting the org/OUs is the supported pattern.
+> Override the name with `AGENT_BOM_AWS_ORG_ROLE_NAME`, the trust ExternalId with
+> `AGENT_BOM_AWS_ORG_EXTERNAL_ID`. The role's trust policy grants
+> `sts:AssumeRole` only to the management/delegated-admin principal running the
+> scan.
 
 **Why read-only is enough:** the connector calls only `List*`/`Describe*`/`Get*`
 and `sts:GetCallerIdentity`. The exact action set is declared as permission

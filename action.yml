@@ -16,9 +16,9 @@ inputs:
     required: false
     default: ''
   severity-threshold:
-    description: 'Fail if vulnerabilities at or above this severity (critical, high, medium, low). Empty = no gate.'
+    description: 'Fail if vulnerabilities at or above this severity (critical, high, medium, low). Default high; set to empty to disable the gate.'
     required: false
-    default: ''
+    default: 'high'
   warn-on-severity:
     description: 'Warn (non-blocking) if vulnerabilities at or above this severity. Use with severity-threshold for two-tier gates.'
     required: false
@@ -762,7 +762,7 @@ runs:
         fi
 
     - name: Post PR comment with findings summary
-      if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'
+      if: always() && inputs.pr-comment == 'true' && github.event_name == 'pull_request'
       shell: python
       env:
         GH_TOKEN: ${{ github.token }}

@@ -83,6 +83,21 @@ def test_action_allows_skills_sarif_upload_contract() -> None:
     assert "github/codeql-action/upload-sarif" in action_text
 
 
+def test_action_defaults_to_repo_scan_with_high_severity_gate_and_failure_comment() -> None:
+    action_text = (ROOT / "action.yml").read_text(encoding="utf-8")
+    action = yaml.safe_load(action_text)
+    scan_step = next(step for step in action["runs"]["steps"] if step.get("id") == "scan")
+    run_script = scan_step["run"]
+    comment_step = next(step for step in action["runs"]["steps"] if step.get("name") == "Post PR comment with findings summary")
+
+    assert action["inputs"]["scan-type"]["default"] == "scan"
+    assert action["inputs"]["severity-threshold"]["default"] == "high"
+    assert 'scan|"")' in run_script
+    assert "ARGS=(scan)" in run_script
+    assert 'ARGS+=(--fail-on-severity "$INPUT_SEVERITY")' in run_script
+    assert "always() && inputs.pr-comment == 'true'" in comment_step["if"]
+
+
 def test_focused_secrets_and_code_reject_sarif_format(tmp_path: Path) -> None:
     runner = CliRunner()
 

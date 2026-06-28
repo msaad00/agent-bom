@@ -695,6 +695,93 @@ def discover_inventory_all_regions(
     }
 
 
+def discover_all_account_inventories(profile: str | None = None, *, force: bool = False) -> list[dict[str, Any]]:
+    """Inventory EVERY member account of the AWS Organization (multi-account fan-out).
+
+    The AWS counterpart of Azure's all-subscriptions and GCP's all-projects
+    fan-out: enumerate the org's member accounts, assume the read-only role in
+    each (``sts:AssumeRole`` from the management / delegated-admin account, keyless
+    and short-lived), and run the per-account inventory against the assumed
+    session. Results are partitioned by ``account_id`` so the graph keeps every
+    account distinct under the org → OU ``CONTAINS`` tree and cross-account attack
+    paths correlate.
+
+    Returns a LIST of per-account inventory payloads (the exact shape the graph
+    builder's ``_iter_cloud_inventories`` consumes). Partial-permission tolerant:
+    an account whose role cannot be assumed (or whose reads are denied) yields a
+    non-``ok`` payload carrying its ``account_id`` + a warning, so it is counted
+    in the scan summary and skipped in the graph rather than sinking the run.
+    Falls back to a single ambient-credential inventory when no org is visible (a
+    standalone account). Read-only throughout; never raises.
+    """
+    if not force and not inventory_enabled():
+        return []
+
+    try:
+        import boto3  # noqa: F401
+    except ImportError:
+        return [
+            {
+                **_empty_payload(region=""),
+                "status": "boto3_missing",
+                "warnings": ["boto3 is required for AWS inventory. Install with: pip install 'agent-bom[aws]'"],
+            }
+        ]
+
+    from agent_bom.cloud import aws_organizations
+
+    try:
+        account_ids = aws_organizations.list_member_account_ids(profile, force=True)
+    except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade, not crash
+        logger.warning("AWS org account enumeration failed: %s", sanitize_discovery_warning(exc))
+        account_ids = []
+
+    if not account_ids:
+        # Standalone account (not in an org) or no org visibility — fall back to
+        # the single ambient-credential inventory so the scan still produces data.
+        return [discover_inventory(profile=profile, force=True)]
+
+    cap = aws_organizations.max_accounts()
+    capped = account_ids[:cap]
+    if len(account_ids) > cap:
+        logger.warning(
+            "AWS multi-account scan capped at %d of %d accounts (set AGENT_BOM_AWS_MAX_ACCOUNTS to raise).",
+            cap,
+            len(account_ids),
+        )
+
+    def _scan(account_id: str) -> dict[str, Any]:
+        try:
+            session = aws_organizations.assume_account_session(account_id, profile=profile)
+        except Exception as exc:  # noqa: BLE001 — a denied account is skipped, not fatal
+            return {
+                **_empty_payload(region=""),
+                "status": "access_denied",
+                "account_id": account_id,
+                "warnings": [f"Account {account_id} skipped: {sanitize_discovery_warning(exc)}"],
+            }
+        return discover_inventory(session=session, force=True)
+
+    payloads: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=min(8, len(capped))) as executor:
+        futures = {executor.submit(_scan, aid): aid for aid in capped}
+        for future in as_completed(futures):
+            account_id = futures[future]
+            try:
+                payloads.append(future.result())
+            except Exception as exc:  # noqa: BLE001 — one account's failure must not sink the rest
+                logger.warning("AWS inventory failed for account %s: %s", account_id, sanitize_discovery_warning(exc))
+                payloads.append(
+                    {
+                        **_empty_payload(region=""),
+                        "status": "error",
+                        "account_id": account_id,
+                        "warnings": [f"Account {account_id} failed: {sanitize_discovery_warning(exc)}"],
+                    }
+                )
+    return payloads
+
+
 def discover_inventory(
     region: str | None = None,
     profile: str | None = None,
@@ -2313,6 +2400,7 @@ __all__ = [
     "INVENTORY_ENV_FLAG",
     "REGIONS_ENV_VAR",
     "all_regions_enabled",
+    "discover_all_account_inventories",
     "discover_inventory",
     "discover_inventory_all_regions",
     "inventory_enabled",

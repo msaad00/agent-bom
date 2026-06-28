@@ -120,6 +120,11 @@ class CISBenchmarkReport:
     checks: list[CISCheckResult] = field(default_factory=list)
     region: str = ""
     account_id: str = ""
+    # Populated only by the multi-account fan-out: the member accounts actually
+    # evaluated and any per-account warnings (e.g. an account skipped because the
+    # read-only role could not be assumed). Empty on a single-account run.
+    accounts_scanned: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> int:
@@ -145,11 +150,13 @@ class CISBenchmarkReport:
             "benchmark": "CIS AWS Foundations",
             "benchmark_version": self.benchmark_version,
             "account_id": self.account_id,
+            "accounts_scanned": self.accounts_scanned,
             "region": self.region,
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
             "failed": self.failed,
             "total": self.total,
+            "warnings": self.warnings,
             "checks": [
                 {
                     "check_id": c.check_id,
@@ -161,6 +168,7 @@ class CISBenchmarkReport:
                     "recommendation": c.recommendation,
                     "remediation": c.remediation,
                     "cis_section": c.cis_section,
+                    "account_id": c.account_id,
                     "network_exposure": c.network_exposure,
                     "attack_techniques": tag_cis_check(c),
                 }
@@ -2712,3 +2720,94 @@ def run_benchmark(
     attach_all(report, cloud="aws")
 
     return report
+
+
+# Bounded concurrency for the multi-account fan-out — mirrors the AWS inventory
+# fan-out's thread pool so an org-wide CIS run collapses the per-account
+# latencies instead of summing them.
+_MAX_CIS_FANOUT_WORKERS = 8
+
+
+def run_all_account_benchmarks(
+    checks: list[str] | None = None,
+    profile: str | None = None,
+) -> CISBenchmarkReport:
+    """Run the CIS AWS benchmark for EVERY member account of the organization.
+
+    The CIS counterpart of
+    :func:`agent_bom.cloud.aws_inventory.discover_all_account_inventories`: it
+    reuses the same member-account enumeration
+    (:func:`agent_bom.cloud.aws_organizations.list_member_account_ids`) and the
+    same read-only AssumeRole broker
+    (:func:`agent_bom.cloud.aws_organizations.assume_account_session`) so the
+    benchmark covers the identical estate the inventory fan-out does. Each account
+    is benchmarked concurrently (bounded thread pool) and the per-account results
+    are aggregated into one :class:`CISBenchmarkReport` with every check tagged by
+    its ``account_id``.
+
+    Read-only and partial-permission tolerant: an account whose read-only role
+    cannot be assumed is skipped with a warning rather than failing the whole run.
+    Falls back to a single ambient-credential benchmark when no org is visible (a
+    standalone account).
+
+    Raises:
+        CloudDiscoveryError: if boto3 is not installed.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from agent_bom.cloud import aws_organizations
+
+    from .normalization import sanitize_discovery_warning
+
+    try:
+        import boto3  # noqa: F401
+    except ImportError:
+        raise CloudDiscoveryError("boto3 is required for CIS AWS Benchmark checks. Install with: pip install 'agent-bom[aws]'")
+
+    try:
+        account_ids = aws_organizations.list_member_account_ids(profile, force=True)
+    except Exception as exc:  # noqa: BLE001 — org enumeration failure must degrade, not crash
+        logger.warning("AWS org account enumeration failed: %s", sanitize_discovery_warning(exc))
+        account_ids = []
+
+    if not account_ids:
+        # Standalone account (not in an org) — single-account benchmark.
+        return run_benchmark(profile=profile, checks=checks)
+
+    cap = aws_organizations.max_accounts()
+    capped = account_ids[:cap]
+
+    aggregate = CISBenchmarkReport(account_id=", ".join(capped))
+    if len(account_ids) > cap:
+        aggregate.warnings.append(
+            f"AWS multi-account CIS benchmark capped at {cap} of {len(account_ids)} accounts (set AGENT_BOM_AWS_MAX_ACCOUNTS to raise)."
+        )
+
+    def _run_one(account_id: str) -> tuple[str, CISBenchmarkReport]:
+        session = aws_organizations.assume_account_session(account_id, profile=profile)
+        return account_id, run_benchmark(session=session, checks=checks)
+
+    # Deterministic aggregation: collect per-account reports keyed by id, then
+    # merge in enumeration order so output is stable across runs.
+    reports: dict[str, CISBenchmarkReport] = {}
+    with ThreadPoolExecutor(max_workers=min(_MAX_CIS_FANOUT_WORKERS, len(capped))) as executor:
+        future_to_account = {executor.submit(_run_one, aid): aid for aid in capped}
+        for future in as_completed(future_to_account):
+            account_id = future_to_account[future]
+            try:
+                _aid, account_report = future.result()
+                reports[account_id] = account_report
+            except Exception as exc:  # noqa: BLE001 — one unreadable account must not sink the rest
+                aggregate.warnings.append(f"Account {account_id} skipped: {sanitize_discovery_warning(exc)}")
+
+    for account_id in capped:
+        merged = reports.get(account_id)
+        if merged is None:
+            continue
+        aggregate.accounts_scanned.append(account_id)
+        for check in merged.checks:
+            check.account_id = account_id
+            aggregate.checks.append(check)
+        aggregate.warnings.extend(merged.warnings)
+
+    return aggregate

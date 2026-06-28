@@ -37,6 +37,44 @@ _AWS_ORG_PERMISSIONS: tuple[str, ...] = (
 # Cap the OU recursion + account pagination defensively for very large orgs.
 _MAX_OU_DEPTH = 8
 
+# ---------------------------------------------------------------------------
+# Cross-account scan fan-out (opt-in, read-only)
+#
+# The AWS counterpart of the Azure all-subscriptions and GCP all-projects
+# fan-out: from the management / delegated-admin account, assume a read-only
+# role in every member account and run the per-account inventory + CIS benchmark
+# against the assumed, short-lived session. Default OFF and gated separately
+# from single-account inventory so existing automation is unchanged.
+# ---------------------------------------------------------------------------
+
+# Opt-in org fan-out gate. Default OFF; symmetric with the other providers'
+# tenant/estate-wide fan-out gates (AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS /
+# AGENT_BOM_GCP_ALL_PROJECTS) and the Snowflake org roll-up (AGENT_BOM_SNOWFLAKE_ORG).
+ORG_FANOUT_ENV_FLAG = "AGENT_BOM_AWS_ORG_INVENTORY"
+
+# Read-only role assumed in each member account. The conventional
+# ``OrganizationAccountAccessRole`` is full-admin and deliberately NOT the
+# default — operators deploy a least-privilege, SecurityAudit/ViewOnlyAccess
+# read-only role (e.g. via a CloudFormation StackSet) under this name in every
+# account. Override with ``AGENT_BOM_AWS_ORG_ROLE_NAME``.
+ORG_ROLE_NAME_ENV = "AGENT_BOM_AWS_ORG_ROLE_NAME"
+_DEFAULT_ORG_ROLE_NAME = "agent-bom-readonly"
+
+# Optional confused-deputy ExternalId presented to every per-account AssumeRole.
+ORG_EXTERNAL_ID_ENV = "AGENT_BOM_AWS_ORG_EXTERNAL_ID"
+
+# RoleSessionName stamped on the temporary credentials (visible in CloudTrail).
+_ORG_SESSION_NAME = "agent-bom-readonly"
+
+# Defensive cap so an org with thousands of accounts can't fan out unbounded
+# without an operator opting into a larger budget. Mirrors GCP's MAX_PROJECTS
+# (200) and Snowflake's MAX_ACCOUNTS.
+_DEFAULT_MAX_ACCOUNTS = 200
+
+# The single read-only action the fan-out adds on top of the org-enumeration
+# permissions: assuming the per-account read-only role.
+_AWS_ORG_ASSUME_PERMISSION = "sts:AssumeRole"
+
 
 def discover_organization(profile: str | None = None, *, force: bool = False) -> dict[str, Any]:
     """Enumerate the AWS Organization: OUs, member accounts, and SCPs (read-only).
@@ -210,3 +248,157 @@ def discover_organization(profile: str | None = None, *, force: bool = False) ->
     ).to_dict()
     _ = ou_ids  # reserved for future account→OU placement enrichment
     return result
+
+
+# ---------------------------------------------------------------------------
+# Cross-account scan fan-out helpers (opt-in, read-only)
+# ---------------------------------------------------------------------------
+
+
+def org_fanout_enabled() -> bool:
+    """Whether to fan a single scan across every member account of the org.
+
+    Default OFF. Operators opt in by setting ``AGENT_BOM_AWS_ORG_INVENTORY``
+    truthy, in addition to the base ``AGENT_BOM_AWS_INVENTORY`` gate. Symmetric
+    with Azure's all-subscriptions and GCP's all-projects fan-out gates.
+    """
+    return os.environ.get(ORG_FANOUT_ENV_FLAG, "").strip().lower() in _TRUTHY
+
+
+def max_accounts() -> int:
+    """Defensive cap on the number of member accounts a single fan-out walks.
+
+    Reads ``AGENT_BOM_AWS_MAX_ACCOUNTS`` (default 200); a non-positive or
+    unparseable value falls back to the default so the cap can never disable
+    bounding. Mirrors the GCP/Snowflake account caps.
+    """
+    raw = os.environ.get("AGENT_BOM_AWS_MAX_ACCOUNTS", "").strip()
+    if not raw:
+        return _DEFAULT_MAX_ACCOUNTS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_MAX_ACCOUNTS
+    return value if value > 0 else _DEFAULT_MAX_ACCOUNTS
+
+
+def list_member_account_ids(profile: str | None = None, *, force: bool = False) -> list[str]:
+    """Return every ACTIVE member account id in the organization (read-only).
+
+    The fan-out source for the AWS multi-account inventory and CIS benchmark.
+    Enumerates the org via :func:`discover_organization` and keeps only accounts
+    whose ``Status`` is ``ACTIVE`` (suspended/closed accounts cannot be assumed
+    into and would only add noise). Returns ``[]`` for a standalone account (not
+    in an org) or when the org cannot be read. Never raises.
+    """
+    org = discover_organization(profile=profile, force=force)
+    if not isinstance(org, dict) or org.get("status") != "ok":
+        return []
+    account_ids: list[str] = []
+    for acct in org.get("accounts", []) or []:
+        if not isinstance(acct, dict):
+            continue
+        status = str(acct.get("status", "") or "").upper()
+        if status and status != "ACTIVE":
+            continue
+        aid = str(acct.get("id", "") or "").strip()
+        if aid and aid not in account_ids:
+            account_ids.append(aid)
+    return account_ids
+
+
+def assume_account_session(
+    account_id: str,
+    *,
+    profile: str | None = None,
+    role_name: str | None = None,
+    external_id: str | None = None,
+    region: str | None = None,
+    session_name: str = _ORG_SESSION_NAME,
+    duration_seconds: int = 3600,
+) -> Any:
+    """Assume the read-only role in *account_id* and return a boto3 session.
+
+    Keyless and short-lived: ``sts:AssumeRole`` from the management /
+    delegated-admin account issues temporary credentials for the per-account
+    read-only role, and the returned :class:`boto3.Session` is backed solely by
+    those — no long-lived key is created or logged. The ExternalId (when set) is
+    presented to satisfy the confused-deputy condition but never logged.
+
+    Raises on failure (boto3 missing, AssumeRole denied) so the caller can skip
+    the account with a warning rather than sinking the whole fan-out.
+    """
+    import boto3
+
+    role = (role_name or os.environ.get(ORG_ROLE_NAME_ENV, "").strip() or _DEFAULT_ORG_ROLE_NAME).strip()
+    ext = external_id if external_id is not None else os.environ.get(ORG_EXTERNAL_ID_ENV, "").strip()
+
+    base = boto3.Session(profile_name=profile) if profile else boto3.Session()
+    sts = base.client("sts")
+    role_arn = f"arn:aws:iam::{account_id}:role/{role}"
+    assume_kwargs: dict[str, Any] = {
+        "RoleArn": role_arn,
+        "RoleSessionName": session_name,
+        "DurationSeconds": duration_seconds,
+    }
+    if ext:
+        assume_kwargs["ExternalId"] = ext
+    try:
+        assumed = sts.assume_role(**assume_kwargs)
+    finally:
+        ext = ""  # drop the plaintext ExternalId reference immediately
+    creds = assumed.get("Credentials", {})
+    return boto3.Session(
+        aws_access_key_id=creds.get("AccessKeyId"),
+        aws_secret_access_key=creds.get("SecretAccessKey"),
+        aws_session_token=creds.get("SessionToken"),
+        region_name=region,
+    )
+
+
+def summarize_account_scan(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarise a multi-account fan-out into scanned / skipped / errored sets.
+
+    Consumes the per-account inventory payloads
+    :func:`agent_bom.cloud.aws_inventory.discover_all_account_inventories`
+    returns. A ``status: "ok"`` payload counts as scanned; an
+    ``"access_denied"`` payload (AssumeRole/read denied) as skipped; any other
+    status (boto3 missing, unexpected error) as errored. Deterministic and
+    JSON-serialisable so it can ride on the report's ``aws_organization`` block.
+    """
+    scanned: list[str] = []
+    skipped: list[str] = []
+    errored: list[str] = []
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        aid = str(payload.get("account_id") or "").strip()
+        status = str(payload.get("status", "") or "")
+        if status == "ok":
+            bucket = scanned
+        elif status == "access_denied":
+            bucket = skipped
+        else:
+            bucket = errored
+        if aid:
+            bucket.append(aid)
+    return {
+        "accounts_scanned": scanned,
+        "accounts_skipped": skipped,
+        "accounts_errored": errored,
+        "total": len(scanned) + len(skipped) + len(errored),
+    }
+
+
+__all__ = [
+    "INVENTORY_ENV_FLAG",
+    "ORG_FANOUT_ENV_FLAG",
+    "ORG_ROLE_NAME_ENV",
+    "ORG_EXTERNAL_ID_ENV",
+    "assume_account_session",
+    "discover_organization",
+    "list_member_account_ids",
+    "max_accounts",
+    "org_fanout_enabled",
+    "summarize_account_scan",
+]

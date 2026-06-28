@@ -2354,6 +2354,19 @@ def scan(
         # Rebuild report.blast_radii to reflect suppressions
         report.blast_radii = blast_radii
 
+    # `--exclude-unfixable` drops vulnerabilities that have no available fix from
+    # the report, the console/JSON output, and the --fail-on-severity gate. A
+    # finding with no upstream fix cannot be remediated by an upgrade, so this is
+    # the gate-level equivalent of an "ignore unfixed" policy. (SARIF export also
+    # honours the flag independently via to_sarif().)
+    if exclude_unfixable:
+        from agent_bom.ignores import drop_unfixable
+
+        blast_radii, _dropped_unfixed = drop_unfixable(blast_radii)
+        report.blast_radii = blast_radii
+        if _dropped_unfixed and not quiet:
+            con.print(f"\n  [dim]Excluded {_dropped_unfixed} unfixable finding(s) (no upstream fix available)[/dim]")
+
     ctx.step_timings["scanning"] = _time.monotonic() - _step_t0
 
     # Surface graph-walk reachability onto each blast-radius row so the

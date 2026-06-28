@@ -50,7 +50,9 @@ from agent_bom.package_utils import (
     alpine_release_branch,
     canonical_package_identity,
     canonical_package_key,
+    debian_release_branch,
     normalize_package_name,
+    ubuntu_release_branch,
 )
 from agent_bom.scanners.blast_radius import _HOP_RISK_FACTORS, expand_blast_radius_hops
 from agent_bom.scanners.osv import candidate_package_names as _candidate_package_names
@@ -274,9 +276,9 @@ def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
         distro_name = (pkg.distro_name or "").lower()
         distro_version = (pkg.distro_version or "").strip()
         if distro_name == "debian" and distro_version:
-            return [f"Debian:{distro_version.split('.', 1)[0]}"]
+            return [f"Debian:{debian_release_branch(distro_version)}"]
         if distro_name == "ubuntu" and distro_version:
-            normalized = distro_version
+            normalized = ubuntu_release_branch(distro_version)
             if normalized.count(".") == 1:
                 return [f"Ubuntu:{normalized}:LTS", f"Ubuntu:{normalized}"]
             return [f"Ubuntu:{normalized}"]

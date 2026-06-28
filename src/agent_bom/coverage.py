@@ -73,9 +73,13 @@ def _release_key(pkg: "Package") -> Optional[tuple[str, str]]:
         return None
     if eco == "deb":
         if distro_name == "debian":
-            return ("debian", f"debian:{distro_version.split('.', 1)[0]}")
+            from agent_bom.package_utils import debian_release_branch
+
+            return ("debian", f"debian:{debian_release_branch(distro_version)}")
         if distro_name == "ubuntu":
-            return ("ubuntu", f"ubuntu:{distro_version}")
+            from agent_bom.package_utils import ubuntu_release_branch
+
+            return ("ubuntu", f"ubuntu:{ubuntu_release_branch(distro_version)}")
         return None
     if eco == "apk":
         # Alpine advisories are stored per minor branch (``alpine:v3.16``); truncate

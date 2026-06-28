@@ -19,7 +19,7 @@ from agent_bom.coverage import _release_key
 from agent_bom.db.lookup import lookup_packages_batch
 from agent_bom.db.schema import init_db
 from agent_bom.models import Package
-from agent_bom.package_utils import alpine_release_branch
+from agent_bom.package_utils import alpine_release_branch, debian_release_branch, ubuntu_release_branch
 from agent_bom.scanners import _db_ecosystems_for_package, _osv_ecosystems_for_package, _scan_packages_db_conn
 
 
@@ -40,6 +40,34 @@ from agent_bom.scanners import _db_ecosystems_for_package, _osv_ecosystems_for_p
 )
 def test_alpine_release_branch_normalization(version_id: str, expected: str):
     assert alpine_release_branch(version_id) == expected
+
+
+@pytest.mark.parametrize(
+    "version_id, expected",
+    [
+        ("12", "12"),
+        ("12.5", "12"),
+        ("10.13", "10"),
+        ("bookworm", "bookworm"),
+        ("", ""),
+    ],
+)
+def test_debian_release_branch_normalization(version_id: str, expected: str):
+    assert debian_release_branch(version_id) == expected
+
+
+@pytest.mark.parametrize(
+    "version_id, expected",
+    [
+        ("22.04", "22.04"),
+        ("22.04.4", "22.04"),
+        ("20.04.6", "20.04"),
+        ("noble", "noble"),
+        ("", ""),
+    ],
+)
+def test_ubuntu_release_branch_normalization(version_id: str, expected: str):
+    assert ubuntu_release_branch(version_id) == expected
 
 
 def _apk_pkg(version_id: str) -> Package:
@@ -97,6 +125,29 @@ def test_debian_and_ubuntu_keys_unchanged():
     assert _osv_ecosystems_for_package(deb) == ["Debian:12"]
     assert _release_key(deb) == ("debian", "debian:12")
     assert _osv_ecosystems_for_package(ubuntu) == ["Ubuntu:22.04:LTS", "Ubuntu:22.04"]
+    assert _release_key(ubuntu) == ("ubuntu", "ubuntu:22.04")
+
+
+def test_debian_and_ubuntu_point_releases_collapse_to_advisory_branch():
+    deb = Package(
+        name="bash",
+        version="5.1-2",
+        ecosystem="deb",
+        distro_name="debian",
+        distro_version="12.5",
+    )
+    ubuntu = Package(
+        name="bash",
+        version="5.1-6ubuntu1",
+        ecosystem="deb",
+        distro_name="ubuntu",
+        distro_version="22.04.4",
+    )
+    assert _osv_ecosystems_for_package(deb) == ["Debian:12"]
+    assert _db_ecosystems_for_package(deb) == ["debian:12"]
+    assert _release_key(deb) == ("debian", "debian:12")
+    assert _osv_ecosystems_for_package(ubuntu) == ["Ubuntu:22.04:LTS", "Ubuntu:22.04"]
+    assert _db_ecosystems_for_package(ubuntu) == ["ubuntu:22.04:lts", "ubuntu:22.04"]
     assert _release_key(ubuntu) == ("ubuntu", "ubuntu:22.04")
 
 

@@ -481,6 +481,11 @@ def scan(
         load_project_config,
     )
 
+    # Always bind at function scope: the scan/consume site below sits in a nested
+    # block that early-return paths (dry-run, format validation) never enter, but
+    # the report-build site at the outer scope always references it.
+    _coverage_warnings: list[dict] = []
+
     _scan_start = _time.monotonic()
 
     from agent_bom.cli._agent_mode import agent_mode_requested

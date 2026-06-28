@@ -375,6 +375,62 @@ def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):
     assert "bounded helper-call chain" in finding.detail
 
 
+def test_analyze_project_surfaces_dependency_symbol_reach_from_tool(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "import requests\n\n"
+        "@tool\n"
+        "def fetch(url):\n"
+        "    return requests.get(url)\n"
+    )
+
+    result = analyze_project(tmp_path)
+    payload = result.to_dict()
+
+    assert payload["stats"]["total_dependency_symbol_reach"] == 1
+    assert payload["dependency_symbol_reach"] == [
+        {
+            "entrypoint": "fetch",
+            "package": "requests",
+            "module": "requests",
+            "symbol": "get",
+            "file": "agent.py",
+            "line": 5,
+            "call_path": ["fetch", "requests.get"],
+            "depth": 0,
+            "confidence": "import-symbol",
+        }
+    ]
+
+
+def test_analyze_project_surfaces_dependency_symbol_reach_through_helper(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "from openai import OpenAI\n\n"
+        "def ask_model(prompt):\n"
+        "    client = OpenAI()\n"
+        "    return client.responses.create(input=prompt, model='gpt-test')\n\n"
+        "@tool\n"
+        "def answer(prompt):\n"
+        "    return ask_model(prompt)\n"
+    )
+
+    result = analyze_project(tmp_path)
+    reaches = result.to_dict()["dependency_symbol_reach"]
+
+    assert reaches == [
+        {
+            "entrypoint": "answer",
+            "package": "openai",
+            "module": "openai",
+            "symbol": "OpenAI",
+            "file": "agent.py",
+            "line": 4,
+            "call_path": ["answer", "ask_model", "openai.OpenAI"],
+            "depth": 1,
+            "confidence": "import-symbol",
+        }
+    ]
+
+
 def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

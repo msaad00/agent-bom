@@ -9,6 +9,9 @@ default. STS AssumeRole and the org enumeration are mocked throughout.
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 from agent_bom.cloud import aws_cis_benchmark as aws_cis
@@ -16,6 +19,33 @@ from agent_bom.cloud import aws_inventory as aws_inv
 from agent_bom.cloud import aws_organizations as aws_orgs
 from agent_bom.cloud.aws_cis_benchmark import CheckStatus, CISBenchmarkReport, CISCheckResult
 from agent_bom.graph.builder import build_unified_graph_from_report
+
+
+@pytest.fixture(autouse=True)
+def _stub_boto3(monkeypatch):
+    """Make ``import boto3`` resolve to a stub so the fan-out runs with NO real
+    boto3 installed.
+
+    CI's base test env does not install the ``[aws]`` extra, so the module-level
+    ``import boto3`` guards in ``discover_all_account_inventories`` /
+    ``run_all_account_benchmarks`` would otherwise short-circuit before the mocked
+    fan-out runs. The fan-out tests monkeypatch ``assume_account_session`` /
+    ``discover_inventory``, so the stub only has to satisfy those import guards.
+    Mirrors the established pattern in ``tests/test_aws_organizations.py`` and
+    ``tests/test_cloud_aws_inventory.py``. A test that needs boto3 genuinely
+    absent overrides ``sys.modules["boto3"]`` to ``None`` in its own body.
+    """
+    boto3 = types.ModuleType("boto3")
+    boto3.Session = lambda **_kw: None  # type: ignore[attr-defined]
+    botocore = types.ModuleType("botocore")
+    errs = types.ModuleType("botocore.exceptions")
+    errs.NoCredentialsError = type("NoCredentialsError", (Exception,), {})  # type: ignore[attr-defined]
+    errs.ClientError = type("ClientError", (Exception,), {})  # type: ignore[attr-defined]
+    botocore.exceptions = errs  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "boto3", boto3)
+    monkeypatch.setitem(sys.modules, "botocore", botocore)
+    monkeypatch.setitem(sys.modules, "botocore.exceptions", errs)
+
 
 # ---------------------------------------------------------------------------
 # Gating — default OFF
@@ -419,3 +449,30 @@ def test_enrich_report_attaches_account_scan_summary(monkeypatch) -> None:
     assert summary["accounts_scanned"] == ["111111111111"]
     assert summary["accounts_skipped"] == ["222222222222"]
     assert summary["total"] == 2
+
+
+# ---------------------------------------------------------------------------
+# boto3 genuinely absent — degrade gracefully, never crash
+# ---------------------------------------------------------------------------
+
+
+def test_fanout_degrades_gracefully_without_boto3(monkeypatch) -> None:
+    from agent_bom.cloud.base import CloudDiscoveryError
+
+    # Override the autouse stub: make ``import boto3`` raise (boto3 not installed).
+    monkeypatch.setitem(sys.modules, "boto3", None)
+    monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
+
+    # Inventory fan-out returns a single boto3_missing payload — never crashes.
+    payloads = aws_inv.discover_all_account_inventories(force=True)
+    assert len(payloads) == 1
+    assert payloads[0]["status"] == "boto3_missing"
+
+    # CIS fan-out raises the documented CloudDiscoveryError (caught by the CLI).
+    with pytest.raises(CloudDiscoveryError):
+        aws_cis.run_all_account_benchmarks()
+
+    # The AssumeRole broker raises so the caller skips the account with a warning
+    # rather than silently succeeding.
+    with pytest.raises(ImportError):
+        aws_orgs.assume_account_session("111111111111")

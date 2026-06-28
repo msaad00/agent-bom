@@ -143,3 +143,30 @@ def test_iac_command_exits_zero_when_clean(tmp_path: Path):
 
     assert result.exit_code == 0
     assert "no misconfigurations" in " ".join(result.output.split())
+
+
+def test_drop_unfixable_drops_findings_without_fix():
+    """--exclude-unfixable removes findings with no available fix (gate parity)."""
+    from unittest.mock import MagicMock
+
+    from agent_bom.ignores import drop_unfixable
+
+    fixable = MagicMock()
+    fixable.vulnerability.fixed_version = "2.0.0"
+    unfixable = MagicMock()
+    unfixable.vulnerability.fixed_version = None
+    empty_fix = MagicMock()
+    empty_fix.vulnerability.fixed_version = "  "
+
+    kept, dropped = drop_unfixable([fixable, unfixable, empty_fix])
+    assert kept == [fixable]
+    assert dropped == 2
+
+
+def test_image_and_fs_expose_ignore_and_exclude_unfixable():
+    """Both focused gates expose --ignore and --exclude-unfixable (wiring guard)."""
+    for cmd in ("image", "fs"):
+        result = CliRunner().invoke(main, [cmd, "--help"])
+        assert result.exit_code == 0
+        assert "--ignore" in result.output
+        assert "--exclude-unfixable" in result.output

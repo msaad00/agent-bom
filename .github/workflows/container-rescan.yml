@@ -36,33 +36,40 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.11'
+
+      - name: Install agent-bom for the image scan
+        run: uv sync --frozen --extra dev
+
       - name: Pull ${{ matrix.platform }} image
         run: docker pull --platform ${{ matrix.platform }} agentbom/agent-bom:latest
 
-      - name: Container image scan table (fixable MEDIUM+/UNKNOWN)
+      - name: Container image scan table (fixable MEDIUM+)
         id: image_scan_table
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
-        with:
-          image-ref: agentbom/agent-bom:latest
-          format: table
-          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
-          ignore-unfixed: true
-          exit-code: "1"
-          trivyignores: .image-scan-ignore
         continue-on-error: true
+        # Self-hosted image gate (dogfood). agent-bom reads the pulled image
+        # from the local Docker daemon (via docker save). Native OS-layer
+        # (dpkg/rpm/apk) + app-dependency scanning at MEDIUM+ severity
+        # (agent-bom has no separate UNKNOWN tier), unfixable findings excluded
+        # (= ignore-unfixed), and the .image-scan-ignore CVE allowlist.
+        run: |
+          uv run agent-bom image agentbom/agent-bom:latest \
+            --ignore .image-scan-ignore \
+            --exclude-unfixable \
+            --fail-on-severity medium
 
       - name: Container image scan SARIF
         id: image_scan_sarif
         continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
-        with:
-          image-ref: agentbom/agent-bom:latest
-          format: sarif
-          output: image-scan-${{ matrix.sarif_category }}.sarif
-          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
-          ignore-unfixed: true
-          exit-code: "0"
-          trivyignores: .image-scan-ignore
+        # Non-gating SARIF export for the GitHub Security tab. Same scan policy
+        # as the table gate above; emits the same allowlist-filtered findings.
+        run: |
+          uv run agent-bom image agentbom/agent-bom:latest \
+            --ignore .image-scan-ignore \
+            --exclude-unfixable \
+            -f sarif -o image-scan-${{ matrix.sarif_category }}.sarif
 
       - name: Detect SARIF output
         id: sarif
@@ -91,7 +98,7 @@ jobs:
       - name: Flag actionable CVEs found
         if: steps.image_scan_table.outcome == 'failure'
         run: |
-          echo "::warning::Container scan found fixable MEDIUM+/UNKNOWN CVEs in agentbom/agent-bom:latest (${{ matrix.platform }}). Check SARIF in Security tab."
+          echo "::warning::Container scan found fixable MEDIUM+ CVEs in agentbom/agent-bom:latest (${{ matrix.platform }}). Check SARIF in Security tab."
 
       - name: Open or close base image vulnerability issue
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
@@ -109,12 +116,12 @@ jobs:
             BODY=$(cat <<EOF
           ## Automated Base Image Vulnerability Alert
 
-          Daily image rescan found fixable \`MEDIUM+\` or \`UNKNOWN\` findings in \`agentbom/agent-bom:latest\`.
+          Daily image rescan found fixable \`MEDIUM+\` findings in \`agentbom/agent-bom:latest\`.
 
           - Platform: \`${{ matrix.platform }}\`
           - SARIF category: \`${{ matrix.sarif_category }}\`
           - Source workflow: \`.github/workflows/container-rescan.yml\`
-          - Policy: container scans run with \`severity=MEDIUM,HIGH,CRITICAL,UNKNOWN\` and \`ignore-unfixed=true\`
+          - Policy: container scans run with \`agent-bom image --fail-on-severity medium --exclude-unfixable\`
 
           Review the GitHub Security tab and the workflow logs for the current image findings.
           EOF

@@ -246,3 +246,78 @@ def test_scan_ignore_file_flag_accepted(tmp_path):
     ):
         result = CliRunner().invoke(main, ["scan", "--demo", "--ignore-file", str(ignore_f), "--no-scan"])
     assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Flat newline-delimited id list (.image-scan-ignore format)
+# ---------------------------------------------------------------------------
+
+
+def test_load_flat_id_list(tmp_path):
+    f = tmp_path / ".image-scan-ignore"
+    f.write_text("# header comment\nCVE-2026-27459\n\nCVE-2025-69720  # inline comment\nGHSA-xxxx-yyyy-zzzz\n")
+    entries = load_ignore_file(f)
+    ids = [e["id"] for e in entries]
+    assert ids == ["CVE-2026-27459", "CVE-2025-69720", "GHSA-xxxx-yyyy-zzzz"]
+    assert all(e["reason"] for e in entries)
+
+
+def test_load_flat_id_list_dedupes(tmp_path):
+    f = tmp_path / ".image-scan-ignore"
+    f.write_text("CVE-2025-6141\ncve-2025-6141\nCVE-2025-6141\n")
+    entries = load_ignore_file(f)
+    assert [e["id"] for e in entries] == ["CVE-2025-6141"]
+
+
+def test_load_flat_comments_only_is_empty(tmp_path):
+    f = tmp_path / ".image-scan-ignore"
+    f.write_text("# only comments\n\n# nothing else\n")
+    assert load_ignore_file(f) == []
+
+
+def test_load_repo_image_scan_ignore_has_five_cves():
+    """The shipped .image-scan-ignore still suppresses its 5 known CVEs."""
+    from pathlib import Path
+
+    repo_ignore = Path(__file__).resolve().parent.parent / ".image-scan-ignore"
+    entries = load_ignore_file(repo_ignore)
+    ids = {e["id"] for e in entries}
+    assert ids == {
+        "CVE-2026-27459",
+        "CVE-2025-69720",
+        "CVE-2025-6141",
+        "CVE-2025-60876",
+        "CVE-2026-3219",
+    }
+
+
+def test_flat_list_suppresses_blast_radius(tmp_path):
+    f = tmp_path / ".image-scan-ignore"
+    f.write_text("CVE-2024-1234\n")
+    entries = load_ignore_file(f)
+    br = _make_blast_radius(cve_id="CVE-2024-1234")
+    filtered, suppressed = apply_ignores([br], entries)
+    assert suppressed == 1
+    assert filtered == []
+
+
+# ---------------------------------------------------------------------------
+# apply_ignores — alias-aware id match (GHSA <-> CVE)
+# ---------------------------------------------------------------------------
+
+
+def test_alias_id_suppresses():
+    br = _make_blast_radius(cve_id="GHSA-aaaa-bbbb-cccc")
+    br.vulnerability.aliases = ["CVE-2024-5678"]
+    entries = [{"id": "CVE-2024-5678", "reason": "matched via alias"}]
+    filtered, suppressed = apply_ignores([br], entries)
+    assert suppressed == 1
+    assert filtered == []
+
+
+def test_non_sequence_aliases_do_not_crash():
+    br = _make_blast_radius(cve_id="CVE-2024-1234")
+    # aliases left as a MagicMock attribute (non-list) must not raise.
+    entries = [{"id": "CVE-2024-1234", "reason": "primary id still matches"}]
+    filtered, suppressed = apply_ignores([br], entries)
+    assert suppressed == 1

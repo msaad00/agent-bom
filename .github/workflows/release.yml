@@ -707,14 +707,23 @@ jobs:
         run: docker run --rm agent-bom:release-test --version
 
       - name: Image vulnerability scan gate
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
-        with:
-          image-ref: agent-bom:release-test
-          format: table
-          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
-          ignore-unfixed: true
-          exit-code: "1"
-          trivyignores: .image-scan-ignore
+        # Self-hosted release image gate (dogfood). The agent-bom:release-test
+        # image IS agent-bom, so it scans a saved tar of itself: native
+        # OS-layer (dpkg/rpm/apk) + app-dependency vulnerabilities at MEDIUM+
+        # severity (agent-bom has no separate UNKNOWN tier), unfixable findings
+        # excluded (= ignore-unfixed), and the .image-scan-ignore allowlist of
+        # known-unfixable base-image CVEs.
+        run: |
+          docker save agent-bom:release-test -o /tmp/agent-bom-release-test.tar
+          chmod 0644 /tmp/agent-bom-release-test.tar
+          docker run --rm \
+            -v /tmp/agent-bom-release-test.tar:/scan/image.tar:ro \
+            -v "$PWD/.image-scan-ignore:/scan/.image-scan-ignore:ro" \
+            agent-bom:release-test \
+            image --tar /scan/image.tar \
+            --ignore /scan/.image-scan-ignore \
+            --exclude-unfixable \
+            --fail-on-severity medium
 
   self-scan-gate:
     name: Self-scan release gate

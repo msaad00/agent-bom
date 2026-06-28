@@ -65,6 +65,22 @@ def _has_finding_at_or_above(findings, threshold: str = "high") -> bool:
 @click.option("--offline", is_flag=True, help="Scan against local DB only")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--fixable-only", "fixable_only", is_flag=True, default=False, help="Show only vulnerabilities with available fixes.")
+@click.option(
+    "--exclude-unfixable",
+    "exclude_unfixable",
+    is_flag=True,
+    default=False,
+    help="Drop vulnerabilities with no available fix from output and the --fail-on-severity gate (an 'ignore unfixed' policy).",
+)
+@click.option(
+    "--ignore",
+    "ignore_file",
+    type=click.Path(),
+    default=None,
+    metavar="FILE",
+    help="Suppress advisories listed in FILE (flat CVE/GHSA id list or .agent-bom-ignore.yaml) "
+    "from output and the --fail-on-severity gate.",
+)
 def image_cmd(
     image_ref: str | None,
     image_tar: str | None,
@@ -76,6 +92,8 @@ def image_cmd(
     offline: bool,
     quiet: bool,
     fixable_only: bool,
+    exclude_unfixable: bool,
+    ignore_file: Optional[str],
 ) -> None:
     """Scan a container image for vulnerabilities.
 
@@ -105,6 +123,8 @@ def image_cmd(
         offline=offline,
         quiet=quiet,
         fixable_only=fixable_only,
+        exclude_unfixable=exclude_unfixable,
+        ignore_file=ignore_file,
     )
 
 
@@ -117,6 +137,22 @@ def image_cmd(
 @click.option("--offline", is_flag=True, help="Scan against local DB only")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--fixable-only", "fixable_only", is_flag=True, default=False, help="Show only vulnerabilities with available fixes.")
+@click.option(
+    "--exclude-unfixable",
+    "exclude_unfixable",
+    is_flag=True,
+    default=False,
+    help="Drop vulnerabilities with no available fix from output and the --fail-on-severity gate (an 'ignore unfixed' policy).",
+)
+@click.option(
+    "--ignore",
+    "ignore_file",
+    type=click.Path(),
+    default=None,
+    metavar="FILE",
+    help="Suppress advisories listed in FILE (flat CVE/GHSA id list or .agent-bom-ignore.yaml) "
+    "from output and the --fail-on-severity gate.",
+)
 def fs_cmd(
     path: str,
     output_format: str,
@@ -126,6 +162,8 @@ def fs_cmd(
     offline: bool,
     quiet: bool,
     fixable_only: bool,
+    exclude_unfixable: bool,
+    ignore_file: Optional[str],
 ) -> None:
     """Scan a filesystem directory or mounted VM disk snapshot.
 
@@ -148,6 +186,8 @@ def fs_cmd(
         offline=offline,
         quiet=quiet,
         fixable_only=fixable_only,
+        exclude_unfixable=exclude_unfixable,
+        ignore_file=ignore_file,
     )
 
 

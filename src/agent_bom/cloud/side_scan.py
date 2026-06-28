@@ -43,7 +43,7 @@ from typing import Any, Optional, Protocol
 from agent_bom.filesystem import scan_disk_path_native
 from agent_bom.models import Package
 from agent_bom.secret_scanner import SecretScanResult, scan_secrets
-from agent_bom.security import sanitize_error
+from agent_bom.security import sanitize_text
 
 from .base import CloudDiscoveryError
 
@@ -190,7 +190,7 @@ class CollectorMountController:
         try:
             subprocess.run(["umount", str(mount_point)], check=True, capture_output=True, timeout=120)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as exc:
-            logger.warning("side-scan: umount %s failed (best-effort): %s", mount_point, exc)
+            logger.warning("side-scan: umount %s failed (best-effort): %s", mount_point, sanitize_text(exc))
         try:
             mount_point.rmdir()
         except OSError:
@@ -362,7 +362,7 @@ class AwsEbsSideScanner:
             try:
                 self._ec2.get_waiter("snapshot_completed").wait(SnapshotIds=[snapshot_id])
             except Exception as exc:  # noqa: BLE001 — waiter failure shouldn't abort; describe will catch it
-                logger.debug("side-scan: snapshot waiter failed for %s: %s", snapshot_id, exc)
+                logger.debug("side-scan: snapshot waiter failed for %s: %s", snapshot_id, sanitize_text(exc))
 
     def _provision_and_mount(self, state: _LifecycleState) -> Path:
         if not self._collector_instance_id or not self._availability_zone:
@@ -409,7 +409,7 @@ class AwsEbsSideScanner:
             try:
                 self._ec2.get_waiter("volume_available").wait(VolumeIds=[volume_id])
             except Exception as exc:  # noqa: BLE001
-                logger.debug("side-scan: volume waiter failed for %s: %s", volume_id, exc)
+                logger.debug("side-scan: volume waiter failed for %s: %s", volume_id, sanitize_text(exc))
 
     # ── Parse (reuse existing native parsers + secret scanner) ────────────
 
@@ -436,7 +436,7 @@ class AwsEbsSideScanner:
         try:
             scan_result: SecretScanResult = scan_secrets(mount_point)
         except Exception as exc:  # noqa: BLE001 — secret scan is best-effort enrichment
-            logger.warning("side-scan: secret scan failed (continuing): %s", sanitize_error(exc))
+            logger.warning("side-scan: secret scan failed (continuing): %s", sanitize_text(exc))
             return []
         return [
             SideScanSecret(
@@ -509,7 +509,7 @@ class AwsEbsSideScanner:
                 OwnerIds=["self"],
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("side-scan: orphan sweep describe failed: %s", exc)
+            logger.warning("side-scan: orphan sweep describe failed: %s", sanitize_text(exc))
             return deleted
 
         for snap in resp.get("Snapshots", []):
@@ -521,7 +521,7 @@ class AwsEbsSideScanner:
                 deleted.append(snap_id)
                 logger.info("side-scan: orphan sweep deleted stranded snapshot %s", snap_id)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("side-scan: orphan sweep could not delete %s: %s", snap_id, exc)
+                logger.warning("side-scan: orphan sweep could not delete %s: %s", snap_id, sanitize_text(exc))
         return deleted
 
 

@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.intel_lookup import build_daily_brief, list_intel_sources, lookup_advisory, match_packages
+from agent_bom.security import sanitize_error
 
 router = APIRouter()
 
@@ -46,7 +47,7 @@ async def get_intel_advisory(advisory_id: str) -> dict[str, Any]:
     try:
         return lookup_advisory(advisory_id)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
 
 
 @router.post("/v1/intel/match", tags=["intel"])
@@ -59,7 +60,7 @@ async def post_intel_match(
     try:
         result = match_packages(body.packages, limit=body.limit)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc
     if not include_unmatched:
         result["matches"] = [item for item in result["matches"] if item["match_count"] > 0]
     return result
@@ -81,4 +82,4 @@ async def post_intel_daily_brief(body: IntelDailyBriefRequest) -> dict[str, Any]
             limit=body.limit,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from exc

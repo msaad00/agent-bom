@@ -1356,3 +1356,32 @@ def test_summarize_inventory_payload_redacts_raw_warnings() -> None:
     assert warnings == ["2 provider discovery warning(s) — see server logs for detail."]
     blob = " ".join(warnings)
     assert "Traceback" not in blob and "AccessDenied" not in blob and "arn:aws:iam" not in blob
+
+
+# Sensitive raw exception text (KMS broker / encryption path) must never reach the
+# HTTP 503 body. The encryption failure mode is HIGH sensitivity, so the route
+# uses sanitize_error(exc, generic=True): a fixed, non-diagnostic message.
+_LEAKY_SECRET = "kms-key-id=arn:aws:kms:us-east-1:123456789012:key/abcd token=AKIASECRETVALUE at /etc/agent-bom/master.pem"
+
+
+def test_create_503_on_encryption_failure_never_leaks_exception(monkeypatch: Any) -> None:
+    from agent_bom.api.connection_crypto import ConnectionSecretError
+    from agent_bom.api.routes import cloud_connections as routes
+
+    def _boom(_value: str) -> str:
+        raise ConnectionSecretError(_LEAKY_SECRET)
+
+    monkeypatch.setattr(routes, "encrypt_secret", _boom)
+
+    client = TestClient(_app())
+    resp = client.post("/v1/cloud/connections", json=_create_body(), headers=_proxy_headers())
+
+    assert resp.status_code == 503
+    detail = resp.json()["detail"]
+    # Generic, non-diagnostic message — and none of the leaky fragments survive.
+    assert detail == "An internal error occurred. Please contact support."
+    blob = str(resp.json())
+    assert "arn:aws:kms" not in blob
+    assert "AKIASECRETVALUE" not in blob
+    assert "master.pem" not in blob
+    assert "kms-key-id" not in blob

@@ -117,6 +117,33 @@ def canonical_package_key(name: str, version: str, ecosystem: str, purl: str | N
     return f"{normalized_ecosystem}:{normalized_name}{suffix}"
 
 
+@lru_cache(maxsize=4096)
+def alpine_release_branch(distro_version: str) -> str:
+    """Normalize an Alpine ``VERSION_ID`` to its secdb branch key (``v{major}.{minor}``).
+
+    Alpine security advisories are published per *minor branch* (``v3.16``), not
+    per point release. A full ``VERSION_ID`` such as ``3.16.9`` must be truncated
+    to ``v3.16`` so apk advisory lookups resolve against the branch's advisory
+    rows instead of zero rows under the (never-stored) point-release key. This
+    aligns apk release keying with mainstream advisory scanners.
+
+    Behaviour:
+    - ``3.16.9`` / ``v3.16.9`` -> ``v3.16``
+    - ``3.20.10`` -> ``v3.20``
+    - ``3.16`` / ``v3.16`` -> ``v3.16`` (already a branch)
+    - non-numeric / single-component streams (``edge``) keep prior ``v``-prefix
+      behaviour so no real branch key changes meaning.
+    """
+    raw = (distro_version or "").strip()
+    if not raw:
+        return raw
+    body = raw[1:] if raw.startswith("v") else raw
+    parts = body.split(".")
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f"v{parts[0]}.{parts[1]}"
+    return raw if raw.startswith("v") else f"v{raw}"
+
+
 @lru_cache(maxsize=16384)
 def parse_debian_source_name(source_field: str) -> Optional[str]:
     """Extract the Debian source package name from a ``Source:`` field."""
@@ -129,6 +156,7 @@ def parse_debian_source_name(source_field: str) -> Optional[str]:
 
 
 __all__ = [
+    "alpine_release_branch",
     "canonical_package_identity",
     "canonical_package_key",
     "host_matches_domain",

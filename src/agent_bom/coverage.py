@@ -78,8 +78,11 @@ def _release_key(pkg: "Package") -> Optional[tuple[str, str]]:
             return ("ubuntu", f"ubuntu:{distro_version}")
         return None
     if eco == "apk":
-        normalized = distro_version if distro_version.startswith("v") else f"v{distro_version}"
-        return ("alpine", f"alpine:{normalized}")
+        # Alpine advisories are stored per minor branch (``alpine:v3.16``); truncate
+        # the point release so coverage counts rows instead of a false absence.
+        from agent_bom.package_utils import alpine_release_branch
+
+        return ("alpine", f"alpine:{alpine_release_branch(distro_version)}")
     return None
 
 

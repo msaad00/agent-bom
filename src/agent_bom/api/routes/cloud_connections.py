@@ -213,7 +213,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
     except ConnectionSecretError as exc:
         # Never echo the secret or key detail — only the failure mode.
         _logger.warning("Connection secret encryption unavailable")
-        raise HTTPException(status_code=503, detail=sanitize_error(exc)) from exc
+        raise HTTPException(status_code=503, detail=sanitize_error(exc, generic=True)) from exc
 
     now = _now()
     record = CloudConnectionRecord(

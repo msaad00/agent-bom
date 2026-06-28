@@ -189,6 +189,14 @@ account.
 - **Vulnerability cache auto-refreshes** and surfaces a freshness indicator.
 - Flat (non-graph) outputs prefer canonical findings for consistency with the
   graph view.
+- **Demo-mode offline scans resolve a curated bundled advisory set, not the full
+  local DB.** In demo mode an offline scan reports against the bundled demo
+  advisory DB (deterministic, every demo package maps to at least one advisory),
+  which surfaces fewer, curated findings than a real offline scan against the
+  full local vulnerability DB. The active source is labeled in scan output
+  (`bundled demo advisory DB` vs `local vulnerability DB`). Demo screenshots and
+  finding counts therefore differ from real-scan numbers by design — compare
+  like-for-like (real scans use the local/synced DB).
 
 ### Fixed
 - **Fixed agent-mode summary counts.** The envelope `summary.packages` field

@@ -901,7 +901,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     rate_limit_store = _build_gateway_rate_limit_store(settings)
     # Fail-closed posture resolved once at build time. "closed" makes a
     # missing/unloadable policy or an evaluation error DENY instead of silently
-    # degrading to default-allow. Default "open" preserves current behaviour.
+    # degrading to default-allow. Explicit "open" remains available for local
+    # development, but production defaults to closed.
     resolved_fail_mode = resolve_fail_mode(settings.fail_mode)
     fail_closed = resolved_fail_mode == "closed"
     if fail_closed:
@@ -1919,7 +1920,11 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 )
                 try:
                     cond_decision, cond_reason, _cond_rule = evaluate_conditional_rules(current_policy, decision_ctx)
-                    plugin_decision, plugin_reason, _plugin_name = evaluate_policy_plugins(decision_ctx, current_policy)
+                    plugin_decision, plugin_reason, _plugin_name = evaluate_policy_plugins(
+                        decision_ctx,
+                        current_policy,
+                        fail_closed=fail_closed,
+                    )
                     eval_error = False
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("gateway conditional/plugin evaluation error: %s", _sanitize_for_log(exc))

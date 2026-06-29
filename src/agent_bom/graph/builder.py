@@ -601,8 +601,8 @@ def build_unified_graph_from_report(
             )
 
     # ── CIS benchmark misconfigurations ──────────────────────────────
-    for section_key, legacy_key, cloud_provider in (
-        ("cis_benchmark", "cis_benchmark_data", ""),
+    for section_key, legacy_key, default_cloud_provider in (
+        ("cis_benchmark", "cis_benchmark_data", "aws"),
         ("snowflake_cis_benchmark", "snowflake_cis_benchmark_data", "snowflake"),
         ("azure_cis_benchmark", "azure_cis_benchmark_data", "azure"),
         ("gcp_cis_benchmark", "gcp_cis_benchmark_data", "gcp"),
@@ -611,8 +611,18 @@ def build_unified_graph_from_report(
         cis_data = report_json.get(section_key) or report_json.get(legacy_key)
         if not cis_data:
             continue
+        cloud_provider = (
+            _clean_graph_part(cis_data.get("provider"))
+            or _clean_graph_part(cis_data.get("cloud_provider"))
+            or default_cloud_provider
+        )
         checks = cis_data.get("checks", [])
-        cloud_account_id = _clean_graph_part(cis_data.get("subscription_id") or cis_data.get("account_id"))
+        cloud_account_id = _clean_graph_part(
+            cis_data.get("subscription_id")
+            or cis_data.get("account_id")
+            or cis_data.get("aws_account_id")
+            or cis_data.get("project_id")
+        )
         for check in checks:
             if str(check.get("status", "")).upper() != "FAIL":
                 continue

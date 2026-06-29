@@ -757,7 +757,29 @@ class TestCISMisconfigNodes:
         resources = g.nodes_by_type(EntityType.CLOUD_RESOURCE)
         assert len(resources) == 1
         assert resources[0].label == "bucket/prod-secrets"
-        assert g.has_edge("misconfig:cis_benchmark:1.1", "cloud_resource:generic:bucket/prod-secrets")
+        assert resources[0].attributes["cloud_provider"] == "aws"
+        assert g.has_edge("misconfig:cis_benchmark:1.1", "cloud_resource:aws:bucket/prod-secrets")
+        assert not g.get_node("cloud_resource:generic:bucket/prod-secrets")
+
+    def test_cis_failures_anchor_account_scope_to_provider(self):
+        report = _minimal_report()
+        report["cis_benchmark"] = {
+            "account_id": "123456789012",
+            "checks": [
+                {
+                    "check_id": "1.3",
+                    "title": "Ensure account contact is current",
+                    "status": "FAIL",
+                    "severity": "medium",
+                }
+            ],
+        }
+        g = build_unified_graph_from_report(report)
+
+        assert g.has_edge("misconfig:cis_benchmark:1.3", "account:aws:123456789012")
+        account = g.get_node("account:aws:123456789012")
+        assert account is not None
+        assert account.attributes["cloud_provider"] == "aws"
 
 
 class TestSASTNodes:

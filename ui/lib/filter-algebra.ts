@@ -412,6 +412,22 @@ function pruneEdgesToNodes(
   return edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
 }
 
+function filterNodesToEdgeEndpoints(
+  nodes: UnifiedNode[],
+  edges: UnifiedEdge[],
+): UnifiedNode[] {
+  const endpointIds = new Set<string>();
+  for (const edge of edges) {
+    endpointIds.add(edge.source);
+    endpointIds.add(edge.target);
+  }
+  return nodes.filter((node) => endpointIds.has(node.id));
+}
+
+function hasEdgeScopedFilter(filters: FilterState): boolean {
+  return filters.relationshipScope !== "all" || filters.runtimeMode !== "all";
+}
+
 // ───────────────────────────────────────────────────────────────────────
 // Public entry points
 // ───────────────────────────────────────────────────────────────────────
@@ -445,13 +461,16 @@ export function applyFilters(
   const { nodes: filteredNodes } = passNodes(nodes, filteredEdges, filters, {});
   const keepIds = new Set(filteredNodes.map((n) => n.id));
   const finalEdges = pruneEdgesToNodes(filteredEdges, keepIds);
+  const finalNodes = hasEdgeScopedFilter(filters)
+    ? filterNodesToEdgeEndpoints(filteredNodes, finalEdges)
+    : filteredNodes;
 
   // Compute valid values by running 4 alternative passes — each one
   // skips ONE dimension so we can collect what would still appear.
   const validValues = computeValidValues(nodes, edges, filters);
 
   return {
-    nodes: filteredNodes,
+    nodes: finalNodes,
     edges: finalEdges,
     validValues,
   };

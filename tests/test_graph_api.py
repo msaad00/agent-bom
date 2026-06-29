@@ -2479,6 +2479,66 @@ class TestGraphStoreBackendSelection:
         assert response.status_code == 422
         assert "Unsupported graph relationship type" in response.json()["detail"]
 
+    def test_graph_get_relationship_filter_prunes_unconnected_nodes(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:cve",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                severity_id=5,
+            )
+        )
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:orphan", entity_type=EntityType.AGENT, label="orphan"))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO, traversable=True)
+        )
+
+        # The /v1/graph route overlays the governance control plane (drift /
+        # identity nodes) on top of the scan graph. Seed a drift incident so the
+        # overlay injects a drift node connected only by exhibits_drift — a
+        # vulnerable_to-scoped view must prune it, not surface it as an orphan.
+        from agent_bom.api.drift_incident_store import (
+            DriftIncident,
+            InMemoryDriftIncidentStore,
+            set_drift_incident_store,
+        )
+
+        drift_store = InMemoryDriftIncidentStore()
+        drift_store.upsert(
+            DriftIncident(
+                incident_id="inc-prune",
+                tenant_id="default",
+                blueprint_id="a",
+                status="drift_detected",
+                drift_score=0.8,
+                violation_count=1,
+                warning_count=0,
+                top_violations=[{"tool_name": "read_file", "type": "unauthorized_tool"}],
+                first_detected_at="2026-06-01T00:00:00Z",
+                last_detected_at="2026-06-02T00:00:00Z",
+            )
+        )
+        set_drift_incident_store(drift_store)
+        try:
+            client = TestClient(app)
+
+            response = client.get("/v1/graph?relationships=vulnerable_to")
+        finally:
+            set_drift_incident_store(None)
+
+        assert response.status_code == 200
+        body = response.json()
+        node_ids = {node["id"] for node in body["nodes"]}
+        assert node_ids == {"server:s", "vuln:cve"}
+        assert {(edge["source"], edge["target"]) for edge in body["edges"]} == {("server:s", "vuln:cve")}
+
     def test_graph_query_rejects_unknown_relationship(self, recording_graph_store):
         client = TestClient(app)
 

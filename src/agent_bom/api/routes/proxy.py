@@ -732,14 +732,14 @@ class _WebSocketAuthContext:
 
 
 def _role_allows(actual: str, required: str = "viewer") -> bool:
-    from agent_bom.api.auth import _ROLE_HIERARCHY, Role
+    from agent_bom.rbac import Role, role_rank
 
     try:
         actual_role = Role(str(actual).strip().lower())
         required_role = Role(required)
     except ValueError:
         return False
-    return _ROLE_HIERARCHY.get(actual_role, 0) >= _ROLE_HIERARCHY.get(required_role, 0)
+    return role_rank(actual_role) >= role_rank(required_role)
 
 
 def _ws_auth_required() -> bool:

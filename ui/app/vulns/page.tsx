@@ -12,6 +12,7 @@ import {
   severityDot,
   JobListItem,
   RemediationItem,
+  UnifiedFinding,
   type FindingTriageDecision,
   type FindingTriageItem,
   type FindingTriageJustification,
@@ -234,6 +235,54 @@ function collectGraphVulns(graph: UnifiedGraphResponse): EnrichedVuln[] {
       graph_reachable: null,
       graph_min_hop_distance: null,
     }));
+}
+
+function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
+  return findings.map((finding): EnrichedVuln => {
+    const assetName = finding.asset?.name?.trim() || finding.asset?.identifier || finding.asset?.stable_id || "asset";
+    const findingLabel = finding.cve_id || finding.title || finding.id;
+    const sourceLabel = uniqueStrings([finding.source, finding.finding_type, ...(finding.scan_sources ?? [])]);
+    return {
+      id: findingLabel,
+      severity: normalizedSeverity(finding.effective_severity ?? finding.severity),
+      summary: finding.title ?? finding.description,
+      description: finding.description ?? finding.title,
+      references: [],
+      advisory_sources: sourceLabel,
+      aliases: [],
+      cvss_score: finding.cvss_score ?? undefined,
+      epss_score: finding.epss_score ?? undefined,
+      is_kev: Boolean(finding.is_kev),
+      cisa_kev: Boolean(finding.is_kev),
+      fixed_version: finding.fixed_version ?? undefined,
+      packages: [assetName],
+      agents: finding.affected_agents ?? [],
+      sources: sourceLabel.length > 0 ? sourceLabel : ["finding"],
+      affected_servers: finding.affected_servers ?? [],
+      exposed_credentials: finding.exposed_credentials ?? [],
+      reachable_tools: finding.exposed_tools ?? [],
+      attack_vector_summary: finding.network_exploitable ? "Network exploitable" : undefined,
+      impact_category: finding.impact_category ?? finding.finding_type,
+      risk_score: finding.risk_score,
+      remediation_items: finding.remediation_guidance
+        ? [
+            {
+              package: assetName,
+              ecosystem: finding.asset?.asset_type ?? finding.finding_type ?? "finding",
+              current_version: "",
+              fixed_version: finding.fixed_version ?? null,
+              action: "review",
+              command: null,
+              verify_command: null,
+              references: [],
+              risk_narrative: finding.remediation_guidance,
+            },
+          ]
+        : [],
+      graph_reachable: null,
+      graph_min_hop_distance: null,
+    };
+  });
 }
 
 function SortButton({
@@ -526,6 +575,11 @@ function VulnsPage() {
         setDetailLoading(true);
         setError("");
         try {
+          const findings = await api.listFindings({ scanId: paramScan, limit: 1000 });
+          if (findings.findings.length > 0) {
+            setVulns(collectUnifiedFindings(findings.findings));
+            return;
+          }
           const graph = await api.getGraph({ scanId: paramScan, limit: 2500 });
           setVulns(collectGraphVulns(graph));
         } catch (graphError) {
@@ -682,10 +736,10 @@ function VulnsPage() {
           <p className="text-zinc-400 text-sm mt-1">
             {scope === "latest"
               ? paramScan
-                ? `${vulns.length} vulnerability findings from scan ${paramScan.slice(0, 8)}.`
-                : `${vulns.length} vulnerability findings from the latest completed scan.`
-              : `${vulns.length} vulnerability findings aggregated across all completed scans.`}{" "}
-            This surface is vulnerability-first today and will expand to broader finding types over time. CVSS and EPSS appear only when the underlying advisory includes them.
+                ? `${vulns.length} findings from scan ${paramScan.slice(0, 8)}.`
+                : `${vulns.length} findings from the latest completed scan.`
+              : `${vulns.length} findings aggregated across all completed scans.`}{" "}
+            CVSS and EPSS appear for advisory-backed vulnerabilities; cloud and governance findings use source evidence and policy severity.
           </p>
         </div>
         {vulns.length > 0 && (
@@ -741,7 +795,7 @@ function VulnsPage() {
       {!loading && !error && vulns.length === 0 && (
         <PageEmptyState
           title="No findings found"
-          detail="Run a scan with vulnerability enrichment enabled to populate CVE-backed findings, affected packages, agents, and remediation evidence."
+          detail="Run a scan or connect a cloud account to populate CVE, cloud posture, graph, and remediation evidence."
           icon={Bug}
           suggestions={[
             "Start with the offline demo if you want predictable sample data.",

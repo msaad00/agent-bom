@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
+
+from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+from agent_bom.api.routes import scan as scan_routes
+from agent_bom.api.store import InMemoryJobStore
+from agent_bom.api.stores import set_job_store
 from agent_bom.models import AIBOMReport
+from agent_bom.output.json_fmt import to_json
 
 
 def _report() -> AIBOMReport:
@@ -109,3 +118,43 @@ def test_cis_fail_posture_and_gate_agree() -> None:
     rendered = buf.getvalue()
     assert "CLEAN" not in rendered  # headline reflects CIS fails
     assert _gate(report) != 0  # gate agrees
+
+
+def test_json_finding_summary_counts_cloud_cis_findings() -> None:
+    payload = to_json(_report())
+    assert payload["summary"]["total_vulnerabilities"] == 0
+    assert payload["summary"]["total_findings"] == 2
+    assert payload["summary"]["critical_unified_findings"] == 1
+    assert payload["summary"]["high_unified_findings"] == 1
+    assert payload["finding_summary"]["by_type"]["CIS_FAIL"] == 2
+    assert payload["finding_summary"]["by_source"]["CLOUD_CIS"] == 2
+
+
+@pytest.mark.asyncio
+async def test_findings_endpoint_filters_cloud_cis_by_scan_id() -> None:
+    store = InMemoryJobStore()
+    set_job_store(store)
+    target = _report()
+    target.scan_id = "scan-cloud"
+    other = AIBOMReport(scan_id="scan-other")
+    other.cis_benchmark_data = {"checks": [{"check_id": "1.1", "title": "Other", "status": "PASS", "severity": "high"}]}
+    for report in (target, other):
+        store.put(
+            ScanJob(
+                job_id=report.scan_id,
+                tenant_id="tenant-cis",
+                status=JobStatus.DONE,
+                created_at="2026-06-29T00:00:00Z",
+                completed_at="2026-06-29T00:00:01Z",
+                request=ScanRequest(),
+                result=to_json(report),
+            )
+        )
+
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-cis", api_key_name="tester"))
+    response = await scan_routes.list_findings(request, scan_id="scan-cloud")
+
+    assert response["scan_id"] == "scan-cloud"
+    assert response["total"] == 2
+    assert {finding["finding_type"] for finding in response["findings"]} == {"CIS_FAIL"}
+    assert {finding["scan_id"] for finding in response["findings"]} == {"scan-cloud"}

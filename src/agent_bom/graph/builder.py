@@ -2171,6 +2171,13 @@ def _add_agent_cloud_lineage(
             RelationshipType.HOSTS,
             {"source": "cloud_origin", "provider": provider, "scope_key": account_key or "account_id"},
         )
+        _add_rel_edge(
+            graph,
+            account_node_id,
+            resource_node_id,
+            RelationshipType.CONTAINS,
+            {"source": "cloud_origin", "provider": provider, "scope_key": account_key or "account_id"},
+        )
     _add_rel_edge(
         graph,
         cloud_provider_id,

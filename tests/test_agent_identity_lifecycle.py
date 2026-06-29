@@ -588,7 +588,8 @@ async def test_mcp_identity_write_emits_lifecycle_audit_chain(store):
         actions = {e.action for e in audit.list_entries(limit=100)}
         assert "agent_identity.issued" in actions
         assert "agent_identity.revoked" in actions
-        # The MCP write path stamps the operator role as the audit actor.
-        assert any(e.actor == "admin" for e in audit.list_entries(limit=100))
+        # operator_role remains authorization/audit metadata; the actor is the
+        # authenticated MCP caller, not a self-asserted tool argument.
+        assert any(e.actor == "mcp-operator" for e in audit.list_entries(limit=100))
     finally:
         set_audit_log(InMemoryAuditLog())

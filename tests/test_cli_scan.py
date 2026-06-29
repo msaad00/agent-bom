@@ -1597,7 +1597,11 @@ def test_compliance_export_help_lists_supported_values():
     result = _run(["scan", "--help"])
     assert result.exit_code == 0
     assert "--compliance-export" in result.output
-    assert "cmmc, fedramp, nist-ai-rmf" in result.output
+    assert "cmmc" in result.output
+    assert "fedramp" in result.output
+    assert "nist-ai-rmf" in result.output
+    assert "soc2" in result.output
+    assert "pci-dss" in result.output
 
 
 def test_scan_complete_closer_renders_severity_breakdown():

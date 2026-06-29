@@ -104,6 +104,47 @@ def test_static_bearer_verifier_keeps_read_and_operator_tokens_separate():
     assert set(operator_access.scopes) == {"admin", "shield:write", "identity:write"}
 
 
+def test_static_bearer_verifier_rejects_expired_read_token():
+    from agent_bom.mcp_server import _StaticBearerTokenVerifier
+
+    verifier = _StaticBearerTokenVerifier(
+        "read-token",
+        operator_token="operator-token",
+        token_expires_at="2020-01-01T00:00:00Z",
+        operator_token_expires_at="2099-01-01T00:00:00Z",
+    )
+
+    assert _run(verifier.verify_token("read-token")) is None
+    operator_access = _run(verifier.verify_token("operator-token"))
+    assert operator_access is not None
+    assert operator_access.client_id == "agent-bom-operator-token"
+    assert operator_access.expires_at is not None
+
+
+def test_static_bearer_verifier_rejects_expired_operator_token():
+    from agent_bom.mcp_server import _StaticBearerTokenVerifier
+
+    verifier = _StaticBearerTokenVerifier(
+        "read-token",
+        operator_token="operator-token",
+        token_expires_at="2099-01-01T00:00:00+00:00",
+        operator_token_expires_at="2020-01-01T00:00:00+00:00",
+    )
+
+    read_access = _run(verifier.verify_token("read-token"))
+    assert read_access is not None
+    assert read_access.client_id == "agent-bom-static-token"
+    assert read_access.expires_at is not None
+    assert _run(verifier.verify_token("operator-token")) is None
+
+
+def test_static_bearer_verifier_requires_timezone_for_expiry():
+    from agent_bom.mcp_server import _StaticBearerTokenVerifier
+
+    with pytest.raises(ValueError, match="AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT"):
+        _StaticBearerTokenVerifier("read-token", token_expires_at="2099-01-01T00:00:00")
+
+
 # ---------------------------------------------------------------------------
 # Tool: registry_lookup (no mocking needed — reads local JSON)
 # ---------------------------------------------------------------------------

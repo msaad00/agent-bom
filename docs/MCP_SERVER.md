@@ -112,6 +112,10 @@ The regular bearer token is read-only. To enable audited Shield or identity
 write tools, configure a separate `AGENT_BOM_MCP_OPERATOR_TOKEN`; write calls
 still need `operator_role=admin`, the matching `operator_scopes` value, and an
 audit reason, but those arguments no longer authorize the write by themselves.
+For hosted or shared deployments, set ISO-8601 expiries for both tokens with
+`AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT` and
+`AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT`; expired tokens are rejected before
+any read or write scope is returned.
 
 ### Enterprise Control-Plane Contract
 

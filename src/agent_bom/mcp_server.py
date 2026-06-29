@@ -89,6 +89,7 @@ import os
 import re
 import time
 from collections import OrderedDict, deque
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Awaitable, Callable, Optional, TypeVar
 
@@ -159,23 +160,72 @@ class _StaticBearerTokenVerifier:
     self-assert administrative authority.
     """
 
-    def __init__(self, token: str, operator_token: str | None = None):
+    def __init__(
+        self,
+        token: str,
+        operator_token: str | None = None,
+        *,
+        token_expires_at: str | None = None,
+        operator_token_expires_at: str | None = None,
+    ):
         self._token = token
         self._operator_token = operator_token
+        self._token_expires_at = _parse_mcp_token_expiry(token_expires_at, "AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT")
+        self._operator_token_expires_at = _parse_mcp_token_expiry(
+            operator_token_expires_at,
+            "AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT",
+        )
 
     async def verify_token(self, token: str):
         from mcp.server.auth.provider import AccessToken
 
         if self._operator_token and token and hmac.compare_digest(token, self._operator_token):
+            if _mcp_token_expired(self._operator_token_expires_at):
+                return None
             return AccessToken(
                 token=token,
                 client_id="agent-bom-operator-token",
                 scopes=["admin", "shield:write", "identity:write"],
+                expires_at=_mcp_token_expiry_epoch(self._operator_token_expires_at),
                 resource=None,
             )
         if token and hmac.compare_digest(token, self._token):
-            return AccessToken(token=token, client_id="agent-bom-static-token", scopes=["read"], resource=None)
+            if _mcp_token_expired(self._token_expires_at):
+                return None
+            return AccessToken(
+                token=token,
+                client_id="agent-bom-static-token",
+                scopes=["read"],
+                expires_at=_mcp_token_expiry_epoch(self._token_expires_at),
+                resource=None,
+            )
         return None
+
+
+def _parse_mcp_token_expiry(value: str | None, env_name: str) -> datetime | None:
+    """Parse an optional MCP token expiry timestamp from environment/config."""
+    if not value:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if cleaned.endswith("Z"):
+        cleaned = f"{cleaned[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(cleaned)
+    except ValueError as exc:
+        raise ValueError(f"{env_name} must be an ISO-8601 timestamp with timezone") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{env_name} must include timezone information")
+    return parsed.astimezone(timezone.utc)
+
+
+def _mcp_token_expired(expires_at: datetime | None) -> bool:
+    return bool(expires_at and datetime.now(timezone.utc) >= expires_at)
+
+
+def _mcp_token_expiry_epoch(expires_at: datetime | None) -> int | None:
+    return int(expires_at.timestamp()) if expires_at else None
 
 
 def _validate_ecosystem(ecosystem: str) -> str:
@@ -420,7 +470,12 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         port=port,
         bearer_token=bearer_token,
         version=__version__,
-        token_verifier_factory=lambda token: _StaticBearerTokenVerifier(token, os.environ.get("AGENT_BOM_MCP_OPERATOR_TOKEN")),
+        token_verifier_factory=lambda token: _StaticBearerTokenVerifier(
+            token,
+            os.environ.get("AGENT_BOM_MCP_OPERATOR_TOKEN"),
+            token_expires_at=os.environ.get("AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT"),
+            operator_token_expires_at=os.environ.get("AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT"),
+        ),
     )
 
     # Import tool implementations

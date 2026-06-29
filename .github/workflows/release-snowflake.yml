@@ -77,7 +77,11 @@ jobs:
 
           root = Path("deploy/snowflake/native-app")
           version = os.environ["PACKAGE_VERSION"]
-          documents = [root / "manifest.yml", *sorted((root / "service-specs").glob("*.yaml"))]
+          documents = [
+              root / "manifest.yml",
+              root / "service-spec.yaml",
+              *sorted((root / "service-specs").glob("*.yaml")),
+          ]
           for path in documents:
               text = path.read_text()
               assert ":latest" not in text, f"{path} uses a mutable :latest image tag"

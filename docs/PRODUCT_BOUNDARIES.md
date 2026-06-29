@@ -10,6 +10,7 @@ This is the GitHub-facing companion to
 | OSS | CLI, Docker, GitHub Action, reports, SBOM/SARIF/HTML/JSON, graph exports, MCP tools, local API/UI pilot | no hosted service or vendor telemetry required |
 | Self-hosted enterprise | API/UI, Helm, Postgres/Supabase, auth/RBAC, tenant isolation, audit, graph, fleet, selected runtime proxy/gateway controls | operated in the customer's infrastructure |
 | Snowflake | Snowflake discovery, CIS/posture evidence, Native App packaging, selected backend paths | governance and warehouse-native lane, not full transactional parity for every feature |
+| Gated hosted POC | A small operator-run demo environment for customer-0 proof | limited-access evaluation only; not generally available managed SaaS |
 
 Managed `agent-bom Cloud` is not shipped in this repository today. It can be
 discussed as a roadmap lane only when labeled that way.
@@ -49,6 +50,7 @@ Use:
 - "open security data plane for AI-era infrastructure"
 - "customer-owned infrastructure and data boundary"
 - "Snowflake Native App lane"
+- "gated hosted POC"
 - "managed cloud is not shipped today"
 
 Avoid unless a future release proves it:

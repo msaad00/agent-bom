@@ -143,6 +143,12 @@ customers connecting read-only across the control-plane / collector seam:
 This is the same primitive used by `create_aws_connect_role` in the EKS module,
 just pointed at a hosted scanner instead of a local one.
 
+For a gated customer-0 URL, start with the smaller hosted POC runbook instead
+of presenting a generally available SaaS product:
+[`HOSTED_POC.md`](HOSTED_POC.md). The recommended first proof is one AWS VM
+behind HTTPS; the Snowflake Native App lane remains the enterprise
+customer-owned install path.
+
 ---
 
 ## Choosing a tier
@@ -154,6 +160,7 @@ just pointed at a hosted scanner instead of a local one.
 | Production on AWS, one command | 2A — `platform-eks` Terraform |
 | Production on an existing/any cluster | 2B — Helm |
 | Multi-tenant, you operate it for others | 3 — Hosted + connect roles |
+| Gated customer-0 demo link | [`HOSTED_POC.md`](HOSTED_POC.md) |
 
 ## Related
 

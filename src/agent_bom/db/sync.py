@@ -8,7 +8,8 @@ Sources:
     epss   — FIRST EPSS v4 CSV bulk export
     kev    — CISA KEV JSON catalog
     ghsa   — GitHub Security Advisories across all supported ecosystems
-    nvd    — NVD CVSS enrichment for CVEs missing severity data
+    nvd    — NVD incremental CVE enrichment when ``NVD_API_KEY`` is set; otherwise
+             backfills missing CVSS/CWE for existing CVE rows only
 
 Usage:
     agent-bom db update            # sync all sources
@@ -29,7 +30,7 @@ import logging
 import re
 import sqlite3
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urljoin, urlparse
@@ -1287,6 +1288,211 @@ def sync_ghsa(
 # ---------------------------------------------------------------------------
 
 
+def _read_sync_metadata(conn: sqlite3.Connection, source: str) -> dict[str, Any]:
+    """Return parsed sync metadata for one source, or an empty dict."""
+    if not _sync_meta_has_metadata_column(conn):
+        return {}
+    row = conn.execute("SELECT metadata_json FROM sync_meta WHERE source = ?", (source,)).fetchone()
+    if not row or not row[0]:
+        return {}
+    try:
+        payload = json.loads(row[0])
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _nvd_api_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
+
+
+def _extract_nvd_cve_fields(cve_data: dict[str, Any]) -> dict[str, Any]:
+    """Extract CVSS/CWE/summary fields from one NVD CVE object."""
+    metrics = cve_data.get("metrics") or {}
+    cvss_score: Optional[float] = None
+    cvss_vector: Optional[str] = None
+    severity: Optional[str] = None
+
+    for metric_key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+        metric_list = metrics.get(metric_key) or []
+        if not metric_list:
+            continue
+        cvss_data = metric_list[0].get("cvssData") or {}
+        raw_score = cvss_data.get("baseScore")
+        if raw_score is not None:
+            try:
+                cvss_score = float(raw_score)
+            except (TypeError, ValueError):
+                cvss_score = None
+        cvss_vector = cvss_data.get("vectorString")
+        raw_sev = (cvss_data.get("baseSeverity") or "").lower()
+        if raw_sev in ("critical", "high", "medium", "low"):
+            severity = raw_sev
+        break
+
+    nvd_cwes: list[str] = []
+    for weakness in cve_data.get("weaknesses", []):
+        for desc in weakness.get("description", []):
+            cwe_val = desc.get("value", "")
+            if cwe_val.startswith("CWE-") and cwe_val not in nvd_cwes:
+                nvd_cwes.append(cwe_val)
+
+    if not severity and cvss_score is not None:
+        severity = _cvss_to_severity(cvss_score)
+
+    descriptions = cve_data.get("descriptions") or []
+    summary = ""
+    for desc in descriptions:
+        if desc.get("lang") == "en" and desc.get("value"):
+            summary = str(desc["value"])[:500]
+            break
+
+    return {
+        "cvss_score": cvss_score,
+        "cvss_vector": cvss_vector,
+        "severity": severity,
+        "cwe_ids": nvd_cwes,
+        "summary": summary,
+    }
+
+
+def _upsert_nvd_enrichment_row(conn: sqlite3.Connection, cve_id: str, fields: dict[str, Any]) -> bool:
+    """Insert or update one CVE row from parsed NVD fields."""
+    if not fields.get("cvss_score") and not fields.get("cwe_ids"):
+        return False
+
+    summary = fields.get("summary") or f"NVD entry for {cve_id}"
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO vulns
+            (id, summary, severity, cvss_score, cvss_vector, fixed_version, published, modified, source, cwe_ids, aliases)
+        VALUES (?, ?, 'unknown', NULL, NULL, NULL, '', '', 'nvd', '', '')
+        """,
+        (cve_id, summary),
+    )
+
+    merged_cwes = ",".join(sorted(fields.get("cwe_ids") or [])) or None
+    if fields.get("cvss_score") is not None:
+        if merged_cwes:
+            conn.execute(
+                "UPDATE vulns SET cvss_score=?, cvss_vector=?, severity=?, summary=?, cwe_ids=? WHERE id=?",
+                (fields["cvss_score"], fields.get("cvss_vector"), fields.get("severity"), summary, merged_cwes, cve_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE vulns SET cvss_score=?, cvss_vector=?, severity=?, summary=? WHERE id=?",
+                (fields["cvss_score"], fields.get("cvss_vector"), fields.get("severity"), summary, cve_id),
+            )
+    elif merged_cwes:
+        conn.execute("UPDATE vulns SET summary=?, cwe_ids=? WHERE id=?", (summary, merged_cwes, cve_id))
+    return True
+
+
+def sync_nvd_incremental(
+    conn: sqlite3.Connection,
+    nvd_api_key: Optional[str] = None,
+    url: Optional[str] = None,
+    max_results: int = 2000,
+    lookback_days: int = 120,
+) -> int:
+    """Fetch recently modified CVEs from NVD and upsert enrichment into the local DB.
+
+  Requires ``NVD_API_KEY`` for practical rate limits. Uses ``lastModStartDate`` /
+  ``lastModEndDate`` windows and stores the end timestamp in sync metadata for
+  the next incremental run.
+    """
+    import os
+    import time
+    import urllib.parse
+
+    from agent_bom.http_client import fetch_json
+
+    base_url = url or _NVD_API_URL
+    _validate_sync_url(base_url, "nvd url")
+
+    api_key = nvd_api_key or os.environ.get("NVD_API_KEY")
+    sleep_seconds = 0.6 if api_key else 6.0
+
+    now = datetime.now(timezone.utc)
+    end_ts = _nvd_api_timestamp(now)
+    metadata = _read_sync_metadata(conn, "nvd")
+    checkpoint = metadata.get("last_modified_end")
+    if isinstance(checkpoint, str) and checkpoint.strip():
+        try:
+            start_dt = datetime.fromisoformat(checkpoint.replace("Z", "+00:00"))
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            start_dt = now - timedelta(days=lookback_days)
+    else:
+        start_dt = now - timedelta(days=lookback_days)
+
+    if now - start_dt > timedelta(days=lookback_days):
+        start_dt = now - timedelta(days=lookback_days)
+    start_ts = _nvd_api_timestamp(start_dt)
+
+    enriched = 0
+    start_index = 0
+    page_size = min(2000, max_results)
+
+    while enriched < max_results:
+        params: dict[str, str | int] = {
+            "lastModStartDate": start_ts,
+            "lastModEndDate": end_ts,
+            "resultsPerPage": page_size,
+            "startIndex": start_index,
+        }
+        if api_key:
+            params["apiKey"] = api_key
+        fetch_url = f"{base_url}?{urllib.parse.urlencode(params)}"
+
+        try:
+            data = fetch_json(fetch_url, timeout=60, headers={"Accept": "application/json"})
+        except Exception as exc:
+            _logger.warning("NVD incremental sync failed at startIndex=%s: %s", start_index, exc)
+            break
+
+        items = data.get("vulnerabilities") or []
+        if not items:
+            break
+
+        for item in items:
+            cve_data = item.get("cve") or {}
+            cve_id = str(cve_data.get("id") or "")
+            if not cve_id.startswith("CVE-"):
+                continue
+            fields = _extract_nvd_cve_fields(cve_data)
+            if _upsert_nvd_enrichment_row(conn, cve_id, fields):
+                enriched += 1
+                if enriched >= max_results:
+                    break
+
+        if enriched % _BATCH_SIZE == 0:
+            conn.commit()
+
+        total_results = int(data.get("totalResults") or 0)
+        start_index += len(items)
+        if start_index >= total_results:
+            break
+        time.sleep(sleep_seconds)
+
+    conn.commit()
+    _update_sync_meta(
+        conn,
+        "nvd",
+        enriched,
+        {
+            "mode": "incremental",
+            "last_modified_start": start_ts,
+            "last_modified_end": end_ts,
+            "max_results": max_results,
+            "api_key_used": bool(api_key),
+        },
+    )
+    _logger.info("NVD incremental sync complete: %d CVE rows upserted", enriched)
+    return enriched
+
+
 def sync_nvd(
     conn: sqlite3.Connection,
     nvd_api_key: Optional[str] = None,
@@ -1571,12 +1777,20 @@ def sync_db(
             )
         if "nvd" in enabled:
             key = nvd_api_key or os.environ.get("NVD_API_KEY")
-            results["nvd"] = sync_nvd(
-                conn,
-                nvd_api_key=key,
-                url=nvd_url,
-                max_entries=max_nvd_entries,
-            )
+            if key:
+                results["nvd"] = sync_nvd_incremental(
+                    conn,
+                    nvd_api_key=key,
+                    url=nvd_url,
+                    max_results=max_nvd_entries,
+                )
+            else:
+                results["nvd"] = sync_nvd(
+                    conn,
+                    nvd_api_key=key,
+                    url=nvd_url,
+                    max_entries=max_nvd_entries,
+                )
     finally:
         conn.close()
 

@@ -106,6 +106,22 @@ def test_local_analytics_store_records_scan_summary_findings_and_packages(tmp_pa
     ]
 
 
+def test_local_analytics_scan_runs_filter_by_tenant(tmp_path):
+    store = LocalAnalyticsStore(tmp_path / "local.sqlite")
+
+    store.record_scan_report(_report("scan-alpha"), source="cli", tenant_id="tenant-alpha")
+    store.record_scan_report(_report("scan-beta"), source="cli", tenant_id="tenant-beta")
+
+    alpha_runs = store.list_scan_runs(tenant_id="tenant-alpha")
+    beta_runs = store.list_scan_runs(tenant_id="tenant-beta")
+    all_runs = store.list_scan_runs()
+
+    assert [row["scan_id"] for row in alpha_runs] == ["scan-alpha"]
+    assert [row["tenant_id"] for row in alpha_runs] == ["tenant-alpha"]
+    assert [row["scan_id"] for row in beta_runs] == ["scan-beta"]
+    assert {row["tenant_id"] for row in all_runs} == {"tenant-alpha", "tenant-beta"}
+
+
 def test_local_analytics_store_records_repeated_artifact_as_distinct_runs(tmp_path):
     report = _report()
     store = LocalAnalyticsStore(tmp_path / "local.sqlite")

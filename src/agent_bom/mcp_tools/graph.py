@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from agent_bom.mcp_errors import CODE_INTERNAL_UNEXPECTED, CODE_VALIDATION_INVALID_ARGUMENT, mcp_error_json
+from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,7 @@ async def exposure_paths_impl(
             "min_risk must be between 0 and 100",
             details={"argument": "min_risk", "value": min_risk},
         )
+    tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
 
     try:
         if _get_graph_store is None:
@@ -241,6 +243,7 @@ async def deploy_decision_impl(
             "warn_risk and block_risk must be ordered thresholds between 0 and 100",
             details={"warn_risk": warn_risk, "block_risk": block_risk},
         )
+    tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
 
     response = await exposure_paths_impl(
         tenant_id=tenant_id,

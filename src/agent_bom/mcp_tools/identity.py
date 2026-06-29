@@ -15,13 +15,14 @@ import logging
 from types import SimpleNamespace
 from typing import Any, cast
 
+from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 
 
 def _request(tenant_id: str, actor: str) -> SimpleNamespace:
-    return SimpleNamespace(state=SimpleNamespace(tenant_id=tenant_id or "default", actor=actor or "mcp-operator"))
+    return SimpleNamespace(state=SimpleNamespace(tenant_id=resolve_mcp_tool_tenant_id(tenant_id), actor=actor or "mcp-operator"))
 
 
 def _csv_set(value: str) -> set[str]:
@@ -85,7 +86,7 @@ def _authorize_identity_write(
         {
             "action": action,
             "actor": normalized_role,
-            "tenant_id": tenant_id or "default",
+            "tenant_id": resolve_mcp_tool_tenant_id(tenant_id),
             "resource": resource,
             "reason": clean_reason,
         },

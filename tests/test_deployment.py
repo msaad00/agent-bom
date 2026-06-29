@@ -110,6 +110,36 @@ def test_dockerfile_sse_does_not_opt_into_insecure_public_mode():
     assert "AGENT_BOM_MCP_BEARER_TOKEN" in content
 
 
+def test_clickhouse_grafana_compose_has_no_default_admin_password():
+    """Analytics compose must not publish admin/admin or bind public ports."""
+    import yaml
+
+    path = ROOT / "deploy" / "supabase" / "clickhouse" / "docker-compose.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    grafana = data["services"]["grafana"]
+    clickhouse = data["services"]["clickhouse"]
+
+    assert grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD"] != "admin"
+    assert "GRAFANA_ADMIN_PASSWORD:?" in grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD"]
+    assert grafana["ports"] == ["127.0.0.1:3001:3000"]
+    assert clickhouse["ports"] == ["127.0.0.1:8123:8123", "127.0.0.1:9000:9000"]
+
+
+def test_pilot_insecure_mode_is_loopback_scoped():
+    """Pilot no-auth mode is acceptable only because it is loopback-only."""
+    import yaml
+
+    path = ROOT / "deploy" / "docker-compose.pilot.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    api = data["services"]["api"]
+    ui = data["services"]["ui"]
+
+    assert "--allow-insecure-no-auth" in api["command"]
+    assert "--cors-allow-all" in api["command"]
+    assert api["ports"] == ["127.0.0.1:8422:8422"]
+    assert ui["ports"] == ["127.0.0.1:3000:3000"]
+
+
 # ---------------------------------------------------------------------------
 # Integration files version consistency
 # ---------------------------------------------------------------------------

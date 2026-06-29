@@ -20,14 +20,13 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
+from agent_bom.graph.severity import severity_at_or_above
 from agent_bom.models import MCPServer, Severity
 
 if TYPE_CHECKING:
     from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection
 
 logger = logging.getLogger(__name__)
-
-_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "none": 4, "unknown": -1}
 
 # Zero-width and invisible Unicode characters commonly used for evasion
 _INVISIBLE_RE = re.compile(r"[\u200b\u200c\u200d\u200e\u200f\u2060\u2061\u2062\u2063\u2064\ufeff\u00ad\u034f\u115f\u1160\u17b4\u17b5]")
@@ -757,9 +756,8 @@ def run_enforcement(
     report.findings.extend(check_tool_name_collisions(servers))
 
     # Determine pass/fail based on threshold
-    threshold = _SEVERITY_ORDER.get(fail_on_severity, 1)
     for finding in report.findings:
-        if _SEVERITY_ORDER.get(finding.severity, 3) <= threshold:
+        if severity_at_or_above(finding.severity, fail_on_severity):
             report.passed = False
             break
 

@@ -7,7 +7,8 @@
 # Local pilot only:
 #   - binds to 127.0.0.1 only
 #   - uses SQLite persistence in a named Docker volume
-#   - allows no-auth browser access for fast evaluation on one workstation
+#   - allows no-auth browser access only because both API/UI ports are
+#     loopback-bound for fast evaluation on one workstation
 #
 # For a multi-developer dev stack, see docker-compose.fullstack.yml.
 # For a production-shaped deployment, see docker-compose.platform.yml.
@@ -30,6 +31,7 @@ services:
       --allow-insecure-no-auth
     environment:
       AGENT_BOM_DB_PATH: /var/lib/agent-bom/vulns.db
+      AGENT_BOM_DEPLOYMENT_ENV: pilot-loopback
     ports:
       - "127.0.0.1:8422:8422"
     volumes:

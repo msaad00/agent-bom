@@ -45,6 +45,7 @@ def _authorize_identity_write(
     reason: str,
     tenant_id: str,
     resource: str,
+    authenticated_actor: str = "",
 ) -> tuple[bool, dict[str, Any]]:
     """Gate an identity write the same way Shield write tools gate enforcement."""
     normalized_role = (operator_role or "").strip().lower()
@@ -85,7 +86,8 @@ def _authorize_identity_write(
         True,
         {
             "action": action,
-            "actor": normalized_role,
+            "actor": (authenticated_actor or "").strip() or "mcp-operator",
+            "actor_role": normalized_role,
             "tenant_id": resolve_mcp_tool_tenant_id(tenant_id),
             "resource": resource,
             "reason": clean_reason,
@@ -97,7 +99,8 @@ def _write_policy(context: dict[str, Any]) -> dict[str, Any]:
     return {
         "required_role": "admin",
         "required_scope": "identity:write",
-        "actor_role": context["actor"],
+        "actor": context["actor"],
+        "actor_role": context["actor_role"],
         "audit_logged": True,
         "tenant_id": context["tenant_id"],
     }
@@ -113,6 +116,7 @@ async def _run_write(
     resource: str,
     handler,
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Authorize, invoke the REST handler, and decorate the response."""
     authorized, context = _authorize_identity_write(
@@ -122,6 +126,7 @@ async def _run_write(
         reason=reason,
         tenant_id=tenant_id,
         resource=resource,
+        authenticated_actor=_authenticated_actor,
     )
     if not authorized:
         return json.dumps(context)
@@ -153,6 +158,7 @@ async def identity_issue_impl(
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Issue a managed agent identity. Returns the raw token exactly once."""
     from agent_bom.api.routes.identities import issue_agent_identity
@@ -173,6 +179,7 @@ async def identity_issue_impl(
         resource=f"identity/{agent_id}",
         handler=lambda req: issue_agent_identity(cast(Any, req), body),
         _truncate_response=_truncate_response,
+        _authenticated_actor=_authenticated_actor,
     )
 
 
@@ -186,6 +193,7 @@ async def identity_rotate_impl(
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Rotate a managed identity, keeping the old token live during the overlap."""
     from agent_bom.api.routes.identities import rotate_agent_identity
@@ -200,6 +208,7 @@ async def identity_rotate_impl(
         resource=f"identity/{identity_id}",
         handler=lambda req: rotate_agent_identity(cast(Any, req), identity_id, body),
         _truncate_response=_truncate_response,
+        _authenticated_actor=_authenticated_actor,
     )
 
 
@@ -211,6 +220,7 @@ async def identity_revoke_impl(
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Revoke a managed identity immediately; its token can no longer authenticate."""
     from agent_bom.api.routes.identities import revoke_agent_identity
@@ -225,6 +235,7 @@ async def identity_revoke_impl(
         resource=f"identity/{identity_id}",
         handler=lambda req: revoke_agent_identity(cast(Any, req), identity_id, body),
         _truncate_response=_truncate_response,
+        _authenticated_actor=_authenticated_actor,
     )
 
 
@@ -239,6 +250,7 @@ async def identity_grant_jit_impl(
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Grant one identity time-bound JIT access to one tool."""
     from agent_bom.api.routes.identities import grant_agent_identity_jit
@@ -253,6 +265,7 @@ async def identity_grant_jit_impl(
         resource=f"identity/{identity_id}",
         handler=lambda req: grant_agent_identity_jit(cast(Any, req), identity_id, body),
         _truncate_response=_truncate_response,
+        _authenticated_actor=_authenticated_actor,
     )
 
 
@@ -264,6 +277,7 @@ async def identity_revoke_jit_impl(
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Revoke an active JIT grant immediately."""
     from agent_bom.api.routes.identities import revoke_agent_identity_jit
@@ -278,4 +292,5 @@ async def identity_revoke_jit_impl(
         resource=f"identity-jit/{grant_id}",
         handler=lambda req: revoke_agent_identity_jit(cast(Any, req), grant_id, body),
         _truncate_response=_truncate_response,
+        _authenticated_actor=_authenticated_actor,
     )

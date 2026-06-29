@@ -57,6 +57,17 @@ SEVERITY_RANK: dict[str, int] = {
     "unknown": 0,
 }
 
+# Policy/threshold comparisons keep UNKNOWN below NONE, matching FIRST/CVSS
+# policy semantics. Display/risk ranking can still treat both as zero-impact.
+SEVERITY_POLICY_ORDER: dict[str, int] = {
+    "CRITICAL": 4,
+    "HIGH": 3,
+    "MEDIUM": 2,
+    "LOW": 1,
+    "NONE": 0,
+    "UNKNOWN": -1,
+}
+
 # ── Risk score contribution ──────────────────────────────────────────────
 
 SEVERITY_RISK_SCORE: dict[str, float] = {
@@ -98,6 +109,24 @@ OCSF_TO_SYSLOG: dict[int, int] = {
 def severity_rank(sev: str) -> int:
     """Return numeric rank for a severity string. Higher = worse."""
     return SEVERITY_RANK.get(sev.lower() if sev else "", 0)
+
+
+def normalize_severity(sev: str | None) -> str:
+    """Return the canonical lowercase severity label."""
+    normalized = (sev or "").strip().lower()
+    if normalized == "informational":
+        return "info"
+    return normalized if normalized in SEVERITY_RANK else "unknown"
+
+
+def severity_policy_rank(sev: str | None) -> int:
+    """Return policy comparison rank where UNKNOWN is below NONE."""
+    return SEVERITY_POLICY_ORDER.get(normalize_severity(sev).upper(), SEVERITY_POLICY_ORDER["UNKNOWN"])
+
+
+def severity_at_or_above(candidate: str | None, threshold: str | None) -> bool:
+    """Return true when ``candidate`` meets or exceeds ``threshold``."""
+    return severity_policy_rank(candidate) >= severity_policy_rank(threshold)
 
 
 def severity_to_ocsf(sev: str) -> int:

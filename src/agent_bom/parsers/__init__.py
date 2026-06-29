@@ -16,6 +16,7 @@ from rich.console import Console
 from agent_bom.extensions import ExtensionCapabilities, iter_entry_point_registrations
 from agent_bom.models import MCPServer, Package
 from agent_bom.parsers.base import InventoryParserRegistration
+from agent_bom.parsers.beam_parsers import parse_hex_packages, parse_pub_packages  # noqa: F401
 
 # Re-export Go/Maven/Cargo/Gradle/conda/uvx parsers for backward compatibility
 from agent_bom.parsers.compiled_parsers import (  # noqa: F401
@@ -86,6 +87,8 @@ _BUILTIN_INVENTORY_PARSERS: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "ruby": ("agent_bom.parsers.ruby_parsers", "parse_ruby_packages", ("Gemfile", "Gemfile.lock")),
     "php": ("agent_bom.parsers.php_parsers", "parse_php_packages", ("composer.json", "composer.lock")),
     "swift": ("agent_bom.parsers.swift_parsers", "parse_swift_packages", ("Package.swift", "Package.resolved")),
+    "hex": ("agent_bom.parsers.beam_parsers", "parse_hex_packages", ("mix.lock",)),
+    "pub": ("agent_bom.parsers.beam_parsers", "parse_pub_packages", ("pubspec.lock",)),
     "apk": ("agent_bom.parsers.os_parsers", "parse_apk_packages", ("lib/apk/db/installed",)),
     "dpkg": ("agent_bom.parsers.os_parsers", "parse_dpkg_packages", ("var/lib/dpkg/status",)),
     "rpm": ("agent_bom.parsers.os_parsers", "parse_rpm_packages", ("var/lib/rpm",)),
@@ -518,6 +521,11 @@ def extract_packages(
         packages.extend(parse_maven_packages(server_dir))
         packages.extend(parse_gradle_packages(server_dir))
         packages.extend(parse_nuget_packages(server_dir))
+        packages.extend(parse_ruby_packages(server_dir))
+        packages.extend(parse_php_packages(server_dir))
+        packages.extend(parse_swift_packages(server_dir))
+        packages.extend(parse_hex_packages(server_dir))
+        packages.extend(parse_pub_packages(server_dir))
 
     # If we only got npx/uvx packages (no local directory), resolve transitive deps
     if resolve_transitive and (npx_packages or uvx_packages) and not server_dir:
@@ -631,6 +639,8 @@ _MANIFEST_FILES = frozenset(
         "composer.json",
         "composer.lock",
         "Package.resolved",
+        "mix.lock",
+        "pubspec.lock",
     }
 )
 
@@ -654,6 +664,8 @@ _LOCKFILE_FILES = frozenset(
         "Gemfile.lock",
         "composer.lock",
         "Package.resolved",
+        "mix.lock",
+        "pubspec.lock",
     }
 )
 
@@ -858,6 +870,8 @@ def scan_project_directory(
             pkgs.extend(parse_ruby_packages(directory))
             pkgs.extend(parse_php_packages(directory))
             pkgs.extend(parse_swift_packages(directory))
+            pkgs.extend(parse_hex_packages(directory))
+            pkgs.extend(parse_pub_packages(directory))
 
             # Deduplicate within this directory
             seen: set[tuple] = set()

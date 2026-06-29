@@ -8,6 +8,7 @@ import re
 
 from mcp.server.fastmcp.exceptions import ToolError
 
+from agent_bom.graph.severity import normalize_severity, severity_at_or_above
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -254,16 +255,14 @@ async def _scan_impl_inner(
         if fail_severity:
             from agent_bom.models import Severity
 
-            severity_order = ["critical", "high", "medium", "low"]
             try:
                 threshold = Severity(fail_severity.lower())
-                threshold_idx = severity_order.index(threshold.value)
             except (ValueError, KeyError):
                 raise ToolError(f"Invalid severity: {fail_severity}. Use: critical, high, medium, low")
             gate_fail = any(
-                severity_order.index(sev) <= threshold_idx
+                severity_at_or_above(sev, threshold.value)
                 for br in active_findings
-                if (sev := br.vulnerability.severity.value) in severity_order
+                if (sev := normalize_severity(br.vulnerability.severity.value)) in {"critical", "high", "medium", "low"}
             )
             result["gate_status"] = "fail" if gate_fail else "pass"
             result["gate_severity"] = fail_severity.lower()
@@ -272,17 +271,15 @@ async def _scan_impl_inner(
         if warn_severity and result.get("gate_status") != "fail":
             from agent_bom.models import Severity
 
-            severity_order = ["critical", "high", "medium", "low"]
             try:
                 warn_threshold = Severity(warn_severity.lower())
-                warn_threshold_idx = severity_order.index(warn_threshold.value)
             except (ValueError, KeyError):
                 raise ToolError(f"Invalid warn_severity: {warn_severity}. Use: critical, high, medium, low")
             warn_matches = [
                 br
                 for br in active_findings
-                if br.vulnerability.severity.value in severity_order
-                and severity_order.index(br.vulnerability.severity.value) <= warn_threshold_idx
+                if normalize_severity(br.vulnerability.severity.value) in {"critical", "high", "medium", "low"}
+                and severity_at_or_above(br.vulnerability.severity.value, warn_threshold.value)
             ]
             result["warn_gate_status"] = "warn" if warn_matches else "pass"
             result["warn_gate_severity"] = warn_severity.lower()

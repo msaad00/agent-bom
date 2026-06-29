@@ -356,6 +356,7 @@ async def execute_tool_async(
 ) -> _ToolReturn | str:
     request_meta = request_meta_factory()
     if destructive:
+        kwargs.setdefault("_authenticated_actor", request_meta.get("client_id") or request_meta.get("caller") or "mcp-operator")
         denial = authorize_destructive_tool(
             tool_name,
             operator_role=str(kwargs.get("operator_role", "") or ""),

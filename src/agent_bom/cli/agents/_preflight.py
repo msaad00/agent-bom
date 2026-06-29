@@ -18,6 +18,7 @@ import click
 
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.cli.agents._output import render_output
+from agent_bom.graph.severity import severity_at_or_above
 from agent_bom.models import AIBOMReport
 
 
@@ -331,7 +332,5 @@ def run_iac_only_scan(
         )
 
     if fail_on_severity and all_iac_findings:
-        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-        threshold = severity_order.get(fail_on_severity, 99)
-        if any(severity_order.get(finding.severity, 99) <= threshold for finding in all_iac_findings):
+        if any(severity_at_or_above(finding.severity, fail_on_severity) for finding in all_iac_findings):
             sys.exit(1)

@@ -20,6 +20,8 @@ from typing import Optional
 
 import click
 
+from agent_bom.graph.severity import severity_at_or_above
+
 
 def _validate_json_or_console_format(command_name: str, output_format: str) -> str:
     """Focused intelligence commands do not emit SARIF or implement vuln gates."""
@@ -32,9 +34,6 @@ def _validate_json_or_console_format(command_name: str, output_format: str) -> s
     return normalized
 
 
-_FOCUSED_GATE_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-
-
 def _focused_default_output(output_format: str, output_path: Optional[str]) -> Optional[str]:
     """Focused scan JSON/SARIF modes stream by default instead of creating a report file."""
     if output_path is None and output_format.lower() in {"json", "sarif"}:
@@ -44,8 +43,7 @@ def _focused_default_output(output_format: str, output_path: Optional[str]) -> O
 
 def _has_finding_at_or_above(findings, threshold: str = "high") -> bool:
     """Return True when focused findings should fail CI by default."""
-    threshold_rank = _FOCUSED_GATE_ORDER.get(threshold.lower(), 1)
-    return any(_FOCUSED_GATE_ORDER.get(str(getattr(finding, "severity", "low")).lower(), 99) <= threshold_rank for finding in findings)
+    return any(severity_at_or_above(str(getattr(finding, "severity", "unknown")), threshold) for finding in findings)
 
 
 @click.command("image")

@@ -422,10 +422,10 @@ def how_it_works(theme_name: str) -> str:
         parts.append(_icon_box(tx + 8, ty + 11, ICONS[icon], t))
         parts.append(
             _text(
-                tx + 38,
+                tx + 34,
                 ty + 28,
                 label,
-                **{"font-family": "Inter,system-ui,sans-serif", "font-size": "9", "font-weight": "700", "fill": t["text"]},
+                **{"font-family": "Inter,system-ui,sans-serif", "font-size": "8", "font-weight": "700", "fill": t["text"]},
             )
         )
 
@@ -654,7 +654,7 @@ def architecture(theme_name: str) -> str:
     parts.append(
         _text(
             cons_x + card_w // 2,
-            lane_top + 290,
+            lane_top + 304,
             "SIEM · webhooks",
             **{
                 "text-anchor": "middle",

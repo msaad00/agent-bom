@@ -1,161 +1,133 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" fill="none" role="img" aria-labelledby="abom-archl-title abom-archl-desc">
-  <title id="abom-archl-title">agent-bom architecture and data flow</title>
-  <desc id="abom-archl-desc">Left-to-right flow: read-only sources are scanned and enriched into one unified Finding and ContextGraph, served through the control plane (API, Gateway, MCP server) to human and headless-agent consumers, emitting SARIF, CycloneDX, SPDX, and OCSF artifacts.</desc>
-  <defs>
-    <linearGradient id="abom-accent-l" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#7c3aed"/>
-      <stop offset="100%" stop-color="#4f46e5"/>
-    </linearGradient>
-    <marker id="abom-arrow-l" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="9" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 Z" fill="#a1a1aa"/></marker>
-    <marker id="abom-arrow-accent-l" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="9" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 Z" fill="#7c3aed"/></marker>
-    <style>
-      text { font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; }
-      .title { font-size: 22px; font-weight: 800; fill: #18181b; }
-      .subtitle { font-size: 11.5px; font-weight: 400; fill: #6b6b75; }
-      .lane-label { font-size: 10px; font-weight: 800; letter-spacing: 0.16em; fill: #7c3aed; }
-      .lane-sub { font-size: 9px; font-weight: 500; fill: #9a9aa4; }
-      .node-title { font-size: 12.5px; font-weight: 700; fill: #18181b; }
-      .node-sub { font-size: 9px; font-weight: 400; fill: #71717a; }
-      .pill { font-size: 9px; font-weight: 600; fill: #7c3aed; }
-      .flow-label { font-size: 8.5px; font-weight: 800; letter-spacing: 0.1em; fill: #9a9aa4; }
-      .chip { font-size: 9px; font-weight: 700; fill: #52525b; }
-      .footer { font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em; fill: #15803d; }
-      .ic { fill: none; stroke: #6b6b76; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
-      .ic-a { fill: none; stroke: #7c3aed; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
-    </style>
-  </defs>
-
-  <rect width="1200" height="660" rx="14" fill="#ffffff"/>
-  <text x="40" y="42" class="title">agent-bom <tspan fill="url(#abom-accent-l)">architecture</tspan></text>
-  <text x="40" y="63" class="subtitle">One evidence model, left to right — collect read-only, normalize into one Finding + ContextGraph, serve through the control plane, deliver to people and agents.</text>
-
-  <!-- LANE 1 -->
-  <rect x="40" y="92" width="206" height="500" rx="13" fill="#fafafa" stroke="#ececf0"/>
-  <text x="56" y="118" class="lane-label">SOURCES</text><text x="56" y="134" class="lane-sub">Read-only · no writes · no secret values</text>
-  <g><rect x="52" y="148" width="182" height="52" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="62" y="161" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M69 168h7l3 3v9h-13z M76 168v3h3"/>
-    <text x="98" y="170" class="node-title">Supply chain</text><text x="98" y="185" class="node-sub">15 ecosystems + OS packages</text></g>
-  <g><rect x="52" y="206" width="182" height="52" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="62" y="219" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><circle class="ic" cx="75" cy="227" r="3"/><circle class="ic" cx="70" cy="238" r="2.4"/><circle class="ic" cx="80" cy="238" r="2.4"/><path class="ic" d="M73 230l-2 6 M77 230l2 6"/>
-    <text x="98" y="228" class="node-title">Agents &amp; MCP</text><text x="98" y="243" class="node-sub">29 clients · servers · tools</text></g>
-  <g><rect x="52" y="264" width="182" height="52" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="62" y="277" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M68 293h12a4 4 0 0 0 .6-7.9 6 6 0 0 0-11.3-1.6A4.2 4.2 0 0 0 68 293z"/>
-    <text x="98" y="286" class="node-title">Cloud inventory</text><text x="98" y="301" class="node-sub">AWS · Azure · GCP · Snowflake</text></g>
-  <g><rect x="52" y="322" width="182" height="52" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="62" y="335" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M75 333l7 3.5-7 3.5-7-3.5z M68 341l7 3.5 7-3.5 M68 345l7 3.5 7-3.5"/>
-    <text x="98" y="344" class="node-title">IaC &amp; containers</text><text x="98" y="359" class="node-sub">Terraform · K8s · OCI images</text></g>
-  <g><rect x="52" y="380" width="182" height="52" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="62" y="393" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><circle class="ic" cx="72" cy="403" r="3.4"/><path class="ic" d="M74.4 405.4l7 7 M79 410l2.5-2.5 M81.5 412.5l2.5-2.5"/>
-    <text x="98" y="402" class="node-title">Secrets</text><text x="98" y="417" class="node-sub">credential refs · token patterns</text></g>
-  <g><rect x="52" y="438" width="182" height="52" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="62" y="451" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M75 458l7 3.5v7l-7 3.5-7-3.5v-7z M75 458v14 M68 461.5l14 7"/>
-    <text x="98" y="460" class="node-title">Models &amp; data</text><text x="98" y="475" class="node-sub">weights · cards · PII/PHI</text></g>
-  <g><rect x="52" y="496" width="182" height="52" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="62" y="509" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M70 515h10v14h-10z M73 520h7 M73 524h7 M73 528h4"/>
-    <text x="98" y="518" class="node-title">SBOM ingest</text><text x="98" y="533" class="node-sub">CycloneDX · SPDX import</text></g>
-
-  <!-- LANE 2 -->
-  <rect x="280" y="92" width="206" height="500" rx="13" fill="#fafafa" stroke="#ececf0"/>
-  <text x="296" y="118" class="lane-label">SCAN &amp; ENRICH</text><text x="296" y="134" class="lane-sub">Parallel · local-only</text>
-  <g><rect x="292" y="148" width="182" height="58" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="302" y="164" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><circle class="ic" cx="313" cy="175" r="4.2"/><path class="ic" d="M316 178l4 4"/>
-    <text x="338" y="172" class="node-title">Vulnerability scan</text><text x="338" y="188" class="node-sub">OSV batch across all packages</text></g>
-  <g><rect x="292" y="214" width="182" height="58" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="302" y="230" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M313 233l1.6 3.4 3.4 1.6-3.4 1.6L313 245l-1.6-3.4-3.4-1.6 3.4-1.6z"/>
-    <text x="338" y="238" class="node-title">Threat enrichment</text><text x="338" y="254" class="node-sub">NVD · EPSS · KEV · GHSA</text></g>
-  <g><rect x="292" y="280" width="182" height="58" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="302" y="296" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M313 300l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z M310 308l2 2 4-4.5"/>
-    <text x="338" y="304" class="node-title">Posture checks</text><text x="338" y="320" class="node-sub">MCP/A2A auth · CIS · NHI</text></g>
-  <g><rect x="292" y="346" width="182" height="58" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="302" y="362" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M307 384v-8 M313 384v-12 M319 384v-6 M306 384h15"/>
-    <text x="338" y="370" class="node-title">Cost / FinOps</text><text x="338" y="386" class="node-sub">model + cloud spend signals</text></g>
-  <g><rect x="292" y="412" width="182" height="58" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="302" y="428" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M308 434h12 M308 440h12 M308 446h8"/><path class="ic-a" d="M305 434l1.4 1.4 2-2.4"/>
-    <text x="338" y="436" class="node-title">Policy engine</text><text x="338" y="452" class="node-sub">policy-as-code · frameworks</text></g>
-  <g><rect x="292" y="478" width="182" height="58" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="302" y="494" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><circle class="ic" cx="315" cy="507" r="8"/><circle class="ic" cx="315" cy="507" r="4"/><circle class="ic-a" cx="315" cy="507" r="1.4"/>
-    <text x="338" y="502" class="node-title">Blast-radius</text><text x="338" y="518" class="node-sub">pkg → finding → agent fusion</text></g>
-
-  <!-- LANE 3 -->
-  <rect x="520" y="92" width="206" height="500" rx="13" fill="#fafafa" stroke="#ececf0"/>
-  <text x="536" y="118" class="lane-label">EVIDENCE CORE</text><text x="536" y="134" class="lane-sub">One normalized truth</text>
-  <g><rect x="532" y="150" width="182" height="86" rx="9" fill="#f6f4ff" stroke="#c4b5fd"/>
-    <rect x="542" y="164" width="26" height="26" rx="7" fill="#efeaff" stroke="#c4b5fd"/><path class="ic-a" d="M549 170h7l3 3v9h-13z M556 170v3h3 M551 182l1.6 1.6 3-3.4"/>
-    <text x="578" y="172" class="node-title">Unified Finding</text><text x="578" y="188" class="node-sub">CVE · misconfig · secret · auth</text>
-    <text x="578" y="205" class="node-sub">+ severity · CVSS · EPSS · KEV</text>
-    <text x="546" y="225" class="pill">one schema for every modality</text></g>
-  <g><rect x="532" y="244" width="182" height="86" rx="9" fill="#f6f4ff" stroke="#c4b5fd"/>
-    <rect x="542" y="258" width="26" height="26" rx="7" fill="#efeaff" stroke="#c4b5fd"/><circle class="ic-a" cx="551" cy="265" r="2.6"/><circle class="ic-a" cx="561" cy="263" r="2.6"/><circle class="ic-a" cx="556" cy="278" r="2.6"/><path class="ic-a" d="M553 266l2 9 M559 265l-2 10"/>
-    <text x="578" y="266" class="node-title">ContextGraph</text><text x="578" y="282" class="node-sub">entities + edges across</text>
-    <text x="578" y="299" class="node-sub">env · identity · MCP · model</text>
-    <text x="546" y="319" class="pill">multi-hop attack-path fusion</text></g>
-  <g><rect x="532" y="338" width="182" height="56" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="542" y="353" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><circle class="ic" cx="555" cy="366" r="7.5"/><path class="ic" d="M555 362v4.5l3 2"/>
-    <text x="578" y="362" class="node-title">Asset tracker</text><text x="578" y="378" class="node-sub">first_seen · MTTR · drift</text></g>
-  <g><rect x="532" y="402" width="182" height="56" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="542" y="417" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M555 424l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z M552 432l2 2 4-4.5"/>
-    <text x="578" y="426" class="node-title">Audit &amp; provenance</text><text x="578" y="442" class="node-sub">signed · hash chain · tenant</text></g>
-  <g><rect x="532" y="466" width="182" height="40" rx="9" fill="#f6f5fa" stroke="#e6e3ef"/>
-    <rect x="542" y="475" width="22" height="22" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M547 481c0-1.7 2.7-3 6-3s6 1.3 6 3-2.7 3-6 3-6-1.3-6-3z M547 481v8c0 1.7 2.7 3 6 3s6-1.3 6-3v-8"/>
-    <text x="574" y="491" class="node-sub" fill="#52525b">Postgres / SQLite · tenant-isolated</text></g>
-
-  <!-- LANE 4 -->
-  <rect x="760" y="92" width="206" height="500" rx="13" fill="#fafafa" stroke="#ececf0"/>
-  <text x="776" y="118" class="lane-label">CONTROL PLANE</text><text x="776" y="134" class="lane-sub">Self-hosted · tenant-scoped auth</text>
-  <g><rect x="772" y="150" width="182" height="86" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="782" y="164" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M792 170l-4 7 4 7 M798 170l4 7-4 7"/>
-    <text x="818" y="172" class="node-title">REST API</text><text x="818" y="188" class="node-sub">scans · findings · graph</text>
-    <text x="818" y="205" class="node-sub">compliance · identity · cost</text>
-    <text x="786" y="225" class="pill">OIDC · SAML · SCIM · RBAC</text></g>
-  <g><rect x="772" y="244" width="182" height="86" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="782" y="258" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M795 264l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z M791 272l3 3 5-5.5"/>
-    <text x="818" y="266" class="node-title">Gateway / Proxy</text><text x="818" y="282" class="node-sub">inline firewall + identity</text>
-    <text x="818" y="299" class="node-sub">inspect · block · sign · audit</text>
-    <text x="786" y="319" class="pill">runtime MCP enforcement</text></g>
-  <g><rect x="772" y="338" width="182" height="76" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="782" y="356" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><rect class="ic" x="788" y="361" width="14" height="6" rx="2"/><rect class="ic" x="788" y="371" width="14" height="6" rx="2"/><path class="ic" d="M792 364h.01 M792 374h.01"/>
-    <text x="818" y="362" class="node-title">MCP server</text><text x="818" y="378" class="node-sub">70 tools · scan · graph · shield</text>
-    <text x="786" y="400" class="pill">stdio · SSE · streamable-HTTP</text></g>
-  <g><rect x="772" y="422" width="182" height="66" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="782" y="438" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><rect class="ic" x="788" y="444" width="6" height="6" rx="1.5"/><rect class="ic" x="796" y="444" width="6" height="6" rx="1.5"/><rect class="ic" x="788" y="452" width="6" height="6" rx="1.5"/><rect class="ic" x="796" y="452" width="6" height="6" rx="1.5"/>
-    <text x="818" y="446" class="node-title">Fleet &amp; scheduling</text><text x="818" y="462" class="node-sub">multi-replica dispatch</text>
-    <text x="818" y="478" class="node-sub">Helm / EKS deployable</text></g>
-  <g><rect x="772" y="496" width="182" height="40" rx="9" fill="#f6f5fa" stroke="#e6e3ef"/>
-    <text x="863" y="520" text-anchor="middle" class="node-sub" fill="#52525b">fail-closed auth · RBAC · scopes · audit</text></g>
-
-  <!-- LANE 5 -->
-  <rect x="1000" y="92" width="160" height="500" rx="13" fill="#fafafa" stroke="#ececf0"/>
-  <text x="1016" y="118" class="lane-label">CONSUMERS</text><text x="1016" y="134" class="lane-sub">People + agents</text>
-  <text x="1016" y="162" class="chip" fill="#7c3aed" letter-spacing="0.1em">PEOPLE</text>
-  <g><rect x="1012" y="170" width="136" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="1022" y="182" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M1028 190l4 4-4 4 M1034 198h5"/>
-    <text x="1056" y="190" class="node-title">CLI</text><text x="1056" y="205" class="node-sub">terminal · CI gate</text></g>
-  <g><rect x="1012" y="224" width="136" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="1022" y="236" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><rect class="ic" x="1027" y="241" width="14" height="11" rx="2"/><path class="ic" d="M1027 245h14"/>
-    <text x="1056" y="244" class="node-title">Web UI</text><text x="1056" y="259" class="node-sub">dashboard · graph</text></g>
-  <text x="1016" y="298" class="chip" fill="#7c3aed" letter-spacing="0.1em">AGENTS</text>
-  <g><rect x="1012" y="306" width="136" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="1022" y="318" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><circle class="ic" cx="1031" cy="325" r="2.4"/><circle class="ic" cx="1027" cy="335" r="2"/><circle class="ic" cx="1036" cy="335" r="2"/><path class="ic" d="M1030 327l-2 6 M1033 327l2 6"/>
-    <text x="1056" y="326" class="node-title">MCP clients</text><text x="1056" y="341" class="node-sub">tool calls over MCP</text></g>
-  <g><rect x="1012" y="360" width="136" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
-    <rect x="1022" y="372" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><path class="ic" d="M1031 378l-4 6 4 6 M1037 378l4 6-4 6"/>
-    <text x="1056" y="380" class="node-title">API / SDK</text><text x="1056" y="395" class="node-sub">programmatic</text></g>
-  <text x="1016" y="434" class="chip" fill="#7c3aed" letter-spacing="0.1em">ARTIFACTS</text>
-  <g><rect x="1012" y="442" width="136" height="102" rx="9" fill="#f6f5fa" stroke="#e6e3ef"/>
-    <rect x="1024" y="454" width="50" height="18" rx="9" fill="#ffffff" stroke="#e6e6ea"/><text x="1049" y="466" text-anchor="middle" class="chip">SARIF</text>
-    <rect x="1080" y="454" width="56" height="18" rx="9" fill="#ffffff" stroke="#e6e6ea"/><text x="1108" y="466" text-anchor="middle" class="chip">CycloneDX</text>
-    <rect x="1024" y="478" width="44" height="18" rx="9" fill="#ffffff" stroke="#e6e6ea"/><text x="1046" y="490" text-anchor="middle" class="chip">SPDX</text>
-    <rect x="1074" y="478" width="44" height="18" rx="9" fill="#ffffff" stroke="#e6e6ea"/><text x="1096" y="490" text-anchor="middle" class="chip">OCSF</text>
-    <rect x="1024" y="502" width="44" height="18" rx="9" fill="#ffffff" stroke="#e6e6ea"/><text x="1046" y="514" text-anchor="middle" class="chip">HTML</text>
-    <rect x="1074" y="502" width="44" height="18" rx="9" fill="#ffffff" stroke="#e6e6ea"/><text x="1096" y="514" text-anchor="middle" class="chip">JSON</text>
-    <text x="1080" y="535" text-anchor="middle" class="node-sub">→ SIEM · webhooks</text></g>
-
-  <!-- flow arrows (drawn on top so labels are never clipped by lane panels) -->
-  <line x1="246" y1="360" x2="278" y2="360" stroke="#a1a1aa" stroke-width="2" marker-end="url(#abom-arrow-l)"/><text x="262" y="350" text-anchor="middle" class="flow-label">SCAN</text>
-  <line x1="486" y1="360" x2="518" y2="360" stroke="#a1a1aa" stroke-width="2" marker-end="url(#abom-arrow-l)"/><text x="502" y="350" text-anchor="middle" class="flow-label">NORMALIZE</text>
-  <line x1="726" y1="360" x2="758" y2="360" stroke="#7c3aed" stroke-width="2.2" marker-end="url(#abom-arrow-accent-l)"/><text x="742" y="350" text-anchor="middle" class="flow-label" fill="#7c3aed">SERVE</text>
-  <line x1="966" y1="360" x2="998" y2="360" stroke="#a1a1aa" stroke-width="2" marker-end="url(#abom-arrow-l)"/><text x="982" y="350" text-anchor="middle" class="flow-label">DELIVER</text>
-
-  <rect x="40" y="608" width="1120" height="30" rx="9" fill="#ecfdf5" stroke="#a7f3d0"/>
-  <text x="600" y="627" text-anchor="middle" class="footer">READ-ONLY BY DEFAULT · no target writes · never runs servers · no secret values · self-hosted · evidence signed end-to-end</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" fill="none" role="img" aria-labelledby="arch-l-title arch-l-desc">
+<title id="arch-l-title">agent-bom control-plane architecture</title>
+<desc id="arch-l-desc">Sources through scan and evidence core to control plane and consumers.</desc>
+<defs>
+<marker id="arch-l" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="9" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 Z" fill="#a1a1aa"/></marker>
+<marker id="arch-a-l" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="9" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 Z" fill="#7c3aed"/></marker>
+</defs>
+<rect width="1200" height="620" rx="14" fill="#ffffff"/>
+<text x="36" y="42" font-family="Inter,system-ui,sans-serif" font-size="22" font-weight="850" fill="#18181b">Control-plane <tspan fill="#7c3aed">architecture</tspan></text>
+<text x="36" y="62" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="500" fill="#71717a">Sources → scan → one Finding + ContextGraph → API · Gateway · MCP → people + agents</text>
+<rect x="32" y="82" width="184" height="468" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="32" y="82" width="184" height="36" rx="10" fill="#1e3a5f"/><rect x="32" y="104" width="184" height="14" fill="#1e3a5f"/><text x="46" y="104" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#93c5fd">SOURCES</text><text x="204" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#60a5fa" opacity="0.85">read-only</text>
+<rect x="228" y="82" width="184" height="468" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="228" y="82" width="184" height="36" rx="10" fill="#78350f"/><rect x="228" y="104" width="184" height="14" fill="#78350f"/><text x="242" y="104" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#fde68a">SCAN</text><text x="400" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#fbbf24" opacity="0.85">local</text>
+<rect x="424" y="82" width="184" height="468" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="424" y="82" width="184" height="36" rx="10" fill="#5b21b6"/><rect x="424" y="104" width="184" height="14" fill="#5b21b6"/><text x="438" y="104" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#ddd6fe">EVIDENCE</text><text x="596" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#a78bfa" opacity="0.85">normalized</text>
+<rect x="620" y="82" width="184" height="468" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="620" y="82" width="184" height="36" rx="10" fill="#065f46"/><rect x="620" y="104" width="184" height="14" fill="#065f46"/><text x="634" y="104" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#a7f3d0">CONTROL</text><text x="792" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#34d399" opacity="0.85">tenant auth</text>
+<rect x="816" y="82" width="352" height="468" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="816" y="82" width="352" height="36" rx="10" fill="#1e3a8a"/><rect x="816" y="104" width="352" height="14" fill="#1e3a8a"/><text x="830" y="104" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#93c5fd">CONSUMERS</text><text x="1156" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#60a5fa" opacity="0.85">people+agents</text>
+<rect x="44" y="128" width="160" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="54" y="139" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(59,144)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 3v9 M4 7.5l16 9"/></g>
+<text x="88" y="150" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Supply chain</text>
+<text x="88" y="164" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">15 eco</text>
+<rect x="44" y="186" width="160" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="54" y="197" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(59,202)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
+<text x="88" y="208" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Agents & MCP</text>
+<text x="88" y="222" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">29 clients</text>
+<rect x="44" y="244" width="160" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="54" y="255" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(59,260)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15h12a4 4 0 0 0 .5-8A6 6 0 0 0 6 15z"/></g>
+<text x="88" y="266" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Cloud</text>
+<text x="88" y="280" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">4 providers</text>
+<rect x="44" y="302" width="160" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="54" y="313" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(59,318)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 3.5-7 3.5-7-3.5z M5 11l7 3.5 7-3.5 M5 15l7 3.5 7-3.5"/></g>
+<text x="88" y="324" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">IaC & OCI</text>
+<text x="88" y="338" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">TF·K8s·img</text>
+<rect x="44" y="360" width="160" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="54" y="371" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(59,376)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="11" width="10" height="8" rx="2"/><path d="M9 11V8a3 3 0 0 1 6 0v3"/></g>
+<text x="88" y="382" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Secrets</text>
+<text x="88" y="396" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">refs only</text>
+<rect x="44" y="418" width="160" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="54" y="429" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(59,434)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 3.5v7L12 18l-7-3.5v-7z M12 4v14 M5 7.5l14 7"/></g>
+<text x="88" y="440" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Models</text>
+<text x="88" y="454" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">13 formats</text>
+<rect x="44" y="476" width="160" height="48" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="54" y="487" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(59,492)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8 M9 15h5"/></g>
+<text x="88" y="498" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">SBOM import</text>
+<text x="88" y="512" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">CDX·SPDX</text>
+<rect x="240" y="128" width="160" height="60" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="250" y="145" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(255,150)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10h8M6 14h12M9 6l-2 2M15 6l2 2M9 18l-2 2M15 18l2 2"/><circle cx="12" cy="12" r="4"/></g>
+<text x="284" y="158" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">OSV scan</text>
+<text x="284" y="172" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">batch</text>
+<rect x="240" y="200" width="160" height="60" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="250" y="217" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(255,222)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></g>
+<text x="284" y="230" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Enrichment</text>
+<text x="284" y="244" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">NVD·EPSS</text>
+<rect x="240" y="272" width="160" height="60" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="250" y="289" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(255,294)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></g>
+<text x="284" y="302" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Posture</text>
+<text x="284" y="316" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">CIS·MCP</text>
+<rect x="240" y="344" width="160" height="60" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="250" y="361" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(255,366)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="12" cy="16" r="2.5"/><path d="M10 9.5l1.5 5 M14 9.5l-1.5 5"/></g>
+<text x="284" y="374" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Blast radius</text>
+<text x="284" y="388" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">fusion</text>
+<rect x="240" y="416" width="160" height="60" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="250" y="433" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(255,438)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h7l4 4v12H7z M14 4v4h4"/></g>
+<text x="284" y="446" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Policy</text>
+<text x="284" y="460" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">as-code</text>
+<rect x="436" y="128" width="160" height="72" rx="9" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.6"/>
+<rect x="446" y="151" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(451,156)" fill="none" stroke="#7c3aed" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h7l3 3v9H8z M15 6v3h3 M10 14l1.5 1.5 3-3"/></g>
+<text x="480" y="162" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Unified Finding</text>
+<text x="480" y="178" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#7c3aed">one schema</text>
+<rect x="436" y="216" width="160" height="72" rx="9" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.6"/>
+<rect x="446" y="239" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(451,244)" fill="none" stroke="#7c3aed" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="12" cy="16" r="2.5"/><path d="M10 9.5l1.5 5 M14 9.5l-1.5 5"/></g>
+<text x="480" y="250" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">ContextGraph</text>
+<text x="480" y="266" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#7c3aed">attack paths</text>
+<rect x="436" y="304" width="160" height="72" rx="9" fill="#ffffff" stroke="#e6e6ea" stroke-width="1"/>
+<rect x="446" y="327" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(451,332)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="7" rx="7" ry="3"/><path d="M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7"/></g>
+<text x="480" y="338" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Stores</text>
+<text x="480" y="354" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">PG·SQLite</text>
+<rect x="436" y="392" width="160" height="72" rx="9" fill="#ffffff" stroke="#e6e6ea" stroke-width="1"/>
+<rect x="446" y="415" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(451,420)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/></g>
+<text x="480" y="426" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Audit chain</text>
+<text x="480" y="442" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">signed</text>
+<rect x="632" y="128" width="156" height="72" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="642" y="151" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(647,156)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
+<text x="676" y="162" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">REST API</text>
+<text x="676" y="178" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">271 ops</text>
+<rect x="632" y="216" width="156" height="72" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="642" y="239" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(647,244)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z"/><path d="M9 12l2 2 4-4"/></g>
+<text x="676" y="250" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Gateway</text>
+<text x="676" y="266" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">runtime</text>
+<rect x="632" y="304" width="156" height="72" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="642" y="327" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(647,332)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
+<text x="676" y="338" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">MCP server</text>
+<text x="676" y="354" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">70 tools</text>
+<rect x="632" y="392" width="156" height="72" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="642" y="415" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(647,420)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/></g>
+<text x="676" y="426" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Fleet jobs</text>
+<text x="676" y="442" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">Helm·EKS</text>
+<rect x="632" y="490" width="156" height="32" rx="8" fill="#f4f4f6" stroke="#e4e4e7"/><text x="710" y="510" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="700" fill="#52525b">OIDC · SAML · SCIM · RBAC</text>
+<text x="880" y="128" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.12em" fill="#7c3aed">PEOPLE</text>
+<rect x="828" y="136" width="104" height="44" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="836" y="145" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(841,150)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l-4 4 4 4 M13 16h7"/></g>
+<text x="868" y="163" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#18181b">CLI</text>
+<rect x="828" y="190" width="104" height="44" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="836" y="199" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(841,204)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="M4 9h16"/></g>
+<text x="868" y="217" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#18181b">Web UI</text>
+<text x="998" y="128" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.12em" fill="#7c3aed">AGENTS</text>
+<rect x="946" y="136" width="104" height="44" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="954" y="145" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(959,150)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
+<text x="986" y="163" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#18181b">MCP</text>
+<rect x="946" y="190" width="104" height="44" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="954" y="199" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(959,204)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
+<text x="986" y="217" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#18181b">SDK</text>
+<text x="1116" y="128" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.12em" fill="#7c3aed">ARTIFACTS</text>
+<rect x="1064" y="136" width="54" height="22" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><text x="1091" y="151" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7.5" font-weight="700" fill="#52525b">SARIF</text>
+<rect x="1122" y="136" width="54" height="22" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><text x="1149" y="151" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7.5" font-weight="700" fill="#52525b">CDX</text>
+<rect x="1064" y="164" width="54" height="22" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><text x="1091" y="179" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7.5" font-weight="700" fill="#52525b">SPDX</text>
+<rect x="1122" y="164" width="54" height="22" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><text x="1149" y="179" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7.5" font-weight="700" fill="#52525b">OCSF</text>
+<rect x="1064" y="192" width="54" height="22" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><text x="1091" y="207" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7.5" font-weight="700" fill="#52525b">HTML</text>
+<rect x="1122" y="192" width="54" height="22" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><text x="1149" y="207" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7.5" font-weight="700" fill="#52525b">JSON</text>
+<text x="1116" y="248" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="600" fill="#9a9aa4">→ SIEM · webhooks</text>
+<line x1="216" y1="318" x2="228" y2="318" stroke="#a1a1aa" stroke-width="2" marker-end="url(#arch-l)"/>
+<text x="222" y="308" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.1em" fill="#9a9aa4">SCAN</text>
+<line x1="412" y1="318" x2="424" y2="318" stroke="#a1a1aa" stroke-width="2" marker-end="url(#arch-l)"/>
+<text x="418" y="308" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.1em" fill="#9a9aa4">NORMALIZE</text>
+<line x1="608" y1="318" x2="620" y2="318" stroke="#7c3aed" stroke-width="2.3" marker-end="url(#arch-a-l)"/>
+<text x="614" y="308" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.1em" fill="#7c3aed">SERVE</text>
+<line x1="804" y1="318" x2="816" y2="318" stroke="#a1a1aa" stroke-width="2" marker-end="url(#arch-l)"/>
+<text x="810" y="308" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.1em" fill="#9a9aa4">DELIVER</text>
+<rect x="32" y="568" width="1136" height="32" rx="9" fill="#ecfdf5" stroke="#bbf7d0"/><text x="600" y="588" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="600" fill="#15803d">READ-ONLY BY DEFAULT · no target writes · no secret values · self-hosted · signed evidence</text>
 </svg>

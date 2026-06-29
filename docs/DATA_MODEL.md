@@ -150,8 +150,10 @@ collapses deep source trees along these `CONTAINS` edges the same way it
 collapses the cloud `org → account → resource` hierarchy.
 
 `DATA_STORE` is a cloud-CNAPP primitive — a database / bucket / lake / warehouse
-holding data at rest, derived from cloud resources so path-to-sensitive-data is
-traversable.
+holding data at rest, derived from cloud resources so metadata-backed
+data-store reachability is traversable. Treat data as sensitive only when
+explicit tags, classification evidence, imported DLP/Macie evidence, or
+target-scoped dataset scan evidence supports that label.
 
 `API_GATEWAY` is a network-edge primitive in the API_GATEWAY semantic layer —
 an API gateway / managed front-door populated from live cloud inventory (AWS API

@@ -45,7 +45,7 @@ graph LR
 | Enrichment | `src/agent_bom/enrichment.py` | CVE lookup (OSV, NVD, EPSS, KEV) |
 | Blast Radius | `src/agent_bom/blast_radius.py` | Impact chain mapping |
 | Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis |
-| Registry | `src/agent_bom/registry.py` | 427+ server security metadata |
+| Registry | `src/agent_bom/registry.py` | 880 server security metadata entries |
 | Compliance | `src/agent_bom/compliance/` | 15 framework mappings plus AISVS benchmark evidence |
 | Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |
 | Proxy | `src/agent_bom/proxy.py` | Runtime MCP interception |

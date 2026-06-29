@@ -211,5 +211,18 @@ def test_json_and_console_surface_coverage_warnings():
     assert "debian:10" in text
 
 
+def test_osv_fallback_db_keys_for_sparse_release(tmp_path):
+    from agent_bom.coverage import osv_fallback_db_keys, package_db_key
+
+    conn = init_db(tmp_path / "vulns.db")
+    _seed_db(conn, family_releases=["debian:11", "debian:12", "debian:13"])
+    packages = _deb_packages("10")
+    gaps = detect_release_coverage_gaps(packages, conn=conn)
+    conn.close()
+
+    keys = osv_fallback_db_keys(packages, gaps=gaps)
+    assert keys == {package_db_key(pkg) for pkg in packages}
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

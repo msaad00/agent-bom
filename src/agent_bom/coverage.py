@@ -194,3 +194,39 @@ def detect_release_coverage_gaps(
                 conn.close()
             except Exception:  # noqa: BLE001
                 pass
+
+
+def package_db_key(pkg: "Package") -> str:
+    """Stable scan key used for local DB coverage and OSV fallback decisions."""
+    from agent_bom.package_utils import normalize_package_name
+
+    return f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
+
+
+def osv_fallback_db_keys(
+    packages: Sequence["Package"],
+    *,
+    gaps: Sequence[dict] | None = None,
+) -> set[str]:
+    """Return package keys that should still query OSV despite a local DB hit.
+
+    Sparse distro releases (typically EOL) may have packages present in the
+    image but near-zero advisory rows in the local cache. A zero-vuln local hit
+    is not authoritative for those releases when online OSV is available.
+    """
+    gap_list = list(gaps) if gaps is not None else detect_release_coverage_gaps(packages)
+    if not gap_list:
+        return set()
+    sparse_releases = {gap["release"] for gap in gap_list if gap.get("release")}
+    if not sparse_releases:
+        return set()
+
+    keys: set[str] = set()
+    for pkg in packages:
+        release = _release_key(pkg)
+        if release is None:
+            continue
+        _family, release_key = release
+        if release_key in sparse_releases:
+            keys.add(package_db_key(pkg))
+    return keys

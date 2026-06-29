@@ -1056,10 +1056,12 @@ async def scan_packages(
     # such a release is NOT a clean bill of health — surface it loudly so it is
     # never mistaken for a secure result. Detection never alters matching or the
     # vulnerabilities already attached to packages.
+    coverage_gaps: list[dict] = []
     try:
         from agent_bom.coverage import detect_release_coverage_gaps
 
-        for gap in detect_release_coverage_gaps(scannable):
+        coverage_gaps = detect_release_coverage_gaps(scannable)
+        for gap in coverage_gaps:
             record_coverage_warning(gap)
             record_scan_warning(f"incomplete vulnerability coverage for {gap['release']} (likely end-of-life; results may under-report)")
             console.print(
@@ -1071,8 +1073,15 @@ async def scan_packages(
     except Exception as exc:  # noqa: BLE001
         _logger.debug("coverage-gap detection skipped: %s", exc)
 
-    # Only call OSV for packages not already covered by the local DB
-    osv_targets = [p for p in scannable if _db_key(p) not in db_covered]
+    # Only call OSV for packages not already covered by the local DB, except when
+    # the release has sparse advisory coverage (EOL) — then force OSV online.
+    from agent_bom.coverage import osv_fallback_db_keys
+
+    force_osv_keys = osv_fallback_db_keys(scannable, gaps=coverage_gaps) if not scan_offline else set()
+    osv_targets = [p for p in scannable if _db_key(p) not in db_covered or _db_key(p) in force_osv_keys]
+    if force_osv_keys:
+        _logger.info("Forcing OSV lookup for %d package(s) on sparse distro release(s)", len(force_osv_keys))
+        record_scan_warning(f"sparse release OSV fallback for {len(force_osv_keys)} package(s)")
 
     if scan_offline or (scan_prefer_local_db and not osv_targets):
         if scan_offline:

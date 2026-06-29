@@ -9,8 +9,8 @@ from typing import Any, Awaitable, Callable, Optional
 import httpx
 from rich.console import Console
 
-from agent_bom.config import SCANNER_BATCH_DELAY as BATCH_DELAY_SECONDS
 from agent_bom.config import SCANNER_BATCH_SIZE as _BATCH_SIZE
+from agent_bom.config import SCANNER_OSV_BATCH_CONCURRENCY as OSV_BATCH_CONCURRENCY
 from agent_bom.enrichment_posture import enrichment_source_available, record_enrichment_source
 from agent_bom.http_client import OfflineModeError, create_client, request_with_retry
 from agent_bom.models import Package
@@ -318,8 +318,13 @@ async def query_osv_batch_impl(
         return results
 
     async with client_ctx as client:
-        for batch_start in range(0, len(queries), batch_size):
+        batch_starts = list(range(0, len(queries), batch_size))
+        batch_concurrency = max(1, min(OSV_BATCH_CONCURRENCY, len(batch_starts)))
+
+        async def _process_batch(batch_start: int) -> tuple[dict[str, list[dict]], list[tuple[str, str, str]]]:
             batch = queries[batch_start : batch_start + batch_size]
+            partial: dict[str, list[dict]] = {}
+            batch_errors: list[tuple[str, str, str]] = []
             bump_scan_perf("osv_batches", 1)
 
             async with semaphore:
@@ -355,7 +360,7 @@ async def query_osv_batch_impl(
                             pkg_obj, _queried_name = pkg_match
                             norm = normalize_package_name(pkg_obj.name, pkg_obj.ecosystem)
                             key = f"{pkg_obj.ecosystem.lower()}:{norm}@{pkg_obj.version}"
-                            existing = results.setdefault(key, [])
+                            existing = partial.setdefault(key, [])
                             seen_ids = {item.get("id") for item in existing}
                             for vuln in vulns:
                                 if vuln.get("id") not in seen_ids:
@@ -367,7 +372,7 @@ async def query_osv_batch_impl(
                         for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                             pkg_err = pkg_index.get(idx)
                             if pkg_err:
-                                lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"parse error: {exc}"))
+                                batch_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"parse error: {exc}"))
                 elif response and response.status_code == 429:
                     record_enrichment_source("osv", "failure", error="HTTP 429 rate limited")
                     retry_after_hdr = response.headers.get("Retry-After")
@@ -386,17 +391,35 @@ async def query_osv_batch_impl(
                     for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                         pkg_err = pkg_index.get(idx)
                         if pkg_err:
-                            lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"HTTP {response.status_code}"))
+                            batch_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"HTTP {response.status_code}"))
                 else:
                     record_enrichment_source("osv", "failure", error="unreachable after retries")
                     console.print("  [red]✗[/red] OSV API unreachable after retries")
                     for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                         pkg_err = pkg_index.get(idx)
                         if pkg_err:
-                            lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, "unreachable"))
+                            batch_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, "unreachable"))
+            return partial, batch_errors
 
-            if batch_start + batch_size < len(queries):
-                await asyncio.sleep(BATCH_DELAY_SECONDS)
+        batch_sem = asyncio.Semaphore(batch_concurrency)
+
+        async def _guarded_batch(batch_start: int) -> tuple[dict[str, list[dict]], list[tuple[str, str, str]]]:
+            async with batch_sem:
+                return await _process_batch(batch_start)
+
+        outcomes = await asyncio.gather(*(_guarded_batch(batch_start) for batch_start in batch_starts))
+        for partial, batch_errors in outcomes:
+            for key, vulns in partial.items():
+                existing = results.setdefault(key, [])
+                seen_ids = {item.get("id") for item in existing}
+                for vuln in vulns:
+                    if vuln.get("id") not in seen_ids:
+                        existing.append(vuln)
+                        seen_ids.add(vuln.get("id"))
+            lookup_errors.extend(batch_errors)
+
+        if batch_concurrency > 1 and len(batch_starts) > 1:
+            bump_scan_perf("osv_parallel_batch_groups", len(batch_starts))
 
     await enrich_results_if_needed_fn(results)
 

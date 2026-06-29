@@ -2,8 +2,8 @@
 
 Covers the five shipped capabilities and the cross-cutting acceptance criteria:
 
-1. Fail-closed mode — missing/unloadable policy DENIES in ``closed`` mode and
-   still ALLOWS (legacy) in the default ``open`` mode.
+1. Fail-closed mode — missing/unloadable policy DENIES by default and still
+   ALLOWS only under explicit ``open`` mode.
 2. Quarantine decision tier — a conditional ``quarantine`` rule blocks the tool
    with a distinct, client-safe reason while flagging + auditing the agent.
 3. Conditional access — declarative time-window / risk-score / required-attribute
@@ -15,7 +15,7 @@ Covers the five shipped capabilities and the cross-cutting acceptance criteria:
    relay is never blocked by a webhook failure.
 
 Plus determinism (same request → identical decision + identical event id) and
-the default-behaviour-unchanged guarantee.
+the non-enforcement default-allow guarantee.
 """
 
 from __future__ import annotations
@@ -89,11 +89,12 @@ def _clean_plugin_registry():
 # ─── Fail-closed mode ──────────────────────────────────────────────────────
 
 
-def test_resolve_fail_mode_default_open(monkeypatch):
+def test_resolve_fail_mode_default_closed(monkeypatch):
     monkeypatch.delenv("AGENT_BOM_GATEWAY_FAIL_MODE", raising=False)
-    assert resolve_fail_mode(None) == "open"
+    assert resolve_fail_mode(None) == "closed"
     assert resolve_fail_mode("closed") == "closed"
-    assert resolve_fail_mode("garbage") == "open"
+    assert resolve_fail_mode("open") == "open"
+    assert resolve_fail_mode("garbage") == "closed"
 
 
 def test_fail_closed_denies_when_policy_file_unloadable(tmp_path):
@@ -107,12 +108,23 @@ def test_fail_closed_denies_when_policy_file_unloadable(tmp_path):
     assert any(e["action"] == "gateway.policy_fail_closed" for e in audit)
 
 
-def test_fail_open_default_allows_when_policy_file_unloadable(tmp_path):
+def test_fail_closed_default_denies_when_policy_file_unloadable(tmp_path):
     missing = tmp_path / "does-not-exist.json"
-    settings = _settings(policy_path=missing)  # fail_mode defaults to open
+    audit: list[dict[str, Any]] = []
+    settings = _settings(audit=audit, policy_path=missing)
     client = TestClient(create_gateway_app(settings))
     resp = client.post("/mcp/filesystem", json=_call())
-    # Legacy behaviour: missing policy degrades to default-allow, call forwards.
+    assert _is_blocked(resp)
+    assert resp.json()["error"]["data"]["policy_source"] == "fail_closed"
+    assert any(e["action"] == "gateway.policy_fail_closed" for e in audit)
+
+
+def test_explicit_fail_open_allows_when_policy_file_unloadable(tmp_path):
+    missing = tmp_path / "does-not-exist.json"
+    settings = _settings(policy_path=missing, fail_mode="open")
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_call())
+    # Local/dev compatibility: explicit fail-open still forwards.
     assert resp.status_code == 200
     assert resp.json().get("result") == {"ok": True}
 
@@ -202,15 +214,35 @@ def test_plugin_evaluator_can_deny_in_relay():
     assert resp.json()["error"]["data"]["policy_source"] == "policy_plugin"
 
 
-def test_raising_plugin_is_isolated_decision_still_returned():
+def test_raising_plugin_fails_closed_by_default():
     def _boom(ctx: DecisionContext, policy: dict) -> PluginDecision | None:
         raise RuntimeError("plugin exploded")
 
     register_policy_evaluator("boom", _boom)
-    settings = _settings()  # fail-open: a raising plugin must not break the relay
+    audit: list[dict[str, Any]] = []
+    settings = _settings(audit=audit)
     client = TestClient(create_gateway_app(settings))
     resp = client.post("/mcp/filesystem", json=_call())
-    # Decision still returned — the call forwards (no plugin opinion survived).
+    assert _is_blocked(resp)
+    body = resp.json()
+    assert body["error"]["data"]["policy_source"] == "policy_plugin"
+    assert body["error"]["data"]["reason"] == "A gateway policy plugin blocked this request"
+    assert any(
+        event["policy_source"] == "policy_plugin"
+        and event["reason"] == "policy evaluator unavailable; fail-closed mode denies"
+        for event in audit
+    )
+
+
+def test_raising_plugin_is_isolated_in_explicit_fail_open_mode():
+    def _boom(ctx: DecisionContext, policy: dict) -> PluginDecision | None:
+        raise RuntimeError("plugin exploded")
+
+    register_policy_evaluator("boom", _boom)
+    settings = _settings(fail_mode="open")
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_call())
+    # Decision still returned — the call forwards only under explicit fail-open.
     assert resp.status_code == 200
     assert resp.json().get("result") == {"ok": True}
 
@@ -321,12 +353,12 @@ def test_webhook_failure_does_not_block_relay():
     assert _is_blocked(resp)  # relay still denies even though the webhook would fail
 
 
-# ─── Default behaviour unchanged ───────────────────────────────────────────
+# ─── Non-enforcement default behaviour unchanged ───────────────────────────
 
 
 def test_defaults_preserve_existing_allow_behaviour():
-    # No fail_mode, no webhook, no conditional rules, no plugins → identical to
-    # legacy: an unmatched policy allows and the call forwards.
+    # No policy_path, no webhook, no conditional rules, no plugins: an unmatched
+    # inline policy is still non-enforcement and forwards.
     settings = _settings(policy={"rules": []})
     client = TestClient(create_gateway_app(settings))
     resp = client.post("/mcp/filesystem", json=_call())

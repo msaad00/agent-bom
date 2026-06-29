@@ -385,7 +385,8 @@ class GatewayDecision(str, Enum):
 
 
 # Env knobs (read by the gateway, surfaced here so the contract lives with the
-# engine). Defaults preserve current behaviour: fail-open, no webhook.
+# engine). Gateway policy failure is fail-closed by default; operators can still
+# opt into explicit fail-open for local/dev compatibility.
 GATEWAY_FAIL_MODE_ENV = "AGENT_BOM_GATEWAY_FAIL_MODE"
 POLICY_WEBHOOK_URL_ENV = "AGENT_BOM_POLICY_WEBHOOK_URL"
 POLICY_WEBHOOK_TOKEN_ENV = "AGENT_BOM_POLICY_WEBHOOK_TOKEN"
@@ -397,17 +398,16 @@ def resolve_fail_mode(explicit: str | None = None) -> str:
     """Return ``"open"`` or ``"closed"`` for the missing/unloadable-policy path.
 
     Precedence: an explicit caller value, then ``AGENT_BOM_GATEWAY_FAIL_MODE``,
-    then the secure-compatible default ``"open"`` (unchanged behaviour). Any
-    unrecognised value falls back to ``"open"`` with a warning so a typo never
-    silently fails the whole relay closed.
+    then the secure default ``"closed"``. Any unrecognised value falls back to
+    ``"closed"`` with a warning so a typo never silently disables enforcement.
     """
     raw = (explicit if explicit is not None else os.environ.get(GATEWAY_FAIL_MODE_ENV, "")).strip().lower()
     if not raw:
-        return "open"
+        return "closed"
     if raw in ("open", "closed"):
         return raw
-    logger.warning("Unrecognised gateway fail mode %r; defaulting to 'open'", raw)
-    return "open"
+    logger.warning("Unrecognised gateway fail mode %r; defaulting to 'closed'", raw)
+    return "closed"
 
 
 @dataclass(frozen=True)
@@ -641,12 +641,20 @@ def _load_entrypoint_evaluators() -> None:
         _REGISTERED_EVALUATORS.setdefault(name, evaluator)
 
 
-def evaluate_policy_plugins(ctx: DecisionContext, policy: dict) -> tuple[GatewayDecision, str, str | None]:
+def evaluate_policy_plugins(
+    ctx: DecisionContext,
+    policy: dict,
+    *,
+    fail_closed: bool = False,
+) -> tuple[GatewayDecision, str, str | None]:
     """Compose all registered policy-evaluator plugins into one verdict.
 
-    Each plugin is isolated: a raising plugin is logged and skipped (fail-safe),
-    never fatal. DENY outranks QUARANTINE outranks ALLOW; the strictest verdict
-    across plugins wins, with the first plugin producing that verdict named.
+    Each plugin is isolated. In explicit fail-open mode a raising plugin is
+    logged and skipped for local/dev compatibility. In fail-closed mode a
+    raising plugin produces a DENY so a broken evaluator cannot silently disable
+    gateway enforcement. DENY outranks QUARANTINE outranks ALLOW; the strictest
+    verdict across plugins wins, with the first plugin producing that verdict
+    named.
     """
     _load_entrypoint_evaluators()
     if not _REGISTERED_EVALUATORS:
@@ -660,7 +668,9 @@ def evaluate_policy_plugins(ctx: DecisionContext, policy: dict) -> tuple[Gateway
         try:
             verdict = evaluator(ctx, policy)
         except Exception as exc:  # noqa: BLE001 — isolate a misbehaving plugin
-            logger.warning("policy evaluator plugin %r raised and was skipped: %s", name, exc)
+            logger.warning("policy evaluator plugin %r raised: %s", name, exc)
+            if fail_closed:
+                return GatewayDecision.DENY, "policy evaluator unavailable; fail-closed mode denies", name
             continue
         if verdict is None:
             continue

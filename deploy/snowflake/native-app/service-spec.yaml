@@ -1,0 +1,53 @@
+spec:
+  containers:
+    - name: agent-bom
+      image: /db/schema/agent_bom_repo/agent-bom:v0_89_2
+      env:
+        AGENT_BOM_STORE_BACKEND: snowflake
+        AGENT_BOM_SNOWFLAKE_NATIVE_APP: "1"
+        AGENT_BOM_MCP_MODE: "0"
+        AGENT_BOM_LOG_LEVEL: "INFO"
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp/agent-bom
+      readinessProbe:
+        port: 8422
+        path: /health
+      resources:
+        requests:
+          memory: 512M
+          cpu: 0.5
+        limits:
+          memory: 2G
+          cpu: 2
+
+    - name: agent-bom-ui
+      image: /db/schema/agent_bom_repo/agent-bom-ui:v0_89_2
+      env:
+        NEXT_PUBLIC_API_URL: "http://localhost:8422"
+        NODE_ENV: production
+        PORT: "3000"
+      readinessProbe:
+        port: 3000
+        path: /api/health
+      resources:
+        requests:
+          memory: 256M
+          cpu: 0.25
+        limits:
+          memory: 1G
+          cpu: 1
+
+  volumes:
+    - name: tmp
+      source: local
+      size: 1Gi
+
+  endpoints:
+    - name: api
+      port: 8422
+      public: false
+
+    - name: ui
+      port: 3000
+      public: false

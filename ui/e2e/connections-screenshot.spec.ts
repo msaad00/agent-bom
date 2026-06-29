@@ -16,6 +16,7 @@ const CONNECTION = {
   created_at: "2026-06-27T00:00:00Z",
   updated_at: "2026-06-27T01:00:00Z",
   last_scan_at: "2026-06-27T01:00:00Z",
+  scan_interval_minutes: 60,
 };
 
 const PENDING = {
@@ -25,6 +26,7 @@ const PENDING = {
   status: "pending",
   last_scan_at: null,
   regions: ["eu-west-1"],
+  scan_interval_minutes: null,
 };
 
 async function routeConnections(page: Page) {

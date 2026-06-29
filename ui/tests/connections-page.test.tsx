@@ -8,6 +8,7 @@ const { apiMock } = vi.hoisted(() => ({
     listCloudConnections: vi.fn(),
     getCloudConnection: vi.fn(),
     createCloudConnection: vi.fn(),
+    updateCloudConnection: vi.fn(),
     deleteCloudConnection: vi.fn(),
     scanCloudConnection: vi.fn(),
   },
@@ -56,6 +57,7 @@ const CREATED_RECORD = {
   created_at: "2026-06-27T00:00:00Z",
   updated_at: "2026-06-27T00:00:00Z",
   last_scan_at: null,
+  scan_interval_minutes: null,
 };
 
 beforeEach(() => {
@@ -272,6 +274,41 @@ describe("ConnectionsPage", () => {
       "href",
       "/graph?scan_id=abcdef12-3456-7890-abcd-ef1234567890",
     );
+  });
+
+  it("updates the recurring scan schedule without exposing secrets", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [CREATED_RECORD],
+      count: 1,
+    });
+    apiMock.updateCloudConnection.mockResolvedValue({
+      ...CREATED_RECORD,
+      scan_interval_minutes: 60,
+      updated_at: "2026-06-27T02:00:00Z",
+    });
+
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Production account")).toBeInTheDocument(),
+    );
+
+    fireEvent.change(
+      screen.getByLabelText(
+        "Recurring scan schedule for Production account",
+      ),
+      { target: { value: "60" } },
+    );
+
+    await waitFor(() =>
+      expect(apiMock.updateCloudConnection).toHaveBeenCalledWith("conn-1", {
+        scan_interval_minutes: 60,
+      }),
+    );
+    await waitFor(() => expect(screen.getByText("Runs every 1h")).toBeInTheDocument());
+    expect(document.body.textContent).not.toContain(SECRET);
   });
 
   it("deletes a connection through the API", async () => {

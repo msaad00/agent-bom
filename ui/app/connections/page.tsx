@@ -205,10 +205,24 @@ const SCANNABLE_PROVIDERS = new Set(
   PROVIDER_OPTIONS.map((option) => option.value),
 );
 
+const SCHEDULE_OPTIONS = [
+  { label: "Manual", value: "" },
+  { label: "Hourly", value: "60" },
+  { label: "Every 6 hours", value: "360" },
+  { label: "Daily", value: "1440" },
+];
+
 function formatWhen(value: string | null): string {
   if (!value) return "Never";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatSchedule(minutes: number | null): string {
+  if (!minutes) return "Manual";
+  if (minutes % 1440 === 0) return `Every ${minutes / 1440}d`;
+  if (minutes % 60 === 0) return `Every ${minutes / 60}h`;
+  return `Every ${minutes}m`;
 }
 
 function statusTone(status: string): string {
@@ -273,6 +287,10 @@ export default function ConnectionsPage() {
     Record<string, CloudConnectionScanResponse>
   >({});
   const [scanErrors, setScanErrors] = useState<Record<string, string>>({});
+  const [scheduleBusyId, setScheduleBusyId] = useState<string | null>(null);
+  const [scheduleErrors, setScheduleErrors] = useState<Record<string, string>>(
+    {},
+  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -344,6 +362,38 @@ export default function ConnectionsPage() {
       );
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function handleScheduleChange(
+    connection: CloudConnectionRecord,
+    value: string,
+  ) {
+    const scanIntervalMinutes = value === "" ? null : Number(value);
+    setScheduleBusyId(connection.id);
+    setScheduleErrors((prev) => {
+      const next = { ...prev };
+      delete next[connection.id];
+      return next;
+    });
+    try {
+      const updated = await api.updateCloudConnection(connection.id, {
+        scan_interval_minutes: scanIntervalMinutes,
+      });
+      setConnections((prev) =>
+        prev.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setMessage(
+        `${updated.display_name} scan schedule set to ${formatSchedule(
+          updated.scan_interval_minutes,
+        )}.`,
+      );
+    } catch (err) {
+      const detail =
+        err instanceof Error ? err.message : "Failed to update schedule.";
+      setScheduleErrors((prev) => ({ ...prev, [connection.id]: detail }));
+    } finally {
+      setScheduleBusyId(null);
     }
   }
 
@@ -464,6 +514,7 @@ export default function ConnectionsPage() {
                     <th className="px-4 py-3 font-medium">Provider</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Last scan</th>
+                    <th className="px-4 py-3 font-medium">Schedule</th>
                     <th className="px-4 py-3 text-right font-medium">
                       Actions
                     </th>
@@ -486,12 +537,17 @@ export default function ConnectionsPage() {
                         scannable={scannable}
                         result={result}
                         scanError={scanError}
+                        scheduleBusy={scheduleBusyId === connection.id}
+                        scheduleError={scheduleErrors[connection.id]}
                         statusDetail={
                           connection.status === "error"
                             ? connection.status_detail
                             : ""
                         }
                         onScan={() => void handleScan(connection)}
+                        onScheduleChange={(value) =>
+                          void handleScheduleChange(connection, value)
+                        }
                         onDelete={() => void handleDelete(connection)}
                       />
                     );
@@ -522,8 +578,11 @@ function FragmentRow({
   scannable,
   result,
   scanError,
+  scheduleBusy,
+  scheduleError,
   statusDetail,
   onScan,
+  onScheduleChange,
   onDelete,
 }: {
   connection: CloudConnectionRecord;
@@ -532,11 +591,14 @@ function FragmentRow({
   scannable: boolean;
   result: CloudConnectionScanResponse | undefined;
   scanError: string | undefined;
+  scheduleBusy: boolean;
+  scheduleError: string | undefined;
   statusDetail: string;
   onScan: () => void;
+  onScheduleChange: (value: string) => void;
   onDelete: () => void;
 }) {
-  const showDetail = Boolean(result || scanError || statusDetail);
+  const showDetail = Boolean(result || scanError || scheduleError || statusDetail);
   return (
     <>
       <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 align-top">
@@ -578,6 +640,29 @@ function FragmentRow({
           {formatWhen(connection.last_scan_at)}
         </td>
         <td className="px-4 py-3">
+          <label className="sr-only" htmlFor={`schedule-${connection.id}`}>
+            Recurring scan schedule for {connection.display_name}
+          </label>
+          <select
+            id={`schedule-${connection.id}`}
+            value={connection.scan_interval_minutes?.toString() ?? ""}
+            disabled={scheduleBusy || !canManage}
+            onChange={(event) => onScheduleChange(event.target.value)}
+            className="w-36 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {SCHEDULE_OPTIONS.map((option) => (
+              <option key={option.label} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+            {scheduleBusy
+              ? "Saving…"
+              : `Runs ${formatSchedule(connection.scan_interval_minutes).toLowerCase()}`}
+          </p>
+        </td>
+        <td className="px-4 py-3">
           <div className="flex justify-end gap-2">
             <button
               onClick={onScan}
@@ -606,14 +691,19 @@ function FragmentRow({
       </tr>
       {showDetail ? (
         <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 bg-[color:var(--surface-elevated)]/40">
-          <td colSpan={5} className="px-4 pb-4 pt-0">
+          <td colSpan={6} className="px-4 pb-4 pt-0">
             {result ? <ScanResultPanel result={result} /> : null}
             {!result && scanError ? (
               <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
                 {scanError}
               </div>
             ) : null}
-            {!result && !scanError && statusDetail ? (
+            {!result && !scanError && scheduleError ? (
+              <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
+                {scheduleError}
+              </div>
+            ) : null}
+            {!result && !scanError && !scheduleError && statusDetail ? (
               <div className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-amber-200">
                 {statusDetail}
               </div>

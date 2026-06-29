@@ -23,6 +23,7 @@ import {
 } from "recharts";
 import type { Agent, BlastRadius } from "@/lib/api";
 import { buildBlastRadiusSummary } from "@/lib/insights-risk";
+import { severityRank } from "@/lib/severity";
 
 // ─── Shared ──────────────────────────────────────────────────────────────────
 
@@ -334,8 +335,7 @@ export function SupplyChainTreemap({
             const vulns = pkg.vulnerabilities ?? [];
             const worst = vulns.reduce(
               (w, v) => {
-                const order: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-                return (order[v.severity] ?? 0) > (order[w] ?? 0) ? v.severity : w;
+                return severityRank(v.severity) > severityRank(w) ? v.severity : w;
               },
               "none" as string
             );

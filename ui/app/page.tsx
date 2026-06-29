@@ -21,6 +21,7 @@ function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   return "network";
 }
 import { buildSecurityGraphHref } from "@/lib/attack-paths";
+import { severityRank } from "@/lib/severity";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
   AlertTriangle, Container, Layers, FileText, ExternalLink, GitBranch, ChevronRight,
@@ -232,10 +233,6 @@ export interface CompoundIssue {
   filter: string; // URL param for /vulns deep-link
 }
 
-const SEVERITY_ORDER_MAP: Record<string, number> = {
-  critical: 4, high: 3, medium: 2, low: 1,
-};
-
 function blastTools(blast: BlastRadius): string[] {
   return blast.exposed_tools ?? blast.reachable_tools ?? [];
 }
@@ -330,8 +327,8 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
 
   return issues.sort(
     (a, b) =>
-      (SEVERITY_ORDER_MAP[b.severity] ?? 0) -
-      (SEVERITY_ORDER_MAP[a.severity] ?? 0)
+      severityRank(b.severity) -
+      severityRank(a.severity)
   );
 }
 

@@ -68,6 +68,10 @@ SEVERITY_POLICY_ORDER: dict[str, int] = {
     "UNKNOWN": -1,
 }
 
+SEVERITY_THRESHOLD_LABELS: tuple[str, ...] = ("critical", "high", "medium", "low")
+SEVERITY_BUCKETS_WORST_FIRST: tuple[str, ...] = ("critical", "high", "medium", "low", "info", "none")
+SEVERITY_BUCKETS_ASPM: tuple[str, ...] = ("critical", "high", "medium", "low", "info", "unknown")
+
 # ── Risk score contribution ──────────────────────────────────────────────
 
 SEVERITY_RISK_SCORE: dict[str, float] = {

@@ -17,6 +17,7 @@ import {
   Loader2,
   Ticket,
 } from "lucide-react";
+import { severityRank } from "@/lib/severity";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -61,14 +62,6 @@ function complianceImpact(items: RemediationItem[], topN = 5) {
 // ─── Sort button ──────────────────────────────────────────────────────────────
 
 type SortKey = "impact_score" | "severity" | "agents" | "credentials";
-
-const SEVERITY_ORDER: Record<string, number> = {
-  critical: 4,
-  high: 3,
-  medium: 2,
-  low: 1,
-  none: 0,
-};
 
 function SortButton({
   label,
@@ -570,9 +563,7 @@ function RemediationPage() {
       if (sortKey === "impact_score") {
         diff = a.impact_score - b.impact_score;
       } else if (sortKey === "severity") {
-        diff =
-          (SEVERITY_ORDER[a.severity.toLowerCase()] ?? 0) -
-          (SEVERITY_ORDER[b.severity.toLowerCase()] ?? 0);
+        diff = severityRank(a.severity) - severityRank(b.severity);
       } else if (sortKey === "agents") {
         diff =
           (a.affected_agents?.length ?? 0) -

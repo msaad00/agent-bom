@@ -11,9 +11,10 @@ from typing import Any
 
 import yaml
 
+from agent_bom.graph.severity import SEVERITY_THRESHOLD_LABELS, normalize_severity, severity_at_or_above
+
 _VERDICT_ORDER = {"benign": 0, "suspicious": 1, "malicious": 2}
 _REVIEW_ORDER = {"trusted": 0, "review": 1, "high_risk": 2, "blocked": 3}
-_SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
 
 class SkillsPolicyError(ValueError):
@@ -276,9 +277,9 @@ def _rule_matches(rule: dict[str, Any], candidate: dict[str, Any]) -> bool:
     severity_gte = _string(match.get("severity_gte"))
     if severity_gte:
         severity = _string(candidate.get("severity"))
-        if severity_gte not in _SEVERITY_ORDER:
+        if normalize_severity(severity_gte) not in SEVERITY_THRESHOLD_LABELS:
             raise SkillsPolicyError(f"unknown severity_gte threshold: {severity_gte}")
-        if severity not in _SEVERITY_ORDER or _SEVERITY_ORDER[severity] < _SEVERITY_ORDER[severity_gte]:
+        if not severity_at_or_above(severity, severity_gte):
             return False
     path = _string(candidate.get("path")) or ""
     path_contains = _string(match.get("path_contains"))

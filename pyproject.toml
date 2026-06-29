@@ -100,7 +100,7 @@ azure = [
     "azure-mgmt-redis>=14.3",
     "azure-mgmt-frontdoor>=1.1",
     "azure-mgmt-apimanagement>=4.0",
-    "six>=1.16",
+    "six>=1.17.0",
 ]
 gcp = [
     "google-cloud-aiplatform>=1.38",

@@ -427,9 +427,7 @@ def _resolve_check_ecosystems(name: str, version: str, ecosystem: Optional[str],
     if resolved:
         return [resolved]
 
-    error = click.ClickException(f"Ambiguous package name '{name}'. Specify --ecosystem pypi or --ecosystem npm for a trustworthy verdict.")
-    error.exit_code = 2
-    raise error
+    raise click.UsageError(f"Ambiguous package name '{name}'. Specify --ecosystem pypi or --ecosystem npm for a trustworthy verdict.")
 
 
 def _exit_model_verification(

@@ -1,8 +1,8 @@
 {
   "_comment": "agent-bom MCP Server Registry — security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-06-22",
-  "_total_servers": 862,
+  "_updated": "2026-06-29",
+  "_total_servers": 880,
   "_differentiator": "Security metadata database — not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
   "_sources": [
@@ -942,7 +942,7 @@
     "mcp-server-kubernetes": {
       "package": "mcp-server-kubernetes",
       "ecosystem": "npm",
-      "latest_version": "3.9.1",
+      "latest_version": "3.9.2",
       "description": "Kubernetes cluster management",
       "name": "Kubernetes",
       "risk_justification": "Full Kubernetes cluster management via KUBECONFIG. Can apply manifests, scale deployments, and delete resources.",
@@ -1004,7 +1004,7 @@
     "@notionhq/notion-mcp-server": {
       "package": "@notionhq/notion-mcp-server",
       "ecosystem": "npm",
-      "latest_version": "2.4.0",
+      "latest_version": "2.4.1",
       "description": "Read and write Notion pages, databases, blocks",
       "name": "Notion",
       "risk_justification": "Read/write access to Notion pages and databases via NOTION_API_KEY. Token exposure enables workspace-wide content manipulation.",
@@ -1139,7 +1139,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "0.15.2",
+      "latest_version": "0.17.0",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -1457,7 +1457,7 @@
     "mcp-server-terraform": {
       "package": "mcp-server-terraform",
       "ecosystem": "npm",
-      "latest_version": "0.2.0",
+      "latest_version": "0.1.0",
       "description": "Terraform plan, apply, state management",
       "name": "Terraform",
       "risk_justification": "Executes Terraform plan, apply, and destroy via cloud credentials. Full infrastructure lifecycle control.",
@@ -1481,7 +1481,8 @@
         "TF_VAR_*",
         "AWS_ACCESS_KEY_ID"
       ],
-      "source_url": "https://github.com/hashicorp/mcp-server-terraform"
+      "source_url": "https://github.com/hashicorp/mcp-server-terraform",
+      "version_source": "npm"
     },
     "mcp-server-prometheus": {
       "package": "mcp-server-prometheus",
@@ -2718,7 +2719,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.6.9",
+      "latest_version": "2026.6.10",
       "description": "OpenClaw personal AI assistant — multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessag…",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2927,7 +2928,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "2.8.0",
+      "latest_version": "2.9.0",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",
@@ -16856,9 +16857,402 @@
       "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
       "version_source": "official-registry",
       "auto_enriched": true
+    },
+    "ai.atdev/supershopping": {
+      "package": "ai.atdev/supershopping",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "나만을 위한 AI 쇼핑 MCP — 상품을 자연어로 검색·비교·추천해 사용자의 효과적인 쇼핑을 돕습니다.",
+      "name": "ai.atdev/supershopping",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.atdev/supershopping",
+        "supershopping"
+      ],
+      "source_url": "https://github.com/alex-hoyeol-choi/headless-commerce",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.augmentev/paseo": {
+      "package": "ai.augmentev/paseo",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Confidential AI execution with a post-quantum receipt on every job — verifiable by anyone.",
+      "name": "ai.augmentev/paseo",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.augmentev/paseo",
+        "paseo"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.brainattic/knowledge-base": {
+      "package": "ai.brainattic/knowledge-base",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "The knowledge base your AI reads and writes, under your rules — over MCP, EU-hosted.",
+      "name": "ai.brainattic/knowledge-base",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.brainattic/knowledge-base",
+        "knowledge-base"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.clawterminal/markets": {
+      "package": "ai.clawterminal/markets",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Ask your AI about the markets: filings, insider & congress trades, fund flows, options, macro",
+      "name": "ai.clawterminal/markets",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.clawterminal/markets",
+        "markets"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.crestsystems/counterparty-intelligence": {
+      "package": "ai.crestsystems/counterparty-intelligence",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Check who your agent is about to pay over x402: real service, relayer, treasury, or buyer.",
+      "name": "ai.crestsystems/counterparty-intelligence",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.crestsystems/counterparty-intelligence",
+        "counterparty-intelligence"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.enyal/enyal": {
+      "package": "ai.enyal/enyal",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "ENYAL by Greenland AI — encrypted identity & memory for AI agents (query, recall, provenance)",
+      "name": "ai.enyal/enyal",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.enyal/enyal",
+        "enyal"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.ezel/ezel": {
+      "package": "ai.ezel/ezel",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Search U.S. case law, fetch opinions, and ask matter-aware legal questions over your documents.",
+      "name": "ai.ezel/ezel",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.ezel/ezel",
+        "ezel"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.korey/mcp": {
+      "package": "ai.korey/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "The AI orchestration agent for modern software teams.",
+      "name": "ai.korey/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.korey/mcp"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.licensy/mcp-server": {
+      "package": "ai.licensy/mcp-server",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Real-time U.S. medical license verification across all 50 states + DC.",
+      "name": "ai.licensy/mcp-server",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.licensy/mcp-server",
+        "mcp-server"
+      ],
+      "source_url": "https://github.com/licensyai/LicensyAI-MCP",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.magicinsights/insights": {
+      "package": "ai.magicinsights/insights",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.1",
+      "description": "Query your customer feedback: studies, themes, suggestions, tags, and sentiment trends.",
+      "name": "ai.magicinsights/insights",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.magicinsights/insights",
+        "insights"
+      ],
+      "source_url": "https://github.com/andrewchmr/magic-insights-mcp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.marchward/mcp-server": {
+      "package": "ai.marchward/mcp-server",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.4",
+      "description": "Runtime authority for AI agents: credential mediation, spend cap, approval gates, audit log.",
+      "name": "ai.marchward/mcp-server",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.marchward/mcp-server",
+        "mcp-server"
+      ],
+      "source_url": "https://github.com/marchward/marchward",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.outlit/outlit": {
+      "package": "ai.outlit/outlit",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Outlit gives agents real-time understanding of customers to automate support and revenue workflows.",
+      "name": "ai.outlit/outlit",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.outlit/outlit",
+        "outlit"
+      ],
+      "source_url": "https://github.com/OutlitAI/outlit-sdk",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.proxygate/mcp": {
+      "package": "ai.proxygate/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.1",
+      "description": "Curated marketplace of real-world data APIs for AI agents, paid per call in USDC on Solana.",
+      "name": "ai.proxygate/mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.proxygate/mcp"
+      ],
+      "source_url": "https://github.com/proxygate-official/proxygate",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.pubfi/pubfi-mcp": {
+      "package": "ai.pubfi/pubfi-mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.1",
+      "description": "Route crypto data needs through PubFi capability and gateway tools.",
+      "name": "ai.pubfi/pubfi-mcp",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.pubfi/pubfi-mcp",
+        "pubfi-mcp"
+      ],
+      "source_url": "https://github.com/helixbox/pubfi-docs",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.satoshidata/wallet-intelligence": {
+      "package": "ai.satoshidata/wallet-intelligence",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.6",
+      "description": "Bitcoin entity and risk-exposure evidence for AI agents; keyless MCP, no risk_check score/verdict.",
+      "name": "ai.satoshidata/wallet-intelligence",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.satoshidata/wallet-intelligence",
+        "wallet-intelligence"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.sharebench/registry": {
+      "package": "ai.sharebench/registry",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.1",
+      "description": "Sharebench — search & pull AI skills, agents, prompts & playbooks (SKILL.md) into any MCP client",
+      "name": "ai.sharebench/registry",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.sharebench/registry",
+        "registry"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.signal8/mcp": {
+      "package": "ai.signal8/mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.11.1",
+      "description": "SEC filings, dilution, insider & institutional ownership, and political-trade data for AI agents.",
+      "name": "ai.signal8/mcp",
+      "category": "developer-tools",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.signal8/mcp"
+      ],
+      "source_url": "https://github.com/signal8ai/signal8",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.sleepwalker/sleepwalker": {
+      "package": "ai.sleepwalker/sleepwalker",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.1",
+      "description": "AI Visibility and Content Intelligence tools for Claude and MCP-compatible agents.",
+      "name": "ai.sleepwalker/sleepwalker",
+      "category": "ai-ml",
+      "risk_level": "low",
+      "verified": true,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.sleepwalker/sleepwalker",
+        "sleepwalker"
+      ],
+      "source_url": "https://github.com/followanton/sleepwalker",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-06-29T12:53:51Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
     }
   },
-  "_mcp_registry_sync": "2026-06-22T14:22:20Z",
+  "_mcp_registry_sync": "2026-06-29T12:53:51Z",
   "_mcp_registry_sync_source": "mcp-official",
-  "_cve_enriched": "2026-06-22"
+  "_cve_enriched": "2026-06-29"
 }

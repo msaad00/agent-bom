@@ -245,7 +245,7 @@ compliance reports without leaving the chat:
 ```
 scan                — full discovery + scan, returns JSON report
 check               — CVE check for a single package
-registry_lookup     — search 427+ MCP servers by name/tag
+registry_lookup     — search 880 MCP servers by name/tag
 compliance          — generate framework-mapped compliance report
 blast_radius        — blast radius for a specific CVE
 should_i_deploy     — allow/warn/block guidance from ExposurePath risk

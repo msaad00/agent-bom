@@ -98,7 +98,7 @@
   <rect x="226" y="216" width="140" height="1" fill="#27272a"/>
 
   <text x="232" y="234" class="item-label" fill="#fbbf24">MCP Registry</text>
-  <text x="366" y="234" text-anchor="end" class="step-desc">427+ servers</text>
+  <text x="366" y="234" text-anchor="end" class="step-desc">880 servers</text>
   <rect x="226" y="240" width="140" height="1" fill="#27272a"/>
 
   <text x="232" y="254" class="step-desc">Queries run in parallel</text>

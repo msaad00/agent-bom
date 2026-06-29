@@ -220,7 +220,7 @@ live runtime traffic rather than static reachability.
 
 The server exposes six MCP resources:
 
-- `registry://servers` — Browse the full 427+ server security metadata registry
+- `registry://servers` — Browse the full 880-entry server security metadata registry
 - `policy://template` — Default security policy template
 - `metrics://tools` — Bounded MCP tool execution metrics
 - `schema://inventory-v1` — Canonical pushed-inventory schema contract

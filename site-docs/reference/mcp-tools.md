@@ -80,7 +80,7 @@ matched paths, and a verdict; it does not deploy, remediate, or open pull
 requests.
 
 ### registry_lookup
-Look up an MCP server in the 427+ server security metadata registry.
+Look up an MCP server in the 880-entry server security metadata registry.
 ```
 registry_lookup(server_name="brave-search")
 ```

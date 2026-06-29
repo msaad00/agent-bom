@@ -41,7 +41,7 @@ dependencies = [
     "jsonschema>=4.0",
     # Transitive dep pins — fix known CVEs flagged by OpenSSF/OSV
     "jinja2>=3.1.6",  # GHSA-cpwx-vrp4-4pq7, GHSA-gmj6-6f8f-6699 (sandbox breakout)
-    "werkzeug>=3.1.6",  # GHSA-29vq-49wr-vm6x, GHSA-2g68-c3qc-8985, GHSA-87hc-h4r5-73f7, GHSA-f9vj-2wh5-fj8j, GHSA-hgf8-39gv-g3f2, GHSA-hrfv-mqp8-q5rw, GHSA-px8h-6qxv-m22q, GHSA-q34m-jh98-gwm2, GHSA-xg9f-g7g7-2323
+    "werkzeug>=3.1.8",  # GHSA-29vq-49wr-vm6x, GHSA-2g68-c3qc-8985, GHSA-87hc-h4r5-73f7, GHSA-f9vj-2wh5-fj8j, GHSA-hgf8-39gv-g3f2, GHSA-hrfv-mqp8-q5rw, GHSA-px8h-6qxv-m22q, GHSA-q34m-jh98-gwm2, GHSA-xg9f-g7g7-2323
     "flask>=3.1.3",  # GHSA-68rp-wp8r-4726, GHSA-m2qf-hxjv-5gpq (Vary: Cookie session exposure; transitive via mlflow)
     "requests>=2.33.0",  # GHSA-9hjg-9r4m-mvj7, GHSA-j8r2-6x86-q33q (session cookie leak)
     # NOTE: nltk pin removed — safety (which pulled nltk) was replaced by pip-audit.
@@ -56,12 +56,12 @@ dependencies = [
 [project.optional-dependencies]
 api = [
     "fastapi>=0.115,!=0.136.3",
-    "uvicorn[standard]>=0.32",
+    "uvicorn[standard]>=0.49.0",
     "sse-starlette>=2.1",
 ]
 otel = [
     "opentelemetry-api>=1.20",
-    "opentelemetry-sdk>=1.20",
+    "opentelemetry-sdk>=1.43.0",
     "opentelemetry-exporter-otlp-proto-http>=1.20",
     "protobuf>=6.33.5",  # CVE-2022-1941, CVE-2026-0994 (ParseDict DoS) — transitive via otlp-proto-http
 ]
@@ -77,7 +77,7 @@ azure = [
     "azure-mgmt-web>=7.2",
     "azure-mgmt-appcontainers>=3.0",
     "azure-mgmt-containerinstance>=10.1",
-    "azure-mgmt-containerservice>=30.0",
+    "azure-mgmt-containerservice>=41.3.0",
     "azure-mgmt-machinelearningservices>=1.0",
     "azure-ai-projects>=1.0",
     "azure-mgmt-compute>=30.0",
@@ -91,7 +91,7 @@ azure = [
     "azure-keyvault-secrets>=4.7",
     "azure-mgmt-sql>=3.0",
     "azure-mgmt-rdbms>=10.1",
-    "azure-mgmt-containerregistry>=10.3",
+    "azure-mgmt-containerregistry>=15.0.0",
     "azure-containerregistry>=1.2",
     "azure-mgmt-cosmosdb>=9.5",
     "azure-mgmt-managementgroups>=1.0",
@@ -100,7 +100,7 @@ azure = [
     "azure-mgmt-redis>=14.3",
     "azure-mgmt-frontdoor>=1.1",
     "azure-mgmt-apimanagement>=4.0",
-    "six>=1.16",
+    "six>=1.17.0",
 ]
 gcp = [
     "google-cloud-aiplatform>=1.38",
@@ -196,15 +196,15 @@ docs = [
 ]
 dev = [
     "pytest>=7.0",
-    "pytest-asyncio>=0.21",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.4",
     "mypy>=1.0",
     "types-PyYAML>=6.0",
     "types-requests>=2.31",
-    "types-toml>=0.10",
+    "types-toml>=0.10.8.20260518",
     "bandit>=1.9",      # Static security analysis
-    "pytest-cov>=4.1",  # Coverage reporting
-    "pytest-benchmark>=5.0",  # Performance benchmarking — see docs/PERFORMANCE_BENCHMARKS.md
+    "pytest-cov>=7.1.0",  # Coverage reporting
+    "pytest-benchmark>=5.2.3",  # Performance benchmarking — see docs/PERFORMANCE_BENCHMARKS.md
     "pytest-xdist>=3.5",  # Parallel test execution (-n auto) — cuts CI test wall time
     "pytest-randomly>=3.15",  # Randomize test order to surface order-dependence early
 ]

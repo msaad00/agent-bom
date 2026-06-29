@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
+from typing import Any
 
 from agent_bom.asset_provenance import (
     agent_discovery_provenance,
@@ -31,6 +32,7 @@ SCAN_REPORT_SCHEMA_VERSION = "1.0"
 SCAN_RUN_SCHEMA_VERSION = "1"
 BLAST_RADIUS_SCHEMA_VERSION = "1"
 INVENTORY_SNAPSHOT_SCHEMA_VERSION = "1"
+_FINDING_SEVERITIES = ("critical", "high", "medium", "low", "unknown")
 
 
 def _severity_state(severity: Severity) -> str:
@@ -76,6 +78,28 @@ def _package_occurrence_to_dict(occurrence) -> dict[str, object]:
 def _stable_report_finding_id(*parts: object) -> str:
     raw = ":".join(str(part or "") for part in parts)
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"agent-bom:finding:{raw}"))
+
+
+def _build_finding_summary(findings: list[dict[str, object]]) -> dict[str, Any]:
+    """Summarize the unified finding stream, independent of package CVE counts."""
+    by_severity = dict.fromkeys(_FINDING_SEVERITIES, 0)
+    by_type: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    for finding in findings:
+        severity = str(finding.get("effective_severity") or finding.get("severity") or "unknown").lower()
+        if severity not in by_severity:
+            severity = "unknown"
+        by_severity[severity] += 1
+        finding_type = str(finding.get("finding_type") or "UNKNOWN")
+        source = str(finding.get("source") or "UNKNOWN")
+        by_type[finding_type] = by_type.get(finding_type, 0) + 1
+        by_source[source] = by_source.get(source, 0) + 1
+    return {
+        "total": len(findings),
+        "by_severity": by_severity,
+        "by_type": dict(sorted(by_type.items())),
+        "by_source": dict(sorted(by_source.items())),
+    }
 
 
 def _prompt_scan_findings(prompt_scan: dict) -> list[dict[str, object]]:
@@ -809,6 +833,8 @@ def to_json(report: AIBOMReport) -> dict:
 
     all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
     exposure_paths = [exposure_path_for_blast_radius(br, rank=rank) for rank, br in enumerate(report.blast_radii, start=1)]
+    unified_findings = [finding.to_dict() for finding in report.to_findings()]
+    finding_summary = _build_finding_summary(unified_findings)
     result = {
         "schema_version": SCAN_REPORT_SCHEMA_VERSION,
         "document_type": "AI-BOM",
@@ -840,8 +866,12 @@ def to_json(report: AIBOMReport) -> dict:
             "unique_packages": len(ai_bom_entities.get("packages", [])),
             "total_vulnerabilities": report.total_vulnerabilities,
             "critical_findings": len(report.critical_vulns),
+            "total_findings": finding_summary["total"],
+            "critical_unified_findings": finding_summary["by_severity"]["critical"],
+            "high_unified_findings": finding_summary["by_severity"]["high"],
             "coverage_warnings": list(report.coverage_warnings),
         },
+        "finding_summary": finding_summary,
         "coverage_warnings": list(report.coverage_warnings),
         "inventory_snapshot": inventory_snapshot,
         "agents": [
@@ -1141,7 +1171,7 @@ def to_json(report: AIBOMReport) -> dict:
             "path_count": len(exposure_paths),
             "paths": exposure_paths,
         },
-        "findings": [finding.to_dict() for finding in report.to_findings()],
+        "findings": unified_findings,
         "threat_framework_summary": _build_framework_summary(report.blast_radii),
         "scorecard_summary": summarize_scorecard_coverage(all_packages).to_dict(),
         "remediation_plan": _build_remediation_json(report),

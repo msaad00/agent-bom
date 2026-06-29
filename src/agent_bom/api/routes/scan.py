@@ -1139,6 +1139,7 @@ def _finding_sort_key(row: dict[str, Any], sort: str) -> tuple[float, float, flo
 async def list_findings(
     request: Request,
     severity: str | None = None,
+    scan_id: Annotated[str | None, Query(max_length=128)] = None,
     sort: str = "effective_reach",
     # enforce limit cap server-side instead of trusting
     # the historical `min(limit, 1000)` clamp at use-site.
@@ -1155,8 +1156,13 @@ async def list_findings(
     tenant_id = _tenant_id(request)
     findings: list[dict[str, Any]] = []
     for job in _completed_jobs_for_tenant(tenant_id):
+        if scan_id and job.job_id != scan_id:
+            continue
         findings.extend(_iter_scan_findings(job))
-    findings.extend(_bulk_ingested_findings_for_tenant(tenant_id))
+    bulk_findings = _bulk_ingested_findings_for_tenant(tenant_id)
+    if scan_id:
+        bulk_findings = [item for item in bulk_findings if str(item.get("scan_id") or "") == scan_id]
+    findings.extend(bulk_findings)
 
     if severity:
         normalized = severity.lower()
@@ -1179,6 +1185,7 @@ async def list_findings(
         "limit": limit,
         "offset": offset,
         "sort": sort_key,
+        "scan_id": scan_id,
         "warnings": [],
     }
 

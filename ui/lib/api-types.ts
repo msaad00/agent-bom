@@ -667,6 +667,60 @@ export interface Vulnerability {
   confidence?: number | undefined;
 }
 
+export interface UnifiedFinding {
+  id: string;
+  canonical_id?: string | undefined;
+  finding_type?: string | undefined;
+  source?: string | undefined;
+  asset?: {
+    name?: string | undefined;
+    asset_type?: string | undefined;
+    identifier?: string | null | undefined;
+    location?: string | null | undefined;
+    stable_id?: string | undefined;
+  } | undefined;
+  severity: string;
+  effective_severity?: string | undefined;
+  title?: string | undefined;
+  description?: string | undefined;
+  cve_id?: string | null | undefined;
+  cwe_ids?: string[] | undefined;
+  cvss_score?: number | null | undefined;
+  cvss_vector?: string | null | undefined;
+  attack_vector?: string | null | undefined;
+  attack_complexity?: string | null | undefined;
+  privileges_required?: string | null | undefined;
+  user_interaction?: string | null | undefined;
+  network_exploitable?: boolean | undefined;
+  epss_score?: number | null | undefined;
+  is_kev?: boolean | undefined;
+  fixed_version?: string | null | undefined;
+  remediation_guidance?: string | null | undefined;
+  compliance_tags?: string[] | undefined;
+  controls?: Array<Record<string, unknown>> | undefined;
+  evidence?: Record<string, unknown> | undefined;
+  risk_score?: number | undefined;
+  impact_category?: string | null | undefined;
+  affected_servers?: string[] | undefined;
+  affected_agents?: string[] | undefined;
+  exposed_credentials?: string[] | undefined;
+  exposed_tools?: string[] | undefined;
+  scan_id?: string | undefined;
+  scan_sources?: string[] | undefined;
+}
+
+export interface FindingsResponse {
+  schema_version: string;
+  findings: UnifiedFinding[];
+  count: number;
+  total: number;
+  limit: number;
+  offset: number;
+  sort: string;
+  scan_id?: string | null | undefined;
+  warnings: string[];
+}
+
 export interface BlastRadius {
   vulnerability_id: string;
   severity: string;

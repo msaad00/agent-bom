@@ -25,6 +25,7 @@ import type {
   PostureCountsResponse,
   OverviewResponse,
   RemediationItem,
+  FindingsResponse,
   FindingTriageRequest,
   FindingTriageDecisionRequest,
   FindingTriageResponse,
@@ -145,6 +146,8 @@ export type {
   OverviewDomain,
   OverviewTopRisk,
   RemediationItem,
+  FindingsResponse,
+  UnifiedFinding,
   FindingTriageQueueState,
   FindingTriageDecision,
   FindingTriageJustification,
@@ -859,6 +862,18 @@ export const api = {
     if (filters?.limit) params.set("limit", String(filters.limit));
     const qs = params.toString();
     return get<ProxyAlertsResponse>(`/v1/proxy/alerts${qs ? `?${qs}` : ""}`);
+  },
+
+  // ── Unified findings ──
+  listFindings: (filters?: { scanId?: string; severity?: string; sort?: string; limit?: number; offset?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.severity) params.set("severity", filters.severity);
+    if (filters?.sort) params.set("sort", filters.sort);
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
+    const qs = params.toString();
+    return get<FindingsResponse>(`/v1/findings${qs ? `?${qs}` : ""}`);
   },
 
   // ── Shield / Break-Glass ──

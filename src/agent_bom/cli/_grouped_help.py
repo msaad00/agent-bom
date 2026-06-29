@@ -69,7 +69,7 @@ class SuggestingGroup(click.Group):
             if args:
                 suggestion = self._suggest_command(ctx, args[0])
                 if suggestion and "No such command" in exc.message:
-                    exc.message = f"{exc.message}\n\nDid you mean '{suggestion}'?"
+                    raise click.UsageError(f"{exc.message}\n\nDid you mean '{suggestion}'?", ctx=ctx) from exc
             raise
 
     def _suggest_command(self, ctx: click.Context, command_name: str) -> str | None:

@@ -204,7 +204,7 @@ dev = [
     "types-toml>=0.10",
     "bandit>=1.9",      # Static security analysis
     "pytest-cov>=4.1",  # Coverage reporting
-    "pytest-benchmark>=5.0",  # Performance benchmarking — see docs/PERFORMANCE_BENCHMARKS.md
+    "pytest-benchmark>=5.2.3",  # Performance benchmarking — see docs/PERFORMANCE_BENCHMARKS.md
     "pytest-xdist>=3.5",  # Parallel test execution (-n auto) — cuts CI test wall time
     "pytest-randomly>=3.15",  # Randomize test order to surface order-dependence early
 ]

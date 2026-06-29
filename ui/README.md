@@ -27,6 +27,7 @@ The UI reads `NEXT_PUBLIC_API_URL`.
 - in development, the Next server uses it for local rewrites
 - in containers, the runtime entrypoint writes it into `public/runtime-config.js`
   so the same image can be pointed at a different API endpoint at startup
+  without baking the endpoint into the Docker build
 
 If it is unset, the dev server proxies `/v1/*`, `/health`, and `/ws/*` to `http://localhost:8422`.
 

@@ -30,14 +30,19 @@
 
 ## What It Is
 
-`agent-bom` scans AI infrastructure across local projects, agent fleets, and
-cloud estates (AWS, Azure, GCP, Snowflake), and builds one AI BOM of agents,
-MCP servers, tools, packages, credential references, non-human identities,
-models, datasets, and runtime. Every source converges into a unified `Finding`
-model and a unified `ContextGraph`, so blast radius, multi-hop exposure paths,
-and exposure scoring all read from the same evidence. That evidence is reachable
-through CLI/CI, a REST API, MCP tools, and a self-hosted dashboard; runtime
-proxy/gateway enforcement is optional and scoped to where it earns its cost.
+`agent-bom` scans AI infrastructure across local projects, agent fleets, cloud
+estates (AWS, Azure, GCP, Snowflake), registries, IaC, SBOMs, models, datasets,
+and runtime. It builds one evidence graph of agents, MCP servers, tools,
+packages, credential references, non-human identities, data systems, and exposed
+resources. Every source converges into a unified `Finding` model and a unified
+`ContextGraph`, so blast radius, multi-hop exposure paths, and exposure scoring
+all read from the same evidence.
+
+The product goal is interoperability for humans and agents: developers get a
+CLI/CI scanner, security teams get an API and dashboard, automation gets MCP
+tools and typed schemas, and runtime controls can enforce the same evidence when
+the operator chooses to enable them. Snowflake is one supported connector and
+deployment lane; it is not the product center.
 
 ## How It Works
 
@@ -127,7 +132,9 @@ For DSPM, Snowflake has the deepest current support because agent-bom can read
 warehouse metadata, grants, tags, lineage, and governance activity visible to
 the configured role. Other cloud data-store sensitivity is posture and metadata
 based until classifier-backed content inspection, provider DLP/Macie wrapping,
-and object/table/column-level access mapping land.
+and object/table/column-level access mapping land. Snowflake is therefore a
+strong optional lane for Snowflake-heavy customers, not the required data plane
+for the product.
 
 ## Product Map
 
@@ -147,6 +154,25 @@ credential boundary, and operator surface.
 See [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md) for the longer workflow map,
 including backend choices, auth modes, and where each capability lives in the
 CLI, API, MCP server, dashboard, and deployment docs.
+
+## How Data Gets In
+
+Today, agent-bom ingests through read-only pulls and explicit pushes, not
+Snowpipe or a required streaming bus.
+
+| Ingest lane | Current mechanism | Typical sources | Cadence |
+|---|---|---|---|
+| Read-only cloud / warehouse connectors | Assumable role, managed identity, ADC, or Snowflake key-pair; SDK/SQL `list`/`get`/`SELECT` calls only | AWS, Azure, GCP, Snowflake | on demand or scheduled polling |
+| Direct scans | CLI/API scan job over local or submitted targets | repo, image, IaC, SBOM, MCP config, model, dataset | per command or job |
+| Artifact import | Operator-provided standard evidence | CycloneDX, SPDX, SARIF, scanner JSON, OCSF-like evidence | per import |
+| Runtime / gateway events | Authenticated API ingest from configured runtimes | MCP/tool-call auth, DLP decisions, LLM spans, proxy audit | event push |
+
+Scheduled connectors re-run with the stored tenant-scoped connection and detect
+new, changed, and removed assets at the next cadence through graph history and
+diff evidence. Snowpipe/Streams are a future Snowflake-native option for
+near-real-time telemetry landing in customer-owned Snowflake tables; they are
+not required for the hosted demo, self-hosted platform, CLI, or current
+Snowflake connector.
 
 <details>
 <summary><b>Product proof — dashboard, graph, and identity surfaces</b></summary>
@@ -237,15 +263,19 @@ agent-bom cloud scan --fail-on-severity high
 
 AWS, Azure, GCP, and Snowflake setup, the full grant templates, per-cloud permission
 catalogs, and the "why read-only is enough" rationale live in
-[docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md). agent-bom is a **scanner, not a
-platform** — it reads inventory and posture, normalizes it into one graph, and
-emits findings; it never writes, never reads secret contents, and never moves
-data out of your account.
+[docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md). agent-bom is one interoperable
+scanner and control plane: it reads inventory and posture, normalizes it into
+one graph, serves humans and agents from the same evidence, and emits findings;
+it never writes, never reads secret contents, and never moves data out of your
+account unless you explicitly configure an export destination.
 
 ## Deploy In Your Boundary
 
-`agent-bom` is built for customer-controlled deployment across three tiers of one
-product: a laptop CLI, your own Kubernetes, or a hosted control plane you run.
+`agent-bom` is built for customer-controlled deployment across four lanes of one
+product: the OSS CLI, the self-hosted API/UI platform, a gated hosted POC you
+operate, and an optional Snowflake-native deployment for Snowflake-heavy
+customers. A managed public SaaS control plane is roadmap work gated on
+self-serve signup, tenant lifecycle, quotas, billing, and abuse controls.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml

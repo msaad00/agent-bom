@@ -9,6 +9,13 @@ For product screenshots, the source of truth is the packaged Next.js
 dashboard. Snowflake Streamlit views may still exist for Snowflake-native
 deployments, but they are not the primary product visuals for README or docs.
 
+Diagrams should center the interoperable evidence model: sources and connectors
+feed `Finding` + `ContextGraph`, then humans and agents consume the same
+evidence through CLI, API, UI, MCP, CI, reports, and gateway controls. AWS,
+Azure, GCP, Snowflake, registries, repos, IaC, SBOMs, and runtime streams are
+connector lanes. None should be drawn as the product center unless the page is
+specifically about that connector.
+
 ## SVG — for hero visuals + dense product imagery
 
 Use when:

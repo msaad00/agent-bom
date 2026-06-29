@@ -718,6 +718,7 @@ class UnifiedGraph:
         """Build a subgraph from user-controlled filter options."""
         entity_set = filters.entity_types if filters.entity_types else None
         rel_set = filters.relationship_types if filters.relationship_types else None
+        edge_scoped = bool(rel_set or filters.static_only or filters.dynamic_only)
 
         def node_filter(n: UnifiedNode) -> bool:
             if entity_set and n.entity_type not in entity_set:
@@ -739,7 +740,24 @@ class UnifiedGraph:
                 return False
             return True
 
-        return self._subgraph(node_filter=node_filter, edge_filter=edge_filter)
+        sub = self._subgraph(node_filter=node_filter, edge_filter=edge_filter)
+        if not edge_scoped:
+            return sub
+
+        keep_ids = set(filters.include_ids)
+        for edge in sub.edges:
+            keep_ids.add(edge.source)
+            keep_ids.add(edge.target)
+
+        pruned = UnifiedGraph(scan_id=sub.scan_id, tenant_id=sub.tenant_id, created_at=sub.created_at)
+        for node_id in keep_ids:
+            node = sub.nodes.get(node_id)
+            if node:
+                pruned.add_node(node)
+        for edge in sub.edges:
+            if edge.source in pruned.nodes and edge.target in pruned.nodes:
+                pruned.add_edge(edge)
+        return pruned
 
     def _subgraph(
         self,

@@ -1352,6 +1352,21 @@ async def get_graph(
             entity_types=et_set,
             min_severity_rank=min_rank,
         )
+        # Overlay the live agent-identity governance control plane (managed
+        # identities, JIT grants, conditional-access policies, drift incidents)
+        # so attack paths can traverse agent → identity → grant → tool and
+        # agent ↔ drift. Applied BEFORE the scoped filter so governance edges
+        # are subject to the relationship filter and governance nodes left
+        # unconnected in a scoped view are pruned with everything else, rather
+        # than reappearing as orphan nodes. Best-effort; never breaks the read.
+        if not et_set:
+            try:
+                from agent_bom.graph.governance_overlay import apply_governance_overlay
+
+                apply_governance_overlay(graph, tenant_id=tenant)
+            except Exception:  # noqa: BLE001
+                logger.warning("governance overlay failed", exc_info=True)
+
         rel_set = _parse_relationship_filter(relationships)
         filters = GraphFilterOptions(
             relationship_types=rel_set,
@@ -1360,18 +1375,6 @@ async def get_graph(
             max_depth=max_depth or 6,
         )
         graph = graph.filtered_view(filters)
-
-        # Overlay the live agent-identity governance control plane (managed
-        # identities, JIT grants, conditional-access policies, drift incidents)
-        # so attack paths can traverse agent → identity → grant → tool and
-        # agent ↔ drift. Best-effort; never breaks the graph read.
-        if not et_set:
-            try:
-                from agent_bom.graph.governance_overlay import apply_governance_overlay
-
-                apply_governance_overlay(graph, tenant_id=tenant)
-            except Exception:  # noqa: BLE001
-                logger.warning("governance overlay failed", exc_info=True)
 
         stats = graph.stats()
         all_nodes = list(graph.nodes.values())

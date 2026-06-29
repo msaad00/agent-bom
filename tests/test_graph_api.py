@@ -2058,6 +2058,43 @@ class TestGraphStoreBackendSelection:
         assert "page_nodes" in helper_calls
         assert "search_nodes" in helper_calls
 
+    def test_graph_routes_offload_derived_path_compute(self, recording_graph_store, monkeypatch):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:cve",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                risk_score=9.8,
+            )
+        )
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:a:fs", relationship=RelationshipType.USES))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:a:fs", target="pkg:npm:form-data", relationship=RelationshipType.DEPENDS_ON)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="pkg:npm:form-data", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO)
+        )
+        client = TestClient(app)
+        compute_calls: list[str] = []
+
+        async def _fake_graph_compute_call(fn, /, *args, **kwargs):
+            compute_calls.append(fn.__name__)
+            return fn(*args, **kwargs)
+
+        monkeypatch.setattr(graph_routes, "_graph_compute_call", _fake_graph_compute_call)
+
+        fix_first = client.get("/v1/graph/views/fix-first", params={"scan_id": "store-scan"})
+        attack_paths = client.get("/v1/graph/attack-paths", params={"scan_id": "store-scan", "limit": 5})
+
+        assert fix_first.status_code == 200
+        assert attack_paths.status_code == 200
+        assert "_fix_first_graph_view_payload" in compute_calls
+        assert "_derived_attack_path_page" in compute_calls
+        assert "_serialize_attack_path_queue" in compute_calls
+
     def test_graph_route_returns_429_when_backpressure_opens(self, recording_graph_store, monkeypatch):
         from agent_bom.backpressure import reset_backpressure_for_tests
 

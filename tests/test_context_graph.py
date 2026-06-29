@@ -569,6 +569,41 @@ class TestAPIContextGraph:
         assert {"provider", "agent", "server"} <= set(data["unified_graph"]["stats"]["node_types"])
         assert {"hosts", "uses", "shares_server"} <= set(data["unified_graph"]["stats"]["relationship_types"])
 
+    def test_api_context_graph_offloads_graph_compute(self, monkeypatch):
+        """GET /v1/scan/{id}/context-graph computes graph payloads off the event loop."""
+        import asyncio
+
+        from agent_bom.api.routes import scan as scan_routes
+        from agent_bom.api.server import _get_store, app, configure_api
+
+        api_key = "context-graph-offload-test-key"
+        configure_api(api_key=api_key)
+        store = _get_store()
+        job_id = "test-cg-offload"
+        job = self._make_job(job_id, [_agent(name="a1", servers=[_server(name="shared")])])
+        store.put(job)
+        compute_calls: list[str] = []
+
+        async def _fake_scan_graph_compute_call(fn, /, *args, **kwargs):
+            compute_calls.append(fn.__name__)
+            return fn(*args, **kwargs)
+
+        monkeypatch.setattr(scan_routes, "_scan_graph_compute_call", _fake_scan_graph_compute_call)
+
+        from httpx import ASGITransport, AsyncClient
+
+        async def _call():
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.get(
+                    f"/v1/scan/{job_id}/context-graph",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+
+        resp = asyncio.run(_call())
+        assert resp.status_code == 200
+        assert "_context_graph_payload" in compute_calls
+
     def test_api_agent_filter(self):
         """GET /v1/scan/{id}/context-graph?agent=a1 filters lateral paths."""
         import asyncio

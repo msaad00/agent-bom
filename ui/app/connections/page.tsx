@@ -206,23 +206,16 @@ const SCANNABLE_PROVIDERS = new Set(
 );
 
 const SCHEDULE_OPTIONS = [
-  { label: "Manual", value: "" },
-  { label: "Hourly", value: "60" },
-  { label: "Every 6 hours", value: "360" },
-  { label: "Daily", value: "1440" },
-];
+  ["Manual", ""],
+  ["Hourly", "60"],
+  ["Every 6 hours", "360"],
+  ["Daily", "1440"],
+] as const;
 
 function formatWhen(value: string | null): string {
   if (!value) return "Never";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
-function formatSchedule(minutes: number | null): string {
-  if (!minutes) return "Manual";
-  if (minutes % 1440 === 0) return `Every ${minutes / 1440}d`;
-  if (minutes % 60 === 0) return `Every ${minutes / 60}h`;
-  return `Every ${minutes}m`;
 }
 
 function statusTone(status: string): string {
@@ -287,7 +280,6 @@ export default function ConnectionsPage() {
     Record<string, CloudConnectionScanResponse>
   >({});
   const [scanErrors, setScanErrors] = useState<Record<string, string>>({});
-  const [scheduleBusyId, setScheduleBusyId] = useState<string | null>(null);
   const [scheduleErrors, setScheduleErrors] = useState<Record<string, string>>(
     {},
   );
@@ -370,7 +362,6 @@ export default function ConnectionsPage() {
     value: string,
   ) {
     const scanIntervalMinutes = value === "" ? null : Number(value);
-    setScheduleBusyId(connection.id);
     setScheduleErrors((prev) => {
       const next = { ...prev };
       delete next[connection.id];
@@ -383,17 +374,11 @@ export default function ConnectionsPage() {
       setConnections((prev) =>
         prev.map((item) => (item.id === updated.id ? updated : item)),
       );
-      setMessage(
-        `${updated.display_name} scan schedule set to ${formatSchedule(
-          updated.scan_interval_minutes,
-        )}.`,
-      );
+      setMessage(`${updated.display_name} scan schedule updated.`);
     } catch (err) {
       const detail =
         err instanceof Error ? err.message : "Failed to update schedule.";
       setScheduleErrors((prev) => ({ ...prev, [connection.id]: detail }));
-    } finally {
-      setScheduleBusyId(null);
     }
   }
 
@@ -537,7 +522,6 @@ export default function ConnectionsPage() {
                         scannable={scannable}
                         result={result}
                         scanError={scanError}
-                        scheduleBusy={scheduleBusyId === connection.id}
                         scheduleError={scheduleErrors[connection.id]}
                         statusDetail={
                           connection.status === "error"
@@ -578,7 +562,6 @@ function FragmentRow({
   scannable,
   result,
   scanError,
-  scheduleBusy,
   scheduleError,
   statusDetail,
   onScan,
@@ -591,7 +574,6 @@ function FragmentRow({
   scannable: boolean;
   result: CloudConnectionScanResponse | undefined;
   scanError: string | undefined;
-  scheduleBusy: boolean;
   scheduleError: string | undefined;
   statusDetail: string;
   onScan: () => void;
@@ -641,26 +623,21 @@ function FragmentRow({
         </td>
         <td className="px-4 py-3">
           <label className="sr-only" htmlFor={`schedule-${connection.id}`}>
-            Recurring scan schedule for {connection.display_name}
+            Scan schedule
           </label>
           <select
             id={`schedule-${connection.id}`}
             value={connection.scan_interval_minutes?.toString() ?? ""}
-            disabled={scheduleBusy || !canManage}
+            disabled={!canManage}
             onChange={(event) => onScheduleChange(event.target.value)}
             className="w-36 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {SCHEDULE_OPTIONS.map((option) => (
-              <option key={option.label} value={option.value}>
-                {option.label}
+            {SCHEDULE_OPTIONS.map(([label, value]) => (
+              <option key={label} value={value}>
+                {label}
               </option>
             ))}
           </select>
-          <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
-            {scheduleBusy
-              ? "Saving…"
-              : `Runs ${formatSchedule(connection.scan_interval_minutes).toLowerCase()}`}
-          </p>
         </td>
         <td className="px-4 py-3">
           <div className="flex justify-end gap-2">

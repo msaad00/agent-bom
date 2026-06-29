@@ -23,6 +23,8 @@ from urllib.parse import urlparse
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 POSTURE_EVENT_SCHEMA_VERSION = "1"
+WEBHOOK_SIGNATURE_FRESHNESS_SECONDS = 300
+WEBHOOK_SIGNATURE_TIMESTAMP_HEADER = "x-agent-bom-timestamp"
 WebhookSender = Callable[[str, dict[str, str], dict[str, Any]], Awaitable[int]]
 POSTURE_EVENT_TYPES = frozenset(
     {
@@ -443,13 +445,22 @@ def _outbox_record_from_row(row: sqlite3.Row) -> OutboxRecord:
     )
 
 
-def signed_webhook_headers(event: PostureEvent, destination: WebhookDestination, *, attempt: int = 1) -> dict[str, str]:
+def signed_webhook_headers(
+    event: PostureEvent,
+    destination: WebhookDestination,
+    *,
+    attempt: int = 1,
+    timestamp: float | int | str | None = None,
+) -> dict[str, str]:
     payload_json = _canonical_json(event.to_dict())
-    signature = hmac.new(destination.signing_secret.encode("utf-8"), payload_json.encode("utf-8"), hashlib.sha256).hexdigest()
+    signed_at = str(int(_now() if timestamp is None else float(timestamp)))
+    signing_payload = f"{signed_at}.{payload_json}".encode("utf-8")
+    signature = hmac.new(destination.signing_secret.encode("utf-8"), signing_payload, hashlib.sha256).hexdigest()
     return {
         "content-type": "application/json",
         "x-agent-bom-event-id": event.event_id,
         "x-agent-bom-tenant-id": event.tenant_id,
+        WEBHOOK_SIGNATURE_TIMESTAMP_HEADER: signed_at,
         "x-agent-bom-signature": f"sha256={signature}",
         "x-agent-bom-delivery-attempt": str(attempt),
         "idempotency-key": event.idempotency_key,
@@ -509,6 +520,8 @@ async def deliver_due_webhooks(
 __all__ = [
     "POSTURE_EVENT_SCHEMA_VERSION",
     "POSTURE_EVENT_TYPES",
+    "WEBHOOK_SIGNATURE_FRESHNESS_SECONDS",
+    "WEBHOOK_SIGNATURE_TIMESTAMP_HEADER",
     "OutboxRecord",
     "PostureEvent",
     "PostureStreamingError",

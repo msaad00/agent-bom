@@ -53,6 +53,8 @@ logger = logging.getLogger(__name__)
 _RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 # 4xx (other than the retryable transient ones above) = permanent; do not retry.
 _PERMANENT_4XX_FLOOR = 400
+WEBHOOK_SIGNATURE_TIMESTAMP_HEADER = "x-agent-bom-timestamp"
+WEBHOOK_SIGNATURE_FRESHNESS_SECONDS = 300
 
 
 class DeliveryError(RuntimeError):
@@ -530,7 +532,10 @@ class DeliveryClient:
         }
         headers.update({str(k): str(v) for k, v in destination.headers.items()})
         if destination.signing_secret:
-            sig = hmac.new(destination.signing_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+            timestamp = str(int(self._now()))
+            signing_payload = timestamp.encode("utf-8") + b"." + body
+            sig = hmac.new(destination.signing_secret.encode("utf-8"), signing_payload, hashlib.sha256).hexdigest()
+            headers[WEBHOOK_SIGNATURE_TIMESTAMP_HEADER] = timestamp
             headers["x-agent-bom-signature"] = f"sha256={sig}"
         scheme = destination.auth_scheme.strip().lower()
         if scheme and destination.auth_token:
@@ -817,6 +822,8 @@ __all__ = [
     "RetryPolicy",
     "SendOutcome",
     "Sender",
+    "WEBHOOK_SIGNATURE_FRESHNESS_SECONDS",
+    "WEBHOOK_SIGNATURE_TIMESTAMP_HEADER",
     "default_delivery_store_path",
     "get_delivery_client",
     "http_sender",

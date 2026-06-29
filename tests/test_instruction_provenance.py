@@ -14,6 +14,7 @@ from agent_bom.integrity import (
     _compute_sha256,
     _find_sigstore_bundle,
     _parse_sigstore_bundle,
+    _try_cosign_verify,
     discover_instruction_files,
     verify_instruction_file,
     verify_instruction_files_batch,
@@ -266,6 +267,62 @@ class TestVerifyInstructionFile:
 
         assert result.verified is True
         assert result.reason == "cosign_verified"
+
+    def test_cosign_verify_uses_bounded_release_identity(self, tmp_path, monkeypatch):
+        f = tmp_path / "SKILL.md"
+        f.write_text("# Signed skill")
+        bundle = tmp_path / "SKILL.md.sigstore"
+        bundle.write_text("{}")
+        calls: list[list[str]] = []
+
+        class _Proc:
+            returncode = 0
+
+        def _run(cmd, **kwargs):
+            calls.append(cmd)
+            return _Proc()
+
+        monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/cosign" if name == "cosign" else None)
+        monkeypatch.setattr("subprocess.run", _run)
+        monkeypatch.delenv("AGENT_BOM_COSIGN_CERTIFICATE_IDENTITY_REGEXP", raising=False)
+        monkeypatch.delenv("AGENT_BOM_COSIGN_CERTIFICATE_OIDC_ISSUER", raising=False)
+
+        assert _try_cosign_verify(f, bundle) is True
+
+        cmd = calls[0]
+        assert "--certificate-identity-regexp" in cmd
+        assert cmd[cmd.index("--certificate-identity-regexp") + 1] == (
+            r"https://github\.com/msaad00/agent-bom/\.github/workflows/release\.yml@.*"
+        )
+        assert "--certificate-oidc-issuer" in cmd
+        assert cmd[cmd.index("--certificate-oidc-issuer") + 1] == "https://token.actions.githubusercontent.com"
+        assert "--certificate-oidc-issuer-regexp" not in cmd
+        assert ".*" not in cmd
+
+    def test_cosign_verify_allows_explicit_identity_override(self, tmp_path, monkeypatch):
+        f = tmp_path / "SKILL.md"
+        f.write_text("# Signed skill")
+        bundle = tmp_path / "SKILL.md.sigstore"
+        bundle.write_text("{}")
+        calls: list[list[str]] = []
+
+        class _Proc:
+            returncode = 0
+
+        def _run(cmd, **kwargs):
+            calls.append(cmd)
+            return _Proc()
+
+        monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/cosign" if name == "cosign" else None)
+        monkeypatch.setattr("subprocess.run", _run)
+        monkeypatch.setenv("AGENT_BOM_COSIGN_CERTIFICATE_IDENTITY_REGEXP", r"https://github\.com/acme/internal/.+")
+        monkeypatch.setenv("AGENT_BOM_COSIGN_CERTIFICATE_OIDC_ISSUER", "https://issuer.example")
+
+        assert _try_cosign_verify(f, bundle) is True
+
+        cmd = calls[0]
+        assert cmd[cmd.index("--certificate-identity-regexp") + 1] == r"https://github\.com/acme/internal/.+"
+        assert cmd[cmd.index("--certificate-oidc-issuer") + 1] == "https://issuer.example"
 
     def test_bundle_no_subject_digest(self, tmp_path):
         f = tmp_path / "CLAUDE.md"

@@ -10,6 +10,7 @@ import base64
 import hashlib
 import json as _json
 import logging
+import os
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 # npm registry provides shasum (SHA-1) and integrity (SHA-512 SRI) in dist metadata
 # PyPI provides sha256 digests in the JSON API
+_DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP = r"https://github\.com/msaad00/agent-bom/\.github/workflows/release\.yml@.*"
+_DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
+_COSIGN_CERTIFICATE_IDENTITY_REGEXP_ENV = "AGENT_BOM_COSIGN_CERTIFICATE_IDENTITY_REGEXP"
+_COSIGN_CERTIFICATE_OIDC_ISSUER_ENV = "AGENT_BOM_COSIGN_CERTIFICATE_OIDC_ISSUER"
 
 
 async def verify_npm_integrity(
@@ -654,6 +659,14 @@ def _try_cosign_verify(file_path: Path, bundle_path: Path) -> bool:
     cosign = shutil.which("cosign")
     if cosign is None:
         return False
+    certificate_identity = (
+        os.environ.get(_COSIGN_CERTIFICATE_IDENTITY_REGEXP_ENV, "").strip()
+        or _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP
+    )
+    certificate_issuer = (
+        os.environ.get(_COSIGN_CERTIFICATE_OIDC_ISSUER_ENV, "").strip()
+        or _DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER
+    )
 
     try:
         proc = subprocess.run(
@@ -663,9 +676,9 @@ def _try_cosign_verify(file_path: Path, bundle_path: Path) -> bool:
                 "--bundle",
                 str(bundle_path),
                 "--certificate-identity-regexp",
-                ".*",
-                "--certificate-oidc-issuer-regexp",
-                ".*",
+                certificate_identity,
+                "--certificate-oidc-issuer",
+                certificate_issuer,
                 str(file_path),
             ],
             capture_output=True,

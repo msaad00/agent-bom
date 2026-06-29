@@ -103,6 +103,7 @@ import type {
   CloudConnectionRecord,
   CloudConnectionsResponse,
   CloudConnectionCreateRequest,
+  CloudConnectionUpdateRequest,
   CloudConnectionScanResponse
 } from "./api-types";
 export type {
@@ -286,6 +287,7 @@ export type {
   CloudConnectionRecord,
   CloudConnectionsResponse,
   CloudConnectionCreateRequest,
+  CloudConnectionUpdateRequest,
   CloudConnectionScanInventory,
   CloudConnectionScanCis,
   CloudConnectionScanResponse,
@@ -413,6 +415,18 @@ async function put<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
     signal: withTimeout(),
   }, "PUT");
+  _runInvalidations(path);
+  return res.json() as Promise<T>;
+}
+
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const res = await _doFetch(path, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...getSessionAuthHeaders() },
+    body: JSON.stringify(body),
+    signal: withTimeout(),
+  }, "PATCH");
   _runInvalidations(path);
   return res.json() as Promise<T>;
 }
@@ -985,6 +999,9 @@ export const api = {
    */
   createCloudConnection: (body: CloudConnectionCreateRequest) =>
     post<CloudConnectionRecord>("/v1/cloud/connections", body),
+  /** Update non-secret connection controls such as recurring scan cadence. */
+  updateCloudConnection: (id: string, body: CloudConnectionUpdateRequest) =>
+    patch<CloudConnectionRecord>(`/v1/cloud/connections/${encodeURIComponent(id)}`, body),
   /** Delete a connection owned by this tenant. */
   deleteCloudConnection: (id: string) => del(`/v1/cloud/connections/${encodeURIComponent(id)}`),
   /** Launch a read-only scan via the credential broker (AWS today). */

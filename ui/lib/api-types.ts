@@ -2568,6 +2568,8 @@ export interface CloudConnectionRecord {
   created_at: string;
   updated_at: string;
   last_scan_at: string | null;
+  /** Recurring read-only scan cadence. Null means manual-only. */
+  scan_interval_minutes: number | null;
   /** Non-secret provider-specific params (Azure tenant/subscription, GCP project, Snowflake user/role/warehouse). */
   auth_params?: Record<string, string>;
 }
@@ -2588,6 +2590,13 @@ export interface CloudConnectionCreateRequest {
   regions: string[];
   /** Non-secret provider-specific params. Never carries a secret (that is `external_id`). */
   auth_params?: Record<string, string>;
+  /** Optional recurring read-only scan cadence. Null/default means manual-only. */
+  scan_interval_minutes?: number | null;
+}
+
+export interface CloudConnectionUpdateRequest {
+  /** Recurring read-only scan cadence. Null disables scheduling. */
+  scan_interval_minutes: number | null;
 }
 
 export interface CloudConnectionScanInventory {

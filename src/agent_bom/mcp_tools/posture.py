@@ -14,13 +14,14 @@ import logging
 from types import SimpleNamespace
 from typing import Any, cast
 
+from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 
 
-def _request_for_tenant(tenant_id: str) -> SimpleNamespace:
-    return SimpleNamespace(state=SimpleNamespace(tenant_id=tenant_id or "default"))
+def _request_for_tenant(tenant_id: str | None = None) -> SimpleNamespace:
+    return SimpleNamespace(state=SimpleNamespace(tenant_id=resolve_mcp_tool_tenant_id(tenant_id)))
 
 
 async def cost_forecast_impl(
@@ -34,7 +35,7 @@ async def cost_forecast_impl(
         from agent_bom.api.cost_forecast import forecast_for_tenant
 
         scoped_agent = agent.strip() or None
-        payload = forecast_for_tenant(tenant_id or "default", agent=scoped_agent)
+        payload = forecast_for_tenant(resolve_mcp_tool_tenant_id(tenant_id), agent=scoped_agent)
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP cost forecast error")
@@ -109,7 +110,7 @@ async def nhi_discover_impl(
         merged = merge_discovery_results(results)
         payload = {
             "schema_version": "identity.nhi.discovery.v1",
-            "tenant_id": tenant_id or "default",
+            "tenant_id": resolve_mcp_tool_tenant_id(tenant_id),
             "status": merged["status"],
             "providers": merged["providers"],
             "count": len(merged["identities"]),
@@ -202,7 +203,7 @@ async def cloud_inventory_impl(
         any_enabled = any(s["status"] != "disabled" for s in summaries)
         payload = {
             "schema_version": "cloud.inventory.summary.v1",
-            "tenant_id": tenant_id or "default",
+            "tenant_id": resolve_mcp_tool_tenant_id(tenant_id),
             "status": "ok" if any_enabled else "disabled",
             "total_resources": sum(s["resource_count"] for s in summaries),
             "total_identities": sum(s["identity_count"] for s in summaries),
@@ -234,7 +235,7 @@ async def access_review_impl(
     try:
         from agent_bom.api.access_review import get_access_review_store, refresh_campaign_status
 
-        tid = tenant_id or "default"
+        tid = resolve_mcp_tool_tenant_id(tenant_id)
         store = get_access_review_store()
         target = campaign_id.strip()
         if target:

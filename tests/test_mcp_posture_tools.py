@@ -17,6 +17,7 @@ import json
 
 import pytest
 
+from agent_bom.mcp_tenant import MCP_TENANT_ENV_VAR
 from agent_bom.mcp_tools.posture import (
     access_review_impl,
     cloud_inventory_impl,
@@ -41,12 +42,17 @@ def _run(coro) -> dict:
     return data
 
 
+def _bind_mcp_tenant(monkeypatch: pytest.MonkeyPatch, tenant_id: str) -> None:
+    monkeypatch.setenv(MCP_TENANT_ENV_VAR, tenant_id)
+
+
 # ---------------------------------------------------------------------------
 # cost_forecast
 # ---------------------------------------------------------------------------
 
 
-def test_cost_forecast_returns_forecast_envelope():
+def test_cost_forecast_returns_forecast_envelope(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-cf")
     data = _run(cost_forecast_impl(tenant_id="t-cf", _truncate_response=_trunc))
     assert data.get("schema_version") == "observability.cost_forecast.v1"
     assert data.get("tenant_id") == "t-cf"
@@ -54,7 +60,8 @@ def test_cost_forecast_returns_forecast_envelope():
     assert "error" not in data
 
 
-def test_cost_forecast_agent_scoped():
+def test_cost_forecast_agent_scoped(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-cf2")
     data = _run(cost_forecast_impl(agent="builder", tenant_id="t-cf2", _truncate_response=_trunc))
     assert "error" not in data
     assert data.get("tenant_id") == "t-cf2"
@@ -65,7 +72,8 @@ def test_cost_forecast_agent_scoped():
 # ---------------------------------------------------------------------------
 
 
-def test_cost_allocation_returns_rollups():
+def test_cost_allocation_returns_rollups(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-ca")
     data = _run(cost_allocation_impl(tenant_id="t-ca", _truncate_response=_trunc))
     assert "error" not in data
     # summarize() always emits the chargeback rollup keys.
@@ -74,7 +82,8 @@ def test_cost_allocation_returns_rollups():
     assert "forecast" in data
 
 
-def test_cost_allocation_cost_center_scoped():
+def test_cost_allocation_cost_center_scoped(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-ca2")
     data = _run(cost_allocation_impl(cost_center="platform", tag="team", tenant_id="t-ca2", _truncate_response=_trunc))
     assert "error" not in data
     assert data.get("tenant_id") == "t-ca2"
@@ -98,6 +107,7 @@ def test_credential_expiry_posture_no_secrets():
 
 
 def test_nhi_discover_gated_off_clean_status(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-nhi")
     # Ensure discovery flags are off so providers self-report disabled.
     for var in (
         "AGENT_BOM_OKTA_DISCOVERY",
@@ -116,7 +126,8 @@ def test_nhi_discover_gated_off_clean_status(monkeypatch):
     assert {p.get("status") for p in data.get("providers", [])} == {"disabled"}
 
 
-def test_nhi_discover_provider_filter():
+def test_nhi_discover_provider_filter(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-nhi2")
     data = _run(nhi_discover_impl(providers="okta", tenant_id="t-nhi2", _truncate_response=_trunc))
     assert "error" not in data
     assert len(data.get("providers", [])) == 1
@@ -128,6 +139,7 @@ def test_nhi_discover_provider_filter():
 
 
 def test_cloud_inventory_gated_off_clean_status(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-ci")
     for var in ("AGENT_BOM_CLOUD_INVENTORY", "AGENT_BOM_AZURE_INVENTORY", "AGENT_BOM_GCP_INVENTORY"):
         monkeypatch.delenv(var, raising=False)
     data = _run(cloud_inventory_impl(tenant_id="t-ci", _truncate_response=_trunc))
@@ -140,6 +152,7 @@ def test_cloud_inventory_gated_off_clean_status(monkeypatch):
 
 
 def test_cloud_inventory_provider_filter(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-ci2")
     monkeypatch.delenv("AGENT_BOM_CLOUD_INVENTORY", raising=False)
     data = _run(cloud_inventory_impl(providers="aws", region="us-east-1", tenant_id="t-ci2", _truncate_response=_trunc))
     assert "error" not in data
@@ -151,7 +164,8 @@ def test_cloud_inventory_provider_filter(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_access_review_list_empty_tenant():
+def test_access_review_list_empty_tenant(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-ar-empty")
     data = _run(access_review_impl(tenant_id="t-ar-empty", _truncate_response=_trunc))
     assert "error" not in data
     assert data.get("schema_version") == "identity.access_review.v1"
@@ -159,18 +173,20 @@ def test_access_review_list_empty_tenant():
     assert data.get("campaigns") == []
 
 
-def test_access_review_missing_campaign_returns_not_found():
+def test_access_review_missing_campaign_returns_not_found(monkeypatch):
+    _bind_mcp_tenant(monkeypatch, "t-ar")
     data = _run(access_review_impl(campaign_id="does-not-exist", tenant_id="t-ar", _truncate_response=_trunc))
     assert data.get("status") == "not_found"
     assert data.get("campaign_id") == "does-not-exist"
 
 
-def test_access_review_get_existing_campaign():
+def test_access_review_get_existing_campaign(monkeypatch):
     from agent_bom.api.access_review import create_campaign, get_access_review_store, set_access_review_store
 
     set_access_review_store(None)  # reset to a fresh in-memory store
     store = get_access_review_store()
     tenant_id = "t-ar-real"
+    _bind_mcp_tenant(monkeypatch, tenant_id)
     campaign, _items = create_campaign(
         store,
         tenant_id=tenant_id,

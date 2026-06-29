@@ -7,6 +7,7 @@ mcp_tools/specialized.py which were at <25% coverage.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -996,6 +997,50 @@ async def test_proxy_gateway_and_shield_status_impls_empty_state():
 
 
 @pytest.mark.asyncio
+async def test_mcp_runtime_tools_use_server_bound_tenant(monkeypatch):
+    from agent_bom.mcp_tools.runtime import proxy_status_impl
+
+    captured: dict[str, str] = {}
+
+    async def _fake_proxy_status(request):
+        captured["tenant_id"] = request.state.tenant_id
+        return {"tenant_id": request.state.tenant_id, "status": "ok"}
+
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-server")
+    monkeypatch.setattr("agent_bom.api.routes.proxy.proxy_status", _fake_proxy_status)
+
+    result = await proxy_status_impl(tenant_id="tenant-attacker", _truncate_response=_trunc)
+    data = json.loads(result)
+
+    assert captured["tenant_id"] == "tenant-server"
+    assert data["tenant_id"] == "tenant-server"
+
+
+@pytest.mark.asyncio
+async def test_shield_routes_isolate_same_session_id_by_tenant():
+    from agent_bom.api.routes import proxy as proxy_routes
+
+    proxy_routes._shield_engines.clear()
+    request_a = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-a"))
+    request_b = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-b"))
+
+    try:
+        started = await proxy_routes.shield_start(request_a, session_id="shared-session", correlation_window=1.0)
+        assert started["status"] == "started"
+        assert started["tenant_id"] == "tenant-a"
+
+        status_a = await proxy_routes.shield_status(request_a, session_id="shared-session")
+        status_b = await proxy_routes.shield_status(request_b, session_id="shared-session")
+
+        assert status_a["active"] is True
+        assert status_a["tenant_id"] == "tenant-a"
+        assert status_b["active"] is False
+        assert status_b["tenant_id"] == "tenant-b"
+    finally:
+        proxy_routes._shield_engines.clear()
+
+
+@pytest.mark.asyncio
 async def test_shield_write_tools_require_admin_and_audit_reason():
     from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
     from agent_bom.api.routes import proxy as proxy_routes
@@ -1003,77 +1048,83 @@ async def test_shield_write_tools_require_admin_and_audit_reason():
 
     store = InMemoryAuditLog()
     set_audit_log(store)
+    os_environ_patch = pytest.MonkeyPatch()
+    os_environ_patch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
     proxy_routes._shield_engines.clear()
 
-    blocked = json.loads(
-        await shield_start_impl(
-            session_id="incident-1",
-            operator_role="viewer",
-            reason="start incident shield",
-            tenant_id="tenant-alpha",
-            _truncate_response=_trunc,
+    try:
+        blocked = json.loads(
+            await shield_start_impl(
+                session_id="incident-1",
+                operator_role="viewer",
+                reason="start incident shield",
+                tenant_id="tenant-alpha",
+                _truncate_response=_trunc,
+            )
         )
-    )
-    assert blocked["status"] == "blocked"
-    assert blocked["required_role"] == "admin"
+        assert blocked["status"] == "blocked"
+        assert blocked["required_role"] == "admin"
 
-    missing_reason = json.loads(
-        await shield_start_impl(
-            session_id="incident-1",
-            operator_role="admin",
-            operator_scopes="shield:write",
-            reason="short",
-            tenant_id="tenant-alpha",
-            _truncate_response=_trunc,
+        missing_reason = json.loads(
+            await shield_start_impl(
+                session_id="incident-1",
+                operator_role="admin",
+                operator_scopes="shield:write",
+                reason="short",
+                tenant_id="tenant-alpha",
+                _truncate_response=_trunc,
+            )
         )
-    )
-    assert missing_reason["status"] == "blocked"
-    assert "audit reason" in missing_reason["error"]
+        assert missing_reason["status"] == "blocked"
+        assert "audit reason" in missing_reason["error"]
 
-    missing_scope = json.loads(
-        await shield_start_impl(
-            session_id="incident-1",
-            operator_role="admin",
-            operator_scopes="scan:write",
-            reason="incident response validation",
-            tenant_id="tenant-alpha",
-            _truncate_response=_trunc,
+        missing_scope = json.loads(
+            await shield_start_impl(
+                session_id="incident-1",
+                operator_role="admin",
+                operator_scopes="scan:write",
+                reason="incident response validation",
+                tenant_id="tenant-alpha",
+                _truncate_response=_trunc,
+            )
         )
-    )
-    assert missing_scope["status"] == "blocked"
-    assert missing_scope["required_scope"] == "shield:write"
+        assert missing_scope["status"] == "blocked"
+        assert missing_scope["required_scope"] == "shield:write"
 
-    started = json.loads(
-        await shield_start_impl(
-            session_id="incident-1",
-            operator_role="admin",
-            operator_scopes="shield:write",
-            reason="incident response validation",
-            tenant_id="tenant-alpha",
-            _truncate_response=_trunc,
+        started = json.loads(
+            await shield_start_impl(
+                session_id="incident-1",
+                operator_role="admin",
+                operator_scopes="shield:write",
+                reason="incident response validation",
+                tenant_id="tenant-alpha",
+                _truncate_response=_trunc,
+            )
         )
-    )
-    assert started["status"] == "started"
-    assert started["mcp_write_policy"]["required_role"] == "admin"
-    assert started["mcp_write_policy"]["required_scope"] == "shield:write"
-    assert started["mcp_write_policy"]["audit_logged"] is True
+        assert started["status"] == "started"
+        assert started["mcp_write_policy"]["required_role"] == "admin"
+        assert started["mcp_write_policy"]["required_scope"] == "shield:write"
+        assert started["mcp_write_policy"]["audit_logged"] is True
 
-    unblocked = json.loads(
-        await shield_unblock_impl(
-            session_id="incident-1",
-            operator_role="admin",
-            operator_scopes="shield:write",
-            reason="incident response validation",
-            tenant_id="tenant-alpha",
-            _truncate_response=_trunc,
+        unblocked = json.loads(
+            await shield_unblock_impl(
+                session_id="incident-1",
+                operator_role="admin",
+                operator_scopes="shield:write",
+                reason="incident response validation",
+                tenant_id="tenant-alpha",
+                _truncate_response=_trunc,
+            )
         )
-    )
-    assert unblocked["status"] in {"not_blocked", "unblocked"}
+        assert unblocked["status"] in {"not_blocked", "unblocked"}
 
-    entries = store.list_entries(tenant_id="tenant-alpha", limit=10)
-    assert [entry.action for entry in entries] == ["shield_unblock", "shield_start"]
+        entries = store.list_entries(tenant_id="tenant-alpha", limit=10)
+        assert [entry.action for entry in entries] == ["shield_unblock", "shield_start"]
 
-    proxy_routes._shield_engines.clear()
+        proxy_routes._shield_engines.clear()
+    finally:
+        os_environ_patch.undo()
+        proxy_routes._shield_engines.clear()
 
 
 @pytest.mark.asyncio
@@ -1084,33 +1135,39 @@ async def test_shield_break_glass_tool_uses_admin_role_context():
 
     store = InMemoryAuditLog()
     set_audit_log(store)
+    os_environ_patch = pytest.MonkeyPatch()
+    os_environ_patch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
     proxy_routes._shield_engines.clear()
 
-    await shield_start_impl(
-        session_id="incident-2",
-        operator_role="admin",
-        operator_scopes="shield:write",
-        reason="incident response validation",
-        tenant_id="tenant-alpha",
-        _truncate_response=_trunc,
-    )
-    result = json.loads(
-        await shield_break_glass_impl(
+    try:
+        await shield_start_impl(
             session_id="incident-2",
             operator_role="admin",
             operator_scopes="shield:write",
-            reason="emergency operator override",
+            reason="incident response validation",
             tenant_id="tenant-alpha",
             _truncate_response=_trunc,
         )
-    )
-    assert result["status"] == "break_glass_activated"
-    assert result["mcp_write_policy"]["actor_role"] == "admin"
+        result = json.loads(
+            await shield_break_glass_impl(
+                session_id="incident-2",
+                operator_role="admin",
+                operator_scopes="shield:write",
+                reason="emergency operator override",
+                tenant_id="tenant-alpha",
+                _truncate_response=_trunc,
+            )
+        )
+        assert result["status"] == "break_glass_activated"
+        assert result["mcp_write_policy"]["actor_role"] == "admin"
 
-    entries = store.list_entries(tenant_id="tenant-alpha", limit=10)
-    assert [entry.action for entry in entries][:2] == ["break_glass", "shield_start"]
+        entries = store.list_entries(tenant_id="tenant-alpha", limit=10)
+        assert [entry.action for entry in entries][:2] == ["break_glass", "shield_start"]
 
-    proxy_routes._shield_engines.clear()
+        proxy_routes._shield_engines.clear()
+    finally:
+        os_environ_patch.undo()
+        proxy_routes._shield_engines.clear()
 
 
 @pytest.mark.asyncio
@@ -1146,10 +1203,11 @@ async def test_proxy_alerts_impl_filters_metadata_only_alerts():
 
 
 @pytest.mark.asyncio
-async def test_audit_query_and_integrity_impls_are_tenant_scoped():
+async def test_audit_query_and_integrity_impls_are_tenant_scoped(monkeypatch):
     from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog, set_audit_log
     from agent_bom.mcp_tools.runtime import audit_integrity_impl, audit_query_impl
 
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
     store = InMemoryAuditLog()
     store.append(AuditEntry(action="scan", actor="alice", resource="job/alpha", details={"tenant_id": "tenant-alpha"}))
     store.append(AuditEntry(action="scan", actor="bob", resource="job/beta", details={"tenant_id": "tenant-beta"}))

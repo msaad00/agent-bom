@@ -146,10 +146,12 @@ def test_admin_shield_write_emits_audit(impl: Any, action: str, extra: dict[str,
     # Stub the engine-backed routes so we exercise the MCP write path without
     # standing up a ProtectionEngine. break_glass audits inside the route via
     # the same log_action symbol, so the spy captures it either way.
-    async def _fake_shield_start(*, session_id: str = "default", correlation_window: float = 30.0) -> dict:
+    async def _fake_shield_start(request: Any, *, session_id: str = "default", correlation_window: float = 30.0) -> dict:
+        del request
         return {"status": "started", "session_id": session_id}
 
-    async def _fake_shield_unblock(*, session_id: str = "default") -> dict:
+    async def _fake_shield_unblock(request: Any, *, session_id: str = "default") -> dict:
+        del request
         return {"status": "unblocked", "session_id": session_id}
 
     async def _fake_break_glass(request: Any, *, session_id: str = "default", reason: str = "") -> dict:
@@ -200,19 +202,24 @@ def test_break_glass_inactive_session_still_audits() -> None:
 
     store = InMemoryAuditLog()
     set_audit_log(store)
+    env = pytest.MonkeyPatch()
+    env.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-omega")
     # No shield_start -> no engine registered for this session.
     proxy_routes._shield_engines.clear()
 
-    result = _run(
-        runtime_tools.shield_break_glass_impl(
-            session_id="never-started",
-            operator_role="admin",
-            operator_scopes="shield:write",
-            reason="emergency override on inactive session",
-            tenant_id="tenant-omega",
-            _truncate_response=_passthrough,
+    try:
+        result = _run(
+            runtime_tools.shield_break_glass_impl(
+                session_id="never-started",
+                operator_role="admin",
+                operator_scopes="shield:write",
+                reason="emergency override on inactive session",
+                tenant_id="tenant-omega",
+                _truncate_response=_passthrough,
+            )
         )
-    )
+    finally:
+        env.undo()
 
     # Behaviour otherwise unchanged: still reports the session is not active.
     assert result["status"] == "not_active", result

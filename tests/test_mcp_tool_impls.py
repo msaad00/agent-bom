@@ -1159,6 +1159,7 @@ async def test_shield_break_glass_tool_uses_admin_role_context():
             )
         )
         assert result["status"] == "break_glass_activated"
+        assert result["mcp_write_policy"]["actor"] == "mcp-operator"
         assert result["mcp_write_policy"]["actor_role"] == "admin"
 
         entries = store.list_entries(tenant_id="tenant-alpha", limit=10)

@@ -1170,7 +1170,7 @@ def _audit_break_glass(
         tenant_id = require_request_tenant_id(request)
         log_action(
             "break_glass",
-            actor=role,
+            actor=getattr(request.state, "actor", "") or getattr(request.state, "api_key_name", "") or role,
             resource=f"shield/{session_id}",
             tenant_id=tenant_id,
             reason=reason,

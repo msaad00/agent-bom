@@ -159,7 +159,7 @@ def test_admin_shield_write_emits_audit(impl: Any, action: str, extra: dict[str,
 
         log_action(
             "break_glass",
-            actor=getattr(request.state, "api_key_role", "viewer"),
+            actor=getattr(request.state, "actor", "") or getattr(request.state, "api_key_role", "viewer"),
             resource=f"shield/{session_id}",
             tenant_id="default",
             reason=reason,
@@ -185,7 +185,7 @@ def test_admin_shield_write_emits_audit(impl: Any, action: str, extra: dict[str,
     assert result.get("status") not in ("blocked", None), result
     assert len(audit_calls) == 1, f"{action} did not emit exactly one audit event: {audit_calls}"
     emitted = audit_calls[0]
-    assert emitted["actor"] == "admin", emitted
+    assert emitted["actor"] == "mcp-operator", emitted
     assert emitted.get("reason"), emitted
 
 
@@ -228,7 +228,7 @@ def test_break_glass_inactive_session_still_audits() -> None:
     actions = [entry.action for entry in entries]
     assert "break_glass" in actions, f"inactive break-glass attempt emitted no audit event: {actions}"
     glass = next(entry for entry in entries if entry.action == "break_glass")
-    assert glass.actor == "admin", glass
+    assert glass.actor == "mcp-operator", glass
     assert glass.details.get("outcome") == "not_active", glass.details
 
     proxy_routes._shield_engines.clear()

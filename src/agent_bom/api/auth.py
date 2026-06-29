@@ -13,17 +13,9 @@ import secrets
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from typing import Protocol
 
-
-class Role(str, Enum):
-    """User roles for RBAC."""
-
-    ADMIN = "admin"
-    ANALYST = "analyst"
-    VIEWER = "viewer"
-
+from agent_bom.rbac import Role
 
 # Role hierarchy: admin > analyst > viewer
 _ROLE_HIERARCHY: dict[Role, int] = {

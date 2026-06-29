@@ -7,6 +7,7 @@ import json
 import logging
 from typing import Any
 
+from agent_bom.graph.severity import severity_rank
 from agent_bom.mcp_errors import CODE_INTERNAL_UNEXPECTED, CODE_VALIDATION_INVALID_ARGUMENT, mcp_error_json
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 
@@ -57,12 +58,11 @@ def _relationship_refs(path: Any, edges: list[Any]) -> list[dict[str, Any]]:
 
 
 def _severity_for_path(path: Any, nodes_by_id: dict[str, Any]) -> str:
-    severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "": 0}
     severity = ""
     for hop in getattr(path, "hops", []) or []:
         node = nodes_by_id.get(hop)
         candidate = str(getattr(node, "severity", "") or "").lower() if node is not None else ""
-        if severity_order.get(candidate, 0) > severity_order.get(severity, 0):
+        if severity_rank(candidate) > severity_rank(severity):
             severity = candidate
     if severity:
         return severity

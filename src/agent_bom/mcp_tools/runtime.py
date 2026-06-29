@@ -15,8 +15,8 @@ from agent_bom.security import sanitize_error
 logger = logging.getLogger(__name__)
 
 
-def _request_for_tenant(tenant_id: str | None = None) -> SimpleNamespace:
-    return SimpleNamespace(state=SimpleNamespace(tenant_id=resolve_mcp_tool_tenant_id(tenant_id)))
+def _request_for_tenant(tenant_id: str | None = None, actor: str | None = None) -> SimpleNamespace:
+    return SimpleNamespace(state=SimpleNamespace(tenant_id=resolve_mcp_tool_tenant_id(tenant_id), actor=actor or "mcp-operator"))
 
 
 def _csv_set(value: str) -> set[str]:
@@ -36,6 +36,7 @@ def _authorize_shield_write(
     reason: str,
     tenant_id: str,
     session_id: str,
+    authenticated_actor: str = "",
 ) -> tuple[bool, dict[str, Any]]:
     normalized_role = (operator_role or "").strip().lower()
     clean_reason = (reason or "").strip()
@@ -75,7 +76,8 @@ def _authorize_shield_write(
         True,
         {
             "action": action,
-            "actor": normalized_role,
+            "actor": (authenticated_actor or "").strip() or "mcp-operator",
+            "actor_role": normalized_role,
             "tenant_id": tenant_id or "default",
             "resource": f"shield/{session_id or 'default'}",
             "reason": clean_reason,
@@ -280,6 +282,7 @@ async def shield_start_impl(
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Implementation of the shield_start write tool."""
     authorized, context = _authorize_shield_write(
@@ -289,6 +292,7 @@ async def shield_start_impl(
         reason=reason,
         tenant_id=tenant_id,
         session_id=session_id,
+        authenticated_actor=_authenticated_actor,
     )
     if not authorized:
         return json.dumps(context)
@@ -304,7 +308,8 @@ async def shield_start_impl(
         payload["mcp_write_policy"] = {
             "required_role": "admin",
             "required_scope": "shield:write",
-            "actor_role": context["actor"],
+            "actor": context["actor"],
+            "actor_role": context["actor_role"],
             "audit_logged": True,
             "tenant_id": context["tenant_id"],
         }
@@ -323,6 +328,7 @@ async def shield_unblock_impl(
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Implementation of the shield_unblock write tool."""
     authorized, context = _authorize_shield_write(
@@ -332,6 +338,7 @@ async def shield_unblock_impl(
         reason=reason,
         tenant_id=tenant_id,
         session_id=session_id,
+        authenticated_actor=_authenticated_actor,
     )
     if not authorized:
         return json.dumps(context)
@@ -342,7 +349,8 @@ async def shield_unblock_impl(
         payload["mcp_write_policy"] = {
             "required_role": "admin",
             "required_scope": "shield:write",
-            "actor_role": context["actor"],
+            "actor": context["actor"],
+            "actor_role": context["actor_role"],
             "audit_logged": True,
             "tenant_id": context["tenant_id"],
         }
@@ -361,6 +369,7 @@ async def shield_break_glass_impl(
     reason: str = "",
     tenant_id: str = "default",
     _truncate_response,
+    _authenticated_actor: str = "",
 ) -> str:
     """Implementation of the shield_break_glass write tool."""
     authorized, context = _authorize_shield_write(
@@ -370,19 +379,21 @@ async def shield_break_glass_impl(
         reason=reason,
         tenant_id=tenant_id,
         session_id=session_id,
+        authenticated_actor=_authenticated_actor,
     )
     if not authorized:
         return json.dumps(context)
     try:
         from agent_bom.api.routes.proxy import break_glass
 
-        request = _request_for_tenant(context["tenant_id"])
-        request.state.api_key_role = context["actor"]
+        request = _request_for_tenant(context["tenant_id"], context["actor"])
+        request.state.api_key_role = context["actor_role"]
         payload = await break_glass(cast(Any, request), session_id=session_id or "default", reason=context["reason"])
         payload["mcp_write_policy"] = {
             "required_role": "admin",
             "required_scope": "shield:write",
-            "actor_role": context["actor"],
+            "actor": context["actor"],
+            "actor_role": context["actor_role"],
             "audit_logged": True,
             "tenant_id": context["tenant_id"],
         }

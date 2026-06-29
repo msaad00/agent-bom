@@ -15,14 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
-from agent_bom.rbac import Role
-
-# Role hierarchy: admin > analyst > viewer
-_ROLE_HIERARCHY: dict[Role, int] = {
-    Role.ADMIN: 3,
-    Role.ANALYST: 2,
-    Role.VIEWER: 1,
-}
+from agent_bom.rbac import Role, role_rank
 
 
 @dataclass
@@ -93,7 +86,7 @@ class ApiKey:
 
     def has_role(self, required: Role) -> bool:
         """Check if this key's role meets or exceeds the required role."""
-        return _ROLE_HIERARCHY.get(self.role, 0) >= _ROLE_HIERARCHY.get(required, 0)
+        return role_rank(self.role) >= role_rank(required)
 
     def has_scope(self, required_scope: str | None) -> bool:
         """Check whether this key's scopes allow the requested action."""
@@ -179,7 +172,7 @@ def _highest_role(values: list[str]) -> Role | None:
             candidate = Role(str(value).strip().lower())
         except ValueError:
             continue
-        if best is None or _ROLE_HIERARCHY[candidate] > _ROLE_HIERARCHY[best]:
+        if best is None or role_rank(candidate) > role_rank(best):
             best = candidate
     return best
 
@@ -229,7 +222,7 @@ def resolve_scim_user_role(tenant_id: str, *subjects: object) -> SCIMRoleResolut
         role = _highest_role(user.roles)
         if role is None:
             role = Role.VIEWER
-        if best_role is None or _ROLE_HIERARCHY[role] > _ROLE_HIERARCHY[best_role]:
+        if best_role is None or role_rank(role) > role_rank(best_role):
             best_role = role
             best_user = user
 

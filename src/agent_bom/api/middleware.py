@@ -980,9 +980,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _role_allows(actual: Role, required: Role) -> bool:
-        from agent_bom.api.auth import _ROLE_HIERARCHY
+        from agent_bom.rbac import role_rank
 
-        return _ROLE_HIERARCHY.get(actual, 0) >= _ROLE_HIERARCHY.get(required, 0)
+        return role_rank(actual) >= role_rank(required)
 
     @staticmethod
     def _record_scim_role_state(request: StarletteRequest, *, user_id: str | None, user_name: str | None) -> None:

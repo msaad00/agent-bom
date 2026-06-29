@@ -25,6 +25,13 @@ from agent_bom.api.auth import (
 
 
 class TestRoleHierarchy:
+    def test_api_auth_uses_central_role_rank(self):
+        from agent_bom.api import auth as auth_module
+        from agent_bom.rbac import role_rank as central_role_rank
+
+        assert auth_module.role_rank is central_role_rank
+        assert not hasattr(auth_module, "_ROLE_HIERARCHY")
+
     def test_admin_has_all_roles(self):
         _, key = create_api_key("admin", Role.ADMIN)
         assert key.has_role(Role.ADMIN)

@@ -9,6 +9,7 @@ import { SeverityBadge } from "@/components/severity-badge";
 import {
   ArrowLeft, Loader2, CheckCircle, Clock, Zap, Key, Wrench,
   ArrowUpCircle, AlertTriangle, ChevronDown, ChevronRight, Download, GitBranch, Server,
+  Cloud, Database, ShieldCheck,
 } from "lucide-react";
 
 // ─── Scan Result View ───────────────────────────────────────────────────────
@@ -93,6 +94,7 @@ export function ScanResultView({ id }: { id: string }) {
   const result = job?.result as ScanResult | undefined;
   const summary = result?.summary;
   const blastRadius = result?.blast_radius ?? [];
+  const cloudEvidence = result ? summarizeCloudEvidence(result) : null;
 
   async function handleExport(format: GraphExportFormat = "json") {
     setExporting(true);
@@ -200,6 +202,8 @@ export function ScanResultView({ id }: { id: string }) {
           <MiniStat label="Critical" value={summary.critical_findings} accent="red" />
         </div>
       )}
+
+      {cloudEvidence ? <CloudEvidencePanel evidence={cloudEvidence} /> : null}
 
       {/* Blast radius */}
       {blastRadius.length > 0 && (
@@ -325,6 +329,13 @@ export function ScanResultView({ id }: { id: string }) {
         </section>
       )}
 
+      {result && cloudEvidence && blastRadius.length === 0 && (!result.agents || result.agents.length === 0) ? (
+        <div className="rounded-xl border border-cyan-900/50 bg-cyan-950/20 px-4 py-3 text-sm text-cyan-100">
+          Cloud inventory and posture evidence was persisted for this scan. No
+          package attack-path findings were produced for this evidence set.
+        </div>
+      ) : null}
+
       {/* Scan metadata */}
       {job?.completed_at && (
         <div className="text-xs text-zinc-600 flex items-center gap-2">
@@ -337,6 +348,203 @@ export function ScanResultView({ id }: { id: string }) {
 }
 
 // ─── Sub-Components ─────────────────────────────────────────────────────────
+
+interface CloudBenchmarkDisplay {
+  key: string;
+  label: string;
+  passed: number | null;
+  failed: number | null;
+  total: number | null;
+  passRate: number | null;
+}
+
+interface CloudEvidenceDisplay {
+  providers: string[];
+  resourceCount: number | null;
+  identityCount: number | null;
+  agentCount: number | null;
+  inventoryItems: number | null;
+  benchmarks: CloudBenchmarkDisplay[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function uniqueValues(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort();
+}
+
+function countChecksByStatus(checks: unknown): Pick<CloudBenchmarkDisplay, "passed" | "failed" | "total"> {
+  if (!Array.isArray(checks)) return { passed: null, failed: null, total: null };
+  let passed = 0;
+  let failed = 0;
+  for (const raw of checks) {
+    if (!isRecord(raw)) continue;
+    const status = String(raw.status ?? raw.result ?? "").toLowerCase();
+    if (["pass", "passed", "ok", "success"].includes(status)) passed += 1;
+    if (["fail", "failed", "error"].includes(status)) failed += 1;
+  }
+  return { passed, failed, total: checks.length };
+}
+
+function benchmarkDisplay(key: string, label: string, data: unknown): CloudBenchmarkDisplay | null {
+  if (!isRecord(data)) return null;
+  const counted = countChecksByStatus(data.checks);
+  const passed = asNumber(data.passed) ?? counted.passed;
+  const failed = asNumber(data.failed) ?? counted.failed;
+  const total = asNumber(data.total) ?? counted.total;
+  const passRate = asNumber(data.pass_rate);
+  return { key, label, passed, failed, total, passRate };
+}
+
+function summarizeCloudInventory(inventory: unknown): Pick<
+  CloudEvidenceDisplay,
+  "providers" | "resourceCount" | "identityCount" | "agentCount" | "inventoryItems"
+> {
+  if (Array.isArray(inventory)) {
+    const providers = uniqueValues(
+      inventory.map((item) => (isRecord(item) ? String(item.provider ?? item.cloud ?? "") : "")),
+    );
+    let resourceCount = 0;
+    let identityCount = 0;
+    let agentCount = 0;
+    for (const item of inventory) {
+      if (!isRecord(item)) continue;
+      resourceCount += asNumber(item.resource_count) ?? 0;
+      identityCount += asNumber(item.identity_count) ?? 0;
+      agentCount += asNumber(item.agent_count) ?? 0;
+    }
+    return {
+      providers,
+      resourceCount: resourceCount || null,
+      identityCount: identityCount || null,
+      agentCount: agentCount || null,
+      inventoryItems: inventory.length,
+    };
+  }
+
+  if (!isRecord(inventory)) {
+    return { providers: [], resourceCount: null, identityCount: null, agentCount: null, inventoryItems: null };
+  }
+
+  let resourceCount = asNumber(inventory.resource_count);
+  const nodeSummary = inventory.node_summary;
+  if (resourceCount == null && isRecord(nodeSummary)) {
+    resourceCount = Object.values(nodeSummary).reduce<number>(
+      (sum, value) => sum + (asNumber(value) ?? 0),
+      0,
+    );
+  }
+
+  return {
+    providers: uniqueValues([String(inventory.provider ?? inventory.cloud ?? "")]),
+    resourceCount,
+    identityCount: asNumber(inventory.identity_count),
+    agentCount: asNumber(inventory.agent_count),
+    inventoryItems: null,
+  };
+}
+
+function summarizeCloudEvidence(result: ScanResult): CloudEvidenceDisplay | null {
+  const inventory = summarizeCloudInventory(result.cloud_inventory);
+  const benchmarks = [
+    benchmarkDisplay("aws", "AWS CIS", result.cis_benchmark),
+    benchmarkDisplay("azure", "Azure CIS", result.azure_cis_benchmark),
+    benchmarkDisplay("gcp", "GCP CIS", result.gcp_cis_benchmark),
+    benchmarkDisplay("snowflake", "Snowflake CIS", result.snowflake_cis_benchmark),
+    benchmarkDisplay("databricks", "Databricks", result.databricks_cis_benchmark),
+  ].filter((item): item is CloudBenchmarkDisplay => item !== null);
+
+  const hasInventory =
+    inventory.providers.length > 0 ||
+    inventory.resourceCount != null ||
+    inventory.identityCount != null ||
+    inventory.agentCount != null ||
+    inventory.inventoryItems != null;
+  if (!hasInventory && benchmarks.length === 0) return null;
+  return { ...inventory, benchmarks };
+}
+
+function formatEvidenceCount(value: number | null): string {
+  return value == null ? "—" : value.toLocaleString();
+}
+
+function formatBenchmarkRate(benchmark: CloudBenchmarkDisplay): string {
+  if (benchmark.passRate != null) {
+    const pct = benchmark.passRate <= 1 ? benchmark.passRate * 100 : benchmark.passRate;
+    return `${pct.toFixed(0)}%`;
+  }
+  if (benchmark.total && benchmark.passed != null) {
+    return `${((benchmark.passed / benchmark.total) * 100).toFixed(0)}%`;
+  }
+  return "—";
+}
+
+function CloudEvidencePanel({ evidence }: { evidence: CloudEvidenceDisplay }) {
+  const providerLabel = evidence.providers.length > 0 ? evidence.providers.join(", ").toUpperCase() : "Cloud";
+  return (
+    <section className="rounded-xl border border-cyan-900/50 bg-cyan-950/20 p-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <Cloud className="h-4 w-4 text-cyan-300" />
+          <h2 className="text-sm font-semibold text-cyan-100">Cloud evidence</h2>
+        </div>
+        <span className="font-mono text-[11px] uppercase tracking-wide text-cyan-300/80">{providerLabel}</span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <EvidenceMetric icon={Database} label="Resources" value={formatEvidenceCount(evidence.resourceCount ?? evidence.inventoryItems)} />
+        <EvidenceMetric icon={Key} label="Identities" value={formatEvidenceCount(evidence.identityCount)} />
+        <EvidenceMetric icon={Server} label="Agents" value={formatEvidenceCount(evidence.agentCount)} />
+        <EvidenceMetric icon={ShieldCheck} label="Benchmarks" value={formatEvidenceCount(evidence.benchmarks.length)} />
+      </div>
+      {evidence.benchmarks.length > 0 ? (
+        <div className="mt-4 grid gap-2 lg:grid-cols-2">
+          {evidence.benchmarks.map((benchmark) => (
+            <div
+              key={benchmark.key}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyan-900/40 bg-zinc-950/40 px-3 py-2"
+            >
+              <span className="text-xs font-medium text-zinc-200">{benchmark.label}</span>
+              <span className="font-mono text-xs text-cyan-200">
+                {benchmark.passed ?? "—"}/{benchmark.total ?? "—"} passed · {formatBenchmarkRate(benchmark)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function EvidenceMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-cyan-900/40 bg-zinc-950/40 p-3">
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-cyan-300/80">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </div>
+      <p className="mt-1.5 text-lg font-semibold text-zinc-100">{value}</p>
+    </div>
+  );
+}
 
 function JobStatusBadge({ status, streaming }: { status: string; streaming: boolean }) {
   if (status === "done") return <span className="text-xs bg-emerald-950 border border-emerald-900 text-emerald-400 rounded-full px-2 py-0.5 font-mono">done</span>;

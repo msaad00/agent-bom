@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
+from agent_bom.graph.severity import severity_policy_rank
 from agent_bom.scorecard import summarize_scorecard_coverage
 from agent_bom.vex import active_blast_radii
 
@@ -452,11 +453,10 @@ def compute_credential_risk_ranking(report: "AIBOMReport") -> list[dict]:
 
     # Sort: tier first, then proven (vulnerability) before discovery at the same
     # tier, then by max_risk_score descending.
-    tier_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     basis_order = {"vulnerability": 0, "discovery": 1}
     results.sort(
         key=lambda x: (
-            tier_order.get(x["risk_tier"], 4),
+            -severity_policy_rank(str(x["risk_tier"])),
             basis_order.get(x["basis"], 9),
             -x["max_risk_score"],
         )

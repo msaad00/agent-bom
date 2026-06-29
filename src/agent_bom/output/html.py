@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from agent_bom.finding import FindingType
+from agent_bom.graph.severity import severity_policy_rank
 from agent_bom.output.exposure_path import exposure_path_brief
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
@@ -40,7 +41,6 @@ _SEV_COLOR = {
     "none": "#16a34a",
     "unknown": "#9ca3af",
 }
-_SEV_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "unknown": -1}
 
 # Max packages shown per server before collapsing
 _PKG_PREVIEW = 15
@@ -220,7 +220,7 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
 
     sorted_brs = sorted(
         blast_radii,
-        key=lambda b: _SEV_ORDER.get(b.vulnerability.severity.value.lower(), 0),
+        key=lambda b: severity_policy_rank(b.vulnerability.severity.value),
         reverse=True,
     )
     rows = []
@@ -449,7 +449,7 @@ def _policy_findings_section(findings: list["Finding"]) -> str:
         return ""
 
     rows = []
-    for finding in sorted(findings, key=lambda f: _SEV_ORDER.get(str(f.severity).lower(), -1), reverse=True):
+    for finding in sorted(findings, key=lambda f: severity_policy_rank(str(f.severity)), reverse=True):
         sev = str(finding.severity or "unknown").lower()
         title = finding.title or finding.description or finding.finding_type.value
         asset_label = finding.asset.name or finding.asset.identifier or "unknown asset"

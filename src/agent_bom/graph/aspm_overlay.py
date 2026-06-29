@@ -42,14 +42,14 @@ from typing import Any
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
-from agent_bom.graph.severity import SEVERITY_RANK, SEVERITY_RISK_SCORE
+from agent_bom.graph.severity import SEVERITY_BUCKETS_ASPM, SEVERITY_RANK, SEVERITY_RISK_SCORE
 from agent_bom.graph.types import EntityType, GraphSemanticLayer, RelationshipType
 
 _OVERLAY_SOURCE = "aspm-overlay"
 
 # Severity buckets we roll up per application, worst-first for deterministic
 # ordering of the rolled-up counts attribute.
-_SEVERITY_ORDER = ("critical", "high", "medium", "low", "info", "unknown")
+_SEVERITY_ORDER = SEVERITY_BUCKETS_ASPM
 
 # Reachability verdicts a finding can carry after correlation. ``unknown`` is the
 # honest default when no attack-path / exposure signal exists for the component —

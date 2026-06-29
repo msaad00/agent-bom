@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from agent_bom.cloud.normalization import sanitize_discovery_warning
+from agent_bom.graph.severity import severity_rank
 
 logger = logging.getLogger(__name__)
 
@@ -520,7 +521,6 @@ def _summarize_packages(packages: list[Any]) -> tuple[int, int, str]:
     pkg_count = len(packages)
     vuln_pkgs = 0
     max_sev = "none"
-    severity_rank = {"critical": 5, "high": 4, "medium": 3, "low": 2, "unknown": 1, "none": 0}
     best = 0
     for pkg in packages:
         vulns = getattr(pkg, "vulnerabilities", None) or []
@@ -529,7 +529,7 @@ def _summarize_packages(packages: list[Any]) -> tuple[int, int, str]:
         sev_obj = getattr(pkg, "max_severity", None)
         sev = sev_obj() if callable(sev_obj) else None
         sev_value = getattr(sev, "value", None) if sev is not None else None
-        rank = severity_rank.get(str(sev_value).lower(), 0) if sev_value else 0
+        rank = severity_rank(str(sev_value)) if sev_value else 0
         if rank > best:
             best = rank
             max_sev = str(sev_value).lower()

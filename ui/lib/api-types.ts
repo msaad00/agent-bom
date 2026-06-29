@@ -85,6 +85,13 @@ export interface ScanResult {
   has_mcp_context?: boolean | undefined;
   has_agent_context?: boolean | undefined;
   scan_sources?: string[] | undefined;
+  /** Cloud estate evidence persisted by cloud connection and CLI cloud scans. */
+  cloud_inventory?: unknown | undefined;
+  cis_benchmark?: unknown | undefined;
+  azure_cis_benchmark?: unknown | undefined;
+  gcp_cis_benchmark?: unknown | undefined;
+  snowflake_cis_benchmark?: unknown | undefined;
+  databricks_cis_benchmark?: unknown | undefined;
 }
 
 export interface GraphPagination {

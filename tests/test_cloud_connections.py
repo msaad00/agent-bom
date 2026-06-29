@@ -1113,6 +1113,7 @@ def test_scan_launch_brokers_runs_persists_and_marks_active(monkeypatch: pytest.
     assert job.result is not None
     assert job.result.get("cloud_inventory", {}).get("provider") == "aws"
     assert job.result.get("cis_benchmark", {}).get("total") == 2
+    assert job.result.get("scan_sources") == ["cloud_connection", "cloud:aws"]
 
     # Connection status flipped to active with last_scan_at set, no error detail.
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
@@ -1233,7 +1234,10 @@ def test_scan_azure_brokers_runs_persists_and_marks_active(monkeypatch: pytest.M
 
     from agent_bom.api.stores import _get_store
 
-    assert _get_store().get(body["scan_id"], "tenant-alpha") is not None
+    job = _get_store().get(body["scan_id"], "tenant-alpha")
+    assert job is not None
+    assert job.result is not None
+    assert job.result.get("scan_sources") == ["cloud_connection", "cloud:azure"]
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
     assert fetched["status"] == "active"
     assert fetched["last_scan_at"]
@@ -1267,6 +1271,12 @@ def test_scan_gcp_brokers_runs_persists_and_marks_active(monkeypatch: pytest.Mon
     assert calls["cis_creds"] is _BROKER_SESSION_SENTINEL
     assert calls["inv_force"] is True
     assert body["cis_benchmark"]["total"] == 2
+    from agent_bom.api.stores import _get_store
+
+    job = _get_store().get(body["scan_id"], "tenant-alpha")
+    assert job is not None
+    assert job.result is not None
+    assert job.result.get("scan_sources") == ["cloud_connection", "cloud:gcp"]
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
     assert fetched["status"] == "active"
 
@@ -1303,6 +1313,13 @@ def test_scan_snowflake_brokers_runs_persists_and_marks_active(monkeypatch: pyte
     assert conn.closed is True
     assert body["inventory"]["agent_count"] == 0
     assert body["cis_benchmark"]["total"] == 2
+    from agent_bom.api.stores import _get_store
+
+    job = _get_store().get(body["scan_id"], "tenant-alpha")
+    assert job is not None
+    assert job.result is not None
+    assert job.result.get("scan_sources") == ["cloud_connection", "cloud:snowflake"]
+    assert job.result.get("cloud_inventory", {}).get("agent_count") == 0
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
     assert fetched["status"] == "active"
 

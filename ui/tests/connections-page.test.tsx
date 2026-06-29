@@ -247,7 +247,7 @@ describe("ConnectionsPage", () => {
       expect(screen.getByText("Production account")).toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Scan now" }));
+    fireEvent.click(screen.getByRole("button", { name: "Test and scan" }));
 
     await waitFor(() =>
       expect(apiMock.scanCloudConnection).toHaveBeenCalledWith("conn-1"),
@@ -260,6 +260,18 @@ describe("ConnectionsPage", () => {
     expect(screen.getByText("7")).toBeInTheDocument(); // identities
     expect(screen.getByText("30/40")).toBeInTheDocument(); // CIS passed
     expect(screen.getByText("75%")).toBeInTheDocument(); // pass rate
+    expect(screen.getByRole("link", { name: "Scan result" })).toHaveAttribute(
+      "href",
+      "/scan?id=abcdef12-3456-7890-abcd-ef1234567890",
+    );
+    expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute(
+      "href",
+      "/vulns?scan=abcdef12-3456-7890-abcd-ef1234567890",
+    );
+    expect(screen.getByRole("link", { name: "Graph" })).toHaveAttribute(
+      "href",
+      "/graph?scan_id=abcdef12-3456-7890-abcd-ef1234567890",
+    );
   });
 
   it("deletes a connection through the API", async () => {

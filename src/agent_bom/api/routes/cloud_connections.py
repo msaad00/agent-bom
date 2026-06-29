@@ -377,6 +377,11 @@ def _persist_connection_report(record: CloudConnectionRecord, tenant_id: str, re
     return str(report.scan_id)
 
 
+def _mark_connection_report_sources(report: Any, provider: str) -> None:
+    """Stamp connection-originated scans so downstream UI/compliance do not look local."""
+    report.scan_sources = ["cloud_connection", f"cloud:{provider}"]
+
+
 def _scan_audit_metadata(note: str) -> dict[str, Any]:
     """Read-only audit envelope attached to every connection-scan summary."""
     return {"read_only": True, "writes_performed": False, "note": note}
@@ -408,6 +413,7 @@ def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     cis_dict = cis_report.to_dict()
 
     report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    _mark_connection_report_sources(report, "aws")
     report.cloud_inventory_data = inventory_payload
     report.cis_benchmark_data = cis_dict
     scan_id = _persist_connection_report(record, tenant_id, report)
@@ -451,6 +457,7 @@ def _run_azure_connection_scan(record: CloudConnectionRecord, tenant_id: str) ->
     cis_dict = cis_report.to_dict()
 
     report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    _mark_connection_report_sources(report, "azure")
     report.cloud_inventory_data = inventory_payload
     report.azure_cis_benchmark_data = cis_dict
     scan_id = _persist_connection_report(record, tenant_id, report)
@@ -494,6 +501,7 @@ def _run_gcp_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> d
     cis_dict = cis_report.to_dict()
 
     report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    _mark_connection_report_sources(report, "gcp")
     report.cloud_inventory_data = inventory_payload
     report.gcp_cis_benchmark_data = cis_dict
     scan_id = _persist_connection_report(record, tenant_id, report)
@@ -541,7 +549,10 @@ def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str
             _logger.debug("Snowflake broker connection close failed for connection %s", record.id)
     cis_dict = cis_report.to_dict()
 
+    inventory_summary = {"provider": "snowflake", "status": "ok", "agent_count": len(agents)}
     report = AIBOMReport(agents=agents, blast_radii=[], findings=[], scan_id=str(_uuid.uuid4()))
+    _mark_connection_report_sources(report, "snowflake")
+    report.cloud_inventory_data = inventory_summary
     report.snowflake_cis_benchmark_data = cis_dict
     scan_id = _persist_connection_report(record, tenant_id, report)
 
@@ -551,7 +562,7 @@ def _run_snowflake_connection_scan(record: CloudConnectionRecord, tenant_id: str
         "tenant_id": tenant_id,
         "provider": "snowflake",
         "scan_id": scan_id,
-        "inventory": {"provider": "snowflake", "status": "ok", "agent_count": len(agents)},
+        "inventory": inventory_summary,
         "cis_benchmark": _cis_summary(cis_dict),
         "audit_metadata": _scan_audit_metadata(
             "Scan ran against a read-only Snowflake key-pair connection brokered from the stored connection. "

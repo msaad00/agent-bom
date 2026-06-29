@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Cloud,
   Plus,
@@ -17,6 +18,10 @@ import {
   Boxes,
   Fingerprint,
   KeyRound,
+  FileSearch,
+  GitGraph,
+  ListChecks,
+  ClipboardList,
 } from "lucide-react";
 
 import {
@@ -241,6 +246,17 @@ function formatPassRate(rate: number | null): string {
   // pass_rate may be 0–1 or 0–100 depending on the benchmark; normalize to a percent.
   const pct = rate <= 1 ? rate * 100 : rate;
   return `${pct.toFixed(0)}%`;
+}
+
+function evidenceLinks(scanId: string) {
+  const encoded = encodeURIComponent(scanId);
+  return [
+    { label: "Scan result", href: `/scan?id=${encoded}`, icon: FileSearch },
+    { label: "Jobs", href: `/jobs?q=${encoded}`, icon: ClipboardList },
+    { label: "Findings", href: `/vulns?scan=${encoded}`, icon: ListChecks },
+    { label: "Graph", href: `/graph?scan_id=${encoded}`, icon: GitGraph },
+    { label: "Compliance", href: `/compliance?q=${encoded}`, icon: ShieldCheck },
+  ];
 }
 
 export default function ConnectionsPage() {
@@ -568,12 +584,13 @@ function FragmentRow({
               disabled={isBusy || !canManage || !scannable}
               title={
                 scannable
-                  ? "Run a read-only scan"
+                  ? "Validate credentials and run a read-only scan"
                   : "Scanning for this provider is unavailable"
               }
-              className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isBusy ? "Scanning…" : "Scan now"}
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {isBusy ? "Scanning…" : "Test and scan"}
             </button>
             <button
               onClick={onDelete}
@@ -665,6 +682,18 @@ function ScanResultPanel({ result }: { result: CloudConnectionScanResponse }) {
       <p className="mt-3 text-[11px] leading-5 text-[var(--text-tertiary)]">
         {result.audit_metadata.note}
       </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {evidenceLinks(result.scan_id).map(({ label, href, icon: Icon }) => (
+          <Link
+            key={label}
+            href={href}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--foreground)] transition hover:border-emerald-700 hover:text-emerald-300"
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

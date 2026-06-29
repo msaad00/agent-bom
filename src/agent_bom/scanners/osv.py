@@ -321,6 +321,12 @@ async def query_osv_batch_impl(
         batch_starts = list(range(0, len(queries), batch_size))
         batch_concurrency = max(1, min(OSV_BATCH_CONCURRENCY, len(batch_starts)))
 
+        # Pipeline-wide rate-limit gate: a 429 in any batch closes it so every
+        # other in-flight/queued batch pauses before its next request instead of
+        # piling on while one batch backs off.
+        rate_gate = asyncio.Event()
+        rate_gate.set()
+
         async def _process_batch(batch_start: int) -> tuple[dict[str, list[dict]], list[tuple[str, str, str]]]:
             batch = queries[batch_start : batch_start + batch_size]
             partial: dict[str, list[dict]] = {}
@@ -328,6 +334,7 @@ async def query_osv_batch_impl(
             bump_scan_perf("osv_batches", 1)
 
             async with semaphore:
+                await rate_gate.wait()
                 response = await request_with_retry_fn(client, "POST", OSV_BATCH_URL, json={"queries": batch})
 
                 if response and response.status_code == 200:
@@ -382,9 +389,21 @@ async def query_osv_batch_impl(
                             pipeline_wait = min(float(retry_after_hdr), _PIPELINE_429_BACKOFF)
                         except ValueError:
                             pass
-                    console.print(f"  [yellow]⚠[/yellow] OSV rate limit (429) — pausing {pipeline_wait:.0f}s before next batch")
-                    _logger.warning("OSV rate limit hit after all retries; pausing pipeline %.0fs", pipeline_wait)
-                    await asyncio.sleep(pipeline_wait)
+                    # Close the gate so every other batch holds before its next
+                    # request; only the first batch to hit 429 owns the sleep,
+                    # concurrent 429s just wait the pause out.
+                    if rate_gate.is_set():
+                        rate_gate.clear()
+                        console.print(
+                            f"  [yellow]⚠[/yellow] OSV rate limit (429) — pausing the OSV pipeline {pipeline_wait:.0f}s"
+                        )
+                        _logger.warning("OSV rate limit hit after all retries; pausing pipeline %.0fs", pipeline_wait)
+                        try:
+                            await asyncio.sleep(pipeline_wait)
+                        finally:
+                            rate_gate.set()
+                    else:
+                        await rate_gate.wait()
                 elif response:
                     record_enrichment_source("osv", "failure", error=f"HTTP {response.status_code}")
                     console.print(f"  [red]✗[/red] OSV API error: HTTP {response.status_code}")

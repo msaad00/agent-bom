@@ -89,7 +89,7 @@ async def test_osv_batches_run_with_configured_concurrency(monkeypatch):
 
     packages = [
         Package(name=f"pkg-{idx}", version="1.0.0", ecosystem="pypi")
-        for idx in range(3)
+        for idx in range(6)
     ]
     in_flight = 0
     peak_in_flight = 0
@@ -124,5 +124,7 @@ async def test_osv_batches_run_with_configured_concurrency(monkeypatch):
         request_with_retry_fn=request_with_retry,
     )
 
-    assert batch_calls == 3
-    assert peak_in_flight >= 2
+    assert batch_calls == 6
+    # With 6 batches at concurrency 3, parallelism fires (>=2) but the batch
+    # semaphore must cap concurrent in-flight requests at the bound (<=3).
+    assert 2 <= peak_in_flight <= 3

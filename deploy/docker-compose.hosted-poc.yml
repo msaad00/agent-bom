@@ -1,0 +1,25 @@
+version: "3.8"
+
+# ── Profile: HOSTED POC OVERLAY ──────────────────────────────────────────────
+# Hosted POC hardening overlay.
+#
+# Use with docker-compose.platform.yml when a public Caddy/ALB front door is
+# the only internet-facing listener:
+#
+#   docker compose \
+#     -f deploy/docker-compose.platform.yml \
+#     -f deploy/docker-compose.hosted-poc.yml \
+#     up -d --build
+#
+# The base platform file is reusable for local operators and clusters. This
+# overlay makes the customer-0 VM posture explicit: API and UI bind to loopback
+# only, while Caddy terminates TLS on 443 and proxies to these local ports.
+
+services:
+  api:
+    ports:
+      - "127.0.0.1:${API_PORT:-8422}:8422"
+
+  ui:
+    ports:
+      - "127.0.0.1:${UI_PORT:-3000}:3000"

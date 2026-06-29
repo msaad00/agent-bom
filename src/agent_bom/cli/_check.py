@@ -15,6 +15,7 @@ from rich.console import Console
 from agent_bom import __version__
 from agent_bom.cli._common import _sync_runtime_consoles
 from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEMS
+from agent_bom.graph.severity import severity_at_or_above
 
 
 def _response_has_version(response, ecosystem: str, version: str) -> bool:
@@ -406,14 +407,10 @@ def _format_vulnerability_count(count: int) -> str:
     return f"{count} vulnerability found" if count == 1 else f"{count} vulnerabilities found"
 
 
-_CHECK_SEVERITY_RANK = {"none": 0, "unknown": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
-
-
 def _vulns_at_or_above(vulnerabilities: list, threshold: str | None) -> list:
     if not threshold:
         return list(vulnerabilities)
-    threshold_rank = _CHECK_SEVERITY_RANK[threshold.lower()]
-    return [vuln for vuln in vulnerabilities if _CHECK_SEVERITY_RANK.get(str(vuln.severity.value).lower(), 0) >= threshold_rank]
+    return [vuln for vuln in vulnerabilities if severity_at_or_above(str(vuln.severity.value), threshold)]
 
 
 def _resolve_check_ecosystems(name: str, version: str, ecosystem: Optional[str], detected_eco: str) -> list[str]:

@@ -127,6 +127,23 @@ def test_clickhouse_grafana_compose_has_no_default_admin_password():
     assert clickhouse["ports"] == ["127.0.0.1:8123:8123", "127.0.0.1:9000:9000"]
 
 
+def test_monitoring_example_has_no_default_admin_password_or_public_ports():
+    """Example monitoring stack must stay local-only and require a real Grafana password."""
+    import yaml
+
+    path = ROOT / "examples" / "docker-compose-monitoring.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    services = data["services"]
+    grafana = services["grafana"]
+
+    assert "admin / admin" not in path.read_text(encoding="utf-8")
+    assert "GRAFANA_ADMIN_PASSWORD:?" in grafana["environment"][0]
+    assert grafana["ports"] == ["127.0.0.1:3000:3000"]
+    assert services["prometheus"]["ports"] == ["127.0.0.1:9090:9090"]
+    assert services["pushgateway"]["ports"] == ["127.0.0.1:9091:9091"]
+    assert services["otel-collector"]["ports"] == ["127.0.0.1:4317:4317", "127.0.0.1:4318:4318"]
+
+
 def test_pilot_insecure_mode_is_loopback_scoped():
     """Pilot no-auth mode is acceptable only because it is loopback-only."""
     import yaml

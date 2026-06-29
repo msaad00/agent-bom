@@ -38,6 +38,13 @@ HEALTHCHECK_EXEMPT: dict[str, set[str]] = {
         # TCP listener — there is no port to probe.
         "mcp-server",
     },
+    "docker-compose.hosted-poc.yml": {
+        # Overlay applied on top of docker-compose.platform.yml; it only
+        # narrows the api/ui port bindings to loopback. Their healthchecks are
+        # defined once in the base platform compose and inherited at merge time.
+        "api",
+        "ui",
+    },
 }
 
 
@@ -138,6 +145,15 @@ def test_fullstack_is_loopback_only_auth_required_and_matches_runtime_user_home(
     assert api.get("ports") == ["127.0.0.1:${API_PORT:-8422}:8422"]
     assert "~/.config:/home/abom/.config:ro" in (api.get("volumes") or [])
     assert "~/.claude:/home/abom/.claude:ro" in (api.get("volumes") or [])
+
+
+def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
+    path = COMPOSE_DIR / "docker-compose.hosted-poc.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    services = data.get("services") or {}
+
+    assert services["api"]["ports"] == ["127.0.0.1:${API_PORT:-8422}:8422"]
+    assert services["ui"]["ports"] == ["127.0.0.1:${UI_PORT:-3000}:3000"]
 
 
 def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:

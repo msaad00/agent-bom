@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from agent_bom.delivery import (
+    WEBHOOK_SIGNATURE_TIMESTAMP_HEADER,
     BreakerPolicy,
     Delivery,
     DeliveryClient,
@@ -305,7 +306,7 @@ def test_signing_secret_never_logged(tmp_path: Path) -> None:
 
 
 def test_hmac_signature_and_bearer_auth_headers(tmp_path: Path) -> None:
-    clock = FakeClock()
+    clock = FakeClock(start=1770000000.0)
     sender = ScriptedSender([SendOutcome(http_status=200)])
     client = _client(tmp_path, sender, clock=clock)
     dest = Destination(destination_id="dst1", url="https://example.test/h", signing_secret="s3cret", auth_scheme="bearer", auth_token="tok")
@@ -314,11 +315,13 @@ def test_hmac_signature_and_bearer_auth_headers(tmp_path: Path) -> None:
     assert headers["x-agent-bom-signature"].startswith("sha256=")
     assert headers["Authorization"] == "Bearer tok"
     assert headers["idempotency-key"]
-    # Signature is an HMAC of the exact body sent.
+    assert headers[WEBHOOK_SIGNATURE_TIMESTAMP_HEADER] == "1770000000"
+    # Signature binds the timestamp and exact body so receivers can reject stale
+    # replayed deliveries.
     import hashlib
     import hmac
 
-    expected = "sha256=" + hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
+    expected = "sha256=" + hmac.new(b"s3cret", b"1770000000." + body, hashlib.sha256).hexdigest()
     assert headers["x-agent-bom-signature"] == expected
 
 
@@ -367,6 +370,7 @@ def test_webhook_store_delivers_through_foundation(tmp_path: Path) -> None:
     _url, headers, _body = sender.calls[0]
     assert headers["x-agent-bom-event-type"] == "identity.revoked"
     assert headers["x-agent-bom-tenant-id"] == "tenant-a"
+    assert headers[WEBHOOK_SIGNATURE_TIMESTAMP_HEADER] == "1000"
     assert headers["x-agent-bom-signature"].startswith("sha256=")
 
 

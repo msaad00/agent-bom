@@ -34,12 +34,13 @@ def _ecosystem_from_purl(purl: str) -> str:
         return "unknown"
     parts = purl[4:].split("/", 1)
     eco = parts[0].lower()
-    # Normalise aliases
+    # Normalize Package URL ecosystem aliases to the scanner-facing ecosystem
+    # keys. SBOM imports must resolve against the same advisory databases as
+    # lockfile/image scans; language names like "ruby" or "php" are too broad.
     return {
+        "gem": "rubygems",
         "golang": "go",
-        "rubygems": "ruby",
-        "hex": "erlang",
-        "composer": "php",
+        "rubygems": "rubygems",
     }.get(eco, eco)
 
 
@@ -52,8 +53,11 @@ def _ecosystem_from_type(component_type: str) -> str:
         "cargo": "cargo",
         "maven": "maven",
         "nuget": "nuget",
-        "gem": "ruby",
-        "composer": "php",
+        "gem": "rubygems",
+        "rubygems": "rubygems",
+        "composer": "composer",
+        "hex": "hex",
+        "pub": "pub",
     }.get(component_type.lower(), component_type.lower())
 
 

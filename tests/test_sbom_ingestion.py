@@ -28,6 +28,14 @@ def test_ecosystem_from_purl_golang_alias():
     assert _ecosystem_from_purl("pkg:golang/github.com/x/y@v1") == "go"
 
 
+def test_ecosystem_from_purl_scanner_aliases():
+    assert _ecosystem_from_purl("pkg:gem/rails@7.1.3") == "rubygems"
+    assert _ecosystem_from_purl("pkg:rubygems/rack@3.0.8") == "rubygems"
+    assert _ecosystem_from_purl("pkg:composer/symfony/console@7.0.4") == "composer"
+    assert _ecosystem_from_purl("pkg:hex/decimal@2.1.1") == "hex"
+    assert _ecosystem_from_purl("pkg:pub/path@1.9.0") == "pub"
+
+
 def test_ecosystem_from_purl_empty():
     assert _ecosystem_from_purl("") == "unknown"
 
@@ -40,7 +48,13 @@ def test_ecosystem_from_type_npm():
 
 
 def test_ecosystem_from_type_gem():
-    assert _ecosystem_from_type("gem") == "ruby"
+    assert _ecosystem_from_type("gem") == "rubygems"
+
+
+def test_ecosystem_from_type_scanner_aliases():
+    assert _ecosystem_from_type("composer") == "composer"
+    assert _ecosystem_from_type("hex") == "hex"
+    assert _ecosystem_from_type("pub") == "pub"
 
 
 # ─── parse_cyclonedx ─────────────────────────────────────────────────────────
@@ -75,6 +89,46 @@ def test_parse_cyclonedx_with_purl():
     assert packages[0].resolved_from_registry is False
     assert packages[1].name == "requests"
     assert packages[1].ecosystem == "pypi"
+
+
+def test_parse_cyclonedx_preserves_scanner_ecosystems_from_purl():
+    data = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "components": [
+            {
+                "type": "library",
+                "name": "rails",
+                "version": "7.1.3",
+                "purl": "pkg:gem/rails@7.1.3",
+            },
+            {
+                "type": "library",
+                "name": "symfony/console",
+                "version": "7.0.4",
+                "purl": "pkg:composer/symfony/console@7.0.4",
+            },
+            {
+                "type": "library",
+                "name": "decimal",
+                "version": "2.1.1",
+                "purl": "pkg:hex/decimal@2.1.1",
+            },
+            {
+                "type": "library",
+                "name": "path",
+                "version": "1.9.0",
+                "purl": "pkg:pub/path@1.9.0",
+            },
+        ],
+    }
+    packages = parse_cyclonedx(data)
+    assert [(pkg.name, pkg.ecosystem) for pkg in packages] == [
+        ("rails", "rubygems"),
+        ("symfony/console", "composer"),
+        ("decimal", "hex"),
+        ("path", "pub"),
+    ]
 
 
 def test_parse_cyclonedx_without_purl():

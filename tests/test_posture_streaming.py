@@ -8,6 +8,7 @@ import json
 import pytest
 
 from agent_bom.posture_streaming import (
+    WEBHOOK_SIGNATURE_TIMESTAMP_HEADER,
     PostureEvent,
     WebhookDestination,
     WebhookOutbox,
@@ -94,14 +95,16 @@ def test_signed_headers_are_verifiable():
         signing_secret="top-secret",
     )
 
-    headers = signed_webhook_headers(event, destination, attempt=3)
+    headers = signed_webhook_headers(event, destination, attempt=3, timestamp=1770000000)
 
     assert headers["x-agent-bom-event-id"] == event.event_id
     assert headers["x-agent-bom-tenant-id"] == "tenant-a"
     assert headers["x-agent-bom-delivery-attempt"] == "3"
+    assert headers[WEBHOOK_SIGNATURE_TIMESTAMP_HEADER] == "1770000000"
+    payload_json = json.dumps(event.to_dict(), sort_keys=True, separators=(",", ":"), default=str)
     expected = hmac.new(
         b"top-secret",
-        json.dumps(event.to_dict(), sort_keys=True, separators=(",", ":"), default=str).encode("utf-8"),
+        f"1770000000.{payload_json}".encode("utf-8"),
         "sha256",
     ).hexdigest()
     assert headers["x-agent-bom-signature"] == f"sha256={expected}"

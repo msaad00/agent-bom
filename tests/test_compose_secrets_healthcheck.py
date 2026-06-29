@@ -39,11 +39,10 @@ HEALTHCHECK_EXEMPT: dict[str, set[str]] = {
         "mcp-server",
     },
     "docker-compose.hosted-poc.yml": {
-        # Overlay applied on top of docker-compose.platform.yml; it only
-        # narrows the api/ui port bindings to loopback. Their healthchecks are
-        # defined once in the base platform compose and inherited at merge time.
+        # Overlay applied on top of docker-compose.platform.yml; it only sets
+        # hosted-specific environment. Healthchecks are defined once in the
+        # base platform compose and inherited at merge time.
         "api",
-        "ui",
     },
 }
 
@@ -76,10 +75,9 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     assert secret_file, (
         "postgres_password secret must be file-sourced (file: ./secrets/postgres_password) so docker-compose binds it read-only."
     )
-    assert str(secret_file).endswith("postgres_password.example}"), (
-        "platform compose must retain a non-secret example fallback so "
-        "`docker compose config --env-file .env.example` renders before operators "
-        "replace it with deploy/secrets/postgres_password."
+    assert str(secret_file).endswith("postgres_password}"), (
+        "platform compose must default to the real deploy/secrets/postgres_password "
+        "path so shared stacks fail closed when the operator has not mounted a secret."
     )
 
     postgres = (data.get("services") or {}).get("postgres") or {}
@@ -102,7 +100,7 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     )
 
 
-def test_env_example_unblocks_compose_first_run_without_real_secrets() -> None:
+def test_env_example_keeps_obvious_placeholder_values_for_local_rendering() -> None:
     env_values: dict[str, str] = {}
     for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
@@ -116,7 +114,7 @@ def test_env_example_unblocks_compose_first_run_without_real_secrets() -> None:
         assert "change-me" in env_values[key], f".env.example {key} should be an obvious placeholder, not a real-looking secret"
 
     placeholder = COMPOSE_DIR / "secrets" / "postgres_password.example"
-    assert placeholder.exists(), "platform compose default secret placeholder must exist for config rendering"
+    assert placeholder.exists(), "documented placeholder must remain available for local inspection examples"
     assert placeholder.read_text(encoding="utf-8").strip() == env_values["POSTGRES_PASSWORD"]
 
 
@@ -132,6 +130,16 @@ def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:
     assert "--allow-insecure-no-auth" not in api.get("command", "")
     assert env_map.get("AGENT_BOM_DISABLE_DOCS") == "1"
     assert env_map.get("AGENT_BOM_API_LOCAL_PATH_SCANS") == "disabled"
+    assert env_map.get("AGENT_BOM_SESSION_COOKIE_SECURE") == "${AGENT_BOM_SESSION_COOKIE_SECURE:-1}"
+    assert api.get("ports") == ["${AGENT_BOM_API_BIND_HOST:-127.0.0.1}:${API_PORT:-8422}:8422"]
+
+
+def test_platform_ui_binds_loopback_by_default() -> None:
+    path = COMPOSE_DIR / "docker-compose.platform.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    ui = (data.get("services") or {}).get("ui") or {}
+
+    assert ui.get("ports") == ["${AGENT_BOM_UI_BIND_HOST:-127.0.0.1}:${UI_PORT:-3000}:3000"]
 
 
 def test_fullstack_is_loopback_only_auth_required_and_matches_runtime_user_home() -> None:
@@ -152,8 +160,10 @@ def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     services = data.get("services") or {}
 
-    assert services["api"]["ports"] == ["127.0.0.1:${API_PORT:-8422}:8422"]
-    assert services["ui"]["ports"] == ["127.0.0.1:${UI_PORT:-3000}:3000"]
+    api_env = services["api"]["environment"]
+    assert "ports" not in services["api"]
+    assert "ui" not in services
+    assert api_env == ["AGENT_BOM_SESSION_COOKIE_SECURE=1"]
 
 
 def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:

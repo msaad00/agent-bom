@@ -23,10 +23,10 @@ version: "3.8"
 #         deploy/secrets/postgres_password
 #         deploy/secrets/postgres_app_password   (optional, for DML-only role)
 #     A non-secret placeholder lives at deploy/secrets/postgres_password.example
-#     so `docker compose config --env-file .env.example` can render for
-#     first-run inspection. Replace it with deploy/secrets/postgres_password
-#     before starting any shared or long-lived stack. The api service still
-#     consumes POSTGRES_APP_PASSWORD via env to construct AGENT_BOM_POSTGRES_URL
+#     for documentation only. The compose file defaults to the real
+#     deploy/secrets/postgres_password path so shared stacks fail closed when
+#     the operator has not mounted a secret. The api service still consumes
+#     POSTGRES_APP_PASSWORD via env to construct AGENT_BOM_POSTGRES_URL
 #     (URL-form requirement);
 #     wrapper-based file-only injection is tracked as a #1962 follow-up.
 #
@@ -86,7 +86,7 @@ services:
     container_name: agent-bom-api
     command: api --host 0.0.0.0 --port 8422
     ports:
-      - "8422:8422"
+      - "${AGENT_BOM_API_BIND_HOST:-127.0.0.1}:${API_PORT:-8422}:8422"
     environment:
       # Use app user (DML only) when available, fall back to admin for dev
       - AGENT_BOM_POSTGRES_URL=postgresql://${POSTGRES_APP_USER:-${POSTGRES_USER:-agent_bom}}:${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD:?err}}@postgres:5432/${POSTGRES_DB:-agent_bom}
@@ -97,6 +97,7 @@ services:
       - AGENT_BOM_REQUIRE_AUDIT_HMAC=${AGENT_BOM_REQUIRE_AUDIT_HMAC:-1}
       - AGENT_BOM_CONNECTIONS_KEY=${AGENT_BOM_CONNECTIONS_KEY:-}
       - AGENT_BOM_BROWSER_SESSION_SIGNING_KEY=${AGENT_BOM_BROWSER_SESSION_SIGNING_KEY:-}
+      - AGENT_BOM_SESSION_COOKIE_SECURE=${AGENT_BOM_SESSION_COOKIE_SECURE:-1}
       - AGENT_BOM_DISABLE_DOCS=1
       - AGENT_BOM_API_LOCAL_PATH_SCANS=disabled
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://ui:3000}
@@ -127,7 +128,7 @@ services:
     image: agentbom/agent-bom-ui:0.89.2
     container_name: agent-bom-ui
     ports:
-      - "3000:3000"
+      - "${AGENT_BOM_UI_BIND_HOST:-127.0.0.1}:${UI_PORT:-3000}:3000"
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8422}
     depends_on:
@@ -152,7 +153,7 @@ secrets:
   # Mount-provisioned credentials. Populate the files before `docker compose up`.
   # See the header comment for permissions guidance (chmod 0400).
   postgres_password:
-    file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password.example}
+    file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password}
 
 networks:
   backend:

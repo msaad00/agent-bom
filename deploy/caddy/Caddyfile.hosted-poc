@@ -14,7 +14,7 @@
 		-X-Powered-By
 	}
 
-	@api path /v1/* /health /version /openapi.json
+	@api path /v1/* /health /healthz /readyz /livez /status /ping /version /openapi.json /ws/*
 	reverse_proxy @api 127.0.0.1:8422
 
 	reverse_proxy 127.0.0.1:3000

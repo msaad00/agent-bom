@@ -92,6 +92,7 @@ PY
 )"
 export NEXT_PUBLIC_API_URL="https://demo.agent-bom.com"
 export CORS_ORIGINS="https://demo.agent-bom.com,http://ui:3000"
+export AGENT_BOM_SESSION_COOKIE_SECURE=1
 
 mkdir -p deploy/secrets
 printf '%s' "$POSTGRES_PASSWORD" > deploy/secrets/postgres_password
@@ -125,6 +126,18 @@ docker compose \
 The compose profile persists `/root/.agent-bom` in a named volume so the seeded
 demo graph survives container replacement. Replace it with real connected
 cloud scans as soon as the first account is connected.
+
+Before opening the VM to testers, confirm the composed stack does not expose
+API/UI ports on all interfaces and does not mount the placeholder Postgres
+password:
+
+```bash
+POSTGRES_PASSWORD=preflight POSTGRES_APP_PASSWORD=preflight docker compose \
+  -f deploy/docker-compose.platform.yml \
+  -f deploy/docker-compose.hosted-poc.yml \
+  config | grep -E '0.0.0.0:3000|0.0.0.0:8422|postgres_password.example' && \
+  { echo "Unsafe hosted compose output"; exit 1; } || true
+```
 
 ### Caddy front door
 

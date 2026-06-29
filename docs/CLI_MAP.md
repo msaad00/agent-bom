@@ -75,6 +75,7 @@ Graph, mesh, dashboard, and narrative reporting workflows.
 | `graph` | Build / export the context graph. |
 | `mesh` | Agent-mesh view. |
 | `report` | Reporting group (history, narrative, exports). |
+| `findings` | Findings workbench for CLI users: list normalized findings, triage queue items, decisions, and signed OpenVEX export. |
 
 ## Governance
 

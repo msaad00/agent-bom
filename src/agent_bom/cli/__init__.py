@@ -202,6 +202,10 @@ from agent_bom.cli._firewall import firewall_group  # noqa: E402
 
 main.add_command(firewall_group)
 
+from agent_bom.cli._findings_group import findings_cmd  # noqa: E402
+
+main.add_command(findings_cmd, "findings")
+
 from agent_bom.cli._server import api_cmd, mcp_server_cmd, serve_cmd  # noqa: E402
 
 main.add_command(serve_cmd, "serve")

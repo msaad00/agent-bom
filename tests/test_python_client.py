@@ -101,6 +101,20 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
     client = _client(handler)
 
     client.list_findings(severity="high", limit=10)
+    client.list_finding_triage(queue_state="open", decision="under_investigation")
+    client.create_finding_triage(
+        "CVE-2026-0101",
+        package="requests",
+        assignee="secops@example.com",
+        decision_reason="needs owner",
+    )
+    client.update_finding_triage_decision(
+        "triage-1",
+        decision="not_affected",
+        justification="vulnerable_code_not_in_execute_path",
+        decision_reason="not reachable",
+    )
+    client.export_finding_triage_vex()
     client.ingest_findings(findings=[{"id": "finding-1", "severity": "high"}], source="sdk-test")
     client.register_dataset_version("dataset-a", version_id="v1")
     client.dataset_versions("dataset-a")
@@ -111,6 +125,10 @@ def test_client_exposes_findings_and_dataset_loop() -> None:
 
     assert seen == [
         ("GET", "/v1/findings"),
+        ("GET", "/v1/findings/triage"),
+        ("POST", "/v1/findings/triage"),
+        ("PUT", "/v1/findings/triage/triage-1/decision"),
+        ("GET", "/v1/findings/triage/vex"),
         ("POST", "/v1/findings/bulk"),
         ("POST", "/v1/datasets/dataset-a/versions"),
         ("GET", "/v1/datasets/dataset-a/versions"),

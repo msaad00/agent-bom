@@ -69,6 +69,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `graph-evidence` | Export retained graph snapshot history or a signed evidence manifest digest |
 | `mesh` | Show lightweight agent/MCP topology without CVE scanning |
 | `report` | History, diff, pipeline-event artifacts, local queries, analytics, dashboard, and compliance narrative workflows |
+| `findings` | List normalized findings, manage the triage queue, record decisions, and export signed OpenVEX evidence |
 
 ### Governance And Operations
 

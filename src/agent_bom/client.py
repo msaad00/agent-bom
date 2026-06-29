@@ -135,6 +135,93 @@ class AgentBomClient:
             ),
         )
 
+    def list_finding_triage(
+        self,
+        *,
+        queue_state: str | None = None,
+        decision: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> JsonObject:
+        """List finding triage queue items for the request tenant."""
+
+        return self._request(
+            "GET",
+            "/v1/findings/triage",
+            params=_strip_query_none(
+                {
+                    "queue_state": queue_state,
+                    "decision": decision,
+                    "limit": limit,
+                    "offset": offset,
+                }
+            ),
+        )
+
+    def create_finding_triage(
+        self,
+        vulnerability_id: str,
+        *,
+        package: str = "*",
+        server_name: str = "",
+        assignee: str = "",
+        queue_state: str = "open",
+        decision: str = "under_investigation",
+        justification: str | None = None,
+        decision_reason: str = "",
+        expires_at: str = "",
+    ) -> JsonObject:
+        """Create a finding triage queue item."""
+
+        return self._request(
+            "POST",
+            "/v1/findings/triage",
+            json=_strip_none(
+                {
+                    "vulnerability_id": vulnerability_id,
+                    "package": package,
+                    "server_name": server_name,
+                    "assignee": assignee,
+                    "queue_state": queue_state,
+                    "decision": decision,
+                    "justification": justification,
+                    "decision_reason": decision_reason,
+                    "expires_at": expires_at,
+                }
+            ),
+        )
+
+    def update_finding_triage_decision(
+        self,
+        triage_id: str,
+        *,
+        decision: str,
+        justification: str | None = None,
+        decision_reason: str = "",
+        assignee: str | None = None,
+        expires_at: str | None = None,
+    ) -> JsonObject:
+        """Record a decision for a finding triage queue item."""
+
+        return self._request(
+            "PUT",
+            f"/v1/findings/triage/{_quote_path(triage_id)}/decision",
+            json=_strip_none(
+                {
+                    "decision": decision,
+                    "justification": justification,
+                    "decision_reason": decision_reason,
+                    "assignee": assignee,
+                    "expires_at": expires_at,
+                }
+            ),
+        )
+
+    def export_finding_triage_vex(self) -> JsonObject:
+        """Export OpenVEX for eligible finding triage decisions."""
+
+        return self._request("GET", "/v1/findings/triage/vex")
+
     def ingest_findings(
         self,
         findings: Sequence[Mapping[str, JsonValue]],

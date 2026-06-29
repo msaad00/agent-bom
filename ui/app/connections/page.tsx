@@ -580,7 +580,10 @@ function FragmentRow({
   onScheduleChange: (value: string) => void;
   onDelete: () => void;
 }) {
-  const showDetail = Boolean(result || scanError || scheduleError || statusDetail);
+  const handoffScanId = result?.scan_id ?? connection.last_scan_id;
+  const showDetail = Boolean(
+    result || handoffScanId || scanError || scheduleError || statusDetail,
+  );
   return (
     <>
       <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 align-top">
@@ -670,6 +673,9 @@ function FragmentRow({
         <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 bg-[color:var(--surface-elevated)]/40">
           <td colSpan={6} className="px-4 pb-4 pt-0">
             {result ? <ScanResultPanel result={result} /> : null}
+            {!result && handoffScanId ? (
+              <ScanHandoffLinks scanId={handoffScanId} />
+            ) : null}
             {!result && scanError ? (
               <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
                 {scanError}
@@ -751,17 +757,51 @@ function ScanResultPanel({ result }: { result: CloudConnectionScanResponse }) {
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         {evidenceLinks(result.scan_id).map(({ label, href, icon: Icon }) => (
-          <Link
-            key={label}
-            href={href}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--foreground)] transition hover:border-emerald-700 hover:text-emerald-300"
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </Link>
+          <HandoffLink key={label} label={label} href={href} icon={Icon} />
         ))}
       </div>
     </div>
+  );
+}
+
+function ScanHandoffLinks({ scanId }: { scanId: string }) {
+  return (
+    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
+          <FileSearch className="h-4 w-4 text-emerald-400" />
+          Last scan handoff
+        </p>
+        <span className="font-mono text-[10px] text-[var(--text-tertiary)]">
+          scan {scanId.slice(0, 8)}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {evidenceLinks(scanId).map(({ label, href, icon }) => (
+          <HandoffLink key={label} label={label} href={href} icon={icon} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HandoffLink({
+  label,
+  href,
+  icon: Icon,
+}: {
+  label: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--foreground)] transition hover:border-emerald-700 hover:text-emerald-300"
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </Link>
   );
 }
 

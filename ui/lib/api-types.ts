@@ -2622,6 +2622,8 @@ export interface CloudConnectionRecord {
   created_at: string;
   updated_at: string;
   last_scan_at: string | null;
+  /** Last successfully persisted scan id for durable handoff links. */
+  last_scan_id: string | null;
   /** Recurring read-only scan cadence. Null means manual-only. */
   scan_interval_minutes: number | null;
   /** Non-secret provider-specific params (Azure tenant/subscription, GCP project, Snowflake user/role/warehouse). */

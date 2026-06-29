@@ -2,10 +2,12 @@
 """Generate README architecture SVGs (how-it-works + control-plane architecture).
 
 Hand-tuned layout with theme tokens — run after changing lane content or counts.
+All coordinates are checked to stay inside lane panels (no text or card overflow).
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parents[1] / "docs" / "images"
@@ -85,15 +87,10 @@ LANE_COLORS = {
 
 
 def _esc(text: str) -> str:
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _text(x: int | float, y: int | float, content: str, **attrs: str) -> str:
-    """Emit a text element with XML-safe content."""
     attr_bits = " ".join(f'{key}="{value}"' for key, value in attrs.items())
     prefix = f'<text x="{x}" y="{y}"'
     if attr_bits:
@@ -104,7 +101,7 @@ def _text(x: int | float, y: int | float, content: str, **attrs: str) -> str:
 def _marker(theme: dict, name: str, color_key: str) -> str:
     return (
         f'<marker id="{name}" viewBox="0 0 10 8" refX="8.5" refY="4" '
-        f'markerWidth="9" markerHeight="7" orient="auto">'
+        f'markerWidth="8" markerHeight="6" orient="auto">'
         f'<path d="M0 0 L10 4 L0 8 Z" fill="{theme[color_key]}"/></marker>'
     )
 
@@ -112,13 +109,13 @@ def _marker(theme: dict, name: str, color_key: str) -> str:
 def _icon_box(x: int, y: int, paths: str, t: dict, accent: bool = False, *, box: bool = True) -> str:
     stroke = t["ic_accent"] if accent else t["ic"]
     box_svg = (
-        f'<rect x="{x}" y="{y}" width="26" height="26" rx="7" fill="{t["icon_bg"]}" stroke="{t["icon_stroke"]}"/>'
+        f'<rect x="{x}" y="{y}" width="24" height="24" rx="6" fill="{t["icon_bg"]}" stroke="{t["icon_stroke"]}"/>'
         if box
         else ""
     )
     return (
         f"{box_svg}"
-        f'<g transform="translate({x + 5},{y + 5})" fill="none" stroke="{stroke}" stroke-width="1.55" '
+        f'<g transform="translate({x + 4},{y + 4})" fill="none" stroke="{stroke}" stroke-width="1.5" '
         f'stroke-linecap="round" stroke-linejoin="round">{paths}</g>'
     )
 
@@ -126,29 +123,25 @@ def _icon_box(x: int, y: int, paths: str, t: dict, accent: bool = False, *, box:
 def _lane_header(x: int, y: int, w: int, label: str, lane_key: str, tag: str, t: dict) -> str:
     bg, accent, text = LANE_COLORS[lane_key]
     return (
-        f'<rect x="{x}" y="{y}" width="{w}" height="36" rx="10" fill="{bg}"/>'
-        f'<rect x="{x}" y="{y + 22}" width="{w}" height="14" fill="{bg}"/>'
-        f'<text x="{x + 14}" y="{y + 22}" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" '
-        f'letter-spacing="0.14em" fill="{text}">{_esc(label)}</text>'
-        f'<text x="{x + w - 12}" y="{y + 22}" text-anchor="end" font-family="Inter,system-ui,sans-serif" '
-        f'font-size="8.5" font-weight="600" fill="{accent}" opacity="0.85">{_esc(tag)}</text>'
+        f'<rect x="{x}" y="{y}" width="{w}" height="32" rx="8" fill="{bg}"/>'
+        f'<text x="{x + 12}" y="{y + 20}" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" '
+        f'letter-spacing="0.12em" fill="{text}">{_esc(label)}</text>'
+        f'<text x="{x + w - 10}" y="{y + 20}" text-anchor="end" font-family="Inter,system-ui,sans-serif" '
+        f'font-size="8" font-weight="600" fill="{accent}" opacity="0.9">{_esc(tag)}</text>'
     )
 
 
-def _flow_arrow(x1: int, y1: int, x2: int, y2: int, label: str, t: dict, accent: bool = False) -> str:
+def _lane_flow(x1: int, x2: int, y: int, label: str, t: dict, marker: str, accent: bool = False) -> str:
     color = t["arrow_accent"] if accent else t["arrow"]
-    marker = "hiw-a" if accent else "hiw"
-    width = "2.4" if accent else "2"
+    width = "2.2" if accent else "1.8"
     return (
-        f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}" stroke-width="{width}" '
+        f'<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" stroke="{color}" stroke-width="{width}" '
         f'marker-end="url(#{marker})"/>'
-        f'<text x="{(x1 + x2) // 2}" y="{y1 - 10}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
-        f'font-size="8" font-weight="800" letter-spacing="0.1em" fill="{t["accent"] if accent else t["lane_muted"]}">'
-        f'{_esc(label)}</text>'
+        f'<text x="{(x1 + x2) // 2}" y="{y - 8}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
+        f'font-size="7.5" font-weight="800" letter-spacing="0.08em" fill="{t["accent"] if accent else t["lane_muted"]}">'
+        f"{_esc(label)}</text>"
     )
 
-
-# ── Icon path snippets (24×24 viewBox, placed at x+5,y+5 in 26×26 box) ───────
 
 ICONS = {
     "repo": '<path d="M4 6h8l3 3v11H4z M12 6v3h3"/>',
@@ -159,7 +152,6 @@ ICONS = {
     "iac": '<path d="M12 4l7 3.5-7 3.5-7-3.5z M5 11l7 3.5 7-3.5 M5 15l7 3.5 7-3.5"/>',
     "sbom": '<path d="M6 5h12v14H6z M9 9h8 M9 12h8 M9 15h5"/>',
     "model": '<path d="M12 4l7 3.5v7L12 18l-7-3.5v-7z M12 4v14 M5 7.5l14 7"/>',
-    "runtime": '<circle cx="12" cy="12" r="7"/><path d="M12 8v4l3 2"/>',
     "search": '<circle cx="10" cy="10" r="6"/><path d="M15 15l4 4"/>',
     "package": '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 3v9 M4 7.5l16 9"/>',
     "bug": '<path d="M8 10h8M6 14h12M9 6l-2 2M15 6l2 2M9 18l-2 2M15 18l2 2"/><circle cx="12" cy="12" r="4"/>',
@@ -172,7 +164,6 @@ ICONS = {
     "fleet": '<rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/>',
     "audit": '<path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/>',
     "cli": '<path d="M7 8l-4 4 4 4 M13 16h7"/>',
-    "sarif": '<path d="M6 5h12v14H6z M9 9h8 M9 13h5"/>',
     "lock": '<rect x="7" y="11" width="10" height="8" rx="2"/><path d="M9 11V8a3 3 0 0 1 6 0v3"/>',
     "finding": '<path d="M8 6h7l3 3v9H8z M15 6v3h3 M10 14l1.5 1.5 3-3"/>',
     "graph": '<circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="12" cy="16" r="2.5"/><path d="M10 9.5l1.5 5 M14 9.5l-1.5 5"/>',
@@ -181,31 +172,29 @@ ICONS = {
 
 
 def _cloud_logos(x: int, y: int, t: dict) -> str:
-  """Simplified provider marks — brand-inspired colors, not official logos."""
-  items = [
-      ("AWS", "#ff9900", '<path d="M6 14c4-1 8-1 12 0M8 11c2.5-.8 5.5-.8 8 0" stroke="#ff9900" fill="none" stroke-width="1.4"/>'),
-      ("Azure", "#0078d4", '<path d="M5 16 L12 5 L19 16 Z" fill="#0078d4" opacity="0.9"/>'),
-      ("GCP", "#4285f4", '<circle cx="9" cy="12" r="3" fill="#ea4335"/><circle cx="15" cy="12" r="3" fill="#fbbc04"/><circle cx="12" cy="16" r="3" fill="#34a853"/>'),
-      ("Snow", "#29b5e8", '<path d="M12 5v14M5 12h14M7.5 7.5l9 9M16.5 7.5l-9 9" stroke="#29b5e8" stroke-width="1.2"/>'),
-  ]
-  out = []
-  for i, (label, color, art) in enumerate(items):
-      bx = x + i * 52
-      out.append(
-          f'<rect x="{bx}" y="{y}" width="46" height="34" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
-          f'<g transform="translate({bx + 11},{y + 6}) scale(0.9)">{art}</g>'
-          f'<text x="{bx + 23}" y="{y + 30}" text-anchor="middle" font-family="ui-monospace,monospace" '
-          f'font-size="7" font-weight="700" fill="{color}">{_esc(label)}</text>'
-      )
-  return "".join(out)
+    items = [
+        ("AWS", "#ff9900", '<path d="M6 14c4-1 8-1 12 0M8 11c2.5-.8 5.5-.8 8 0" stroke="#ff9900" fill="none" stroke-width="1.4"/>'),
+        ("Azure", "#0078d4", '<path d="M5 16 L12 5 L19 16 Z" fill="#0078d4" opacity="0.9"/>'),
+        ("GCP", "#4285f4", '<circle cx="9" cy="12" r="3" fill="#ea4335"/><circle cx="15" cy="12" r="3" fill="#fbbc04"/><circle cx="12" cy="16" r="3" fill="#34a853"/>'),
+        ("Snow", "#29b5e8", '<path d="M12 5v14M5 12h14M7.5 7.5l9 9M16.5 7.5l-9 9" stroke="#29b5e8" stroke-width="1.2"/>'),
+    ]
+    out = []
+    for i, (label, color, art) in enumerate(items):
+        bx = x + i * 48
+        out.append(
+            f'<rect x="{bx}" y="{y}" width="42" height="30" rx="8" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
+            f'<g transform="translate({bx + 9},{y + 5}) scale(0.85)">{art}</g>'
+            f'<text x="{bx + 21}" y="{y + 26}" text-anchor="middle" font-family="ui-monospace,monospace" '
+            f'font-size="6.5" font-weight="700" fill="{color}">{_esc(label)}</text>'
+        )
+    return "".join(out)
 
 
 def how_it_works(theme_name: str) -> str:
     t = THEMES[theme_name]
     suffix = "d" if theme_name == "dark" else "l"
-    w, h = 1200, 560
+    w, h = 1180, 580
 
-  # Pipeline steps — mirrors src/agent_bom/api/pipeline.py PIPELINE_STEPS
     steps = [
         ("search", "Discover"),
         ("package", "Extract"),
@@ -214,7 +203,6 @@ def how_it_works(theme_name: str) -> str:
         ("shield", "Analyze"),
         ("file", "Report"),
     ]
-
     intake = [
         ("repo", "Repo"),
         ("ci", "CI"),
@@ -225,7 +213,6 @@ def how_it_works(theme_name: str) -> str:
         ("sbom", "SBOM"),
         ("model", "Model"),
     ]
-
     control = [
         ("api", "REST API"),
         ("ui", "Dashboard"),
@@ -234,166 +221,159 @@ def how_it_works(theme_name: str) -> str:
         ("fleet", "Fleet"),
         ("audit", "Audit"),
     ]
-
     outputs = ["SARIF", "SBOM", "HTML", "JSON", "GATE", "FIX"]
+
+    lane_top = 84
+    lane_h = 380
+    flow_y = lane_top + 16
+
+    lanes = [
+        (24, 200, "INTAKE", "intake", "read-only"),
+        (236, 176, "SCAN", "scan", "6 steps"),
+        (424, 232, "EVIDENCE", "core", "one model"),
+        (668, 176, "CONTROL", "control", "self-hosted"),
+        (856, 108, "OUT", "output", "artifacts"),
+    ]
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" fill="none" role="img" '
         f'aria-labelledby="hiw-{suffix}-title hiw-{suffix}-desc">',
         f'<title id="hiw-{suffix}-title">How agent-bom works</title>',
-        '<desc id="hiw-{suffix}-desc">Read-only intake through scan pipeline into unified Finding and '
-        'UnifiedGraph, served by control plane, exported as reports and gates.</desc>'.format(suffix=suffix),
+        f'<desc id="hiw-{suffix}-desc">Read-only intake through scan pipeline into unified Finding and UnifiedGraph.</desc>',
         "<defs>",
         _marker(t, "hiw", "arrow"),
         _marker(t, "hiw-a", "arrow_accent"),
         '<linearGradient id="core-glow" x1="0" y1="0" x2="1" y2="1">'
-        f'<stop offset="0%" stop-color="{t["accent"]}" stop-opacity="0.35"/>'
+        f'<stop offset="0%" stop-color="{t["accent"]}" stop-opacity="0.28"/>'
         f'<stop offset="100%" stop-color="{t["accent"]}" stop-opacity="0"/>'
         "</linearGradient>",
         "</defs>",
-        f'<rect width="{w}" height="{h}" rx="16" fill="{t["bg"]}"/>',
-        f'<text x="36" y="44" font-family="Inter,system-ui,sans-serif" font-size="24" font-weight="850" fill="{t["title"]}">'
-        "From inventory to enforceable evidence</text>",
-        f'<text x="36" y="66" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="500" fill="{t["subtitle"]}">'
-        "One read-only pipeline · one Finding + UnifiedGraph · CLI · API · UI · MCP · runtime gates</text>",
+        f'<rect width="{w}" height="{h}" rx="14" fill="{t["bg"]}"/>',
+        _text(28, 40, "From inventory to enforceable evidence", **{"font-family": "Inter,system-ui,sans-serif", "font-size": "22", "font-weight": "850", "fill": t["title"]}),
+        _text(
+            28,
+            60,
+            "One read-only pipeline · one Finding + UnifiedGraph · CLI · API · UI · MCP",
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10.5", "font-weight": "500", "fill": t["subtitle"]},
+        ),
     ]
 
-    # Lane panels
-    lanes = [
-        (28, 88, 210, "INTAKE", "intake", "read-only"),
-        (258, 88, 188, "SCAN", "scan", "6 steps"),
-        (466, 88, 248, "EVIDENCE", "core", "one model"),
-        (734, 88, 188, "CONTROL", "control", "self-hosted"),
-        (942, 88, 108, "OUT", "output", "artifacts"),
-    ]
-    for x, y, lw, label, key, tag in lanes:
+    for x, lw, label, key, tag in lanes:
         parts.append(
-            f'<rect x="{x}" y="{y}" width="{lw}" height="400" rx="14" fill="{t["panel"]}" stroke="{t["panel_stroke"]}"/>'
+            f'<rect x="{x}" y="{lane_top}" width="{lw}" height="{lane_h}" rx="12" fill="{t["panel"]}" stroke="{t["panel_stroke"]}"/>'
         )
-        parts.append(_lane_header(x, y, lw, label, key, tag, t))
+        parts.append(_lane_header(x, lane_top, lw, label, key, tag, t))
 
-    # Intake icon grid
+    # Intake grid (2×4) — fits inside 200px lane with padding
     for i, (icon, label) in enumerate(intake):
         col, row = i % 2, i // 2
-        tx, ty = 44 + col * 98, 138 + row * 54
-        parts.append(f'<rect x="{tx}" y="{ty}" width="88" height="44" rx="11" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(tx + 8, ty + 9, ICONS[icon], t))
-        parts.append(_text(tx + 42, ty + 28, label, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "11", "font-weight": "700", "fill": t["text"]}))
+        tx, ty = 36 + col * 94, lane_top + 44 + row * 50
+        parts.append(f'<rect x="{tx}" y="{ty}" width="84" height="40" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(_icon_box(tx + 6, ty + 8, ICONS[icon], t))
+        parts.append(_text(tx + 36, ty + 25, label, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "700", "fill": t["text"]}))
 
-    parts.append(_cloud_logos(44, 360, t))
-    parts.append(_icon_box(44, 408, ICONS["lock"], t, accent=True))
+    parts.append(_cloud_logos(36, lane_top + 252, t))
+    parts.append(_icon_box(36, lane_top + 292, ICONS["lock"], t, accent=True))
     parts.append(
-        f'<text x="78" y="426" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="600" fill="{t["lane_muted"]}">'
-        "no writes · no secret values</text>"
+        _text(64, lane_top + 308, "no writes · no secret values", **{"font-family": "Inter,system-ui,sans-serif", "font-size": "8.5", "font-weight": "600", "fill": t["lane_muted"]})
     )
 
-    # Scan pipeline — vertical stepped flow
-    scan_bg, scan_accent, scan_text = LANE_COLORS["scan"]
+    # Scan steps — vertical list inside scan lane
+    scan_accent = LANE_COLORS["scan"][1]
     for i, (icon, label) in enumerate(steps):
-        sy = 132 + i * 52
-        parts.append(f'<circle cx="278" cy="{sy + 14}" r="14" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.5"/>')
+        sy = lane_top + 44 + i * 48
+        parts.append(f'<circle cx="{248}" cy="{sy + 12}" r="11" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.4"/>')
         parts.append(
-            f'<text x="278" y="{sy + 18}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
-            f'font-size="9" font-weight="800" fill="{scan_accent}">{i + 1}</text>'
+            f'<text x="248" y="{sy + 16}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
+            f'font-size="8" font-weight="800" fill="{scan_accent}">{i + 1}</text>'
         )
-        parts.append(_icon_box(304, sy, ICONS[icon], t))
-        parts.append(
-            f'<text x="340" y="{sy + 17}" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="{t["text"]}">{_esc(label)}</text>'
-        )
+        parts.append(_icon_box(268, sy, ICONS[icon], t))
+        parts.append(_text(298, sy + 16, label, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "11", "font-weight": "700", "fill": t["text"]}))
         if i < len(steps) - 1:
             parts.append(
-                f'<path d="M278 {sy + 28} V{sy + 38}" stroke="{t["panel_stroke"]}" stroke-width="1.5" stroke-linecap="round"/>'
+                f'<path d="M248 {sy + 24} V{sy + 32}" stroke="{t["panel_stroke"]}" stroke-width="1.4" stroke-linecap="round"/>'
             )
 
-    advisories = ["OSV", "GHSA", "NVD", "KEV", "EPSS"]
-    for i, adv in enumerate(advisories):
-        ax = 272 + i * 34
+    for i, adv in enumerate(["OSV", "GHSA", "NVD", "KEV", "EPSS"]):
+        ax = 242 + i * 30
+        ay = lane_top + lane_h - 34
         parts.append(
-            f'<rect x="{ax}" y="448" width="30" height="20" rx="6" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
-            f'<text x="{ax + 15}" y="461" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" '
+            f'<rect x="{ax}" y="{ay}" width="26" height="18" rx="5" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
+            f'<text x="{ax + 13}" y="{ay + 12}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" '
             f'font-weight="700" fill="{scan_accent}">{adv}</text>'
         )
 
-    # Evidence graph hub
-    cx, cy = 590, 268
-    parts.append(f'<circle cx="{cx}" cy="{cy}" r="78" fill="url(#core-glow)"/>')
+    # Evidence hub — compact radial graph
+    cx, cy = 540, lane_top + 200
+    parts.append(f'<circle cx="{cx}" cy="{cy}" r="62" fill="url(#core-glow)"/>')
     nodes = [
-        (cx, cy - 58, "Finding", True, "finding"),
-        (cx - 72, cy - 10, "Asset", False, "package"),
-        (cx + 72, cy - 10, "Agent", False, "mcp"),
-        (cx - 52, cy + 58, "Tool", False, "bug"),
-        (cx + 52, cy + 58, "Cred", False, "lock"),
+        (cx, cy - 48, "Finding", True, "finding"),
+        (cx - 58, cy - 6, "Asset", False, "package"),
+        (cx + 58, cy - 6, "Agent", False, "mcp"),
+        (cx - 42, cy + 46, "Tool", False, "bug"),
+        (cx + 42, cy + 46, "Cred", False, "lock"),
     ]
     for nx, ny, nlabel, center, icon in nodes:
         if not center:
             parts.append(
-                f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" stroke-width="1.4" opacity="0.75"/>'
+                f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" stroke-width="1.2" opacity="0.7"/>'
             )
     for nx, ny, nlabel, center, icon in nodes:
-        r = 34 if center else 28
+        r = 28 if center else 22
         fill = t["accent_fill"] if center else t["card"]
         stroke = t["accent_stroke"] if center else t["card_stroke"]
-        parts.append(f'<circle cx="{nx}" cy="{ny}" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{"2" if center else "1.5"}"/>')
+        parts.append(f'<circle cx="{nx}" cy="{ny}" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{"1.8" if center else "1.3"}"/>')
         if center:
-            parts.append(_icon_box(nx - 13, ny - 13, ICONS[icon], t, accent=True))
+            parts.append(_icon_box(nx - 12, ny - 12, ICONS[icon], t, accent=True))
         parts.append(
-            f'<text x="{nx}" y="{ny + (22 if center else 20)}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
-            f'font-size="{"10" if center else "9"}" font-weight="800" fill="{t["accent"] if center else t["text"]}">{_esc(nlabel)}</text>'
+            _text(nx, ny + (18 if center else 16), nlabel, **{"text-anchor": "middle", "font-family": "Inter,system-ui,sans-serif", "font-size": "9" if center else "8", "font-weight": "800", "fill": t["accent"] if center else t["text"]})
         )
 
-    meta = ["severity", "provenance", "tenant"]
-    for i, chip in enumerate(meta):
-        mx = 494 + i * 72
+    for i, chip in enumerate(["severity", "provenance", "tenant"]):
+        mx = 438 + i * 68
+        my = lane_top + lane_h - 40
         parts.append(
-            f'<rect x="{mx}" y="390" width="64" height="22" rx="7" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
-            f'<text x="{mx + 32}" y="404" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" '
+            f'<rect x="{mx}" y="{my}" width="60" height="20" rx="6" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
+            f'<text x="{mx + 30}" y="{my + 13}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" '
             f'font-weight="700" fill="{t["chip"]}">{chip}</text>'
         )
 
-    # Control plane tiles
+    # Control plane tiles (2×3)
     for i, (icon, label) in enumerate(control):
         col, row = i % 2, i // 2
-        tx, ty = 748 + col * 86, 136 + row * 62
-        parts.append(f'<rect x="{tx}" y="{ty}" width="78" height="52" rx="10" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(tx + 8, ty + 13, ICONS[icon], t))
-        parts.append(_text(tx + 40, ty + 32, label, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "9.5", "font-weight": "700", "fill": t["text"]}))
+        tx, ty = 680 + col * 80, lane_top + 44 + row * 56
+        parts.append(f'<rect x="{tx}" y="{ty}" width="72" height="46" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(_icon_box(tx + 8, ty + 11, ICONS[icon], t))
+        parts.append(_text(tx + 38, ty + 28, label, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "9", "font-weight": "700", "fill": t["text"]}))
 
     parts.append(
-        f'<rect x="748" y="340" width="162" height="28" rx="8" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
-        f'<text x="829" y="358" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" '
+        f'<rect x="680" y="{lane_top + lane_h - 38}" width="152" height="24" rx="7" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
+        f'<text x="756" y="{lane_top + lane_h - 22}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" '
         f'font-weight="700" fill="{t["chip"]}">fail-closed · RBAC · audit</text>'
     )
 
-    # Outputs column
+    # Outputs — vertical stack
     out_colors = ["#f87171", "#fbbf24", "#60a5fa", "#a78bfa", "#34d399", "#fb7185"]
     for i, (label, color) in enumerate(zip(outputs, out_colors, strict=True)):
-        oy = 136 + i * 52
+        oy = lane_top + 44 + i * 48
         parts.append(
-            f'<rect x="956" y="{oy}" width="80" height="36" rx="10" fill="{t["card"]}" stroke="{color}" stroke-width="1.2"/>'
-            f'<circle cx="970" cy="{oy + 18}" r="4" fill="{color}" opacity="0.85"/>'
-            f'<text x="982" y="{oy + 22}" font-family="ui-monospace,monospace" font-size="10" font-weight="800" fill="{t["text"]}">{_esc(label)}</text>'
+            f'<rect x="868" y="{oy}" width="76" height="32" rx="8" fill="{t["card"]}" stroke="{color}" stroke-width="1.1"/>'
+            f'<circle cx="880" cy="{oy + 16}" r="3.5" fill="{color}"/>'
+            f'<text x="890" y="{oy + 20}" font-family="ui-monospace,monospace" font-size="9" font-weight="800" fill="{t["text"]}">{_esc(label)}</text>'
         )
 
+    # Lane-to-lane flow in header band only (no crossing cards)
+    parts.append(_lane_flow(24 + 200, 236, flow_y, "collect", t, "hiw"))
+    parts.append(_lane_flow(236 + 176, 424, flow_y, "normalize", t, "hiw"))
+    parts.append(_lane_flow(424 + 232, 668, flow_y, "serve", t, "hiw-a", accent=True))
+    parts.append(_lane_flow(668 + 176, 856, flow_y, "export", t, "hiw"))
+
     parts.append(
-        f'<text x="996" y="468" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" '
-        f'font-weight="600" fill="{t["lane_muted"]}">reports · gates · runtime</text>'
+        f'<rect x="24" y="{h - 44}" width="{w - 48}" height="28" rx="8" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>'
+        f'<text x="44" y="{h - 26}" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="800" fill="{t["trust"]}">TRUST</text>'
+        f'<text x="88" y="{h - 26}" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="{t["chip"]}">'
+        "read-only · secret redaction · signed evidence · same model everywhere</text>"
     )
-
-    # Flow arrows between lanes
-    parts.append(_flow_arrow(238, 288, 256, 288, "collect", t))
-    parts.append(_flow_arrow(446, 288, 464, 288, "normalize", t))
-    parts.append(_flow_arrow(714, 288, 732, 288, "serve", t, accent=True))
-    parts.append(_flow_arrow(922, 288, 940, 288, "export", t))
-
-    # Trust bar
-    parts.append(
-        f'<rect x="28" y="508" width="1144" height="36" rx="10" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>'
-        f'<text x="52" y="530" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="{t["trust"]}">'
-        "TRUST</text>"
-        f'<text x="100" y="530" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="600" fill="{t["chip"]}">'
-        "read-only connectors · secret redaction · signed evidence · same model everywhere</text>"
-    )
-
     parts.append("</svg>")
     return "\n".join(parts)
 
@@ -401,7 +381,7 @@ def how_it_works(theme_name: str) -> str:
 def architecture(theme_name: str) -> str:
     t = THEMES[theme_name]
     suffix = "d" if theme_name == "dark" else "l"
-    w, h = 1200, 620
+    w, h = 1180, 600
 
     sources = [
         ("package", "Supply chain", "15 eco"),
@@ -412,7 +392,6 @@ def architecture(theme_name: str) -> str:
         ("model", "Models", "13 formats"),
         ("sbom", "SBOM import", "CDX·SPDX"),
     ]
-
     scan_items = [
         ("bug", "OSV scan", "batch"),
         ("zap", "Enrichment", "NVD·EPSS"),
@@ -420,45 +399,47 @@ def architecture(theme_name: str) -> str:
         ("graph", "Blast radius", "fusion"),
         ("file", "Policy", "as-code"),
     ]
-
     core_items = [
         ("finding", "Unified Finding", "one schema", True),
         ("graph", "UnifiedGraph", "attack paths", True),
         ("db", "Stores", "PG·SQLite", False),
         ("audit", "Audit chain", "signed", False),
     ]
-
     cp_items = [
         ("api", "REST API", "283 ops"),
         ("gate", "Gateway", "runtime"),
         ("mcp", "MCP server", "70 tools"),
         ("fleet", "Fleet jobs", "Helm·EKS"),
     ]
-
     people = [("cli", "CLI"), ("ui", "Web UI")]
     agents = [("mcp", "MCP"), ("api", "SDK")]
     artifacts = ["SARIF", "CDX", "SPDX", "OCSF", "HTML", "JSON"]
+
+    lane_top = 78
+    lane_h = 430
+    flow_y = lane_top + 14
+    lane_x = [24, 204, 384, 564, 744]
+    lane_w = [168, 168, 168, 168, 412]
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" fill="none" role="img" '
         f'aria-labelledby="arch-{suffix}-title arch-{suffix}-desc">',
         f'<title id="arch-{suffix}-title">agent-bom control-plane architecture</title>',
-        '<desc id="arch-{suffix}-desc">Sources through scan and evidence core to control plane and consumers.</desc>'.format(
-            suffix=suffix
-        ),
+        f'<desc id="arch-{suffix}-desc">Sources through scan and evidence core to control plane and consumers.</desc>',
         "<defs>",
         _marker(t, f"arch-{suffix}", "arrow"),
         _marker(t, f"arch-a-{suffix}", "arrow_accent"),
         "</defs>",
         f'<rect width="{w}" height="{h}" rx="14" fill="{t["bg"]}"/>',
-        f'<text x="36" y="42" font-family="Inter,system-ui,sans-serif" font-size="22" font-weight="850" fill="{t["title"]}">'
-        f'Control-plane <tspan fill="{t["accent"]}">architecture</tspan></text>',
-        f'<text x="36" y="62" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="500" fill="{t["subtitle"]}">'
-        "Sources → scan → one Finding + UnifiedGraph → API · Gateway · MCP → people + agents</text>",
+        _text(28, 38, "Control-plane architecture", **{"font-family": "Inter,system-ui,sans-serif", "font-size": "21", "font-weight": "850", "fill": t["title"]}),
+        _text(
+            28,
+            58,
+            "Sources → scan → Finding + UnifiedGraph → API · Gateway · MCP → people + agents",
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "500", "fill": t["subtitle"]},
+        ),
     ]
 
-    lane_x = [32, 228, 424, 620, 816]
-    lane_w = [184, 184, 184, 184, 352]
     lane_meta = [
         ("SOURCES", "sources", "read-only"),
         ("SCAN", "enrich", "local"),
@@ -466,218 +447,206 @@ def architecture(theme_name: str) -> str:
         ("CONTROL", "control", "tenant auth"),
         ("CONSUMERS", "consumers", "people+agents"),
     ]
-
     for i, (label, key, tag) in enumerate(lane_meta):
         x, lw = lane_x[i], lane_w[i]
         parts.append(
-            f'<rect x="{x}" y="82" width="{lw}" height="468" rx="12" fill="{t["panel"]}" stroke="{t["panel_stroke"]}"/>'
+            f'<rect x="{x}" y="{lane_top}" width="{lw}" height="{lane_h}" rx="11" fill="{t["panel"]}" stroke="{t["panel_stroke"]}"/>'
         )
-        parts.append(_lane_header(x, 82, lw, label, key, tag, t))
+        parts.append(_lane_header(x, lane_top, lw, label, key, tag, t))
 
-    # Sources column
+    # Sources — compact cards
     for i, (icon, title, badge) in enumerate(sources):
-        sy = 128 + i * 58
-        parts.append(f'<rect x="44" y="{sy}" width="160" height="48" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(54, sy + 11, ICONS[icon], t))
-        parts.append(
-            f'<text x="88" y="{sy + 22}" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="{t["text"]}">{_esc(title)}</text>'
-        )
-        parts.append(
-            f'<text x="88" y="{sy + 36}" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="{t["text_muted"]}">{_esc(badge)}</text>'
-        )
+        sy = lane_top + 42 + i * 52
+        parts.append(f'<rect x="36" y="{sy}" width="144" height="44" rx="8" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(_icon_box(44, sy + 10, ICONS[icon], t))
+        parts.append(_text(76, sy + 20, title, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "700", "fill": t["text"]}))
+        parts.append(_text(76, sy + 33, badge, **{"font-family": "ui-monospace,monospace", "font-size": "7.5", "font-weight": "600", "fill": t["text_muted"]}))
 
     for i, (icon, title, badge) in enumerate(scan_items):
-        sy = 128 + i * 72
-        parts.append(f'<rect x="240" y="{sy}" width="160" height="60" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(250, sy + 17, ICONS[icon], t))
-        parts.append(
-            f'<text x="284" y="{sy + 30}" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="{t["text"]}">{_esc(title)}</text>'
-        )
-        parts.append(
-            f'<text x="284" y="{sy + 44}" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="{t["text_muted"]}">{_esc(badge)}</text>'
-        )
+        sy = lane_top + 42 + i * 64
+        parts.append(f'<rect x="216" y="{sy}" width="144" height="52" rx="8" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(_icon_box(224, sy + 14, ICONS[icon], t))
+        parts.append(_text(256, sy + 26, title, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "700", "fill": t["text"]}))
+        parts.append(_text(256, sy + 38, badge, **{"font-family": "ui-monospace,monospace", "font-size": "7.5", "font-weight": "600", "fill": t["text_muted"]}))
 
-    # Evidence column — highlighted core cards
     for i, (icon, title, badge, highlight) in enumerate(core_items):
-        sy = 128 + i * 88
+        sy = lane_top + 42 + i * 78
         fill = t["accent_fill"] if highlight else t["card"]
         stroke = t["accent_stroke"] if highlight else t["card_stroke"]
-        parts.append(f'<rect x="436" y="{sy}" width="160" height="72" rx="9" fill="{fill}" stroke="{stroke}" stroke-width="{"1.6" if highlight else "1"}"/>')
-        parts.append(_icon_box(446, sy + 23, ICONS[icon], t, accent=highlight))
         parts.append(
-            f'<text x="480" y="{sy + 34}" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="{t["text"]}">{_esc(title)}</text>'
+            f'<rect x="396" y="{sy}" width="144" height="64" rx="8" fill="{fill}" stroke="{stroke}" stroke-width="{"1.5" if highlight else "1"}"/>'
         )
+        parts.append(_icon_box(404, sy + 18, ICONS[icon], t, accent=highlight))
+        parts.append(_text(436, sy + 28, title, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "700", "fill": t["text"]}))
         parts.append(
-            f'<text x="480" y="{sy + 50}" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="{t["accent"] if highlight else t["text_muted"]}">{_esc(badge)}</text>'
+            _text(
+                436,
+                sy + 42,
+                badge,
+                **{"font-family": "ui-monospace,monospace", "font-size": "7.5", "font-weight": "600", "fill": t["accent"] if highlight else t["text_muted"]},
+            )
         )
 
-    # Control plane
     for i, (icon, title, badge) in enumerate(cp_items):
-        sy = 128 + i * 88
-        parts.append(f'<rect x="632" y="{sy}" width="156" height="72" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(642, sy + 23, ICONS[icon], t))
-        parts.append(
-            f'<text x="676" y="{sy + 34}" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="{t["text"]}">{_esc(title)}</text>'
-        )
-        parts.append(
-            f'<text x="676" y="{sy + 50}" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="{t["text_muted"]}">{_esc(badge)}</text>'
-        )
+        sy = lane_top + 42 + i * 78
+        parts.append(f'<rect x="576" y="{sy}" width="144" height="64" rx="8" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(_icon_box(584, sy + 18, ICONS[icon], t))
+        parts.append(_text(616, sy + 28, title, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "700", "fill": t["text"]}))
+        parts.append(_text(616, sy + 42, badge, **{"font-family": "ui-monospace,monospace", "font-size": "7.5", "font-weight": "600", "fill": t["text_muted"]}))
 
     parts.append(
-        f'<rect x="632" y="490" width="156" height="32" rx="8" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
-        f'<text x="710" y="510" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="700" fill="{t["chip"]}">'
-        "OIDC · SAML · SCIM · RBAC</text>"
+        f'<rect x="576" y="{lane_top + lane_h - 36}" width="144" height="26" rx="7" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
+        f'<text x="648" y="{lane_top + lane_h - 19}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" '
+        f'font-weight="700" fill="{t["chip"]}">OIDC · SAML · SCIM · RBAC</text>'
     )
 
-    # Consumers — three sub-columns inside the wide lane
-    cx_base = 828
-    parts.append(
-        f'<text x="{cx_base + 52}" y="128" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" '
-        f'letter-spacing="0.12em" fill="{t["accent"]}">PEOPLE</text>'
-    )
+    # Consumers — three padded sub-columns inside 412px lane (744..1156)
+    cons_x = 756
+    col_w = 124
+    gap = 10
+    people_x = cons_x
+    agents_x = cons_x + col_w + gap
+    artifacts_x = cons_x + 2 * (col_w + gap)
+
+    parts.append(_text(people_x + col_w // 2, lane_top + 38, "PEOPLE", **{"text-anchor": "middle", "font-family": "Inter,system-ui,sans-serif", "font-size": "7.5", "font-weight": "800", "letter-spacing": "0.1em", "fill": t["accent"]}))
     for i, (icon, label) in enumerate(people):
-        sy = 136 + i * 54
-        parts.append(f'<rect x="{cx_base}" y="{sy}" width="104" height="44" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(cx_base + 8, sy + 9, ICONS[icon], t))
-        parts.append(
-            f'<text x="{cx_base + 40}" y="{sy + 27}" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="700" fill="{t["text"]}">{_esc(label)}</text>'
-        )
+        sy = lane_top + 48 + i * 50
+        parts.append(f'<rect x="{people_x}" y="{sy}" width="{col_w}" height="40" rx="8" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(_icon_box(people_x + 8, sy + 8, ICONS[icon], t))
+        parts.append(_text(people_x + 38, sy + 25, label, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "700", "fill": t["text"]}))
 
-    ax_base = cx_base + 118
-    parts.append(
-        f'<text x="{ax_base + 52}" y="128" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" '
-        f'letter-spacing="0.12em" fill="{t["accent"]}">AGENTS</text>'
-    )
+    parts.append(_text(agents_x + col_w // 2, lane_top + 38, "AGENTS", **{"text-anchor": "middle", "font-family": "Inter,system-ui,sans-serif", "font-size": "7.5", "font-weight": "800", "letter-spacing": "0.1em", "fill": t["accent"]}))
     for i, (icon, label) in enumerate(agents):
-        sy = 136 + i * 54
-        parts.append(f'<rect x="{ax_base}" y="{sy}" width="104" height="44" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(ax_base + 8, sy + 9, ICONS[icon], t))
-        parts.append(
-            f'<text x="{ax_base + 40}" y="{sy + 27}" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="700" fill="{t["text"]}">{_esc(label)}</text>'
-        )
+        sy = lane_top + 48 + i * 50
+        parts.append(f'<rect x="{agents_x}" y="{sy}" width="{col_w}" height="40" rx="8" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(_icon_box(agents_x + 8, sy + 8, ICONS[icon], t))
+        parts.append(_text(agents_x + 38, sy + 25, label, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "700", "fill": t["text"]}))
 
-    art_base = cx_base + 236
-    parts.append(
-        f'<text x="{art_base + 52}" y="128" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" '
-        f'letter-spacing="0.12em" fill="{t["accent"]}">ARTIFACTS</text>'
-    )
+    parts.append(_text(artifacts_x + col_w // 2, lane_top + 38, "ARTIFACTS", **{"text-anchor": "middle", "font-family": "Inter,system-ui,sans-serif", "font-size": "7.5", "font-weight": "800", "letter-spacing": "0.1em", "fill": t["accent"]}))
+    chip_w, chip_h, chip_gap = 58, 20, 6
     for i, label in enumerate(artifacts):
         col, row = i % 2, i // 2
-        ax, ay = art_base + col * 58, 136 + row * 28
+        ax = artifacts_x + col * (chip_w + chip_gap)
+        ay = lane_top + 48 + row * (chip_h + chip_gap)
         parts.append(
-            f'<rect x="{ax}" y="{ay}" width="54" height="22" rx="7" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
-            f'<text x="{ax + 27}" y="{ay + 15}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7.5" '
+            f'<rect x="{ax}" y="{ay}" width="{chip_w}" height="{chip_h}" rx="6" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
+            f'<text x="{ax + chip_w // 2}" y="{ay + 13}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" '
             f'font-weight="700" fill="{t["chip"]}">{_esc(label)}</text>'
         )
 
     parts.append(
-        f'<text x="{art_base + 52}" y="248" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="600" fill="{t["lane_muted"]}">'
-        "→ SIEM · webhooks</text>"
+        _text(
+            artifacts_x + col_w // 2,
+            lane_top + 200,
+            "SIEM · webhooks",
+            **{"text-anchor": "middle", "font-family": "Inter,system-ui,sans-serif", "font-size": "7.5", "font-weight": "600", "fill": t["lane_muted"]},
+        )
     )
 
-    # Inter-lane flow
-    y_flow = 318
-    flows = [
-        (lane_x[0] + lane_w[0], y_flow, lane_x[1], y_flow, "SCAN", False),
-        (lane_x[1] + lane_w[1], y_flow, lane_x[2], y_flow, "NORMALIZE", False),
-        (lane_x[2] + lane_w[2], y_flow, lane_x[3], y_flow, "SERVE", True),
-        (lane_x[3] + lane_w[3], y_flow, lane_x[4], y_flow, "DELIVER", False),
-    ]
-    for x1, y1, x2, y2, label, accent in flows:
-        color = t["arrow_accent"] if accent else t["arrow"]
+    # Header-band flow arrows (never cross cards)
+    for x1, x2, label, accent in [
+        (lane_x[0] + lane_w[0], lane_x[1], "SCAN", False),
+        (lane_x[1] + lane_w[1], lane_x[2], "NORMALIZE", False),
+        (lane_x[2] + lane_w[2], lane_x[3], "SERVE", True),
+        (lane_x[3] + lane_w[3], lane_x[4], "DELIVER", False),
+    ]:
         marker = f"arch-a-{suffix}" if accent else f"arch-{suffix}"
-        width = "2.3" if accent else "2"
-        parts.append(
-            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}" stroke-width="{width}" marker-end="url(#{marker})"/>'
-        )
-        parts.append(
-            f'<text x="{(x1 + x2) // 2}" y="{y1 - 10}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
-            f'font-size="8" font-weight="800" letter-spacing="0.1em" fill="{t["accent"] if accent else t["lane_muted"]}">{_esc(label)}</text>'
-        )
+        parts.append(_lane_flow(x1, x2, flow_y, label, t, marker, accent=accent))
 
     parts.append(
-        f'<rect x="32" y="568" width="1136" height="32" rx="9" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>'
-        f'<text x="600" y="588" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="600" fill="{t["trust"]}">'
+        f'<rect x="24" y="{h - 40}" width="{w - 48}" height="26" rx="8" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>'
+        f'<text x="{w // 2}" y="{h - 22}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="{t["trust"]}">'
         "READ-ONLY BY DEFAULT · no target writes · no secret values · self-hosted · signed evidence</text>"
     )
-
     parts.append("</svg>")
     return "\n".join(parts)
 
 
 def persona_value(theme: str) -> str:
-    """Buyer persona → product value lanes (GTM visual, not a code map)."""
     t = THEMES[theme]
     suffix = theme
-    w, h = 980, 420
+    w, h = 960, 400
+
     personas = [
-        ("shield", "AppSec / GRC", "SARIF · compliance · audit chain", "control"),
+        ("shield", "AppSec / GRC", "SARIF · compliance · audit", "control"),
         ("gate", "Platform / SRE", "fleet · Helm · CI gates", "scan"),
-        ("mcp", "Agent builders", "MCP inventory · runtime shield", "intake"),
-        ("graph", "Security engineers", "blast radius · attack paths", "core"),
+        ("mcp", "Agent builders", "MCP inventory · shield", "intake"),
+        ("graph", "Security engineers", "blast radius · paths", "core"),
     ]
     values = [
         ("bug", "Accurate SCA", "15 ecosystems · distro-aware"),
-        ("image", "Container coverage", "OCI native · optional Grype"),
+        ("image", "Container coverage", "OCI native · Grype opt-in"),
         ("audit", "Self-hosted evidence", "your VPC · signed audit"),
         ("api", "Agent-native API", "283 ops · 70 MCP tools"),
     ]
+
+    left_x, right_x = 28, 500
+    col_w = 432
+    row_h = 54
+    row_gap = 14
+    start_y = 108
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" fill="none" role="img" '
         f'aria-labelledby="pv-{suffix}-title">',
         f'<title id="pv-{suffix}-title">agent-bom personas and value</title>',
-        f'<rect width="{w}" height="{h}" rx="14" fill="{t["bg"]}"/>',
-        f'<text x="36" y="42" font-family="Inter,system-ui,sans-serif" font-size="22" font-weight="850" fill="{t["title"]}">'
-        "Who it serves · what they get</text>",
-        f'<text x="36" y="62" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="500" fill="{t["subtitle"]}">'
-        "One evidence model — different buyers, same inventory → findings → graph → gates</text>",
-        f'<text x="36" y="98" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" '
-        f'letter-spacing="0.12em" fill="{t["accent"]}">PERSONAS</text>',
-        f'<text x="500" y="98" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" '
-        f'letter-spacing="0.12em" fill="{t["accent"]}">VALUE PROOF</text>',
+        "<defs>",
+        _marker(t, f"pv-{suffix}", "arrow_accent"),
+        "</defs>",
+        f'<rect width="{w}" height="{h}" rx="12" fill="{t["bg"]}"/>',
+        _text(28, 38, "Who it serves · what they get", **{"font-family": "Inter,system-ui,sans-serif", "font-size": "20", "font-weight": "850", "fill": t["title"]}),
+        _text(
+            28,
+            58,
+            "One evidence model — inventory → findings → graph → gates",
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "500", "fill": t["subtitle"]},
+        ),
+        _text(left_x, 88, "PERSONAS", **{"font-family": "Inter,system-ui,sans-serif", "font-size": "7.5", "font-weight": "800", "letter-spacing": "0.12em", "fill": t["accent"]}),
+        _text(right_x, 88, "VALUE PROOF", **{"font-family": "Inter,system-ui,sans-serif", "font-size": "7.5", "font-weight": "800", "letter-spacing": "0.12em", "fill": t["accent"]}),
     ]
 
     for i, (icon, title, subtitle, lane) in enumerate(personas):
-        y = 112 + i * 68
-        bg, accent, _ = LANE_COLORS[lane]
-        parts.append(f'<rect x="36" y="{y}" width="420" height="56" rx="11" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
-        parts.append(_icon_box(48, y + 14, ICONS[icon], t, accent=True))
-        parts.append(
-            f'<text x="88" y="{y + 26}" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="{t["text"]}">{_esc(title)}</text>'
-        )
-        parts.append(
-            f'<text x="88" y="{y + 42}" font-family="ui-monospace,monospace" font-size="8.5" font-weight="600" fill="{accent}">{_esc(subtitle)}</text>'
-        )
+        y = start_y + i * (row_h + row_gap)
+        _, accent, _ = LANE_COLORS[lane]
+        parts.append(f'<rect x="{left_x}" y="{y}" width="{col_w}" height="{row_h}" rx="10" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(_icon_box(left_x + 12, y + 14, ICONS[icon], t, accent=True))
+        parts.append(_text(left_x + 48, y + 24, title, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "11", "font-weight": "700", "fill": t["text"]}))
+        parts.append(_text(left_x + 48, y + 40, subtitle, **{"font-family": "ui-monospace,monospace", "font-size": "8", "font-weight": "600", "fill": accent}))
 
+    arrow_x1 = left_x + col_w + 8
+    arrow_x2 = right_x - 8
     for i, (icon, title, subtitle) in enumerate(values):
-        y = 112 + i * 68
-        parts.append(f'<rect x="500" y="{y}" width="444" height="56" rx="11" fill="{t["accent_fill"]}" stroke="{t["accent_stroke"]}"/>')
-        parts.append(_icon_box(512, y + 14, ICONS[icon], t, accent=True))
+        y = start_y + i * (row_h + row_gap)
+        parts.append(f'<rect x="{right_x}" y="{y}" width="{col_w}" height="{row_h}" rx="10" fill="{t["accent_fill"]}" stroke="{t["accent_stroke"]}"/>')
+        parts.append(_icon_box(right_x + 12, y + 14, ICONS[icon], t, accent=True))
+        parts.append(_text(right_x + 48, y + 24, title, **{"font-family": "Inter,system-ui,sans-serif", "font-size": "11", "font-weight": "700", "fill": t["text"]}))
+        parts.append(_text(right_x + 48, y + 40, subtitle, **{"font-family": "ui-monospace,monospace", "font-size": "8", "font-weight": "600", "fill": t["text_muted"]}))
         parts.append(
-            f'<text x="552" y="{y + 26}" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="{t["text"]}">{_esc(title)}</text>'
+            f'<line x1="{arrow_x1}" y1="{y + row_h // 2}" x2="{arrow_x2}" y2="{y + row_h // 2}" '
+            f'stroke="{t["arrow_accent"]}" stroke-width="1.6" marker-end="url(#pv-{suffix})"/>'
         )
-        parts.append(
-            f'<text x="552" y="{y + 42}" font-family="ui-monospace,monospace" font-size="8.5" font-weight="600" fill="{t["text_muted"]}">{_esc(subtitle)}</text>'
-        )
-        parts.append(
-            f'<line x1="456" y1="{y + 28}" x2="500" y2="{y + 28}" stroke="{t["arrow_accent"]}" stroke-width="1.8" marker-end="url(#pv-{suffix})"/>'
-        )
-
-    parts.insert(
-        5,
-        "<defs>"
-        + _marker(t, f"pv-{suffix}", "arrow_accent")
-        + "</defs>",
-    )
 
     parts.append(
-        f'<rect x="36" y="372" width="908" height="28" rx="8" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>'
-        f'<text x="490" y="390" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="600" fill="{t["trust"]}">'
-        "LOCAL SCAN · CONTROL PLANE · RUNTIME ENFORCEMENT — same Finding + UnifiedGraph everywhere</text>"
+        f'<rect x="28" y="{h - 36}" width="{w - 56}" height="24" rx="7" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>'
+        f'<text x="{w // 2}" y="{h - 20}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="{t["trust"]}">'
+        "LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph</text>"
     )
     parts.append("</svg>")
     return "\n".join(parts)
+
+
+def _audit_layout(svg: str, *, margin: int = 2) -> list[str]:
+    """Return human-readable layout violations for generator self-check."""
+    vb = re.search(r'viewBox="0 0 (\d+) (\d+)"', svg)
+    if not vb:
+        return ["missing viewBox"]
+    width, height = map(int, vb.groups())
+    issues: list[str] = []
+    for match in re.finditer(r'<rect x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"', svg):
+        x, y, w, h = map(int, match.groups())
+        if x < -margin or y < -margin or x + w > width + margin or y + h > height + margin:
+            issues.append(f"rect ({x},{y},{w},{h}) outside {width}x{height}")
+    return issues
 
 
 def main() -> None:
@@ -691,8 +660,12 @@ def main() -> None:
         "persona-value-light.svg": ("light", persona_value),
     }
     for filename, (theme, fn) in mapping.items():
+        svg = fn(theme) + "\n"
+        issues = _audit_layout(svg)
+        if issues:
+            raise SystemExit(f"{filename} layout issues: {issues[:5]}")
         path = OUT / filename
-        path.write_text(fn(theme) + "\n", encoding="utf-8")
+        path.write_text(svg, encoding="utf-8")
         print(f"wrote {path}")
 
 

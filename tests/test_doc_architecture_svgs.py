@@ -6,7 +6,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from scripts.generate_doc_architecture_svgs import architecture, how_it_works, persona_value
+from scripts.generate_doc_architecture_svgs import _audit_layout, architecture, how_it_works, persona_value
 
 IMAGES = Path(__file__).resolve().parents[1] / "docs" / "images"
 
@@ -31,6 +31,16 @@ def test_persona_value_renders_buyer_lanes() -> None:
     svg = persona_value("dark")
     assert "AppSec / GRC" in svg
     assert "283 ops" in svg
+
+
+def test_generated_svgs_have_no_rect_overflow() -> None:
+    for name in (
+        "how-it-works-dark.svg",
+        "architecture-dark.svg",
+        "persona-value-dark.svg",
+    ):
+        text = (IMAGES / name).read_text(encoding="utf-8")
+        assert _audit_layout(text) == [], name
 
 
 def test_generated_files_exist_and_are_valid_svg() -> None:

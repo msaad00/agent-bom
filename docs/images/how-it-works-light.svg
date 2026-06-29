@@ -1,133 +1,132 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" fill="none" role="img" aria-labelledby="hiw-l-title hiw-l-desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 580" fill="none" role="img" aria-labelledby="hiw-l-title hiw-l-desc">
 <title id="hiw-l-title">How agent-bom works</title>
-<desc id="hiw-l-desc">Read-only intake through scan pipeline into unified Finding and UnifiedGraph, served by control plane, exported as reports and gates.</desc>
+<desc id="hiw-l-desc">Read-only intake through scan pipeline into unified Finding and UnifiedGraph.</desc>
 <defs>
-<marker id="hiw" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="9" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 Z" fill="#a1a1aa"/></marker>
-<marker id="hiw-a" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="9" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 Z" fill="#7c3aed"/></marker>
-<linearGradient id="core-glow" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7c3aed" stop-opacity="0.35"/><stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/></linearGradient>
+<marker id="hiw" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="8" markerHeight="6" orient="auto"><path d="M0 0 L10 4 L0 8 Z" fill="#a1a1aa"/></marker>
+<marker id="hiw-a" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="8" markerHeight="6" orient="auto"><path d="M0 0 L10 4 L0 8 Z" fill="#7c3aed"/></marker>
+<linearGradient id="core-glow" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7c3aed" stop-opacity="0.28"/><stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/></linearGradient>
 </defs>
-<rect width="1200" height="560" rx="16" fill="#ffffff"/>
-<text x="36" y="44" font-family="Inter,system-ui,sans-serif" font-size="24" font-weight="850" fill="#18181b">From inventory to enforceable evidence</text>
-<text x="36" y="66" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="500" fill="#71717a">One read-only pipeline · one Finding + UnifiedGraph · CLI · API · UI · MCP · runtime gates</text>
-<rect x="28" y="88" width="210" height="400" rx="14" fill="#fafafa" stroke="#ececf0"/>
-<rect x="28" y="88" width="210" height="36" rx="10" fill="#1e3a5f"/><rect x="28" y="110" width="210" height="14" fill="#1e3a5f"/><text x="42" y="110" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#93c5fd">INTAKE</text><text x="226" y="110" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#60a5fa" opacity="0.85">read-only</text>
-<rect x="258" y="88" width="188" height="400" rx="14" fill="#fafafa" stroke="#ececf0"/>
-<rect x="258" y="88" width="188" height="36" rx="10" fill="#78350f"/><rect x="258" y="110" width="188" height="14" fill="#78350f"/><text x="272" y="110" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#fde68a">SCAN</text><text x="434" y="110" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#fbbf24" opacity="0.85">6 steps</text>
-<rect x="466" y="88" width="248" height="400" rx="14" fill="#fafafa" stroke="#ececf0"/>
-<rect x="466" y="88" width="248" height="36" rx="10" fill="#5b21b6"/><rect x="466" y="110" width="248" height="14" fill="#5b21b6"/><text x="480" y="110" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#ddd6fe">EVIDENCE</text><text x="702" y="110" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#a78bfa" opacity="0.85">one model</text>
-<rect x="734" y="88" width="188" height="400" rx="14" fill="#fafafa" stroke="#ececf0"/>
-<rect x="734" y="88" width="188" height="36" rx="10" fill="#065f46"/><rect x="734" y="110" width="188" height="14" fill="#065f46"/><text x="748" y="110" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#a7f3d0">CONTROL</text><text x="910" y="110" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#34d399" opacity="0.85">self-hosted</text>
-<rect x="942" y="88" width="108" height="400" rx="14" fill="#fafafa" stroke="#ececf0"/>
-<rect x="942" y="88" width="108" height="36" rx="10" fill="#3f3f46"/><rect x="942" y="110" width="108" height="14" fill="#3f3f46"/><text x="956" y="110" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" letter-spacing="0.14em" fill="#d4d4d8">OUT</text><text x="1038" y="110" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#a1a1aa" opacity="0.85">artifacts</text>
-<rect x="44" y="138" width="88" height="44" rx="11" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="52" y="147" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(57,152)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h8l3 3v11H4z M12 6v3h3"/></g>
-<text x="86" y="166" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Repo</text>
-<rect x="142" y="138" width="88" height="44" rx="11" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="150" y="147" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(155,152)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l4 4 10-11"/></g>
-<text x="184" y="166" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">CI</text>
-<rect x="44" y="192" width="88" height="44" rx="11" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="52" y="201" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(57,206)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
-<text x="86" y="220" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">MCP</text>
-<rect x="142" y="192" width="88" height="44" rx="11" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="150" y="201" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(155,206)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15h12a4 4 0 0 0 .5-8A6 6 0 0 0 6 15z"/></g>
-<text x="184" y="220" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Cloud</text>
-<rect x="44" y="246" width="88" height="44" rx="11" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="52" y="255" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(57,260)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="12" rx="2"/><path d="M7 15l3-3 2 2 3-3 2 4"/></g>
-<text x="86" y="274" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Image</text>
-<rect x="142" y="246" width="88" height="44" rx="11" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="150" y="255" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(155,260)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 3.5-7 3.5-7-3.5z M5 11l7 3.5 7-3.5 M5 15l7 3.5 7-3.5"/></g>
-<text x="184" y="274" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">IaC</text>
-<rect x="44" y="300" width="88" height="44" rx="11" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="52" y="309" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(57,314)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8 M9 15h5"/></g>
-<text x="86" y="328" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">SBOM</text>
-<rect x="142" y="300" width="88" height="44" rx="11" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="150" y="309" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(155,314)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 3.5v7L12 18l-7-3.5v-7z M12 4v14 M5 7.5l14 7"/></g>
-<text x="184" y="328" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Model</text>
-<rect x="44" y="360" width="46" height="34" rx="9" fill="#ffffff" stroke="#e6e6ea"/><g transform="translate(55,366) scale(0.9)"><path d="M6 14c4-1 8-1 12 0M8 11c2.5-.8 5.5-.8 8 0" stroke="#ff9900" fill="none" stroke-width="1.4"/></g><text x="67" y="390" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#ff9900">AWS</text><rect x="96" y="360" width="46" height="34" rx="9" fill="#ffffff" stroke="#e6e6ea"/><g transform="translate(107,366) scale(0.9)"><path d="M5 16 L12 5 L19 16 Z" fill="#0078d4" opacity="0.9"/></g><text x="119" y="390" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#0078d4">Azure</text><rect x="148" y="360" width="46" height="34" rx="9" fill="#ffffff" stroke="#e6e6ea"/><g transform="translate(159,366) scale(0.9)"><circle cx="9" cy="12" r="3" fill="#ea4335"/><circle cx="15" cy="12" r="3" fill="#fbbc04"/><circle cx="12" cy="16" r="3" fill="#34a853"/></g><text x="171" y="390" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#4285f4">GCP</text><rect x="200" y="360" width="46" height="34" rx="9" fill="#ffffff" stroke="#e6e6ea"/><g transform="translate(211,366) scale(0.9)"><path d="M12 5v14M5 12h14M7.5 7.5l9 9M16.5 7.5l-9 9" stroke="#29b5e8" stroke-width="1.2"/></g><text x="223" y="390" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#29b5e8">Snow</text>
-<rect x="44" y="408" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(49,413)" fill="none" stroke="#7c3aed" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="11" width="10" height="8" rx="2"/><path d="M9 11V8a3 3 0 0 1 6 0v3"/></g>
-<text x="78" y="426" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="600" fill="#9a9aa4">no writes · no secret values</text>
-<circle cx="278" cy="146" r="14" fill="#ffffff" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="278" y="150" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#fbbf24">1</text>
-<rect x="304" y="132" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(309,137)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6"/><path d="M15 15l4 4"/></g>
-<text x="340" y="149" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="#18181b">Discover</text>
-<path d="M278 160 V170" stroke="#ececf0" stroke-width="1.5" stroke-linecap="round"/>
-<circle cx="278" cy="198" r="14" fill="#ffffff" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="278" y="202" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#fbbf24">2</text>
-<rect x="304" y="184" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(309,189)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 3v9 M4 7.5l16 9"/></g>
-<text x="340" y="201" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="#18181b">Extract</text>
-<path d="M278 212 V222" stroke="#ececf0" stroke-width="1.5" stroke-linecap="round"/>
-<circle cx="278" cy="250" r="14" fill="#ffffff" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="278" y="254" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#fbbf24">3</text>
-<rect x="304" y="236" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(309,241)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10h8M6 14h12M9 6l-2 2M15 6l2 2M9 18l-2 2M15 18l2 2"/><circle cx="12" cy="12" r="4"/></g>
-<text x="340" y="253" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="#18181b">Scan</text>
-<path d="M278 264 V274" stroke="#ececf0" stroke-width="1.5" stroke-linecap="round"/>
-<circle cx="278" cy="302" r="14" fill="#ffffff" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="278" y="306" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#fbbf24">4</text>
-<rect x="304" y="288" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(309,293)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></g>
-<text x="340" y="305" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="#18181b">Enrich</text>
-<path d="M278 316 V326" stroke="#ececf0" stroke-width="1.5" stroke-linecap="round"/>
-<circle cx="278" cy="354" r="14" fill="#ffffff" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="278" y="358" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#fbbf24">5</text>
-<rect x="304" y="340" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(309,345)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></g>
-<text x="340" y="357" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="#18181b">Analyze</text>
-<path d="M278 368 V378" stroke="#ececf0" stroke-width="1.5" stroke-linecap="round"/>
-<circle cx="278" cy="406" r="14" fill="#ffffff" stroke="#fbbf24" stroke-width="1.5"/>
-<text x="278" y="410" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#fbbf24">6</text>
-<rect x="304" y="392" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(309,397)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h7l4 4v12H7z M14 4v4h4"/></g>
-<text x="340" y="409" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" fill="#18181b">Report</text>
-<rect x="272" y="448" width="30" height="20" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><text x="287" y="461" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#fbbf24">OSV</text>
-<rect x="306" y="448" width="30" height="20" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><text x="321" y="461" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#fbbf24">GHSA</text>
-<rect x="340" y="448" width="30" height="20" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><text x="355" y="461" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#fbbf24">NVD</text>
-<rect x="374" y="448" width="30" height="20" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><text x="389" y="461" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#fbbf24">KEV</text>
-<rect x="408" y="448" width="30" height="20" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><text x="423" y="461" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="#fbbf24">EPSS</text>
-<circle cx="590" cy="268" r="78" fill="url(#core-glow)"/>
-<line x1="590" y1="268" x2="518" y2="258" stroke="#ececf0" stroke-width="1.4" opacity="0.75"/>
-<line x1="590" y1="268" x2="662" y2="258" stroke="#ececf0" stroke-width="1.4" opacity="0.75"/>
-<line x1="590" y1="268" x2="538" y2="326" stroke="#ececf0" stroke-width="1.4" opacity="0.75"/>
-<line x1="590" y1="268" x2="642" y2="326" stroke="#ececf0" stroke-width="1.4" opacity="0.75"/>
-<circle cx="590" cy="210" r="34" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="2"/>
-<rect x="577" y="197" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(582,202)" fill="none" stroke="#7c3aed" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h7l3 3v9H8z M15 6v3h3 M10 14l1.5 1.5 3-3"/></g>
-<text x="590" y="232" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="800" fill="#7c3aed">Finding</text>
-<circle cx="518" cy="258" r="28" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.5"/>
-<text x="518" y="278" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#18181b">Asset</text>
-<circle cx="662" cy="258" r="28" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.5"/>
-<text x="662" y="278" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#18181b">Agent</text>
-<circle cx="538" cy="326" r="28" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.5"/>
-<text x="538" y="346" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#18181b">Tool</text>
-<circle cx="642" cy="326" r="28" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.5"/>
-<text x="642" y="346" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#18181b">Cred</text>
-<rect x="494" y="390" width="64" height="22" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><text x="526" y="404" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="700" fill="#52525b">severity</text>
-<rect x="566" y="390" width="64" height="22" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><text x="598" y="404" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="700" fill="#52525b">provenance</text>
-<rect x="638" y="390" width="64" height="22" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><text x="670" y="404" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="700" fill="#52525b">tenant</text>
-<rect x="748" y="136" width="78" height="52" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="756" y="149" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(761,154)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
-<text x="788" y="168" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="700" fill="#18181b">REST API</text>
-<rect x="834" y="136" width="78" height="52" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="842" y="149" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(847,154)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="M4 9h16"/></g>
-<text x="874" y="168" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="700" fill="#18181b">Dashboard</text>
-<rect x="748" y="198" width="78" height="52" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="756" y="211" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(761,216)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
-<text x="788" y="230" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="700" fill="#18181b">MCP srv</text>
-<rect x="834" y="198" width="78" height="52" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="842" y="211" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(847,216)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z"/><path d="M9 12l2 2 4-4"/></g>
-<text x="874" y="230" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="700" fill="#18181b">Gateway</text>
-<rect x="748" y="260" width="78" height="52" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="756" y="273" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(761,278)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/></g>
-<text x="788" y="292" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="700" fill="#18181b">Fleet</text>
-<rect x="834" y="260" width="78" height="52" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="842" y="273" width="26" height="26" rx="7" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(847,278)" fill="none" stroke="#6b6b76" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/></g>
-<text x="874" y="292" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="700" fill="#18181b">Audit</text>
-<rect x="748" y="340" width="162" height="28" rx="8" fill="#f4f4f6" stroke="#e4e4e7"/><text x="829" y="358" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#52525b">fail-closed · RBAC · audit</text>
-<rect x="956" y="136" width="80" height="36" rx="10" fill="#ffffff" stroke="#f87171" stroke-width="1.2"/><circle cx="970" cy="154" r="4" fill="#f87171" opacity="0.85"/><text x="982" y="158" font-family="ui-monospace,monospace" font-size="10" font-weight="800" fill="#18181b">SARIF</text>
-<rect x="956" y="188" width="80" height="36" rx="10" fill="#ffffff" stroke="#fbbf24" stroke-width="1.2"/><circle cx="970" cy="206" r="4" fill="#fbbf24" opacity="0.85"/><text x="982" y="210" font-family="ui-monospace,monospace" font-size="10" font-weight="800" fill="#18181b">SBOM</text>
-<rect x="956" y="240" width="80" height="36" rx="10" fill="#ffffff" stroke="#60a5fa" stroke-width="1.2"/><circle cx="970" cy="258" r="4" fill="#60a5fa" opacity="0.85"/><text x="982" y="262" font-family="ui-monospace,monospace" font-size="10" font-weight="800" fill="#18181b">HTML</text>
-<rect x="956" y="292" width="80" height="36" rx="10" fill="#ffffff" stroke="#a78bfa" stroke-width="1.2"/><circle cx="970" cy="310" r="4" fill="#a78bfa" opacity="0.85"/><text x="982" y="314" font-family="ui-monospace,monospace" font-size="10" font-weight="800" fill="#18181b">JSON</text>
-<rect x="956" y="344" width="80" height="36" rx="10" fill="#ffffff" stroke="#34d399" stroke-width="1.2"/><circle cx="970" cy="362" r="4" fill="#34d399" opacity="0.85"/><text x="982" y="366" font-family="ui-monospace,monospace" font-size="10" font-weight="800" fill="#18181b">GATE</text>
-<rect x="956" y="396" width="80" height="36" rx="10" fill="#ffffff" stroke="#fb7185" stroke-width="1.2"/><circle cx="970" cy="414" r="4" fill="#fb7185" opacity="0.85"/><text x="982" y="418" font-family="ui-monospace,monospace" font-size="10" font-weight="800" fill="#18181b">FIX</text>
-<text x="996" y="468" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="600" fill="#9a9aa4">reports · gates · runtime</text>
-<line x1="238" y1="288" x2="256" y2="288" stroke="#a1a1aa" stroke-width="2" marker-end="url(#hiw)"/><text x="247" y="278" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.1em" fill="#9a9aa4">collect</text>
-<line x1="446" y1="288" x2="464" y2="288" stroke="#a1a1aa" stroke-width="2" marker-end="url(#hiw)"/><text x="455" y="278" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.1em" fill="#9a9aa4">normalize</text>
-<line x1="714" y1="288" x2="732" y2="288" stroke="#7c3aed" stroke-width="2.4" marker-end="url(#hiw-a)"/><text x="723" y="278" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.1em" fill="#7c3aed">serve</text>
-<line x1="922" y1="288" x2="940" y2="288" stroke="#a1a1aa" stroke-width="2" marker-end="url(#hiw)"/><text x="931" y="278" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.1em" fill="#9a9aa4">export</text>
-<rect x="28" y="508" width="1144" height="36" rx="10" fill="#ecfdf5" stroke="#bbf7d0"/><text x="52" y="530" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#15803d">TRUST</text><text x="100" y="530" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="600" fill="#52525b">read-only connectors · secret redaction · signed evidence · same model everywhere</text>
+<rect width="1180" height="580" rx="14" fill="#ffffff"/>
+<text x="28" y="40" font-family="Inter,system-ui,sans-serif" font-size="22" font-weight="850" fill="#18181b">From inventory to enforceable evidence</text>
+<text x="28" y="60" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="500" fill="#71717a">One read-only pipeline · one Finding + UnifiedGraph · CLI · API · UI · MCP</text>
+<rect x="24" y="84" width="200" height="380" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="24" y="84" width="200" height="32" rx="8" fill="#1e3a5f"/><text x="36" y="104" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" letter-spacing="0.12em" fill="#93c5fd">INTAKE</text><text x="214" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="600" fill="#60a5fa" opacity="0.9">read-only</text>
+<rect x="236" y="84" width="176" height="380" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="236" y="84" width="176" height="32" rx="8" fill="#78350f"/><text x="248" y="104" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" letter-spacing="0.12em" fill="#fde68a">SCAN</text><text x="402" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="600" fill="#fbbf24" opacity="0.9">6 steps</text>
+<rect x="424" y="84" width="232" height="380" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="424" y="84" width="232" height="32" rx="8" fill="#5b21b6"/><text x="436" y="104" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" letter-spacing="0.12em" fill="#ddd6fe">EVIDENCE</text><text x="646" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="600" fill="#a78bfa" opacity="0.9">one model</text>
+<rect x="668" y="84" width="176" height="380" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="668" y="84" width="176" height="32" rx="8" fill="#065f46"/><text x="680" y="104" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" letter-spacing="0.12em" fill="#a7f3d0">CONTROL</text><text x="834" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="600" fill="#34d399" opacity="0.9">self-hosted</text>
+<rect x="856" y="84" width="108" height="380" rx="12" fill="#fafafa" stroke="#ececf0"/>
+<rect x="856" y="84" width="108" height="32" rx="8" fill="#3f3f46"/><text x="868" y="104" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" letter-spacing="0.12em" fill="#d4d4d8">OUT</text><text x="954" y="104" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="600" fill="#a1a1aa" opacity="0.9">artifacts</text>
+<rect x="36" y="128" width="84" height="40" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="42" y="136" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(46,140)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h8l3 3v11H4z M12 6v3h3"/></g>
+<text x="72" y="153" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="700" fill="#18181b">Repo</text>
+<rect x="130" y="128" width="84" height="40" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="136" y="136" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(140,140)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l4 4 10-11"/></g>
+<text x="166" y="153" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="700" fill="#18181b">CI</text>
+<rect x="36" y="178" width="84" height="40" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="42" y="186" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(46,190)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
+<text x="72" y="203" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="700" fill="#18181b">MCP</text>
+<rect x="130" y="178" width="84" height="40" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="136" y="186" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(140,190)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15h12a4 4 0 0 0 .5-8A6 6 0 0 0 6 15z"/></g>
+<text x="166" y="203" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="700" fill="#18181b">Cloud</text>
+<rect x="36" y="228" width="84" height="40" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="42" y="236" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(46,240)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="12" rx="2"/><path d="M7 15l3-3 2 2 3-3 2 4"/></g>
+<text x="72" y="253" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="700" fill="#18181b">Image</text>
+<rect x="130" y="228" width="84" height="40" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="136" y="236" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(140,240)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 3.5-7 3.5-7-3.5z M5 11l7 3.5 7-3.5 M5 15l7 3.5 7-3.5"/></g>
+<text x="166" y="253" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="700" fill="#18181b">IaC</text>
+<rect x="36" y="278" width="84" height="40" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="42" y="286" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(46,290)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8 M9 15h5"/></g>
+<text x="72" y="303" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="700" fill="#18181b">SBOM</text>
+<rect x="130" y="278" width="84" height="40" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="136" y="286" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(140,290)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 3.5v7L12 18l-7-3.5v-7z M12 4v14 M5 7.5l14 7"/></g>
+<text x="166" y="303" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="700" fill="#18181b">Model</text>
+<rect x="36" y="336" width="42" height="30" rx="8" fill="#ffffff" stroke="#e6e6ea"/><g transform="translate(45,341) scale(0.85)"><path d="M6 14c4-1 8-1 12 0M8 11c2.5-.8 5.5-.8 8 0" stroke="#ff9900" fill="none" stroke-width="1.4"/></g><text x="57" y="362" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700" fill="#ff9900">AWS</text><rect x="84" y="336" width="42" height="30" rx="8" fill="#ffffff" stroke="#e6e6ea"/><g transform="translate(93,341) scale(0.85)"><path d="M5 16 L12 5 L19 16 Z" fill="#0078d4" opacity="0.9"/></g><text x="105" y="362" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700" fill="#0078d4">Azure</text><rect x="132" y="336" width="42" height="30" rx="8" fill="#ffffff" stroke="#e6e6ea"/><g transform="translate(141,341) scale(0.85)"><circle cx="9" cy="12" r="3" fill="#ea4335"/><circle cx="15" cy="12" r="3" fill="#fbbc04"/><circle cx="12" cy="16" r="3" fill="#34a853"/></g><text x="153" y="362" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700" fill="#4285f4">GCP</text><rect x="180" y="336" width="42" height="30" rx="8" fill="#ffffff" stroke="#e6e6ea"/><g transform="translate(189,341) scale(0.85)"><path d="M12 5v14M5 12h14M7.5 7.5l9 9M16.5 7.5l-9 9" stroke="#29b5e8" stroke-width="1.2"/></g><text x="201" y="362" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700" fill="#29b5e8">Snow</text>
+<rect x="36" y="376" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(40,380)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="11" width="10" height="8" rx="2"/><path d="M9 11V8a3 3 0 0 1 6 0v3"/></g>
+<text x="64" y="392" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#9a9aa4">no writes · no secret values</text>
+<circle cx="248" cy="140" r="11" fill="#ffffff" stroke="#fbbf24" stroke-width="1.4"/>
+<text x="248" y="144" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#fbbf24">1</text>
+<rect x="268" y="128" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(272,132)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6"/><path d="M15 15l4 4"/></g>
+<text x="298" y="144" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Discover</text>
+<path d="M248 152 V160" stroke="#ececf0" stroke-width="1.4" stroke-linecap="round"/>
+<circle cx="248" cy="188" r="11" fill="#ffffff" stroke="#fbbf24" stroke-width="1.4"/>
+<text x="248" y="192" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#fbbf24">2</text>
+<rect x="268" y="176" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(272,180)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 3v9 M4 7.5l16 9"/></g>
+<text x="298" y="192" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Extract</text>
+<path d="M248 200 V208" stroke="#ececf0" stroke-width="1.4" stroke-linecap="round"/>
+<circle cx="248" cy="236" r="11" fill="#ffffff" stroke="#fbbf24" stroke-width="1.4"/>
+<text x="248" y="240" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#fbbf24">3</text>
+<rect x="268" y="224" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(272,228)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10h8M6 14h12M9 6l-2 2M15 6l2 2M9 18l-2 2M15 18l2 2"/><circle cx="12" cy="12" r="4"/></g>
+<text x="298" y="240" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Scan</text>
+<path d="M248 248 V256" stroke="#ececf0" stroke-width="1.4" stroke-linecap="round"/>
+<circle cx="248" cy="284" r="11" fill="#ffffff" stroke="#fbbf24" stroke-width="1.4"/>
+<text x="248" y="288" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#fbbf24">4</text>
+<rect x="268" y="272" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(272,276)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></g>
+<text x="298" y="288" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Enrich</text>
+<path d="M248 296 V304" stroke="#ececf0" stroke-width="1.4" stroke-linecap="round"/>
+<circle cx="248" cy="332" r="11" fill="#ffffff" stroke="#fbbf24" stroke-width="1.4"/>
+<text x="248" y="336" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#fbbf24">5</text>
+<rect x="268" y="320" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(272,324)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></g>
+<text x="298" y="336" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Analyze</text>
+<path d="M248 344 V352" stroke="#ececf0" stroke-width="1.4" stroke-linecap="round"/>
+<circle cx="248" cy="380" r="11" fill="#ffffff" stroke="#fbbf24" stroke-width="1.4"/>
+<text x="248" y="384" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#fbbf24">6</text>
+<rect x="268" y="368" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(272,372)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h7l4 4v12H7z M14 4v4h4"/></g>
+<text x="298" y="384" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Report</text>
+<rect x="242" y="430" width="26" height="18" rx="5" fill="#f4f4f6" stroke="#e6e6ea"/><text x="255" y="442" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700" fill="#fbbf24">OSV</text>
+<rect x="272" y="430" width="26" height="18" rx="5" fill="#f4f4f6" stroke="#e6e6ea"/><text x="285" y="442" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700" fill="#fbbf24">GHSA</text>
+<rect x="302" y="430" width="26" height="18" rx="5" fill="#f4f4f6" stroke="#e6e6ea"/><text x="315" y="442" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700" fill="#fbbf24">NVD</text>
+<rect x="332" y="430" width="26" height="18" rx="5" fill="#f4f4f6" stroke="#e6e6ea"/><text x="345" y="442" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700" fill="#fbbf24">KEV</text>
+<rect x="362" y="430" width="26" height="18" rx="5" fill="#f4f4f6" stroke="#e6e6ea"/><text x="375" y="442" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700" fill="#fbbf24">EPSS</text>
+<circle cx="540" cy="284" r="62" fill="url(#core-glow)"/>
+<line x1="540" y1="284" x2="482" y2="278" stroke="#ececf0" stroke-width="1.2" opacity="0.7"/>
+<line x1="540" y1="284" x2="598" y2="278" stroke="#ececf0" stroke-width="1.2" opacity="0.7"/>
+<line x1="540" y1="284" x2="498" y2="330" stroke="#ececf0" stroke-width="1.2" opacity="0.7"/>
+<line x1="540" y1="284" x2="582" y2="330" stroke="#ececf0" stroke-width="1.2" opacity="0.7"/>
+<circle cx="540" cy="236" r="28" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.8"/>
+<rect x="528" y="224" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(532,228)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h7l3 3v9H8z M15 6v3h3 M10 14l1.5 1.5 3-3"/></g>
+<text x="540" y="254" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="800" fill="#7c3aed">Finding</text>
+<circle cx="482" cy="278" r="22" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.3"/>
+<text x="482" y="294" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#18181b">Asset</text>
+<circle cx="598" cy="278" r="22" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.3"/>
+<text x="598" y="294" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#18181b">Agent</text>
+<circle cx="498" cy="330" r="22" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.3"/>
+<text x="498" y="346" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#18181b">Tool</text>
+<circle cx="582" cy="330" r="22" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.3"/>
+<text x="582" y="346" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" fill="#18181b">Cred</text>
+<rect x="438" y="424" width="60" height="20" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><text x="468" y="437" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700" fill="#52525b">severity</text>
+<rect x="506" y="424" width="60" height="20" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><text x="536" y="437" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700" fill="#52525b">provenance</text>
+<rect x="574" y="424" width="60" height="20" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><text x="604" y="437" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="700" fill="#52525b">tenant</text>
+<rect x="680" y="128" width="72" height="46" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="688" y="139" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(692,143)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
+<text x="718" y="156" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#18181b">REST API</text>
+<rect x="760" y="128" width="72" height="46" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="768" y="139" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(772,143)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="M4 9h16"/></g>
+<text x="798" y="156" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#18181b">Dashboard</text>
+<rect x="680" y="184" width="72" height="46" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="688" y="195" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(692,199)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
+<text x="718" y="212" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#18181b">MCP srv</text>
+<rect x="760" y="184" width="72" height="46" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="768" y="195" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(772,199)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z"/><path d="M9 12l2 2 4-4"/></g>
+<text x="798" y="212" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#18181b">Gateway</text>
+<rect x="680" y="240" width="72" height="46" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="688" y="251" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(692,255)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5"/><rect x="14" y="5" width="6" height="6" rx="1.5"/><rect x="4" y="13" width="6" height="6" rx="1.5"/><rect x="14" y="13" width="6" height="6" rx="1.5"/></g>
+<text x="718" y="268" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#18181b">Fleet</text>
+<rect x="760" y="240" width="72" height="46" rx="9" fill="#ffffff" stroke="#e6e6ea"/>
+<rect x="768" y="251" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(772,255)" fill="none" stroke="#6b6b76" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/></g>
+<text x="798" y="268" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="700" fill="#18181b">Audit</text>
+<rect x="680" y="426" width="152" height="24" rx="7" fill="#f4f4f6" stroke="#e4e4e7"/><text x="756" y="442" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="700" fill="#52525b">fail-closed · RBAC · audit</text>
+<rect x="868" y="128" width="76" height="32" rx="8" fill="#ffffff" stroke="#f87171" stroke-width="1.1"/><circle cx="880" cy="144" r="3.5" fill="#f87171"/><text x="890" y="148" font-family="ui-monospace,monospace" font-size="9" font-weight="800" fill="#18181b">SARIF</text>
+<rect x="868" y="176" width="76" height="32" rx="8" fill="#ffffff" stroke="#fbbf24" stroke-width="1.1"/><circle cx="880" cy="192" r="3.5" fill="#fbbf24"/><text x="890" y="196" font-family="ui-monospace,monospace" font-size="9" font-weight="800" fill="#18181b">SBOM</text>
+<rect x="868" y="224" width="76" height="32" rx="8" fill="#ffffff" stroke="#60a5fa" stroke-width="1.1"/><circle cx="880" cy="240" r="3.5" fill="#60a5fa"/><text x="890" y="244" font-family="ui-monospace,monospace" font-size="9" font-weight="800" fill="#18181b">HTML</text>
+<rect x="868" y="272" width="76" height="32" rx="8" fill="#ffffff" stroke="#a78bfa" stroke-width="1.1"/><circle cx="880" cy="288" r="3.5" fill="#a78bfa"/><text x="890" y="292" font-family="ui-monospace,monospace" font-size="9" font-weight="800" fill="#18181b">JSON</text>
+<rect x="868" y="320" width="76" height="32" rx="8" fill="#ffffff" stroke="#34d399" stroke-width="1.1"/><circle cx="880" cy="336" r="3.5" fill="#34d399"/><text x="890" y="340" font-family="ui-monospace,monospace" font-size="9" font-weight="800" fill="#18181b">GATE</text>
+<rect x="868" y="368" width="76" height="32" rx="8" fill="#ffffff" stroke="#fb7185" stroke-width="1.1"/><circle cx="880" cy="384" r="3.5" fill="#fb7185"/><text x="890" y="388" font-family="ui-monospace,monospace" font-size="9" font-weight="800" fill="#18181b">FIX</text>
+<line x1="224" y1="100" x2="236" y2="100" stroke="#a1a1aa" stroke-width="1.8" marker-end="url(#hiw)"/><text x="230" y="92" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.08em" fill="#9a9aa4">collect</text>
+<line x1="412" y1="100" x2="424" y2="100" stroke="#a1a1aa" stroke-width="1.8" marker-end="url(#hiw)"/><text x="418" y="92" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.08em" fill="#9a9aa4">normalize</text>
+<line x1="656" y1="100" x2="668" y2="100" stroke="#7c3aed" stroke-width="2.2" marker-end="url(#hiw-a)"/><text x="662" y="92" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.08em" fill="#7c3aed">serve</text>
+<line x1="844" y1="100" x2="856" y2="100" stroke="#a1a1aa" stroke-width="1.8" marker-end="url(#hiw)"/><text x="850" y="92" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.08em" fill="#9a9aa4">export</text>
+<rect x="24" y="536" width="1132" height="28" rx="8" fill="#ecfdf5" stroke="#bbf7d0"/><text x="44" y="554" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="800" fill="#15803d">TRUST</text><text x="88" y="554" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#52525b">read-only · secret redaction · signed evidence · same model everywhere</text>
 </svg>

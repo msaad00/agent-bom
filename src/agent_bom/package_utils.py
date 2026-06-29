@@ -149,6 +149,16 @@ def ubuntu_release_branch(distro_version: str) -> str:
     return raw
 
 
+# Alpine secdb publishes advisories per minor branch (v3.14 … v3.23). Keep this
+# tuple aligned with ``sync_alpine_secdb`` and apk OSV fallback lists.
+ALPINE_SECDB_BRANCHES: tuple[str, ...] = tuple(f"v3.{minor}" for minor in range(14, 24))
+
+
+def alpine_osv_fallback_ecosystems() -> tuple[str, ...]:
+    """OSV ecosystem identifiers used when an apk package lacks distro metadata."""
+    return tuple(f"Alpine:{branch}" for branch in ALPINE_SECDB_BRANCHES)
+
+
 @lru_cache(maxsize=4096)
 def alpine_release_branch(distro_version: str) -> str:
     """Normalize an Alpine ``VERSION_ID`` to its secdb branch key (``v{major}.{minor}``).
@@ -188,6 +198,8 @@ def parse_debian_source_name(source_field: str) -> Optional[str]:
 
 
 __all__ = [
+    "ALPINE_SECDB_BRANCHES",
+    "alpine_osv_fallback_ecosystems",
     "alpine_release_branch",
     "canonical_package_identity",
     "canonical_package_key",

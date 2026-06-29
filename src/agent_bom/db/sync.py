@@ -62,7 +62,7 @@ _KEV_JSON_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_
 _GHSA_REST_URL = "https://api.github.com/advisories"
 _NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 _ALPINE_SECDB_BASE_URL = "https://secdb.alpinelinux.org"
-_ALPINE_SECDB_BRANCHES = ("v3.18", "v3.19", "v3.20", "v3.21", "v3.22", "v3.23")
+from agent_bom.package_utils import ALPINE_SECDB_BRANCHES as _ALPINE_SECDB_BRANCHES
 _ALPINE_SECDB_REPOS = ("main", "community")
 
 # Debian Security Tracker — authoritative per-release vulnerability status with

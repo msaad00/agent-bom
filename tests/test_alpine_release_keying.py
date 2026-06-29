@@ -23,6 +23,21 @@ from agent_bom.package_utils import alpine_release_branch, debian_release_branch
 from agent_bom.scanners import _db_ecosystems_for_package, _osv_ecosystems_for_package, _scan_packages_db_conn
 
 
+def test_alpine_secdb_branches_cover_legacy_releases():
+    from agent_bom.package_utils import ALPINE_SECDB_BRANCHES
+
+    assert "v3.14" in ALPINE_SECDB_BRANCHES
+    assert "v3.23" in ALPINE_SECDB_BRANCHES
+
+
+def test_alpine_osv_fallbacks_track_secdb_branches():
+    from agent_bom.package_utils import ALPINE_SECDB_BRANCHES, alpine_osv_fallback_ecosystems
+
+    fallbacks = alpine_osv_fallback_ecosystems()
+    assert fallbacks[0] == "Alpine:v3.14"
+    assert len(fallbacks) == len(ALPINE_SECDB_BRANCHES)
+
+
 @pytest.mark.parametrize(
     "version_id, expected",
     [

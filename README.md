@@ -170,9 +170,15 @@ and [docs/images/product-screenshots.json](docs/images/product-screenshots.json)
 
 ```bash
 pip install agent-bom
+agent-bom db update                      # populate ~/.agent-bom vuln DB before --offline scans
 agent-bom quickstart --run --offline    # write sample, scan, seed gateway policy, populate the cockpit
 agent-bom agents -p . -f html -o agent-bom-report.html   # a real local scan
 ```
+
+Offline image and package scans require a populated local vulnerability database.
+Run `agent-bom db update` (or allow the first online scan to warm the cache)
+before `agent-bom image --offline`, `agent-bom agents --offline`, or CI jobs
+that pass `--offline`.
 
 The demo uses bundled advisory-backed OSV/GHSA ranges against intentionally
 vulnerable sample packages, producing graph-ready inventory without touching

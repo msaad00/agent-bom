@@ -220,13 +220,25 @@ def render_markdown(snapshot: dict[str, object]) -> str:
     ]
     for entry in cast(list[dict[str, object]], snapshot["metrics"]):
         lines.append(f"| {entry['name']} | {entry['value']} | `{entry['source']}` | {entry['notes']} |")
+    proxy_detectors = next(
+        (entry["value"] for entry in cast(list[dict[str, object]], snapshot["metrics"]) if entry["name"] == "Proxy inline detectors"),
+        "7",
+    )
+    runtime_detectors = next(
+        (
+            entry["value"]
+            for entry in cast(list[dict[str, object]], snapshot["metrics"])
+            if entry["name"] == "Runtime protection engine detectors"
+        ),
+        "8",
+    )
     lines.extend(
         [
             "",
             "## Runtime wording",
             "",
-            "- `agent-bom proxy` uses `7` inline detectors in the MCP JSON-RPC path.",
-            "- The broader runtime protection engine uses `8` detectors.",
+            f"- `agent-bom proxy` uses `{proxy_detectors}` inline detectors in the MCP JSON-RPC path.",
+            f"- The broader runtime protection engine uses `{runtime_detectors}` detectors.",
             "",
             "## Regenerate",
             "",

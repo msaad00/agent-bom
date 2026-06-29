@@ -265,7 +265,9 @@ _NON_OSV_ECOSYSTEMS: frozenset[str] = frozenset(
 )
 
 _DEBIAN_OSV_FALLBACKS = ("Debian:11", "Debian:12", "Debian:13", "Debian:14")
-_ALPINE_OSV_FALLBACKS = ("Alpine:v3.18", "Alpine:v3.19", "Alpine:v3.20", "Alpine:v3.21", "Alpine:v3.22", "Alpine:v3.23")
+from agent_bom.package_utils import alpine_osv_fallback_ecosystems
+
+_ALPINE_OSV_FALLBACKS = alpine_osv_fallback_ecosystems()
 
 
 def _osv_ecosystems_for_package(pkg: Package) -> list[str]:

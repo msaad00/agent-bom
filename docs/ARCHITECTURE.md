@@ -81,7 +81,7 @@ flowchart TB
     subgraph L5["Control plane - same evidence, multi-tenant + audited"]
         direction TB
         MW["Middleware: auth · RBAC · tenant scope · rate-limit · audit"]
-        API["REST API (271 ops)"]
+        API["REST API (283 ops)"]
         GW["Gateway / MCP server / proxy"]
         MW --> API
         MW --> GW
@@ -143,7 +143,7 @@ flowchart TB
         M4["Max body size"]
     end
     subgraph BE["Backend - FastAPI"]
-        R["271 REST operations across 30 route modules\nplus 2 WebSocket routes"]
+        R["283 REST operations across 32 route modules\nplus 2 WebSocket routes"]
     end
     subgraph ST["Stores - start on SQLite, scale to a cluster without rewrites"]
         S1["SQLite (default / single node)"]

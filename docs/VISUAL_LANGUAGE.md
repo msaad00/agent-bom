@@ -19,12 +19,18 @@ Use when:
 Files live in `docs/images/`, always shipped as `*-light.svg` + `*-dark.svg`
 with `<picture>`+`prefers-color-scheme` switching. Hand-tuned, no auto-layout.
 
+Regenerate `how-it-works`, `architecture`, and `persona-value` SVGs from
+`scripts/generate_doc_architecture_svgs.py` after changing lane content or counts.
+The generator escapes XML text (`&` → `&amp;`) so GitHub can render diffs.
+
 Current SVG inventory:
 
 | File | What it shows | Where it lives in the README |
 |---|---|---|
 | `logo-{light,dark}.svg` | Brand mark | hero |
-| `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + ContextGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; available for README architecture section |
+| `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + UnifiedGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; available for README architecture section |
+| `how-it-works-{light,dark}.svg` | Six-step scan pipeline from read-only intake through evidence core to outputs | README "How It Works" |
+| `persona-value-{light,dark}.svg` | Buyer personas mapped to product value proof points | README / GTM collateral |
 | `blast-radius-{light,dark}.svg` | CVE, package, MCP server, agent, credentials, and tools in one blast-radius path | hero, under tagline |
 | `scan-pipeline-{light,dark}.svg` | 5-stage pipeline (discover → scan → analyze → report → enforce) | "How a scan moves" |
 | `engine-internals-{light,dark}.svg` | Inside the scanner | available for deeper architecture docs; not currently embedded in the README |

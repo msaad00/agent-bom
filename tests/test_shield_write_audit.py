@@ -129,6 +129,24 @@ def test_short_reason_fails_closed(impl: Any, action: str, extra: dict[str, Any]
     assert "reason" in result.get("error", "").lower(), result
 
 
+@pytest.mark.parametrize(("impl", "action", "extra"), ALL_WRITE_TOOLS, ids=_ids(ALL_WRITE_TOOLS))
+def test_missing_authenticated_actor_fails_closed(impl: Any, action: str, extra: dict[str, Any]) -> None:
+    """Admin + write scope still cannot self-assert actor identity."""
+    required_scope = "shield:write" if action.startswith("shield_") else "identity:write"
+    result = _run(
+        impl(
+            operator_role="admin",
+            operator_scopes=required_scope,
+            reason="legitimate operator audit reason",
+            tenant_id="default",
+            _truncate_response=_passthrough,
+            **extra,
+        )
+    )
+    assert result.get("status") == "blocked", result
+    assert "authenticated operator actor" in result.get("error", ""), result
+
+
 @pytest.mark.parametrize(("impl", "action", "extra"), SHIELD_WRITE_TOOLS, ids=_ids(SHIELD_WRITE_TOOLS))
 def test_admin_shield_write_emits_audit(impl: Any, action: str, extra: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
     """An authorized admin Shield write succeeds AND emits an audit event.
@@ -177,6 +195,7 @@ def test_admin_shield_write_emits_audit(impl: Any, action: str, extra: dict[str,
             reason="incident-1234 emergency override",
             tenant_id="acme",
             _truncate_response=_passthrough,
+            _authenticated_actor="agent-bom-operator-token",
             **extra,
         )
     )
@@ -185,7 +204,7 @@ def test_admin_shield_write_emits_audit(impl: Any, action: str, extra: dict[str,
     assert result.get("status") not in ("blocked", None), result
     assert len(audit_calls) == 1, f"{action} did not emit exactly one audit event: {audit_calls}"
     emitted = audit_calls[0]
-    assert emitted["actor"] == "mcp-operator", emitted
+    assert emitted["actor"] == "agent-bom-operator-token", emitted
     assert emitted.get("reason"), emitted
 
 
@@ -216,6 +235,7 @@ def test_break_glass_inactive_session_still_audits() -> None:
                 reason="emergency override on inactive session",
                 tenant_id="tenant-omega",
                 _truncate_response=_passthrough,
+                _authenticated_actor="agent-bom-operator-token",
             )
         )
     finally:
@@ -228,7 +248,7 @@ def test_break_glass_inactive_session_still_audits() -> None:
     actions = [entry.action for entry in entries]
     assert "break_glass" in actions, f"inactive break-glass attempt emitted no audit event: {actions}"
     glass = next(entry for entry in entries if entry.action == "break_glass")
-    assert glass.actor == "mcp-operator", glass
+    assert glass.actor == "agent-bom-operator-token", glass
     assert glass.details.get("outcome") == "not_active", glass.details
 
     proxy_routes._shield_engines.clear()

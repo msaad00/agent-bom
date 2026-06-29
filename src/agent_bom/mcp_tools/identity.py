@@ -82,11 +82,23 @@ def _authorize_identity_write(
                 "status": "blocked",
             },
         )
+    clean_actor = (authenticated_actor or "").strip()
+    if not clean_actor:
+        return (
+            False,
+            {
+                "error": "identity write action requires authenticated operator actor",
+                "action": action,
+                "required_role": "admin",
+                "required_scope": "identity:write",
+                "status": "blocked",
+            },
+        )
     return (
         True,
         {
             "action": action,
-            "actor": (authenticated_actor or "").strip() or "mcp-operator",
+            "actor": clean_actor,
             "actor_role": normalized_role,
             "tenant_id": resolve_mcp_tool_tenant_id(tenant_id),
             "resource": resource,

@@ -72,11 +72,23 @@ def _authorize_shield_write(
                 "status": "blocked",
             },
         )
+    clean_actor = (authenticated_actor or "").strip()
+    if not clean_actor:
+        return (
+            False,
+            {
+                "error": "shield write action requires authenticated operator actor",
+                "action": action,
+                "required_role": "admin",
+                "required_scope": "shield:write",
+                "status": "blocked",
+            },
+        )
     return (
         True,
         {
             "action": action,
-            "actor": (authenticated_actor or "").strip() or "mcp-operator",
+            "actor": clean_actor,
             "actor_role": normalized_role,
             "tenant_id": tenant_id or "default",
             "resource": f"shield/{session_id or 'default'}",

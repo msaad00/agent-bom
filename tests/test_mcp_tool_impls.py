@@ -25,6 +25,9 @@ def _trunc_async(s: str) -> str:
     return s
 
 
+_AUTHENTICATED_OPERATOR = "agent-bom-operator"
+
+
 # ---------------------------------------------------------------------------
 # mcp_tools/registry.py — registry_lookup_impl
 # ---------------------------------------------------------------------------
@@ -1091,7 +1094,7 @@ async def test_shield_write_tools_require_admin_and_audit_reason():
         assert missing_scope["status"] == "blocked"
         assert missing_scope["required_scope"] == "shield:write"
 
-        started = json.loads(
+        missing_actor = json.loads(
             await shield_start_impl(
                 session_id="incident-1",
                 operator_role="admin",
@@ -1101,10 +1104,25 @@ async def test_shield_write_tools_require_admin_and_audit_reason():
                 _truncate_response=_trunc,
             )
         )
+        assert missing_actor["status"] == "blocked"
+        assert "authenticated operator actor" in missing_actor["error"]
+
+        started = json.loads(
+            await shield_start_impl(
+                session_id="incident-1",
+                operator_role="admin",
+                operator_scopes="shield:write",
+                reason="incident response validation",
+                tenant_id="tenant-alpha",
+                _truncate_response=_trunc,
+                _authenticated_actor=_AUTHENTICATED_OPERATOR,
+            )
+        )
         assert started["status"] == "started"
         assert started["mcp_write_policy"]["required_role"] == "admin"
         assert started["mcp_write_policy"]["required_scope"] == "shield:write"
         assert started["mcp_write_policy"]["audit_logged"] is True
+        assert started["mcp_write_policy"]["actor"] == _AUTHENTICATED_OPERATOR
 
         unblocked = json.loads(
             await shield_unblock_impl(
@@ -1114,6 +1132,7 @@ async def test_shield_write_tools_require_admin_and_audit_reason():
                 reason="incident response validation",
                 tenant_id="tenant-alpha",
                 _truncate_response=_trunc,
+                _authenticated_actor=_AUTHENTICATED_OPERATOR,
             )
         )
         assert unblocked["status"] in {"not_blocked", "unblocked"}
@@ -1147,6 +1166,7 @@ async def test_shield_break_glass_tool_uses_admin_role_context():
             reason="incident response validation",
             tenant_id="tenant-alpha",
             _truncate_response=_trunc,
+            _authenticated_actor=_AUTHENTICATED_OPERATOR,
         )
         result = json.loads(
             await shield_break_glass_impl(
@@ -1156,10 +1176,11 @@ async def test_shield_break_glass_tool_uses_admin_role_context():
                 reason="emergency operator override",
                 tenant_id="tenant-alpha",
                 _truncate_response=_trunc,
+                _authenticated_actor=_AUTHENTICATED_OPERATOR,
             )
         )
         assert result["status"] == "break_glass_activated"
-        assert result["mcp_write_policy"]["actor"] == "mcp-operator"
+        assert result["mcp_write_policy"]["actor"] == _AUTHENTICATED_OPERATOR
         assert result["mcp_write_policy"]["actor_role"] == "admin"
 
         entries = store.list_entries(tenant_id="tenant-alpha", limit=10)

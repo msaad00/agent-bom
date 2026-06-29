@@ -469,6 +469,9 @@ def _passthrough(s: str) -> str:
     return s
 
 
+_AUTHENTICATED_OPERATOR = "agent-bom-operator"
+
+
 @pytest.mark.asyncio
 async def test_mcp_identity_issue_requires_admin_and_scope(store):
     from agent_bom.mcp_tools.identity import identity_issue_impl
@@ -510,6 +513,19 @@ async def test_mcp_identity_issue_requires_admin_and_scope(store):
     )
     assert out["status"] == "blocked"
 
+    # A self-asserted admin role/scope is not enough; write authorization must
+    # be bound to the authenticated MCP caller identity.
+    out = json.loads(
+        await identity_issue_impl(
+            agent_id="agent-a",
+            operator_role="admin",
+            operator_scopes="identity:write",
+            reason="provision build agent",
+            _truncate_response=_passthrough,
+        )
+    )
+    assert out["status"] == "blocked" and "authenticated operator actor" in out["error"]
+
 
 @pytest.mark.asyncio
 async def test_mcp_identity_issue_then_grant_and_revoke_jit(store):
@@ -527,10 +543,12 @@ async def test_mcp_identity_issue_then_grant_and_revoke_jit(store):
             operator_scopes="identity:write",
             reason="provision build agent",
             _truncate_response=_passthrough,
+            _authenticated_actor=_AUTHENTICATED_OPERATOR,
         )
     )
     assert issued["token"].startswith("abi_")
     assert issued["mcp_write_policy"]["required_scope"] == "identity:write"
+    assert issued["mcp_write_policy"]["actor"] == _AUTHENTICATED_OPERATOR
     identity_id = issued["identity"]["identity_id"]
     assert store.get(identity_id) is not None
 
@@ -543,6 +561,7 @@ async def test_mcp_identity_issue_then_grant_and_revoke_jit(store):
             operator_scopes="identity:write",
             reason="incident response window",
             _truncate_response=_passthrough,
+            _authenticated_actor=_AUTHENTICATED_OPERATOR,
         )
     )
     grant_id = granted["grant"]["grant_id"]
@@ -555,6 +574,7 @@ async def test_mcp_identity_issue_then_grant_and_revoke_jit(store):
             operator_scopes="identity:write",
             reason="window closed early",
             _truncate_response=_passthrough,
+            _authenticated_actor=_AUTHENTICATED_OPERATOR,
         )
     )
     assert revoked["grant"]["status"] == "revoked"
@@ -576,6 +596,7 @@ async def test_mcp_identity_write_emits_lifecycle_audit_chain(store):
                 operator_scopes="identity:write",
                 reason="provision build agent",
                 _truncate_response=_passthrough,
+                _authenticated_actor=_AUTHENTICATED_OPERATOR,
             )
         )
         await identity_revoke_impl(
@@ -584,12 +605,13 @@ async def test_mcp_identity_write_emits_lifecycle_audit_chain(store):
             operator_scopes="identity:write",
             reason="decommission build agent",
             _truncate_response=_passthrough,
+            _authenticated_actor=_AUTHENTICATED_OPERATOR,
         )
         actions = {e.action for e in audit.list_entries(limit=100)}
         assert "agent_identity.issued" in actions
         assert "agent_identity.revoked" in actions
         # operator_role remains authorization/audit metadata; the actor is the
         # authenticated MCP caller, not a self-asserted tool argument.
-        assert any(e.actor == "mcp-operator" for e in audit.list_entries(limit=100))
+        assert any(e.actor == _AUTHENTICATED_OPERATOR for e in audit.list_entries(limit=100))
     finally:
         set_audit_log(InMemoryAuditLog())

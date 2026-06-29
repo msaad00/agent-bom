@@ -38,6 +38,13 @@ HEALTHCHECK_EXEMPT: dict[str, set[str]] = {
         # TCP listener — there is no port to probe.
         "mcp-server",
     },
+    "docker-compose.hosted-poc.yml": {
+        # Overlay applied on top of docker-compose.platform.yml; it only
+        # narrows the api/ui port bindings to loopback. Their healthchecks are
+        # defined once in the base platform compose and inherited at merge time.
+        "api",
+        "ui",
+    },
 }
 
 

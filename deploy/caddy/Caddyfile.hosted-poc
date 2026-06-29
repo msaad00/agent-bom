@@ -1,0 +1,21 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$AGENT_BOM_HOSTED_DOMAIN:demo.agent-bom.com} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=15552000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-X-Powered-By
+	}
+
+	@api path /v1/* /health /version /openapi.json
+	reverse_proxy @api 127.0.0.1:8422
+
+	reverse_proxy 127.0.0.1:3000
+}

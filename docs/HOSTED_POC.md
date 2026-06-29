@@ -132,12 +132,13 @@ API/UI ports on all interfaces and does not mount the placeholder Postgres
 password:
 
 ```bash
-POSTGRES_PASSWORD=preflight POSTGRES_APP_PASSWORD=preflight docker compose \
-  -f deploy/docker-compose.platform.yml \
-  -f deploy/docker-compose.hosted-poc.yml \
-  config | grep -E '0.0.0.0:3000|0.0.0.0:8422|postgres_password.example' && \
-  { echo "Unsafe hosted compose output"; exit 1; } || true
+python scripts/deploy/hosted_poc_preflight.py --write-postgres-secret
 ```
+
+The preflight fails closed when required secrets are missing, the browser API
+URL is still localhost, CORS is wildcarded, unauthenticated API mode is enabled,
+API/UI ports bind publicly, or the composed stack would mount placeholder
+secrets. Run it again after any `.env`, DNS, or compose change.
 
 ### Caddy front door
 

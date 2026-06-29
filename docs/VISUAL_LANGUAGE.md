@@ -18,6 +18,8 @@ Use when:
 
 Files live in `docs/images/`, always shipped as `*-light.svg` + `*-dark.svg`
 with `<picture>`+`prefers-color-scheme` switching. Hand-tuned, no auto-layout.
+Regenerate `how-it-works` and `architecture` pairs from
+`scripts/generate_doc_architecture_svgs.py` when lane content or counts change.
 
 Current SVG inventory:
 

@@ -466,7 +466,7 @@ requires-dist = [
     { name = "pytesseract", marker = "extra == 'visual'", specifier = ">=0.3.10" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21" },
-    { name = "pytest-benchmark", marker = "extra == 'dev'", specifier = ">=5.0" },
+    { name = "pytest-benchmark", marker = "extra == 'dev'", specifier = ">=5.2.3" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1" },
     { name = "pytest-randomly", marker = "extra == 'dev'", specifier = ">=3.15" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
@@ -477,7 +477,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
     { name = "scipy", marker = "extra == 'graph'", specifier = ">=1.13" },
-    { name = "six", marker = "extra == 'azure'", specifier = ">=1.16" },
+    { name = "six", marker = "extra == 'azure'", specifier = ">=1.17.0" },
     { name = "smithery", marker = "extra == 'mcp-server'", specifier = ">=0.4" },
     { name = "snowflake-connector-python", marker = "extra == 'snowflake'", specifier = ">=3.6" },
     { name = "sse-starlette", marker = "extra == 'api'", specifier = ">=2.1" },
@@ -486,11 +486,11 @@ requires-dist = [
     { name = "tornado", specifier = ">=6.5.5" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.31" },
-    { name = "types-toml", marker = "extra == 'dev'", specifier = ">=0.10" },
+    { name = "types-toml", marker = "extra == 'dev'", specifier = ">=0.10.8.20260518" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.32" },
     { name = "wandb", marker = "extra == 'wandb'", specifier = ">=0.16" },
     { name = "watchdog", marker = "extra == 'watch'", specifier = ">=4.0" },
-    { name = "werkzeug", specifier = ">=3.1.6" },
+    { name = "werkzeug", specifier = ">=3.1.8" },
 ]
 provides-extras = ["api", "otel", "ui", "aws", "azure", "gcp", "coreweave", "databricks", "snowflake", "nebius", "huggingface", "wandb", "openai", "ai-enrich", "graph", "pdf", "postgres", "watch", "runtime", "visual", "mcp-server", "dashboard", "snyk", "interactive", "oidc", "saml", "cloud", "all", "docs", "dev", "dev-all"]
 

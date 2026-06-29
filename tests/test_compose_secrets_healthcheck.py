@@ -127,12 +127,14 @@ def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:
     assert env_map.get("AGENT_BOM_API_LOCAL_PATH_SCANS") == "disabled"
 
 
-def test_fullstack_is_loopback_only_and_matches_runtime_user_home() -> None:
+def test_fullstack_is_loopback_only_auth_required_and_matches_runtime_user_home() -> None:
     path = COMPOSE_DIR / "docker-compose.fullstack.yml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     api = (data.get("services") or {}).get("api") or {}
+    env = api.get("environment") or {}
 
-    assert "--allow-insecure-no-auth" in api.get("command", "")
+    assert "--allow-insecure-no-auth" not in api.get("command", "")
+    assert "AGENT_BOM_API_KEY:?" in env.get("AGENT_BOM_API_KEY", "")
     assert api.get("ports") == ["127.0.0.1:${API_PORT:-8422}:8422"]
     assert "~/.config:/home/abom/.config:ro" in (api.get("volumes") or [])
     assert "~/.claude:/home/abom/.claude:ro" in (api.get("volumes") or [])

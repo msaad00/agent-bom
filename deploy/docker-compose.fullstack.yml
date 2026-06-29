@@ -7,7 +7,7 @@
 # For a single-workstation pilot, see docker-compose.pilot.yml.
 #
 # Usage (local dev):
-#   cp .env.example .env   # fill in POSTGRES_PASSWORD at minimum
+#   cp .env.example .env   # fill in POSTGRES_PASSWORD and AGENT_BOM_API_KEY
 #   docker compose -f deploy/docker-compose.fullstack.yml up
 #
 # Then open:
@@ -30,7 +30,7 @@ services:
     image: agentbom/agent-bom:0.89.2
     container_name: agent-bom-api
     restart: unless-stopped
-    command: api --host 0.0.0.0 --port 8422 --allow-insecure-no-auth
+    command: api --host 0.0.0.0 --port 8422
     environment:
       AGENT_BOM_POSTGRES_URL: >-
         postgresql://${POSTGRES_USER:-agent_bom}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agent_bom}
@@ -44,8 +44,9 @@ services:
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      # Optional: protect the API with a key
-      AGENT_BOM_API_KEY: ${AGENT_BOM_API_KEY:-}
+      # Required for the shared full-stack profile. Use docker-compose.pilot.yml
+      # for the explicit loopback-only no-auth workstation demo.
+      AGENT_BOM_API_KEY: ${AGENT_BOM_API_KEY:?Set AGENT_BOM_API_KEY or use docker-compose.pilot.yml for loopback no-auth}
       # Local dev stack only: filesystem scans should be explicit in shared API setups.
       AGENT_BOM_API_LOCAL_PATH_SCANS: ${AGENT_BOM_API_LOCAL_PATH_SCANS:-disabled}
     ports:

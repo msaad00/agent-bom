@@ -4,7 +4,7 @@
 #   cd deploy/supabase/clickhouse
 #   docker compose up -d
 #   # ClickHouse: http://localhost:8123
-#   # Grafana:    http://localhost:3001 (set GRAFANA_ADMIN_PASSWORD first)
+#   # Grafana:    http://localhost:3001 (set GRAFANA_ADMIN_USER and GRAFANA_ADMIN_PASSWORD first)
 #
 # Then run scans with analytics enabled:
 #   agent-bom agents --clickhouse-url http://localhost:8123
@@ -39,7 +39,7 @@ services:
         condition: service_healthy
     environment:
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?set GRAFANA_ADMIN_USER before starting this analytics stack}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD before starting this analytics stack}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/agent-bom.json
     volumes:

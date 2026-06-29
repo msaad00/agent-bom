@@ -119,6 +119,8 @@ def test_clickhouse_grafana_compose_has_no_default_admin_password():
     grafana = data["services"]["grafana"]
     clickhouse = data["services"]["clickhouse"]
 
+    assert grafana["environment"]["GF_SECURITY_ADMIN_USER"] != "admin"
+    assert "GRAFANA_ADMIN_USER:?" in grafana["environment"]["GF_SECURITY_ADMIN_USER"]
     assert grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD"] != "admin"
     assert "GRAFANA_ADMIN_PASSWORD:?" in grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD"]
     assert grafana["ports"] == ["127.0.0.1:3001:3000"]

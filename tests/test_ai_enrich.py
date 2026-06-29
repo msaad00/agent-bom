@@ -254,6 +254,38 @@ def test_report_has_ai_threat_chains_field():
     assert report.ai_threat_chains == []
 
 
+def test_describe_ai_providers_is_non_secret(monkeypatch):
+    """Provider capability metadata exposes env names, not token values."""
+    from agent_bom.ai_enrich import describe_ai_providers
+
+    monkeypatch.setenv("HF_TOKEN", "hf_should_not_leak")
+    providers = describe_ai_providers()
+    huggingface = next(item for item in providers if item["name"] == "huggingface")
+
+    assert huggingface["required_env"] == ["HF_TOKEN"]
+    assert "hf_should_not_leak" not in repr(providers)
+
+
+@pytest.mark.asyncio
+async def test_huggingface_provider_enriches_without_litellm_or_ollama(monkeypatch):
+    """HuggingFace is a first-class enrichment provider, not just an autodetect fallback."""
+    from agent_bom.ai_enrich import enrich_blast_radii
+
+    br = _make_blast_radius()
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token")
+
+    with (
+        patch("agent_bom.ai_enrich._detect_ollama", return_value=False),
+        patch("agent_bom.ai_enrich._check_litellm", return_value=False),
+        patch("agent_bom.ai_enrich._check_huggingface", return_value=True),
+        patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value="HF-backed analysis"),
+    ):
+        result = await enrich_blast_radii([br], model="huggingface/test-model")
+
+    assert result == 1
+    assert br.ai_summary == "HF-backed analysis"
+
+
 # ── JSON Output Tests ──────────────────────────────────────────────────────
 
 
@@ -286,6 +318,22 @@ def test_json_output_includes_threat_chains():
     report.ai_threat_chains = ["Chain 1: exploit -> lateral -> exfiltrate"]
     data = to_json(report)
     assert data["ai_threat_chains"] == ["Chain 1: exploit -> lateral -> exfiltrate"]
+
+
+def test_json_output_includes_ai_enrichment_metadata():
+    """JSON output should include non-secret provider provenance when present."""
+    from agent_bom.output import to_json
+
+    report = _make_report()
+    report.ai_enrichment_metadata = {
+        "schema_version": "1",
+        "provider": "ollama",
+        "model": "ollama/llama3.2",
+        "status": "active",
+    }
+    data = to_json(report)
+    assert data["ai_enrichment_metadata"]["provider"] == "ollama"
+    assert data["ai_enrichment_metadata"]["model"] == "ollama/llama3.2"
 
 
 def test_json_output_omits_ai_fields_when_not_enriched():
@@ -887,11 +935,14 @@ def test_apply_skill_analysis_adds_new_findings():
             }
         ],
     }
-    _apply_skill_analysis(audit, ai_data)
+    _apply_skill_analysis(audit, ai_data, ai_source="ollama", ai_model="ollama/llama3.2")
 
     assert len(audit.findings) == 1
     assert audit.findings[0].category == "prompt_injection"
     assert audit.findings[0].context == "ai_analysis"
+    assert audit.findings[0].ai_source == "ollama"
+    assert audit.findings[0].ai_model == "ollama/llama3.2"
+    assert audit.findings[0].ai_confidence == "medium"
     assert audit.passed is False
 
 
@@ -920,7 +971,7 @@ async def test_enrich_skill_audit_with_mock_llm():
     )
 
     with (
-        patch("agent_bom.ai_enrich._has_any_provider", return_value=True),
+        patch("agent_bom.ai_enrich._check_litellm", return_value=True),
         patch("agent_bom.ai_enrich._call_llm", new_callable=AsyncMock, return_value=mock_response),
     ):
         result = await enrich_skill_audit(skill_result, skill_audit)
@@ -1081,10 +1132,11 @@ async def test_call_llm_routes_huggingface_model():
         assert result == "HF direct"
 
 
-def test_has_any_provider_with_huggingface():
+def test_has_any_provider_with_huggingface(monkeypatch):
     """Should return True for ollama/ model when HuggingFace is available as fallback."""
     from agent_bom.ai_enrich import _has_any_provider
 
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token")
     with (
         patch("agent_bom.ai_enrich._detect_ollama", return_value=False),
         patch("agent_bom.ai_enrich._check_huggingface", return_value=True),
@@ -1092,10 +1144,11 @@ def test_has_any_provider_with_huggingface():
         assert _has_any_provider("ollama/llama3.2") is True
 
 
-def test_has_any_provider_huggingface_model():
-    """Should return True for huggingface/ model when hub installed."""
+def test_has_any_provider_huggingface_model(monkeypatch):
+    """Should return True for huggingface/ model when hub and token are configured."""
     from agent_bom.ai_enrich import _has_any_provider
 
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token")
     with patch("agent_bom.ai_enrich._check_huggingface", return_value=True):
         assert _has_any_provider("huggingface/meta-llama/Llama-3.1-8B-Instruct") is True
 

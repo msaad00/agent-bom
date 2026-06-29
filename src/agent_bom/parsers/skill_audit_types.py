@@ -22,6 +22,9 @@ class SkillFinding:
     context: str = "config_block"  # "config_block" | "code_block" | "env_reference" — where the data was extracted from
     ai_analysis: str | None = None  # LLM-generated context-aware explanation
     ai_adjusted_severity: str | None = None  # LLM may adjust severity or mark "false_positive"
+    ai_source: str | None = None  # Provider that generated ai_analysis / AI-detected finding
+    ai_model: str | None = None  # Model identifier that generated ai_analysis / AI-detected finding
+    ai_confidence: str | None = None  # high | medium | low, as reported or assigned by AI review
     evidence_source: str = "static_config"  # static_text | static_config | ast_python | ast_js | external_registry
     confidence: str = "medium"  # high | medium | low
     source_line: int | None = None

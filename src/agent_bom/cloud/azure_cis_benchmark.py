@@ -384,7 +384,7 @@ def _check_1_10() -> CISCheckResult:
         recommendation="Disable 'Remember MFA on trusted devices' to ensure MFA is prompted on every sign-in.",
         cis_section=_IAM_SECTION,
     )
-    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Security > MFA > Additional cloud-based MFA settings."
+    result.evidence = "This check requires Microsoft Graph API access. Verify manually in Azure AD > Security > MFA > Additional cloud-based MFA settings."  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
     return result
 
 
@@ -409,7 +409,7 @@ def _check_1_12() -> CISCheckResult:
         title="Ensure that 'User consent for applications' is set to 'Do not allow user consent'",
         status=CheckStatus.NOT_APPLICABLE,
         severity="high",
-        recommendation="Set User consent settings to 'Do not allow user consent' in Azure AD > Enterprise Applications > Consent and permissions.",
+        recommendation="Set User consent settings to 'Do not allow user consent' in Azure AD > Enterprise Applications > Consent and permissions.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_IAM_SECTION,
     )
     result.evidence = (
@@ -439,7 +439,7 @@ def _check_1_14() -> CISCheckResult:
         title="Ensure that 'Guest users access restrictions' is set to restrict guest access",
         status=CheckStatus.NOT_APPLICABLE,
         severity="medium",
-        recommendation="Configure guest user access restrictions to 'Guest user access is restricted to properties and memberships of their own directory objects'.",
+        recommendation="Configure guest user access restrictions to 'Guest user access is restricted to properties and memberships of their own directory objects'.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_IAM_SECTION,
     )
     result.evidence = (
@@ -769,7 +769,7 @@ def _check_2_8(security_client: Any, subscription_id: str) -> CISCheckResult:
         title="Ensure Microsoft Defender for Open-Source Relational Databases is set to On",
         status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Enable Microsoft Defender for Open-Source Relational Databases (Standard tier) in Defender for Cloud > Environment settings.",
+        recommendation="Enable Microsoft Defender for Open-Source Relational Databases (Standard tier) in Defender for Cloud > Environment settings.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_DEFENDER_SECTION,
     )
     try:
@@ -844,7 +844,7 @@ def _check_2_11(security_client: Any, subscription_id: str) -> CISCheckResult:
         title="Ensure that auto-provisioning of the Log Analytics agent is set to On",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Enable auto-provisioning of the Log Analytics agent in Defender for Cloud > Environment settings > Auto provisioning.",
+        recommendation="Enable auto-provisioning of the Log Analytics agent in Defender for Cloud > Environment settings > Auto provisioning.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_DEFENDER_SECTION,
     )
     try:
@@ -904,7 +904,7 @@ def _check_2_13(security_client: Any, subscription_id: str) -> CISCheckResult:
         title="Ensure that email notification for high severity alerts is enabled",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Enable email notifications for high severity alerts in Defender for Cloud > Environment settings > Email notifications.",
+        recommendation="Enable email notifications for high severity alerts in Defender for Cloud > Environment settings > Email notifications.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_DEFENDER_SECTION,
     )
     try:
@@ -2525,7 +2525,7 @@ def _check_7_5(compute_client: Any) -> CISCheckResult:
         title="Ensure that the latest OS patches for all Virtual Machines are applied",
         status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Enable automatic OS updates or apply latest patches to all VMs. Use Azure Update Management for compliance tracking.",
+        recommendation="Enable automatic OS updates or apply latest patches to all VMs. Use Azure Update Management for compliance tracking.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_VM_SECTION,
     )
     try:

@@ -246,7 +246,7 @@ def _check_1_2(project_id: str) -> CISCheckResult:
         title="Ensure multi-factor authentication is enforced for all users",
         status=CheckStatus.NOT_APPLICABLE,
         severity="high",
-        evidence="MFA enforcement is configured at the Google Workspace / Cloud Identity level and cannot be verified via project-level API calls. Manual verification required.",
+        evidence="MFA enforcement is configured at the Google Workspace / Cloud Identity level and cannot be verified via project-level API calls. Manual verification required.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         recommendation="Enable 2-Step Verification enforcement in Google Workspace Admin Console under Security > 2-Step Verification.",
         cis_section=_IAM_SECTION,
     )
@@ -259,7 +259,7 @@ def _check_1_3(project_id: str) -> CISCheckResult:
         title="Ensure Security Key enforcement is enabled for all admin accounts",
         status=CheckStatus.NOT_APPLICABLE,
         severity="high",
-        evidence="Security Key enforcement is configured at the Google Workspace / Cloud Identity level and cannot be verified via project-level API calls. Manual verification required.",
+        evidence="Security Key enforcement is configured at the Google Workspace / Cloud Identity level and cannot be verified via project-level API calls. Manual verification required.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         recommendation="Enforce Security Key usage for all admin accounts in Google Workspace Admin Console.",
         cis_section=_IAM_SECTION,
     )
@@ -450,7 +450,7 @@ def _check_1_8(project_id: str) -> CISCheckResult:
         title="Ensure user-managed service account keys are rotated within 90 days",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Rotate user-managed service account keys every 90 days or less. Prefer short-lived credentials via Workload Identity.",
+        recommendation="Rotate user-managed service account keys every 90 days or less. Prefer short-lived credentials via Workload Identity.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_IAM_SECTION,
     )
     try:
@@ -593,7 +593,7 @@ def _check_1_11(project_id: str) -> CISCheckResult:
         title="Ensure separation of duties is enforced while assigning KMS-related roles",
         status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Ensure no user has both cloudkms.admin and any of cloudkms.cryptoKeyEncrypterDecrypter, cloudkms.cryptoKeyEncrypter, or cloudkms.cryptoKeyDecrypter roles.",
+        recommendation="Ensure no user has both cloudkms.admin and any of cloudkms.cryptoKeyEncrypterDecrypter, cloudkms.cryptoKeyEncrypter, or cloudkms.cryptoKeyDecrypter roles.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_IAM_SECTION,
     )
     try:
@@ -899,7 +899,7 @@ def _check_2_3(project_id: str) -> CISCheckResult:
         title="Ensure log metric filter and alerts exist for Project Ownership changes",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation='Create a log metric filter for (protoPayload.serviceName="cloudresourcemanager.googleapis.com") AND (ProjectOwnership OR projectOwnerInvitee).',
+        recommendation='Create a log metric filter for (protoPayload.serviceName="cloudresourcemanager.googleapis.com") AND (ProjectOwnership OR projectOwnerInvitee).',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -934,7 +934,7 @@ def _check_2_4(project_id: str) -> CISCheckResult:
         title="Ensure log metric filter and alerts exist for Audit Configuration changes",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation='Create a log metric filter for protoPayload.methodName="SetIamPolicy" AND protoPayload.serviceData.policyDelta.auditConfigDeltas:*.',
+        recommendation='Create a log metric filter for protoPayload.methodName="SetIamPolicy" AND protoPayload.serviceData.policyDelta.auditConfigDeltas:*.',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -969,7 +969,7 @@ def _check_2_5(project_id: str) -> CISCheckResult:
         title="Ensure log metric filter and alerts exist for Custom Role changes",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation='Create a log metric filter for resource.type="iam_role" AND (methodName="google.iam.admin.v1.CreateRole" OR methodName="google.iam.admin.v1.DeleteRole" OR methodName="google.iam.admin.v1.UpdateRole").',
+        recommendation='Create a log metric filter for resource.type="iam_role" AND (methodName="google.iam.admin.v1.CreateRole" OR methodName="google.iam.admin.v1.DeleteRole" OR methodName="google.iam.admin.v1.UpdateRole").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -1004,7 +1004,7 @@ def _check_2_6(project_id: str) -> CISCheckResult:
         title="Ensure log metric filter and alerts exist for VPC Network Firewall Rule changes",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation='Create a log metric filter for resource.type="gce_firewall_rule" AND (methodName:"compute.firewalls.patch" OR methodName:"compute.firewalls.insert" OR methodName:"compute.firewalls.delete").',
+        recommendation='Create a log metric filter for resource.type="gce_firewall_rule" AND (methodName:"compute.firewalls.patch" OR methodName:"compute.firewalls.insert" OR methodName:"compute.firewalls.delete").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -1039,7 +1039,7 @@ def _check_2_7(project_id: str) -> CISCheckResult:
         title="Ensure log metric filter and alerts exist for VPC Network Route changes",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation='Create a log metric filter for resource.type="gce_route" AND (methodName:"compute.routes.delete" OR methodName:"compute.routes.insert").',
+        recommendation='Create a log metric filter for resource.type="gce_route" AND (methodName:"compute.routes.delete" OR methodName:"compute.routes.insert").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -1074,7 +1074,7 @@ def _check_2_8(project_id: str) -> CISCheckResult:
         title="Ensure log metric filter and alerts exist for VPC Network changes",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation='Create a log metric filter for resource.type="gce_network" AND (methodName:"compute.networks.insert" OR methodName:"compute.networks.patch" OR methodName:"compute.networks.delete" OR methodName:"compute.networks.removePeering" OR methodName:"compute.networks.addPeering").',
+        recommendation='Create a log metric filter for resource.type="gce_network" AND (methodName:"compute.networks.insert" OR methodName:"compute.networks.patch" OR methodName:"compute.networks.delete" OR methodName:"compute.networks.removePeering" OR methodName:"compute.networks.addPeering").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -1179,7 +1179,7 @@ def _check_2_11(project_id: str) -> CISCheckResult:
         title="Ensure log metric filter and alerts exist for DNS Zone changes",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation='Create a log metric filter for resource.type="dns_managed_zone" AND (methodName:"dns.managedZones.create" OR methodName:"dns.managedZones.patch" OR methodName:"dns.managedZones.update" OR methodName:"dns.managedZones.delete").',
+        recommendation='Create a log metric filter for resource.type="dns_managed_zone" AND (methodName:"dns.managedZones.create" OR methodName:"dns.managedZones.patch" OR methodName:"dns.managedZones.update" OR methodName:"dns.managedZones.delete").',  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_LOGGING_SECTION,
     )
     try:
@@ -1723,7 +1723,7 @@ def _check_4_2(project_id: str) -> CISCheckResult:
         title="Ensure instances are not configured to use the default service account with full access to all APIs",
         status=CheckStatus.ERROR,
         severity="high",
-        recommendation="Remove the default service account or restrict its scopes. Do not use https://www.googleapis.com/auth/cloud-platform scope with the default SA.",
+        recommendation="Remove the default service account or restrict its scopes. Do not use https://www.googleapis.com/auth/cloud-platform scope with the default SA.",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_COMPUTE_SECTION,
     )
     try:
@@ -2478,7 +2478,7 @@ def _check_6_7(project_id: str) -> CISCheckResult:
         title="Ensure that Cloud SQL for PostgreSQL instances have log_min_duration_statement set to -1",
         status=CheckStatus.ERROR,
         severity="medium",
-        recommendation="Set the log_min_duration_statement database flag to '-1' to disable logging of statement durations (prevents sensitive data leakage).",
+        recommendation="Set the log_min_duration_statement database flag to '-1' to disable logging of statement durations (prevents sensitive data leakage).",  # noqa: E501 (CIS remediation/log-filter string — kept verbatim for copy-paste)
         cis_section=_SQL_SECTION,
     )
     try:

@@ -2088,12 +2088,15 @@ class TestGraphStoreBackendSelection:
 
         fix_first = client.get("/v1/graph/views/fix-first", params={"scan_id": "store-scan"})
         attack_paths = client.get("/v1/graph/attack-paths", params={"scan_id": "store-scan", "limit": 5})
+        rollup = client.get("/v1/graph/rollup", params={"scan_id": "store-scan", "mode": "attack_path"})
 
         assert fix_first.status_code == 200
         assert attack_paths.status_code == 200
+        assert rollup.status_code == 200
         assert "_fix_first_graph_view_payload" in compute_calls
         assert "_derived_attack_path_page" in compute_calls
         assert "_serialize_attack_path_queue" in compute_calls
+        assert "_graph_rollup_payload" in compute_calls
 
     def test_graph_route_returns_429_when_backpressure_opens(self, recording_graph_store, monkeypatch):
         from agent_bom.backpressure import reset_backpressure_for_tests

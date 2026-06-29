@@ -1308,6 +1308,29 @@ def _semantic_cluster_payload(
     }
 
 
+def _graph_rollup_payload(
+    graph: UnifiedGraph,
+    *,
+    node: str | None,
+    min_severity: str,
+    exposed: bool,
+    toxic: bool,
+    mode: Literal["rollup", "attack_path"],
+) -> dict[str, Any]:
+    from agent_bom.graph.rollup import RollupFilters, attack_path_view, drill_down, rollup_view
+
+    filters = RollupFilters(
+        min_severity=min_severity,
+        exposed_only=exposed,
+        toxic_only=toxic,
+    )
+    if node:
+        return drill_down(graph, node, filters=filters)
+    if mode == "attack_path":
+        return attack_path_view(graph, _derived_attack_paths(graph), filters=filters)
+    return rollup_view(graph, filters=filters)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Preset model
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2981,8 +3004,6 @@ async def get_graph_rollup(
     Backend for the UI graph-navigation surface. Read-only: never mutates the
     source graph.
     """
-    from agent_bom.graph.rollup import RollupFilters, attack_path_view, drill_down, rollup_view
-
     tenant = _tenant(request)
     graph_store = _get_graph_store_or_503()
     requested_scan_id = scan_id or ""
@@ -3002,18 +3023,16 @@ async def get_graph_rollup(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
 
-    filters = RollupFilters(
-        min_severity=(min_severity or "").lower(),
-        exposed_only=exposed,
-        toxic_only=toxic,
-    )
-
     try:
-        if node:
-            return drill_down(graph, node, filters=filters)
-        if mode == "attack_path":
-            return attack_path_view(graph, _derived_attack_paths(graph), filters=filters)
-        return rollup_view(graph, filters=filters)
+        return await _graph_compute_call(
+            _graph_rollup_payload,
+            graph,
+            node=node,
+            min_severity=(min_severity or "").lower(),
+            exposed=exposed,
+            toxic=toxic,
+            mode=mode,
+        )
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001

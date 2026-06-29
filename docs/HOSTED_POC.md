@@ -15,6 +15,11 @@ the enterprise distribution lane. Recommended domain split:
 - `demo.agent-bom.com` — public seeded demo.
 - `app.agent-bom.com` — gated customer-0 / hot-lead POC.
 
+For the domains you already own, use `agent-bom.com` on Cloudflare for the
+first live link because DNS, proxying, and TLS controls are already in one
+place. Keep `agentbom.io` for the cleaner product site once the public surface
+is ready.
+
 | Need | Use | Why |
 |---|---|---|
 | Public demo link | AWS VM + Caddy + platform compose | Fastest custom URL, simple TLS, works for any tester |
@@ -48,6 +53,25 @@ Run one small CPU-only VM. Recommended starting point:
 This gives prospects the product experience: sign in, connect read-only,
 scan, inspect graph/blast radius, and export evidence.
 
+### Cloudflare DNS
+
+For `agent-bom.com`, create one proxied `A` record per lane:
+
+| Record | Target | Purpose |
+|---|---|---|
+| `demo.agent-bom.com` | AWS VM public IPv4 | seeded public demo |
+| `app.agent-bom.com` | AWS VM public IPv4 | gated customer-0 account |
+
+Use Cloudflare proxy mode or DNS-only mode consistently with the chosen TLS
+setup:
+
+- **DNS-only + Caddy** — simplest. Caddy terminates Let's Encrypt directly.
+- **Proxied + Caddy** — set Cloudflare SSL mode to `Full (strict)` and let
+  Caddy still hold a valid origin certificate.
+
+Do not point the apex/root domain at the POC VM unless it is also serving the
+product site.
+
 ### Minimal VM setup
 
 Generate local secrets on the VM:
@@ -77,14 +101,24 @@ chmod 0400 deploy/secrets/postgres_password
 Start the platform:
 
 ```bash
-docker compose -f deploy/docker-compose.platform.yml up -d --build
-docker compose -f deploy/docker-compose.platform.yml ps
+docker compose \
+  -f deploy/docker-compose.platform.yml \
+  -f deploy/docker-compose.hosted-poc.yml \
+  up -d --build
+
+docker compose \
+  -f deploy/docker-compose.platform.yml \
+  -f deploy/docker-compose.hosted-poc.yml \
+  ps
 ```
 
 Seed a disposable demo graph after the API is healthy:
 
 ```bash
-docker compose -f deploy/docker-compose.platform.yml exec api \
+docker compose \
+  -f deploy/docker-compose.platform.yml \
+  -f deploy/docker-compose.hosted-poc.yml \
+  exec api \
   agent-bom quickstart --run --offline --force
 ```
 
@@ -108,8 +142,26 @@ demo.agent-bom.com {
 ```
 
 Keep Caddy as the only public listener. The Postgres container remains internal
-and the API/UI ports can be restricted to the VM security boundary once the
-front door is verified.
+and `deploy/docker-compose.hosted-poc.yml` binds the API/UI ports to loopback,
+so they are reachable only from Caddy on the VM.
+
+### Customer-0 proof checklist
+
+Run this checklist before inviting anyone:
+
+1. `https://demo.agent-bom.com/health` returns healthy through Caddy.
+2. The UI opens at `https://demo.agent-bom.com` and does not require direct
+   access to ports `3000` or `8422`.
+3. `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` is unset.
+4. A seeded scan appears in the dashboard with findings, graph, posture, and
+   export links.
+5. Connections can add at least one read-only cloud account or Snowflake
+   account.
+6. A connection scan hands off to scan details, findings, graph, jobs, and
+   compliance surfaces.
+7. Audit export and compliance export work for the customer-0 tenant.
+
+If any item fails, treat the POC as not ready for external users.
 
 ## Snowflake Native App lane
 

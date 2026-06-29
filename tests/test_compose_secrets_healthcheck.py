@@ -138,6 +138,15 @@ def test_fullstack_is_loopback_only_and_matches_runtime_user_home() -> None:
     assert "~/.claude:/home/abom/.claude:ro" in (api.get("volumes") or [])
 
 
+def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
+    path = COMPOSE_DIR / "docker-compose.hosted-poc.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    services = data.get("services") or {}
+
+    assert services["api"]["ports"] == ["127.0.0.1:${API_PORT:-8422}:8422"]
+    assert services["ui"]["ports"] == ["127.0.0.1:${UI_PORT:-3000}:3000"]
+
+
 def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:
     active_docs = [
         ROOT / "docs" / "DEPLOYMENT.md",

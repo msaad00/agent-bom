@@ -57,6 +57,7 @@ const CREATED_RECORD = {
   created_at: "2026-06-27T00:00:00Z",
   updated_at: "2026-06-27T00:00:00Z",
   last_scan_at: null,
+  last_scan_id: null,
   scan_interval_minutes: null,
 };
 
@@ -240,6 +241,7 @@ describe("ConnectionsPage", () => {
         ...CREATED_RECORD,
         status: "active",
         last_scan_at: "2026-06-27T01:00:00Z",
+        last_scan_id: "abcdef12-3456-7890-abcd-ef1234567890",
       },
     });
 
@@ -273,6 +275,46 @@ describe("ConnectionsPage", () => {
     expect(screen.getByRole("link", { name: "Graph" })).toHaveAttribute(
       "href",
       "/graph?scan_id=abcdef12-3456-7890-abcd-ef1234567890",
+    );
+  });
+
+  it("shows durable handoff links from the persisted last scan id after reload", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [
+        {
+          ...CREATED_RECORD,
+          status: "active",
+          last_scan_at: "2026-06-27T01:00:00Z",
+          last_scan_id: "persisted-scan-123",
+        },
+      ],
+      count: 1,
+    });
+
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Production account")).toBeInTheDocument(),
+    );
+
+    expect(screen.getByText("Last scan handoff")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Scan result" })).toHaveAttribute(
+      "href",
+      "/scan?id=persisted-scan-123",
+    );
+    expect(screen.getByRole("link", { name: "Jobs" })).toHaveAttribute(
+      "href",
+      "/jobs?q=persisted-scan-123",
+    );
+    expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute(
+      "href",
+      "/vulns?scan=persisted-scan-123",
+    );
+    expect(screen.getByRole("link", { name: "Graph" })).toHaveAttribute(
+      "href",
+      "/graph?scan_id=persisted-scan-123",
     );
   });
 

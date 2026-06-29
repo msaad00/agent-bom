@@ -317,6 +317,7 @@ def _mark_connection(
     status: str,
     status_detail: str = "",
     last_scan_at: str | None = None,
+    last_scan_id: str | None = None,
 ) -> None:
     """Persist a connection lifecycle transition via the Phase A store's upsert.
 
@@ -330,6 +331,8 @@ def _mark_connection(
     record.updated_at = _now()
     if last_scan_at is not None:
         record.last_scan_at = last_scan_at
+    if last_scan_id is not None:
+        record.last_scan_id = last_scan_id
     get_connection_store().put(record)
 
 
@@ -630,7 +633,14 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
         )
         raise HTTPException(status_code=502, detail="Cloud connection scan failed; see server logs.") from exc
 
-    _mark_connection(record, status=STATUS_ACTIVE, status_detail="", last_scan_at=_now())
+    scan_id = str(summary.get("scan_id") or "")
+    _mark_connection(
+        record,
+        status=STATUS_ACTIVE,
+        status_detail="",
+        last_scan_at=_now(),
+        last_scan_id=scan_id or None,
+    )
     log_action(
         "cloud_connection.scan",
         actor=actor,
@@ -638,7 +648,7 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
         tenant_id=tenant_id,
         provider=record.provider,
         outcome="success",
-        scan_id=summary["scan_id"],
+        scan_id=scan_id,
     )
     summary["connection"] = record.to_public_dict()
     return summary

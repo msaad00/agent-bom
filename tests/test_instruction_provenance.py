@@ -222,7 +222,7 @@ class TestVerifyInstructionFile:
         assert result.reason == "no_sigstore_bundle"
         assert result.verified is False
 
-    def test_valid_bundle_digest_match(self, tmp_path):
+    def test_valid_bundle_digest_match_requires_cosign(self, tmp_path):
         f = tmp_path / "SKILL.md"
         f.write_text("# Skill file content")
         sha = _compute_sha256(f)
@@ -235,8 +235,8 @@ class TestVerifyInstructionFile:
 
         assert result.has_sigstore_bundle is True
         assert result.bundle_valid is True
-        assert result.verified is True
-        assert result.reason == "digest_verified"
+        assert result.verified is False
+        assert result.reason == "cosign_verification_failed"
         assert result.signer_identity == "test-signer"
         assert result.rekor_log_index == 123
 
@@ -375,7 +375,8 @@ class TestBatchVerification:
 
         assert len(results) == 2
         assert not results[0].verified
-        assert results[1].verified
+        assert not results[1].verified
+        assert results[1].reason == "cosign_verification_failed"
 
     def test_empty_batch(self):
         assert verify_instruction_files_batch([]) == []

@@ -11,7 +11,11 @@ identities and granting or revoking just-in-time access.
 Those write arguments are audit context only — they no longer authorize the
 write by themselves. The request must authenticate with a separate
 `AGENT_BOM_MCP_OPERATOR_TOKEN` (the regular `AGENT_BOM_MCP_BEARER_TOKEN` is
-read-only). Because the local stdio transport has no token channel, Shield and
+read-only). Remote deployments should also set
+`AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT` and
+`AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT` to timezone-aware ISO-8601 timestamps;
+expired tokens are rejected before any scope is returned. Because the local
+stdio transport has no token channel, Shield and
 identity **write** tools are unavailable over stdio — run those actions from the
 CLI or the authenticated REST control plane instead. Read-only tools work over
 stdio as before.

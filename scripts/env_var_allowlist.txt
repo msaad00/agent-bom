@@ -197,9 +197,13 @@ AGENT_BOM_LOG_JSON
 AGENT_BOM_LOG_LEVEL
 AGENT_BOM_MAX_MANIFEST_BYTES
 AGENT_BOM_MCP_BEARER_TOKEN
+# Time-bound MCP read token expiry; deploy/runtime secret lifecycle, read at server startup.
+AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT
 # Separate MCP operator bearer token for write tools; secret reference only,
 # read at server startup to bind Shield/identity writes to authenticated scopes.
 AGENT_BOM_MCP_OPERATOR_TOKEN
+# Time-bound MCP operator token expiry; deploy/runtime secret lifecycle, read at server startup.
+AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT
 AGENT_BOM_MCP_SANDBOX
 AGENT_BOM_MCP_SANDBOX_CPUS
 AGENT_BOM_MCP_SANDBOX_EGRESS

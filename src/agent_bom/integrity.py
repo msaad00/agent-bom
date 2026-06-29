@@ -637,16 +637,16 @@ def verify_instruction_file(file_path: str | Path) -> InstructionFileVerificatio
     else:
         result.reason = "no_subject_digest_in_bundle"
 
-    # Try cosign for full cryptographic verification
+    # Try cosign for full cryptographic verification. A matching digest proves
+    # the bundle describes this file, but it does not prove who signed it.
     if result.bundle_valid:
         cosign_ok = _try_cosign_verify(path, bundle_path)
         if cosign_ok:
             result.verified = True
             result.reason = "cosign_verified"
         else:
-            # cosign not available but digest matches — partial verification
-            result.verified = True
-            result.reason = "digest_verified"
+            result.verified = False
+            result.reason = "cosign_verification_failed"
 
     return result
 

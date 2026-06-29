@@ -101,8 +101,8 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 
 - **Agents + MCP** — MCP clients, servers, tools, transports, trust posture
 - **Skills + instructions** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `skills/*`
-- **Package risk** — supply-chain scanning across 15 package ecosystems with OSV/GHSA enrichment and blast radius
-- **AI models + datasets** — malicious-model detection via safe pickle-opcode disassembly (no execution), model/dataset cards, and PII/PHI dataset scanning
+- **Package risk** — supply-chain scanning across common application and OS package ecosystems with OSV/GHSA enrichment and blast radius; Hex/Pub are advisory ecosystem identifiers today, not native lockfile parsers
+- **AI models + datasets** — malicious-model detection via safe pickle-opcode disassembly (no execution), model/dataset cards, and target-scoped PII/PHI dataset-file scanning
 - **Container images + IaC** — native OCI parsing plus Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes coverage
 - **Cloud estate** — read-only, gated asset inventory across AWS/Azure/GCP plus AI/GPU posture and CIS benchmarks
 - **Identity (NHI)** — non-human identity discovery (Okta/Entra), credential-expiry posture, and access-review campaigns

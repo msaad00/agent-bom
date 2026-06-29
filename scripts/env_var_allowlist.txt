@@ -96,6 +96,10 @@ AGENT_BOM_VAULT_TOKEN
 AGENT_BOM_CONNECTIONS_SCHEDULER
 # CLI profile config path override; read at command invocation time.
 AGENT_BOM_CONFIG
+# Optional cosign signer-boundary overrides for internal non-release signing;
+# defaults stay pinned to the agent-bom release workflow and GitHub OIDC issuer.
+AGENT_BOM_COSIGN_CERTIFICATE_IDENTITY_REGEXP
+AGENT_BOM_COSIGN_CERTIFICATE_OIDC_ISSUER
 AGENT_BOM_COMPLIANCE_BUNDLE_TTL_SECONDS
 AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM
 AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED

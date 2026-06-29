@@ -139,8 +139,8 @@ Read-only integration is for systems that already hold the relevant evidence. `a
 Typical sources:
 
 - Snowflake governance data
-- warehouse-backed security or activity data
-- connector-backed enterprise sources
+- warehouse-backed security or activity data where a shipped connector exists
+- connector-backed enterprise sources where a shipped connector exists
 - cloud account inventory where the customer grants read-only access
 
 ```mermaid

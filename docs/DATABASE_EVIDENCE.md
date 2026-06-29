@@ -5,6 +5,10 @@ event streams. Connectors query customer-owned systems for inventory,
 governance, access, and lineage evidence, then map that evidence into the
 same findings and graph model used by local scans and runtime telemetry.
 
+The concrete shipped warehouse governance lane is Snowflake. Other database and
+warehouse sources should be described as connector-contract, fallback, or
+roadmap paths unless the specific connector and fixtures are present in code.
+
 ## Connector Lanes
 
 | Lane | Status | Default wheel | Use when | Credential boundary |
@@ -39,6 +43,9 @@ query source.
 
 - ODBC/JDBC are not event streaming connectors. Posture-event streaming uses
   webhooks or runtime emitter plugins.
+- Generic database evidence is not full DSPM by itself. Only call data
+  sensitive when explicit tags, classifications, imported classifier evidence,
+  or target-scoped dataset scan results support that label.
 - ODBC/JDBC do not replace native Snowflake, Postgres/Supabase, Databricks,
   BigQuery, Redshift, or Athena paths where native APIs are available.
 - The default wheel does not bundle ODBC drivers, JDBC drivers, a JVM, or

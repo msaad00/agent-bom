@@ -15,9 +15,10 @@ pip install agent-bom
 
 ## Steps
 
-### 1. Full Inventory Scan
+### 1. Target-Scoped Inventory Scan
 
-Run the most comprehensive scan available for your environment:
+Run the broadest scan available for the environment and credentials you
+explicitly configure:
 
 ```bash
 agent-bom scan \

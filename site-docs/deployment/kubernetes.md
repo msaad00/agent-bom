@@ -41,13 +41,14 @@ described below.
 - manifest hardening
   - `agent-bom iac k8s/`
   - scans YAML/Helm content in Git or on disk
-- live cluster posture
+- point-in-time cluster posture
   - `agent-bom iac . --k8s-live --k8s-all-namespaces`
   - inspects runtime state through `kubectl`
-  - covers live pod health, live RBAC drift, and namespace NetworkPolicy coverage
+  - covers pod health, RBAC drift observed through `kubectl`, and namespace NetworkPolicy coverage
 
-The live path is intentionally scoped. It does not claim full admission-policy,
-service-mesh, or arbitrary controller-state analysis.
+The runtime path is intentionally scoped. It does not claim event-driven
+Kubernetes monitoring, full admission-policy coverage, service-mesh analysis,
+or arbitrary controller-state analysis.
 
 ## Quick start
 

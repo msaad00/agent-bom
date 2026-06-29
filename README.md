@@ -96,9 +96,9 @@ credential environment names in reach, and the agents that can call it.
 
 | Domain | Coverage |
 |---|---|
-| Supply chain | 15 package ecosystems (npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, conda, Hex, Pub, Swift, plus apk/deb/rpm) with OSV/GHSA enrichment, transitive resolution, and dependency-confusion detection |
+| Supply chain | Package and OS risk across npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, conda, Swift, apk, deb, and rpm, with OSV/GHSA enrichment, transitive resolution, and dependency-confusion detection; Hex/Pub are advisory ecosystem identifiers, not first-class lockfile parsers yet |
 | Agents + MCP | MCP clients, servers, tools, transports, and trust posture with live introspection across 29 first-class client types |
-| AI models + datasets | Malicious-model detection via safe pickle-opcode disassembly (no deserialization), model/dataset cards, and PII/PHI dataset scanning |
+| AI models + datasets | Malicious-model detection via safe pickle-opcode disassembly (no deserialization), model/dataset cards, and target-scoped PII/PHI dataset-file scanning |
 | Cloud estate | Read-only, gated asset inventory and CIS posture across AWS, Azure, GCP, and Snowflake, plus AI/GPU provider posture |
 | Identity (NHI) | Non-human identity discovery (Okta/Entra, gated), credential-expiry posture, and access-review recertification |
 | LLM cost | Spend forecasting, budget runway, chargeback/allocation, and seasonal-aware spend-anomaly detection |
@@ -109,10 +109,25 @@ credential environment names in reach, and the agents that can call it.
 CIS misconfigurations and graph toxic-combinations converge into the same
 `Finding` stream and exit-code gate as package vulnerabilities, so a real
 exposure can fail a pipeline. The graph adds correlation overlays on the same
-base: AppSec findings organized around their application, LLM cost fused onto the
-resources that incur it, read-only cloud audit-trail activity as behavioral
+base: AppSec findings organized around their application, LLM cost fused onto
+the resources that incur it, read-only cloud audit-trail activity as behavioral
 edges, and an estate-scale `CONTAINS` roll-up with drill-down so large clouds
 stay readable.
+
+### Current Coverage Boundaries
+
+agent-bom is strongest today as a read-only CSPM/CIS, vuln/SCA, compliance,
+runtime-policy, and graph-posture product. Connected account scans can run on a
+schedule, so new or removed assets are picked up at the next scan and graph
+history can show appeared/removed evidence. It is not yet an event-streaming
+CDR product: CloudTrail/EventBridge, Azure Activity Log/Event Grid, and GCP
+Audit Log/Pub/Sub ingestion are roadmap work.
+
+For DSPM, Snowflake has the deepest current support because agent-bom can read
+warehouse metadata, grants, tags, lineage, and governance activity visible to
+the configured role. Other cloud data-store sensitivity is posture and metadata
+based until classifier-backed content inspection, provider DLP/Macie wrapping,
+and object/table/column-level access mapping land.
 
 ## Product Map
 
@@ -123,7 +138,7 @@ credential boundary, and operator surface.
 | Need | Surface | First action | Auth / data boundary | Main artifact |
 |---|---|---|---|---|
 | Scan a repo, image, or local agent config | CLI / CI | `agent-bom agents -p .` | local files only unless an opt-in connector is enabled | JSON, SARIF, SBOM, HTML |
-| Connect cloud and data estates | Cloud connectors | `agent-bom connect aws` then `agent-bom cloud scan` | read-only provider credentials; no secret values read or stored | cloud assets, CIS findings, graph edges |
+| Connect cloud and selected data-estate evidence | Cloud and warehouse connectors | `agent-bom connect aws` then `agent-bom cloud scan` | read-only provider credentials; no secret values read or stored | cloud assets, CIS findings, Snowflake governance evidence, graph edges |
 | Review posture as a team | API + dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` | API key/OIDC/SAML/SCIM where configured; tenant-scoped state | findings, graph, audit, compliance |
 | Give agents security tools | MCP server | `agent-bom mcp server` | read-mostly tools; Shield writes require admin role, scope, and audit reason | strict MCP tool responses |
 | Govern runtime tool calls | Proxy / gateway | configure proxy or gateway policy | inline policy checks; redacted, auditable decisions | allow/warn/block audit trail |

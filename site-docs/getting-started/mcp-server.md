@@ -111,7 +111,7 @@ Connect with:
 
 | Tool | Description |
 |------|-------------|
-| `scan` | Full discovery + vulnerability scan |
+| `scan` | Scoped discovery + vulnerability scan |
 | `check` | Check a package for CVEs |
 | `intel_lookup` | Look up a CVE, GHSA, or OSV advisory |
 | `intel_match` | Match package or purl inventory against local advisories |

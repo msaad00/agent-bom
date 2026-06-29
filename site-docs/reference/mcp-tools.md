@@ -10,7 +10,7 @@ audit reason.
 ## Tools
 
 ### scan
-Full discovery + vulnerability scan pipeline. Auto-discovers MCP clients,
+Scoped discovery + vulnerability scan pipeline. Auto-discovers MCP clients,
 extracts servers and packages, scans for CVEs, computes blast radius, or scans
 a direct MCP launch package when no local config is available.
 ```
@@ -383,7 +383,7 @@ ingest_external_scan(path="scan.json")
 
 | Prompt | Description |
 |--------|-------------|
-| `quick-audit` | Run a complete security audit of local AI agent and MCP setup |
+| `quick-audit` | Run a scoped security audit of local AI agent and MCP setup |
 | `pre-install-check` | Check an MCP server package before installing |
 | `compliance-report` | Generate OWASP, ATLAS, and NIST compliance posture |
 | `fleet-audit` | Audit an endpoint or cloud inventory file and return graph-ready findings |

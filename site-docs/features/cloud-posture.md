@@ -66,6 +66,17 @@ environment properties that do not appear in a pull request, such as:
 - resources created outside the reviewed IaC path
 - service posture that depends on account-level configuration
 
+Connected accounts can also be scanned on a recurring schedule from the control
+plane. That makes posture near-continuous at the chosen cadence: new resources
+or deployments are discovered on the next run, removed resources appear in graph
+history/diff as deleted evidence, and findings are regenerated from the latest
+read-only inventory.
+
+This is scheduled polling, not provider event streaming. It does not observe a
+resource the instant it is created, and it does not replace CloudTrail,
+EventBridge, Azure Activity Log/Event Grid, or GCP Audit Log/Pub/Sub pipelines.
+Those event-driven sources are separate roadmap work.
+
 ## How to read the result
 
 The useful question is not "IaC or CSPM?" It is:
@@ -83,3 +94,10 @@ agent-bom does not apply Terraform, mutate CloudFormation stacks, or change
 cloud settings as part of posture scanning. It reports evidence and exits with
 deterministic codes so the operator, CI system, or control plane can decide
 whether to block, approve, or open a remediation workflow.
+
+The current CSPM/CIS lane should be positioned as read-only inventory,
+benchmark checks, IaC misconfiguration detection, scheduled drift visibility,
+and graph-backed attack paths. Full DSPM requires classifier-backed content
+inspection and data-access resolution; Snowflake has the deepest metadata,
+grant, tag, and lineage coverage today, while other stores remain
+metadata/posture based unless imported classifier evidence is present.

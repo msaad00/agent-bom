@@ -1,11 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" fill="none" role="img" aria-labelledby="pv-dark-title">
-<title id="pv-dark-title">agent-bom personas and value</title>
-<defs>
-<marker id="pv-dark" viewBox="0 0 10 8" refX="8.5" refY="4" markerWidth="8" markerHeight="6" orient="auto"><path d="M0 0 L10 4 L0 8 Z" fill="#8b5cf6"/></marker>
-</defs>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="400" viewBox="0 0 960 400" fill="none">
+<title>agent-bom personas and value</title>
 <rect width="960" height="400" rx="12" fill="#0a0a0c"/>
-<text x="28" y="38" font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="850" fill="#f4f4f5">Who it serves · what they get</text>
-<text x="28" y="58" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="500" fill="#71717a">One evidence model — inventory → findings → graph → gates</text>
+<text x="28" y="38" font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800" fill="#f4f4f5">Who it serves · what they get</text>
+<text x="28" y="58" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="500" fill="#71717a">One evidence model — inventory -&gt; findings -&gt; graph -&gt; gates</text>
 <text x="28" y="88" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.12em" fill="#a78bfa">PERSONAS</text>
 <text x="500" y="88" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.12em" fill="#a78bfa">VALUE PROOF</text>
 <rect x="28" y="108" width="432" height="54" rx="10" fill="#161619" stroke="#2a2a31"/>
@@ -28,21 +26,21 @@
 <rect x="512" y="122" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(516,126)" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10h8M6 14h12M9 6l-2 2M15 6l2 2M9 18l-2 2M15 18l2 2"/><circle cx="12" cy="12" r="4"/></g>
 <text x="548" y="132" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#e9e9ec">Accurate SCA</text>
 <text x="548" y="148" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#82828c">15 ecosystems · distro-aware</text>
-<line x1="468" y1="135" x2="492" y2="135" stroke="#8b5cf6" stroke-width="1.6" marker-end="url(#pv-dark)"/>
+<line x1="468" y1="135" x2="485" y2="135" stroke="#8b5cf6" stroke-width="1.6"/><polygon points="491,135 484,131.5 484,138.5" fill="#8b5cf6"/>
 <rect x="500" y="176" width="432" height="54" rx="10" fill="#15121f" stroke="#5b4bbd"/>
 <rect x="512" y="190" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(516,194)" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="12" rx="2"/><path d="M7 15l3-3 2 2 3-3 2 4"/></g>
 <text x="548" y="200" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#e9e9ec">Container coverage</text>
 <text x="548" y="216" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#82828c">OCI native · Grype opt-in</text>
-<line x1="468" y1="203" x2="492" y2="203" stroke="#8b5cf6" stroke-width="1.6" marker-end="url(#pv-dark)"/>
+<line x1="468" y1="203" x2="485" y2="203" stroke="#8b5cf6" stroke-width="1.6"/><polygon points="491,203 484,199.5 484,206.5" fill="#8b5cf6"/>
 <rect x="500" y="244" width="432" height="54" rx="10" fill="#15121f" stroke="#5b4bbd"/>
 <rect x="512" y="258" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(516,262)" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/></g>
 <text x="548" y="268" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#e9e9ec">Self-hosted evidence</text>
 <text x="548" y="284" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#82828c">your VPC · signed audit</text>
-<line x1="468" y1="271" x2="492" y2="271" stroke="#8b5cf6" stroke-width="1.6" marker-end="url(#pv-dark)"/>
+<line x1="468" y1="271" x2="485" y2="271" stroke="#8b5cf6" stroke-width="1.6"/><polygon points="491,271 484,267.5 484,274.5" fill="#8b5cf6"/>
 <rect x="500" y="312" width="432" height="54" rx="10" fill="#15121f" stroke="#5b4bbd"/>
 <rect x="512" y="326" width="24" height="24" rx="6" fill="#1c1c21" stroke="#2e2e35"/><g transform="translate(516,330)" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
 <text x="548" y="336" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#e9e9ec">Agent-native API</text>
 <text x="548" y="352" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#82828c">283 ops · 70 MCP tools</text>
-<line x1="468" y1="339" x2="492" y2="339" stroke="#8b5cf6" stroke-width="1.6" marker-end="url(#pv-dark)"/>
-<rect x="28" y="364" width="904" height="24" rx="7" fill="#0c1a14" stroke="#1f4438"/><text x="480" y="380" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#4ade80">LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph</text>
+<line x1="468" y1="339" x2="485" y2="339" stroke="#8b5cf6" stroke-width="1.6"/><polygon points="491,339 484,335.5 484,342.5" fill="#8b5cf6"/>
+<rect x="24" y="364" width="912" height="24" rx="8" fill="#0c1a14" stroke="#1f4438"/><text x="480" y="380" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#4ade80">LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph</text>
 </svg>

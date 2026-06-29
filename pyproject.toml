@@ -395,7 +395,7 @@ ignore = []
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "fuzz/*.py" = ["N802", "T201"]  # TestOneInput is required atheris entry; harnesses print repro output
 "src/agent_bom/output/html.py" = ["E501"]  # Inline HTML/CSS/JS template strings cannot be meaningfully wrapped
-"src/agent_bom/cloud/*_cis_benchmark.py" = ["E501"]  # CIS benchmark remediation strings are naturally long
+"scripts/generate_doc_architecture_svgs.py" = ["E501"]  # SVG coordinate strings are intentionally single-line
 # T201 allowlist — places where bare `print()` is legitimately the contract:
 "scripts/*.py" = ["T201"]  # Ops scripts — stdout is the documented interface
 "tests/**/*.py" = ["T201"]  # Pytest assertions + debug tracebacks

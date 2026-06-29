@@ -6,7 +6,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from scripts.generate_doc_architecture_svgs import _audit_layout, architecture, how_it_works, persona_value
+from scripts.generate_doc_architecture_svgs import _audit_github_safe, _audit_layout, architecture, how_it_works, persona_value
 
 IMAGES = Path(__file__).resolve().parents[1] / "docs" / "images"
 
@@ -55,7 +55,18 @@ def test_generated_files_exist_and_are_valid_svg() -> None:
         path = IMAGES / name
         assert path.exists(), name
         text = path.read_text(encoding="utf-8")
-        assert text.startswith("<svg")
+        assert text.lstrip().startswith("<?xml") or text.startswith("<svg")
         assert text.rstrip().endswith("</svg>")
         assert re.search(r'viewBox="0 0 \d+ \d+"', text)
+        assert re.search(r'width="\d+" height="\d+"', text)
         ET.parse(path)
+
+
+def test_generated_svgs_are_github_safe() -> None:
+    for name in (
+        "how-it-works-dark.svg",
+        "architecture-dark.svg",
+        "persona-value-dark.svg",
+    ):
+        text = (IMAGES / name).read_text(encoding="utf-8")
+        assert _audit_github_safe(text) == [], name

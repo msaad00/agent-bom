@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from agent_bom.graph import EntityType, RelationshipType
 from agent_bom.graph.builder import build_unified_graph_from_report
+from agent_bom.graph.rollup import rollup_view
 
 
 def _minimal_report():
@@ -353,6 +354,7 @@ class TestBuildUnifiedGraphFromReport:
         assert g.nodes[role_id].attributes["principal_type"] == "role"
         assert any(e.source == account_id and e.target == org_id and e.relationship == RelationshipType.PART_OF for e in g.edges)
         assert any(e.source == account_id and e.target == resource_id and e.relationship == RelationshipType.HOSTS for e in g.edges)
+        assert any(e.source == account_id and e.target == resource_id and e.relationship == RelationshipType.CONTAINS for e in g.edges)
         assert any(e.source == role_id and e.target == account_id and e.relationship == RelationshipType.MEMBER_OF for e in g.edges)
         assert any(e.source == role_id and e.target == resource_id and e.relationship == RelationshipType.CAN_ACCESS for e in g.edges)
         assert any(e.source == role_id and e.target == policy_id and e.relationship == RelationshipType.ATTACHED for e in g.edges)
@@ -361,6 +363,34 @@ class TestBuildUnifiedGraphFromReport:
             e.source == role_id and e.target == external_account_id and e.relationship == RelationshipType.CROSS_ACCOUNT_TRUST
             for e in g.edges
         )
+
+    def test_cloud_resource_rolls_up_under_account_contains_tree(self):
+        report = _minimal_report()
+        report["agents"][0]["source"] = "aws-bedrock"
+        report["agents"][0]["metadata"] = {
+            "cloud_origin": {
+                "provider": "aws",
+                "service": "bedrock",
+                "resource_type": "agent",
+                "resource_id": "arn:aws:bedrock:us-east-1:123456789012:agent/agent-abc",
+                "resource_name": "support-agent",
+                "location": "us-east-1",
+                "scope": {
+                    "account_id": "123456789012",
+                },
+            },
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        account_id = "account:aws:123456789012"
+        resource_id = "cloud_resource:aws:bedrock:agent:arn:aws:bedrock:us-east-1:123456789012:agent/agent-abc"
+        view = rollup_view(g)
+        account = next(item for item in view["top_level"] if item["id"] == account_id)
+        assert account["has_children"] is True
+        assert account["direct_child_count"] == 1
+        assert account["aggregate"]["by_type"]["cloud_resource"] == 1
+        assert resource_id not in {item["id"] for item in view["top_level"]}
 
     def test_no_principal_agent_edge_when_principal_metadata_absent(self):
         # If cloud_origin is present but cloud_principal is missing, only

@@ -90,9 +90,9 @@ def _validate_cors(errors: list[str], public_url: str) -> None:
         parsed = urlparse(origin)
         host = (parsed.hostname or "").lower()
         if parsed.scheme == "http" and origin != "http://ui:3000":
-            _fail(errors, f"CORS_ORIGINS contains non-internal http origin: {origin}")
+            _fail(errors, "CORS_ORIGINS contains a non-internal http origin")
         if host in {"0.0.0.0", "127.0.0.1", "localhost"}:
-            _fail(errors, f"CORS_ORIGINS contains local host origin: {origin}")
+            _fail(errors, "CORS_ORIGINS contains a local host origin")
 
 
 def _validate_auth_and_bindings(errors: list[str]) -> None:
@@ -103,7 +103,7 @@ def _validate_auth_and_bindings(errors: list[str]) -> None:
     for name in ("AGENT_BOM_API_BIND_HOST", "AGENT_BOM_UI_BIND_HOST"):
         value = os.environ.get(name, "127.0.0.1")
         if value not in {"127.0.0.1", "localhost", "::1"}:
-            _fail(errors, f"{name} must stay loopback-only; got {value!r}")
+            _fail(errors, f"{name} must stay loopback-only")
 
     if os.environ.get("AGENT_BOM_SESSION_COOKIE_SECURE", "1").strip().lower() in {"0", "false", "no", "off"}:
         _fail(errors, "AGENT_BOM_SESSION_COOKIE_SECURE must stay enabled")
@@ -193,9 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         force=args.force,
     )
     if errors:
-        print("Hosted POC preflight failed:", file=sys.stderr)
-        for error in errors:
-            print(f"- {error}", file=sys.stderr)
+        print("Hosted POC preflight failed; review the hosted POC environment and compose overlays.", file=sys.stderr)
         return 1
     print("Hosted POC preflight passed.")
     return 0

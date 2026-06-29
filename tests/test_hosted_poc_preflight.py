@@ -75,7 +75,7 @@ def test_preflight_rejects_public_bind_host(monkeypatch: pytest.MonkeyPatch, tmp
 
     errors = run_preflight(tmp_path, skip_compose=True, write_secret=False, force=False)
 
-    assert "AGENT_BOM_API_BIND_HOST must stay loopback-only; got '0.0.0.0'" in errors
+    assert "AGENT_BOM_API_BIND_HOST must stay loopback-only" in errors
 
 
 def test_preflight_rejects_bad_connections_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

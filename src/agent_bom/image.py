@@ -34,6 +34,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.config import _bool
 from agent_bom.models import Package, PermissionProfile, Severity, Vulnerability
 from agent_bom.package_utils import parse_debian_source_name
 from agent_bom.sbom import parse_cyclonedx
@@ -138,7 +139,7 @@ def _debian_related_cve_fallback(match: dict, vuln_data: dict) -> tuple[Optional
 
 
 def _image_grype_fallback_enabled() -> bool:
-    return os.environ.get("AGENT_BOM_IMAGE_GRYPE_FALLBACK", "").strip().lower() in {"1", "true", "yes", "on"}
+    return _bool("AGENT_BOM_IMAGE_GRYPE_FALLBACK", False)
 
 
 def _packages_from_grype_json(data: dict) -> list[Package]:

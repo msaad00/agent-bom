@@ -409,6 +409,9 @@ class Finding:
             "title": self.title,
             "description": self.description,
             "cve_id": self.cve_id,
+            "cve_ids": self.evidence.get("cve_ids") or ([self.cve_id] if self.cve_id else []),
+            "match_confidence_tier": self.evidence.get("match_confidence_tier"),
+            "advisory_aliases": self.evidence.get("advisory_aliases") or [],
             "cwe_ids": self.cwe_ids,
             "cvss_score": self.cvss_score,
             "cvss_vector": self.cvss_vector,
@@ -837,6 +840,17 @@ def blast_radius_to_finding(br: object) -> "Finding":
     evidence["package_version_provenance"] = package_version_provenance(pkg)
     if vuln.references:
         evidence["references"] = _sanitized_evidence_field(vuln.references[:5])
+
+    tier = getattr(vuln, "match_confidence_tier", None)
+    if tier:
+        evidence["match_confidence_tier"] = tier
+    if getattr(vuln, "aliases", None):
+        evidence["advisory_aliases"] = _sanitized_evidence_field(list(vuln.aliases))
+    from agent_bom.advisory_ids import all_cve_identifiers
+
+    cve_ids = all_cve_identifiers(vuln.id, getattr(vuln, "aliases", []) or [])
+    if cve_ids:
+        evidence["cve_ids"] = cve_ids
 
     sev = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
     from agent_bom.exploitability import fused_triage_priority

@@ -503,10 +503,10 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 )
                 continue
 
-        # Compute canonical ID early so dedup catches alias overlaps
+        from agent_bom.advisory_ids import canonical_vulnerability_id, match_confidence_tier
+
         aliases = vuln_data.get("aliases", [])
-        cve_alias = next((a for a in aliases if a.startswith("CVE-")), None)
-        canonical_id = cve_alias if cve_alias and not vuln_id.startswith("CVE-") else vuln_id
+        canonical_id, all_aliases = canonical_vulnerability_id(vuln_id, aliases)
 
         # Deduplicate by canonical ID AND raw ID — prevents PYSEC/GHSA duplicates
         if canonical_id in seen_ids or vuln_id in seen_ids:
@@ -530,11 +530,6 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
 
         summary = vuln_data.get("summary", vuln_data.get("details", "No description available"))[:200]
 
-        # Collect all aliases (original ID + OSV aliases, minus the canonical)
-        all_aliases = [a for a in aliases if a != canonical_id]
-        if vuln_id != canonical_id:
-            all_aliases.append(vuln_id)
-
         # Extract CWE IDs from database_specific (GHSA entries store them here)
         cwe_ids: list[str] = []
         db_specific = vuln_data.get("database_specific", {})
@@ -557,6 +552,12 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 aliases=all_aliases,
                 cwe_ids=cwe_ids,
                 advisory_sources=["osv"],
+                match_confidence_tier=match_confidence_tier(
+                    advisory_source="osv",
+                    db_ecosystem=None,
+                    package_ecosystem=package.ecosystem,
+                    fixed_version=fixed,
+                ),
             )
         )
 
@@ -614,17 +615,11 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         severity = cvss_to_severity(cvss_score)
         severity_source = "cvss"
 
-    # Canonicalize: prefer CVE ID over GHSA/PYSEC for consistency with Trivy/NVD
+    from agent_bom.advisory_ids import canonical_vulnerability_id, match_confidence_tier
+
     raw_id = lv.id
     aliases = getattr(lv, "aliases", [])
-    cve_alias = next((a for a in aliases if a.startswith("CVE-")), None)
-    if cve_alias and not raw_id.startswith("CVE-"):
-        canonical_id = cve_alias
-        all_aliases = [a for a in aliases if a != canonical_id]
-        all_aliases.append(raw_id)
-    else:
-        canonical_id = raw_id
-        all_aliases = [a for a in aliases if a != canonical_id]
+    canonical_id, all_aliases = canonical_vulnerability_id(raw_id, aliases)
 
     if severity == Severity.UNKNOWN:
         for advisory_id in [str(raw_id), *(str(alias) for alias in aliases)]:
@@ -635,6 +630,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
                 break
 
     advisory_source = getattr(lv, "source", None)
+    fixed_version = lv.fixed_version if _is_valid_fix_version(lv.fixed_version or "") else None
 
     return Vulnerability(
         id=canonical_id,
@@ -643,7 +639,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         severity_source=severity_source,
         cvss_score=cvss_score,
         cvss_vector=cvss_vector if isinstance(cvss_vector, str) and cvss_vector else None,
-        fixed_version=lv.fixed_version if _is_valid_fix_version(lv.fixed_version or "") else None,
+        fixed_version=fixed_version,
         epss_score=lv.epss_probability,
         epss_percentile=lv.epss_percentile,
         is_kev=lv.is_kev,
@@ -654,6 +650,12 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         aliases=all_aliases,
         references=[],
         advisory_sources=[advisory_source] if isinstance(advisory_source, str) and advisory_source else [],
+        match_confidence_tier=match_confidence_tier(
+            advisory_source=advisory_source if isinstance(advisory_source, str) else None,
+            db_ecosystem=getattr(lv, "ecosystem", None),
+            package_ecosystem=None,
+            fixed_version=fixed_version,
+        ),
     )
 
 
@@ -1040,7 +1042,13 @@ async def scan_packages(
     if local_count:
         local_label = "vulnerability found" if local_count == 1 else "vulnerabilities found"
         source_label = "Demo advisory DB" if scan_options.demo_advisories else "Local DB"
-        console.print(f"  [green]✓[/green] {source_label}: {local_count} {local_label} (offline)")
+        if scan_offline:
+            mode_note = " (offline mode)"
+        elif scan_prefer_local_db:
+            mode_note = " (local advisory cache)"
+        else:
+            mode_note = ""
+        console.print(f"  [green]✓[/green] {source_label}: {local_count} {local_label}{mode_note}")
 
     # ── Coverage-gap detection (warning only) ─────────────────────────────────
     # Flag OS releases whose advisory data the local DB does not carry (typically

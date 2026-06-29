@@ -6,6 +6,30 @@ proves the product loop before a managed cloud edition is offered.
 
 It is not a claim that public `agent-bom Cloud` is generally available.
 
+For the three-phase hosting sequence (demo → Snowflake Native App → public SaaS),
+see [`docs/ROADMAP_SAAS.md`](ROADMAP_SAAS.md).
+
+## One-shot bootstrap
+
+On a fresh VM with Docker and DNS already pointing at the host:
+
+```bash
+scripts/deploy/demo-hosted.sh \
+  --generate-secrets \
+  --domain demo.agent-bom.com \
+  --acme-email you@example.com \
+  --seed \
+  --mint-tester-key \
+  --wait-health
+scripts/deploy/demo-hosted.sh --print-caddy --domain demo.agent-bom.com
+scripts/deploy/verify-hosted-demo.sh --domain demo.agent-bom.com
+```
+
+The script writes `.env.hosted-poc` (gitignored), runs
+[`scripts/deploy/hosted_poc_preflight.py`](../scripts/deploy/hosted_poc_preflight.py),
+starts compose, seeds quickstart data, and can mint a read-only tester key via
+`POST /v1/auth/keys`.
+
 ## Recommended path
 
 Use an AWS VM first for the public demo URL, then keep Snowflake Native App as

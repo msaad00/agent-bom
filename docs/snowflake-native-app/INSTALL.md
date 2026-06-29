@@ -47,8 +47,8 @@ Or manually via the dev path:
 ```sql
 -- Upload the app package, create the application
 CREATE APPLICATION PACKAGE agent_bom_pkg;
-ALTER APPLICATION PACKAGE agent_bom_pkg ADD VERSION v0_85 USING '@agent_bom_stage/v0_85';
-CREATE APPLICATION agent_bom FROM APPLICATION PACKAGE agent_bom_pkg USING VERSION v0_85;
+ALTER APPLICATION PACKAGE agent_bom_pkg ADD VERSION v0_89_2 USING '@agent_bom_stage/v0_89_2';
+CREATE APPLICATION agent_bom FROM APPLICATION PACKAGE agent_bom_pkg USING VERSION v0_89_2;
 ```
 
 ## 3 — Bind your tables (the customer-approved access)

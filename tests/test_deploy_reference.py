@@ -41,6 +41,117 @@ def test_install_reference_dry_run_writes_verify_hint(tmp_path: Path):
     assert "--base-url http://localhost:8080" in rendered
 
 
+def test_demo_hosted_help_exits_zero() -> None:
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts" / "deploy" / "demo-hosted.sh"), "--help"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Phase 0 hosted demo" in result.stdout
+
+
+def test_demo_hosted_generate_secrets_writes_env(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.hosted-poc"
+    result = subprocess.run(
+        [
+            "bash",
+            str(ROOT / "scripts" / "deploy" / "demo-hosted.sh"),
+            "--generate-secrets",
+            "--env-file",
+            str(env_file),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--domain",
+            "demo.example.com",
+            "--skip-up",
+            "--skip-preflight",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert env_file.exists()
+    rendered = env_file.read_text()
+    assert "AGENT_BOM_API_KEY=" in rendered
+    assert "https://demo.example.com" in rendered
+
+
+def test_demo_hosted_dry_run_skips_compose(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.hosted-poc"
+    env_file.write_text(
+        "\n".join(
+            [
+                "POSTGRES_PASSWORD=" + "p" * 40,
+                "POSTGRES_APP_PASSWORD=" + "a" * 40,
+                "AGENT_BOM_API_KEY=" + "k" * 40,
+                "AGENT_BOM_AUDIT_HMAC_KEY=" + "h" * 40,
+                "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY=" + "s" * 40,
+                "AGENT_BOM_CONNECTIONS_KEY=" + __import__("base64").urlsafe_b64encode(b"0" * 32).decode(),
+                "NEXT_PUBLIC_API_URL=https://demo.example.com",
+                "CORS_ORIGINS=https://demo.example.com,http://ui:3000",
+                "AGENT_BOM_SESSION_COOKIE_SECURE=1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            str(ROOT / "scripts" / "deploy" / "demo-hosted.sh"),
+            "--env-file",
+            str(env_file),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--domain",
+            "demo.example.com",
+            "--skip-preflight",
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "[dry-run]" in result.stdout
+    assert "docker compose" in result.stdout
+
+
+def test_demo_hosted_print_caddy_mentions_caddyfile() -> None:
+    result = subprocess.run(
+        [
+            "bash",
+            str(ROOT / "scripts" / "deploy" / "demo-hosted.sh"),
+            "--print-caddy",
+            "--domain",
+            "demo.agent-bom.com",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Caddyfile.hosted-poc" in result.stdout
+
+
+def test_verify_hosted_demo_help_exits_zero() -> None:
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts" / "deploy" / "verify-hosted-demo.sh"), "--help"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "verify-hosted-demo" in result.stdout.lower() or "Verify a hosted demo" in result.stdout
+
+
 def test_install_reference_rejects_oidc_without_hostname(tmp_path: Path):
     result = subprocess.run(
         [

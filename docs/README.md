@@ -40,7 +40,7 @@ material. The index below groups the canonical docs by audience.
 - [`PERMISSIONS.md`](PERMISSIONS.md) — RBAC roles and permissions
 - [`DATABASE_EVIDENCE.md`](DATABASE_EVIDENCE.md) — persistence and evidence stores
 - [`RELEASE_VERIFICATION.md`](RELEASE_VERIFICATION.md) — release verification
-- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (230 paths / 271 operations)
+- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (239 paths / 283 operations)
 
 ## AI / agent developers (MCP · clients · tools)
 

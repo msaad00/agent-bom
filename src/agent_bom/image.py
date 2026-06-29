@@ -34,6 +34,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.config import _bool
 from agent_bom.models import Package, PermissionProfile, Severity, Vulnerability
 from agent_bom.package_utils import parse_debian_source_name
 from agent_bom.sbom import parse_cyclonedx
@@ -137,47 +138,12 @@ def _debian_related_cve_fallback(match: dict, vuln_data: dict) -> tuple[Optional
     return None, None
 
 
-def _scan_with_grype(
-    image_ref: str,
-    registry_user: Optional[str] = None,
-    registry_pass: Optional[str] = None,
-    platform: Optional[str] = None,
-) -> list[Package]:
-    """Run Grype and return packages with vulnerabilities pre-populated.
+def _image_grype_fallback_enabled() -> bool:
+    return _bool("AGENT_BOM_IMAGE_GRYPE_FALLBACK", False)
 
-    Grype returns packages + CVEs in a single call, covering all ecosystems
-    (npm, cargo, go modules, maven, gems, .NET, deb, rpm, apk, Python).
-    No secondary OSV query is needed for image packages.
-    """
-    image_ref = validate_image_ref(image_ref)
-    platform = _validate_platform(platform)
-    cmd = ["grype", image_ref, "-o", "json", "--quiet"]
-    if platform:
-        cmd += ["--platform", platform]
-    env = _build_scanner_env(registry_user, registry_pass, "GRYPE")
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            env=env,
-        )
-    except FileNotFoundError:
-        raise ImageScanError("grype not found")
-    except subprocess.TimeoutExpired:
-        raise ImageScanError(f"grype timed out scanning {image_ref}")
 
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        raise ImageScanError(f"grype exited {result.returncode}: {stderr[:200]}")
-
-    try:
-        data = json.loads(result.stdout)
-    except json.JSONDecodeError as e:
-        raise ImageScanError(f"grype produced invalid JSON: {e}")
-
-    # Build Package objects keyed by (ecosystem, name, version)
+def _packages_from_grype_json(data: dict) -> list[Package]:
+    """Build Package objects with pre-populated vulnerabilities from Grype JSON."""
     pkg_map: dict[tuple[str, str, str], Package] = {}
 
     for match in data.get("matches", []):
@@ -197,12 +163,10 @@ def _scan_with_grype(
 
         pkg = pkg_map[key]
 
-        # Build Vulnerability from Grype match
         vuln_id = vuln_data.get("id", "")
         if not vuln_id:
             continue
 
-        # Extract CVSS score from Grype's cvss array.
         cvss_score = _cvss_score_from_grype_vulnerability(vuln_data)
         severity = _severity_from_grype_vulnerability(vuln_data, cvss_score)
         if severity == Severity.UNKNOWN and cvss_score is None:
@@ -212,12 +176,10 @@ def _scan_with_grype(
             if fallback_severity is not None:
                 severity = fallback_severity
 
-        # Fixed version
         fix_info = vuln_data.get("fix", {})
         fixed_versions = fix_info.get("versions", [])
         fixed_version = fixed_versions[0] if fixed_versions else None
 
-        # Avoid duplicating the same CVE on a package
         if not any(v.id == vuln_id for v in pkg.vulnerabilities):
             pkg.vulnerabilities.append(
                 Vulnerability(
@@ -230,6 +192,102 @@ def _scan_with_grype(
             )
 
     return list(pkg_map.values())
+
+
+def _run_grype_json(
+    target: str,
+    *,
+    registry_user: Optional[str] = None,
+    registry_pass: Optional[str] = None,
+    platform: Optional[str] = None,
+    timeout: int = 300,
+) -> dict:
+    """Run Grype against a target and return parsed JSON."""
+    platform = _validate_platform(platform)
+    cmd = ["grype", target, "-o", "json", "--quiet"]
+    if platform:
+        cmd += ["--platform", platform]
+    env = _build_scanner_env(registry_user, registry_pass, "GRYPE")
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
+    except FileNotFoundError:
+        raise ImageScanError("grype not found")
+    except subprocess.TimeoutExpired:
+        raise ImageScanError(f"grype timed out scanning {target}")
+
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        raise ImageScanError(f"grype exited {result.returncode}: {stderr[:200]}")
+
+    stdout = result.stdout.strip()
+    if not stdout:
+        raise ImageScanError("grype produced empty output")
+
+    # Grype may print log lines before JSON on some versions; parse the last JSON object.
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError:
+        decoder = json.JSONDecoder()
+        data = None
+        for idx, char in enumerate(stdout):
+            if char != "{":
+                continue
+            try:
+                data, _end = decoder.raw_decode(stdout[idx:])
+            except json.JSONDecodeError:
+                continue
+        if data is None:
+            raise ImageScanError("grype produced invalid JSON")
+        return data
+
+
+def _scan_with_grype(
+    image_ref: str,
+    registry_user: Optional[str] = None,
+    registry_pass: Optional[str] = None,
+    platform: Optional[str] = None,
+) -> list[Package]:
+    """Run Grype and return packages with vulnerabilities pre-populated.
+
+    Grype returns packages + CVEs in a single call, covering all ecosystems
+    (npm, cargo, go modules, maven, gems, .NET, deb, rpm, apk, Python).
+    No secondary OSV query is needed for image packages.
+    """
+    image_ref = validate_image_ref(image_ref)
+    data = _run_grype_json(
+        image_ref,
+        registry_user=registry_user,
+        registry_pass=registry_pass,
+        platform=platform,
+    )
+    return _packages_from_grype_json(data)
+
+
+def _grype_archive_target(tar_path: Path) -> str:
+    """Return the Grype target string for a saved image archive."""
+    resolved = tar_path.resolve()
+    if resolved.is_dir():
+        return f"oci-dir:{resolved}"
+    suffix = resolved.suffix.lower()
+    if suffix in {".tar", ".tgz"} or resolved.name.endswith(".tar.gz"):
+        return f"docker-archive:{resolved}"
+    return f"oci-archive:{resolved}"
+
+
+def _scan_archive_with_grype(tar_path: str | Path) -> list[Package]:
+    """Run Grype against a docker save / OCI archive tarball or layout directory."""
+    path = Path(tar_path)
+    if not path.exists():
+        raise ImageScanError(f"Image archive not found: {tar_path}")
+    target = _grype_archive_target(path)
+    data = _run_grype_json(target)
+    return _packages_from_grype_json(data)
 
 
 # ─── Syft strategy ────────────────────────────────────────────────────────────
@@ -832,9 +890,22 @@ def scan_image_tar(tar_path: str) -> tuple[list[Package], str]:
     if not path.exists():
         raise ImageScanError(f"Image tarball not found: {tar_path}")
     try:
-        return scan_oci(path)
+        packages, strategy = scan_oci(path)
     except OCIParseError as e:
         raise ImageScanError(f"OCI parse error: {e}") from e
+
+    if _image_grype_fallback_enabled() and _grype_available():
+        try:
+            grype_packages = _scan_archive_with_grype(path)
+        except ImageScanError as exc:
+            _logger.debug("Grype archive fallback skipped for %s: %s", tar_path, exc)
+        else:
+            if grype_packages:
+                grype_vulns = sum(len(pkg.vulnerabilities) for pkg in grype_packages)
+                if grype_vulns > 0 or len(grype_packages) > len(packages):
+                    return grype_packages, "grype-archive"
+
+    return packages, strategy
 
 
 def image_to_purl(image_ref: str) -> str:

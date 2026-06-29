@@ -206,5 +206,5 @@
 
   <!-- ═══ BOTTOM BAR ═══ -->
   <rect x="20" y="380" width="920" height="28" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <text x="480" y="399" text-anchor="middle" font-size="9" font-weight="600" fill="#a1a1aa" letter-spacing="0.06em" font-family="system-ui, sans-serif">READ-ONLY GUARANTEE · never writes configs · never runs servers · never stores secrets · --dry-run previews everything · Sigstore signed</text>
+  <text x="480" y="399" text-anchor="middle" font-size="9" font-weight="600" fill="#a1a1aa" letter-spacing="0.06em" font-family="system-ui, sans-serif">READ-ONLY SCAN · no target writes · no secret values · --dry-run previews everything · offline-capable with local DB</text>
 </svg>

@@ -65,6 +65,14 @@ ENABLE_EXTENSION_ENTRYPOINTS = _bool("AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS", F
 INCLUDE_UNFIXED_OS_ADVISORIES = _bool("AGENT_BOM_INCLUDE_UNFIXED", False)
 
 
+# ── Image Scanning ────────────────────────────────────────────────────────────
+# Optional Grype fallback for ``agent-bom image --tar`` when native OCI/archive
+# extraction yields no packages. Off by default — enable only when bridging
+# legacy tarballs that Grype handles better than the native parser.
+
+IMAGE_GRYPE_FALLBACK = _bool("AGENT_BOM_IMAGE_GRYPE_FALLBACK", False)
+
+
 # ── EPSS Thresholds ─────────────────────────────────────────────────────────
 # EPSS (Exploit Prediction Scoring System) probability thresholds.
 # Source: https://www.first.org/epss/

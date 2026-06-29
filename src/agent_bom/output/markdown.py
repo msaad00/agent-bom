@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
 from agent_bom.finding import Finding, FindingType
+from agent_bom.graph.severity import severity_policy_rank
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.output.exposure_path import exposure_path_brief
 
@@ -206,16 +207,12 @@ def _trust_assessment_section(report: AIBOMReport) -> list[str]:
     return lines
 
 
-_SEV_ORDER = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2, Severity.LOW: 3, Severity.UNKNOWN: 4, Severity.NONE: 5}
-_FINDING_SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4, "none": 5}
-
-
 def _sev_order(sev: Severity) -> int:
-    return _SEV_ORDER.get(sev, 99)
+    return -severity_policy_rank(sev.value)
 
 
 def _finding_sev_order(sev: str) -> int:
-    return _FINDING_SEV_ORDER.get(sev.lower(), 99)
+    return -severity_policy_rank(sev)
 
 
 def _severity_badge(sev: Severity) -> str:

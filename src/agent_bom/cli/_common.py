@@ -13,6 +13,7 @@ import click
 from rich.console import Console
 
 from agent_bom import __version__
+from agent_bom.graph.severity import SEVERITY_POLICY_ORDER
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import sanitize_env_vars, sanitize_sensitive_payload
 
@@ -27,7 +28,7 @@ BANNER = r"""
   Security scanner for AI infrastructure
 """
 
-SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "unknown": -1}
+SEVERITY_ORDER = {label.lower(): rank for label, rank in SEVERITY_POLICY_ORDER.items()}
 PORT_RANGE = click.IntRange(1, 65535)
 LISTEN_PORT_RANGE = click.IntRange(1024, 65535)
 OPTIONAL_PORT_RANGE = click.IntRange(0, 65535)

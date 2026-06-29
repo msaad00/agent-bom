@@ -24,11 +24,11 @@ from typing import Any, Optional
 
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
-from agent_bom.graph.severity import OCSF_SEVERITY_NAMES, SEVERITY_RANK
+from agent_bom.graph.severity import OCSF_SEVERITY_NAMES, SEVERITY_BUCKETS_WORST_FIRST, SEVERITY_RANK
 from agent_bom.graph.types import EntityType, RelationshipType
 
 # Severity buckets reported in every roll-up histogram, worst → least.
-_SEVERITY_ORDER: tuple[str, ...] = ("critical", "high", "medium", "low", "info", "none")
+_SEVERITY_ORDER: tuple[str, ...] = SEVERITY_BUCKETS_WORST_FIRST
 
 # Container entity types form the readable top-level scaffold of the estate.
 # A node of one of these types is a candidate roll-up container; everything else

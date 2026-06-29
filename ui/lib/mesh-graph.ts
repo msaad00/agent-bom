@@ -12,6 +12,7 @@ import {
   type ExposurePath,
   type ExposureRelationshipRef,
 } from "@/lib/exposure-path";
+import { severityAtOrAbove, severityRank } from "@/lib/severity";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -262,10 +263,8 @@ export function detectSharedServers(agents: Agent[]): Map<string, ServerGroup> {
 
 // ─── Severity helpers ───────────────────────────────────────────────────────
 
-const SEV_ORDER: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, none: 0 };
-
 function severityWeight(sev: string | undefined): number {
-  return SEV_ORDER[sev ?? "none"] ?? 0;
+  return severityRank(sev ?? "none");
 }
 
 function sevColor(sev: string): string {
@@ -280,7 +279,7 @@ function sevColor(sev: string): string {
 
 function meetsSeverityFilter(sev: string, filter: SeverityFilter): boolean {
   if (filter === "all") return true;
-  return (SEV_ORDER[sev] ?? 0) >= (SEV_ORDER[filter] ?? 0);
+  return severityAtOrAbove(sev, filter);
 }
 
 function compareVulnerabilities(left: Vulnerability, right: Vulnerability): number {

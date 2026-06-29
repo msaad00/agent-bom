@@ -36,15 +36,13 @@ from typing import Optional
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
+from agent_bom.graph.severity import severity_rank
 from agent_bom.graph.types import EntityType, RelationshipType
 
 _GRAPH_SOURCE = "graph-toxic-combination"
 
 # ── Severity model ───────────────────────────────────────────────────────────
-# Local rank so the evaluator never has to import scanner severity tables; the
-# string values match the unified Finding.severity vocabulary.
-_SEVERITY_ORDER = ("info", "low", "medium", "high", "critical")
-_SEVERITY_RANK = {name: rank for rank, name in enumerate(_SEVERITY_ORDER)}
+_ESCALATION_SEVERITIES = ("info", "low", "medium", "high", "critical")
 _SEVERITY_RISK = {"info": 1.0, "low": 3.0, "medium": 5.0, "high": 7.5, "critical": 9.5}
 
 # Principal entity types that can hold (over-)permissions to data.
@@ -148,7 +146,7 @@ class ToxicRule:
 
 def _node_severity(node: UnifiedNode) -> str:
     sev = (node.severity or "").lower()
-    return sev if sev in _SEVERITY_RANK else "low"
+    return sev if sev in _ESCALATION_SEVERITIES else "low"
 
 
 def _escalate(component_severities: tuple[str, ...], floor: str) -> str:
@@ -158,10 +156,11 @@ def _escalate(component_severities: tuple[str, ...], floor: str) -> str:
     drops below its declared base tier even if its component nodes carry thin
     severity metadata.
     """
-    base_rank = max((_SEVERITY_RANK.get(s, 0) for s in component_severities), default=0)
-    escalated = min(base_rank + 1, _SEVERITY_RANK["critical"])
-    floored = max(escalated, _SEVERITY_RANK.get(floor, 0))
-    return _SEVERITY_ORDER[floored]
+    base_rank = max((severity_rank(s) for s in component_severities), default=severity_rank("info"))
+    escalated = min(base_rank + 1, severity_rank("critical"))
+    floored = max(escalated, severity_rank(floor))
+    index = max(0, min(floored - severity_rank("info"), len(_ESCALATION_SEVERITIES) - 1))
+    return _ESCALATION_SEVERITIES[index]
 
 
 def _asset_for(node: UnifiedNode) -> Asset:

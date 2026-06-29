@@ -21,6 +21,7 @@ import {
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+import { severityRank } from "@/lib/severity";
 import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert, ClipboardCheck } from "lucide-react";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
@@ -103,14 +104,6 @@ type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
 type SortKey = "severity" | "cvss" | "epss" | "id";
 type GroupKey = "none" | "package" | "agent" | "severity";
 type ScanScope = "latest" | "all";
-
-const SEVERITY_ORDER: Record<string, number> = {
-  critical: 4,
-  high: 3,
-  medium: 2,
-  low: 1,
-  none: 0,
-};
 
 function CisaKevBadge() {
   return (
@@ -655,7 +648,7 @@ function VulnsPage() {
     list = [...list].sort((a, b) => {
       let diff = 0;
       if (sortKey === "severity") {
-        diff = (SEVERITY_ORDER[a.severity.toLowerCase()] ?? 0) - (SEVERITY_ORDER[b.severity.toLowerCase()] ?? 0);
+        diff = severityRank(a.severity) - severityRank(b.severity);
       } else if (sortKey === "cvss") {
         diff = (a.cvss_score ?? 0) - (b.cvss_score ?? 0);
       } else if (sortKey === "epss") {

@@ -5,6 +5,9 @@ from __future__ import annotations
 import click
 
 from agent_bom.cli.options_helpers import _apply
+from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+
+_COMPLIANCE_EXPORT_CHOICES = tuple(sorted({framework.slug for framework in TAG_MAPPED_FRAMEWORKS} | {"nist-ai-rmf"}))
 
 
 def discovery_options(fn):
@@ -425,9 +428,9 @@ def compliance_options(fn):
             click.option(
                 "--compliance-export",
                 "compliance_export",
-                type=click.Choice(["cmmc", "fedramp", "nist-ai-rmf"]),
+                type=click.Choice(_COMPLIANCE_EXPORT_CHOICES),
                 default=None,
-                help="Export compliance evidence bundle (ZIP). Accepted values: cmmc, fedramp, nist-ai-rmf.",
+                help="Export a local evidence-backed compliance bundle (ZIP) for any mapped framework.",
             ),
         ]
     )(fn)

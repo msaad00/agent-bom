@@ -11,15 +11,12 @@ version: "3.8"
 #     -f deploy/docker-compose.hosted-poc.yml \
 #     up -d --build
 #
-# The base platform file is reusable for local operators and clusters. This
-# overlay makes the customer-0 VM posture explicit: API and UI bind to loopback
-# only, while Caddy terminates TLS on 443 and proxies to these local ports.
+# The base platform file now binds API and UI to loopback by default. This
+# overlay keeps the customer-0 VM posture explicit and sets browser-session
+# cookies to Secure because Caddy terminates public TLS on 443 and proxies to
+# local HTTP ports.
 
 services:
   api:
-    ports:
-      - "127.0.0.1:${API_PORT:-8422}:8422"
-
-  ui:
-    ports:
-      - "127.0.0.1:${UI_PORT:-3000}:3000"
+    environment:
+      - AGENT_BOM_SESSION_COOKIE_SECURE=1

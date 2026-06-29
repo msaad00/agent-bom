@@ -1177,6 +1177,137 @@ async def _graph_store_call(fn, /, *args, **kwargs):
         raise HTTPException(status_code=429, detail=exc.to_dict(), headers={"Retry-After": str(exc.retry_after_seconds)}) from exc
 
 
+async def _graph_compute_call(fn, /, *args, **kwargs):
+    """Run CPU-heavy graph derivation and serialization off the event loop."""
+    try:
+        async with adaptive_backpressure("graph"):
+            return await asyncio.to_thread(fn, *args, **kwargs)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(status_code=429, detail=exc.to_dict(), headers={"Retry-After": str(exc.retry_after_seconds)}) from exc
+
+
+def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) -> dict[str, Any]:
+    stats = graph.stats()
+    all_nodes = list(graph.nodes.values())
+    paged_nodes, pagination = _paginate(all_nodes, offset, limit)
+    paged_ids = {n.id for n in paged_nodes}
+    paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
+    attack_paths = [
+        _serialize_attack_path(p, graph.edges, nodes_by_id=graph.nodes, scan_id=graph.scan_id)
+        for p in _derived_attack_paths(graph)
+        if p.hops and all(hop in paged_ids for hop in p.hops)
+    ]
+    interaction_risks = [
+        r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)
+    ]
+
+    return {
+        "scan_id": graph.scan_id,
+        "tenant_id": graph.tenant_id,
+        "created_at": graph.created_at,
+        "nodes": [n.to_dict() for n in paged_nodes],
+        "edges": [e.to_dict() for e in paged_edges],
+        "attack_paths": attack_paths,
+        "interaction_risks": interaction_risks,
+        "stats": stats,
+        "pagination": pagination,
+    }
+
+
+def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str, agent: str, limit: int) -> dict[str, Any]:
+    available_paths = _derived_attack_paths(graph)
+    ranked_paths = sorted(
+        (path for path in available_paths if _path_matches_focus(graph, path, cve=cve, package=package, agent=agent)),
+        key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
+        reverse=True,
+    )
+    cards = [_fix_first_card_for_path(graph, path, index + 1) for index, path in enumerate(ranked_paths[:limit])]
+    covered_findings = {finding for card in cards for finding in card["affected"]["findings"]}
+    return {
+        "scan_id": graph.scan_id,
+        "tenant_id": graph.tenant_id,
+        "created_at": graph.created_at,
+        "cards": cards,
+        "summary": {
+            "total_paths": len(available_paths),
+            "matched_paths": len(ranked_paths),
+            "returned_paths": len(cards),
+            "highest_risk": cards[0]["attack_path"]["composite_risk"] if cards else 0.0,
+            "covered_findings": len(covered_findings),
+            "node_count": len(graph.nodes),
+            "edge_count": len(graph.edges),
+        },
+        "focus": {
+            "cve": cve,
+            "package": package,
+            "agent": agent,
+        },
+    }
+
+
+def _derived_attack_path_page(graph: UnifiedGraph, *, offset: int, limit: int) -> tuple[str, str, list[AttackPath], int]:
+    derived_paths = _derived_attack_paths(graph)
+    return graph.scan_id, graph.created_at, derived_paths[offset : offset + limit], len(derived_paths)
+
+
+def _serialize_attack_path_queue(
+    *,
+    scan_id: str,
+    tenant: str,
+    created_at: str,
+    nodes: list[Any],
+    path_edges: list[Any],
+    paths: list[AttackPath],
+    total: int,
+    offset: int,
+    limit: int,
+    stats: dict[str, Any],
+) -> dict[str, Any]:
+    nodes_by_id = {node.id: node for node in nodes}
+    if total and int(stats.get("attack_path_count") or 0) == 0:
+        stats = {
+            **stats,
+            "attack_path_count": total,
+            "max_attack_path_risk": max((path.composite_risk for path in paths), default=0.0),
+        }
+    return {
+        "scan_id": scan_id,
+        "tenant_id": tenant,
+        "created_at": created_at,
+        "nodes": [node.to_dict() for node in nodes],
+        "edges": [edge.to_dict() for edge in path_edges],
+        "attack_paths": [
+            _serialize_attack_path(path, path_edges, nodes_by_id=nodes_by_id, rank=offset + index + 1, scan_id=scan_id)
+            for index, path in enumerate(paths)
+        ],
+        "interaction_risks": [],
+        "stats": stats,
+        "pagination": _page_meta(total, offset, limit),
+    }
+
+
+def _semantic_cluster_payload(
+    graph: UnifiedGraph,
+    *,
+    selected_kinds: set[str],
+    min_members: int,
+    limit: int,
+) -> dict[str, Any]:
+    clusters = [
+        cluster
+        for cluster in build_semantic_clusters(graph.nodes.values(), graph.edges, min_members=min_members)
+        if cluster.kind in selected_kinds
+    ][:limit]
+    return {
+        "scan_id": graph.scan_id,
+        "tenant_id": graph.tenant_id,
+        "created_at": graph.created_at,
+        "clusters": [cluster.to_dict() for cluster in clusters],
+        "stats": semantic_cluster_stats(clusters),
+        "available_kinds": list(SEMANTIC_CLUSTER_KINDS),
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Preset model
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1376,31 +1507,7 @@ async def get_graph(
         )
         graph = graph.filtered_view(filters)
 
-        stats = graph.stats()
-        all_nodes = list(graph.nodes.values())
-        paged_nodes, pagination = _paginate(all_nodes, offset, limit)
-        paged_ids = {n.id for n in paged_nodes}
-        paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
-        attack_paths = [
-            _serialize_attack_path(p, graph.edges, nodes_by_id=graph.nodes, scan_id=graph.scan_id)
-            for p in _derived_attack_paths(graph)
-            if p.hops and all(hop in paged_ids for hop in p.hops)
-        ]
-        interaction_risks = [
-            r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)
-        ]
-
-        return {
-            "scan_id": graph.scan_id,
-            "tenant_id": graph.tenant_id,
-            "created_at": graph.created_at,
-            "nodes": [n.to_dict() for n in paged_nodes],
-            "edges": [e.to_dict() for e in paged_edges],
-            "attack_paths": attack_paths,
-            "interaction_risks": interaction_risks,
-            "stats": stats,
-            "pagination": pagination,
-        }
+        return await _graph_compute_call(_filtered_graph_response, graph, offset=offset, limit=limit)
 
     try:
         effective_scan_id, created_at, paged_nodes, total, next_cursor = await _graph_store_call(
@@ -1486,34 +1593,7 @@ async def get_fix_first_graph_view(
         scan_id=requested_scan_id,
         tenant_id=tenant,
     )
-    available_paths = _derived_attack_paths(graph)
-    ranked_paths = sorted(
-        (path for path in available_paths if _path_matches_focus(graph, path, cve=cve, package=package, agent=agent)),
-        key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
-        reverse=True,
-    )
-    cards = [_fix_first_card_for_path(graph, path, index + 1) for index, path in enumerate(ranked_paths[:limit])]
-    covered_findings = {finding for card in cards for finding in card["affected"]["findings"]}
-    return {
-        "scan_id": graph.scan_id,
-        "tenant_id": graph.tenant_id,
-        "created_at": graph.created_at,
-        "cards": cards,
-        "summary": {
-            "total_paths": len(available_paths),
-            "matched_paths": len(ranked_paths),
-            "returned_paths": len(cards),
-            "highest_risk": cards[0]["attack_path"]["composite_risk"] if cards else 0.0,
-            "covered_findings": len(covered_findings),
-            "node_count": len(graph.nodes),
-            "edge_count": len(graph.edges),
-        },
-        "focus": {
-            "cve": cve,
-            "package": package,
-            "agent": agent,
-        },
-    }
+    return await _graph_compute_call(_fix_first_graph_view_payload, graph, cve=cve, package=package, agent=agent, limit=limit)
 
 
 @router.get("/v1/graph/diff", tags=["graph"])
@@ -1574,10 +1654,12 @@ async def get_graph_attack_paths(
             scan_id=effective_scan_id,
             tenant_id=tenant,
         )
-        derived_paths = _derived_attack_paths(graph)
-        total = len(derived_paths)
-        paths = derived_paths[offset : offset + limit]
-        created_at = graph.created_at
+        effective_scan_id, created_at, paths, total = await _graph_compute_call(
+            _derived_attack_path_page,
+            graph,
+            offset=offset,
+            limit=limit,
+        )
     hop_ids = {hop for path in paths for hop in path.hops}
     nodes = await _graph_store_call(
         graph_store.nodes_by_ids,
@@ -1585,7 +1667,6 @@ async def get_graph_attack_paths(
         tenant_id=tenant,
         node_ids=hop_ids,
     )
-    nodes_by_id = {node.id: node for node in nodes}
     path_edges = await _graph_store_call(
         graph_store.edges_for_node_ids,
         scan_id=effective_scan_id,
@@ -1597,26 +1678,19 @@ async def get_graph_attack_paths(
         scan_id=effective_scan_id,
         tenant_id=tenant,
     )
-    if total and int(stats.get("attack_path_count") or 0) == 0:
-        stats = {
-            **stats,
-            "attack_path_count": total,
-            "max_attack_path_risk": max((path.composite_risk for path in paths), default=0.0),
-        }
-    return {
-        "scan_id": effective_scan_id,
-        "tenant_id": tenant,
-        "created_at": created_at,
-        "nodes": [node.to_dict() for node in nodes],
-        "edges": [edge.to_dict() for edge in path_edges],
-        "attack_paths": [
-            _serialize_attack_path(path, path_edges, nodes_by_id=nodes_by_id, rank=offset + index + 1, scan_id=effective_scan_id)
-            for index, path in enumerate(paths)
-        ],
-        "interaction_risks": [],
-        "stats": stats,
-        "pagination": _page_meta(total, offset, limit),
-    }
+    return await _graph_compute_call(
+        _serialize_attack_path_queue,
+        scan_id=effective_scan_id,
+        tenant=tenant,
+        created_at=created_at,
+        nodes=nodes,
+        path_edges=path_edges,
+        paths=paths,
+        total=total,
+        offset=offset,
+        limit=limit,
+        stats=stats,
+    )
 
 
 @router.get("/v1/graph/governance", tags=["graph"])
@@ -1954,19 +2028,7 @@ async def get_graph_clusters(
         scan_id=requested_scan_id,
         tenant_id=tenant,
     )
-    clusters = [
-        cluster
-        for cluster in build_semantic_clusters(graph.nodes.values(), graph.edges, min_members=min_members)
-        if cluster.kind in selected_kinds
-    ][:limit]
-    return {
-        "scan_id": graph.scan_id,
-        "tenant_id": graph.tenant_id,
-        "created_at": graph.created_at,
-        "clusters": [cluster.to_dict() for cluster in clusters],
-        "stats": semantic_cluster_stats(clusters),
-        "available_kinds": list(SEMANTIC_CLUSTER_KINDS),
-    }
+    return await _graph_compute_call(_semantic_cluster_payload, graph, selected_kinds=selected_kinds, min_members=min_members, limit=limit)
 
 
 @router.get("/v1/graph/agents", tags=["graph"])

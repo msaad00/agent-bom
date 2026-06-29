@@ -79,6 +79,11 @@ def _api_local_scans_enabled() -> bool:
     return configured.strip().lower() not in _LOCAL_SCAN_DISABLE_VALUES
 
 
+async def _scan_graph_compute_call(fn, /, *args, **kwargs):
+    """Run graph rendering/derivation for scan subresources off the event loop."""
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
+
 def _api_scan_root() -> Path:
     """Return the configured API filesystem scan root.
 
@@ -426,6 +431,70 @@ def _attach_unified_graph_view(payload: dict[str, Any], result: dict[str, Any], 
         **unified.to_dict(),
     }
     return payload
+
+
+def _context_graph_payload(result: dict[str, Any], *, agent: str | None, scan_id: str, tenant_id: str) -> dict[str, Any]:
+    from agent_bom.context_graph import (
+        NodeKind,
+        build_context_graph,
+        compute_interaction_risks,
+        find_lateral_paths,
+        to_serializable,
+    )
+
+    graph = build_context_graph(
+        result.get("agents", []),
+        result.get("blast_radius", []),
+    )
+    paths: list = []
+    if agent:
+        node_id = f"agent:{agent}"
+        if node_id in graph.nodes:
+            paths = find_lateral_paths(graph, node_id)
+    else:
+        for nid, node in graph.nodes.items():
+            if node.kind == NodeKind.AGENT:
+                paths.extend(find_lateral_paths(graph, nid))
+    risks = compute_interaction_risks(graph)
+
+    payload = to_serializable(graph, paths, risks)
+    return _attach_unified_graph_view(payload, result, scan_id=scan_id, tenant_id=tenant_id)
+
+
+def _graph_export_response(result: dict[str, Any], *, format: str, mermaid_limit: int) -> dict | str | PlainTextResponse:
+    from agent_bom.output.graph_export import (
+        build_graph_from_scan_data,
+        to_cypher,
+        to_dot,
+        to_graphml,
+        to_mermaid,
+    )
+    from agent_bom.output.graph_export import (
+        to_json as graph_to_json,
+    )
+
+    graph = build_graph_from_scan_data(result)
+
+    def _render_mermaid(g):
+        if mermaid_limit == 0:
+            return PlainTextResponse(
+                to_mermaid(g, max_nodes=None, max_edges=None),
+                media_type="text/plain",
+            )
+        return PlainTextResponse(
+            to_mermaid(g, max_nodes=mermaid_limit),
+            media_type="text/plain",
+        )
+
+    formats = {
+        "dot": lambda g: PlainTextResponse(to_dot(g), media_type="text/vnd.graphviz"),
+        "mermaid": _render_mermaid,
+        "graphml": lambda g: PlainTextResponse(to_graphml(g), media_type="application/xml"),
+        "cypher": lambda g: PlainTextResponse(to_cypher(g), media_type="text/plain"),
+    }
+    if format in formats:
+        return formats[format](graph)
+    return graph_to_json(graph)
 
 
 def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
@@ -796,32 +865,8 @@ async def get_context_graph(request: Request, job_id: str, agent: str | None = N
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
-    from agent_bom.context_graph import (
-        NodeKind,
-        build_context_graph,
-        compute_interaction_risks,
-        find_lateral_paths,
-        to_serializable,
-    )
-
-    graph = build_context_graph(
-        job.result.get("agents", []),
-        job.result.get("blast_radius", []),
-    )
-    paths: list = []
-    if agent:
-        node_id = f"agent:{agent}"
-        if node_id in graph.nodes:
-            paths = find_lateral_paths(graph, node_id)
-    else:
-        for nid, node in graph.nodes.items():
-            if node.kind == NodeKind.AGENT:
-                paths.extend(find_lateral_paths(graph, nid))
-    risks = compute_interaction_risks(graph)
-
-    payload = to_serializable(graph, paths, risks)
     tenant_id = str(getattr(request.state, "tenant_id", "") or "")
-    return _attach_unified_graph_view(payload, job.result, scan_id=job.job_id, tenant_id=tenant_id)
+    return await _scan_graph_compute_call(_context_graph_payload, job.result, agent=agent, scan_id=job.job_id, tenant_id=tenant_id)
 
 
 @router.get("/v1/scan/{job_id}/graph-export", tags=["scan"], response_model=None)
@@ -848,46 +893,12 @@ async def get_graph_export(
       ?format=cypher    Neo4j Cypher import script
       ?mermaid_limit=80 Maximum nodes rendered for Mermaid; 0 renders all
     """
-    from fastapi.responses import PlainTextResponse
-
     job = _job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:
         raise HTTPException(status_code=409, detail="Scan not completed yet")
 
-    from agent_bom.output.graph_export import (
-        build_graph_from_scan_data,
-        to_cypher,
-        to_dot,
-        to_graphml,
-        to_mermaid,
-    )
-    from agent_bom.output.graph_export import (
-        to_json as graph_to_json,
-    )
-
     result = job.result if isinstance(job.result, dict) else {}
-    graph = build_graph_from_scan_data(result)
-
-    def _render_mermaid(g):
-        if mermaid_limit == 0:
-            return PlainTextResponse(
-                to_mermaid(g, max_nodes=None, max_edges=None),
-                media_type="text/plain",
-            )
-        return PlainTextResponse(
-            to_mermaid(g, max_nodes=mermaid_limit),
-            media_type="text/plain",
-        )
-
-    _formats = {
-        "dot": lambda g: PlainTextResponse(to_dot(g), media_type="text/vnd.graphviz"),
-        "mermaid": _render_mermaid,
-        "graphml": lambda g: PlainTextResponse(to_graphml(g), media_type="application/xml"),
-        "cypher": lambda g: PlainTextResponse(to_cypher(g), media_type="text/plain"),
-    }
-    if format in _formats:
-        return _formats[format](graph)
-    return graph_to_json(graph)
+    return await _scan_graph_compute_call(_graph_export_response, result, format=format, mermaid_limit=mermaid_limit)
 
 
 @router.get("/v1/scan/{job_id}/licenses", tags=["scan"])

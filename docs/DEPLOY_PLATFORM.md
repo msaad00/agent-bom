@@ -146,8 +146,9 @@ just pointed at a hosted scanner instead of a local one.
 For a gated customer-0 URL, start with the smaller hosted POC runbook instead
 of presenting a generally available SaaS product:
 [`HOSTED_POC.md`](HOSTED_POC.md). The recommended first proof is one AWS VM
-behind HTTPS; the Snowflake Native App lane remains the enterprise
-customer-owned install path.
+behind HTTPS with `deploy/docker-compose.hosted-poc.yml` layered on top of the
+platform compose so Caddy is the only public listener. The Snowflake Native App
+lane remains the enterprise customer-owned install path.
 
 ---
 

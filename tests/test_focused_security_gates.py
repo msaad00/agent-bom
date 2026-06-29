@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
+from rich.console import Console
 
 from agent_bom.cli import main
+from agent_bom.cli._focused_commands import _has_finding_at_or_above
+from agent_bom.cli.agents._preflight import run_iac_only_scan
 from agent_bom.iac.models import IaCFinding, ScannerVerdict, ScanResult
 from agent_bom.secret_scanner import SecretFinding, SecretScanResult
 
@@ -143,6 +149,79 @@ def test_iac_command_exits_zero_when_clean(tmp_path: Path):
 
     assert result.exit_code == 0
     assert "no misconfigurations" in " ".join(result.output.split())
+
+
+def test_focused_gate_uses_canonical_severity_order():
+    findings = [SimpleNamespace(severity="medium"), SimpleNamespace(severity="unknown")]
+
+    assert _has_finding_at_or_above(findings, "medium") is True
+    assert _has_finding_at_or_above(findings, "high") is False
+
+
+def test_iac_preflight_gate_uses_canonical_severity_order(tmp_path: Path):
+    finding = IaCFinding(
+        rule_id="TF-TEST",
+        severity="medium",
+        title="Open storage",
+        message="Bucket is public",
+        file_path="main.tf",
+        line_number=1,
+        category="terraform",
+    )
+    scan_result = ScanResult(findings=[finding], verdicts=[ScannerVerdict("terraform", "ran", 1)])
+
+    with patch("agent_bom.iac.scan_iac_with_context", return_value=scan_result):
+        run_iac_only_scan(
+            con=Console(file=StringIO(), force_terminal=False),
+            iac_paths=(str(tmp_path),),
+            k8s_live=False,
+            k8s_live_namespace="default",
+            k8s_live_all_namespaces=False,
+            k8s_live_context=None,
+            output=None,
+            output_format="console",
+            no_tree=False,
+            quiet=True,
+            no_color=True,
+            open_report=False,
+            compliance_export=None,
+            mermaid_mode="auto",
+            push_gateway=None,
+            otel_endpoint=None,
+            baseline=None,
+            delta_mode=False,
+            verbose=False,
+            exclude_unfixable=False,
+            fixable_only=False,
+            fail_on_severity="high",
+        )
+
+    with patch("agent_bom.iac.scan_iac_with_context", return_value=scan_result):
+        with pytest.raises(SystemExit):
+            run_iac_only_scan(
+                con=Console(file=StringIO(), force_terminal=False),
+                iac_paths=(str(tmp_path),),
+                k8s_live=False,
+                k8s_live_namespace="default",
+                k8s_live_all_namespaces=False,
+                k8s_live_context=None,
+                output=None,
+                output_format="console",
+                no_tree=False,
+                quiet=True,
+                no_color=True,
+                open_report=False,
+                compliance_export=None,
+                mermaid_mode="auto",
+                push_gateway=None,
+                otel_endpoint=None,
+                baseline=None,
+                delta_mode=False,
+                verbose=False,
+                exclude_unfixable=False,
+                fixable_only=False,
+                fail_on_severity="medium",
+            )
 
 
 def test_drop_unfixable_drops_findings_without_fix():

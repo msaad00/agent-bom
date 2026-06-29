@@ -101,6 +101,7 @@ def test_store_crud_round_trip() -> None:
     fetched = store.get("tenant-a", record.id)
     assert fetched is not None
     assert fetched.display_name == "prod-readonly"
+    assert fetched.last_scan_id is None
     assert [r.id for r in store.list_for_tenant("tenant-a")] == [record.id]
 
     assert store.delete("tenant-a", record.id) is True
@@ -138,24 +139,32 @@ def test_sqlite_store_crud_and_isolation(tmp_path: Any) -> None:
     assert store.get("tenant-b", b.id) is None
 
 
-def test_sqlite_auth_params_column_present_defaults_and_round_trips(tmp_path: Any) -> None:
+def test_sqlite_last_scan_id_and_auth_params_columns_present_defaults_and_round_trips(tmp_path: Any) -> None:
     db_path = str(tmp_path / "connections.db")
     store = SQLiteConnectionStore(db_path)
 
-    # The migrated column exists.
+    # The migrated columns exist.
     columns = {row[1] for row in sqlite3.connect(db_path).execute("PRAGMA table_info(cloud_connections)").fetchall()}
+    assert "last_scan_id" in columns
     assert "auth_params" in columns
 
-    # A record with no auth_params defaults to an empty dict on read-back.
+    # A record with no last_scan_id/auth_params defaults cleanly on read-back.
     plain = _record("tenant-a")
     store.put(plain)
-    assert store.get("tenant-a", plain.id).auth_params == {}
+    fetched_plain = store.get("tenant-a", plain.id)
+    assert fetched_plain is not None
+    assert fetched_plain.last_scan_id is None
+    assert fetched_plain.auth_params == {}
 
-    # A record with auth_params round-trips the JSON unchanged.
+    # A record with last_scan_id/auth_params round-trips unchanged.
     with_params = _record("tenant-a", provider="azure")
+    with_params.last_scan_id = "scan-123"
     with_params.auth_params = {"tenant_id": "t-guid", "subscription_id": "s-guid"}
     store.put(with_params)
-    assert store.get("tenant-a", with_params.id).auth_params == {"tenant_id": "t-guid", "subscription_id": "s-guid"}
+    fetched_params = store.get("tenant-a", with_params.id)
+    assert fetched_params is not None
+    assert fetched_params.last_scan_id == "scan-123"
+    assert fetched_params.auth_params == {"tenant_id": "t-guid", "subscription_id": "s-guid"}
 
 
 def test_sqlite_auth_params_migration_is_idempotent_on_legacy_table(tmp_path: Any) -> None:
@@ -179,10 +188,12 @@ def test_sqlite_auth_params_migration_is_idempotent_on_legacy_table(tmp_path: An
     store = SQLiteConnectionStore(db_path)  # runs the idempotent migration
     legacy = store.get("tenant-a", "legacy-1")
     assert legacy is not None
+    assert legacy.last_scan_id is None
     assert legacy.auth_params == {}
     # Re-init is a no-op (idempotent) and the backfilled column stays NOT NULL.
     store.init_schema()
     columns = {row[1] for row in sqlite3.connect(db_path).execute("PRAGMA table_info(cloud_connections)").fetchall()}
+    assert "last_scan_id" in columns
     assert "auth_params" in columns
 
 
@@ -644,6 +655,31 @@ def test_api_create_response_never_contains_secret() -> None:
     assert body["has_external_id"] is True
     assert body["provider"] == "aws"
     assert body["status"] == STATUS_PENDING
+    assert body["last_scan_id"] is None
+
+
+def test_api_list_get_include_last_scan_id_and_never_contain_secret() -> None:
+    store = InMemoryConnectionStore()
+    record = _record("tenant-alpha")
+    record.status = "active"
+    record.last_scan_at = "2026-06-27T01:00:00+00:00"
+    record.last_scan_id = "scan-123"
+    store.put(record)
+    set_connection_store(store)
+
+    client = TestClient(_app())
+    get_body = client.get(f"/v1/cloud/connections/{record.id}", headers=_proxy_headers()).json()
+    list_body = client.get("/v1/cloud/connections", headers=_proxy_headers()).json()
+    listed = list_body["connections"][0]
+
+    assert get_body["last_scan_id"] == "scan-123"
+    assert listed["last_scan_id"] == "scan-123"
+    for body in (get_body, listed):
+        flat = str(body)
+        assert "super-secret-external-id" not in flat
+        assert "external_id" not in body
+        assert "external_id_encrypted" not in body
+        assert body["has_external_id"] is True
 
 
 def test_api_list_get_delete_tenant_scoped() -> None:
@@ -1102,6 +1138,7 @@ def test_scan_launch_brokers_runs_persists_and_marks_active(monkeypatch: pytest.
     assert body["provider"] == "aws"
     scan_id = body["scan_id"]
     assert scan_id
+    assert body["connection"]["last_scan_id"] == scan_id
     assert body["cis_benchmark"]["total"] == 2
     assert body["inventory"]["status"] == "ok"
 
@@ -1119,7 +1156,10 @@ def test_scan_launch_brokers_runs_persists_and_marks_active(monkeypatch: pytest.
     fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
     assert fetched["status"] == "active"
     assert fetched["last_scan_at"]
+    assert fetched["last_scan_id"] == scan_id
     assert fetched["status_detail"] == ""
+    listing = client.get("/v1/cloud/connections", headers=_proxy_headers(tenant="tenant-alpha")).json()
+    assert listing["connections"][0]["last_scan_id"] == scan_id
     # No secret anywhere in the response surface.
     assert "super-secret-external-id" not in str(body)
 
@@ -1138,6 +1178,7 @@ def test_scan_failure_marks_error_without_secret(monkeypatch: pytest.MonkeyPatch
     assert fetched["status_detail"]
     assert "super-secret-external-id" not in fetched["status_detail"]
     assert fetched["last_scan_at"] is None
+    assert fetched["last_scan_id"] is None
 
 
 def test_scan_requires_scan_permission(monkeypatch: pytest.MonkeyPatch) -> None:

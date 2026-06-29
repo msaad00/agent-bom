@@ -9,13 +9,14 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
+from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 
 
-def _request_for_tenant(tenant_id: str) -> SimpleNamespace:
-    return SimpleNamespace(state=SimpleNamespace(tenant_id=tenant_id or "default"))
+def _request_for_tenant(tenant_id: str | None = None) -> SimpleNamespace:
+    return SimpleNamespace(state=SimpleNamespace(tenant_id=resolve_mcp_tool_tenant_id(tenant_id)))
 
 
 def _csv_set(value: str) -> set[str]:
@@ -263,7 +264,7 @@ async def shield_status_impl(
     try:
         from agent_bom.api.routes.proxy import shield_status
 
-        payload = await shield_status(session_id=session_id or "default")
+        payload = await shield_status(cast(Any, _request_for_tenant(None)), session_id=session_id or "default")
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP shield status error")
@@ -295,7 +296,11 @@ async def shield_start_impl(
         from agent_bom.api.routes.proxy import shield_start
 
         bounded_window = max(1.0, min(float(correlation_window), 3600.0))
-        payload = await shield_start(session_id=session_id or "default", correlation_window=bounded_window)
+        payload = await shield_start(
+            cast(Any, _request_for_tenant(context["tenant_id"])),
+            session_id=session_id or "default",
+            correlation_window=bounded_window,
+        )
         payload["mcp_write_policy"] = {
             "required_role": "admin",
             "required_scope": "shield:write",
@@ -333,7 +338,7 @@ async def shield_unblock_impl(
     try:
         from agent_bom.api.routes.proxy import shield_unblock
 
-        payload = await shield_unblock(session_id=session_id or "default")
+        payload = await shield_unblock(cast(Any, _request_for_tenant(context["tenant_id"])), session_id=session_id or "default")
         payload["mcp_write_policy"] = {
             "required_role": "admin",
             "required_scope": "shield:write",

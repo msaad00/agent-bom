@@ -278,20 +278,36 @@ class LocalAnalyticsStore:
             conn.commit()
         return scan_id
 
-    def list_scan_runs(self, *, limit: int = 20) -> list[dict[str, Any]]:
+    def list_scan_runs(self, *, limit: int = 20, tenant_id: str | None = None) -> list[dict[str, Any]]:
         """Return recent scan runs newest first."""
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT run_id, scan_id, generated_at, recorded_at, tenant_id, source, artifact_path,
-                       total_agents, total_packages, total_vulnerabilities,
-                       critical_findings, high_findings
-                FROM scan_runs
-                ORDER BY generated_at DESC
-                LIMIT ?
-                """,
-                (max(1, int(limit)),),
-            ).fetchall()
+            tenant_filter = (tenant_id or "").strip()
+            bounded_limit = max(1, int(limit))
+            if tenant_filter:
+                rows = conn.execute(
+                    """
+                    SELECT run_id, scan_id, generated_at, recorded_at, tenant_id, source, artifact_path,
+                           total_agents, total_packages, total_vulnerabilities,
+                           critical_findings, high_findings
+                    FROM scan_runs
+                    WHERE tenant_id = ?
+                    ORDER BY generated_at DESC
+                    LIMIT ?
+                    """,
+                    (tenant_filter, bounded_limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT run_id, scan_id, generated_at, recorded_at, tenant_id, source, artifact_path,
+                           total_agents, total_packages, total_vulnerabilities,
+                           critical_findings, high_findings
+                    FROM scan_runs
+                    ORDER BY generated_at DESC
+                    LIMIT ?
+                    """,
+                    (bounded_limit,),
+                ).fetchall()
         return [dict(row) for row in rows]
 
     def query(self, sql: str, params: Iterable[Any] = ()) -> list[dict[str, Any]]:

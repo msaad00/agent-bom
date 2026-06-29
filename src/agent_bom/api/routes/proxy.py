@@ -1000,19 +1000,23 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
 
 # ── Shield / Deep Defense endpoints ──────────────────────────────────────────
 
-# Per-session protection engines keyed by session_id.
-# Zero trust: each session gets its own engine — one session's CRITICAL
-# threat cannot block another session's tool calls.
-_shield_engines: dict[str, ProtectionEngine] = {}
+# Per-tenant, per-session protection engines. Zero trust: one tenant/session's
+# CRITICAL threat cannot block or reveal another tenant/session's tool calls.
+_ShieldKey = tuple[str, str]
+_shield_engines: dict[_ShieldKey, ProtectionEngine] = {}
 _MAX_SHIELD_SESSIONS = 64  # bound memory; evict oldest idle session
 
 
-def _get_engine(session_id: str) -> ProtectionEngine | None:
-    return _shield_engines.get(session_id)
+def _shield_key(tenant_id: str, session_id: str) -> _ShieldKey:
+    return (tenant_id or "default", session_id or "default")
+
+
+def _get_engine(tenant_id: str, session_id: str) -> ProtectionEngine | None:
+    return _shield_engines.get(_shield_key(tenant_id, session_id))
 
 
 @router.post("/v1/shield/start", tags=["shield"])
-async def shield_start(session_id: str = "default", correlation_window: float = 30.0) -> dict:
+async def shield_start(request: Request, session_id: str = "default", correlation_window: float = 30.0) -> dict:
     """Start the deep defense protection engine for a session.
 
     Each session_id gets an isolated engine — zero trust, no cross-session
@@ -1025,10 +1029,13 @@ async def shield_start(session_id: str = "default", correlation_window: float = 
     from agent_bom.alerts.dispatcher import AlertDispatcher
     from agent_bom.runtime.protection import ProtectionEngine
 
-    existing = _get_engine(session_id)
+    tenant_id = _request_tenant_id(request)
+    key = _shield_key(tenant_id, session_id)
+    existing = _get_engine(tenant_id, session_id)
     if existing is not None and existing.active:
         return {
             "status": "already_active",
+            "tenant_id": tenant_id,
             "session_id": session_id,
             **existing.status(),
         }
@@ -1036,7 +1043,7 @@ async def shield_start(session_id: str = "default", correlation_window: float = 
     # Evict oldest idle session if at capacity
     if len(_shield_engines) >= _MAX_SHIELD_SESSIONS:
         idle = next(
-            (sid for sid, eng in _shield_engines.items() if not eng.active),
+            (candidate_key for candidate_key, eng in _shield_engines.items() if not eng.active),
             next(iter(_shield_engines)),  # fallback: evict oldest
         )
         old = _shield_engines.pop(idle)
@@ -1059,23 +1066,26 @@ async def shield_start(session_id: str = "default", correlation_window: float = 
         correlation_window=correlation_window,
     )
     engine.start()
-    _shield_engines[session_id] = engine
-    return {"status": "started", "session_id": session_id, **engine.status()}
+    _shield_engines[key] = engine
+    return {"status": "started", "tenant_id": tenant_id, "session_id": session_id, **engine.status()}
 
 
 @router.get("/v1/shield/status", tags=["shield"])
-async def shield_status(session_id: str = "default") -> dict:
+async def shield_status(request: Request, session_id: str = "default") -> dict:
     """Get current shield threat assessment for a session."""
-    engine = _get_engine(session_id)
+    tenant_id = _request_tenant_id(request)
+    engine = _get_engine(tenant_id, session_id)
     if engine is None or not engine.active:
         return {
             "active": False,
+            "tenant_id": tenant_id,
             "session_id": session_id,
             "message": "Shield not started. POST /v1/shield/start to activate.",
         }
 
     assessment = engine.assess_threat()
     return {
+        "tenant_id": tenant_id,
         "session_id": session_id,
         **engine.status(),
         "assessment": {
@@ -1089,17 +1099,18 @@ async def shield_status(session_id: str = "default") -> dict:
 
 
 @router.post("/v1/shield/unblock", tags=["shield"])
-async def shield_unblock(session_id: str = "default") -> dict:
+async def shield_unblock(request: Request, session_id: str = "default") -> dict:
     """Deactivate kill-switch for a session and reset to ELEVATED."""
-    engine = _get_engine(session_id)
+    tenant_id = _request_tenant_id(request)
+    engine = _get_engine(tenant_id, session_id)
     if engine is None or not engine.active:
-        return {"status": "not_active", "session_id": session_id}
+        return {"status": "not_active", "tenant_id": tenant_id, "session_id": session_id}
 
     if not engine.is_blocked:
-        return {"status": "not_blocked", "session_id": session_id}
+        return {"status": "not_blocked", "tenant_id": tenant_id, "session_id": session_id}
 
     engine.unblock()
-    return {"status": "unblocked", "session_id": session_id, **engine.status()}
+    return {"status": "unblocked", "tenant_id": tenant_id, "session_id": session_id, **engine.status()}
 
 
 @router.post("/v1/shield/break-glass", tags=["shield"])
@@ -1113,13 +1124,14 @@ async def break_glass(request: Request, session_id: str = "default", reason: str
     if role != "admin":
         raise HTTPException(status_code=403, detail="Break-glass requires admin role")
 
-    engine = _get_engine(session_id)
+    tenant_id = _request_tenant_id(request)
+    engine = _get_engine(tenant_id, session_id)
     if engine is None or not engine.active:
         # A break-glass ATTEMPT is a privileged action and must always be
         # audited — including when there is no active Shield session to
         # override. Record the attempt + outcome before short-circuiting.
         _audit_break_glass(request, role, session_id, reason, was_blocked=False, outcome="not_active")
-        return {"status": "not_active", "session_id": session_id}
+        return {"status": "not_active", "tenant_id": tenant_id, "session_id": session_id}
 
     was_blocked = engine.is_blocked
     if was_blocked:
@@ -1130,6 +1142,7 @@ async def break_glass(request: Request, session_id: str = "default", reason: str
 
     return {
         "status": "break_glass_activated",
+        "tenant_id": tenant_id,
         "session_id": session_id,
         "was_blocked": was_blocked,
         "reason": reason,

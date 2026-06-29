@@ -52,3 +52,24 @@ def resolve_mcp_tenant_id() -> str:
             MCP_TENANT_ENV_VAR,
         )
     return DEFAULT_TENANT_ID
+
+
+def resolve_mcp_tool_tenant_id(requested_tenant_id: str | None = None) -> str:
+    """Return the tenant a MCP tool must execute under.
+
+    MCP clients may still send a ``tenant_id`` argument for backward
+    compatibility, but that value is not authentication. The server process
+    tenant binding is authoritative so one MCP caller cannot self-select a
+    different tenant at tool-call time.
+    """
+    resolved = resolve_mcp_tenant_id()
+    requested = (requested_tenant_id or "").strip()
+    if requested and requested not in {resolved, DEFAULT_TENANT_ID}:
+        logger.warning(
+            "Ignoring MCP tool-supplied tenant_id=%r; using server-bound tenant_id=%r. "
+            "Set %s on the MCP server process to change scope.",
+            requested,
+            resolved,
+            MCP_TENANT_ENV_VAR,
+        )
+    return resolved

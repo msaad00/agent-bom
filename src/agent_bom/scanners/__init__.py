@@ -47,6 +47,7 @@ from agent_bom.owasp import tag_blast_radius
 from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
 from agent_bom.package_utils import (
+    alpine_osv_fallback_ecosystems,
     alpine_release_branch,
     canonical_package_identity,
     canonical_package_key,
@@ -265,8 +266,6 @@ _NON_OSV_ECOSYSTEMS: frozenset[str] = frozenset(
 )
 
 _DEBIAN_OSV_FALLBACKS = ("Debian:11", "Debian:12", "Debian:13", "Debian:14")
-from agent_bom.package_utils import alpine_osv_fallback_ecosystems
-
 _ALPINE_OSV_FALLBACKS = alpine_osv_fallback_ecosystems()
 
 

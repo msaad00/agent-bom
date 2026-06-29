@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urljoin, urlparse
 
+from agent_bom.package_utils import ALPINE_SECDB_BRANCHES as _ALPINE_SECDB_BRANCHES
 from agent_bom.scanners.risk import parse_cvss_vector
 
 _logger = logging.getLogger(__name__)
@@ -62,7 +63,6 @@ _KEV_JSON_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_
 _GHSA_REST_URL = "https://api.github.com/advisories"
 _NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 _ALPINE_SECDB_BASE_URL = "https://secdb.alpinelinux.org"
-from agent_bom.package_utils import ALPINE_SECDB_BRANCHES as _ALPINE_SECDB_BRANCHES
 _ALPINE_SECDB_REPOS = ("main", "community")
 
 # Debian Security Tracker — authoritative per-release vulnerability status with

@@ -295,19 +295,20 @@ describe("ConnectionsPage", () => {
       expect(screen.getByText("Production account")).toBeInTheDocument(),
     );
 
-    fireEvent.change(
-      screen.getByLabelText(
-        "Recurring scan schedule for Production account",
-      ),
-      { target: { value: "60" } },
-    );
+    fireEvent.change(screen.getByLabelText("Scan schedule"), {
+      target: { value: "60" },
+    });
 
     await waitFor(() =>
       expect(apiMock.updateCloudConnection).toHaveBeenCalledWith("conn-1", {
         scan_interval_minutes: 60,
       }),
     );
-    await waitFor(() => expect(screen.getByText("Runs every 1h")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText("Production account scan schedule updated."),
+      ).toBeInTheDocument(),
+    );
     expect(document.body.textContent).not.toContain(SECRET);
   });
 

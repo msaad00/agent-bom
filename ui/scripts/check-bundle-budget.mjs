@@ -18,8 +18,8 @@ const BUDGETS = {
   // Includes the cloud CIS benchmark drill-down (per-cloud checks + remediation) on the compliance dashboard.
   // Includes the cross-domain overview landing page entrypoint and API client contract.
   // Includes the self-service cloud-connections page + Add Cloud Account wizard.
+  // Includes recurring cloud-connection scan schedules; keep small CI variance headroom.
   // Includes the repo folder/file structure graph layer icons and code-layer filters.
-  // Includes the cloud-connection scan schedule controls on the connections page.
   totalClientJsBytes: 3_075_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,

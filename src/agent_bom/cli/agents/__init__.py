@@ -2270,6 +2270,9 @@ def scan(
                         "context": f.context,
                         "ai_analysis": f.ai_analysis,
                         "ai_adjusted_severity": f.ai_adjusted_severity,
+                        "ai_source": f.ai_source,
+                        "ai_model": f.ai_model,
+                        "ai_confidence": f.ai_confidence,
                     }
                     for f in _skill_audit_obj.findings
                 ],

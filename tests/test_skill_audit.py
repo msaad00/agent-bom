@@ -380,6 +380,9 @@ def test_skill_finding_has_ai_fields():
     )
     assert f.ai_analysis is None
     assert f.ai_adjusted_severity is None
+    assert f.ai_source is None
+    assert f.ai_model is None
+    assert f.ai_confidence is None
 
 
 # ── 16. AI fields on SkillAuditResult ──────────────────────────────────────

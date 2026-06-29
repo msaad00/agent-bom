@@ -29,6 +29,7 @@ import logging
 import os
 import re
 import threading
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 import httpx
@@ -91,6 +92,107 @@ OLLAMA_MODEL_PREFERENCE = [
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class AIProviderDescriptor:
+    """Public, non-secret provider contract for AI enrichment."""
+
+    name: str
+    display_name: str
+    local: bool
+    requires_network: bool
+    required_env: tuple[str, ...] = ()
+    optional_extra: str = ""
+    supports_structured_output: bool = False
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "display_name": self.display_name,
+            "local": self.local,
+            "requires_network": self.requires_network,
+            "required_env": list(self.required_env),
+            "optional_extra": self.optional_extra,
+            "supports_structured_output": self.supports_structured_output,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AIProviderStatus:
+    """Availability status without leaking configured token values."""
+
+    descriptor: AIProviderDescriptor
+    installed: bool
+    configured: bool
+    available: bool
+    reason: str
+
+    def to_dict(self) -> dict[str, object]:
+        payload = self.descriptor.to_dict()
+        payload.update(
+            {
+                "installed": self.installed,
+                "configured": self.configured,
+                "available": self.available,
+                "reason": self.reason,
+            }
+        )
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class AIProviderResolution:
+    """Resolved provider/model decision for one enrichment run."""
+
+    requested_model: str
+    model: str
+    provider: AIProviderDescriptor | None
+    available: bool
+    status: str
+    reason: str = ""
+    fallback_from: str | None = None
+
+    def to_metadata(self) -> dict[str, object]:
+        return {
+            "schema_version": "1",
+            "requested_model": self.requested_model,
+            "model": self.model,
+            "provider": self.provider.name if self.provider else None,
+            "provider_display_name": self.provider.display_name if self.provider else None,
+            "local": self.provider.local if self.provider else False,
+            "requires_network": self.provider.requires_network if self.provider else False,
+            "status": self.status,
+            "reason": self.reason,
+            "fallback_from": self.fallback_from,
+        }
+
+
+AI_PROVIDER_DESCRIPTORS: dict[str, AIProviderDescriptor] = {
+    "ollama": AIProviderDescriptor(
+        name="ollama",
+        display_name="Ollama",
+        local=True,
+        requires_network=False,
+        optional_extra="core",
+        supports_structured_output=True,
+    ),
+    "huggingface": AIProviderDescriptor(
+        name="huggingface",
+        display_name="HuggingFace Inference API",
+        local=False,
+        requires_network=True,
+        required_env=("HF_TOKEN",),
+        optional_extra="huggingface",
+    ),
+    "litellm": AIProviderDescriptor(
+        name="litellm",
+        display_name="litellm",
+        local=False,
+        requires_network=True,
+        optional_extra="ai-enrich",
+    ),
+}
+
+
 # ─── Provider detection ──────────────────────────────────────────────────────
 
 
@@ -135,6 +237,99 @@ def _get_ollama_models() -> list[str]:
     return []
 
 
+def _provider_name_for_model(model: str) -> str:
+    if model.startswith("ollama/"):
+        return "ollama"
+    if model.startswith("huggingface/"):
+        return "huggingface"
+    return "litellm"
+
+
+def _provider_status(provider_name: str) -> AIProviderStatus:
+    descriptor = AI_PROVIDER_DESCRIPTORS[provider_name]
+    if provider_name == "ollama":
+        available = _detect_ollama()
+        return AIProviderStatus(
+            descriptor=descriptor,
+            installed=True,
+            configured=available,
+            available=available,
+            reason="available" if available else "ollama is not reachable at the configured local endpoint",
+        )
+    if provider_name == "huggingface":
+        installed = _check_huggingface()
+        configured = bool(os.environ.get("HF_TOKEN"))
+        return AIProviderStatus(
+            descriptor=descriptor,
+            installed=installed,
+            configured=configured,
+            available=installed and configured,
+            reason="available"
+            if installed and configured
+            else "huggingface-hub and HF_TOKEN are required for HuggingFace enrichment",
+        )
+    installed = _check_litellm()
+    return AIProviderStatus(
+        descriptor=descriptor,
+        installed=installed,
+        configured=installed,
+        available=installed,
+        reason="available" if installed else "litellm is not installed",
+    )
+
+
+def describe_ai_providers() -> list[dict[str, object]]:
+    """Return non-secret provider capability and availability metadata."""
+    return [_provider_status(name).to_dict() for name in ("ollama", "huggingface", "litellm")]
+
+
+def _resolve_ai_provider(model: str = DEFAULT_MODEL) -> AIProviderResolution:
+    """Resolve the provider/model used by AI enrichment with explicit fallback metadata."""
+    requested_model = model
+    resolved_model = _resolve_model(model) if model == DEFAULT_MODEL else model
+    preferred_name = _provider_name_for_model(resolved_model)
+    preferred_status = _provider_status(preferred_name)
+    if preferred_status.available:
+        return AIProviderResolution(
+            requested_model=requested_model,
+            model=resolved_model,
+            provider=preferred_status.descriptor,
+            available=True,
+            status="active",
+        )
+
+    if preferred_name == "ollama":
+        hf_status = _provider_status("huggingface")
+        if hf_status.available:
+            return AIProviderResolution(
+                requested_model=requested_model,
+                model=f"huggingface/{HF_DEFAULT_MODEL}",
+                provider=hf_status.descriptor,
+                available=True,
+                status="active",
+                fallback_from=resolved_model,
+            )
+        litellm_status = _provider_status("litellm")
+        if litellm_status.available:
+            return AIProviderResolution(
+                requested_model=requested_model,
+                model=resolved_model,
+                provider=litellm_status.descriptor,
+                available=True,
+                status="active",
+                fallback_from=resolved_model,
+            )
+
+    return AIProviderResolution(
+        requested_model=requested_model,
+        model=resolved_model,
+        provider=preferred_status.descriptor,
+        available=False,
+        status="unavailable",
+        reason=preferred_status.reason,
+    )
+
+
 def _resolve_model(model: str = DEFAULT_MODEL) -> str:
     """Auto-detect the best available model.
 
@@ -168,11 +363,7 @@ def _resolve_model(model: str = DEFAULT_MODEL) -> str:
 
 def _has_any_provider(model: str) -> bool:
     """Check if any LLM provider is available for the given model."""
-    if model.startswith("ollama/"):
-        return _detect_ollama() or _check_huggingface() or _check_litellm()
-    if model.startswith("huggingface/"):
-        return _check_huggingface()
-    return _check_litellm()
+    return _resolve_ai_provider(model).available
 
 
 # ─── LLM calls ───────────────────────────────────────────────────────────────
@@ -560,7 +751,7 @@ async def enrich_blast_radii(
     """
     if not blast_radii:
         return 0
-    if not _check_litellm() and not _detect_ollama():
+    if not _has_any_provider(model):
         return 0
 
     enriched = 0
@@ -602,7 +793,7 @@ async def generate_executive_summary(
     """Generate an LLM-powered executive summary of the scan."""
     if not report.blast_radii:
         return None
-    if not _check_litellm() and not _detect_ollama():
+    if not _has_any_provider(model):
         return None
 
     prompt = _build_executive_summary_prompt(report)
@@ -616,7 +807,7 @@ async def generate_threat_chains(
     """Generate LLM-powered threat chain analysis."""
     if not report.blast_radii:
         return []
-    if not _check_litellm() and not _detect_ollama():
+    if not _has_any_provider(model):
         return []
 
     prompt = _build_threat_chain_prompt(report)
@@ -634,39 +825,17 @@ async def run_ai_enrichment(
     skill_audit: "SkillAuditResult | None" = None,
 ) -> None:
     """Run all AI enrichment steps on a report. Modifies report in-place."""
-    # Auto-detect best model if using the default (which requires a paid key)
-    if model == DEFAULT_MODEL:
-        model = _resolve_model(model)
-
-    # Determine provider for display
-    if model.startswith("ollama/"):
-        if not _detect_ollama():
-            # Check HuggingFace fallback
-            if _check_huggingface() and os.environ.get("HF_TOKEN"):
-                model = f"huggingface/{HF_DEFAULT_MODEL}"
-                provider = "HuggingFace Inference API (free)"
-            elif _check_litellm():
-                provider = "litellm (Ollama unavailable)"
-            else:
-                console.print("  [yellow]Ollama not running at localhost:11434. Skipping AI enrichment.[/yellow]")
-                console.print("  [dim]Start with: ollama serve && ollama pull llama3.2[/dim]")
-                console.print("  [dim]Or: pip install 'agent-bom[huggingface]' + set HF_TOKEN[/dim]")
-                return
-        else:
-            provider = "Ollama (local, free)"
-    elif model.startswith("huggingface/"):
-        if not _check_huggingface():
-            console.print("  [yellow]huggingface-hub not installed. pip install 'agent-bom[huggingface]'[/yellow]")
-            return
-        provider = "HuggingFace Inference API (free)"
-    elif _check_litellm():
-        provider = "litellm"
-    else:
+    resolution = _resolve_ai_provider(model)
+    report.ai_enrichment_metadata = resolution.to_metadata()
+    if not resolution.available:
         console.print("  [yellow]No LLM provider available. Skipping AI enrichment.[/yellow]")
         console.print("  [dim]Option 1: Install Ollama (free, local) — ollama.com[/dim]")
         console.print("  [dim]Option 2: pip install 'agent-bom[huggingface]' + set HF_TOKEN[/dim]")
         console.print("  [dim]Option 3: pip install 'agent-bom[ai-enrich]' + set API key[/dim]")
         return
+
+    model = resolution.model
+    provider = resolution.provider.display_name if resolution.provider else "unknown"
 
     console.print(f"\n[bold blue]AI Enrichment[/bold blue]  [dim]model: {model} via {provider}[/dim]\n")
 
@@ -797,7 +966,13 @@ def _parse_skill_analysis_response(response: str) -> dict | None:
     return None
 
 
-def _apply_skill_analysis(audit: "SkillAuditResult", ai_data: dict) -> None:
+def _apply_skill_analysis(
+    audit: "SkillAuditResult",
+    ai_data: dict,
+    *,
+    ai_source: str | None = None,
+    ai_model: str | None = None,
+) -> None:
     """Apply parsed AI analysis results to a SkillAuditResult in-place.
 
     Updates existing findings with AI verdicts, adds new AI-detected findings,
@@ -824,6 +999,11 @@ def _apply_skill_analysis(audit: "SkillAuditResult", ai_data: dict) -> None:
         verdict = review.get("verdict", "confirmed")
         reasoning = review.get("reasoning", "")
         matched.ai_analysis = reasoning
+        matched.ai_source = ai_source
+        matched.ai_model = ai_model
+        confidence = review.get("confidence")
+        if isinstance(confidence, str) and confidence.lower() in {"high", "medium", "low"}:
+            matched.ai_confidence = confidence.lower()
 
         if verdict == "false_positive":
             matched.ai_adjusted_severity = "false_positive"
@@ -850,6 +1030,11 @@ def _apply_skill_analysis(audit: "SkillAuditResult", ai_data: dict) -> None:
                 source_file=source,
                 recommendation=new.get("recommendation", ""),
                 context="ai_analysis",
+                ai_source=ai_source,
+                ai_model=ai_model,
+                ai_confidence=str(new.get("confidence", "medium")).lower()
+                if str(new.get("confidence", "medium")).lower() in {"high", "medium", "low"}
+                else "medium",
             )
         )
 
@@ -875,13 +1060,11 @@ async def enrich_skill_audit(
         return False
 
     # Guard: need an LLM provider
-    resolved_model = model
-    if model == DEFAULT_MODEL:
-        resolved_model = _resolve_model(model)
-
-    if not _has_any_provider(resolved_model):
+    resolution = _resolve_ai_provider(model)
+    if not resolution.available:
         logger.debug("No LLM provider available for skill enrichment")
         return False
+    resolved_model = resolution.model
 
     # Serialize static findings as list of dicts
     static_findings = [
@@ -910,7 +1093,12 @@ async def enrich_skill_audit(
         logger.warning("Could not parse LLM skill analysis response")
         return False
 
-    _apply_skill_analysis(skill_audit, ai_data)
+    _apply_skill_analysis(
+        skill_audit,
+        ai_data,
+        ai_source=resolution.provider.name if resolution.provider else None,
+        ai_model=resolved_model,
+    )
     return True
 
 

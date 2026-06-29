@@ -139,6 +139,7 @@ class Vulnerability:
         default_factory=dict
     )  # CVE-level framework tags, e.g. {"nist_csf": ["ID.RA-01"], "cis": ["CIS-02.3"]}
     advisory_sources: list[str] = field(default_factory=list)  # osv / ghsa / nvidia_csaf / nvd / epss / cisa_kev
+    match_confidence_tier: Optional[str] = None  # distro_confirmed | osv_range | osv_ecosystem | unfixed_distro | nvd_cpe_candidate
     cvss_vector: Optional[str] = None
     attack_vector: Optional[str] = None
     attack_complexity: Optional[str] = None

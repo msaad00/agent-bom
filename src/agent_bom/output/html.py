@@ -269,11 +269,23 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
         vendor_hint = ""
         if vendor_sev and vendor_sev.lower() != sev:
             vendor_hint = f'<br><span style="font-size:.62rem;color:#94a3b8;font-style:italic">vendor: {_esc(vendor_sev)}</span>'
+        # Match-confidence tier — how the finding was matched to this package.
+        # nvd_cpe_candidate is review-grade (lower confidence); render it muted/amber.
+        tier = getattr(v, "match_confidence_tier", None)
+        tier_hint = ""
+        if tier:
+            _tier_color = "#f59e0b" if tier == "nvd_cpe_candidate" else "#64748b"
+            tier_hint = (
+                f'<br><span class="match-tier" data-tier="{_esc(tier)}" '
+                f'title="match confidence: {_esc(tier)}" '
+                f'style="font-size:.6rem;color:{_tier_color}">{_esc(tier.replace("_", " "))}</span>'
+            )
         rows.append(
             f'<tr data-severity="{sev}" data-kev="{"1" if v.is_kev else "0"}" '
             f'data-exploit-likelihood="{exploit_level}" '
+            f'data-match-tier="{_esc(tier or "")}" '
             f'data-cvss="{v.cvss_score if v.cvss_score else 0}">'
-            f'<td><code class="vuln-id">{_esc(v.id)}</code></td>'
+            f'<td><code class="vuln-id">{_esc(v.id)}</code>{tier_hint}</td>'
             f"<td>{_sev_badge(sev)}{vendor_hint}</td>"
             f'<td><strong style="color:#e2e8f0">{_esc(br.package.name)}</strong>'
             f'<span style="color:#475569;font-size:.78rem">@{_esc(br.package.version)}</span></td>'

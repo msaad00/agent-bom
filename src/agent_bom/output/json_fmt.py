@@ -1025,6 +1025,7 @@ def to_json(report: AIBOMReport) -> dict:
                                         "advisory_sources": v.all_advisory_sources,
                                         "primary_advisory_source": v.all_advisory_sources[0] if v.all_advisory_sources else None,
                                         "advisory_coverage_state": v.advisory_coverage_state,
+                                        "match_confidence_tier": v.match_confidence_tier,
                                         "confidence": v.confidence,
                                         "cvss_score": v.cvss_score,
                                         "epss_score": v.epss_score,

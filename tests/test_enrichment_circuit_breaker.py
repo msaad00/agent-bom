@@ -80,3 +80,51 @@ async def test_osv_query_skips_remote_when_circuit_open(monkeypatch):
     assert result == {}
     assert called is False
     assert warnings == ["OSV enrichment circuit open"]
+
+
+@pytest.mark.asyncio
+async def test_osv_batches_run_with_configured_concurrency(monkeypatch):
+    monkeypatch.setattr("agent_bom.scanners.osv._BATCH_SIZE", 1)
+    monkeypatch.setattr("agent_bom.scanners.osv.OSV_BATCH_CONCURRENCY", 3)
+
+    packages = [
+        Package(name=f"pkg-{idx}", version="1.0.0", ecosystem="pypi")
+        for idx in range(6)
+    ]
+    in_flight = 0
+    peak_in_flight = 0
+    batch_calls = 0
+
+    async def request_with_retry(*args, **kwargs):  # noqa: ARG001
+        nonlocal in_flight, peak_in_flight, batch_calls
+        batch_calls += 1
+        in_flight += 1
+        peak_in_flight = max(peak_in_flight, in_flight)
+        await asyncio.sleep(0.05)
+        in_flight -= 1
+
+        class _Response:
+            status_code = 200
+
+            def json(self):
+                return {"results": [{"vulns": []}]}
+
+        return _Response()
+
+    await query_osv_batch_impl(
+        packages,
+        console=Console(file=None, force_terminal=False, quiet=True),
+        get_scan_cache=lambda: None,
+        get_api_semaphore=lambda: asyncio.Semaphore(10),
+        bump_scan_perf=lambda _name, _count: None,
+        enrich_results_if_needed_fn=lambda results: asyncio.sleep(0, result=results),
+        record_scan_warning=lambda _msg: None,
+        osv_ecosystems_for_package=lambda _pkg: ["PyPI"],
+        non_osv_ecosystems=frozenset(),
+        request_with_retry_fn=request_with_retry,
+    )
+
+    assert batch_calls == 6
+    # With 6 batches at concurrency 3, parallelism fires (>=2) but the batch
+    # semaphore must cap concurrent in-flight requests at the bound (<=3).
+    assert 2 <= peak_in_flight <= 3

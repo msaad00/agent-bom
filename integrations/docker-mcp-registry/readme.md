@@ -24,7 +24,7 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom agents -p /workspace -
 - **29 first-class MCP client types** — Claude Desktop, Cursor, Windsurf, VS Code Copilot, and more
 - **Packages** — npm, pip, cargo, go modules, OS packages via OSV, NVD, EPSS, CISA KEV
 - **Containers** — Docker images with native OCI package discovery
-- **IaC** — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm (89 rules)
+- **IaC** — Dockerfile, Kubernetes, Terraform, CloudFormation, Helm (138+ rules)
 - **Cloud AI** — 12 providers including AWS Bedrock, Azure OpenAI, GCP Vertex AI
 
 ## Key features

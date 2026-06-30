@@ -1,7 +1,7 @@
 """agent-iac — Infrastructure-as-code security scanning.
 
 Scans Dockerfiles, Kubernetes manifests, Terraform, CloudFormation,
-and Helm charts for security misconfigurations. 89 built-in rules
+and Helm charts for security misconfigurations. 138+ built-in rules
 mapped to CIS, NIST, and OWASP frameworks.
 
 Entry point: ``agent-iac`` (registered in pyproject.toml).

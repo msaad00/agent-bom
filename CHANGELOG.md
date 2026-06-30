@@ -9,6 +9,36 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-06-30
+
+Native, self-sufficient SCA reaches Trivy/Grype/Syft-replacing maturity and adds
+NVD CPE candidate matching for the long tail OSV and distro feeds do not cover —
+on top of the multi-account CNAPP estate work below. No external scanner
+subprocess is required for the vulnerability path.
+
+### Vulnerability scanning / SCA
+- **Canonical CVE identity + match-confidence tiers.** `ALPINE-CVE-*` /
+  `DEBIAN-CVE-*` are mapped to their canonical `CVE-*` for cross-tool parity, and
+  every finding now carries a `match_confidence_tier`
+  (`distro_confirmed` > `osv_range` > `osv_ecosystem` > `unfixed_distro` >
+  `nvd_cpe_candidate`).
+- **NVD incremental sync** (`NVD_API_KEY`) — pulls CVSS/CWE/CPE applicability
+  into the local DB on an incremental, fail-closed checkpoint (the key travels in
+  the `apiKey` header; a failed window is retried, never skipped).
+- **NVD CPE candidate matching** — a new `cpe_matches` table + matcher map
+  components to `cpe:2.3` applicability ranges to flag non-ecosystem / OS /
+  vendor software OSV and distro feeds miss, with vendor disambiguation for
+  false-positive control. Opt-in via `AGENT_BOM_ENABLE_CPE_MATCH`, surfaced as
+  the review-grade `nvd_cpe_candidate` tier (long-tail only, off by default).
+- **Parallel OSV batches** with bounded concurrency
+  (`AGENT_BOM_SCANNER_OSV_BATCH_CONCURRENCY`, default 3) and a pipeline-wide 429
+  backoff so large inventories finish faster without hammering OSV.
+- **Forced OSV fallback for sparse/EOL distro releases** so end-of-life images do
+  not silently miss advisories.
+- **Real offline + online scan-accuracy validation** — a deterministic offline
+  three-tier (OSV / distro / CPE) regression net plus live OSV ground-truth and a
+  Trivy binary-diff harness.
+
 Deepens the cloud/CNAPP estate from a single-provider inventory into a
 multi-account, multi-region, tenant-scale model that rolls up readably in the
 graph, adds agentless workload (CWPP), audit-trail behavioral, and ASPM
@@ -1856,7 +1886,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.89.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.90.0...HEAD
+[0.90.0]: https://github.com/msaad00/agent-bom/compare/v0.89.2...v0.90.0
 [0.89.2]: https://github.com/msaad00/agent-bom/compare/v0.89.1...v0.89.2
 [0.89.1]: https://github.com/msaad00/agent-bom/compare/v0.89.0...v0.89.1
 [0.89.0]: https://github.com/msaad00/agent-bom/compare/v0.88.6...v0.89.0

@@ -22,6 +22,15 @@ import {
   GitGraph,
   ListChecks,
   ClipboardList,
+  Eye,
+  EyeOff,
+  Server,
+  ShieldAlert,
+  ScrollText,
+  Building2,
+  Plug,
+  Terminal,
+  MapPin,
 } from "lucide-react";
 
 import {
@@ -32,11 +41,22 @@ import {
 } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
 import { EmptyState, ErrorBanner } from "@/components/empty-state";
+import { Card, Section } from "@/components/card";
+import { Collapsible } from "@/components/collapsible";
+import { StatCard } from "@/components/stat-card";
+import { vendorLogo } from "@/lib/vendor-logos";
 
 // ── Provider catalog ──────────────────────────────────────────────────────────
-// All four providers are broker-enabled (read-only). Each maps its wizard fields
-// onto the connection's role_ref (plaintext principal ref), external_id (the one
-// write-only secret), and auth_params (non-secret provider params).
+// Every option maps its wizard fields onto the connection's role_ref (plaintext
+// principal ref), external_id (the one write-only secret), and auth_params
+// (non-secret provider params). `permissions` / `cli` mirror the real
+// `agent-bom connect <provider>` onboarding (src/agent_bom/cli/_entry_points.py).
+//
+// `readiness` reflects connection_store.py's documented Phase A nuance: AWS is
+// broker-enabled and live; Azure/GCP/Snowflake accept the connect flow and store
+// the connection, with brokering still maturing ("Brokering planned").
+
+type ProviderReadiness = "live" | "planned";
 
 interface ProviderField {
   key: string;
@@ -49,6 +69,12 @@ interface ProviderOption {
   value: string;
   label: string;
   tagline: string;
+  /** Read-only role/identity grant this connection assumes (from `agent-bom connect`). */
+  permissions: string;
+  /** The exact onboarding CLI for this provider. */
+  cli: string;
+  /** Phase A brokering maturity for the readiness badge. */
+  readiness: ProviderReadiness;
   /** Maps to role_ref (plaintext principal/account reference). */
   roleField: ProviderField;
   /** Map to auth_params (non-secret provider params). */
@@ -65,6 +91,9 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     value: "aws",
     label: "Amazon Web Services",
     tagline: "Read-only AssumeRole",
+    permissions: "IAM SecurityAudit / ViewOnly role (read-only)",
+    cli: "agent-bom connect aws",
+    readiness: "live",
     roleField: {
       key: "role_ref",
       label: "Read-only role ARN",
@@ -90,6 +119,9 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     value: "azure",
     label: "Microsoft Azure",
     tagline: "Read-only Reader credential",
+    permissions: "Reader-role service principal (read-only)",
+    cli: "agent-bom connect azure",
+    readiness: "planned",
     roleField: {
       key: "role_ref",
       label: "Client ID (app registration)",
@@ -128,6 +160,9 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     value: "gcp",
     label: "Google Cloud",
     tagline: "Read-only service account",
+    permissions: "roles/viewer service account (read-only)",
+    cli: "agent-bom connect gcp",
+    readiness: "planned",
     roleField: {
       key: "role_ref",
       label: "Service account email",
@@ -161,6 +196,9 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     value: "snowflake",
     label: "Snowflake",
     tagline: "Read-only key-pair connection",
+    permissions: "Read-only governance role (key-pair auth)",
+    cli: "agent-bom connect snowflake",
+    readiness: "planned",
     roleField: {
       key: "role_ref",
       label: "Account",
@@ -194,11 +232,12 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
   },
 ];
 
+function providerOption(value: string): ProviderOption | undefined {
+  return PROVIDER_OPTIONS.find((option) => option.value === value);
+}
+
 function providerLabel(value: string): string {
-  return (
-    PROVIDER_OPTIONS.find((option) => option.value === value)?.label ??
-    value.toUpperCase()
-  );
+  return providerOption(value)?.label ?? value.toUpperCase();
 }
 
 const SCANNABLE_PROVIDERS = new Set(
@@ -266,6 +305,93 @@ function evidenceLinks(scanId: string) {
   ];
 }
 
+// ── Brand mark + readiness ────────────────────────────────────────────────────
+
+function ProviderLogo({
+  provider,
+  className = "h-7 w-7",
+}: {
+  provider: string;
+  className?: string;
+}) {
+  const src = vendorLogo(provider);
+  if (!src) {
+    return <Cloud className={`${className} text-emerald-400`} aria-hidden="true" />;
+  }
+  return (
+    // Brand SVGs are static assets served from /logos; next/image optimization is
+    // disabled in this app (next.config images.unoptimized), so a plain img is
+    // the lightest correct render.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={`${providerLabel(provider)} logo`} className={className} />
+  );
+}
+
+function ReadinessBadge({ readiness }: { readiness: ProviderReadiness }) {
+  if (readiness === "live") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-900/60 bg-emerald-950/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
+        <CheckCircle2 className="h-3 w-3" />
+        Live
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full border border-sky-900/60 bg-sky-950/30 px-2.5 py-0.5 text-[11px] font-medium text-sky-300"
+      title="The connect flow stores this connection; broker-side scanning is still maturing in Phase A."
+    >
+      <Clock className="h-3 w-3" />
+      Brokering planned
+    </span>
+  );
+}
+
+// ── Capability / security posture (each backed by a real model fact) ───────────
+
+const SECURITY_FACTS: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  detail: string;
+}[] = [
+  {
+    icon: Eye,
+    title: "Read-only",
+    detail:
+      "The broker assumes a read-only role/identity (SecurityAudit · Reader · roles/viewer) and runs inventory + CIS with no mutating API calls.",
+  },
+  {
+    icon: EyeOff,
+    title: "No secret values",
+    detail:
+      "The one secret per connection is Fernet-encrypted at rest and never returned — responses expose only has_external_id.",
+  },
+  {
+    icon: Server,
+    title: "Your control plane",
+    detail:
+      "Scans run from your self-hosted control plane against a short-lived brokered credential; no long-lived customer key is retained.",
+  },
+  {
+    icon: ShieldAlert,
+    title: "Fail-closed",
+    detail:
+      "Create refuses with 503 when AGENT_BOM_CONNECTIONS_KEY is unset rather than storing a plaintext secret.",
+  },
+  {
+    icon: ScrollText,
+    title: "Signed audit",
+    detail:
+      "Every create / scan / delete writes a tamper-evident entry to the hash-chained audit log.",
+  },
+  {
+    icon: Building2,
+    title: "Tenant isolation",
+    detail:
+      "Each endpoint enforces tenant scoping + the scan RBAC permission (OIDC/SAML/SCIM-backed roles); reads and deletes never cross tenants.",
+  },
+];
+
 export default function ConnectionsPage() {
   const { hasCapability, session } = useAuthState();
   const canManage = !session?.auth_required || hasCapability("scan.run");
@@ -275,6 +401,9 @@ export default function ConnectionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardProvider, setWizardProvider] = useState<string | undefined>(
+    undefined,
+  );
   const [busyId, setBusyId] = useState<string | null>(null);
   const [scanResults, setScanResults] = useState<
     Record<string, CloudConnectionScanResponse>
@@ -305,6 +434,11 @@ export default function ConnectionsPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const openWizard = useCallback((provider?: string) => {
+    setWizardProvider(provider);
+    setWizardOpen(true);
+  }, []);
 
   const handleCreated = useCallback(
     (created: CloudConnectionRecord) => {
@@ -387,6 +521,14 @@ export default function ConnectionsPage() {
     [connections],
   );
 
+  const connectedByProvider = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const connection of connections) {
+      counts[connection.provider] = (counts[connection.provider] ?? 0) + 1;
+    }
+    return counts;
+  }, [connections]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -394,10 +536,10 @@ export default function ConnectionsPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-400">
-              Connections plane
+              Connect &amp; deploy
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-              Cloud accounts
+              Connectors
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
               Connect a customer cloud account (AWS, Azure, GCP, or Snowflake)
@@ -415,7 +557,7 @@ export default function ConnectionsPage() {
               Refresh
             </button>
             <button
-              onClick={() => setWizardOpen(true)}
+              onClick={() => openWizard()}
               disabled={!canManage}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -425,23 +567,18 @@ export default function ConnectionsPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <MetricCard
-            icon={Cloud}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
             label="Connections"
-            value={loading ? "…" : String(connections.length)}
+            value={loading ? "…" : connections.length}
           />
-          <MetricCard
-            icon={CheckCircle2}
+          <StatCard
             label="Active"
-            value={loading ? "…" : String(activeCount)}
+            value={loading ? "…" : activeCount}
+            accent="info"
           />
-          <MetricCard
-            icon={Lock}
-            label="Secret storage"
-            value="Encrypted"
-            detail="Write-only external IDs"
-          />
+          <StatCard label="Providers" value="4" />
+          <StatCard label="Secret storage" value="Encrypted" />
         </div>
 
         {message ? (
@@ -455,8 +592,50 @@ export default function ConnectionsPage() {
         ) : null}
       </section>
 
-      {/* Connections table */}
-      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
+      {/* Connect & deploy — provider connector catalog */}
+      <Section
+        label="Connect a provider"
+        description="Pick a read-only connector. Each one assumes a read-only role/identity and runs the same inventory + CIS discovery the platform uses elsewhere."
+      >
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {PROVIDER_OPTIONS.map((option) => (
+            <ConnectorCard
+              key={option.value}
+              option={option}
+              connectedCount={connectedByProvider[option.value] ?? 0}
+              canManage={canManage}
+              onConnect={() => openWizard(option.value)}
+            />
+          ))}
+        </div>
+      </Section>
+
+      {/* Security posture */}
+      <Section
+        label="Security posture"
+        description="What every connection guarantees — each card is enforced by the connection store, broker, and API gate, not marketing copy."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {SECURITY_FACTS.map(({ icon: Icon, title, detail }) => (
+            <Card key={title} className="flex gap-3">
+              <span className="h-fit rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2">
+                <Icon className="h-4 w-4 text-emerald-400" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {title}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                  {detail}
+                </p>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </Section>
+
+      {/* Connected accounts */}
+      <Card flush className="overflow-hidden p-5">
         <div className="flex items-start gap-3">
           <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
             <ShieldCheck className="h-5 w-5 text-emerald-400" />
@@ -541,14 +720,122 @@ export default function ConnectionsPage() {
             </div>
           )}
         </div>
-      </section>
+      </Card>
 
       {wizardOpen ? (
         <AddConnectionWizard
+          initialProvider={wizardProvider}
           onClose={() => setWizardOpen(false)}
           onCreated={handleCreated}
         />
       ) : null}
+    </div>
+  );
+}
+
+// ── Connector catalog card ────────────────────────────────────────────────────
+
+function ConnectorCard({
+  option,
+  connectedCount,
+  canManage,
+  onConnect,
+}: {
+  option: ProviderOption;
+  connectedCount: number;
+  canManage: boolean;
+  onConnect: () => void;
+}) {
+  const authSummary = [
+    option.roleField.label,
+    ...option.authFields.map((field) => field.label),
+    option.secretField.label,
+  ].join(" · ");
+  return (
+    <Card className="flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]">
+            <ProviderLogo provider={option.value} className="h-6 w-6" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+              {option.label}
+            </p>
+            <p className="truncate text-[11px] text-[var(--text-secondary)]">
+              {option.tagline}
+            </p>
+          </div>
+        </div>
+        <ReadinessBadge readiness={option.readiness} />
+      </div>
+
+      <dl className="space-y-2 text-[11px]">
+        <CardFact icon={KeyRound} term="Permissions" detail={option.permissions} />
+        <CardFact icon={Fingerprint} term="Auth" detail={authSummary} />
+        <CardFact
+          icon={MapPin}
+          term="Regions"
+          detail={option.usesRegions ? "Per-region (you choose)" : "Account-wide"}
+        />
+      </dl>
+
+      {connectedCount > 0 ? (
+        <p className="inline-flex items-center gap-1.5 text-[11px] text-emerald-300">
+          <CheckCircle2 className="h-3 w-3" />
+          {connectedCount} connected
+        </p>
+      ) : null}
+
+      <Collapsible
+        title="Setup steps & CLI"
+        icon={Terminal}
+        defaultOpen={false}
+        className="bg-[color:var(--surface-elevated)]/40"
+      >
+        <ol className="list-decimal space-y-1.5 pl-4 text-[11px] leading-5 text-[var(--text-secondary)]">
+          {option.setupSteps.map((stepText) => (
+            <li key={stepText}>{stepText}</li>
+          ))}
+        </ol>
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
+          <Terminal className="h-3 w-3 shrink-0 text-[var(--text-tertiary)]" />
+          <code className="overflow-x-auto whitespace-nowrap font-mono text-[11px] text-[var(--foreground)]">
+            {option.cli}
+          </code>
+        </div>
+      </Collapsible>
+
+      <button
+        type="button"
+        onClick={onConnect}
+        disabled={!canManage}
+        aria-label={`Connect ${option.value}`}
+        className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-700/60 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-500 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <Plug className="h-4 w-4" />
+        Connect
+      </button>
+    </Card>
+  );
+}
+
+function CardFact({
+  icon: Icon,
+  term,
+  detail,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  term: string;
+  detail: string;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <Icon className="mt-0.5 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" />
+      <div className="min-w-0">
+        <dt className="inline text-[var(--text-tertiary)]">{term}: </dt>
+        <dd className="inline text-[var(--text-secondary)]">{detail}</dd>
+      </div>
     </div>
   );
 }
@@ -615,8 +902,11 @@ function FragmentRow({
             ) : null}
           </div>
         </td>
-        <td className="px-4 py-3 text-[var(--text-secondary)]">
-          {providerLabel(connection.provider)}
+        <td className="px-4 py-3">
+          <span className="inline-flex items-center gap-2 text-[var(--text-secondary)]">
+            <ProviderLogo provider={connection.provider} className="h-4 w-4" />
+            {providerLabel(connection.provider)}
+          </span>
         </td>
         <td className="px-4 py-3">
           <StatusPill status={connection.status} />
@@ -827,41 +1117,6 @@ function StatTile({
   );
 }
 
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  detail?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
-      <div className="flex items-center gap-3">
-        <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2">
-          <Icon className="h-4 w-4 text-emerald-400" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-            {label}
-          </p>
-          <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">
-            {value}
-          </p>
-        </div>
-      </div>
-      {detail ? (
-        <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
-          {detail}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 // ── Add connection wizard ─────────────────────────────────────────────────────
 
 interface WizardForm {
@@ -874,31 +1129,39 @@ interface WizardForm {
   auth: Record<string, string>;
 }
 
-const DEFAULT_WIZARD_FORM: WizardForm = {
-  provider: "aws",
-  display_name: "",
-  role_ref: "",
-  external_id: "",
-  regions: "",
-  auth: {},
-};
+function buildWizardForm(provider: string): WizardForm {
+  return {
+    provider,
+    display_name: "",
+    role_ref: "",
+    external_id: "",
+    regions: "",
+    auth: {},
+  };
+}
 
 function AddConnectionWizard({
+  initialProvider,
   onClose,
   onCreated,
 }: {
+  initialProvider?: string | undefined;
   onClose: () => void;
   onCreated: (created: CloudConnectionRecord) => void;
 }) {
   const [step, setStep] = useState<0 | 1 | 2>(0);
-  const [form, setForm] = useState<WizardForm>(DEFAULT_WIZARD_FORM);
+  const [form, setForm] = useState<WizardForm>(() =>
+    buildWizardForm(
+      initialProvider && providerOption(initialProvider)
+        ? initialProvider
+        : "aws",
+    ),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const provider = useMemo(
-    () =>
-      PROVIDER_OPTIONS.find((option) => option.value === form.provider) ??
-      PROVIDER_OPTIONS[0]!,
+    () => providerOption(form.provider) ?? PROVIDER_OPTIONS[0]!,
     [form.provider],
   );
 
@@ -999,8 +1262,8 @@ function AddConnectionWizard({
       >
         <div className="flex items-center justify-between border-b border-[color:var(--border-subtle)] px-5 py-4">
           <div className="flex items-center gap-3">
-            <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2">
-              <Cloud className="h-5 w-5 text-emerald-400" />
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]">
+              <ProviderLogo provider={provider.value} className="h-5 w-5" />
             </span>
             <div>
               <h2 className="text-base font-semibold text-[var(--foreground)]">
@@ -1038,18 +1301,26 @@ function AddConnectionWizard({
                         key={option.value}
                         onClick={() => selectProvider(option.value)}
                         aria-pressed={selected}
-                        className={`rounded-xl border p-3 text-left transition ${
+                        className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${
                           selected
                             ? "border-emerald-500 bg-emerald-950/20"
                             : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] hover:border-[color:var(--border-strong)]"
                         }`}
                       >
-                        <p className="text-sm font-medium text-[var(--foreground)]">
-                          {option.label}
-                        </p>
-                        <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
-                          {option.tagline}
-                        </p>
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+                          <ProviderLogo
+                            provider={option.value}
+                            className="h-5 w-5"
+                          />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-[var(--foreground)]">
+                            {option.label}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
+                            {option.tagline}
+                          </span>
+                        </span>
                       </button>
                     );
                   })}
@@ -1071,6 +1342,12 @@ function AddConnectionWizard({
                       <li key={stepText}>{stepText}</li>
                     ))}
                   </ol>
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
+                    <Terminal className="h-3 w-3 shrink-0 text-[var(--text-tertiary)]" />
+                    <code className="overflow-x-auto whitespace-nowrap font-mono text-[11px] text-[var(--foreground)]">
+                      {provider.cli}
+                    </code>
+                  </div>
                   <p className="mt-3 inline-flex items-center gap-1.5 text-emerald-300">
                     <Lock className="h-3.5 w-3.5" /> The{" "}
                     {provider.secretField.label.toLowerCase()} is stored

@@ -43,10 +43,18 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from agent_bom.agent_identity import ANONYMOUS, check_caller_identity, extract_identity_token
+from agent_bom.a2a_auth_posture import evaluate_inline_mutual_auth
+from agent_bom.agent_identity import (
+    ANONYMOUS,
+    check_caller_identity,
+    extract_identity_token,
+    identity_token_scopes,
+    scopes_from_claims,
+)
 from agent_bom.api.auth import Role, get_key_store
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
+from agent_bom.api.oauth_as import OAuthAuthorizationServer, build_oauth_as_router
 from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
 from agent_bom.firewall import (
     AgentFirewallPolicy,
@@ -70,6 +78,7 @@ from agent_bom.proxy_policy import (
     resolve_fail_mode,
     summarize_policy_bundle,
 )
+from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_tool_call, scan_tool_response
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 
 logger = logging.getLogger(__name__)
@@ -106,6 +115,9 @@ def _public_gateway_block_reason(policy_source: str) -> str:
         "fleet_quarantine": "Agent is quarantined in the fleet roster",
         "identity_scope": "Identity scope blocked this tool",
         "identity_jit": "Gateway policy blocked this request",
+        "a2a_mutual_auth": "Inter-agent mutual authentication is required for this edge",
+        "oauth_scope": "The caller's OAuth token is missing a required scope for this tool",
+        "dlp": "Data-loss-prevention policy blocked sensitive content in this request",
         "firewall": "Inter-agent firewall blocked this request",
         "graph_reachability": "Graph reachability policy blocked this request",
         "policy_plugin": "A gateway policy plugin blocked this request",
@@ -210,6 +222,60 @@ class GatewaySettings:
     # AGENT_BOM_POLICY_WEBHOOK_TOKEN when left as ``None``.
     policy_webhook_url: str | None = None
     policy_webhook_token: str | None = None
+    # OAuth 2.1 Authorization Server (broker AS). When set, the gateway mounts
+    # the RFC 8414 metadata / RFC 7591 registration / PKCE authorize+token /
+    # JWKS endpoints so standard MCP clients can auto-authenticate, and accepts
+    # AS-issued access tokens (Authorization: Bearer or _meta.agent_identity) as
+    # the caller's verified agent identity. None = AS disabled (no behaviour
+    # change). The OAuth scopes carried in the token feed ``tool_scope_map``.
+    oauth_as: OAuthAuthorizationServer | None = None
+    # A2A inline mutual-auth enforcement. "off" (default) keeps the existing
+    # identity posture; "warn" audits weak (anonymous / unverified / invalid)
+    # inter-agent / agent-MCP edges; "enforce" rejects them inline at the relay.
+    # An edge is mutually authenticated only when the caller presents a
+    # cryptographically-verified identity (AS token, JWKS-verified JWT, or an
+    # agent-bom-issued managed token).
+    a2a_mutual_auth_enforcement_mode: str = "off"
+    # Per-tool-call OAuth scope mapping. ``{tool_name: [required_scope, ...]}``;
+    # a "*" key applies to every tool. A tool call is denied when the caller's
+    # token scopes do not include every required scope for that tool. Empty map
+    # = no scope gating (no behaviour change).
+    tool_scope_map: dict[str, list[str]] = field(default_factory=dict)
+    # Data-loss prevention on tool-call arguments and tool results. Off by
+    # default. "audit" flags sensitive-data matches; "enforce" blocks the call
+    # (secrets / payload-vuln / injection) and redacts PII in arguments and
+    # results before they cross the relay. Reuses the inline proxy scanner.
+    dlp_enabled: bool = False
+    dlp_mode: str = "audit"  # "audit" | "enforce"
+    dlp_pii_action: str = "redact"  # "redact" | "block"
+    dlp_scanners: list[str] = field(default_factory=lambda: ["injection", "pii", "secrets", "payload_vuln"])
+
+
+def _gateway_dlp_config(settings: GatewaySettings) -> ScanConfig:
+    """Build the inline-scanner config for the gateway DLP pass."""
+    return ScanConfig(
+        enabled=settings.dlp_enabled,
+        mode=settings.dlp_mode if settings.dlp_mode in ("audit", "enforce") else "audit",
+        scanners=list(settings.dlp_scanners),
+        pii_action=settings.dlp_pii_action if settings.dlp_pii_action in ("redact", "block") else "redact",
+    )
+
+
+def _redact_obj_pii(value: Any, *, depth: int = 0) -> Any:
+    """Recursively redact PII in string leaves of a JSON-RPC result.
+
+    Bounded depth so a deeply-nested or adversarial result cannot cause runaway
+    recursion. Non-string scalars pass through unchanged.
+    """
+    if depth > 12:
+        return value
+    if isinstance(value, str):
+        return redact_pii(value)
+    if isinstance(value, dict):
+        return {k: _redact_obj_pii(v, depth=depth + 1) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_obj_pii(v, depth=depth + 1) for v in value]
+    return value
 
 
 def _agent_cost_anomaly(tenant_id: str, source_agent: str) -> tuple[bool, str]:
@@ -757,6 +823,15 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
             raise HTTPException(status_code=401, detail="gateway authentication required")
         return "default", "static_gateway_token"
 
+    # OAuth 2.1 broker: a standard MCP client presenting an AS-issued access
+    # token in the Authorization header satisfies transport auth (the AS already
+    # authenticated the client + bound the token via PKCE). Only AS-signed,
+    # unexpired tokens pass; any other bearer falls through to API-key auth.
+    if settings.oauth_as is not None and raw_token:
+        claims = settings.oauth_as.validate_token(raw_token)
+        if claims is not None:
+            return "default", "oauth_as"
+
     try:
         store = get_key_store()
         has_keys = store.has_keys()
@@ -1052,6 +1127,17 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
     app = FastAPI(title="agent-bom gateway", version="1", lifespan=_lifespan)
 
+    # OAuth 2.1 Authorization Server (broker AS): mount the unauthenticated
+    # discovery/registration/PKCE/token/JWKS endpoints so standard MCP clients
+    # can auto-authenticate to brokered MCPs. These deliberately sit outside the
+    # gateway transport-auth gate — they ARE the auth bootstrap.
+    if settings.oauth_as is not None:
+        app.include_router(build_oauth_as_router(settings.oauth_as))
+        if settings.oauth_as.signing_key.ephemeral:
+            logger.warning("gateway OAuth AS enabled with an ephemeral signing key; set AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM for production")
+
+    dlp_config = _gateway_dlp_config(settings)
+
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
         async with policy_lock:
@@ -1094,6 +1180,13 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             "rate_limit_runtime": _gateway_rate_limit_runtime_status(settings),
             "policy_runtime": policy_runtime,
             "firewall_runtime": firewall_runtime,
+            "broker_runtime": {
+                "oauth_as_enabled": settings.oauth_as is not None,
+                "a2a_mutual_auth_enforcement_mode": settings.a2a_mutual_auth_enforcement_mode,
+                "tool_scope_mapped_tools": len(settings.tool_scope_map),
+                "dlp_enabled": settings.dlp_enabled,
+                "dlp_mode": settings.dlp_mode if settings.dlp_enabled else "disabled",
+            },
         }
         if settings.enable_visual_leak_detection:
             from agent_bom.runtime.visual_leak_detector import visual_leak_runtime_health
@@ -1331,8 +1424,43 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         #   3. fully-missing token — permitted on a loopback bind (local dev)
         #      or with the explicit opt-out, else fail closed by default on a
         #      non-loopback bind (mirrors the transport-auth opt-out precedent).
-        source_agent, token_present, identity_invalid_reason = check_caller_identity(message, current_policy)
-        source_agent = source_agent or ANONYMOUS
+        # An OAuth-2.1 AS access token (broker mode) is a cryptographically
+        # verified identity: validate it in-process (no self-HTTP) and prefer it
+        # over the _meta channel. Standard MCP clients present it in the
+        # Authorization header; we also accept it in _meta.agent_identity. The
+        # ``scope`` claim drives per-tool-call scope enforcement below.
+        identity_token = extract_identity_token(message)
+        as_claims: dict[str, Any] | None = None
+        token_scopes: set[str] = set()
+        if settings.oauth_as is not None:
+            for candidate in (identity_token, _extract_request_token(request)):
+                if candidate:
+                    as_claims = settings.oauth_as.validate_token(candidate)
+                    if as_claims is not None:
+                        identity_token = candidate
+                        break
+
+        if as_claims is not None:
+            source_agent = str(as_claims.get("sub") or "").strip() or ANONYMOUS
+            token_present = True
+            identity_invalid_reason = None
+            identity_verified = source_agent != ANONYMOUS
+            token_scopes = scopes_from_claims(as_claims)
+        else:
+            source_agent, token_present, identity_invalid_reason = check_caller_identity(message, current_policy)
+            source_agent = source_agent or ANONYMOUS
+            # "Verified" for inline mutual-auth: a resolved, non-anonymous caller
+            # whose token was cryptographically checked — JWKS/OIDC-signed JWT or
+            # an agent-bom-issued managed (``abi_``) token. An opaque
+            # policy.agent_tokens mapping is NOT verified mutual auth.
+            identity_verified = bool(
+                token_present
+                and identity_invalid_reason is None
+                and source_agent != ANONYMOUS
+                and (current_policy.get("jwks_uri") or current_policy.get("oidc_issuer") or (identity_token or "").startswith("abi_"))
+            )
+            if identity_token and identity_invalid_reason is None:
+                token_scopes = identity_token_scopes(identity_token)
 
         identity_block_reason: str | None = None
         if identity_invalid_reason is not None:
@@ -1377,6 +1505,69 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 },
                 status_code=200,
             )
+
+        # A2A inline mutual-auth enforcement (assess → enforce). When enabled,
+        # every inter-agent / agent-MCP edge must carry a cryptographically
+        # verified caller identity; an anonymous / unverified / invalid edge is
+        # flagged ("warn") or rejected closed ("enforce") in-path. Off by
+        # default so the existing identity posture is unchanged.
+        if settings.a2a_mutual_auth_enforcement_mode in ("warn", "enforce"):
+            ma_result = evaluate_inline_mutual_auth(
+                source_agent=source_agent,
+                target=upstream.name,
+                token_present=token_present,
+                verified=identity_verified,
+                identity_invalid_reason=identity_invalid_reason,
+            )
+            if ma_result.weak:
+                if settings.audit_sink is not None:
+                    await settings.audit_sink(
+                        {
+                            "action": "gateway.a2a_mutual_auth_blocked"
+                            if settings.a2a_mutual_auth_enforcement_mode == "enforce"
+                            else "gateway.a2a_mutual_auth_warned",
+                            "upstream": upstream.name,
+                            "tenant_id": tenant_id,
+                            "source_agent": source_agent,
+                            "target_agent": upstream.name,
+                            "weakness": ma_result.weakness,
+                            "reason": ma_result.reason,
+                        }
+                    )
+                if settings.a2a_mutual_auth_enforcement_mode == "enforce":
+                    record_gateway_relay(upstream.name, "blocked")
+                    _emit_gateway_governance_event(
+                        "a2a.mutual_auth_blocked",
+                        tenant_id=tenant_id,
+                        subject_id=source_agent,
+                        payload={
+                            "source_agent": source_agent,
+                            "target_agent": upstream.name,
+                            "weakness": ma_result.weakness,
+                            "reason": ma_result.reason,
+                        },
+                    )
+                    logger.info(
+                        "Gateway A2A mutual-auth blocked edge source_agent=%s target=%s weakness=%s",
+                        _sanitize_for_log(source_agent),
+                        _sanitize_for_log(upstream.name),
+                        _sanitize_for_log(ma_result.weakness),
+                    )
+                    return JSONResponse(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": message.get("id"),
+                            "error": {
+                                "code": -32001,
+                                "message": "Blocked by agent-bom gateway: inter-agent mutual authentication required",
+                                "data": {
+                                    "reason": _public_gateway_block_reason("a2a_mutual_auth"),
+                                    "policy_source": "a2a_mutual_auth",
+                                },
+                            },
+                        },
+                        status_code=200,
+                    )
 
         # Inter-agent firewall enforcement in the data path (#982 PR 2). The
         # firewall is only consulted when an operator actually configured a
@@ -1946,6 +2137,70 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 elif composed == GatewayDecision.QUARANTINE:
                     quarantine, quarantine_reason, policy_source = True, composed_reason, composed_source
 
+            # Per-tool-call OAuth scope mapping. A tool with a configured
+            # required-scope set is denied unless the caller's token (AS-issued
+            # or JWKS-signed) carries every required scope. The "*" key applies a
+            # baseline scope to every tool. Empty map = no scope gating.
+            if allowed and settings.tool_scope_map:
+                required_scopes: set[str] = set()
+                for key in ("*", tool_name):
+                    mapped = settings.tool_scope_map.get(key)
+                    if mapped:
+                        required_scopes |= {s for s in mapped if s}
+                if required_scopes:
+                    missing = required_scopes - token_scopes
+                    if missing:
+                        allowed, reason, policy_source = (
+                            False,
+                            f"caller token missing required OAuth scope(s) for '{tool_name}': {', '.join(sorted(missing))}",
+                            "oauth_scope",
+                        )
+                        if settings.audit_sink is not None:
+                            await settings.audit_sink(
+                                {
+                                    "action": "gateway.oauth_scope_blocked",
+                                    "upstream": upstream.name,
+                                    "tenant_id": tenant_id,
+                                    "source_agent": source_agent,
+                                    "tool": tool_name,
+                                    "required_scopes": sorted(required_scopes),
+                                    "missing_scopes": sorted(missing),
+                                }
+                            )
+
+            # DLP pass on tool-call arguments. Reuses the inline proxy scanner
+            # (injection / PII / secrets / payload-vuln). In enforce mode a
+            # blocked finding (secrets/payload/injection) denies the call;
+            # sensitive args are redacted in-place before forwarding when
+            # pii_action=redact. Audit-only otherwise.
+            if allowed and dlp_config.enabled:
+                arg_findings = scan_tool_call(tool_name, arguments, dlp_config)
+                if arg_findings and settings.audit_sink is not None:
+                    await settings.audit_sink(
+                        {
+                            "action": "gateway.dlp_arguments",
+                            "upstream": upstream.name,
+                            "tenant_id": tenant_id,
+                            "source_agent": source_agent,
+                            "tool": tool_name,
+                            "findings": sorted({f"{f.scanner}/{f.rule_id}" for f in arg_findings}),
+                            "blocked": any(f.blocked for f in arg_findings),
+                        }
+                    )
+                if dlp_config.mode == "enforce" and any(f.blocked for f in arg_findings):
+                    first = next(f for f in arg_findings if f.blocked)
+                    allowed, reason, policy_source = (
+                        False,
+                        f"DLP blocked tool arguments: {first.scanner}/{first.rule_id}",
+                        "dlp",
+                    )
+                elif dlp_config.mode == "enforce" and dlp_config.pii_action == "redact" and arg_findings:
+                    # Redact PII in string arguments before forwarding upstream.
+                    redacted_args = {k: _redact_obj_pii(v) for k, v in arguments.items()}
+                    params = message.get("params")
+                    if isinstance(params, dict):
+                        params["arguments"] = redacted_args
+
             if not allowed:
                 record_gateway_relay(upstream.name, "blocked")
                 audit_event: dict[str, Any] = {
@@ -2194,6 +2449,53 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                 upstream.name,
                                 safe_tool_name_for_log,
                             )
+
+        # DLP pass on the tool RESULT. Scans the serialized result for the same
+        # sensitive-data classes as the argument pass. In enforce mode a blocked
+        # finding (secrets/payload/injection) replaces the result with a DLP
+        # error so the data never reaches the caller; otherwise PII is redacted
+        # in-place when pii_action=redact. Audit-only in audit mode.
+        if dlp_config.enabled and isinstance(upstream_response, dict) and "result" in upstream_response:
+            tool_name_for_dlp = message.get("params", {}).get("name", "") if is_tools_call(message) else str(message.get("method", ""))
+            try:
+                result_text = json.dumps(upstream_response.get("result"), default=str)
+            except (TypeError, ValueError):
+                result_text = str(upstream_response.get("result"))
+            resp_findings = scan_tool_response(result_text, dlp_config)
+            if resp_findings and settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.dlp_result",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "source_agent": source_agent,
+                        "tool": tool_name_for_dlp,
+                        "findings": sorted({f"{f.scanner}/{f.rule_id}" for f in resp_findings}),
+                        "blocked": any(f.blocked for f in resp_findings),
+                    }
+                )
+            if dlp_config.mode == "enforce" and any(f.blocked for f in resp_findings):
+                record_gateway_relay(upstream.name, "blocked")
+                first = next(f for f in resp_findings if f.blocked)
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message.get("id"),
+                        "error": {
+                            "code": -32001,
+                            "message": "Blocked by agent-bom gateway DLP: sensitive data in tool result",
+                            "data": {
+                                "reason": _public_gateway_block_reason("dlp"),
+                                "policy_source": "dlp",
+                                "rule": f"{first.scanner}/{first.rule_id}",
+                            },
+                        },
+                    },
+                    status_code=200,
+                    headers=rate_limit_headers or None,
+                )
+            if dlp_config.mode == "enforce" and dlp_config.pii_action == "redact" and resp_findings:
+                upstream_response["result"] = _redact_obj_pii(upstream_response.get("result"))
 
         if settings.audit_sink is not None:
             await settings.audit_sink(

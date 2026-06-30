@@ -158,6 +158,22 @@ AGENT_BOM_GATEWAY_ANOMALY_ENFORCEMENT
 AGENT_BOM_GATEWAY_DRIFT_ENFORCEMENT
 # opt-in fleet-quarantine gateway enforcement mode (off|warn|enforce)
 AGENT_BOM_GATEWAY_FLEET_ENFORCEMENT
+# opt-in OAuth 2.1 Authorization Server (broker AS) on the gateway: mounts RFC 8414 metadata / RFC 7591 registration / PKCE authorize+token / JWKS; read in cli/_gateway.py
+AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS
+# optional public issuer base URL for the gateway OAuth AS (default unset = derived per-request); read in cli/_gateway.py
+AGENT_BOM_GATEWAY_OAUTH_AS_ISSUER
+# RSA private key PEM that signs gateway OAuth AS access tokens (default unset = ephemeral key, tokens invalidated on restart); read in api/oauth_as.py
+AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM
+# opt-in inline A2A mutual-auth enforcement at the gateway relay (off|warn|enforce); read in cli/_gateway.py
+AGENT_BOM_GATEWAY_A2A_MUTUAL_AUTH_ENFORCEMENT
+# JSON file mapping tool names to required OAuth scopes for per-tool-call scope enforcement; read in cli/_gateway.py
+AGENT_BOM_GATEWAY_TOOL_SCOPE_MAP
+# opt-in DLP pass on gateway tool-call arguments and results (default OFF); read in cli/_gateway.py
+AGENT_BOM_GATEWAY_ENABLE_DLP
+# gateway DLP posture (audit|enforce, default audit); read in cli/_gateway.py
+AGENT_BOM_GATEWAY_DLP_MODE
+# how gateway DLP handles PII matches in enforce mode (redact|block, default redact); read in cli/_gateway.py
+AGENT_BOM_GATEWAY_DLP_PII_ACTION
 # opt-in graph-reachability gateway enforcement mode (off|warn|enforce) — consume direction
 AGENT_BOM_GATEWAY_GRAPH_REACHABILITY_ENFORCEMENT
 # scan-report JSON supplying agent->privileged-node graph reachability facts

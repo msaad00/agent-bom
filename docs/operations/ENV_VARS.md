@@ -191,6 +191,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_SCANNER_BATCH_DELAY` | `float` | `0.5` | — |
 | `AGENT_BOM_SCANNER_BATCH_SIZE` | `int` | `1000` | OSV API max is 1000 |
 | `AGENT_BOM_SCANNER_MAX_CONCURRENT` | `int` | `10` | Used by scanners/__init__.py for OSV batch API concurrency.  10 concurrent requests with 500ms delay between batches keeps us well under OSV.dev's rate limit while still being fast for large inventories. |
+| `AGENT_BOM_SCANNER_OSV_BATCH_CONCURRENCY` | `int` | `3` | — |
 
 ## Server Risk Scoring
 | Env var | Type | Default | Description |

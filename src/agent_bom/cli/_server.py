@@ -780,6 +780,10 @@ def mcp_server_cmd(
 
     if transport in ("sse", "streamable-http"):
         _enforce_remote_mcp_auth_defaults(host, bearer_token, allow_insecure_no_auth)
+        # Signal a remotely-bound (internet-reachable) MCP transport so repo
+        # scans fail closed unless an explicit host allowlist is configured.
+        if not _is_loopback_host(host):
+            os.environ["AGENT_BOM_MCP_REMOTE_BIND"] = "1"
 
     server = create_mcp_server(host=host, port=port, bearer_token=bearer_token)
 

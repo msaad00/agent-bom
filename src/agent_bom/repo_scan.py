@@ -34,8 +34,8 @@ import os
 import shutil
 import subprocess  # noqa: S404 — runs `git`, never repository-supplied code
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -53,6 +53,17 @@ _ALLOWED_HOSTS_ENV = "AGENT_BOM_REPO_SCAN_ALLOWED_HOSTS"
 
 # Maximum accepted URL length — defends against pathological inputs.
 _MAX_URL_LEN = 2048
+
+# Set by the `mcp server` CLI when it binds an SSE / streamable-http transport
+# to a non-loopback host. When the MCP server is internet-reachable we fail
+# closed on repo scans unless an explicit host allowlist is configured, so an
+# attacker cannot point the clone at internal / cloud-metadata targets.
+_REMOTE_BIND_ENV = "AGENT_BOM_MCP_REMOTE_BIND"
+
+
+def _remote_bind_active() -> bool:
+    """True when the MCP server is bound to a remote (non-loopback) transport."""
+    return os.environ.get(_REMOTE_BIND_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 class RepoScanError(Exception):
@@ -101,6 +112,25 @@ def validate_repo_url(repo_url: str) -> str:
         allowed_hosts = {h.strip().lower() for h in allowed.split(",") if h.strip()}
         if parts.hostname.lower() not in allowed_hosts:
             raise RepoScanError(f"repo host '{parts.hostname}' is not in the configured allowlist")
+    elif _remote_bind_active():
+        # Fail closed on an internet-reachable MCP transport: refuse to clone
+        # arbitrary hosts unless the operator pins an explicit allowlist. Mirrors
+        # _enforce_remote_mcp_auth_defaults' posture for remote binds.
+        raise RepoScanError(
+            f"{_ALLOWED_HOSTS_ENV} must be set to an explicit host allowlist before "
+            "scanning repositories on a remotely-bound MCP server"
+        )
+
+    # SSRF defense: reject IP-literal private hosts and hostnames that resolve to
+    # internal / cloud-metadata targets. Reuses the shared egress guard applied on
+    # every other outbound path (loopback / RFC1918 / link-local / ULA / reserved /
+    # metadata), which resolves every A/AAAA record and is DNS-rebinding aware.
+    from agent_bom.security import SecurityError, validate_url
+
+    try:
+        validate_url(url, allowed_schemes=("http", "https"))
+    except SecurityError as exc:
+        raise RepoScanError(f"repo_url is not allowed: {exc}") from exc
 
     return url
 
@@ -158,27 +188,20 @@ def _scrub(message: str, token: str | None, temp_dir: str | None) -> str:
     return out
 
 
-@contextmanager
-def clone_repository(
+def _clone_into_tempdir(
     repo_url: str,
     *,
     token_env: str | None = None,
     branch: str | None = None,
-) -> Iterator[Path]:
-    """Shallow-clone ``repo_url`` into a temp dir and yield the path.
+) -> str:
+    """Validate, shallow-clone into a fresh temp dir, enforce bounds; return it.
 
-    The temp directory is always removed on exit (``try``/``finally``), whether
-    the clone succeeded, failed, or the scan raised. No repository code is ever
-    executed — only ``git`` runs, with hooks disabled.
+    This is the **blocking** core of a repo clone (it runs ``git`` and walks the
+    tree). The caller owns cleanup of the returned directory on success; on any
+    failure the temp dir is removed here before the error propagates.
 
-    Args:
-        repo_url: Public ``http(s)`` git URL. Validated before use.
-        token_env: Optional environment-variable *name* holding a token for a
-            private repo (reference-only; the value is never logged or emitted).
-        branch: Optional single branch to clone. Defaults to the repo's HEAD.
-
-    Yields:
-        Path to the cloned working tree.
+    Returns:
+        Absolute path to the cloned working tree (caller must ``rmtree`` it).
 
     Raises:
         RepoScanError: on invalid URL, clone failure, timeout, or bounds breach.
@@ -202,6 +225,10 @@ def clone_repository(
             # Never auto-fetch submodules' transitive config.
             "-c",
             "protocol.file.allow=never",
+            # Never follow HTTP redirects: a validated public host must not be
+            # able to bounce the clone to an internal / cloud-metadata target.
+            "-c",
+            "http.followRedirects=false",
             "clone",
             "--depth",
             "1",
@@ -240,7 +267,62 @@ def clone_repository(
             raise RepoScanError(f"clone failed: {detail}")
 
         _directory_within_bounds(Path(temp_dir))
+        return temp_dir
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
 
+
+@contextmanager
+def clone_repository(
+    repo_url: str,
+    *,
+    token_env: str | None = None,
+    branch: str | None = None,
+) -> Iterator[Path]:
+    """Shallow-clone ``repo_url`` into a temp dir and yield the path.
+
+    The temp directory is always removed on exit (``try``/``finally``), whether
+    the clone succeeded, failed, or the scan raised. No repository code is ever
+    executed — only ``git`` runs, with hooks disabled.
+
+    Args:
+        repo_url: Public ``http(s)`` git URL. Validated before use.
+        token_env: Optional environment-variable *name* holding a token for a
+            private repo (reference-only; the value is never logged or emitted).
+        branch: Optional single branch to clone. Defaults to the repo's HEAD.
+
+    Yields:
+        Path to the cloned working tree.
+
+    Raises:
+        RepoScanError: on invalid URL, clone failure, timeout, or bounds breach.
+    """
+    temp_dir = _clone_into_tempdir(repo_url, token_env=token_env, branch=branch)
+    try:
         yield Path(temp_dir)
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@asynccontextmanager
+async def clone_repository_async(
+    repo_url: str,
+    *,
+    token_env: str | None = None,
+    branch: str | None = None,
+) -> AsyncIterator[Path]:
+    """Async wrapper for :func:`clone_repository`.
+
+    The blocking ``git clone`` (and the temp-dir teardown) run in a worker thread
+    via ``asyncio.to_thread`` so a slow or tarpit repository cannot freeze the
+    asyncio event loop — the surrounding MCP tool timeout stays effective and the
+    server keeps serving other callers while a clone is in flight.
+    """
+    import asyncio
+
+    temp_dir = await asyncio.to_thread(_clone_into_tempdir, repo_url, token_env=token_env, branch=branch)
+    try:
+        yield Path(temp_dir)
+    finally:
+        await asyncio.to_thread(shutil.rmtree, temp_dir, ignore_errors=True)

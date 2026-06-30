@@ -380,6 +380,11 @@ class Package:
     scorecard_lookup_state: Optional[str] = None  # enriched | unresolved | failed
     scorecard_lookup_reason: Optional[str] = None  # why enrichment did not succeed
 
+    # Per-component checksums keyed by canonical algorithm (e.g. "SHA-512"),
+    # value is lowercase hex. Populated from lockfile integrity / registry
+    # digests where the source provides them; surfaced in SBOM output.
+    checksums: dict[str, str] = field(default_factory=dict)
+
     # Provenance / supply chain attestation (populated by --verify-integrity)
     integrity_verified: Optional[bool] = None  # SHA256/SRI verified against registry
     provenance_attested: Optional[bool] = None  # SLSA/PEP740/sum.golang.org attestation found

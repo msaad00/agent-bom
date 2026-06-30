@@ -92,6 +92,62 @@ def test_unknown_token_is_anonymous(store):
     assert agent_id == "anonymous" and error is not None
 
 
+# ── owner-binding / attribution ─────────────────────────────────────────────────
+
+
+def test_issue_records_owner_and_serializes_it(store):
+    identity, _ = issue_identity(
+        store,
+        agent_id="agent-a",
+        tenant_id="t1",
+        owner="platform-team",
+        owner_type="team",
+    )
+    assert identity.owner == "platform-team"
+    assert identity.owner_type == "team"
+    # Owner is exposed in the (token-free) serialization used by the API.
+    public = identity.to_public_dict()
+    assert public["owner"] == "platform-team"
+    assert public["owner_type"] == "team"
+    assert "token_hash" not in public
+
+
+def test_rotate_preserves_owner_attribution(store):
+    identity, _ = issue_identity(
+        store,
+        agent_id="agent-a",
+        tenant_id="t1",
+        owner="alice@example.com",
+        owner_type="user",
+    )
+    new_identity, _ = rotate_identity(store, identity.identity_id)
+    assert new_identity.owner == "alice@example.com"
+    assert new_identity.owner_type == "user"
+
+
+def test_revoke_preserves_owner_attribution(store):
+    identity, _ = issue_identity(store, agent_id="agent-a", tenant_id="t1", owner="svc-deployer", owner_type="service")
+    revoked = revoke_identity(store, identity.identity_id, reason="rotation")
+    assert revoked.status == "revoked"
+    assert revoked.owner == "svc-deployer" and revoked.owner_type == "service"
+
+
+def test_legacy_identity_without_owner_deserializes_to_empty(store):
+    # Backward-compat: a persisted row written before owner-binding lacks the
+    # keys and must round-trip without error, defaulting owner to "".
+    import json
+
+    from agent_bom.api.agent_identity_store import AgentIdentity
+
+    identity, _ = issue_identity(store, agent_id="agent-a", tenant_id="t1", owner="x")
+    raw = json.loads(json.dumps(identity.to_public_dict()))
+    raw.pop("owner")
+    raw.pop("owner_type")
+    raw["token_hash"] = identity.token_hash
+    rebuilt = AgentIdentity(**raw)
+    assert rebuilt.owner == "" and rebuilt.owner_type == ""
+
+
 # ── proxy/gateway tie-in via resolve_agent_id ───────────────────────────────────
 
 
@@ -141,6 +197,28 @@ def test_issue_rotate_revoke_via_api(client):
 
 def test_issue_requires_agent_id(client):
     assert client.post("/v1/identities", json={}).status_code == 400
+
+
+def test_api_issue_binds_owner(client):
+    # Explicit owner is honored and surfaced in the serialized identity.
+    explicit = client.post("/v1/identities", json={"agent_id": "agent-a", "owner": "sec-team", "owner_type": "team"})
+    assert explicit.status_code == 201, explicit.text
+    ident = explicit.json()["identity"]
+    assert ident["owner"] == "sec-team" and ident["owner_type"] == "team"
+
+    # No explicit owner: the identity is still owner-bound (to the issuing actor),
+    # never orphaned.
+    implicit = client.post("/v1/identities", json={"agent_id": "agent-b"})
+    assert implicit.status_code == 201, implicit.text
+    assert implicit.json()["identity"]["owner"]
+
+
+def test_api_rotate_preserves_owner(client):
+    issued = client.post("/v1/identities", json={"agent_id": "agent-a", "owner": "sec-team", "owner_type": "team"})
+    iid = issued.json()["identity"]["identity_id"]
+    rotated = client.post(f"/v1/identities/{iid}/rotate", json={})
+    assert rotated.status_code == 200, rotated.text
+    assert rotated.json()["identity"]["owner"] == "sec-team"
 
 
 def test_get_unknown_identity_404s(client):

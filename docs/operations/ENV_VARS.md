@@ -139,6 +139,8 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_MCP_CALLER_RATE_LIMIT` | `int` | `120` | — |
 | `AGENT_BOM_MCP_CALLER_WINDOW_SECONDS` | `float` | `60.0` | — |
+| `AGENT_BOM_MCP_GLOBAL_RATE_LIMIT` | `int` | `MCP_CALLER_RATE_LIMIT * 20` | Process-wide ceiling across all MCP callers, enforced in addition to the per-caller window. Backstops a flood that spreads across many distinct (or unverified per-connection) caller identities. Defaults to a generous multiple of the per-cal |
+| `AGENT_BOM_MCP_GLOBAL_WINDOW_SECONDS` | `float` | `MCP_CALLER_WINDOW_SECONDS` | — |
 | `AGENT_BOM_MCP_MAX_CALLER_STATES` | `int` | `256` | — |
 | `AGENT_BOM_MCP_MAX_CONCURRENT_TOOLS` | `int` | `8` | — |
 | `AGENT_BOM_MCP_MAX_FILE_SIZE` | `int` | `50 * 1024 * 1024` | Used by mcp_server.py for file-size and response-size guards, tool execution governance, and lightweight in-process observability.  50 MB max file size prevents accidental ingestion of large binaries. 500,000 char response cap keeps MCP too |

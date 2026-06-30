@@ -1471,3 +1471,121 @@ def test_api_key_middleware_does_not_check_rls_bypass_when_postgres_disabled(mon
     resp = client.get("/v1/test", headers={"Authorization": "Bearer test-key-123"})
 
     assert resp.status_code == 200
+
+
+# ── Auth-session brute-force throttle identity (X-Forwarded-For spoofing) ─────
+
+
+def test_client_fingerprint_ignores_xff_without_trusted_proxy(monkeypatch):
+    """Default identity is the transport peer, not an attacker-supplied XFF."""
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_HOPS", raising=False)
+    request = SimpleNamespace(headers={"x-forwarded-for": "9.9.9.9"}, client=SimpleNamespace(host="10.0.0.5"))
+    assert enterprise._client_fingerprint(request) == "10.0.0.5"
+
+
+def test_client_fingerprint_honors_xff_with_trusted_hop_count(monkeypatch):
+    """A declared trusted-proxy hop count selects the proxy-appended address."""
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+    monkeypatch.setenv("AGENT_BOM_TRUSTED_PROXY_HOPS", "1")
+    request = SimpleNamespace(
+        headers={"x-forwarded-for": "1.1.1.1, 2.2.2.2, 3.3.3.3"},
+        client=SimpleNamespace(host="10.0.0.5"),
+    )
+    assert enterprise._client_fingerprint(request) == "3.3.3.3"
+
+
+@pytest.mark.asyncio
+async def test_auth_session_xff_spoof_does_not_reset_bruteforce_window(monkeypatch):
+    """Rotating X-Forwarded-For must not let an attacker evade the limiter.
+
+    Fails before the fix: the throttle keyed on the leftmost XFF, so each forged
+    value minted a fresh bucket and the brute-force window never tripped.
+    """
+    from fastapi import HTTPException
+
+    from agent_bom.api.routes import enterprise
+    from agent_bom.api.shared_auth_state import reset_auth_state_for_tests
+
+    reset_auth_state_for_tests()
+    monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUSTED_PROXY_HOPS", raising=False)
+    monkeypatch.setenv("AGENT_BOM_AUTH_SESSION_ATTEMPTS_PER_MINUTE", "1")
+    monkeypatch.setenv("AGENT_BOM_API_KEY", "valid-key")
+
+    def make_request(spoofed_xff: str):
+        return SimpleNamespace(
+            headers={"x-forwarded-for": spoofed_xff},
+            client=SimpleNamespace(host="203.0.113.10"),
+        )
+
+    with pytest.raises(HTTPException) as first:
+        await enterprise.create_browser_session(
+            make_request("1.1.1.1"), Response(), enterprise.BrowserSessionRequest(api_key="bad-1")
+        )
+    assert first.value.status_code == 401
+
+    with pytest.raises(HTTPException) as second:
+        await enterprise.create_browser_session(
+            make_request("2.2.2.2"), Response(), enterprise.BrowserSessionRequest(api_key="bad-2")
+        )
+    assert second.value.status_code == 429
+
+
+# ── Outermost coarse global rate limiter (pre-auth flood cap) ─────────────────
+
+
+def test_global_rate_limit_caps_flood_regardless_of_auth_outcome(monkeypatch):
+    """The global per-IP limiter caps traffic even when the handler rejects it.
+
+    Fails before the fix: there was no outermost limiter, so unauthenticated
+    floods reached (and were only rejected by) the auth layer without being
+    counted or capped.
+    """
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    from agent_bom.api.middleware import GlobalRateLimitMiddleware
+
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.delenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", raising=False)
+    monkeypatch.delenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", raising=False)
+
+    async def unauthorized(request):
+        return StarletteJSONResponse({"detail": "unauthorized"}, status_code=401)
+
+    test_app = Starlette(routes=[Route("/v1/ping", unauthorized)])
+    test_app.add_middleware(GlobalRateLimitMiddleware, rpm=3)
+
+    client = TestClient(test_app)
+    codes = [client.get("/v1/ping").status_code for _ in range(6)]
+    # First 3 reach the (rejecting) handler; the 4th+ are capped pre-handler.
+    assert codes[0] == 401
+    assert codes[3] == 429
+    last = client.get("/v1/ping")
+    assert last.status_code == 429
+    assert last.json()["detail"] == "Global rate limit exceeded"
+
+
+def test_configure_api_mounts_global_limiter_outermost(monkeypatch):
+    """The global limiter must sit before auth and body-size middleware."""
+    from agent_bom.api.middleware import GlobalRateLimitMiddleware
+    from agent_bom.api.server import app as server_app
+    from agent_bom.api.server import configure_api as cfg
+
+    original = list(server_app.user_middleware)
+    try:
+        monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
+        cfg(api_key="test-key-123", rate_limit_rpm=10)
+        order = [m.cls for m in server_app.user_middleware]
+        assert order.index(GlobalRateLimitMiddleware) < order.index(APIKeyMiddleware)
+        assert order.index(GlobalRateLimitMiddleware) < order.index(MaxBodySizeMiddleware)
+    finally:
+        server_app.user_middleware = original
+        if server_app.middleware_stack is not None:
+            server_app.middleware_stack = server_app.build_middleware_stack()

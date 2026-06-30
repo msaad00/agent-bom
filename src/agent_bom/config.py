@@ -411,6 +411,12 @@ MCP_MAX_TOOL_METRICS = _int("AGENT_BOM_MCP_MAX_TOOL_METRICS", 128)
 MCP_CALLER_RATE_LIMIT = _int("AGENT_BOM_MCP_CALLER_RATE_LIMIT", 120)
 MCP_CALLER_WINDOW_SECONDS = _float("AGENT_BOM_MCP_CALLER_WINDOW_SECONDS", 60.0)
 MCP_MAX_CALLER_STATES = _int("AGENT_BOM_MCP_MAX_CALLER_STATES", 256)
+# Process-wide ceiling across all MCP callers, enforced in addition to the
+# per-caller window. Backstops a flood that spreads across many distinct (or
+# unverified per-connection) caller identities. Defaults to a generous multiple
+# of the per-caller budget so it only trips genuine aggregate abuse.
+MCP_GLOBAL_RATE_LIMIT = _int("AGENT_BOM_MCP_GLOBAL_RATE_LIMIT", MCP_CALLER_RATE_LIMIT * 20)
+MCP_GLOBAL_WINDOW_SECONDS = _float("AGENT_BOM_MCP_GLOBAL_WINDOW_SECONDS", MCP_CALLER_WINDOW_SECONDS)
 MCP_MAX_REQUEST_TRACES = _int("AGENT_BOM_MCP_MAX_REQUEST_TRACES", 256)
 
 

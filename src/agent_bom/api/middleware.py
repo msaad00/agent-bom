@@ -1370,6 +1370,39 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 DEFAULT_SCAN_RATE_LIMIT_RPM = 600
 DEFAULT_READ_RATE_LIMIT_RPM = DEFAULT_SCAN_RATE_LIMIT_RPM * 5
 MAX_RATE_LIMIT_RPM = 60_000
+# Coarse per-client-IP ceiling enforced OUTERMOST (before authentication) so an
+# unauthenticated flood is capped regardless of auth outcome. Deliberately much
+# higher than the per-tenant read budget so it never trips legitimate
+# single-tenant traffic; it exists to bound abuse from a single source address.
+DEFAULT_GLOBAL_IP_RATE_LIMIT_RPM = DEFAULT_READ_RATE_LIMIT_RPM * 4
+
+
+def _build_rate_limit_store(window_seconds: int):
+    """Build the shared/in-memory limiter store with fail-closed semantics."""
+    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        try:
+            return PostgresRateLimitStore(window_seconds=window_seconds)
+        except Exception as exc:
+            raise RuntimeError(
+                "Configured Postgres rate limiter could not initialize; refusing to fall back to process-local state"
+            ) from exc
+    if _shared_rate_limit_required():
+        raise RuntimeError(
+            "Shared rate limiting is required for multi-replica or fail-closed deployments. "
+            "Configure AGENT_BOM_POSTGRES_URL before starting the API."
+        )
+    return InMemoryRateLimitStore(window_seconds=window_seconds)
+
+
+def global_ip_rate_limit_rpm() -> int:
+    """Resolve the coarse per-IP ceiling, honoring an operator override."""
+    raw = (os.environ.get("AGENT_BOM_GLOBAL_IP_RATE_LIMIT_RPM") or "").strip()
+    if raw:
+        try:
+            return _validate_rate_limit("global_ip_rpm", int(raw), max_rpm=MAX_RATE_LIMIT_RPM * 5)
+        except ValueError:
+            _logger.warning("Invalid AGENT_BOM_GLOBAL_IP_RATE_LIMIT_RPM=%r; using default", raw)
+    return DEFAULT_GLOBAL_IP_RATE_LIMIT_RPM
 
 
 def _validate_rate_limit(name: str, value: int, *, max_rpm: int) -> int:
@@ -1400,19 +1433,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._store = self._build_store()
 
     def _build_store(self):
-        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
-            try:
-                return PostgresRateLimitStore(window_seconds=self._window)
-            except Exception as exc:
-                raise RuntimeError(
-                    "Configured Postgres rate limiter could not initialize; refusing to fall back to process-local state"
-                ) from exc
-        if _shared_rate_limit_required():
-            raise RuntimeError(
-                "Shared rate limiting is required for multi-replica or fail-closed deployments. "
-                "Configure AGENT_BOM_POSTGRES_URL before starting the API."
-            )
-        return InMemoryRateLimitStore(window_seconds=self._window)
+        return _build_rate_limit_store(self._window)
 
     def _resolve_tenant_scope(self, request: StarletteRequest, raw_key: str) -> str | None:
         tenant_id = getattr(request.state, "tenant_id", "").strip() or None
@@ -1481,6 +1502,47 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_at)
         return response
+
+
+class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
+    """Coarse per-client-IP request ceiling enforced OUTERMOST.
+
+    Mounted before :class:`APIKeyMiddleware` so an unauthenticated flood is
+    capped regardless of auth outcome — a rejected (401) request never reaches
+    the inner tenant/auth-scoped :class:`RateLimitMiddleware`, so without this
+    backstop an anonymous attacker could pound the auth layer without being
+    throttled. Keyed on the transport peer address; the inner limiter keeps
+    fine-grained per-tenant budgets.
+    """
+
+    def __init__(self, app: ASGIApp, rpm: int = DEFAULT_GLOBAL_IP_RATE_LIMIT_RPM):
+        super().__init__(app)
+        self._rpm = _validate_rate_limit("global_ip_rpm", rpm, max_rpm=MAX_RATE_LIMIT_RPM * 5)
+        self._window = 60
+        self._store = _build_rate_limit_store(self._window)
+
+    def _bucket_key(self, request: StarletteRequest) -> str:
+        client_ip = request.client.host if request.client else "unknown"
+        return f"global-ip:{client_ip}"
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if RateLimitMiddleware._is_dashboard_static_asset(request.url.path, request.method):
+            return await call_next(request)
+
+        now = time.time()
+        key = self._bucket_key(request)
+        hit_count, reset_at = await asyncio.to_thread(self._store.hit, key, now)
+        if hit_count > self._rpm:
+            retry_after = max(int(reset_at - now), 1)
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Global rate limit exceeded"},
+                headers={
+                    "Retry-After": str(retry_after),
+                    "X-RateLimit-Scope": "global-ip",
+                },
+            )
+        return await call_next(request)
 
 
 def _configured_api_replicas() -> int:

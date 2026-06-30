@@ -169,11 +169,12 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         enriched.setdefault("request_id", request_id)
         enriched.setdefault("trace_id", trace_id)
         enriched.setdefault("event_type", enriched.get("action") or enriched.get("type", "runtime_alert"))
-        # Tag tenant_id on the in-memory record so per-tenant posture queries
-        # (e.g. compliance has_proxy) can scope correctly. The ring buffer is
-        # process-wide; without this tag every tenant sees every other
-        # tenant's alerts on shared deployments.
-        enriched.setdefault("tenant_id", tenant_id)
+        # Force the server-authoritative tenant_id on the in-memory record so
+        # per-tenant posture queries (e.g. compliance has_proxy) scope correctly.
+        # The ring buffer is process-wide; never honor a client-supplied
+        # tenant_id here — setdefault would let a caller pre-tag another tenant
+        # and write a cross-tenant alert that surfaces in that tenant's reads.
+        enriched["tenant_id"] = tenant_id
         # dedupe by event_id so a buggy or hostile proxy
         # cannot replay credential_leak alerts and inflate per-detector
         # tallies. Empty event_id falls through to keep legacy callers working.
@@ -216,7 +217,10 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         summary.setdefault("session_id", session_id)
         summary.setdefault("request_id", request_id)
         summary.setdefault("trace_id", trace_id)
-        summary.setdefault("tenant_id", tenant_id)
+        # Server-authoritative tenant tag — never honor a client-supplied
+        # tenant_id, which would route this summary into another tenant's
+        # metrics bucket on shared deployments.
+        summary["tenant_id"] = tenant_id
         push_proxy_metrics(summary)
 
     if analytics_events:

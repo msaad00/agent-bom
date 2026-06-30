@@ -27,10 +27,12 @@ from agent_bom.api.middleware import (
     DEFAULT_SCAN_RATE_LIMIT_RPM,
     MAX_RATE_LIMIT_RPM,
     APIKeyMiddleware,
+    GlobalRateLimitMiddleware,
     MaxBodySizeMiddleware,
     RateLimitMiddleware,
     TrustHeadersMiddleware,
     configure_auth_runtime,
+    global_ip_rate_limit_rpm,
     install_error_envelope,
 )
 
@@ -740,14 +742,16 @@ def configure_api(
         )
 
     # Refresh runtime-configurable middleware. _replace_middleware inserts at
-    # the front; this call order keeps body-size outermost, auth before rate
-    # limiting, and rate limiting able to read tenant/auth state.
+    # the front; this call order keeps the coarse per-IP limiter outermost
+    # (capping unauthenticated floods before auth), then body-size, then auth
+    # before the tenant-scoped rate limiter, which needs tenant/auth state.
     _replace_middleware(RateLimitMiddleware, scan_rpm=_rate_limit_rpm, read_rpm=_rate_limit_rpm * 5)
     if auth_required:
         _replace_middleware(APIKeyMiddleware, api_key=api_key)
     else:
         app.user_middleware = [m for m in app.user_middleware if m.cls is not APIKeyMiddleware]
     _replace_middleware(MaxBodySizeMiddleware)
+    _replace_middleware(GlobalRateLimitMiddleware, rpm=global_ip_rate_limit_rpm())
     if app.middleware_stack is not None:
         app.middleware_stack = app.build_middleware_stack()
 

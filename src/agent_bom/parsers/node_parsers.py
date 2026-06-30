@@ -15,6 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote
 
+from agent_bom.checksums import parse_sri
 from agent_bom.models import MCPServer, Package
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
 
@@ -196,6 +197,7 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                     continue
 
                 version = info.get("version", "unknown")
+                checksums = parse_sri(str(info.get("integrity") or ""))
                 packages.append(
                     Package(
                         name=clean_name,
@@ -203,6 +205,7 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                         ecosystem="npm",
                         purl=_npm_purl(clean_name, version),
                         is_direct=clean_name in direct_deps,
+                        checksums=checksums,
                     )
                 )
         except (json.JSONDecodeError, KeyError) as exc:

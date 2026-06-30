@@ -1192,10 +1192,12 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
     paged_nodes, pagination = _paginate(all_nodes, offset, limit)
     paged_ids = {n.id for n in paged_nodes}
     paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
+    kept_paths = [p for p in _derived_attack_paths(graph) if p.hops and p.hops[0] in paged_ids]
+    off_page_hops = {hop for p in kept_paths for hop in p.hops} - paged_ids
+    nodes_by_id = {n.id: n for n in paged_nodes}
+    nodes_by_id.update({hop: graph.nodes[hop] for hop in off_page_hops if hop in graph.nodes})
     attack_paths = [
-        _serialize_attack_path(p, graph.edges, nodes_by_id=graph.nodes, scan_id=graph.scan_id)
-        for p in _derived_attack_paths(graph)
-        if p.hops and all(hop in paged_ids for hop in p.hops)
+        _serialize_attack_path(p, graph.edges, nodes_by_id=nodes_by_id, scan_id=graph.scan_id) for p in kept_paths
     ]
     interaction_risks = [
         r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)

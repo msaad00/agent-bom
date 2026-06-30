@@ -95,6 +95,12 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
     if not isinstance(raw_tools, list):
         raise HTTPException(status_code=400, detail="'allowed_tools' must be a list of tool names")
     allowed_tools = [str(t).strip()[:120] for t in raw_tools if str(t).strip()][:200]
+    # Owner-bind every issued identity. An explicit owner wins; otherwise the
+    # identity is attributed to the actor that provisioned it, so an issued
+    # identity is never orphaned (matching the accountability we require of
+    # discovered cloud NHIs). owner_type is advisory (user | team | service).
+    owner = str(body.get("owner", "") or "").strip()[:200] or _actor(request)
+    owner_type = str(body.get("owner_type", "") or "").strip()[:60]
 
     identity, raw_token = issue_identity(
         get_agent_identity_store(),
@@ -104,6 +110,8 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
         blueprint_id=blueprint_id,
         ttl_seconds=ttl_seconds,
         allowed_tools=allowed_tools,
+        owner=owner,
+        owner_type=owner_type,
     )
     log_action(
         "agent_identity.issued",
@@ -113,6 +121,8 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
         agent_id=identity.agent_id,
         role=identity.role,
         blueprint_id=identity.blueprint_id,
+        owner=identity.owner,
+        owner_type=identity.owner_type,
         expires_at=identity.expires_at,
     )
     _emit(
@@ -121,6 +131,7 @@ async def issue_agent_identity(request: Request, body: dict) -> dict[str, object
         subject_id=identity.identity_id,
         agent_id=identity.agent_id,
         role=identity.role,
+        owner=identity.owner,
         expires_at=identity.expires_at,
     )
     return {
@@ -154,6 +165,8 @@ async def rotate_agent_identity(request: Request, identity_id: str, body: dict |
         resource=f"identity/{new_identity.identity_id}",
         tenant_id=new_identity.tenant_id,
         agent_id=new_identity.agent_id,
+        owner=new_identity.owner,
+        owner_type=new_identity.owner_type,
         rotated_from=identity_id,
         overlap_seconds=max(0, overlap_seconds),
     )
@@ -162,6 +175,7 @@ async def rotate_agent_identity(request: Request, identity_id: str, body: dict |
         tenant_id=new_identity.tenant_id,
         subject_id=new_identity.identity_id,
         agent_id=new_identity.agent_id,
+        owner=new_identity.owner,
         rotated_from=identity_id,
     )
     return {
@@ -190,6 +204,8 @@ async def revoke_agent_identity(request: Request, identity_id: str, body: dict |
         resource=f"identity/{revoked.identity_id}",
         tenant_id=revoked.tenant_id,
         agent_id=revoked.agent_id,
+        owner=revoked.owner,
+        owner_type=revoked.owner_type,
         reason=reason,
     )
     _emit("identity.revoked", tenant_id=revoked.tenant_id, subject_id=revoked.identity_id, agent_id=revoked.agent_id, reason=reason)

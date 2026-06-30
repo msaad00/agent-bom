@@ -22,7 +22,9 @@ function isApiReachabilityFailure(message: string): boolean {
     normalized.includes("500 internal server error") ||
     normalized.includes("502 bad gateway") ||
     normalized.includes("503 service unavailable") ||
-    normalized.includes("504 gateway timeout")
+    normalized.includes("504 gateway timeout") ||
+    normalized.includes("timed out") ||
+    normalized.includes("timeout")
   );
 }
 

@@ -56,6 +56,21 @@ _MAX_OPCODES = 1_000_000
 _MAX_PICKLE_BYTES = 256 * 1024 * 1024  # 256 MiB per embedded pickle stream
 _MAX_ZIP_MEMBERS = 4096
 _MAX_EMBEDDED_PICKLES = 64
+# Bound the string-operand stack and the memo so an adversarial file with
+# millions of strings/memo entries cannot exhaust memory while we model the
+# stack to recover STACK_GLOBAL operands.
+_MAX_STR_STACK = 4096
+_MAX_MEMO_ENTRIES = 200_000
+
+# String-pushing opcodes whose operands can become a STACK_GLOBAL module/name.
+_STRING_OPCODES = frozenset(
+    {"SHORT_BINUNICODE", "BINUNICODE", "BINUNICODE8", "UNICODE", "SHORT_BINSTRING", "BINSTRING", "STRING"}
+)
+# Memo store/load opcodes. Tracking them defeats evasion that hides the
+# dangerous operands behind the memo (PUT/BINPUT then a later BINGET) instead of
+# leaving them as the most recent literal strings.
+_MEMO_PUT_OPCODES = frozenset({"PUT", "BINPUT", "LONG_BINPUT"})
+_MEMO_GET_OPCODES = frozenset({"GET", "BINGET", "LONG_BINGET"})
 
 # Extensions whose contents may be (or may embed) a pickle stream.
 PICKLE_BEARING_EXTENSIONS = frozenset({".pkl", ".pickle", ".pt", ".pth", ".bin", ".joblib", ".npy", ".ckpt", ".model"})
@@ -197,10 +212,31 @@ class PickleScanResult:
     dangerous_imports: list[str] = field(default_factory=list)  # "module.callable"
     severity: str | None = None  # CRITICAL | HIGH | MEDIUM | None
     verdict: str = "clean"  # clean | suspicious | malicious | error | not_pickle
+    oversize_unscanned: bool = False  # member exceeded the byte cap; tail unscanned
+    declared_size: int | None = None  # declared (uncompressed) size when oversize
 
     def to_security_flag(self) -> dict | None:
         """Render a ``security_flags``-shaped dict, or ``None`` when clean."""
         if self.verdict in {"clean", "not_pickle"}:
+            if self.oversize_unscanned:
+                # A pickle-bearing member larger than the byte cap could only be
+                # disassembled up to the cap; bytes beyond it are UNVERIFIED. Fail
+                # safe — surface a finding even when the scanned prefix is clean,
+                # because an attacker can pad a malicious pickle past the cap to
+                # evade the scanner.
+                location = f" (zip member {self.member})" if self.member else ""
+                size_note = f"declared size {self.declared_size} bytes; " if self.declared_size else ""
+                return {
+                    "severity": "HIGH",
+                    "type": "OVERSIZE_PICKLE_UNSCANNED",
+                    "description": (
+                        f"Pickle-bearing member{location} exceeds the scan byte cap "
+                        f"({size_note}cap {_max_pickle_bytes()} bytes); only the leading slice was "
+                        "disassembled and the remainder was NOT scanned. Padding a pickle past the "
+                        "cap is a known evasion — treat as suspicious; prefer safetensors/ONNX or "
+                        "raise AGENT_BOM_PICKLE_MAX_BYTES to scan it fully."
+                    ),
+                }
             return None
         if self.verdict == "error":
             return {
@@ -295,10 +331,22 @@ def _scan_opcode_stream(data: bytes, path: str, member: str | None) -> PickleSca
     # opcode. We do not require this — genops tolerates protocol 0/1 — but a
     # stream with no recognizable first opcode falls through to the except.
     max_ops = _max_opcodes()
-    pending_strings: list[str] = []  # for STACK_GLOBAL operand recovery
+    # Model the operand stack and the pickle memo so STACK_GLOBAL's module/name
+    # are recovered even when an adversary parks them in the memo (PUT/BINPUT)
+    # and replays them via GET/BINGET, instead of leaving them as the last
+    # literal strings. ``None`` marks an opaque (non-string) stack value.
+    str_stack: list[str | None] = []
+    memo: dict[int, str | None] = {}
+    memo_index = 0  # auto-incrementing index assigned by MEMOIZE
     code_exec: set[str] = set()
     dangerous: list[str] = []
+    unresolved_globals: list[str] = []  # globals whose operands we could not recover
     saw_call = False
+
+    def _push(value: str | None) -> None:
+        str_stack.append(value)
+        if len(str_stack) > _MAX_STR_STACK:
+            del str_stack[: len(str_stack) - _MAX_STR_STACK]
 
     try:
         # genops is a generator that statically parses opcodes; it does not
@@ -312,13 +360,22 @@ def _scan_opcode_stream(data: bytes, path: str, member: str | None) -> PickleSca
 
             name = opcode.name
 
-            # Track short string/unicode operands so we can reconstruct the
+            # Track string operands and the memo so we can reconstruct the
             # module + callable that STACK_GLOBAL pops off the stack.
-            if name in {"SHORT_BINUNICODE", "BINUNICODE", "UNICODE", "SHORT_BINSTRING", "BINSTRING", "STRING"}:
-                if isinstance(arg, str):
-                    pending_strings.append(arg)
-                    if len(pending_strings) > 4:
-                        pending_strings = pending_strings[-4:]
+            if name in _STRING_OPCODES:
+                _push(arg if isinstance(arg, str) else None)
+                continue
+            if name == "MEMOIZE":
+                if len(memo) < _MAX_MEMO_ENTRIES:
+                    memo[memo_index] = str_stack[-1] if str_stack else None
+                memo_index += 1
+                continue
+            if name in _MEMO_PUT_OPCODES:
+                if isinstance(arg, int) and len(memo) < _MAX_MEMO_ENTRIES:
+                    memo[arg] = str_stack[-1] if str_stack else None
+                continue
+            if name in _MEMO_GET_OPCODES:
+                _push(memo.get(arg) if isinstance(arg, int) else None)
                 continue
 
             if name in _CODE_EXEC_OPCODES:
@@ -328,19 +385,34 @@ def _scan_opcode_stream(data: bytes, path: str, member: str | None) -> PickleSca
 
             if name == "GLOBAL":
                 parsed = _normalize_global(arg)
-                if parsed:
+                if parsed is None:
+                    # Operand could not be parsed — fail safe, do not ignore.
+                    unresolved_globals.append("?.?")
+                else:
                     label = _classify_global(*parsed)
                     if label:
                         dangerous.append(label)
             elif name == "STACK_GLOBAL":
-                # operands are the two most recent strings on the stack:
-                # module then name (name pushed last).
-                if len(pending_strings) >= 2:
-                    module, callable_name = pending_strings[-2], pending_strings[-1]
+                # operands are the two top stack values: module then name
+                # (name pushed last), resolved through the memo above.
+                callable_name = str_stack.pop() if str_stack else None
+                module = str_stack.pop() if str_stack else None
+                if isinstance(module, str) and isinstance(callable_name, str):
                     label = _classify_global(module, callable_name)
                     if label:
                         dangerous.append(label)
-                pending_strings = []
+                else:
+                    # Operands hidden behind the memo / produced by non-string
+                    # opcodes could not be fully recovered. Fail safe: never
+                    # silently ignore an unresolved dynamic import.
+                    unresolved_globals.append(
+                        f"{module if isinstance(module, str) else '?'}.{callable_name if isinstance(callable_name, str) else '?'}"
+                    )
+            else:
+                # Any other value-producing opcode pushes an opaque value; record
+                # it so stale strings cannot masquerade as a later STACK_GLOBAL
+                # operand.
+                _push(None)
     except Exception as exc:  # noqa: BLE001 — any malformed-pickle error is SAFE here
         # genops raises on truncated/garbage streams. We never propagate; a
         # broken pickle is reported, not crashed on.
@@ -354,7 +426,7 @@ def _scan_opcode_stream(data: bytes, path: str, member: str | None) -> PickleSca
 
     result.has_reduce = "REDUCE" in code_exec
     result.code_exec_opcodes = sorted(code_exec)
-    result.dangerous_imports = dangerous
+    result.dangerous_imports = dangerous + [f"unresolved:{ref}" for ref in unresolved_globals]
 
     if not result.is_pickle:
         result.verdict = "not_pickle"
@@ -363,9 +435,10 @@ def _scan_opcode_stream(data: bytes, path: str, member: str | None) -> PickleSca
     if dangerous and (saw_call or result.has_reduce):
         result.verdict = "malicious"
         result.severity = "CRITICAL"
-    elif dangerous:
+    elif dangerous or unresolved_globals:
         # Dangerous import present but no call opcode observed (e.g. truncated
-        # before REDUCE) — still suspicious supply-chain signal.
+        # before REDUCE), or a global whose operands could not be recovered —
+        # still a suspicious supply-chain signal that must not be ignored.
         result.verdict = "suspicious"
         result.severity = "HIGH"
     else:
@@ -399,8 +472,14 @@ def _scan_zip(data: bytes, path: str) -> list[PickleScanResult]:
                     info = zf.getinfo(member)
                 except KeyError:
                     continue
-                if info.is_dir() or info.file_size > _max_pickle_bytes():
+                if info.is_dir():
                     continue
+                # An oversized member is NOT silently skipped: a pickle padded
+                # past the cap would otherwise evade scanning entirely. We still
+                # disassemble the leading slice (bounded read keeps the DoS cap)
+                # and flag the unscanned remainder as suspicious below.
+                cap = _max_pickle_bytes()
+                oversize = info.file_size > cap
                 try:
                     with zf.open(member) as fh:
                         head = fh.read(2)
@@ -408,11 +487,15 @@ def _scan_zip(data: bytes, path: str) -> list[PickleScanResult]:
                         starts_pickle = head[:1] == b"\x80"  # PROTO
                         if not (is_pkl_ext or starts_pickle):
                             continue
-                        body = head + fh.read(_max_pickle_bytes())
+                        body = head + fh.read(cap)
                 except (OSError, zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
                     results.append(PickleScanResult(path=path, member=member, error=f"could not read zip member: {exc}", verdict="error"))
                     continue
-                results.append(_scan_opcode_stream(body, path=path, member=member))
+                res = _scan_opcode_stream(body, path=path, member=member)
+                if oversize:
+                    res.oversize_unscanned = True
+                    res.declared_size = info.file_size
+                results.append(res)
                 scanned += 1
     except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
         results.append(PickleScanResult(path=path, error=f"not a readable zip archive: {exc}", verdict="error"))

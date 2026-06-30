@@ -118,6 +118,31 @@ def _allowed_scan_roots() -> list[str]:
     return sorted(roots)
 
 
+_ZIP_MAGICS = (b"PK\x03\x04", b"PK\x05\x06")
+# Pickle protocol-2+ streams begin with the PROTO opcode (0x80) followed by a
+# one-byte protocol number (1..5). Higher protocols (5) cover modern torch.
+_PICKLE_PROTOCOLS = frozenset({1, 2, 3, 4, 5})
+
+
+def _looks_like_pickle_header(file_path: Path) -> bool:
+    """Cheap content sniff: does this file *start* like a pickle or torch zip?
+
+    Reads only the first few bytes (no deserialization, bounded I/O). Used to
+    discover pickle-bearing content hiding under a benign or non-pickle-bearing
+    extension, which extension-only discovery would miss entirely.
+    """
+    try:
+        with open(file_path, "rb") as fh:
+            head = fh.read(4)
+    except OSError:
+        return False
+    if not head:
+        return False
+    if head[:4] in _ZIP_MAGICS:
+        return True
+    return head[:1] == b"\x80" and len(head) >= 2 and head[1] in _PICKLE_PROTOCOLS
+
+
 def _human_size(size_bytes: int | float) -> str:
     """Convert bytes to human-readable size string."""
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -149,6 +174,7 @@ def scan_model_files(
 
     results: list[dict] = []
     warnings: list[str] = []
+    scanned_for_pickle: set[str] = set()
 
     for ext, info in _MODEL_EXTENSIONS.items():
         for file_path in sorted(directory.rglob(f"*{ext}")):
@@ -163,11 +189,6 @@ def scan_model_files(
 
             size_bytes = stat.st_size
 
-            # For .bin files, apply size heuristic to filter non-model binaries
-            min_size_mb = info.get("min_size_mb", 0)
-            if min_size_mb and size_bytes < min_size_mb * 1024 * 1024:
-                continue
-
             security_flags = []
             if ext in _SECURITY_FLAGS:
                 flag = _SECURITY_FLAGS[ext].copy()
@@ -179,7 +200,14 @@ def scan_model_files(
             # deserializing the model (no pickle.load / torch.load / joblib.load),
             # so the no-execution guarantee is preserved while upgrading the
             # signal from extension-only to content-aware.
+            #
+            # The SECURITY scan runs on every pickle-bearing file regardless of
+            # size: the ``min_size_mb`` heuristic only classifies whether a
+            # generic binary counts as a "real model file", and must never gate
+            # the scan — otherwise a small malicious pickle disguised as ``.bin``
+            # (< min_size_mb) would slip through unscanned.
             if ext in PICKLE_BEARING_EXTENSIONS:
+                scanned_for_pickle.add(str(file_path))
                 try:
                     pickle_flags, _ = scan_pickle_file_flags(file_path)
                 except Exception as exc:  # noqa: BLE001 — scanner must never break a scan
@@ -188,6 +216,12 @@ def scan_model_files(
                 for pflag in pickle_flags:
                     security_flags.append(pflag)
                     warnings.append(f"Model file {file_path.name}: {pflag['severity']} — {pflag['type']}. {pflag['description']}")
+
+            # Size heuristic filters non-model generic binaries from inventory,
+            # but never suppresses a file the content scan already flagged.
+            min_size_mb = info.get("min_size_mb", 0)
+            if min_size_mb and size_bytes < min_size_mb * 1024 * 1024 and not security_flags:
+                continue
 
             results.append(
                 {
@@ -201,6 +235,59 @@ def scan_model_files(
                     "security_flags": security_flags,
                 }
             )
+
+    # Content-sniff discovery pass. Extension-only discovery (the loop above)
+    # never sees a pickle hidden under a benign extension (``.txt``, ``.dat``)
+    # or under a model extension that is not normally pickle-bearing
+    # (``.safetensors``, ``.onnx``). Sniff every remaining file's header for
+    # pickle / torch-zip magic and disassemble the pickle-bearing ones,
+    # regardless of extension, so the format cannot be spoofed by renaming.
+    results_by_path = {item["path"]: item for item in results}
+    for file_path in sorted(directory.rglob("*")):
+        if any(part.startswith(".") for part in file_path.parts):
+            continue
+        path_str = str(file_path)
+        if path_str in scanned_for_pickle:
+            continue
+        try:
+            if not file_path.is_file():
+                continue
+            stat = file_path.stat()
+        except OSError:
+            continue
+        if not _looks_like_pickle_header(file_path):
+            continue
+        scanned_for_pickle.add(path_str)
+        try:
+            pickle_flags, _ = scan_pickle_file_flags(file_path)
+        except Exception as exc:  # noqa: BLE001 — scanner must never break a scan
+            logger.debug("Pickle opcode scan skipped for %s: %s", file_path, exc)
+            pickle_flags = []
+        if not pickle_flags:
+            continue
+        existing = results_by_path.get(path_str)
+        if existing is not None:
+            # File was already inventoried under a (spoofed) model extension;
+            # attach the content findings instead of duplicating the entry.
+            for pflag in pickle_flags:
+                existing["security_flags"].append(pflag)
+                warnings.append(f"Model file {file_path.name}: {pflag['severity']} — {pflag['type']}. {pflag['description']}")
+            continue
+        for pflag in pickle_flags:
+            warnings.append(f"Model file {file_path.name}: {pflag['severity']} — {pflag['type']}. {pflag['description']}")
+        suffix = file_path.suffix.lower()
+        entry = {
+            "path": path_str,
+            "filename": file_path.name,
+            "extension": suffix,
+            "format": "Pickle (disguised)",
+            "ecosystem": "Unknown",
+            "size_bytes": stat.st_size,
+            "size_human": _human_size(stat.st_size),
+            "security_flags": list(pickle_flags),
+        }
+        results.append(entry)
+        results_by_path[path_str] = entry
 
     return results, warnings
 

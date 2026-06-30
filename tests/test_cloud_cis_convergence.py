@@ -158,3 +158,80 @@ async def test_findings_endpoint_filters_cloud_cis_by_scan_id() -> None:
     assert response["total"] == 2
     assert {finding["finding_type"] for finding in response["findings"]} == {"CIS_FAIL"}
     assert {finding["scan_id"] for finding in response["findings"]} == {"scan-cloud"}
+
+
+def _html_section(html: str, section_id: str) -> str:
+    """Slice out a single top-level ``<section id=...>...</section>`` block."""
+    start = html.index(f'id="{section_id}"')
+    return html[start : html.index("</section>", start)]
+
+
+def _html_dedup_report() -> AIBOMReport:
+    """A cloud report whose CIS failures hit BOTH HTML render paths.
+
+    ``_non_cve_findings()`` lifts every failed cloud CIS check into the unified
+    policy-findings section AND the dedicated CIS Benchmark Posture table renders
+    the same checks. The dedicated table covers aws/azure/gcp/snowflake/databricks
+    (``_CIS_CLOUD_LABELS``); snowflake governance findings have no dedicated table.
+    """
+
+    def _bench(check_id: str) -> dict:
+        return {
+            "checks": [
+                {
+                    "check_id": check_id,
+                    "title": f"Ensure control {check_id}",
+                    "status": "fail",
+                    "severity": "high",
+                    "recommendation": f"Fix {check_id}.",
+                    "cis_section": check_id,
+                    "resource_ids": [f"resource-{check_id}"],
+                }
+            ],
+            "pass_rate": 0.0,
+            "passed": 0,
+        }
+
+    report = AIBOMReport(scan_id="cis-html-dedup")
+    report.cis_benchmark_data = _bench("1.4")
+    report.databricks_cis_benchmark_data = _bench("5.1")
+    report.snowflake_governance_data = {
+        "account": "acme",
+        "findings": [
+            {
+                "category": "write_access",
+                "severity": "high",
+                "title": "Role has broad write access",
+                "description": "A role can write to sensitive objects.",
+                "agent_or_role": "ANALYST_ROLE",
+                "object_name": "SENSITIVE.PII",
+            }
+        ],
+    }
+    return report
+
+
+def test_html_cloud_cis_failure_rendered_once() -> None:
+    """Each failed cloud CIS check renders exactly once in the HTML report.
+
+    Regression for the double-emission bug: ``_non_cve_findings()`` lifted cloud
+    CIS failures into the unified policy-findings section while the dedicated CIS
+    Benchmark Posture table rendered them again. After de-duplication the failed
+    check appears only in the dedicated table, while snowflake governance findings
+    (no dedicated table) keep flowing through the unified policy section.
+    """
+    from agent_bom.output.html import to_html
+
+    html = to_html(_html_dedup_report())
+    policy = _html_section(html, "policyfindings")
+    cis = _html_section(html, "cisbenchmarks")
+
+    # aws + databricks both have a dedicated table -> deduped out of the unified
+    # policy section, present in the CIS table (row cell, not double-emitted).
+    for check_id in ("1.4", "5.1"):
+        assert f"CIS {check_id}:" not in policy, f"CIS {check_id} double-emitted in policy section"
+        assert f">{check_id}<" in cis, f"CIS {check_id} missing from dedicated CIS table"
+
+    # snowflake governance has no dedicated table -> still in the unified section.
+    assert "Role has broad write access" in policy
+    assert "Role has broad write access" not in cis

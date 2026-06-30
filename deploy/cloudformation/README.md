@@ -74,7 +74,7 @@ S3 console.
 | `Region`              | `us-east-1`                                           | AWS region passed to `agent-bom cloud aws --region`.                    |
 | `FailOnSeverity`      | `none`                                                | `none\|low\|medium\|high\|critical` — fail the build at/above severity. |
 | `AddViewOnlyAccess`   | `false`                                               | Also attach AWS-managed `ViewOnlyAccess` (still read-only).             |
-| `AgentBomSpec`        | `agent-bom[aws]`                                      | pip spec; pin a version e.g. `agent-bom[aws]==0.89.2`.                  |
+| `AgentBomSpec`        | `agent-bom[aws]`                                      | pip spec; pin a version e.g. `agent-bom[aws]==0.90.0`.                  |
 | `ComputeType`         | `BUILD_GENERAL1_SMALL`                                | CodeBuild compute size.                                                 |
 | `PythonImage`         | `aws/codebuild/amazonlinux2-x86_64-standard:5.0`      | Managed CodeBuild image providing Python 3.                            |
 | `ReportRetentionDays` | `30`                                                  | Days before report objects expire.                                     |

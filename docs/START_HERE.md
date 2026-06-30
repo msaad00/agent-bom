@@ -22,7 +22,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi  # pre-install allow/warn/block
 CI gate (GitHub Action):
 
 ```yaml
-- uses: msaad00/agent-bom@v0.89.2
+- uses: msaad00/agent-bom@v0.90.0
 ```
 
 - Output formats, exit codes, and the full command set:

@@ -146,6 +146,11 @@ class Vulnerability:
     privileges_required: Optional[str] = None
     user_interaction: Optional[str] = None
     network_exploitable: bool = False
+    # Affected functions/symbols the advisory names (OSV/GHSA
+    # ecosystem_specific.imports[].symbols). Optional — most advisories carry
+    # none. Consumed by agent_bom.reachability_cve to upgrade a finding to
+    # function-level reachability when one of these symbols is actually reached.
+    affected_symbols: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Sanitize fixed_version — filter git SHAs and non-version strings."""
@@ -870,6 +875,15 @@ class BlastRadius:
     graph_reachable: Optional[bool] = None
     graph_min_hop_distance: Optional[int] = None
     graph_reachable_from_agents: list[str] = field(default_factory=list)
+
+    # Function-level symbol reachability (populated by
+    # agent_bom.reachability_cve via apply_symbol_reachability_to_blast_radii
+    # after AST symbol-reach is available). ``None`` means the join did not
+    # run. Otherwise one of "function_reachable" / "package_reachable" /
+    # "unreachable"; ``reachable_affected_symbols`` carries the matched
+    # advisory symbols when function-reachable.
+    symbol_reachability: Optional[str] = None
+    reachable_affected_symbols: list[str] = field(default_factory=list)
 
     def calculate_risk_score(self) -> float:
         """Calculate contextual risk score based on blast radius.

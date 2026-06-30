@@ -2171,6 +2171,7 @@ def scan(
             con.print(f"  [yellow]⚠[/yellow] {w}")
 
     # ── Step 1m: AST source code analysis (auto-detect Python AI code) ──
+    _ast_result_for_reach = None
     if not skill_only and not no_discover and project and not dry_run:
         from pathlib import Path as _APath
 
@@ -2182,6 +2183,7 @@ def scan(
                 from agent_bom.ast_analyzer import analyze_project as _ast_analyze
 
                 _ast_result = _ast_analyze(project)
+                _ast_result_for_reach = _ast_result
                 if _ast_result.prompts or _ast_result.guardrails or _ast_result.tools:
                     report.ai_inventory_data = report.ai_inventory_data or {}
                     report.ai_inventory_data["ast_analysis"] = _ast_result.to_dict()
@@ -2394,9 +2396,15 @@ def scan(
     try:
         from agent_bom.graph.blast_reach import (
             apply_dependency_reachability_to_blast_radii,
+            apply_symbol_reachability_to_blast_radii,
         )
 
         apply_dependency_reachability_to_blast_radii(blast_radii, agents, rescore=True)
+        # Join AST function-level symbol reach to CVE affected-symbols so each
+        # Python finding carries a function_reachable / package_reachable /
+        # unreachable signal. No-op when no Python entrypoints were analysed.
+        if _ast_result_for_reach is not None:
+            apply_symbol_reachability_to_blast_radii(blast_radii, _ast_result_for_reach)
     except Exception:  # noqa: BLE001
         # Reachability is best-effort enrichment — don't let it fail the scan.
         pass

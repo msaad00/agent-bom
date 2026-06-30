@@ -128,3 +128,40 @@ async def test_osv_batches_run_with_configured_concurrency(monkeypatch):
     # With 6 batches at concurrency 3, parallelism fires (>=2) but the batch
     # semaphore must cap concurrent in-flight requests at the bound (<=3).
     assert 2 <= peak_in_flight <= 3
+
+
+@pytest.mark.asyncio
+async def test_osv_terminal_429_surfaces_coverage_gap(monkeypatch):
+    """A batch that stays 429 after retries must surface a lookup error.
+
+    Regression: the terminal-429 branch used to pause the pipeline and return
+    without recording the batch's packages, silently dropping their vuln data
+    with no signal. The gap must be visible as a recorded scan warning.
+    """
+    # Avoid the 60s pipeline pause in the test.
+    monkeypatch.setattr("agent_bom.scanners.osv._PIPELINE_429_BACKOFF", 0.0)
+
+    warnings: list[str] = []
+
+    async def request_with_retry(*args, **kwargs):  # noqa: ARG001
+        class _RateLimited:
+            status_code = 429
+            headers: dict[str, str] = {}
+
+        return _RateLimited()
+
+    result = await query_osv_batch_impl(
+        [Package(name="requests", version="2.31.0", ecosystem="pypi")],
+        console=Console(file=None, force_terminal=False, quiet=True),
+        get_scan_cache=lambda: None,
+        get_api_semaphore=lambda: asyncio.Semaphore(1),
+        bump_scan_perf=lambda _name, _count: None,
+        enrich_results_if_needed_fn=lambda results: asyncio.sleep(0, result=results),
+        record_scan_warning=warnings.append,
+        osv_ecosystems_for_package=lambda _pkg: ["PyPI"],
+        non_osv_ecosystems=frozenset(),
+        request_with_retry_fn=request_with_retry,
+    )
+
+    assert result == {}
+    assert any("lookup error" in warning for warning in warnings)

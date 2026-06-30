@@ -363,6 +363,10 @@ main.add_command(secrets_cmd)
 main.add_command(code_cmd)
 main.add_command(scanners_cmd)
 
+from agent_bom.cli._attest_group import attest_group  # noqa: E402
+
+main.add_command(attest_group)
+
 # ---------------------------------------------------------------------------
 # Skills command group — `agent-bom skills [scan|verify]`
 # ---------------------------------------------------------------------------

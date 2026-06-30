@@ -888,6 +888,30 @@ def test_rpm_sqlite_gpg_pubkey_skipped():
     assert any(p.name == "bash" for p in result.packages)
 
 
+def test_legacy_bdb_rpmdb_emits_coverage_warning():
+    """A BerkeleyDB ``Packages`` db produces a coverage warning, not silent zero RPMs."""
+    # Arbitrary binary blob standing in for an undecodable BerkeleyDB rpm db.
+    tar = _make_docker_save_tar([{"var/lib/rpm/Packages": b"\x00\x06\x15\x61 legacy bdb \x00"}])
+    result = parse_oci_tarball(tar)
+    assert not any(p.ecosystem == "rpm" for p in result.packages)
+    assert any("BerkeleyDB" in w and "not yet supported" in w for w in result.warnings)
+
+
+def test_legacy_ndb_rpmdb_emits_coverage_warning():
+    """An NDB ``Packages.db`` db produces a coverage warning tagged NDB."""
+    tar = _make_docker_save_tar([{"var/lib/rpm/Packages.db": b"\x00\x00\x00 legacy ndb \x00"}])
+    result = parse_oci_tarball(tar)
+    assert any("NDB" in w and "not yet supported" in w for w in result.warnings)
+
+
+def test_modern_sqlite_rpmdb_emits_no_legacy_warning():
+    """A modern rpmdb.sqlite must not trigger the legacy-coverage warning (no false positive)."""
+    db = _make_rpm_sqlite([("bash", "5.2.26", "1.el9")])
+    tar = _make_docker_save_tar([{"var/lib/rpm/rpmdb.sqlite": db}])
+    result = parse_oci_tarball(tar)
+    assert not any("not yet supported" in w for w in result.warnings)
+
+
 def test_rpm_sqlite_and_log_manifest_dedup():
     """Same package from sqlite and log manifest only counted once."""
     db = _make_rpm_sqlite([("nginx", "1.25.0", "1.el9")])

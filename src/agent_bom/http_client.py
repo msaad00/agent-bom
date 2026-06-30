@@ -463,6 +463,56 @@ def fetch_bytes(url: str, *, timeout: float = 30, headers: dict | None = None) -
     return resp.content
 
 
+def download_to_file(
+    url: str,
+    dest: str,
+    *,
+    timeout: float = 60,
+    headers: dict | None = None,
+    chunk_size: int = 1 << 20,
+) -> int:
+    """Stream a URL to *dest* on disk in chunks, with retries. Returns bytes written.
+
+    Unlike :func:`fetch_bytes`, this never holds the whole response in memory —
+    suited to large bulk exports (multi-hundred-MB archives) on memory-limited
+    hosts. Raises on failure.
+    """
+    check_offline()
+    last_exc: Optional[Exception] = None
+    for attempt in range(MAX_RETRIES + 1):
+        written = 0
+        try:
+            with create_sync_client(timeout=timeout, max_redirects=5) as client:
+                with client.stream("GET", url, headers=headers or {}, follow_redirects=True) as resp:
+                    resp.raise_for_status()
+                    with open(dest, "wb") as fh:
+                        for chunk in resp.iter_bytes(chunk_size):
+                            fh.write(chunk)
+                            written += len(chunk)
+            return written
+        except (httpx.HTTPError, OSError) as exc:
+            last_exc = exc
+            if attempt < MAX_RETRIES:
+                wait = min(INITIAL_BACKOFF * (2**attempt), MAX_BACKOFF)
+                logger.info(
+                    "Stream download of %s failed: %s — retry %d/%d in %.1fs",
+                    _safe_url(url),
+                    _sanitize_for_log(exc),
+                    attempt + 1,
+                    MAX_RETRIES,
+                    wait,
+                )
+                time.sleep(wait)
+            else:
+                logger.warning(
+                    "Stream download of %s failed: %s — exhausted %d retries",
+                    _safe_url(url),
+                    _sanitize_for_log(exc),
+                    MAX_RETRIES,
+                )
+    raise ConnectionError(f"Failed to download {_safe_url(url)} after retries") from last_exc
+
+
 def fetch_json(url: str, *, timeout: float = 30, headers: dict | None = None) -> Any:
     """Download URL content as parsed JSON, with retries. Raises on failure."""
     resp = sync_get(url, timeout=timeout, headers=headers)

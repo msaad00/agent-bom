@@ -496,33 +496,47 @@ def sync_osv(conn: sqlite3.Connection, url: Optional[str] = None, max_entries: i
 
     Returns the number of advisories ingested.
     """
-    from agent_bom.http_client import fetch_bytes
+    import os
+    import tempfile
+
+    from agent_bom.http_client import download_to_file
 
     src = url or _OSV_ALL_ZIP_URL
     _validate_sync_url(src, "osv url")
     _logger.info("Downloading OSV bulk export from %s …", src)
 
-    try:
-        data = fetch_bytes(src, timeout=60)
-    except Exception as exc:
-        _logger.error("Failed to download OSV export: %s", exc)
-        raise
-
+    # Stream the (hundreds-of-MB) archive to disk in chunks rather than buffering
+    # the whole payload — and a second BytesIO copy — in RAM, which OOMs on
+    # memory-limited hosts. zipfile reads members lazily from the on-disk path.
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip", prefix="osv-all-")
+    os.close(tmp_fd)
     count = 0
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        names = zf.namelist()
-        _logger.info("OSV zip contains %d files", len(names))
-        for name in names:
-            if max_entries and count >= max_entries:
-                break
-            if not name.endswith(".json"):
-                continue
-            content = zf.read(name)
-            ingested = _ingest_osv_file(conn, content, name)
-            count += ingested
-            if count % _BATCH_SIZE == 0 and count > 0:
-                conn.commit()
-                _logger.debug("Ingested %d OSV advisories …", count)
+    try:
+        try:
+            download_to_file(src, tmp_path, timeout=300)
+        except Exception as exc:
+            _logger.error("Failed to download OSV export: %s", exc)
+            raise
+
+        with zipfile.ZipFile(tmp_path) as zf:
+            names = zf.namelist()
+            _logger.info("OSV zip contains %d files", len(names))
+            for name in names:
+                if max_entries and count >= max_entries:
+                    break
+                if not name.endswith(".json"):
+                    continue
+                content = zf.read(name)
+                ingested = _ingest_osv_file(conn, content, name)
+                count += ingested
+                if count % _BATCH_SIZE == 0 and count > 0:
+                    conn.commit()
+                    _logger.debug("Ingested %d OSV advisories …", count)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
     conn.commit()
     _update_sync_meta(conn, "osv", count)
@@ -1007,6 +1021,13 @@ def sync_kev(conn: sqlite3.Connection, url: Optional[str] = None) -> int:
         _logger.error("Failed to download KEV catalog: %s", exc)
         raise
 
+    if not isinstance(data, dict):
+        # A wrong-shape payload (array/string) would raise AttributeError on
+        # .get and abort the whole sequential sync_db — guard it like the
+        # Alpine/Debian ingest paths do.
+        _logger.warning("KEV catalog returned unexpected payload type: %s", type(data).__name__)
+        return 0
+
     count = 0
     batch: list[tuple] = []
     for entry in data.get("vulnerabilities", []):
@@ -1230,6 +1251,7 @@ def sync_ghsa(
     from agent_bom.package_utils import normalize_package_name
 
     cap_hit = False
+    sync_failed = False
     for ecosystem in target_ecosystems:
         if count >= max_entries:
             cap_hit = True
@@ -1250,7 +1272,11 @@ def sync_ghsa(
             try:
                 advisories = fetch_json(fetch_url, timeout=30, headers=hdrs)
             except Exception as exc:
+                # Don't silently abandon: record that this sync is incomplete so
+                # the metadata reflects degraded coverage and a reader/operator
+                # can see the gap (mirrors the NVD/Alpine sync_failed pattern).
                 _logger.error("Failed to fetch GHSA page %d for %s: %s", page, ecosystem, exc)
+                sync_failed = True
                 break
 
             if not advisories:
@@ -1287,7 +1313,8 @@ def sync_ghsa(
             "ecosystem_counts": eco_counts,
             "max_entries": max_entries,
             "cap_hit": cap_hit,
-            "coverage": "truncated" if cap_hit else "complete_for_requested_pages",
+            "sync_failed": sync_failed,
+            "coverage": "partial" if sync_failed else ("truncated" if cap_hit else "complete_for_requested_pages"),
         },
     )
     if cap_hit:
@@ -1557,6 +1584,18 @@ def sync_nvd_incremental(
             data = fetch_json(fetch_url, timeout=60, headers=request_headers)
         except Exception as exc:
             _logger.warning("NVD incremental sync failed at startIndex=%s: %s", start_index, exc)
+            sync_failed = True
+            break
+
+        if not isinstance(data, dict):
+            # Wrong-shape JSON (array/string) would raise AttributeError on .get
+            # and abort the whole sequential sync_db. Treat it as a failed window
+            # so the checkpoint isn't advanced over unsynced CVEs.
+            _logger.warning(
+                "NVD incremental sync got unexpected payload type at startIndex=%s: %s",
+                start_index,
+                type(data).__name__,
+            )
             sync_failed = True
             break
 
@@ -1923,6 +1962,12 @@ def sync_db(
                     max_entries=max_nvd_entries,
                 )
     finally:
+        # Fold the (potentially large) -wal back into the main DB so concurrent
+        # readers don't race a big write-ahead log right after a sync.
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error as exc:
+            _logger.debug("WAL checkpoint after sync_db skipped: %s", exc)
         conn.close()
 
     return results

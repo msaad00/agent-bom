@@ -294,6 +294,29 @@ def test_sync_ghsa_respects_max_entries() -> None:
     assert details["ecosystem_counts"] == {"pip": 3}
 
 
+def test_sync_ghsa_records_partial_on_fetch_failure() -> None:
+    """A fetch_json error mid-sync must mark the sync partial, not abandon silently.
+
+    Regression: an exception on any page logged an error and broke out, leaving
+    sync_meta indistinguishable from a clean run. The metadata must record
+    sync_failed / coverage=partial so the incompleteness is visible.
+    """
+    conn = _make_conn()
+
+    def boom(url: str, *, timeout: int = 30, headers: dict | None = None):
+        raise ConnectionError("network down")
+
+    with patch("agent_bom.http_client.fetch_json", side_effect=boom):
+        count = sync_ghsa(conn, url="https://api.github.com/advisories", max_entries=10, ecosystems=["pip"])
+
+    assert count == 0
+    meta = conn.execute("SELECT metadata_json FROM sync_meta WHERE source='ghsa'").fetchone()
+    assert meta is not None
+    details = json.loads(meta["metadata_json"])
+    assert details["sync_failed"] is True
+    assert details["coverage"] == "partial"
+
+
 def test_ghsa_api_ecosystems_normalize_to_scanner_db_keys() -> None:
     assert _normalize_ghsa_db_ecosystem("pip") == "pypi"
     assert _normalize_ghsa_db_ecosystem("composer") == "packagist"

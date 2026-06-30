@@ -206,6 +206,10 @@ CLOUD_DISCOVERY_TIMEOUT = _float("AGENT_BOM_CLOUD_DISCOVERY_TIMEOUT", 45.0)
 
 SCANNER_MAX_CONCURRENT = _int("AGENT_BOM_SCANNER_MAX_CONCURRENT", 10)
 SCANNER_OSV_BATCH_CONCURRENCY = _int("AGENT_BOM_SCANNER_OSV_BATCH_CONCURRENCY", 3)
+# Opt-in CPE candidate matching against the local NVD CPE cache. Off by default:
+# CPE product names don't always equal package names, so these are review-grade
+# (nvd_cpe_candidate) and only applied to components OSV/distro feeds miss.
+ENABLE_CPE_MATCH = _bool("AGENT_BOM_ENABLE_CPE_MATCH", False)
 SCANNER_BATCH_DELAY = _float("AGENT_BOM_SCANNER_BATCH_DELAY", 0.5)
 SCANNER_BATCH_SIZE = _int("AGENT_BOM_SCANNER_BATCH_SIZE", 1000)  # OSV API max is 1000
 # Cap unauthenticated GHSA advisory lookups so no-token scans fail fast

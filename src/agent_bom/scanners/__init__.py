@@ -650,7 +650,8 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         aliases=all_aliases,
         references=[],
         advisory_sources=[advisory_source] if isinstance(advisory_source, str) and advisory_source else [],
-        match_confidence_tier=match_confidence_tier(
+        match_confidence_tier=getattr(lv, "match_confidence_tier", None)
+        or match_confidence_tier(
             advisory_source=advisory_source if isinstance(advisory_source, str) else None,
             db_ecosystem=getattr(lv, "ecosystem", None),
             package_ecosystem=None,
@@ -713,8 +714,9 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
 def _scan_packages_db_conn(conn: Any, packages: list[Package], covered: set[str]) -> int:
     """Scan packages against an initialized vulnerability DB connection."""
 
+    from agent_bom import config
     from agent_bom.db import lookup_package
-    from agent_bom.db.lookup import package_in_db
+    from agent_bom.db.lookup import cpe_lookup_package, package_in_db
 
     if len(packages) > _BATCH_DB_THRESHOLD:
         return _scan_packages_local_db_batch(conn, packages, covered)
@@ -737,6 +739,15 @@ def _scan_packages_db_conn(conn: Any, packages: list[Package], covered: set[str]
         # the affected table, not merely because the ecosystem is mapped.
         if db_hit:
             covered.add(db_key)
+
+        # Long-tail CPE matching: only for components the OSV/distro feeds miss
+        # (no DB hit) and only when explicitly enabled. Review-grade candidates.
+        if config.ENABLE_CPE_MATCH and not db_hit:
+            for candidate_name in candidate_names:
+                cpe_vulns = cpe_lookup_package(conn, candidate_name, pkg.version)
+                if cpe_vulns:
+                    local_vulns.extend(cpe_vulns)
+                    break
 
         if local_vulns:
             existing_ids = {v.id for v in pkg.vulnerabilities}

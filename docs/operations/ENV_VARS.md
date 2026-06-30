@@ -187,6 +187,7 @@ so they cannot regress silently, but they are not part of this reference.
 ## Scanner Batching
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_ENABLE_CPE_MATCH` | `bool` | `False` | Opt-in CPE candidate matching against the local NVD CPE cache. Off by default: CPE product names don't always equal package names, so these are review-grade (nvd_cpe_candidate) and only applied to components OSV/distro feeds miss. |
 | `AGENT_BOM_GHSA_UNAUTH_PACKAGE_BUDGET` | `int` | `25` | Cap unauthenticated GHSA advisory lookups so no-token scans fail fast with partial coverage instead of spending minutes on GitHub rate limits. |
 | `AGENT_BOM_SCANNER_BATCH_DELAY` | `float` | `0.5` | — |
 | `AGENT_BOM_SCANNER_BATCH_SIZE` | `int` | `1000` | OSV API max is 1000 |

@@ -35,6 +35,7 @@ class MockConnection:
         self._cursors: list[MockCursor] = []
         self.executed: list[tuple[str, object]] = []
         self.executemany_calls: list[tuple[str, list[object]]] = []
+        self.transaction_events: list[str] = []
 
     def executemany(self, sql, param_seq):
         rows = list(param_seq)
@@ -289,7 +290,10 @@ class MockConnection:
         return cursor
 
     def commit(self):
-        pass
+        self.transaction_events.append("commit")
+
+    def rollback(self):
+        self.transaction_events.append("rollback")
 
     def __enter__(self):
         return self
@@ -1363,6 +1367,30 @@ def test_graph_store_init_adds_query_indexes(mock_pool):
     assert any("idx_pg_attack_paths_source_risk" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_node_search_trgm" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_node_search_lower_trgm" in sql for sql, _ in mock_pool._conn.executed)
+
+
+def test_graph_store_init_tolerates_restricted_pg_trgm_extension():
+    from agent_bom.api.postgres_store import PostgresGraphStore
+
+    class RestrictedPgTrgmConnection(MockConnection):
+        def execute(self, sql, params=None):
+            if "CREATE EXTENSION IF NOT EXISTS pg_trgm" in sql:
+                self.executed.append((sql, params))
+                raise RuntimeError("permission denied to create extension pg_trgm")
+            return super().execute(sql, params)
+
+    class RestrictedPgTrgmPool(MockPool):
+        def __init__(self):
+            self._conn = RestrictedPgTrgmConnection()
+
+    pool = RestrictedPgTrgmPool()
+    store = PostgresGraphStore(pool=pool)
+
+    assert store is not None
+    assert pool._conn.transaction_events == ["commit", "rollback"]
+    assert any("CREATE TABLE IF NOT EXISTS graph_nodes" in sql for sql, _ in pool._conn.executed)
+    assert any("ALTER TABLE graph_nodes ENABLE ROW LEVEL SECURITY" in sql for sql, _ in pool._conn.executed)
+    assert any("CREATE EXTENSION IF NOT EXISTS pg_trgm" in sql for sql, _ in pool._conn.executed)
 
 
 def test_graph_store_init_backfills_empty_tenant_rows(mock_pool):

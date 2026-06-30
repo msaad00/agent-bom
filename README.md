@@ -101,7 +101,7 @@ credential environment names in reach, and the agents that can call it.
 
 | Domain | Coverage |
 |---|---|
-| Supply chain | Package and OS risk across npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, conda, Swift, apk, deb, and rpm, with OSV/GHSA enrichment, transitive resolution, and dependency-confusion detection; Hex/Pub are advisory ecosystem identifiers, not first-class lockfile parsers yet |
+| Supply chain | Package and OS risk across npm, PyPI, Maven, Go, Cargo, NuGet, Composer, RubyGems, conda, Swift, Hex, Pub, apk, deb, and rpm, with OSV/GHSA enrichment, transitive resolution, and dependency-confusion detection |
 | Agents + MCP | MCP clients, servers, tools, transports, and trust posture with live introspection across 29 first-class client types |
 | AI models + datasets | Malicious-model detection via safe pickle-opcode disassembly (no deserialization), model/dataset cards, and target-scoped PII/PHI dataset-file scanning |
 | Cloud estate | Read-only, gated asset inventory and CIS posture across AWS, Azure, GCP, and Snowflake, plus AI/GPU provider posture |

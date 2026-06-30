@@ -54,4 +54,9 @@ describe("security-headers", () => {
     const expected = securityHeaders();
     expect(onDisk).toEqual(expected);
   });
+
+  it("static hosted builds default to same-origin API calls", () => {
+    const vercel = JSON.parse(readFileSync(VERCEL_PATH, "utf8"));
+    expect(vercel.env?.NEXT_PUBLIC_API_URL).toBe("");
+  });
 });

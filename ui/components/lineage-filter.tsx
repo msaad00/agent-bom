@@ -181,7 +181,7 @@ interface FilterPanelProps {
   variant?: "rail" | "panel";
 }
 
-const DISABLED_TOOLTIP = "no nodes match this combination";
+const DIMMED_TOOLTIP = "no nodes currently match — select to widen the graph";
 
 const SEVERITY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "All" },
@@ -390,17 +390,16 @@ export function FilterPanel({
             return (
               <label
                 key={key}
-                title={enabled ? undefined : DISABLED_TOOLTIP}
-                className={`flex items-center gap-2 ${
+                title={enabled || checked ? undefined : DIMMED_TOOLTIP}
+                className={`flex items-center gap-2 cursor-pointer ${
                   enabled || checked
-                    ? "cursor-pointer text-[var(--text-secondary)] hover:text-[var(--foreground)]"
-                    : "cursor-not-allowed text-[var(--text-tertiary)] opacity-50"
+                    ? "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
+                    : "text-[var(--text-tertiary)] opacity-60 hover:opacity-100 hover:text-[var(--text-secondary)]"
                 }`}
               >
                 <input
                   type="checkbox"
                   checked={checked}
-                  disabled={!enabled && !checked}
                   onChange={() => toggle(key)}
                   className="accent-emerald-500 w-3 h-3"
                 />
@@ -431,8 +430,7 @@ export function FilterPanel({
               <option
                 key={value || "__all__"}
                 value={value}
-                disabled={!enabled}
-                title={enabled ? undefined : DISABLED_TOOLTIP}
+                title={enabled ? undefined : DIMMED_TOOLTIP}
               >
                 {label}
                 {!enabled ? " — no matches" : ""}
@@ -469,8 +467,7 @@ export function FilterPanel({
               <option
                 key={value}
                 value={value}
-                disabled={!enabled}
-                title={enabled ? undefined : DISABLED_TOOLTIP}
+                title={enabled ? undefined : DIMMED_TOOLTIP}
               >
                 {label}
                 {!enabled ? " — no matches" : ""}
@@ -655,16 +652,15 @@ function VirtualizedAgentPicker({
                 type="button"
                 role="option"
                 aria-selected={isSelected}
-                disabled={!enabled && !isSelected}
                 onClick={() => onSelect(agentName)}
                 className={`block h-8 w-full truncate px-2 text-left font-mono text-[11px] transition ${
                   isSelected
                     ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-200"
                     : enabled
                       ? "text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]"
-                      : "cursor-not-allowed text-[var(--text-tertiary)] opacity-50"
+                      : "text-[var(--text-tertiary)] opacity-60 hover:opacity-100 hover:bg-[var(--surface-elevated)] hover:text-[var(--text-secondary)]"
                 }`}
-                title={enabled ? agentName : DISABLED_TOOLTIP}
+                title={enabled || isSelected ? agentName : `${agentName} — ${DIMMED_TOOLTIP}`}
               >
                 {agentName}
               </button>

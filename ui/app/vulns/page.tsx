@@ -354,6 +354,26 @@ function VulnsPage() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
 
+  // URL-as-source-of-truth: when the query string changes (link, back/forward),
+  // re-sync the derived filter state so the view matches the address bar instead
+  // of staying frozen at the values captured on first mount. Local control
+  // changes don't write to the URL, so these effects only fire on navigation.
+  useEffect(() => {
+    setFilter(
+      paramSeverity && ["critical", "high", "medium", "low"].includes(paramSeverity)
+        ? (paramSeverity as SeverityFilter)
+        : "all",
+    );
+  }, [paramSeverity]);
+
+  useEffect(() => {
+    setSearch(paramCve ?? paramAgent ?? "");
+  }, [paramCve, paramAgent]);
+
+  useEffect(() => {
+    if (paramCve) setExpandedId(paramCve);
+  }, [paramCve]);
+
   const collectVulns = useCallback((fullJobs: ScanJob[]) => {
     const vulnMap = new Map<string, EnrichedVuln>();
     for (const job of fullJobs) {

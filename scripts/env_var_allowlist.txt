@@ -374,3 +374,8 @@ AGENT_BOM_VERSION
 AGENT_BOM_VISUAL_LEAK_TIMEOUT_SECONDS
 AGENT_BOM_VULN_DB_MAX_AGE_HOURS  # runtime override for vuln-cache staleness threshold (hours, default 24); re-read at scan time so tests can monkeypatch; read in vuln_freshness.py
 AGENT_BOM_VULN_DB_OFFLINE  # airgap toggle that forces existing-cache-only freshness with no network refresh; mirrors --offline for non-CLI callers; read in vuln_freshness.py
+
+# Coarse per-IP rate-limit ceiling override; resolved at call-time with bounds-checking in middleware.global_ip_rate_limit_rpm().
+AGENT_BOM_GLOBAL_IP_RATE_LIMIT_RPM
+# Trusted reverse-proxy hop count for X-Forwarded-For parsing; resolved at call-time in routes/enterprise._trusted_proxy_hops().
+AGENT_BOM_TRUSTED_PROXY_HOPS

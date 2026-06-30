@@ -8,6 +8,7 @@ unchanged while the monolith is decomposed.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -186,6 +187,37 @@ def tool_metrics_snapshot(
     }
 
 
+def _verified_token_caller(current_request: Any) -> str | None:
+    """Return a stable caller key bound to the verified access token, if any.
+
+    Keying the rate-limit window on the authenticated identity (the token's
+    ``client_id`` or, failing that, a hash of the token material) means a caller
+    cannot reset its window simply by opening a fresh connection. Returns None
+    when no verified token is attached so unauthenticated/local callers fall
+    back to the per-connection label.
+    """
+    holders: list[Any] = []
+    for holder_name in ("access_token", "auth", "token"):
+        holder = getattr(current_request, holder_name, None)
+        if holder is not None:
+            holders.append(holder)
+    experimental = getattr(current_request, "experimental", None)
+    if experimental is not None:
+        for holder_name in ("access_token", "auth", "token"):
+            holder = getattr(experimental, holder_name, None)
+            if holder is not None:
+                holders.append(holder)
+    for holder in holders:
+        client_id = getattr(holder, "client_id", None)
+        if client_id and str(client_id).strip():
+            return f"token-client:{str(client_id).strip()}"
+        for token_attr in ("token", "access_token", "jti"):
+            raw = getattr(holder, token_attr, None)
+            if isinstance(raw, str) and raw.strip():
+                return f"token-hash:{hashlib.sha256(raw.strip().encode()).hexdigest()[:32]}"
+    return None
+
+
 def current_tool_request(request_ctx_getter: Callable[[], Any]) -> dict[str, str | None]:
     try:
         current_request = request_ctx_getter()
@@ -208,12 +240,56 @@ def current_tool_request(request_ctx_getter: Callable[[], Any]) -> dict[str, str
         scopes = getattr(holder, "scopes", None)
         if isinstance(scopes, list | tuple | set):
             auth_scopes.update(str(scope).strip().lower() for scope in scopes if str(scope).strip())
+    # Prefer the verified access-token identity so a hostile caller cannot reset
+    # its rate-limit window by reconnecting (which mints a fresh per-connection
+    # session object id). The client-declared meta.client_id is only a fallback
+    # for unauthenticated/local transports.
+    verified_caller = _verified_token_caller(current_request)
     return {
-        "caller": client_id or session_label,
+        "caller": verified_caller or client_id or session_label,
         "client_id": client_id,
         "request_id": str(getattr(current_request, "request_id", "")) or None,
         "auth_scopes": ",".join(sorted(auth_scopes)),
     }
+
+
+_GLOBAL_CALLER_KEY = "__mcp_global__"
+
+
+def _hit_rate_window(
+    caller_rate_windows,
+    key: str,
+    *,
+    limit: int,
+    window_seconds: float,
+    max_caller_states: int,
+    monotonic_now: float,
+) -> float | None:
+    """Slide one bounded window. Returns retry-after seconds when over budget."""
+    window = caller_rate_windows.get(key)
+    if window is None:
+        if len(caller_rate_windows) >= max_caller_states:
+            # Never evict the reserved global backstop bucket.
+            oldest = next(iter(caller_rate_windows))
+            if oldest == _GLOBAL_CALLER_KEY and len(caller_rate_windows) > 1:
+                caller_rate_windows.move_to_end(_GLOBAL_CALLER_KEY)
+            caller_rate_windows.popitem(last=False)
+        from collections import deque
+
+        window = deque()
+        caller_rate_windows[key] = window
+    else:
+        caller_rate_windows.move_to_end(key)
+
+    cutoff = monotonic_now - window_seconds
+    while window and window[0] <= cutoff:
+        window.popleft()
+
+    if len(window) >= limit:
+        return round(max(0.0, window_seconds - (monotonic_now - window[0])), 3)
+
+    window.append(monotonic_now)
+    return None
 
 
 def check_caller_rate_limit(
@@ -224,29 +300,32 @@ def check_caller_rate_limit(
     caller_window_seconds: float,
     max_caller_states: int,
     monotonic_now: float,
+    global_rate_limit: int = 0,
+    global_window_seconds: float | None = None,
 ) -> float | None:
-    if caller_rate_limit <= 0:
-        return None
+    if caller_rate_limit > 0:
+        retry_after = _hit_rate_window(
+            caller_rate_windows,
+            caller,
+            limit=caller_rate_limit,
+            window_seconds=caller_window_seconds,
+            max_caller_states=max_caller_states,
+            monotonic_now=monotonic_now,
+        )
+        if retry_after is not None:
+            return retry_after
 
-    window = caller_rate_windows.get(caller)
-    if window is None:
-        if len(caller_rate_windows) >= max_caller_states:
-            caller_rate_windows.popitem(last=False)
-        from collections import deque
-
-        window = deque()
-        caller_rate_windows[caller] = window
-    else:
-        caller_rate_windows.move_to_end(caller)
-
-    cutoff = monotonic_now - caller_window_seconds
-    while window and window[0] <= cutoff:
-        window.popleft()
-
-    if len(window) >= caller_rate_limit:
-        return round(max(0.0, caller_window_seconds - (monotonic_now - window[0])), 3)
-
-    window.append(monotonic_now)
+    # Process-wide backstop: a flood spread across many distinct (or
+    # per-connection) caller identities is still capped in aggregate.
+    if global_rate_limit > 0:
+        return _hit_rate_window(
+            caller_rate_windows,
+            _GLOBAL_CALLER_KEY,
+            limit=global_rate_limit,
+            window_seconds=global_window_seconds or caller_window_seconds,
+            max_caller_states=max_caller_states,
+            monotonic_now=monotonic_now,
+        )
     return None
 
 

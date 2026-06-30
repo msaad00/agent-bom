@@ -87,10 +87,42 @@ _TRIAGE_PREFIX = "[finding_triage]"
 _LEGACY_FALSE_POSITIVE_PREFIX = "[false_positive]"
 
 
+def _trusted_proxy_hops() -> int:
+    raw = (os.environ.get("AGENT_BOM_TRUSTED_PROXY_HOPS") or "").strip()
+    if not raw:
+        return 0
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
+
+
+def _forwarded_for_trusted() -> bool:
+    """Honor X-Forwarded-For only when a trusted reverse proxy is declared."""
+    flag = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
+    return flag or _trusted_proxy_hops() > 0
+
+
 def _client_fingerprint(request: Request) -> str:
-    forwarded = (request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
-    host = forwarded or (request.client.host if request.client else "unknown")
-    return host[:128]
+    """Throttle identity for the API-key-exchange brute-force limiter.
+
+    Defaults to the transport peer (``request.client.host``) so a hostile
+    client cannot reset its brute-force window by spoofing a fresh
+    ``X-Forwarded-For`` value on every attempt. The forwarded chain is only
+    consulted when the deployment declares a trusted proxy via
+    ``AGENT_BOM_TRUST_PROXY_AUTH`` or an explicit ``AGENT_BOM_TRUSTED_PROXY_HOPS``
+    count; with a hop count we take the Nth-from-rightmost entry (the address
+    the trusted proxy appended), never the attacker-controlled leftmost one.
+    """
+    host = request.client.host if request.client else "unknown"
+    if _forwarded_for_trusted():
+        forwarded = [part.strip() for part in (request.headers.get("x-forwarded-for") or "").split(",") if part.strip()]
+        hops = _trusted_proxy_hops()
+        if hops and len(forwarded) >= hops:
+            host = forwarded[-hops]
+        elif forwarded:
+            host = forwarded[0]
+    return (host or "unknown")[:128]
 
 
 def _auth_session_limit() -> int:

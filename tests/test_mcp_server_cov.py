@@ -271,6 +271,58 @@ class TestToolMetrics:
     def test_current_tool_request_defaults_to_local_without_context(self):
         assert _current_tool_request() == {"caller": "local", "client_id": None, "request_id": None, "auth_scopes": ""}
 
+    def test_caller_keyed_on_verified_token_not_session(self):
+        """Reconnecting must not reset the rate-limit window.
+
+        Fails before the fix: caller fell back to a per-connection session-object
+        id, so a fresh connection minted a new caller key and a new window.
+        """
+        from types import SimpleNamespace
+
+        from agent_bom import mcp_server_runtime as runtime
+
+        token_a = SimpleNamespace(client_id="oauth-client-9", scopes=["read"])
+        token_b = SimpleNamespace(client_id="oauth-client-9", scopes=["read"])
+        # Two distinct connections (distinct session objects), same verified token.
+        req1 = SimpleNamespace(access_token=token_a, session=object(), meta=None, request_id="r1")
+        req2 = SimpleNamespace(access_token=token_b, session=object(), meta=None, request_id="r2")
+
+        caller1 = runtime.current_tool_request(lambda: req1)["caller"]
+        caller2 = runtime.current_tool_request(lambda: req2)["caller"]
+        assert caller1 == caller2 == "token-client:oauth-client-9"
+
+    def test_caller_falls_back_to_token_hash_without_client_id(self):
+        from types import SimpleNamespace
+
+        from agent_bom import mcp_server_runtime as runtime
+
+        req1 = SimpleNamespace(access_token=SimpleNamespace(token="bearer-secret-xyz"), session=object(), meta=None)
+        req2 = SimpleNamespace(access_token=SimpleNamespace(token="bearer-secret-xyz"), session=object(), meta=None)
+        caller1 = runtime.current_tool_request(lambda: req1)["caller"]
+        caller2 = runtime.current_tool_request(lambda: req2)["caller"]
+        assert caller1 == caller2
+        assert caller1.startswith("token-hash:")
+
+    def test_global_rate_limit_backstop_caps_distinct_callers(self):
+        """A flood spread across distinct caller identities is still capped."""
+        from collections import OrderedDict
+
+        from agent_bom import mcp_server_runtime as runtime
+
+        windows: OrderedDict = OrderedDict()
+        kwargs = dict(
+            caller_rate_limit=100,  # high so per-caller never trips
+            caller_window_seconds=60.0,
+            max_caller_states=256,
+            monotonic_now=200.0,
+            global_rate_limit=2,
+            global_window_seconds=60.0,
+        )
+        assert runtime.check_caller_rate_limit(windows, "caller-0", **kwargs) is None
+        assert runtime.check_caller_rate_limit(windows, "caller-1", **kwargs) is None
+        # Third distinct caller trips the process-wide ceiling despite a fresh key.
+        assert runtime.check_caller_rate_limit(windows, "caller-2", **kwargs) is not None
+
     def test_check_caller_rate_limit_enforces_window(self, monkeypatch):
         import agent_bom.mcp_server as mod
 

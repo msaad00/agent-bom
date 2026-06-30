@@ -101,6 +101,8 @@ from agent_bom import mcp_server_runtime as _mcp_runtime
 from agent_bom import mcp_server_scan as _mcp_scan
 from agent_bom.config import MCP_CALLER_RATE_LIMIT as _MCP_CALLER_RATE_LIMIT
 from agent_bom.config import MCP_CALLER_WINDOW_SECONDS as _MCP_CALLER_WINDOW_SECONDS
+from agent_bom.config import MCP_GLOBAL_RATE_LIMIT as _MCP_GLOBAL_RATE_LIMIT
+from agent_bom.config import MCP_GLOBAL_WINDOW_SECONDS as _MCP_GLOBAL_WINDOW_SECONDS
 from agent_bom.config import MCP_MAX_CALLER_STATES as _MCP_MAX_CALLER_STATES
 from agent_bom.config import MCP_MAX_CONCURRENT_TOOLS as _MCP_MAX_CONCURRENT_TOOLS
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE  # noqa: F401 - retained public test import
@@ -304,6 +306,8 @@ def _check_caller_rate_limit(caller: str) -> float | None:
         caller_window_seconds=_MCP_CALLER_WINDOW_SECONDS,
         max_caller_states=_MCP_MAX_CALLER_STATES,
         monotonic_now=time.monotonic(),
+        global_rate_limit=_MCP_GLOBAL_RATE_LIMIT,
+        global_window_seconds=_MCP_GLOBAL_WINDOW_SECONDS,
     )
 
 

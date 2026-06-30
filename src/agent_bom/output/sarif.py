@@ -423,8 +423,11 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
         # Always emit structured properties so downstream consumers get
         # the exploit_likelihood (#486) + blast metrics without needing
         # a compliance tag to trigger enrichment.
+        cve_ids = sorted({cid for cid in (vuln.id, *vuln.aliases) if isinstance(cid, str) and cid.upper().startswith("CVE-")})
         result_properties: dict = {
             "blast_score": br.risk_score,
+            "match_confidence_tier": vuln.match_confidence_tier,
+            "cve_ids": cve_ids,
             "exposure_path": exposure_path,
             "exposure_chain": exposure_chain or None,
             "epss_score": vuln.epss_score,

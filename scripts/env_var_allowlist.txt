@@ -204,6 +204,8 @@ AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT
 AGENT_BOM_MCP_OPERATOR_TOKEN
 # Time-bound MCP operator token expiry; deploy/runtime secret lifecycle, read at server startup.
 AGENT_BOM_MCP_OPERATOR_TOKEN_EXPIRES_AT
+# Opt-in remote clone bind escape hatch for MCP repo scans; default stays loopback/SSRF-safe.
+AGENT_BOM_MCP_REMOTE_BIND
 AGENT_BOM_MCP_SANDBOX
 AGENT_BOM_MCP_SANDBOX_CPUS
 AGENT_BOM_MCP_SANDBOX_EGRESS

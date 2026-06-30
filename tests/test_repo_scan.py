@@ -17,6 +17,28 @@ import pytest
 import agent_bom.repo_scan as repo_scan
 from agent_bom.repo_scan import RepoScanError, clone_repository, validate_repo_url
 
+
+def _gai_returning(ip: str):
+    """Build a socket.getaddrinfo stub that resolves any host to ``ip``."""
+    import socket
+
+    family = socket.AF_INET6 if ":" in ip else socket.AF_INET
+
+    def _gai(host, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        return [(family, socket.SOCK_STREAM, 0, "", (ip, 0))]
+
+    return _gai
+
+
+@pytest.fixture(autouse=True)
+def _stub_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve every hostname to a fixed public IP so the SSRF guard's DNS
+    lookups never touch the network (individual SSRF tests override this)."""
+    import socket
+
+    monkeypatch.setattr(socket, "getaddrinfo", _gai_returning("93.184.216.34"))
+
+
 # ── URL validation ─────────────────────────────────────────────────────────
 
 
@@ -316,3 +338,108 @@ async def test_scan_impl_rejects_repo_url_and_config_path(monkeypatch: pytest.Mo
             _run_scan_pipeline=fake_pipeline,
             _truncate_response=lambda s: s,
         )
+
+
+# ── SSRF defense (validate_repo_url) ─────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://169.254.169.254/latest/meta-data/",  # AWS/cloud metadata
+        "http://metadata.google.internal/computeMetadata/v1/",  # GCP metadata
+        "http://10.0.0.1/org/repo",  # RFC1918
+        "http://192.168.1.1/org/repo",  # RFC1918
+        "http://172.16.0.1/org/repo",  # RFC1918
+        "http://127.0.0.1/org/repo",  # loopback literal
+        "http://localhost/org/repo",  # loopback name
+        "https://[::1]/org/repo",  # IPv6 loopback
+        "http://169.254.1.2/org/repo",  # link-local
+    ],
+)
+def test_ssrf_internal_targets_rejected(url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # metadata.google.internal is name-resolved; point it at a private IP so the
+    # guard's resolution path also rejects it (not just the literal-host check).
+    monkeypatch.setattr(repo_scan, "_remote_bind_active", lambda: False)
+    with pytest.raises(RepoScanError):
+        validate_repo_url(url)
+
+
+def test_ssrf_public_host_resolving_to_private_ip_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A public-looking host whose DNS resolves to an internal IP is rejected
+    (DNS-rebinding / SSRF). Resolution is mocked — no network."""
+    import socket
+
+    monkeypatch.setattr(socket, "getaddrinfo", _gai_returning("10.0.0.5"))
+    with pytest.raises(RepoScanError):
+        validate_repo_url("https://totally-public.example.com/org/repo")
+
+
+def test_clone_disables_redirect_following(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The clone argv pins http.followRedirects=false so a validated host cannot
+    bounce the clone to an internal target via an HTTP redirect."""
+
+    def populate(dest: Path) -> None:
+        (dest / "readme").write_text("ok")
+
+    runner = _fake_clone(populate)
+    monkeypatch.setattr(subprocess, "run", runner)
+
+    with clone_repository("https://github.com/org/repo"):
+        pass
+
+    assert "http.followRedirects=false" in runner.captured_cmd
+
+
+def test_remote_bind_fails_closed_without_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    """On a remotely-bound MCP transport, repo scans must fail closed unless an
+    explicit host allowlist is configured."""
+    monkeypatch.delenv("AGENT_BOM_REPO_SCAN_ALLOWED_HOSTS", raising=False)
+    monkeypatch.setenv("AGENT_BOM_MCP_REMOTE_BIND", "1")
+    with pytest.raises(RepoScanError) as exc:
+        validate_repo_url("https://github.com/org/repo")
+    assert "allowlist" in str(exc.value)
+
+    # With an allowlist pinned, the same URL is accepted.
+    monkeypatch.setenv("AGENT_BOM_REPO_SCAN_ALLOWED_HOSTS", "github.com")
+    assert validate_repo_url("https://github.com/org/repo") == "https://github.com/org/repo"
+
+
+# ── DoS: clone must run off the asyncio event loop ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_repo_clone_runs_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The blocking `git clone` must execute in a worker thread, not on the
+    event-loop thread, so one slow/tarpit repo cannot freeze the MCP server."""
+    import threading
+
+    from agent_bom.mcp_tools import scanning
+
+    loop_thread = threading.get_ident()
+    seen: dict = {}
+
+    real_clone = repo_scan._clone_into_tempdir
+
+    def spy_clone(*args, **kwargs):  # noqa: ANN002, ANN003
+        seen["thread"] = threading.get_ident()
+        return real_clone(*args, **kwargs)
+
+    monkeypatch.setattr(repo_scan, "_clone_into_tempdir", spy_clone)
+
+    def populate(dest: Path) -> None:
+        (dest / "requirements.txt").write_text("requests==2.0.0\n")
+
+    monkeypatch.setattr(subprocess, "run", _fake_clone(populate))
+
+    async def fake_pipeline(*a, **k):  # noqa: ANN002, ANN003
+        return [], [], [], []
+
+    await scanning.scan_impl(
+        repo_url="https://github.com/org/repo",
+        offline=True,
+        _run_scan_pipeline=fake_pipeline,
+        _truncate_response=lambda s: s,
+    )
+
+    assert seen["thread"] != loop_thread, "git clone ran on the event-loop thread"

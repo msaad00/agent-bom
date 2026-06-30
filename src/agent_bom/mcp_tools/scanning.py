@@ -63,16 +63,21 @@ async def scan_impl(
     and the temp directory is always removed afterwards. ``repo_url`` and
     ``config_path`` are mutually exclusive.
     """
-    from contextlib import ExitStack
+    from contextlib import AsyncExitStack
 
-    with ExitStack() as _repo_cleanup:
+    async with AsyncExitStack() as _repo_cleanup:
         if repo_url is not None and str(repo_url).strip():
             if config_path is not None and str(config_path).strip():
                 raise ToolError("Provide either repo_url or config_path, not both")
-            from agent_bom.repo_scan import RepoScanError, clone_repository
+            from agent_bom.repo_scan import RepoScanError, clone_repository_async
 
             try:
-                cloned_dir = _repo_cleanup.enter_context(clone_repository(repo_url, token_env="AGENT_BOM_REPO_SCAN_TOKEN"))
+                # The blocking `git clone` runs in a worker thread (see
+                # clone_repository_async), so a slow/tarpit repo cannot freeze the
+                # event loop and the MCP tool timeout stays effective.
+                cloned_dir = await _repo_cleanup.enter_async_context(
+                    clone_repository_async(repo_url, token_env="AGENT_BOM_REPO_SCAN_TOKEN")
+                )
             except RepoScanError as exc:
                 raise ToolError(sanitize_error(exc)) from exc
             # Route the cloned working tree through the existing local-directory

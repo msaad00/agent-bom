@@ -745,11 +745,18 @@ def _role_allows(actual: str, required: str = "viewer") -> bool:
 def _ws_auth_required() -> bool:
     import os as _os
 
+    from agent_bom.api.oidc import oidc_enabled_from_env
+
     configured = any(
         (
             _os.environ.get("AGENT_BOM_API_KEY"),
             _os.environ.get("AGENT_BOM_API_KEYS", "").strip(),
-            _os.environ.get("AGENT_BOM_OIDC_ISSUER"),
+            oidc_enabled_from_env(),
+            _os.environ.get("AGENT_BOM_SAML_IDP_ENTITY_ID", "").strip(),
+            _os.environ.get("AGENT_BOM_SAML_IDP_SSO_URL", "").strip(),
+            _os.environ.get("AGENT_BOM_SAML_IDP_X509_CERT", "").strip(),
+            _os.environ.get("AGENT_BOM_SAML_SP_ENTITY_ID", "").strip(),
+            _os.environ.get("AGENT_BOM_SAML_SP_ACS_URL", "").strip(),
             _os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN"),
             _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"},
         )
@@ -773,6 +780,10 @@ def _ws_auth_from_trusted_proxy(websocket: WebSocket) -> _WebSocketAuthContext |
 
     secret = _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
     presented_secret = websocket.headers.get("x-agent-bom-proxy-secret", "").strip()
+    from agent_bom.api.middleware import _trusted_proxy_secret_is_strong
+
+    if not _trusted_proxy_secret_is_strong(secret):
+        return None
     if not secret or not presented_secret or not _hmac.compare_digest(presented_secret, secret):
         return None
     expected_issuer = _os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "").strip()
@@ -821,7 +832,11 @@ def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthCon
         if sep and raw_key and _hmac.compare_digest(token, raw_key.strip()) and _role_allows(role_value, "viewer"):
             return _WebSocketAuthContext(tenant_id="default", role=role_value.strip().lower(), auth_method="api_key")
 
-    if bearer and _os.environ.get("AGENT_BOM_OIDC_ISSUER"):
+    if bearer:
+        from agent_bom.api.oidc import oidc_enabled_from_env
+
+        if not oidc_enabled_from_env():
+            return None
         from agent_bom.api.oidc import OIDCConfig, OIDCError
 
         oidc_cfg = OIDCConfig.from_env()

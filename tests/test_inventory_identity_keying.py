@@ -105,12 +105,14 @@ def test_build_agents_response_enriches_from_matching_source_record() -> None:
     """discovery._build_agents_response joins fleet records by canonical_id, not name."""
     store = InMemoryFleetStore()
     set_fleet_store(store)
-    # Matching record: empty source_id -> canonical_id == local agent's canonical_id.
+    local = _local_claude()
+    # Matching record: carries the same canonical_id as the locally discovered
+    # agent (as a prior scan-sync would have persisted it).
     match = FleetAgent(
         agent_id="match-id",
         name="claude",
         agent_type="claude-desktop",
-        source_id="",
+        canonical_id=local.canonical_id,
         tenant_id="default",
         updated_at="2026-06-01T00:00:00+00:00",
     )
@@ -128,7 +130,6 @@ def test_build_agents_response_enriches_from_matching_source_record() -> None:
     store.put(other)
     assert match.canonical_id != other.canonical_id
 
-    local = _local_claude()
     assert local.canonical_id == match.canonical_id
 
     with (

@@ -765,6 +765,8 @@ def enrich_servers(
                         added_any = True
 
         if added_any:
+            # Scope newly appended runtime children to their owning server.
+            server.stamp_child_identities()
             enriched += 1
 
     return enriched

@@ -408,6 +408,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                 else:
                     fleet_agent = FleetAgent(
                         agent_id=str(uuid.uuid4()),
+                        canonical_id=str(getattr(discovered_agent, "canonical_id", "") or ""),
                         name=discovered_agent.name,
                         agent_type=(
                             discovered_agent.agent_type.value

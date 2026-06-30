@@ -70,6 +70,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `mesh` | Show lightweight agent/MCP topology without CVE scanning |
 | `report` | History, diff, pipeline-event artifacts, local queries, analytics, dashboard, and compliance narrative workflows |
 | `findings` | List normalized findings, manage the triage queue, record decisions, and export signed OpenVEX evidence |
+| `attest` | Sign and verify generated SBOM output (SHA-256 digest + in-toto attestation) |
 
 ### Governance And Operations
 

@@ -176,9 +176,8 @@ def _consume_saml_response_once(saml_response: str, *, ttl_seconds: int) -> None
     digest = f"saml-response:{_relay_state_digest(saml_response)}"
     backend = get_auth_state()
     now = int(time.time())
-    if backend.is_nonce_revoked(digest, now=now):
+    if not backend.consume_nonce_once(digest, now + max(60, int(ttl_seconds)), now=now):
         raise HTTPException(status_code=401, detail="SAML assertion replay detected")
-    backend.revoke_nonce(digest, now + max(60, int(ttl_seconds)))
 
 
 def _request_actor(request: Request) -> str:
@@ -1228,19 +1227,20 @@ async def create_exception(request: Request, req: ExceptionRequest) -> dict:
     from agent_bom.api.exception_store import VulnException
 
     tenant_id = require_request_tenant_id(request)
+    actor = _request_actor(request)
     exc = VulnException(
         vuln_id=req.vuln_id,
         package_name=req.package_name,
         server_name=req.server_name,
         reason=req.reason,
-        requested_by=req.requested_by,
+        requested_by=actor,
         expires_at=req.expires_at,
         tenant_id=tenant_id,
     )
     _get_exception_store().put(exc)
     log_action(
         "exception_create",
-        actor=req.requested_by,
+        actor=actor,
         resource=f"exception/{exc.exception_id}",
         tenant_id=tenant_id,
         vuln_id=req.vuln_id,

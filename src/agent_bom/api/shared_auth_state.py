@@ -26,6 +26,8 @@ The contract is:
 - ``revoke_nonce(nonce, expires_at)`` — mark a nonce as revoked until
   ``expires_at`` (Unix timestamp seconds). Idempotent.
 - ``is_nonce_revoked(nonce, now=None) -> bool`` — fast lookup.
+- ``consume_nonce_once(nonce, expires_at, now=None) -> bool`` — atomically
+  mark a nonce as consumed and return ``False`` when it was already live.
 - ``cleanup_expired(now=None) -> int`` — best-effort sweep of stale
   rows; called opportunistically by route handlers. Returns the count
   of rows removed for observability.
@@ -81,6 +83,13 @@ _UPSERT_REVOKED_SQL = (
     " VALUES (%s, TO_TIMESTAMP(%s))"
     " ON CONFLICT (nonce) DO UPDATE SET expires_at = EXCLUDED.expires_at"
 )
+_DELETE_EXPIRED_NONCE_SQL = "DELETE FROM revoked_session_nonces WHERE nonce = %s AND expires_at <= TO_TIMESTAMP(%s)"
+_CONSUME_REVOKED_SQL = (
+    "INSERT INTO revoked_session_nonces (nonce, expires_at)"
+    " VALUES (%s, TO_TIMESTAMP(%s))"
+    " ON CONFLICT (nonce) DO NOTHING"
+    " RETURNING 1"
+)
 _CHECK_REVOKED_SQL = "SELECT 1 FROM revoked_session_nonces WHERE nonce = %s AND expires_at > TO_TIMESTAMP(%s)"
 _DELETE_OLD_ATTEMPTS_SWEEP_SQL = "DELETE FROM auth_session_attempts WHERE attempted_at < NOW() - INTERVAL '24 hours'"
 _DELETE_EXPIRED_REVOKED_SQL = "DELETE FROM revoked_session_nonces WHERE expires_at <= NOW()"
@@ -99,6 +108,10 @@ class AuthStateBackend(Protocol):
 
     def is_nonce_revoked(self, nonce: str, now: int | None = None) -> bool:
         """Return ``True`` when ``nonce`` is currently revoked."""
+        ...
+
+    def consume_nonce_once(self, nonce: str, expires_at: int, now: int | None = None) -> bool:
+        """Atomically mark ``nonce`` consumed. Return ``True`` only for the first live consumer."""
         ...
 
     def cleanup_expired(self, now: int | None = None) -> int:
@@ -152,6 +165,19 @@ class InMemoryAuthState:
             if expires_at <= moment:
                 self._revoked.pop(nonce, None)
                 return False
+            return True
+
+    def consume_nonce_once(self, nonce: str, expires_at: int, now: int | None = None) -> bool:
+        if not nonce:
+            return False
+        moment = int(time.time()) if now is None else int(now)
+        with self._lock:
+            stale = [k for k, exp in self._revoked.items() if exp <= moment]
+            for k in stale:
+                self._revoked.pop(k, None)
+            if nonce in self._revoked:
+                return False
+            self._revoked[nonce] = expires_at
             return True
 
     def cleanup_expired(self, now: int | None = None) -> int:
@@ -272,6 +298,27 @@ class PostgresAuthState:
         except Exception as exc:  # noqa: BLE001
             self._warn_fallback("is_nonce_revoked", exc)
             return self._fallback.is_nonce_revoked(nonce, now)
+
+    def consume_nonce_once(self, nonce: str, expires_at: int, now: int | None = None) -> bool:
+        if not nonce:
+            return False
+        if not self._ensure_schema():
+            return self._fallback.consume_nonce_once(nonce, expires_at, now)
+        try:
+            from agent_bom.api.postgres_common import _get_pool
+
+            pool = _get_pool()
+            moment = int(time.time()) if now is None else int(now)
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_DELETE_EXPIRED_NONCE_SQL, (nonce, moment))
+                    cur.execute(_CONSUME_REVOKED_SQL, (nonce, int(expires_at)))
+                    row = cur.fetchone()
+                conn.commit()
+            return row is not None
+        except Exception as exc:  # noqa: BLE001
+            self._warn_fallback("consume_nonce_once", exc)
+            return self._fallback.consume_nonce_once(nonce, expires_at, now)
 
     def cleanup_expired(self, now: int | None = None) -> int:
         if not self._ensure_schema():

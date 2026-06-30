@@ -21,7 +21,7 @@ import subprocess  # nosec B404 - controlled, fixed-arg invocation of the trivy 
 import pytest
 
 from agent_bom.models import Package, normalize_package_name
-from agent_bom.scanners import query_osv_batch
+from agent_bom.scanners import default_scan_options, query_osv_batch, scan_packages
 
 pytestmark = pytest.mark.network
 
@@ -71,11 +71,12 @@ def test_agent_bom_recall_matches_trivy_on_pinned_image(tmp_path) -> None:
     }
     assert trivy_cves, "trivy returned no CVEs — image/network problem, not an agent-bom result"
 
-    from agent_bom.scanners.image import scan_image  # local import: heavy module
+    from agent_bom.image import scan_image  # local import: heavy module
 
-    report = scan_image(image)
+    packages, _strategy = scan_image(image)
+    asyncio.run(scan_packages(packages, options=default_scan_options(prefer_local_db=True)))
     ab_cves: set[str] = set()
-    for pkg in getattr(report, "packages", []) or []:
+    for pkg in packages:
         for v in getattr(pkg, "vulnerabilities", []) or []:
             ab_cves.add(str(getattr(v, "id", "")))
             ab_cves.update(str(a) for a in (getattr(v, "aliases", []) or []))

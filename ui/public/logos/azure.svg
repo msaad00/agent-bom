@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Microsoft Azure">
+  <defs>
+    <linearGradient id="azure-a" x1="6" y1="3" x2="9" y2="17" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#114A8B"/>
+      <stop offset="1" stop-color="#0669BC"/>
+    </linearGradient>
+    <linearGradient id="azure-b" x1="13" y1="13" x2="19" y2="21" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3CCBF4"/>
+      <stop offset="1" stop-color="#2892DF"/>
+    </linearGradient>
+  </defs>
+  <path d="M8.6 3h5.06l-5.25 15.55a.8.8 0 0 1-.76.55H3.7a.8.8 0 0 1-.76-1.06L7.84 3.55A.8.8 0 0 1 8.6 3Z" fill="url(#azure-a)"/>
+  <path d="M15.9 15.45H7.6a.37.37 0 0 0-.25.64l5.33 4.98c.15.15.36.23.57.23h4.6l-1.95-5.85Z" fill="#0078D4"/>
+  <path d="M14.16 3a.8.8 0 0 0-.76.54l-4.9 14.46.05.15 5.33 4.98c.15.14.36.22.57.22h4.6l-1.95-5.85h-5.69l3.48-10.3L14.16 3Z" fill="url(#azure-b)"/>
+</svg>

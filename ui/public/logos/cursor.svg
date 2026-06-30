@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Cursor">
+  <path d="M12 2 3.34 7v10L12 22V12Z" fill="#000" fill-opacity=".55"/>
+  <path d="M12 2v10l8.66-5L12 2Z" fill="#000" fill-opacity=".35"/>
+  <path d="M20.66 7 12 12v10l8.66-5V7Z" fill="#000" fill-opacity=".8"/>
+  <path d="M20.66 7 12 12 3.34 7 12 12Z" fill="#fff" fill-opacity=".25"/>
+  <path d="M12 12 3.34 7l8.66 5 8.66-5L12 12Z" fill="currentColor" fill-opacity=".9"/>
+</svg>

@@ -25,7 +25,7 @@ import {
 import { useReactFlow } from "@xyflow/react";
 import { api, type GraphExportFormat } from "@/lib/api";
 import type { LegendItem } from "@/lib/graph-utils";
-import { entityIcon } from "@/components/lineage-nodes";
+import { entityIcon } from "@/lib/entity-icons";
 
 // ─── Legend Bar ──────────────────────────────────────────────────────────────
 

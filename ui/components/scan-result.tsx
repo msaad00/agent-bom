@@ -6,6 +6,7 @@ import { api, type ScanJob, type ScanJobStatus, type ScanResult, type BlastRadiu
 import { useScanStream } from "@/lib/use-scan-stream";
 import { ScanPipeline } from "@/components/scan-pipeline";
 import { SeverityBadge } from "@/components/severity-badge";
+import { StatCard } from "@/components/stat-card";
 import {
   ArrowLeft, Loader2, CheckCircle, Clock, Zap, Key, Wrench,
   ArrowUpCircle, AlertTriangle, ChevronDown, ChevronRight, Download, GitBranch, Server,
@@ -558,12 +559,7 @@ function JobStatusBadge({ status, streaming }: { status: string; streaming: bool
 }
 
 function MiniStat({ label, value, accent }: { label: string; value: number; accent?: string }) {
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-center">
-      <div className={`text-2xl font-bold font-mono ${accent === "red" && value > 0 ? "text-red-400" : ""}`}>{value}</div>
-      <div className="text-xs text-zinc-500 mt-1">{label}</div>
-    </div>
-  );
+  return <StatCard label={label} value={value} accent={accent === "red" ? "critical" : "neutral"} />;
 }
 
 function BlastRadiusCard({ blast }: { blast: BlastRadius }) {

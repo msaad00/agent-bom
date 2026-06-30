@@ -384,8 +384,8 @@ export default function AgentBomManifestPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border)]">
-                      {rows.map((row) => (
-                        <tr key={row.id}>
+                      {rows.map((row, index) => (
+                        <tr key={`${row.id}:${index}`}>
                           <td className="px-4 py-3 text-[var(--foreground)]">{row.agentName}</td>
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.owner}</td>
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{row.source}</td>

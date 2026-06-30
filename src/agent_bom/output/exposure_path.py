@@ -7,6 +7,22 @@ from typing import Any
 from agent_bom.models import BlastRadius
 
 
+def _display_package_name(name: str, version: str | None) -> str:
+    """Return the package name without a redundant ``@<version>`` suffix.
+
+    Some ingestion paths store ``name@version`` in ``Package.name``. Builders here
+    append the version again, so without stripping the duplicate suffix a package
+    named ``form-data@4.0.0`` renders as ``form-data@4.0.0@4.0.0``. The graph node
+    label already guards against this via ``split("@")[0]``; this keeps the
+    file-report projection consistent.
+    """
+    name = (name or "").strip()
+    version = (version or "").strip()
+    if version and name.endswith(f"@{version}"):
+        return name[: -(len(version) + 1)]
+    return name
+
+
 def exposure_path_for_blast_radius(br: BlastRadius, *, rank: int | None = None) -> dict[str, Any]:
     """Return a bounded, report-safe ExposurePath view for a blast-radius item.
 
@@ -18,7 +34,8 @@ def exposure_path_for_blast_radius(br: BlastRadius, *, rank: int | None = None) 
 
     vuln = br.vulnerability
     package = br.package
-    package_ref = f"pkg:{package.ecosystem}:{package.name}@{package.version or 'unknown'}"
+    package_name = _display_package_name(package.name, package.version)
+    package_ref = f"pkg:{package.ecosystem}:{package_name}@{package.version or 'unknown'}"
     finding_ref = f"finding:{vuln.id}"
     source_ref = _source_ref(br)
     target_ref = finding_ref
@@ -33,7 +50,7 @@ def exposure_path_for_blast_radius(br: BlastRadius, *, rank: int | None = None) 
         ]
     )
     relationships = _relationships(br, source_ref, package_ref, finding_ref)
-    fix = f"Upgrade {package.name} to {vuln.fixed_version}" if vuln.fixed_version else "No upstream fix recorded; monitor advisory source"
+    fix = f"Upgrade {package_name} to {vuln.fixed_version}" if vuln.fixed_version else "No upstream fix recorded; monitor advisory source"
     proof_bits = []
     if br.affected_agents:
         proof_bits.append(f"{len(br.affected_agents)} affected agent(s)")
@@ -48,14 +65,14 @@ def exposure_path_for_blast_radius(br: BlastRadius, *, rank: int | None = None) 
     if vuln.epss_score is not None:
         proof_bits.append(f"EPSS {vuln.epss_score:.4f}")
 
-    path_id_parts = [vuln.id, package.ecosystem, package.name, package.version or "unknown"]
+    path_id_parts = [vuln.id, package.ecosystem, package_name, package.version or "unknown"]
     path: dict[str, Any] = {
         "id": "blast:" + ":".join(_slug(part) for part in path_id_parts),
         "rank": rank,
-        "label": f"{package.name}@{package.version or '?'} -> {vuln.id}",
+        "label": f"{package_name}@{package.version or '?'} -> {vuln.id}",
         "summary": br.attack_vector_summary
         or br.ai_risk_context
-        or f"{vuln.id} affects {package.name}@{package.version or '?'} with {br.reachability} reachability.",
+        or f"{vuln.id} affects {package_name}@{package.version or '?'} with {br.reachability} reachability.",
         "riskScore": round(br.risk_score, 2),
         "severity": vuln.severity.value,
         "source": source_ref,
@@ -70,7 +87,7 @@ def exposure_path_for_blast_radius(br: BlastRadius, *, rank: int | None = None) 
         "reachableTools": [tool.name for tool in br.exposed_tools[:10]],
         "exposedCredentials": list(br.exposed_credentials[:10]),
         "dependencyContext": {
-            "package": package.name,
+            "package": package_name,
             "version": package.version,
             "ecosystem": package.ecosystem,
             "direct": package.is_direct,
@@ -154,7 +171,7 @@ def _source_ref(br: BlastRadius) -> str:
         return f"agent:{_agent_label(br.affected_agents[0])}"
     if br.affected_servers:
         return f"server:{_server_label(br.affected_servers[0])}"
-    return f"pkg:{br.package.ecosystem}:{br.package.name}@{br.package.version or 'unknown'}"
+    return f"pkg:{br.package.ecosystem}:{_display_package_name(br.package.name, br.package.version)}@{br.package.version or 'unknown'}"
 
 
 def _server_refs(br: BlastRadius) -> list[str]:

@@ -298,6 +298,11 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     comp_id = 0
     bom_ref_map = {}
     ml_component_refs: list[str] = []  # Track ML components for top-level deps
+    # Bom-refs must be unique across the document. A package reachable via
+    # multiple servers is otherwise emitted as duplicate components sharing one
+    # bom-ref (invalid CycloneDX), so emit each component once and keep only the
+    # dependency edges from every referencing server.
+    seen_component_refs: set[str] = set()
 
     for agent in report.agents:
         agent_ref = _sanitize_bom_ref(f"agent-{agent.stable_id}")
@@ -364,6 +369,13 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
             for pkg in server.packages:
                 pkg_ref = _sanitize_bom_ref(f"pkg-{pkg.stable_id}")
+                # Always record the edge from this server, even if the component
+                # (and its vulnerabilities) were already emitted via another server.
+                server_deps.append(pkg_ref)
+                bom_ref_map[f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"] = pkg_ref
+                if pkg_ref in seen_component_refs:
+                    continue
+                seen_component_refs.add(pkg_ref)
                 package_provenance = package_discovery_provenance(pkg, inherited=server_provenance)
                 version_provenance = package_version_provenance(pkg, inherited=server_provenance)
 
@@ -422,8 +434,6 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 if ext_refs:
                     pkg_component["externalReferences"] = ext_refs
                 components.append(pkg_component)
-                server_deps.append(pkg_ref)
-                bom_ref_map[f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"] = pkg_ref
 
                 for vuln in pkg.vulnerabilities:
                     ratings: list[dict[str, object]] = []

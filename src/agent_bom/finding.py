@@ -318,6 +318,12 @@ class Finding:
                 pkg_part = purl.split("/")[-1] if "/" in purl else purl
                 if "@" in pkg_part:
                     pkg_name, pkg_version = pkg_part.rsplit("@", 1)
+            elif isinstance(self.evidence, dict):
+                # Asset is a server/container/etc — the affected package lives in
+                # evidence. Fold it into the discriminator so two CVEs on distinct
+                # packages under one asset don't collide on the same id.
+                pkg_name = str(self.evidence.get("package_name") or "")
+                pkg_version = str(self.evidence.get("package_version") or "")
             self.id = canonical_finding_id(
                 self.asset.stable_id,
                 cve_part,

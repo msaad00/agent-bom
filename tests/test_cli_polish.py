@@ -12,6 +12,7 @@ from agent_bom.models import (
     AgentType,
     AIBOMReport,
     BlastRadius,
+    MCPServer,
     Package,
     Severity,
     Vulnerability,
@@ -294,6 +295,37 @@ def test_cyclonedx_formulation():
     assert tool_component["name"] == "agent-bom"
     assert tool_component["version"] == __version__
     assert tool_component["type"] == "application"
+
+
+def test_cyclonedx_shared_package_emitted_once():
+    """A package reachable via two servers yields ONE component (unique bom-ref)."""
+    from agent_bom.output.cyclonedx_fmt import to_cyclonedx
+
+    shared_pkg_a = _make_pkg(name="lodash", version="4.17.20", ecosystem="npm")
+    shared_pkg_b = _make_pkg(name="lodash", version="4.17.20", ecosystem="npm")
+    server_a = MCPServer(name="srv-a", command="node", args=["a.js"], packages=[shared_pkg_a])
+    server_b = MCPServer(name="srv-b", command="node", args=["b.js"], packages=[shared_pkg_b])
+    agent = _make_agent()
+    agent.mcp_servers = [server_a, server_b]
+    report = AIBOMReport(
+        agents=[agent],
+        blast_radii=[],
+        generated_at=datetime(2026, 1, 1, 12, 0, 0),
+        tool_version="0.75.0",
+    )
+
+    cdx = to_cyclonedx(report)
+
+    pkg_ref = f"pkg-{shared_pkg_a.stable_id}"
+    pkg_components = [c for c in cdx["components"] if c.get("bom-ref") == pkg_ref]
+    assert len(pkg_components) == 1, "shared package must be emitted as a single component"
+
+    all_refs = [c.get("bom-ref") for c in cdx["components"]]
+    assert len(all_refs) == len(set(all_refs)), "bom-refs must be unique across components"
+
+    # Both servers still depend on the shared package.
+    edges = [d for d in cdx["dependencies"] if pkg_ref in d.get("dependsOn", [])]
+    assert len(edges) == 2, "each referencing server must keep its dependency edge"
 
 
 def test_cyclonedx_formulation_version_matches():

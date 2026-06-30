@@ -20,6 +20,7 @@ from agent_bom.asset_provenance import (
     package_version_provenance,
     sanitize_discovery_provenance,
 )
+from agent_bom.checksums import cyclonedx_hashes
 from agent_bom.models import AIBOMReport
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
@@ -404,6 +405,9 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                         pkg_component["licenses"] = [{"expression": lic_val}]
                     else:
                         pkg_component["licenses"] = [{"license": {"id": lic_val}}]
+                hashes = cyclonedx_hashes(pkg.checksums)
+                if hashes:
+                    pkg_component["hashes"] = hashes
                 if pkg.supplier:
                     pkg_component["supplier"] = {"name": pkg.supplier}
                 if pkg.author:

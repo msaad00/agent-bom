@@ -60,6 +60,12 @@ from agent_bom.output.sarif import (  # noqa: E402
     export_sarif,  # noqa: F401
     to_sarif,  # noqa: F401
 )
+from agent_bom.output.spdx2_fmt import (  # noqa: E402
+    export_spdx2,  # noqa: F401
+    export_spdx2_tagvalue,  # noqa: F401
+    to_spdx2,  # noqa: F401
+    to_spdx2_tagvalue,  # noqa: F401
+)
 from agent_bom.output.spdx_fmt import (  # noqa: E402
     export_spdx,  # noqa: F401
     to_spdx,  # noqa: F401

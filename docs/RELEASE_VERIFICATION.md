@@ -10,6 +10,29 @@ For each tagged GitHub Release, expect:
 - SLSA provenance bundles for each distribution: `*.intoto.jsonl`
 - CycloneDX SBOM: `agent-bom-sbom.cdx.json`
 
+## Release matrix
+
+Run this matrix before tagging a release that will back a hosted POC or a
+customer self-hosted deployment. The goal is to prove the exact artifact shape
+that users will touch: package install, CLI, API, UI, hosted preflight, and
+signed release evidence.
+
+| Surface | Command | Release bar |
+|---|---|---|
+| Version alignment | `uv run python scripts/check_release_consistency.py` | Package, docs, OpenAPI, Docker, Helm, and integration versions agree. |
+| Product contract | `uv run python scripts/check_product_surface_contract.py` | README/product-surface claims match generated metrics and exposed surfaces. |
+| API schema | `uv run python scripts/generate_v1_schemas.py --check` | Published v1 schemas match the Pydantic models. |
+| CLI docs | `uv run python scripts/check_cli_reference_alignment.py` | CLI reference and implemented command tree agree. |
+| Security guards | `uv run python scripts/check_exception_sanitization.py` and `uv run python scripts/check_provisioning_readonly.py` | API/gateway/runtime errors are sanitized and cloud provisioning stays read-only. |
+| Backend tests | `uv run pytest -q` | Python 3.11/3.13/3.14 CI must pass; local focused suites should cover changed areas. |
+| UI build | `cd ui && npm run typecheck && npm run lint && npm run build && npm run bundle:check && npm run test:run` | The dashboard builds, tests pass, and client JS stays under budget. |
+| Package build | `uv build --out-dir /tmp/agent-bom-build` | Wheel and sdist build from a clean tree. |
+| PyPI smoke | `python -m venv /tmp/agent-bom-smoke && /tmp/agent-bom-smoke/bin/pip install agent-bom==<version> && /tmp/agent-bom-smoke/bin/agent-bom --version` | Published package installs in a fresh environment. |
+| Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a real report, graph, posture, and no coverage warnings. |
+| Hosted preflight | `python scripts/deploy/hosted_poc_preflight.py --write-postgres-secret` | Hosted compose has an HTTPS URL, no unauth mode, non-placeholder secrets, private API/UI binds, and safe CORS. |
+
+Do not publish a release as hosted-ready when any required line above is red.
+
 ## Download release assets
 
 ```bash

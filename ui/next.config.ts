@@ -2,7 +2,11 @@ import type { NextConfig } from "next";
 
 import { securityHeaders as buildSecurityHeaders } from "./lib/security-headers.mjs";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8422";
+const rawApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+// Rewrites always need a real backend origin. An empty env value means
+// "same-origin in the browser" (runtime-config) but must not produce a
+// relative rewrite destination that stalls the dev proxy.
+const API_URL = rawApiUrl || "http://localhost:8422";
 
 // NEXT_EXPORT=1 → static export bundled into the Python package (agent-bom api).
 // Rewrites require a running Node server so they are disabled in export mode.

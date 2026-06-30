@@ -2165,10 +2165,24 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
             tenant_id=_tenant(request),
             source_ids=set(body.roots),
         )
+        # Keep every path rooted at a queried node, even when intermediate hops
+        # were excluded by the traversal limits or the entity/severity/
+        # compliance/data-source filters. Dropping a path because one hop is
+        # off-graph silently hides real attack paths (same pagination-drop
+        # class as the paged sibling above). Backfill the missing hop nodes so
+        # exposure-path labels still resolve.
+        root_paths = [ap for ap in root_attack_paths if ap.source in body.roots]
+        missing_hop_ids = {hop for ap in root_paths for hop in ap.hops} - set(filtered_graph.nodes)
+        backfilled_nodes = await _graph_store_call(
+            graph_store.nodes_by_ids,
+            scan_id=body.scan_id or "",
+            tenant_id=_tenant(request),
+            node_ids=missing_hop_ids,
+        )
+        nodes_by_id = {**filtered_graph.nodes, **{node.id: node for node in backfilled_nodes}}
         attack_paths = [
-            _serialize_attack_path(ap, filtered_graph.edges, nodes_by_id=filtered_graph.nodes, scan_id=filtered_graph.scan_id)
-            for ap in root_attack_paths
-            if ap.source in body.roots and all(hop in filtered_graph.nodes for hop in ap.hops)
+            _serialize_attack_path(ap, filtered_graph.edges, nodes_by_id=nodes_by_id, scan_id=filtered_graph.scan_id)
+            for ap in root_paths
         ]
 
     return {

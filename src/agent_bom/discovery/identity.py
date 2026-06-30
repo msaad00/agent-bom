@@ -2,29 +2,20 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-from urllib.parse import urlparse, urlunparse
-
+from agent_bom.canonical_ids import mcp_server_identity_discriminator
 from agent_bom.models import Agent, MCPResource, MCPServer, MCPTool, Package
 
 
 def server_identity_key(server: MCPServer) -> str:
-    """Return a stable identity key independent of discovery source."""
+    """Return a stable identity key independent of discovery source.
+
+    Shares the non-registry url/command/name discriminator with
+    ``canonical_mcp_server_id`` so a server's dedup identity and its served
+    canonical id stay in lock-step.
+    """
     if server.registry_id:
         return f"registry:{server.registry_id.strip().lower()}"
-    if server.url:
-        parsed = urlparse(server.url.strip())
-        netloc = parsed.netloc.lower()
-        path = parsed.path.rstrip("/")
-        return f"url:{urlunparse((parsed.scheme.lower(), netloc, path, '', '', ''))}"
-
-    command = Path(server.command or "").name.lower().strip()
-    args = tuple(_normalize_arg(arg) for arg in server.args if _normalize_arg(arg))
-    if command or args:
-        return f"cmd:{command}:{' '.join(args)}"
-
-    return f"name:{server.name.strip().lower()}"
+    return mcp_server_identity_discriminator(server.name, server.command, url=server.url, args=server.args)
 
 
 def deduplicate_discovered_agents(agents: list[Agent]) -> list[Agent]:
@@ -53,19 +44,12 @@ def deduplicate_discovered_agents(agents: list[Agent]) -> list[Agent]:
             agent.mcp_servers = deduped_servers
             merged_agents.append(agent)
 
+    # Merging can append children and mutate command/url/registry_id, so re-scope
+    # every surviving server's child identities to its final canonical id.
+    for server in seen.values():
+        server.stamp_child_identities()
+
     return merged_agents
-
-
-def _normalize_arg(arg: str) -> str:
-    text = str(arg).strip()
-    if not text:
-        return ""
-    if text.startswith(("/", "~", ".")):
-        try:
-            return os.path.normpath(os.path.expanduser(text)).lower()
-        except (OSError, ValueError):
-            return text.lower()
-    return text.lower()
 
 
 def _record_source(server: MCPServer, agent: Agent) -> None:

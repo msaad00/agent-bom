@@ -377,16 +377,19 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                 _persist_payload_observations(tenant_id, payload_agent, last_discovery=now, last_synced=now)
     else:
         discovered = discover_all()
-        existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}
-        discovered_names = {agent.name for agent in discovered}
-        new_names = discovered_names - set(existing_by_name)
+        # Key by canonical_id so distinct agents that share a bare name
+        # (different source_ids) stay distinct; fall back to name only for
+        # legacy fleet records without a canonical_id.
+        existing_by_id = {(agent.canonical_id or agent.name): agent for agent in store.list_by_tenant(tenant_id)}
+        discovered_ids = {(getattr(agent, "canonical_id", "") or agent.name) for agent in discovered}
+        new_ids = discovered_ids - set(existing_by_id)
         # Same per-tenant quota guard as the payload-agents branch.
         with tenant_quota_guard(
             tenant_id,
-            lambda: enforce_fleet_agents_quota(tenant_id, attempted=len(new_names)),
+            lambda: enforce_fleet_agents_quota(tenant_id, attempted=len(new_ids)),
         ):
             for discovered_agent in discovered:
-                existing = existing_by_name.get(discovered_agent.name)
+                existing = existing_by_id.get(getattr(discovered_agent, "canonical_id", "") or discovered_agent.name)
                 server_count, pkg_count, cred_count, vuln_count = _server_counts(discovered_agent)
                 score, factors = compute_trust_score(discovered_agent)
 
@@ -405,6 +408,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                 else:
                     fleet_agent = FleetAgent(
                         agent_id=str(uuid.uuid4()),
+                        canonical_id=str(getattr(discovered_agent, "canonical_id", "") or ""),
                         name=discovered_agent.name,
                         agent_type=(
                             discovered_agent.agent_type.value

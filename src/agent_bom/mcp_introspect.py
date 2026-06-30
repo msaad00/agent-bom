@@ -23,6 +23,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from agent_bom.discovery.identity import server_identity_key
 from agent_bom.mcp_tool_rules import evaluate_tool
 from agent_bom.models import MCPPrompt, MCPResource, MCPServer, MCPTool, TransportType
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text
@@ -56,6 +57,7 @@ class ServerIntrospection:
 
     server_name: str
     success: bool
+    server_identity: Optional[str] = None
     protocol_version: Optional[str] = None
     auth_mode: Optional[str] = None
     configured_fingerprint: Optional[str] = None
@@ -113,6 +115,7 @@ class ServerIntrospection:
     def to_dict(self, *, include_runtime_objects: bool = False) -> dict:
         payload = {
             "server_name": _safe_runtime_text(self.server_name, max_len=300),
+            "server_identity": _safe_runtime_value(self.server_identity, max_len=300),
             "success": self.success,
             "protocol_version": _safe_runtime_value(self.protocol_version, max_len=100),
             "auth_mode": _safe_runtime_value(self.auth_mode, max_len=100),
@@ -354,6 +357,7 @@ async def introspect_server(
     result = ServerIntrospection(
         server_name=server.name,
         success=False,
+        server_identity=server_identity_key(server),
         auth_mode=server.auth_mode,
         configured_fingerprint=server.fingerprint,
         configured_tool_count=len(server.tools),
@@ -593,6 +597,7 @@ async def introspect_servers(
                 ServerIntrospection(
                     server_name=introspectable[i].name,
                     success=False,
+                    server_identity=server_identity_key(introspectable[i]),
                     error=_safe_runtime_text(result),
                 )
             )
@@ -701,10 +706,16 @@ def enrich_servers(
         Number of servers enriched.
     """
     enriched = 0
-    result_map = {r.server_name: r for r in report.results if r.success}
+    # Key by stable identity, not the human-readable name: MCP server names are
+    # not unique across agents, so name-based matching enriches the wrong server.
+    # Results that predate identity tracking fall back to name-based matching.
+    result_map = {r.server_identity: r for r in report.results if r.success and r.server_identity}
+    fallback_map = {r.server_name: r for r in report.results if r.success and not r.server_identity}
 
     for server in servers:
-        result = result_map.get(server.name)
+        result = result_map.get(server_identity_key(server))
+        if result is None:
+            result = fallback_map.get(server.name)
         if not result:
             continue
 
@@ -754,6 +765,8 @@ def enrich_servers(
                         added_any = True
 
         if added_any:
+            # Scope newly appended runtime children to their owning server.
+            server.stamp_child_identities()
             enriched += 1
 
     return enriched

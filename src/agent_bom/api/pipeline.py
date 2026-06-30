@@ -486,10 +486,13 @@ def _sync_scan_agents_to_fleet(agents: list, tenant_id: str = "default") -> None
     # Collect all agents for a single batch upsert (atomicity)
     to_upsert: list[FleetAgent] = []
 
-    existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}
+    # Key by canonical_id so two fleet agents that share a bare name (distinct
+    # source_ids) are not collapsed into a single index slot; fall back to name
+    # only for legacy records without a canonical_id.
+    existing_by_id = {(fleet_agent.canonical_id or fleet_agent.name): fleet_agent for fleet_agent in store.list_by_tenant(tenant_id)}
 
     for agent in agents:
-        existing = existing_by_name.get(agent.name)
+        existing = existing_by_id.get(getattr(agent, "canonical_id", "") or agent.name)
         server_count = len(agent.mcp_servers)
         pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
         cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)

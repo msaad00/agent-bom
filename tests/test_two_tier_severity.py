@@ -183,6 +183,20 @@ def test_fail_on_severity_exits_zero_no_match():
     assert result.exit_code == 0
 
 
+def test_fail_on_severity_fails_closed_on_unknown_severity():
+    """An UNKNOWN-severity CVE must trip an active --fail-on-severity gate.
+
+    Regression: UNKNOWN ranks below every selectable threshold, so a naive rank
+    comparison let un-enriched CVEs silently pass the gate (fail-open). The gate
+    is now fail-closed for UNKNOWN/NONE.
+    """
+    runner = CliRunner()
+    br = _make_blast_radius("unknown", "CVE-2025-UNKNOWN")
+    # Operator asks to fail on low+; an unknown-severity finding must not slip past.
+    result = _run_scan_with_findings(runner, [br], extra_args=["--fail-on-severity", "low"])
+    assert result.exit_code == 1
+
+
 # ---------------------------------------------------------------------------
 # Tests: two-tier (--warn-on + --fail-on-severity together)
 # ---------------------------------------------------------------------------

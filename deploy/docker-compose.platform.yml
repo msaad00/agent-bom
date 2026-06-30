@@ -123,7 +123,7 @@ services:
     build:
       context: ../ui
       dockerfile: Dockerfile
-    image: agentbom/agent-bom-ui:0.89.2
+    image: agentbom/agent-bom-ui:0.90.0
     container_name: agent-bom-ui
     ports:
       - "${AGENT_BOM_UI_BIND_HOST:-127.0.0.1}:${UI_PORT:-3000}:3000"

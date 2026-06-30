@@ -277,7 +277,7 @@ single-node `agent-bom serve` deployment.
 
 | Table | Purpose | Tenant-scoped? |
 |---|---|---|
-| `vulns`, `affected`, `epss_scores`, `kev_entries` | Offline OSV/GHSA/Alpine/Debian-Security-Tracker/EPSS/KEV catalog (`affected` rows are release-scoped for distro ecosystems, e.g. `debian:10`) | n/a (read-only catalog) |
+| `vulns`, `affected`, `cpe_matches`, `epss_scores`, `kev_entries` | Offline OSV/GHSA/NVD/Alpine/Debian-Security-Tracker/EPSS/KEV catalog plus NVD CPE applicability (`cpe_matches`) (`affected` rows are release-scoped for distro ecosystems, e.g. `debian:10`) | n/a (read-only catalog) |
 | `jobs` | Scan job state | yes (per-tenant SQLite path or in-row column) |
 | `fleet_agents` | Fleet inventory | yes |
 | `gateway_policies` | Gateway policy rules | yes |

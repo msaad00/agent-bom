@@ -19,10 +19,10 @@ import sqlite3
 from typing import Any, Optional
 
 from agent_bom.advisory_ids import MATCH_CONFIDENCE_NVD_CPE_CANDIDATE
-from agent_bom.version_utils import version_in_range
+from agent_bom.version_utils import compare_version_order
 
 # CPE versions are bare dotted strings with no ecosystem; use the generic
-# comparator path in version_in_range.
+# comparator path.
 _CPE_ECOSYSTEM = "generic"
 
 
@@ -46,20 +46,44 @@ def candidate_cpe_products(name: str) -> list[str]:
 
 
 def _cpe_range_applies(version: str, row: sqlite3.Row) -> bool:
-    """Whether ``version`` falls inside one stored CPE applicability row."""
+    """Whether ``version`` falls inside one stored CPE applicability row.
+
+    Honors NVD's inclusive/exclusive bounds *exactly* — a boundary version is
+    only vulnerable when the source says so. e.g. with versionStartExcluding=1.0.0
+    and versionEndExcluding=2.0.0: 1.0.0 is NOT vulnerable, 1.0.1 IS, 2.0.0 is NOT.
+    Fails safe: if a version is incomparable to a bound, the row does not apply
+    (a candidate match must never invent a boundary hit).
+    """
     exact = row["version"]
     if exact:
         # The criteria pins a specific version (e.g. cpe:2.3:a:acme:gadget:3.1).
         return str(version).strip() == str(exact).strip()
 
-    introduced = row["version_start"]  # start bound (incl/excl) -> inclusive lower
-    fixed = row["version_end"] if row["version_end_op"] == "excluding" else None
-    last_affected = row["version_end"] if row["version_end_op"] == "including" else None
-
-    if not (introduced or fixed or last_affected):
+    start = row["version_start"]
+    end = row["version_end"]
+    if not (start or end):
         # Product matches with no version bounds -> every version is affected.
         return True
-    return version_in_range(version, introduced, fixed, last_affected, _CPE_ECOSYSTEM)
+
+    if start:
+        order = compare_version_order(version, start, _CPE_ECOSYSTEM)
+        if order is None:
+            return False  # incomparable -> fail safe
+        if row["version_start_op"] == "excluding":
+            if order <= 0:  # need version > start (strict)
+                return False
+        elif order < 0:  # including: need version >= start
+            return False
+    if end:
+        order = compare_version_order(version, end, _CPE_ECOSYSTEM)
+        if order is None:
+            return False  # incomparable -> fail safe
+        if row["version_end_op"] == "including":
+            if order > 0:  # need version <= end
+                return False
+        elif order >= 0:  # excluding (NVD default for upper bound): need version < end
+            return False
+    return True
 
 
 def match_component_cpe(

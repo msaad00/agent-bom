@@ -8,7 +8,7 @@ names only, never values.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from agent_bom.api.fleet_store import FleetAgent
@@ -456,6 +456,63 @@ def _manifest(
     return payload
 
 
+def _union_named_rows(existing: object, incoming: object) -> list[dict[str, object]]:
+    """Union two ``{"name": ...}`` row lists, keeping first-seen order."""
+    rows = [row for row in existing if isinstance(row, dict)] if isinstance(existing, list) else []
+    seen = {row.get("name") for row in rows}
+    for row in incoming if isinstance(incoming, list) else []:
+        if isinstance(row, dict) and row.get("name") not in seen:
+            rows.append(row)
+            seen.add(row.get("name"))
+    return rows
+
+
+def _object_list(value: object) -> list[object]:
+    return list(value) if isinstance(value, list) else []
+
+
+def _string_list(value: object) -> list[str]:
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def _union_server_rows(existing: dict[str, object], incoming: dict[str, object]) -> None:
+    tools = _union_named_rows(existing.get("tools"), incoming.get("tools"))
+    existing["tools"] = tools
+    existing["tool_count"] = len(tools)
+    existing["credential_refs"] = _union_named_rows(existing.get("credential_refs"), incoming.get("credential_refs"))
+    discovery = existing.get("discovery")
+    if isinstance(discovery, dict):
+        existing_sources = _object_list(discovery.get("sources"))
+        incoming_discovery = incoming.get("discovery")
+        incoming_sources = _object_list(incoming_discovery.get("sources")) if isinstance(incoming_discovery, dict) else []
+        discovery["sources"] = sorted(set(existing_sources) | set(incoming_sources))
+
+
+def _union_agent_rows(existing: dict[str, object], incoming: dict[str, object]) -> None:
+    server_ids = _string_list(existing.get("mcp_server_ids"))
+    seen = set(server_ids)
+    for server_id in _string_list(incoming.get("mcp_server_ids")):
+        if server_id not in seen:
+            server_ids.append(server_id)
+            seen.add(server_id)
+    existing["mcp_server_ids"] = server_ids
+
+
+def _dedup_rows(rows: list[dict[str, object]], union: Callable[[dict[str, object], dict[str, object]], None]) -> list[dict[str, object]]:
+    """Collapse rows that share an ``id``, unioning their detail into the first seen."""
+    merged: dict[str, dict[str, object]] = {}
+    order: list[str] = []
+    for row in rows:
+        row_id = str(row.get("id"))
+        existing = merged.get(row_id)
+        if existing is None:
+            merged[row_id] = row
+            order.append(row_id)
+        else:
+            union(existing, row)
+    return [merged[row_id] for row_id in order]
+
+
 def build_local_agent_manifest(
     agents: Iterable[Agent],
     *,
@@ -463,8 +520,8 @@ def build_local_agent_manifest(
     tenant_id: str | None = None,
 ) -> dict[str, object]:
     agent_list = list(agents)
-    agent_rows = [_agent(agent) for agent in agent_list]
-    server_rows = [_server(server) for agent in agent_list for server in agent.mcp_servers]
+    agent_rows = _dedup_rows([_agent(agent) for agent in agent_list], _union_agent_rows)
+    server_rows = _dedup_rows([_server(server) for agent in agent_list for server in agent.mcp_servers], _union_server_rows)
     return _manifest(source, agent_rows, server_rows, tenant_id)
 
 

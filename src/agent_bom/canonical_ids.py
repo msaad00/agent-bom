@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from agent_bom.package_utils import canonical_package_key
 
@@ -54,23 +57,84 @@ def canonical_agent_id(agent_type: str, name: str, *, source_id: str = "") -> st
     return canonical_id("agent", agent_type, name)
 
 
-def canonical_mcp_server_id(name: str, command: str = "", *, registry_id: str | None = None) -> str:
-    identifier = registry_id or f"{name}:{command}"
+def normalize_command_arg(arg: str) -> str:
+    """Normalize a server command argument for identity comparison."""
+    text = str(arg).strip()
+    if not text:
+        return ""
+    if text.startswith(("/", "~", ".")):
+        try:
+            return os.path.normpath(os.path.expanduser(text)).lower()
+        except (OSError, ValueError):
+            return text.lower()
+    return text.lower()
+
+
+def mcp_server_identity_discriminator(
+    name: str,
+    command: str = "",
+    *,
+    url: str | None = None,
+    args: Sequence[str] | None = None,
+) -> str:
+    """Non-registry server identity key shared by canonical IDs and discovery dedup.
+
+    Mirrors the url/command/name fallback used by discovery's ``server_identity_key``
+    so a server's served canonical id is as fine-grained as its dedup identity:
+    remote SSE/HTTP servers (empty command) stay distinct by url, and stdio servers
+    fold in their normalized args.
+    """
+    if url and url.strip():
+        parsed = urlparse(url.strip())
+        netloc = parsed.netloc.lower()
+        path = parsed.path.rstrip("/")
+        return f"url:{urlunparse((parsed.scheme.lower(), netloc, path, '', '', ''))}"
+
+    cmd = Path(command or "").name.lower().strip()
+    normalized_args = tuple(value for value in (normalize_command_arg(arg) for arg in (args or [])) if value)
+    if cmd or normalized_args:
+        arg_str = " ".join(normalized_args)
+        if not normalized_args:
+            # A bare command with no args is not distinctive enough on its own;
+            # fold in the server name so distinct servers keep distinct identities.
+            return f"cmd:{cmd}:{arg_str}:{name.strip().lower()}"
+        return f"cmd:{cmd}:{arg_str}"
+
+    return f"name:{name.strip().lower()}"
+
+
+def canonical_mcp_server_id(
+    name: str,
+    command: str = "",
+    *,
+    registry_id: str | None = None,
+    url: str | None = None,
+    args: Sequence[str] | None = None,
+) -> str:
+    if registry_id:
+        identifier = registry_id
+    else:
+        identifier = mcp_server_identity_discriminator(name, command, url=url, args=args)
     return canonical_id("mcp_server", identifier)
 
 
-def canonical_mcp_tool_id(name: str, input_schema: Mapping[str, Any] | None = None) -> str:
+def canonical_mcp_tool_id(name: str, input_schema: Mapping[str, Any] | None = None, *, server_id: str | None = None) -> str:
     schema = json.dumps(input_schema or {}, sort_keys=True, separators=(",", ":"))
-    return canonical_id("mcp_tool", name, schema)
+    return canonical_id("mcp_tool", server_id or "", name, schema)
 
 
-def canonical_mcp_resource_id(uri: str, mime_type: str | None = None) -> str:
-    return canonical_id("mcp_resource", uri, mime_type or "")
+def canonical_mcp_resource_id(uri: str, mime_type: str | None = None, *, server_id: str | None = None) -> str:
+    return canonical_id("mcp_resource", server_id or "", uri, mime_type or "")
 
 
-def canonical_mcp_prompt_id(name: str, arguments: Sequence[Mapping[str, Any]] | None = None) -> str:
+def canonical_mcp_prompt_id(
+    name: str,
+    arguments: Sequence[Mapping[str, Any]] | None = None,
+    *,
+    server_id: str | None = None,
+) -> str:
     args = json.dumps(list(arguments or []), sort_keys=True, separators=(",", ":"))
-    return canonical_id("mcp_prompt", name, args)
+    return canonical_id("mcp_prompt", server_id or "", name, args)
 
 
 def canonical_finding_id(asset_canonical_id: str, finding_key: str, *qualifiers: Any) -> str:

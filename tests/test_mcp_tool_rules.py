@@ -17,6 +17,8 @@ from agent_bom.mcp_tool_rules import (
     evaluate_tool,
 )
 from agent_bom.models import MCPTool
+from agent_bom.owasp import OWASP_LLM_TOP10
+from agent_bom.owasp_mcp import OWASP_MCP_TOP10
 
 
 def _tool(tool_name: str, description: str = "Adequate description for tool", **schema_props) -> MCPTool:
@@ -35,7 +37,7 @@ class TestShellInputRule:
         assert len(rules) == 1
         finding = rules[0]
         assert finding.severity == "critical"
-        assert "MCP01-Untrusted-Tool-Inputs" in finding.owasp_mcp_tags
+        assert "MCP05" in finding.owasp_mcp_tags
         assert "CWE-78" in finding.cwe_ids
 
     def test_silent_when_command_has_enum(self) -> None:
@@ -94,7 +96,7 @@ class TestCredentialInInputRule:
         tool = _tool("call_api", token={"type": "string"})
         rules = [f for f in evaluate_tool(tool) if f.rule_id == "MCP-TOOL-05-credential-in-input"]
         assert len(rules) == 1
-        assert "MCP02-Credential-Leakage" in rules[0].owasp_mcp_tags
+        assert "MCP01" in rules[0].owasp_mcp_tags
         assert "CWE-522" in rules[0].cwe_ids
 
     def test_silent_on_username(self) -> None:
@@ -110,7 +112,7 @@ class TestPromptPassthroughRule:
         )
         rules = [f for f in evaluate_tool(tool) if f.rule_id == "MCP-TOOL-06-prompt-passthrough"]
         assert len(rules) == 1
-        assert "LLM01-Prompt-Injection" in rules[0].owasp_tags
+        assert "LLM01" in rules[0].owasp_tags
 
     def test_silent_when_description_is_neutral(self) -> None:
         tool = _tool(
@@ -175,7 +177,49 @@ def test_findings_serialize_cleanly() -> None:
     assert findings
     payload = findings[0].to_dict()
     assert payload["rule_id"] == "MCP-TOOL-01-shell-input"
-    assert payload["owasp_mcp_tags"] == ["MCP01-Untrusted-Tool-Inputs", "MCP04-Excessive-Capability"]
+    assert payload["owasp_mcp_tags"] == ["MCP05"]
+
+
+# ─── Canonical OWASP catalog membership ──────────────────────────────────────
+
+
+def test_emitted_owasp_tags_are_canonical() -> None:
+    """Every owasp_tags / owasp_mcp_tags code a rule emits must be a real
+    member of the canonical OWASP LLM Top 10 / OWASP MCP Top 10 catalogs.
+
+    Guards against the invented numbering (e.g. ``MCP01-Untrusted-Tool-Inputs``,
+    ``LLM05-Improper-Output-Handling``) that contradicted the product's own
+    catalogs and broke compliance-report routing.
+    """
+    # A battery of tools that, together, trip every rule in the catalog.
+    tools = [
+        _tool("run_command", description="", command={"type": "string"}),
+        _tool("read_file", file_path={"type": "string"}),
+        _tool("fetch", url={"type": "string"}),
+        _tool("run_query", query={"type": "string"}),
+        _tool("call_api", token={"type": "string"}),
+        _tool(
+            "summarize",
+            text={"type": "string", "description": "The system prompt to compose with the user input"},
+        ),
+    ]
+    findings = evaluate_server_tools(tools)
+    # Sanity: the battery actually exercised the catalog.
+    assert {f.rule_id for f in findings} == {
+        "MCP-TOOL-01-shell-input",
+        "MCP-TOOL-02-path-traversal",
+        "MCP-TOOL-03-ssrf",
+        "MCP-TOOL-04-sql-injection",
+        "MCP-TOOL-05-credential-in-input",
+        "MCP-TOOL-06-prompt-passthrough",
+        "MCP-TOOL-07-weak-description",
+    }
+
+    for finding in findings:
+        for tag in finding.owasp_tags:
+            assert tag in OWASP_LLM_TOP10, f"{finding.rule_id} emits non-canonical LLM tag {tag!r}"
+        for tag in finding.owasp_mcp_tags:
+            assert tag in OWASP_MCP_TOP10, f"{finding.rule_id} emits non-canonical MCP tag {tag!r}"
 
 
 # ─── No accidental fires on the canonical demo tools ─────────────────────────

@@ -320,10 +320,13 @@ import { ApiNetworkError, classifyApiResponse } from "./api-errors";
 import { cachedGet, invalidate as _invalidate, type CacheOptions } from "./api-cache";
 
 const FETCH_TIMEOUT_MS = 30_000;
+const BOOTSTRAP_TIMEOUT_MS = 5_000;
 
-function withTimeout(): AbortSignal {
-  return AbortSignal.timeout(FETCH_TIMEOUT_MS);
+function withTimeout(timeoutMs: number = FETCH_TIMEOUT_MS): AbortSignal {
+  return AbortSignal.timeout(timeoutMs);
 }
+
+type GetOptions = CacheOptions & { timeoutMs?: number };
 
 async function _parseBody(res: Response): Promise<unknown> {
   // Only called on the error path; caller never reads the body again, so we
@@ -371,7 +374,8 @@ function _runInvalidations(path: string): void {
   }
 }
 
-async function get<T>(path: string, cacheOptions: CacheOptions = {}): Promise<T> {
+async function get<T>(path: string, options: GetOptions = {}): Promise<T> {
+  const { timeoutMs, ...cacheOptions } = options;
   const key = `GET ${path}`;
   return cachedGet<T>(
     key,
@@ -379,7 +383,7 @@ async function get<T>(path: string, cacheOptions: CacheOptions = {}): Promise<T>
       const res = await _doFetch(path, {
         credentials: "include",
         headers: getSessionAuthHeaders(),
-        signal: withTimeout(),
+        signal: withTimeout(timeoutMs ?? FETCH_TIMEOUT_MS),
       }, "GET");
       return res.json() as Promise<T>;
     },
@@ -471,9 +475,9 @@ export { invalidate as invalidateApiCache, clearCache as _clearApiCacheForTests 
 // ─── API functions ────────────────────────────────────────────────────────────
 
 export const api = {
-  health: () => get<HealthResponse>("/health"),
-  version: () => get<VersionInfo>("/version"),
-  getAuthMe: () => get<AuthMeResponse>("/v1/auth/me"),
+  health: () => get<HealthResponse>("/health", { ttlMs: 0, timeoutMs: BOOTSTRAP_TIMEOUT_MS }),
+  version: () => get<VersionInfo>("/version", { timeoutMs: BOOTSTRAP_TIMEOUT_MS }),
+  getAuthMe: () => get<AuthMeResponse>("/v1/auth/me", { ttlMs: 0, timeoutMs: BOOTSTRAP_TIMEOUT_MS }),
   getAuthDebug: () => get<AuthDebugResponse>("/v1/auth/debug"),
   getAuthPolicy: () => get<AuthPolicyResponse>("/v1/auth/policy"),
   getTenantQuota: () => get<AuthPolicyResponse["tenant_quota_runtime"]>("/v1/auth/quota"),

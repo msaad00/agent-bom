@@ -62,6 +62,19 @@ def test_config_and_kubernetes_server_collapse_by_url_identity() -> None:
     ]
 
 
+def test_commandless_servers_with_same_command_stay_distinct() -> None:
+    # Two distinct servers that share a bare command and have no args/url/registry
+    # must NOT collapse into one identity (regression for inventory dedup bug).
+    first = MCPServer(name="alpha", command="server")
+    second = MCPServer(name="beta", command="server")
+
+    assert server_identity_key(first) != server_identity_key(second)
+
+    merged = deduplicate_discovered_agents([_agent("a", "config", first), _agent("b", "process", second)])
+
+    assert sum(len(agent.mcp_servers) for agent in merged) == 2
+
+
 def test_distinct_servers_remain_distinct() -> None:
     first = MCPServer(name="fs", command="npx", args=["@modelcontextprotocol/server-filesystem", "/workspace"])
     second = MCPServer(name="github", command="npx", args=["@modelcontextprotocol/server-github"])

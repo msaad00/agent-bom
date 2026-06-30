@@ -470,11 +470,12 @@ class MCPTool:
     declared_capabilities: list[str] = field(default_factory=list)
     schema_findings: list[str] = field(default_factory=list)
     schema_rule_findings: list[dict] = field(default_factory=list)
+    server_canonical_id: Optional[str] = None  # Owning server scope (stamped by MCPServer)
 
     @property
     def stable_id(self) -> str:
-        """Deterministic ID for this MCP tool."""
-        return canonical_mcp_tool_id(self.name, self.input_schema)
+        """Deterministic ID for this MCP tool, scoped to its owning server."""
+        return canonical_mcp_tool_id(self.name, self.input_schema, server_id=self.server_canonical_id)
 
     @property
     def canonical_id(self) -> str:
@@ -510,11 +511,12 @@ class MCPResource:
     description: str = ""
     mime_type: Optional[str] = None
     content_findings: list[str] = field(default_factory=list)
+    server_canonical_id: Optional[str] = None  # Owning server scope (stamped by MCPServer)
 
     @property
     def stable_id(self) -> str:
-        """Deterministic ID for this MCP resource."""
-        return canonical_mcp_resource_id(self.uri, self.mime_type)
+        """Deterministic ID for this MCP resource, scoped to its owning server."""
+        return canonical_mcp_resource_id(self.uri, self.mime_type, server_id=self.server_canonical_id)
 
     @property
     def canonical_id(self) -> str:
@@ -547,11 +549,12 @@ class MCPPrompt:
     description: str = ""
     arguments: list[dict[str, object]] = field(default_factory=list)
     content_findings: list[str] = field(default_factory=list)
+    server_canonical_id: Optional[str] = None  # Owning server scope (stamped by MCPServer)
 
     @property
     def stable_id(self) -> str:
-        """Deterministic ID for this MCP prompt descriptor."""
-        return canonical_mcp_prompt_id(self.name, self.arguments)
+        """Deterministic ID for this MCP prompt descriptor, scoped to its owning server."""
+        return canonical_mcp_prompt_id(self.name, self.arguments, server_id=self.server_canonical_id)
 
     @property
     def canonical_id(self) -> str:
@@ -633,14 +636,40 @@ class MCPServer:
     discovery_sources: list[str] = field(default_factory=list)
     discovery_provenance: Optional[dict] = None  # Sanitized discovery provenance contract for this server asset
 
+    def __post_init__(self) -> None:
+        """Scope child tool/resource/prompt identities to this server."""
+        self.stamp_child_identities()
+
+    def stamp_child_identities(self) -> None:
+        """Stamp owned tools/resources/prompts with this server's canonical id.
+
+        Child ids are scoped to their owning server so a same-named tool on two
+        different servers never collides onto one identity. Call again after
+        mutating ``command``/``url``/``registry_id`` or appending children.
+        """
+        scope = self.canonical_id
+        for child in (*self.tools, *self.resources, *self.prompts):
+            # Some legacy paths populate these lists with plain dicts; only model
+            # objects carry the scope field.
+            if hasattr(child, "server_canonical_id"):
+                child.server_canonical_id = scope
+
     @property
     def stable_id(self) -> str:
         """Deterministic ID for this MCP server.
 
         Uses registry_id when available (most stable identifier), otherwise
-        falls back to name+command so the same server is always the same ID.
+        falls back to a url/command/args discriminator that mirrors discovery's
+        dedup identity so distinct servers (e.g. two remote SSE servers with no
+        command but different urls) never collapse onto one ID.
         """
-        return canonical_mcp_server_id(self.name, self.command, registry_id=self.registry_id)
+        return canonical_mcp_server_id(
+            self.name,
+            self.command,
+            registry_id=self.registry_id,
+            url=self.url,
+            args=self.args,
+        )
 
     @property
     def canonical_id(self) -> str:
@@ -757,10 +786,12 @@ class Agent:
     def stable_id(self) -> str:
         """Deterministic ID for this agent.
 
-        Canonical identity: agent_type + name. Same agent configuration
-        always resolves to the same ID across scans.
+        Canonical identity: agent_type + install location. The same install
+        resolves to the same ID across scans, while two agents that share a
+        type+name but live in different config locations (e.g. global vs
+        per-project Claude config) stay distinct entities.
         """
-        return canonical_agent_id(self.agent_type.value, self.name)
+        return canonical_agent_id(self.agent_type.value, self.name, source_id=self.source or self.config_path)
 
     @property
     def canonical_id(self) -> str:

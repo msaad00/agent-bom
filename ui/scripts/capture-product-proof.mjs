@@ -719,7 +719,7 @@ function startServerIfNeeded() {
   const child = spawn("npm", ["run", "dev", "--", "--hostname", "127.0.0.1", "--port", String(PORT)], {
     cwd: UI_ROOT,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", NEXT_PUBLIC_API_URL: "" },
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
   });
   child.stdout.on("data", (chunk) => process.stdout.write(chunk));
   child.stderr.on("data", (chunk) => process.stderr.write(chunk));
@@ -727,9 +727,9 @@ function startServerIfNeeded() {
 }
 
 async function capture(page, urlPath, filename, beforeShot) {
-  await page.goto(`${BASE_URL}${urlPath}`);
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(1200);
+  await page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(400);
   if (beforeShot) await beforeShot(page);
   await page.screenshot({ path: path.join(IMAGE_DIR, filename), fullPage: false });
   console.log(`captured ${filename}`);

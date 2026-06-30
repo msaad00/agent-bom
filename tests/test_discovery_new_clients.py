@@ -696,3 +696,48 @@ def test_detect_snow_binary(monkeypatch):
     installed = detect_installed_agents(discovered_types=set())
     agent_types = {a.agent_type for a in installed}
     assert AgentType.SNOWFLAKE_CLI in agent_types
+
+
+def test_cortex_metadata_creates_standalone_agent_without_mcp(tmp_path, monkeypatch):
+    """Cortex auxiliary findings surface even when no mcp.json (CORTEX_CODE agent) exists."""
+    from agent_bom.discovery import discover_global_configs
+
+    perms = {"/path/to/project": {"Write": {"*": "allow"}}}
+    perms_file = tmp_path / "permissions.json"
+    perms_file.write_text(json.dumps(perms))
+
+    monkeypatch.setattr(
+        "agent_bom.discovery.CONFIG_LOCATIONS",
+        {AgentType.CORTEX_CODE: {"Darwin": [str(perms_file)], "Linux": [], "Windows": []}},
+    )
+    monkeypatch.setattr("agent_bom.discovery.get_platform", lambda: "Darwin")
+
+    agents = discover_global_configs([AgentType.CORTEX_CODE])
+
+    cortex = [a for a in agents if a.agent_type == AgentType.CORTEX_CODE]
+    assert len(cortex) == 1
+    assert "cortex_permissions" in cortex[0].metadata
+
+
+def test_cortex_metadata_attaches_regardless_of_ordering(tmp_path, monkeypatch):
+    """Metadata listed before mcp.json still lands on the discovered CORTEX_CODE agent."""
+    from agent_bom.discovery import discover_global_configs
+
+    perms = {"/path/to/project": {"Write": {"*": "allow"}}}
+    perms_file = tmp_path / "permissions.json"
+    perms_file.write_text(json.dumps(perms))
+    mcp_file = tmp_path / "mcp.json"
+    mcp_file.write_text(json.dumps({"mcpServers": {"srv": {"command": "node", "args": ["s.js"]}}}))
+
+    monkeypatch.setattr(
+        "agent_bom.discovery.CONFIG_LOCATIONS",
+        {AgentType.CORTEX_CODE: {"Darwin": [str(perms_file), str(mcp_file)], "Linux": [], "Windows": []}},
+    )
+    monkeypatch.setattr("agent_bom.discovery.get_platform", lambda: "Darwin")
+
+    agents = discover_global_configs([AgentType.CORTEX_CODE])
+
+    cortex = [a for a in agents if a.agent_type == AgentType.CORTEX_CODE]
+    assert len(cortex) == 1
+    assert cortex[0].mcp_servers and cortex[0].mcp_servers[0].name == "srv"
+    assert "cortex_permissions" in cortex[0].metadata

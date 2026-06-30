@@ -11,7 +11,8 @@ from unittest.mock import patch
 import pytest
 
 from agent_bom.db.schema import init_db
-from agent_bom.db.sync import GHSA_ECOSYSTEMS, sync_ghsa
+from agent_bom.db.sync import GHSA_ECOSYSTEMS, _ingest_ghsa_advisory, _normalize_ghsa_db_ecosystem, sync_ghsa
+from agent_bom.package_utils import normalize_package_name
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -256,7 +257,7 @@ def test_sync_ghsa_ecosystem_filtering() -> None:
 def test_sync_ghsa_default_ecosystems() -> None:
     """When no ecosystems are specified, all GHSA_ECOSYSTEMS are used."""
     # Verify minimum required ecosystems are present (no hardcoded count)
-    required = {"pip", "npm", "go", "maven", "nuget", "rubygems", "cargo", "composer", "swift", "pub", "erlang", "actions"}
+    required = {"pip", "npm", "go", "maven", "nuget", "rubygems", "rust", "composer", "swift", "pub", "erlang", "actions"}
     assert required.issubset(set(GHSA_ECOSYSTEMS)), f"Missing: {required - set(GHSA_ECOSYSTEMS)}"
     assert len(GHSA_ECOSYSTEMS) >= len(required), "GHSA_ECOSYSTEMS shrunk below minimum"
     # No duplicates
@@ -291,3 +292,53 @@ def test_sync_ghsa_respects_max_entries() -> None:
     assert details["coverage"] == "truncated"
     assert details["max_entries"] == 3
     assert details["ecosystem_counts"] == {"pip": 3}
+
+
+def test_ghsa_api_ecosystems_normalize_to_scanner_db_keys() -> None:
+    assert _normalize_ghsa_db_ecosystem("pip") == "pypi"
+    assert _normalize_ghsa_db_ecosystem("composer") == "packagist"
+    assert _normalize_ghsa_db_ecosystem("rust") == "crates.io"
+    assert _normalize_ghsa_db_ecosystem("erlang") == "hex"
+    assert _normalize_ghsa_db_ecosystem("swift") == "swifturl"
+
+
+def test_ghsa_ingest_stores_affected_rows_under_scanner_keys() -> None:
+    conn = _make_conn()
+    advisory = {
+        "ghsa_id": "GHSA-test-1234",
+        "cve_id": "CVE-2026-12345",
+        "summary": "Example GHSA",
+        "severity": "high",
+        "published_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-02T00:00:00Z",
+        "vulnerabilities": [
+            {
+                "package": {"ecosystem": "pip", "name": "Requests"},
+                "vulnerable_version_range": ">= 2.0.0, < 2.32.0",
+                "first_patched_version": "2.32.0",
+            },
+            {
+                "package": {"ecosystem": "rust", "name": "serde"},
+                "vulnerable_version_range": "< 1.0.200",
+                "first_patched_version": "1.0.200",
+            },
+            {
+                "package": {"ecosystem": "composer", "name": "vendor/pkg"},
+                "vulnerable_version_range": "< 3.0.0",
+                "first_patched_version": "3.0.0",
+            },
+        ],
+        "cwes": [{"cwe_id": "CWE-79"}],
+    }
+
+    assert _ingest_ghsa_advisory(conn, advisory, normalize_package_name) is True
+
+    rows = conn.execute(
+        "SELECT ecosystem, package_name, introduced, fixed FROM affected WHERE vuln_id = ? ORDER BY ecosystem, package_name",
+        ("CVE-2026-12345",),
+    ).fetchall()
+    assert [(row["ecosystem"], row["package_name"], row["introduced"], row["fixed"]) for row in rows] == [
+        ("crates.io", "serde", "", "1.0.200"),
+        ("packagist", "vendor/pkg", "", "3.0.0"),
+        ("pypi", "requests", "2.0.0", "2.32.0"),
+    ]

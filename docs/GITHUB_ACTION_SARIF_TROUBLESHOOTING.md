@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: msaad00/agent-bom@v0.88.1
+      - uses: msaad00/agent-bom@v0.90.0
         with:
           scan-type: agents
           format: sarif

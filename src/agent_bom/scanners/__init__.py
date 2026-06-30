@@ -714,9 +714,8 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
 def _scan_packages_db_conn(conn: Any, packages: list[Package], covered: set[str]) -> int:
     """Scan packages against an initialized vulnerability DB connection."""
 
-    from agent_bom import config
     from agent_bom.db import lookup_package
-    from agent_bom.db.lookup import cpe_lookup_package, package_in_db
+    from agent_bom.db.lookup import package_in_db
 
     if len(packages) > _BATCH_DB_THRESHOLD:
         return _scan_packages_local_db_batch(conn, packages, covered)
@@ -742,12 +741,7 @@ def _scan_packages_db_conn(conn: Any, packages: list[Package], covered: set[str]
 
         # Long-tail CPE matching: only for components the OSV/distro feeds miss
         # (no DB hit) and only when explicitly enabled. Review-grade candidates.
-        if config.ENABLE_CPE_MATCH and not db_hit:
-            for candidate_name in candidate_names:
-                cpe_vulns = cpe_lookup_package(conn, candidate_name, pkg.version)
-                if cpe_vulns:
-                    local_vulns.extend(cpe_vulns)
-                    break
+        _attach_cpe_candidates(conn, pkg, candidate_names, local_vulns, db_hit=db_hit)
 
         if local_vulns:
             existing_ids = {v.id for v in pkg.vulnerabilities}
@@ -770,6 +764,53 @@ def _scan_packages_db_conn(conn: Any, packages: list[Package], covered: set[str]
             flag_malicious_from_vulns(pkg)
 
     return total
+
+
+def _cpe_vendor_hint(pkg: Package) -> str | None:
+    """Best-effort vendor hint for opt-in CPE matching.
+
+    CPE is review-grade because product names collide across vendors. A namespace
+    from PURL/Maven gives the matcher a real disambiguator without inventing
+    package-specific aliases.
+    """
+    if pkg.purl:
+        try:
+            from packageurl import PackageURL
+
+            parsed = PackageURL.from_string(pkg.purl)
+        except Exception:
+            parsed = None
+        if parsed is not None and parsed.namespace:
+            namespace = parsed.namespace.strip().strip("/")
+            if namespace:
+                return namespace.rsplit("/", 1)[-1]
+    if pkg.ecosystem.lower() == "maven" and ":" in pkg.name:
+        group_id = pkg.name.split(":", 1)[0].strip()
+        if group_id:
+            return group_id.rsplit(".", 1)[-1]
+    return None
+
+
+def _attach_cpe_candidates(
+    conn: Any,
+    pkg: Package,
+    candidate_names: list[str],
+    local_vulns: list[Any],
+    *,
+    db_hit: bool,
+) -> None:
+    """Append opt-in CPE candidate matches for packages not covered by native feeds."""
+    from agent_bom import config
+    from agent_bom.db.lookup import cpe_lookup_package
+
+    if not config.ENABLE_CPE_MATCH or db_hit:
+        return
+    vendor = _cpe_vendor_hint(pkg)
+    for candidate_name in candidate_names:
+        cpe_vulns = cpe_lookup_package(conn, candidate_name, pkg.version, vendor=vendor)
+        if cpe_vulns:
+            local_vulns.extend(cpe_vulns)
+            break
 
 
 def _scan_packages_demo_advisories(packages: list[Package]) -> tuple[int, set[str]]:
@@ -834,8 +875,11 @@ def _scan_packages_local_db_batch(
             for candidate_name in candidate_names:
                 local_vulns.extend(batch_results.get((db_eco, candidate_name, pkg.version), []))
 
-        if any((db_eco.lower(), candidate_name) in existing_pairs for db_eco in db_ecos for candidate_name in candidate_names):
+        db_hit = any((db_eco.lower(), candidate_name) in existing_pairs for db_eco in db_ecos for candidate_name in candidate_names)
+        if db_hit:
             covered.add(db_key)
+
+        _attach_cpe_candidates(conn, pkg, candidate_names, local_vulns, db_hit=db_hit)
 
         if local_vulns:
             existing_ids = {v.id for v in pkg.vulnerabilities}

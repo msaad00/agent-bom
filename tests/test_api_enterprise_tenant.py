@@ -14,6 +14,7 @@ from agent_bom.api.exception_store import ExceptionStatus, InMemoryExceptionStor
 from agent_bom.api.issue_mapping_store import InMemoryIssueMappingStore
 from agent_bom.api.models import (
     CreateKeyRequest,
+    ExceptionRequest,
     FindingFeedbackRequest,
     FindingTriageDecisionRequest,
     FindingTriageRequest,
@@ -194,6 +195,28 @@ async def test_get_exception_returns_404_for_cross_tenant(isolated_exception_sto
         await enterprise.get_exception(_request("tenant-alpha"), exc.exception_id)
 
     assert error.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_exception_uses_authenticated_actor_not_body(isolated_exception_store, isolated_audit_log):
+    created = await enterprise.create_exception(
+        _request("tenant-alpha", "alice-admin"),
+        ExceptionRequest(
+            vuln_id="CVE-2026-9999",
+            package_name="requests",
+            reason="temporary compensating control",
+            requested_by="mallory",
+        ),
+    )
+
+    stored = isolated_exception_store.get(created["exception_id"], tenant_id="tenant-alpha")
+    assert stored is not None
+    assert stored.requested_by == "alice-admin"
+    assert created["requested_by"] == "alice-admin"
+
+    entries = isolated_audit_log.list_entries()
+    assert entries[0].action == "exception_create"
+    assert entries[0].actor == "alice-admin"
 
 
 @pytest.mark.asyncio

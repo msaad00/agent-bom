@@ -110,6 +110,29 @@ class TestInMemoryRevocation:
         backend.revoke_nonce("", 9999999999)
         assert backend.is_nonce_revoked("") is False
 
+    def test_consume_nonce_once_allows_exactly_one_concurrent_winner(self) -> None:
+        backend = InMemoryAuthState()
+        winners = 0
+        lock = threading.Lock()
+        threads: list[threading.Thread] = []
+        expires_at = int(time.time()) + 300
+
+        def consume() -> None:
+            nonlocal winners
+            if backend.consume_nonce_once("saml-response:shared", expires_at):
+                with lock:
+                    winners += 1
+
+        for _ in range(50):
+            threads.append(threading.Thread(target=consume))
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert winners == 1
+        assert backend.is_nonce_revoked("saml-response:shared") is True
+
 
 class TestInMemoryCleanup:
     def test_cleanup_keeps_live_revocations_and_drops_expired(self) -> None:
@@ -217,6 +240,7 @@ def test_protocol_implementations_match_contract() -> None:
     assert hasattr(in_memory, "record_attempt")
     assert hasattr(in_memory, "revoke_nonce")
     assert hasattr(in_memory, "is_nonce_revoked")
+    assert hasattr(in_memory, "consume_nonce_once")
     assert hasattr(in_memory, "cleanup_expired")
     assert hasattr(postgres, "record_attempt")
     assert hasattr(postgres, "revoke_nonce")

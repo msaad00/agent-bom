@@ -47,6 +47,9 @@ class LocalVuln:
     introduced: Optional[str] = None
     aliases: list[str] = field(default_factory=list)
     cwe_ids: list[str] = field(default_factory=list)
+    # Set only by the CPE matcher so the finding surfaces as nvd_cpe_candidate;
+    # left None for OSV/distro rows, which compute their tier downstream.
+    match_confidence_tier: Optional[str] = None
 
 
 def _cve_candidates(vuln_id: str, raw_aliases: str) -> list[str]:
@@ -195,6 +198,55 @@ def lookup_package(
             span.set_attribute("agent_bom.lookup.row_count", len(rows))
             span.set_attribute("agent_bom.lookup.match_count", len(results))
         return results
+
+
+def cpe_lookup_package(conn: sqlite3.Connection, name: str, version: str, *, limit: int = 500) -> list[LocalVuln]:
+    """Long-tail CPE-candidate matches for a component, hydrated from ``vulns``.
+
+    Maps the component to NVD CPE applicability ranges (see
+    :func:`agent_bom.cpe_match.match_component_cpe`) and hydrates each matched CVE
+    from the local ``vulns`` table so it carries real severity/CVSS/CWE. CVEs not
+    yet synced into ``vulns`` are skipped (no severity to report). Every result is
+    tagged ``nvd_cpe_candidate`` — a review-grade tier, never confirmed.
+    """
+    from agent_bom.cpe_match import MATCH_CONFIDENCE_NVD_CPE_CANDIDATE, match_component_cpe
+
+    matches = match_component_cpe(conn, name, version, limit=limit)
+    if not matches:
+        return []
+    cve_ids = [m["cve_id"] for m in matches]
+    placeholders = ", ".join("?" for _ in cve_ids)
+    rows = {
+        row["id"]: row
+        for row in conn.execute(
+            "SELECT id, summary, severity, cvss_score, cvss_vector, fixed_version, "
+            f"cwe_ids, aliases, published, modified FROM vulns WHERE id IN ({placeholders})",
+            cve_ids,
+        ).fetchall()
+    }
+    out: list[LocalVuln] = []
+    for cve_id in cve_ids:
+        row = rows.get(cve_id)
+        if row is None:
+            continue
+        out.append(
+            LocalVuln(
+                id=row["id"],
+                summary=row["summary"],
+                severity=row["severity"],
+                cvss_score=row["cvss_score"],
+                fixed_version=row["fixed_version"],
+                cvss_vector=row["cvss_vector"],
+                source="nvd",
+                package_name=name,
+                cwe_ids=[c for c in (row["cwe_ids"] or "").split(",") if c],
+                aliases=[a for a in (row["aliases"] or "").split(",") if a],
+                published_at=row["published"],
+                modified_at=row["modified"],
+                match_confidence_tier=MATCH_CONFIDENCE_NVD_CPE_CANDIDATE,
+            )
+        )
+    return out
 
 
 def _version_affected(

@@ -109,6 +109,20 @@ CREATE TABLE IF NOT EXISTS affected (
 );
 CREATE INDEX IF NOT EXISTS idx_affected_pkg ON affected(ecosystem, package_name);
 
+CREATE TABLE IF NOT EXISTS cpe_matches (
+    cve_id           TEXT NOT NULL,      -- CVE the applicability statement belongs to
+    criteria         TEXT NOT NULL,      -- full cpe:2.3:part:vendor:product:... string
+    vendor           TEXT NOT NULL,      -- CPE vendor field
+    product          TEXT NOT NULL,      -- CPE product field
+    version          TEXT,               -- exact version, or NULL when a range is used
+    version_start    TEXT,               -- range lower bound (NULL = unbounded)
+    version_start_op TEXT,               -- including | excluding
+    version_end      TEXT,               -- range upper bound (NULL = unbounded)
+    version_end_op   TEXT,               -- including | excluding
+    PRIMARY KEY (cve_id, criteria, version_start, version_end)
+);
+CREATE INDEX IF NOT EXISTS idx_cpe_product ON cpe_matches(vendor, product);
+
 CREATE TABLE IF NOT EXISTS epss_scores (
     cve_id          TEXT PRIMARY KEY,
     probability     REAL NOT NULL,      -- 0.0–1.0

@@ -1446,12 +1446,21 @@ def _upsert_cpe_matches(conn: sqlite3.Connection, cve_id: str, rows: list[dict[s
 
 
 def _upsert_nvd_enrichment_row(conn: sqlite3.Connection, cve_id: str, fields: dict[str, Any]) -> bool:
-    """Insert or update one CVE row from parsed NVD fields."""
+    """Insert or update one CVE row from parsed NVD fields.
+
+    Returns ``True`` only when this call adds a *new* CVE row (the INSERT
+    actually inserted). Refreshing an already-present row still runs the UPDATE
+    but returns ``False`` so callers can count genuinely-new work. The
+    incremental sync relies on this to make forward progress across capped
+    runs: a re-run pages past the already-synced head (which no longer counts
+    toward the cap) and reaches the unsynced tail instead of re-saturating the
+    cap on the same head forever.
+    """
     if not fields.get("cvss_score") and not fields.get("cwe_ids"):
         return False
 
     summary = fields.get("summary") or f"NVD entry for {cve_id}"
-    conn.execute(
+    cur = conn.execute(
         """
         INSERT OR IGNORE INTO vulns
             (id, summary, severity, cvss_score, cvss_vector, fixed_version, published, modified, source, cwe_ids, aliases)
@@ -1459,6 +1468,7 @@ def _upsert_nvd_enrichment_row(conn: sqlite3.Connection, cve_id: str, fields: di
         """,
         (cve_id, summary),
     )
+    inserted = cur.rowcount == 1
 
     merged_cwes = ",".join(sorted(fields.get("cwe_ids") or [])) or None
     if fields.get("cvss_score") is not None:
@@ -1474,7 +1484,7 @@ def _upsert_nvd_enrichment_row(conn: sqlite3.Connection, cve_id: str, fields: di
             )
     elif merged_cwes:
         conn.execute("UPDATE vulns SET summary=?, cwe_ids=? WHERE id=?", (summary, merged_cwes, cve_id))
-    return True
+    return inserted
 
 
 def sync_nvd_incremental(
@@ -1577,10 +1587,20 @@ def sync_nvd_incremental(
         start_index += len(items)
         if start_index >= total_results:
             break
+        # Cap reached for this run: stop now rather than sleeping a full
+        # inter-page delay (up to 6s anonymous) only to exit the while check.
+        if enriched >= max_results:
+            break
         time.sleep(sleep_seconds)
 
     if not sync_failed and enriched >= max_results and start_index < total_results_seen:
         sync_truncated = True
+        _logger.warning(
+            "NVD incremental sync truncated at max_results=%d (window has >=%d modified CVEs); "
+            "the next run resumes the unsynced tail. Raise max_results or narrow the window to catch up faster.",
+            max_results,
+            total_results_seen,
+        )
 
     conn.commit()
     _update_sync_meta(

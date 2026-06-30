@@ -88,7 +88,13 @@ def test_trivy_baseline_subset_of_canonicalized_local_rows() -> None:
         if advisory_id.startswith("ALPINE-"):
             lv = LocalVuln(id=advisory_id, summary="", severity="high", cvss_score=7.0, fixed_version="1.0-r1")
         else:
-            lv = LocalVuln(id=f"ALPINE-CVE-{advisory_id.removeprefix('CVE-')}", summary="", severity="high", cvss_score=7.0, fixed_version="1.0-r1")
+            lv = LocalVuln(
+                id=f"ALPINE-CVE-{advisory_id.removeprefix('CVE-')}",
+                summary="",
+                severity="high",
+                cvss_score=7.0,
+                fixed_version="1.0-r1",
+            )
         vuln = _local_vuln_to_vulnerability(lv)
         emitted.update(all_cve_identifiers(vuln.id, vuln.aliases))
 

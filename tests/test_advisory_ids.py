@@ -6,7 +6,6 @@ import pytest
 
 from agent_bom.advisory_ids import (
     MATCH_CONFIDENCE_DISTRO_CONFIRMED,
-    MATCH_CONFIDENCE_OSV_ECOSYSTEM,
     MATCH_CONFIDENCE_OSV_RANGE,
     MATCH_CONFIDENCE_UNFIXED_DISTRO,
     all_cve_identifiers,
@@ -15,8 +14,8 @@ from agent_bom.advisory_ids import (
     match_confidence_tier,
 )
 from agent_bom.db.lookup import LocalVuln
-from agent_bom.scanners import _local_vuln_to_vulnerability, build_vulnerabilities
 from agent_bom.models import Package, Severity
+from agent_bom.scanners import _local_vuln_to_vulnerability, build_vulnerabilities
 
 
 @pytest.mark.parametrize(

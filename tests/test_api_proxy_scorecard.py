@@ -1015,3 +1015,57 @@ def test_scorecard_rejects_invalid_package():
     # Pipe is not in the [A-Za-z0-9._@/:-] allowlist
     resp = client.get("/v1/scorecard/npm/foo|bar")
     assert resp.status_code == 400
+
+
+# ── Proxy audit cross-tenant tagging ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_proxy_audit_ingest_forces_server_tenant():
+    """A client-supplied tenant_id must never override the authenticated tenant.
+
+    Fails before the fix: the ingest used ``setdefault('tenant_id', ...)`` so a
+    caller could pre-tag an alert/summary for another tenant and have it surface
+    in that victim tenant's scoped reads.
+    """
+    from agent_bom.api.models import ProxyAuditIngestRequest
+    from agent_bom.api.routes import proxy as proxy_routes
+
+    proxy_routes._proxy_alerts.clear()
+    proxy_routes._proxy_metrics = None
+    proxy_routes._proxy_metrics_by_tenant.clear()
+    proxy_routes._reset_audit_dedupe_for_tests()
+
+    request = SimpleNamespace(
+        state=SimpleNamespace(
+            tenant_id="tenant-honest",
+            api_key_name="proxy-client",
+            request_id="req-1",
+            trace_id="trace-1",
+        )
+    )
+    body = ProxyAuditIngestRequest(
+        source_id="src-1",
+        session_id="sess-1",
+        alerts=[
+            {
+                "event_id": "evt-1",
+                "tenant_id": "tenant-victim",
+                "message": "cross-tenant attempt",
+                "detector": "credential_leak",
+                "severity": "high",
+            }
+        ],
+        summary={"tenant_id": "tenant-victim", "total_tool_calls": 5},
+    )
+
+    resp = await proxy_routes.ingest_proxy_audit(request, body)
+    assert resp["ingested"] is True
+
+    assert proxy_routes._load_proxy_alerts("tenant-victim") == []
+    honest = proxy_routes._load_proxy_alerts("tenant-honest")
+    assert len(honest) == 1
+    assert honest[0]["tenant_id"] == "tenant-honest"
+
+    assert proxy_routes._runtime_metrics_for_tenant("tenant-victim") is None
+    assert proxy_routes._runtime_metrics_for_tenant("tenant-honest") is not None

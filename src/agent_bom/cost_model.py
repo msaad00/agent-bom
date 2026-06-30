@@ -17,8 +17,18 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from typing import Union
 
 PRICE_TABLE_CAPTURED = "2026-06-01"
+
+# Provenance of the rate used to price a call. A *reconciled* rate comes from an
+# operator override — either an injected per-call rate map or the
+# ``AGENT_BOM_COST_MODEL_JSON`` env table — and represents a negotiated/actual
+# rate; a *list_price* rate comes from the static published table below and is
+# only an estimate; *unpriced* means no rate resolved at all (cost 0.0).
+RATE_RECONCILED = "reconciled"
+RATE_LIST_PRICE = "list_price"
+RATE_UNPRICED = "unpriced"
 
 # Upper bound on tokens attributed to one call; clamps malformed spans so
 # persistence stays inside int64 and cost figures stay sane.
@@ -31,6 +41,26 @@ class ModelPrice:
 
     input_per_mtok: float
     output_per_mtok: float
+
+
+@dataclass(frozen=True)
+class RatedCost:
+    """A priced call together with the provenance of the rate that priced it.
+
+    ``is_estimated`` is ``True`` for list-price (and unpriced) figures and
+    ``False`` only for a reconciled/negotiated rate, so the API/UI can label a
+    'list-price estimate' apart from a 'reconciled actual'.
+    """
+
+    cost_usd: float
+    priced: bool
+    rate_source: str
+    is_estimated: bool
+
+
+# An injected per-model rate map: provider -> model-prefix -> rate, where a rate
+# is a ModelPrice or a ``{"input_per_mtok", "output_per_mtok"}`` mapping.
+RateMap = dict[str, dict[str, Union[ModelPrice, dict[str, float]]]]
 
 
 # provider -> model-prefix -> price. Longest matching prefix wins so that
@@ -139,23 +169,77 @@ def reset_price_overrides() -> None:
     _OVERRIDES = None
 
 
-def lookup_price(provider: str, model: str) -> ModelPrice | None:
-    """Return the price for the longest model-prefix match, overrides first."""
+def _match_in_bucket(bucket: dict[str, ModelPrice], model_l: str) -> ModelPrice | None:
+    """Longest model-prefix match within one provider's price bucket, or None."""
+    match: str | None = None
+    for prefix in bucket:
+        if model_l.startswith(prefix) and (match is None or len(prefix) > len(match)):
+            match = prefix
+    return bucket[match] if match is not None else None
+
+
+def _coerce_rate_map(rates: RateMap | None) -> dict[str, dict[str, ModelPrice]]:
+    """Normalize an injected rate map into the internal price-table shape.
+
+    Accepts ``ModelPrice`` values or ``{"input_per_mtok", "output_per_mtok"}``
+    mappings; malformed entries are skipped rather than raised so a bad
+    negotiated-rate row never breaks pricing.
+    """
+    out: dict[str, dict[str, ModelPrice]] = {}
+    for provider, models in (rates or {}).items():
+        if not isinstance(models, dict):
+            continue
+        bucket: dict[str, ModelPrice] = {}
+        for prefix, price in models.items():
+            try:
+                if isinstance(price, ModelPrice):
+                    bucket[str(prefix).lower()] = price
+                else:
+                    bucket[str(prefix).lower()] = ModelPrice(
+                        float(price.get("input_per_mtok", 0.0)),
+                        float(price.get("output_per_mtok", 0.0)),
+                    )
+            except (ValueError, AttributeError, TypeError):
+                continue
+        if bucket:
+            out[_normalize_provider(provider)] = bucket
+    return out
+
+
+def lookup_rate(provider: str, model: str, *, rates: RateMap | None = None) -> tuple[ModelPrice | None, str]:
+    """Resolve a model's price and the provenance of the rate used.
+
+    Resolution order (longest-prefix within each table):
+      1. ``rates`` — an injected per-call override map (negotiated/actual).
+      2. ``AGENT_BOM_COST_MODEL_JSON`` operator overrides (negotiated/actual).
+      3. the static published list-price table (an estimate).
+
+    Returns ``(price, rate_source)`` where ``rate_source`` is one of
+    :data:`RATE_RECONCILED`, :data:`RATE_LIST_PRICE`, or :data:`RATE_UNPRICED`.
+    """
     canonical = _normalize_provider(provider)
     model_l = (model or "").strip().lower()
     if not model_l:
-        return None
-    for table in (load_price_overrides(), _PRICES):
+        return None, RATE_UNPRICED
+    sources: tuple[tuple[dict[str, dict[str, ModelPrice]], str], ...] = (
+        (_coerce_rate_map(rates), RATE_RECONCILED),
+        (load_price_overrides(), RATE_RECONCILED),
+        (_PRICES, RATE_LIST_PRICE),
+    )
+    for table, source in sources:
         bucket = table.get(canonical)
         if not bucket:
             continue
-        match = None
-        for prefix in bucket:
-            if model_l.startswith(prefix) and (match is None or len(prefix) > len(match)):
-                match = prefix
-        if match is not None:
-            return bucket[match]
-    return None
+        price = _match_in_bucket(bucket, model_l)
+        if price is not None:
+            return price, source
+    return None, RATE_UNPRICED
+
+
+def lookup_price(provider: str, model: str) -> ModelPrice | None:
+    """Return the price for the longest model-prefix match, overrides first."""
+    price, _ = lookup_rate(provider, model)
+    return price
 
 
 def compute_cost_usd(provider: str, model: str, input_tokens: int, output_tokens: int) -> float:
@@ -173,6 +257,29 @@ def compute_cost_usd(provider: str, model: str, input_tokens: int, output_tokens
     inp = min(max(0, int(input_tokens)), MAX_TOKENS_PER_CALL)
     out = min(max(0, int(output_tokens)), MAX_TOKENS_PER_CALL)
     return round((inp / 1_000_000) * price.input_per_mtok + (out / 1_000_000) * price.output_per_mtok, 6)
+
+
+def price_call(
+    provider: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    *,
+    rates: RateMap | None = None,
+) -> RatedCost:
+    """Price one call and label the provenance of the rate (estimate vs actual).
+
+    Mirrors :func:`compute_cost_usd` but returns the cost alongside whether the
+    figure is a list-price estimate or a reconciled/negotiated actual, so cost
+    records and summaries can carry the ``rate_source`` / ``is_estimated`` flag.
+    """
+    price, source = lookup_rate(provider, model, rates=rates)
+    if price is None:
+        return RatedCost(0.0, False, RATE_UNPRICED, True)
+    inp = min(max(0, int(input_tokens)), MAX_TOKENS_PER_CALL)
+    out = min(max(0, int(output_tokens)), MAX_TOKENS_PER_CALL)
+    cost = round((inp / 1_000_000) * price.input_per_mtok + (out / 1_000_000) * price.output_per_mtok, 6)
+    return RatedCost(cost, True, source, source != RATE_RECONCILED)
 
 
 def is_priced(provider: str, model: str) -> bool:

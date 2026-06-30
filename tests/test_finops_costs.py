@@ -8,11 +8,22 @@ from agent_bom.api.cost_store import (
     CostBudget,
     InMemoryCostStore,
     LLMCostRecord,
+    SQLiteCostStore,
     budget_status,
     set_cost_store,
     summarize,
 )
-from agent_bom.cost_model import compute_cost_usd, is_priced, lookup_price, reset_price_overrides
+from agent_bom.cost_model import (
+    RATE_LIST_PRICE,
+    RATE_RECONCILED,
+    RATE_UNPRICED,
+    ModelPrice,
+    compute_cost_usd,
+    is_priced,
+    lookup_price,
+    price_call,
+    reset_price_overrides,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +65,123 @@ def test_operator_override(monkeypatch):
     )
     reset_price_overrides()
     assert compute_cost_usd("openai", "gpt-4o", 1_000_000, 1_000_000) == 3.0
+
+
+# ── reconcilable rates (estimate vs reconciled actual) ───────────────────────────
+
+
+def test_price_call_defaults_to_list_price_estimate():
+    # No override anywhere: figure equals the static table and is labelled an
+    # estimate so the UI can show 'list-price estimate'.
+    rated = price_call("openai", "gpt-4o", 1_000_000, 1_000_000)
+    assert rated.cost_usd == compute_cost_usd("openai", "gpt-4o", 1_000_000, 1_000_000) == 12.5
+    assert rated.priced is True
+    assert rated.rate_source == RATE_LIST_PRICE
+    assert rated.is_estimated is True
+
+
+def test_injected_rates_override_static_and_label_reconciled():
+    # An injected negotiated rate wins over the static list price and is labelled
+    # a reconciled actual (not an estimate).
+    rates = {"openai": {"gpt-4o": ModelPrice(1.0, 2.0)}}
+    rated = price_call("openai", "gpt-4o", 1_000_000, 1_000_000, rates=rates)
+    assert rated.cost_usd == 3.0  # 1.0 + 2.0, not the 12.5 list price
+    assert rated.rate_source == RATE_RECONCILED
+    assert rated.is_estimated is False
+
+
+def test_injected_rates_accept_dict_shape_and_win_over_env(monkeypatch):
+    # Injected rates take precedence over the env override table, and the dict
+    # ``{input_per_mtok, output_per_mtok}`` shape is accepted.
+    monkeypatch.setenv(
+        "AGENT_BOM_COST_MODEL_JSON",
+        '{"openai": {"gpt-4o": {"input_per_mtok": 5.0, "output_per_mtok": 5.0}}}',
+    )
+    reset_price_overrides()
+    rates = {"openai": {"gpt-4o": {"input_per_mtok": 1.0, "output_per_mtok": 2.0}}}
+    rated = price_call("openai", "gpt-4o", 1_000_000, 1_000_000, rates=rates)
+    assert rated.cost_usd == 3.0
+    assert rated.rate_source == RATE_RECONCILED
+
+
+def test_env_override_is_reconciled(monkeypatch):
+    monkeypatch.setenv(
+        "AGENT_BOM_COST_MODEL_JSON",
+        '{"openai": {"gpt-4o": {"input_per_mtok": 1.0, "output_per_mtok": 2.0}}}',
+    )
+    reset_price_overrides()
+    rated = price_call("openai", "gpt-4o", 1_000_000, 1_000_000)
+    assert rated.cost_usd == 3.0
+    assert rated.rate_source == RATE_RECONCILED
+    assert rated.is_estimated is False
+
+
+def test_unpriced_call_is_unpriced_estimate():
+    rated = price_call("openai", "totally-unknown-model", 1_000, 1_000)
+    assert rated.cost_usd == 0.0
+    assert rated.priced is False
+    assert rated.rate_source == RATE_UNPRICED
+    assert rated.is_estimated is True
+
+
+def test_malformed_injected_rate_is_skipped_not_raised():
+    # A bad negotiated-rate row must not break pricing; it falls back to list.
+    rates = {"openai": {"gpt-4o": {"input_per_mtok": "oops"}}}
+    rated = price_call("openai", "gpt-4o", 1_000_000, 1_000_000, rates=rates)
+    assert rated.rate_source == RATE_LIST_PRICE
+    assert rated.cost_usd == 12.5
+
+
+def test_record_rate_source_round_trips_through_sqlite(tmp_path):
+    store = SQLiteCostStore(str(tmp_path / "cost.db"))
+    store.record_cost(_rec(call_id="est", cost_center=""))  # default: list_price
+    store.record_cost(
+        LLMCostRecord(
+            tenant_id="t1",
+            call_id="actual",
+            agent="agent-a",
+            session_id="s1",
+            provider="openai",
+            model="gpt-4o",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=1.0,
+            priced=True,
+            observed_at="2026-06-01T00:00:00Z",
+            rate_source=RATE_RECONCILED,
+            is_estimated=False,
+        )
+    )
+    by_id = {r.call_id: r for r in store.list_records("t1")}
+    assert by_id["est"].rate_source == RATE_LIST_PRICE
+    assert by_id["est"].is_estimated is True
+    assert by_id["actual"].rate_source == RATE_RECONCILED
+    assert by_id["actual"].is_estimated is False
+
+
+def test_summarize_reports_estimated_vs_reconciled():
+    records = [
+        _rec(call_id="a", cost=2.0),  # estimated (default)
+        LLMCostRecord(
+            tenant_id="t1",
+            call_id="b",
+            agent="agent-a",
+            session_id="s1",
+            provider="openai",
+            model="gpt-4o",
+            input_tokens=1,
+            output_tokens=1,
+            cost_usd=3.0,
+            priced=True,
+            observed_at="2026-06-01T00:00:00Z",
+            rate_source=RATE_RECONCILED,
+            is_estimated=False,
+        ),
+    ]
+    out = summarize(records)
+    assert out["estimated_calls"] == 1
+    assert out["reconciled_calls"] == 1
+    assert out["reconciled_cost_usd"] == 3.0
 
 
 # ── store + aggregation ─────────────────────────────────────────────────────────

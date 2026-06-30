@@ -362,7 +362,7 @@ def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
     """
     try:
         from agent_bom.api.cost_store import LLMCostRecord, get_cost_store
-        from agent_bom.cost_model import compute_cost_usd, is_priced
+        from agent_bom.cost_model import price_call
         from agent_bom.otel_ingest import parse_ml_api_spans
 
         calls = parse_ml_api_spans(body)
@@ -375,8 +375,8 @@ def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
     total = 0.0
     observed = _now()
     for call in calls:
-        cost = compute_cost_usd(call.provider, call.model_name, call.input_tokens, call.output_tokens)
-        total += cost
+        rated = price_call(call.provider, call.model_name, call.input_tokens, call.output_tokens)
+        total += rated.cost_usd
         agent = _bounded(getattr(call, "agent", "") or "", max_len=120)
         call_id = f"{call.trace_id}:{call.span_id}"
         cost_center, allocation_tags = allocation.get(call_id, ("", {}))
@@ -390,11 +390,13 @@ def _persist_llm_costs(body: dict, *, tenant_id: str) -> dict[str, Any]:
                 model=_bounded(call.model_name, max_len=120),
                 input_tokens=max(0, int(call.input_tokens)),
                 output_tokens=max(0, int(call.output_tokens)),
-                cost_usd=cost,
-                priced=is_priced(call.provider, call.model_name),
+                cost_usd=rated.cost_usd,
+                priced=rated.priced,
                 observed_at=observed,
                 cost_center=cost_center,
                 allocation_tags=allocation_tags,
+                rate_source=rated.rate_source,
+                is_estimated=rated.is_estimated,
             )
         )
     return {"calls": len(calls), "cost_usd": round(total, 6)}

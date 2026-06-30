@@ -17,7 +17,13 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.cost_model import RATE_LIST_PRICE, RATE_RECONCILED
 from agent_bom.storage.base import StorageSchema, TableSchema
+
+
+def _is_estimated(rate_source: str) -> bool:
+    """A figure is an estimate unless it was priced from a reconciled rate."""
+    return rate_source != RATE_RECONCILED
 
 
 @dataclass(frozen=True)
@@ -44,6 +50,13 @@ class LLMCostRecord:
     observed_at: str
     cost_center: str = ""
     allocation_tags: dict[str, str] = field(default_factory=dict)
+    # Rate provenance (#finops): "list_price" figures are estimates; a
+    # "reconciled" rate is a negotiated/actual override. ``is_estimated`` is
+    # derived from ``rate_source`` so persisted rows need only the one column.
+    # Defaults keep pre-migration rows and older ingest paths valid — unknown
+    # provenance is conservatively treated as a list-price estimate.
+    rate_source: str = RATE_LIST_PRICE
+    is_estimated: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -87,6 +100,36 @@ def _decode_tags(raw: Any) -> dict[str, str]:
     if not isinstance(parsed, dict):
         return {}
     return {str(k): str(v) for k, v in parsed.items()}
+
+
+def _row_to_record(r: Any) -> LLMCostRecord:
+    """Build an ``LLMCostRecord`` from a stored row.
+
+    Column order: tenant_id, call_id, agent, session_id, provider, model,
+    input_tokens, output_tokens, cost_usd, priced, observed_at, cost_center,
+    allocation_tags, rate_source. Tolerant of short (pre-migration) rows —
+    missing cost_center/tags/rate_source fall back to defaults, and
+    ``is_estimated`` is derived from the rate source. Shared by the SQLite and
+    Postgres backends so both reconstruct records identically.
+    """
+    rate_source = r[13] if len(r) > 13 and r[13] else RATE_LIST_PRICE
+    return LLMCostRecord(
+        r[0],
+        r[1],
+        r[2],
+        r[3],
+        r[4],
+        r[5],
+        int(r[6]),
+        int(r[7]),
+        float(r[8]),
+        bool(r[9]),
+        r[10],
+        r[11] if len(r) > 11 and r[11] is not None else "",
+        _decode_tags(r[12] if len(r) > 12 else None),
+        rate_source=rate_source,
+        is_estimated=_is_estimated(rate_source),
+    )
 
 
 def _rollup(records: list[LLMCostRecord], dimension: str) -> list[dict[str, Any]]:
@@ -162,6 +205,7 @@ COST_STORAGE_SCHEMA = StorageSchema(
                 "observed_at",
                 "cost_center",
                 "allocation_tags",
+                "rate_source",
             ),
             ddl_by_backend={
                 "sqlite": (
@@ -170,7 +214,8 @@ COST_STORAGE_SCHEMA = StorageSchema(
                     "provider TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER NOT NULL, "
                     "output_tokens INTEGER NOT NULL, cost_usd REAL NOT NULL, priced INTEGER NOT NULL, "
                     "observed_at TEXT NOT NULL, cost_center TEXT NOT NULL DEFAULT '', "
-                    "allocation_tags TEXT NOT NULL DEFAULT '{}', PRIMARY KEY (tenant_id, call_id))"
+                    "allocation_tags TEXT NOT NULL DEFAULT '{}', "
+                    "rate_source TEXT NOT NULL DEFAULT 'list_price', PRIMARY KEY (tenant_id, call_id))"
                 ),
                 "postgres": (
                     "CREATE TABLE IF NOT EXISTS llm_costs (tenant_id TEXT NOT NULL, "
@@ -178,7 +223,8 @@ COST_STORAGE_SCHEMA = StorageSchema(
                     "provider TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER NOT NULL, "
                     "output_tokens INTEGER NOT NULL, cost_usd DOUBLE PRECISION NOT NULL, priced BOOLEAN NOT NULL, "
                     "observed_at TEXT NOT NULL, cost_center TEXT NOT NULL DEFAULT '', "
-                    "allocation_tags TEXT NOT NULL DEFAULT '{}', PRIMARY KEY (tenant_id, call_id))"
+                    "allocation_tags TEXT NOT NULL DEFAULT '{}', "
+                    "rate_source TEXT NOT NULL DEFAULT 'list_price', PRIMARY KEY (tenant_id, call_id))"
                 ),
             },
         ),
@@ -227,6 +273,11 @@ def summarize(records: list[LLMCostRecord]) -> dict[str, Any]:
         "total_input_tokens": sum(r.input_tokens for r in records),
         "total_output_tokens": sum(r.output_tokens for r in records),
         "unpriced_calls": sum(1 for r in records if not r.priced),
+        # Reconciliation posture: how much of the spend is a list-price estimate
+        # versus priced from a reconciled/negotiated rate.
+        "estimated_calls": sum(1 for r in records if r.is_estimated),
+        "reconciled_calls": sum(1 for r in records if not r.is_estimated),
+        "reconciled_cost_usd": round(sum(r.cost_usd for r in records if not r.is_estimated), 6),
         "by_agent": _rollup(records, "agent"),
         "by_model": _rollup(records, "model"),
         "by_provider": _rollup(records, "provider"),
@@ -353,6 +404,7 @@ class SQLiteCostStore:
                 observed_at TEXT NOT NULL,
                 cost_center TEXT NOT NULL DEFAULT '',
                 allocation_tags TEXT NOT NULL DEFAULT '{}',
+                rate_source TEXT NOT NULL DEFAULT 'list_price',
                 PRIMARY KEY (tenant_id, call_id)
             )
             """
@@ -383,6 +435,10 @@ class SQLiteCostStore:
             self._conn.execute("ALTER TABLE llm_costs ADD COLUMN cost_center TEXT NOT NULL DEFAULT ''")
         if "allocation_tags" not in cost_cols:
             self._conn.execute("ALTER TABLE llm_costs ADD COLUMN allocation_tags TEXT NOT NULL DEFAULT '{}'")
+        # Rate-provenance column (#finops) added additively; pre-migration rows
+        # default to 'list_price' (estimate).
+        if "rate_source" not in cost_cols:
+            self._conn.execute("ALTER TABLE llm_costs ADD COLUMN rate_source TEXT NOT NULL DEFAULT 'list_price'")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_agent ON llm_costs(tenant_id, agent)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_tenant_cost_center ON llm_costs(tenant_id, cost_center)")
         self._conn.commit()
@@ -392,8 +448,8 @@ class SQLiteCostStore:
             """
             INSERT OR IGNORE INTO llm_costs
                 (tenant_id, call_id, agent, session_id, provider, model, input_tokens, output_tokens,
-                 cost_usd, priced, observed_at, cost_center, allocation_tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cost_usd, priced, observed_at, cost_center, allocation_tags, rate_source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.tenant_id,
@@ -409,6 +465,7 @@ class SQLiteCostStore:
                 record.observed_at,
                 record.cost_center,
                 json.dumps(record.allocation_tags, sort_keys=True),
+                record.rate_source,
             ),
         )
         self._conn.commit()
@@ -416,28 +473,11 @@ class SQLiteCostStore:
     def list_records(self, tenant_id: str, *, limit: int = 1000) -> list[LLMCostRecord]:
         rows = self._conn.execute(
             "SELECT tenant_id, call_id, agent, session_id, provider, model, input_tokens, output_tokens, "
-            "cost_usd, priced, observed_at, cost_center, allocation_tags "
+            "cost_usd, priced, observed_at, cost_center, allocation_tags, rate_source "
             "FROM llm_costs WHERE tenant_id = ? ORDER BY observed_at DESC LIMIT ?",
             (tenant_id, limit),
         ).fetchall()
-        return [
-            LLMCostRecord(
-                r[0],
-                r[1],
-                r[2],
-                r[3],
-                r[4],
-                r[5],
-                int(r[6]),
-                int(r[7]),
-                float(r[8]),
-                bool(r[9]),
-                r[10],
-                r[11] if len(r) > 11 and r[11] is not None else "",
-                _decode_tags(r[12] if len(r) > 12 else None),
-            )
-            for r in rows
-        ]
+        return [_row_to_record(r) for r in rows]
 
     def total_spend_by_cost_center(self, tenant_id: str, cost_center: str) -> float:
         row = self._conn.execute(

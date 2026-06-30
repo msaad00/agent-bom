@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 
-from agent_bom.api.cost_store import CostBudget, LLMCostRecord, _decode_tags
+from agent_bom.api.cost_store import CostBudget, LLMCostRecord, _row_to_record
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
@@ -47,6 +47,7 @@ class PostgresCostStore:
                     observed_at   TEXT NOT NULL,
                     cost_center     TEXT NOT NULL DEFAULT '',
                     allocation_tags TEXT NOT NULL DEFAULT '{}',
+                    rate_source     TEXT NOT NULL DEFAULT 'list_price',
                     PRIMARY KEY (tenant_id, call_id)
                 )
             """)
@@ -65,6 +66,9 @@ class PostgresCostStore:
             # databases; existing rows default to '' / '{}' (unallocated).
             conn.execute("ALTER TABLE llm_costs ADD COLUMN IF NOT EXISTS cost_center TEXT NOT NULL DEFAULT ''")
             conn.execute("ALTER TABLE llm_costs ADD COLUMN IF NOT EXISTS allocation_tags TEXT NOT NULL DEFAULT '{}'")
+            # Rate-provenance column (#finops); pre-migration rows default to a
+            # 'list_price' estimate.
+            conn.execute("ALTER TABLE llm_costs ADD COLUMN IF NOT EXISTS rate_source TEXT NOT NULL DEFAULT 'list_price'")
             conn.execute("ALTER TABLE llm_cost_budgets ADD COLUMN IF NOT EXISTS cost_center TEXT NOT NULL DEFAULT ''")
             # Back the (tenant, agent, cost_center) upsert conflict target with a
             # unique index so it works on pre-migration tables whose PK was only
@@ -84,8 +88,8 @@ class PostgresCostStore:
                 INSERT INTO llm_costs
                     (tenant_id, call_id, agent, session_id, provider, model,
                      input_tokens, output_tokens, cost_usd, priced, observed_at,
-                     cost_center, allocation_tags)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     cost_center, allocation_tags, rate_source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, call_id) DO NOTHING
                 """,
                 (
@@ -102,6 +106,7 @@ class PostgresCostStore:
                     record.observed_at,
                     record.cost_center,
                     json.dumps(record.allocation_tags, sort_keys=True),
+                    record.rate_source,
                 ),
             )
             conn.commit()
@@ -111,28 +116,11 @@ class PostgresCostStore:
             rows = conn.execute(
                 "SELECT tenant_id, call_id, agent, session_id, provider, model, "
                 "input_tokens, output_tokens, cost_usd, priced, observed_at, "
-                "cost_center, allocation_tags "
+                "cost_center, allocation_tags, rate_source "
                 "FROM llm_costs WHERE tenant_id = %s ORDER BY observed_at DESC LIMIT %s",
                 (tenant_id, limit),
             ).fetchall()
-        return [
-            LLMCostRecord(
-                r[0],
-                r[1],
-                r[2],
-                r[3],
-                r[4],
-                r[5],
-                int(r[6]),
-                int(r[7]),
-                float(r[8]),
-                bool(r[9]),
-                r[10],
-                r[11] if len(r) > 11 and r[11] is not None else "",
-                _decode_tags(r[12] if len(r) > 12 else None),
-            )
-            for r in rows
-        ]
+        return [_row_to_record(r) for r in rows]
 
     def total_spend_by_cost_center(self, tenant_id: str, cost_center: str) -> float:
         with _tenant_connection(self._pool) as conn:

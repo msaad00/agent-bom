@@ -451,8 +451,28 @@ def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
 
 
 def _non_cve_findings(report: "AIBOMReport") -> list["Finding"]:
-    """Return unified findings not already represented in the CVE tables."""
-    return [finding for finding in report.to_findings() if finding.finding_type != FindingType.CVE]
+    """Return unified findings not already represented in the CVE or CIS tables.
+
+    Cloud CIS benchmark FAILures are lifted into the unified stream by
+    ``to_findings()`` AND rendered per-check by the dedicated CIS Benchmark
+    Posture table (``_CIS_CLOUD_LABELS``). Skip the unified copy for any
+    provider that table covers so each failed check renders exactly once (no
+    double-emit). Snowflake governance findings are also ``CIS_FAIL`` but carry
+    no ``benchmark`` marker and have no dedicated table, so they stay here.
+    """
+    findings: list[Finding] = []
+    for finding in report.to_findings():
+        if finding.finding_type == FindingType.CVE:
+            continue
+        evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
+        if (
+            finding.finding_type == FindingType.CIS_FAIL
+            and evidence.get("benchmark") == "CIS"
+            and evidence.get("provider") in _CIS_CLOUD_LABELS
+        ):
+            continue
+        findings.append(finding)
+    return findings
 
 
 def _policy_findings_section(findings: list["Finding"]) -> str:

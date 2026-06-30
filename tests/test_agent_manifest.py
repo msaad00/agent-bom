@@ -147,3 +147,66 @@ def test_agent_bom_manifest_reports_observation_only_blueprint_drift() -> None:
         "unregistered_runtime_server",
         "untracked_runtime_server",
     }
+
+
+def test_local_manifest_serves_distinct_installs_as_distinct_rows() -> None:
+    """Two installs sharing agent_type+name but different config_path emit two rows."""
+    a1 = Agent(name="Claude", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/global/claude.json")
+    a2 = Agent(name="Claude", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/project/.claude.json")
+    assert a1.stable_id != a2.stable_id
+
+    payload = build_local_agent_manifest([a1, a2])
+    agent_ids = [row["id"] for row in payload["agents"]]
+    assert len(agent_ids) == 2
+    assert len(set(agent_ids)) == 2
+
+
+def test_local_manifest_dedups_and_unions_duplicate_rows() -> None:
+    """A duplicated server/agent id is served once with unioned tools/creds/sources."""
+    shared = MCPServer(
+        name="filesystem",
+        command="npx",
+        args=["@modelcontextprotocol/server-filesystem", "/workspace"],
+        config_path="/cfg/a.json",
+        tools=[MCPTool(name="read_file", description="Read")],
+        env={"A_TOKEN": "sk-a"},
+        discovery_sources=["config:/cfg/a.json"],
+    )
+    # Same identity (same command+args) so it mints the SAME server id, but carries
+    # complementary detail discovered from another source.
+    duplicate = MCPServer(
+        name="filesystem",
+        command="npx",
+        args=["@modelcontextprotocol/server-filesystem", "/workspace"],
+        config_path="/cfg/b.json",
+        tools=[MCPTool(name="write_file", description="Write")],
+        env={"B_TOKEN": "sk-b"},
+        discovery_sources=["process:pid:42"],
+    )
+    assert shared.stable_id == duplicate.stable_id
+
+    agent = Agent(
+        name="dupe-agent",
+        agent_type=AgentType.CUSTOM,
+        config_path="/cfg/agent.json",
+        mcp_servers=[shared, duplicate],
+    )
+
+    # Pass the same agent twice so agent rows must also collapse to one id.
+    payload = build_local_agent_manifest([agent, agent])
+
+    assert len(payload["agents"]) == 1
+
+    servers = payload["mcp_servers"]
+    assert len(servers) == 1
+    server_row = servers[0]
+    tool_names = {tool["name"] for tool in server_row["tools"]}
+    assert tool_names == {"read_file", "write_file"}
+    assert server_row["tool_count"] == 2
+    cred_names = {ref["name"] for ref in server_row["credential_refs"]}
+    assert cred_names == {"A_TOKEN", "B_TOKEN"}
+    assert set(server_row["discovery"]["sources"]) == {"config:/cfg/a.json", "process:pid:42"}
+
+    # The single deduped server id is the one referenced by the agent.
+    assert server_row["id"] == shared.stable_id
+    assert shared.stable_id in payload["agents"][0]["mcp_server_ids"]

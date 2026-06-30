@@ -420,6 +420,8 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None, *, qu
     """Discover all global MCP client configurations."""
     agents: list[Agent] = []
     sys_platform = get_platform()
+    pending_cortex_metadata: dict = {}
+    cortex_metadata_path: Optional[str] = None
 
     if agent_types is None:
         agent_types = list(CONFIG_LOCATIONS.keys())
@@ -462,11 +464,11 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None, *, qu
                     if agent_type == AgentType.CORTEX_CODE and config_path.name != "mcp.json":
                         metadata = parse_cortex_code_metadata(str(config_path))
                         if metadata:
-                            # Attach metadata to existing agent or store for later
-                            for a in agents:
-                                if a.agent_type == AgentType.CORTEX_CODE:
-                                    a.metadata.update(metadata)
-                                    break
+                            # Buffer the findings and flush after the path loop so they
+                            # attach regardless of whether the mcp.json (and thus the
+                            # CORTEX_CODE agent) is discovered before or after this file.
+                            pending_cortex_metadata.update(metadata)
+                            cortex_metadata_path = str(config_path)
                         continue
 
                     # Custom parsers for non-JSON formats
@@ -501,6 +503,23 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None, *, qu
                 except (json.JSONDecodeError, KeyError, TypeError, Exception) as e:
                     if not quiet:
                         console.print(f"  [yellow]⚠[/yellow] Error parsing {_display_label(config_path)}: {_display_label(e)}")
+
+    if pending_cortex_metadata:
+        cortex_agent = next((a for a in agents if a.agent_type == AgentType.CORTEX_CODE), None)
+        if cortex_agent is not None:
+            cortex_agent.metadata.update(pending_cortex_metadata)
+        else:
+            # No mcp.json was found, but the auxiliary security findings still
+            # matter — surface them on a standalone CORTEX_CODE agent.
+            agents.append(
+                Agent(
+                    name=AgentType.CORTEX_CODE.value,
+                    agent_type=AgentType.CORTEX_CODE,
+                    config_path=cortex_metadata_path or AgentType.CORTEX_CODE.value,
+                    status=AgentStatus.INSTALLED_NOT_CONFIGURED,
+                    metadata=pending_cortex_metadata,
+                )
+            )
 
     return agents
 

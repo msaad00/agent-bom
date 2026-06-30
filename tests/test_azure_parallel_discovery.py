@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
 import types
 
@@ -68,13 +69,30 @@ def _slow_stub(label: str, delay: float = 0.15):
 
 
 def test_discovery_runs_concurrently(monkeypatch) -> None:
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+
+    def observed_stub(label: str):
+        def fn(cred, sub, *, warnings, missing=None):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            try:
+                time.sleep(0.15)
+                warnings.append(f"warn-{label}")
+                return [{"name": f"{label}-1", "id": f"/id/{label}"}]
+            finally:
+                with lock:
+                    active -= 1
+
+        return fn
+
     for name in _SERVICES:
-        monkeypatch.setattr(azinv, name, _slow_stub(name))
-    start = time.time()
+        monkeypatch.setattr(azinv, name, observed_stub(name))
     inv = azinv.discover_inventory("sub-1", credential=object(), include_hierarchy=False, force=True)
-    elapsed = time.time() - start
-    # 16 × 0.15s sequential = 2.4s; concurrent should be well under half that.
-    assert elapsed < 0.75, f"discovery not parallel (took {elapsed:.2f}s)"
+    assert max_active > 1, "discovery tasks did not overlap"
     assert inv["status"] == "ok"
     for collection in ("storage_accounts", "container_clusters", "key_vaults", "databases", "public_ips", "load_balancers"):
         assert len(inv[collection]) == 1

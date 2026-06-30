@@ -207,6 +207,19 @@ def _go_pseudo_timestamp(version: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _go_packaging_operand(version: str) -> str:
+    """Return the ``X.Y.Z`` base of a Go version for packaging comparison.
+
+    A pseudo-version (``vX.Y.Z-<ts>-<sha>``) is collapsed to its ``X.Y.Z``
+    base so it can be ordered against an ordinary tagged bound; the
+    date/sha suffix is not PEP 440-parsable on its own. Plain tags just
+    lose the leading ``v``.
+    """
+    if _go_pseudo_timestamp(version):
+        version = version.split("-", 1)[0]
+    return version[1:] if version.startswith("v") else version
+
+
 def _compare_go_versions(left: str, right: str) -> int | None:
     left_ts = _go_pseudo_timestamp(left)
     right_ts = _go_pseudo_timestamp(right)
@@ -215,8 +228,8 @@ def _compare_go_versions(left: str, right: str) -> int | None:
     try:
         from packaging.version import Version
 
-        left_norm = left[1:] if left.startswith("v") else left
-        right_norm = right[1:] if right.startswith("v") else right
+        left_norm = _go_packaging_operand(left)
+        right_norm = _go_packaging_operand(right)
         return (Version(left_norm) > Version(right_norm)) - (Version(left_norm) < Version(right_norm))
     except Exception:  # noqa: BLE001
         return None
@@ -536,15 +549,22 @@ def version_in_range(
                 if not boundary:
                     continue
                 boundary_ts = _go_pseudo_timestamp(boundary)
-                if not boundary_ts:
+                cmp: int | None
+                if boundary_ts:
+                    cmp = (ver_ts > boundary_ts) - (ver_ts < boundary_ts)
+                else:
+                    # Tagged bound: route the pseudo-vs-tagged comparison
+                    # through compare_version_order instead of skipping it,
+                    # so the boundary still constrains range membership.
+                    cmp = compare_version_order(version, boundary, ecosystem)
+                if cmp is None:
                     continue
-                if is_lower and ver_ts < boundary_ts:
+                if is_lower and cmp < 0:
                     return False
-                if not is_lower and boundary == fix and ver_ts >= boundary_ts:
+                if not is_lower and boundary == fix and cmp >= 0:
                     return False
-                if not is_lower and boundary == last and ver_ts > boundary_ts:
+                if not is_lower and boundary == last and cmp > 0:
                     return False
-            return True
 
     if intro:
         intro_cmp = compare_version_order(version, intro, ecosystem)

@@ -141,8 +141,12 @@ class OAuthSigningKey:
                 "restart and are not shared across replicas. Set AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM "
                 "to a stable RSA private key for production."
             )
-        self._public_key = self._private_key.public_key()
-        nums = self._public_key.public_numbers()
+        pub = self._private_key.public_key()
+        # RS256 keypair: the key is always RSA (generated or PEM-loaded above).
+        # Narrow from cryptography's broad public-key union for the RSA-only API.
+        assert isinstance(pub, rsa.RSAPublicKey)
+        self._public_key = pub
+        nums = pub.public_numbers()
         self._n = _b64url_uint(nums.n)
         self._e = _b64url_uint(nums.e)
         # RFC 7638 thumbprint over the canonical (lexicographically ordered) JWK.
@@ -177,13 +181,12 @@ class OAuthSigningKey:
         """Validate a token signed by this key. Raises on any failure."""
         import jwt as pyjwt
 
-        options = {"require": ["exp", "iat"], "verify_aud": False}
         return pyjwt.decode(
             token,
             self._public_key,
             algorithms=[_SIGNING_ALG],
             issuer=issuer,
-            options=options,
+            options={"require": ["exp", "iat"], "verify_aud": False},
         )
 
 

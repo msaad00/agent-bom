@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from typing import Any
+from typing import Any, Optional
 
 from agent_bom.advisory_ids import MATCH_CONFIDENCE_NVD_CPE_CANDIDATE
 from agent_bom.version_utils import version_in_range
@@ -67,13 +67,16 @@ def match_component_cpe(
     name: str,
     version: str,
     *,
+    vendor: Optional[str] = None,
     limit: int = 500,
 ) -> list[dict[str, Any]]:
     """Return ``nvd_cpe_candidate`` CVE matches for a component (name, version).
 
-    Empty when the component has no name/version, no candidate CPE product is in
-    the cache, or no version range applies. Each result carries the matched CVE
-    id, the CPE criteria string, and the ``nvd_cpe_candidate`` tier.
+    When ``vendor`` is supplied (e.g. inferred from a purl namespace or
+    Maven groupId) the candidate set is constrained to that CPE vendor, which is
+    the main false-positive control: it disambiguates same-named products from
+    different vendors. Empty when the component has no name/version, no candidate
+    CPE product is in the cache, or no version range applies.
     """
     if not name or not version:
         return []
@@ -82,12 +85,18 @@ def match_component_cpe(
         return []
 
     placeholders = ",".join("?" * len(products))
-    rows = conn.execute(
+    query = (
         "SELECT cve_id, criteria, version, version_start, version_start_op, "
         "version_end, version_end_op "
-        f"FROM cpe_matches WHERE product IN ({placeholders}) LIMIT ?",  # nosec B608 - placeholders are generated solely from "?" markers
-        (*products, limit),
-    ).fetchall()
+        f"FROM cpe_matches WHERE product IN ({placeholders})"  # nosec B608 - placeholders are generated solely from "?" markers
+    )
+    params: list[Any] = [*products]
+    if vendor:
+        query += " AND vendor = ?"
+        params.append(normalize_cpe_product(vendor))
+    query += " LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(query, params).fetchall()
 
     matched: dict[str, str] = {}
     for row in rows:

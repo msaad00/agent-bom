@@ -200,7 +200,9 @@ def lookup_package(
         return results
 
 
-def cpe_lookup_package(conn: sqlite3.Connection, name: str, version: str, *, limit: int = 500) -> list[LocalVuln]:
+def cpe_lookup_package(
+    conn: sqlite3.Connection, name: str, version: str, *, vendor: Optional[str] = None, limit: int = 500
+) -> list[LocalVuln]:
     """Long-tail CPE-candidate matches for a component, hydrated from ``vulns``.
 
     Maps the component to NVD CPE applicability ranges (see
@@ -211,7 +213,7 @@ def cpe_lookup_package(conn: sqlite3.Connection, name: str, version: str, *, lim
     """
     from agent_bom.cpe_match import MATCH_CONFIDENCE_NVD_CPE_CANDIDATE, match_component_cpe
 
-    matches = match_component_cpe(conn, name, version, limit=limit)
+    matches = match_component_cpe(conn, name, version, vendor=vendor, limit=limit)
     if not matches:
         return []
     cve_ids = [m["cve_id"] for m in matches]

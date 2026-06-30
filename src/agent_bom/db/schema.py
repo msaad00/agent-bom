@@ -79,6 +79,7 @@ _DDL = """
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 30000;
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version     INTEGER NOT NULL
@@ -223,6 +224,9 @@ def open_existing_db_readonly(path: Path | None = None) -> sqlite3.Connection:
     db_path = path or DB_PATH
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    # WAL is set at write time; readers still need a busy_timeout so a scan does
+    # not raise SQLITE_BUSY the instant it races a concurrent sync/refresh.
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn
 
 

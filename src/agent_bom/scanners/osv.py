@@ -404,6 +404,17 @@ async def query_osv_batch_impl(
                             rate_gate.set()
                     else:
                         await rate_gate.wait()
+                    # The batch stays unenriched: OSV kept rate-limiting after
+                    # request_with_retry exhausted its retries. Surface the gap
+                    # as a lookup error so coverage loss is visible to the caller
+                    # (logged + recorded as a scan warning) instead of silently
+                    # dropping the batch's vulnerability data.
+                    for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
+                        pkg_err = pkg_index.get(idx)
+                        if pkg_err:
+                            batch_errors.append(
+                                (pkg_err[0].name, pkg_err[0].ecosystem, "rate limited (HTTP 429) after retries")
+                            )
                 elif response:
                     record_enrichment_source("osv", "failure", error=f"HTTP {response.status_code}")
                     console.print(f"  [red]✗[/red] OSV API error: HTTP {response.status_code}")

@@ -105,6 +105,33 @@ def test_sync_nvd_incremental_keeps_checkpoint_on_failure() -> None:
     assert payload["last_modified_end"] == payload["last_modified_start"]
 
 
+def test_sync_nvd_incremental_guards_wrong_shape_payload() -> None:
+    """A non-dict JSON payload must not raise AttributeError and abort sync_db.
+
+    Regression: ``data.get("vulnerabilities")`` ran on the raw payload with no
+    type guard, so an array/string response crashed the whole sequential sync.
+    """
+    conn = init_db(Path(":memory:"))
+
+    def wrong_shape(url, *, timeout=60, headers=None):
+        return ["unexpected", "array", "payload"]
+
+    with patch("agent_bom.http_client.fetch_json", side_effect=wrong_shape):
+        with patch("time.sleep"):
+            count = sync_nvd_incremental(
+                conn,
+                nvd_api_key="test-key",
+                url="https://services.nvd.nist.gov/rest/json/cves/2.0",
+                max_results=10,
+            )
+
+    assert count == 0
+    meta = conn.execute("SELECT metadata_json FROM sync_meta WHERE source = 'nvd'").fetchone()
+    payload = json.loads(meta[0])
+    assert payload["sync_failed"] is True
+    assert payload["last_modified_end"] == payload["last_modified_start"]
+
+
 def test_sync_nvd_incremental_keeps_checkpoint_when_capped() -> None:
     conn = init_db(Path(":memory:"))
 

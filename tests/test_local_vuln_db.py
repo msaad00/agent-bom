@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import io
 import json
 import sqlite3
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from agent_bom.db.lookup import VulnDB, _version_affected, lookup_package
-from agent_bom.db.schema import DB_PATH, _validated_db_path, db_stats, init_db
+from agent_bom.db.schema import DB_PATH, _validated_db_path, db_stats, init_db, open_existing_db_readonly
 from agent_bom.db.sync import (
     _EPSS_CSV_URL,
     _ingest_alpine_secdb_payload,
@@ -20,6 +22,7 @@ from agent_bom.db.sync import (
     _resolve_epss_redirect,
     _validate_sync_url,
     sync_alpine_secdb,
+    sync_db,
     sync_epss,
     sync_kev,
     sync_osv,
@@ -495,6 +498,107 @@ def test_validated_db_path_rejects_traversal(tmp_path):
 def test_validated_db_path_accepts_tmp_alias():
     p = _validated_db_path("/tmp/agent-bom-vulns.db")
     assert p == Path("/tmp/agent-bom-vulns.db")
+
+
+# ---------------------------------------------------------------------------
+# Availability hardening — busy_timeout, streaming download, WAL checkpoint
+# ---------------------------------------------------------------------------
+
+
+def test_init_db_sets_busy_timeout(tmp_path):
+    """The DDL must arm busy_timeout so concurrent writers don't hit instant SQLITE_BUSY."""
+    conn = init_db(tmp_path / "bt.db")
+    try:
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 30000
+    finally:
+        conn.close()
+
+
+def test_readonly_conn_sets_busy_timeout(tmp_path):
+    """Read-only scan connections must also arm busy_timeout (was defaulting to 0)."""
+    db_file = tmp_path / "ro.db"
+    init_db(db_file).close()
+    conn = open_existing_db_readonly(db_file)
+    try:
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 30000
+    finally:
+        conn.close()
+
+
+def test_sync_db_runs_wal_checkpoint(tmp_path, monkeypatch):
+    """sync_db must checkpoint the WAL before closing so readers don't race a big -wal."""
+    import agent_bom.db.schema as schema_mod
+
+    class _ConnProxy:
+        def __init__(self, real):
+            self._real = real
+            self.executed: list[str] = []
+
+        def execute(self, sql, *args, **kwargs):
+            self.executed.append(sql)
+            return self._real.execute(sql, *args, **kwargs)
+
+        def close(self):
+            return self._real.close()
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    proxies: list[_ConnProxy] = []
+    real_init = schema_mod.init_db
+
+    def fake_init(path=None):
+        proxy = _ConnProxy(real_init(path))
+        proxies.append(proxy)
+        return proxy
+
+    monkeypatch.setattr(schema_mod, "init_db", fake_init)
+    sync_db(path=tmp_path / "ckpt.db", sources=[])
+
+    assert proxies
+    assert any("wal_checkpoint" in sql.lower() for sql in proxies[0].executed)
+
+
+def test_sync_osv_streams_to_disk(tmp_db, monkeypatch):
+    """sync_osv must stream the archive to a temp file, not buffer it all in RAM.
+
+    Regression: the whole all.zip was read into bytes and re-wrapped in BytesIO
+    (~1GB peak) before ingestion. The fix streams to disk and reads the zip from
+    that path; patching only the streaming downloader (not fetch_bytes) proves it.
+    """
+    osv_entry = _make_osv_entry(vuln_id="OSV-2024-STREAM")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("requests/OSV-2024-STREAM.json", json.dumps(osv_entry))
+    payload = buf.getvalue()
+
+    captured: dict = {}
+
+    def fake_download(url, dest, *, timeout=60, headers=None, chunk_size=1 << 20):
+        captured["dest"] = dest
+        with open(dest, "wb") as fh:
+            fh.write(payload)
+        return len(payload)
+
+    monkeypatch.setattr("agent_bom.http_client.download_to_file", fake_download)
+    count = sync_osv(tmp_db, url="https://osv.example.com/all.zip")
+
+    assert count == 1
+    # Downloaded to a real on-disk path (not held in memory)…
+    assert captured.get("dest")
+    # …and the temp file is cleaned up after ingestion.
+    assert not Path(captured["dest"]).exists()
+    row = tmp_db.execute("SELECT id FROM vulns WHERE id = 'OSV-2024-STREAM'").fetchone()
+    assert row is not None
+
+
+def test_sync_kev_guards_wrong_shape_payload(tmp_db):
+    """A non-dict KEV payload must not raise AttributeError and abort sync_db."""
+    with patch("agent_bom.http_client.fetch_json", return_value=["unexpected", "array"]):
+        count = sync_kev(tmp_db, url="https://fake/kev.json")
+
+    assert count == 0
+    assert tmp_db.execute("SELECT COUNT(*) FROM kev_entries").fetchone()[0] == 0
 
 
 # ---------------------------------------------------------------------------

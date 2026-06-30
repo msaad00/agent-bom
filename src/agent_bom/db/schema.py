@@ -123,6 +123,11 @@ CREATE TABLE IF NOT EXISTS cpe_matches (
     PRIMARY KEY (cve_id, criteria, version_start, version_end)
 );
 CREATE INDEX IF NOT EXISTS idx_cpe_product ON cpe_matches(vendor, product);
+-- match_component_cpe filters `WHERE product IN (...)` often without a vendor,
+-- so the (vendor, product) index above is unusable for those lookups. This
+-- product-only index covers the vendor-less path. Migration note: existing
+-- databases gain this index automatically on the next init_db() run.
+CREATE INDEX IF NOT EXISTS idx_cpe_product_only ON cpe_matches(product);
 
 CREATE TABLE IF NOT EXISTS epss_scores (
     cve_id          TEXT PRIMARY KEY,

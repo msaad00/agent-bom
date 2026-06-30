@@ -526,6 +526,7 @@ def version_in_range(
                 if not boundary:
                     continue
                 boundary_ts = _go_pseudo_timestamp(boundary)
+                cmp: int | None
                 if boundary_ts:
                     cmp = (ver_ts > boundary_ts) - (ver_ts < boundary_ts)
                 else:

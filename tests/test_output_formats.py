@@ -24,6 +24,7 @@ from agent_bom.models import (
     Vulnerability,
 )
 from agent_bom.output import to_badge, to_csv, to_json, to_junit, to_markdown, to_spdx
+from agent_bom.output.exposure_path import exposure_path_for_blast_radius
 from agent_bom.output.html import to_html
 from agent_bom.output.prometheus import to_prometheus
 from agent_bom.output.sarif import to_sarif
@@ -732,6 +733,26 @@ def test_exposure_path_is_embedded_in_json_report():
     assert exposure_path["affectedServers"] == ["prod-mcp"]
     assert exposure_path["reachableTools"] == ["deploy"]
     assert exposure_path["exposedCredentials"] == ["AWS_SECRET_ACCESS_KEY"]
+
+
+def test_exposure_path_label_does_not_double_append_versioned_name():
+    # Some ingestion paths store "name@version" in Package.name; the graph node
+    # label strips it (split("@")[0]) but the report label builder used to append
+    # the version again, producing "form-data@4.0.0@4.0.0". Guard against that.
+    pkg = _make_pkg("form-data@4.0.0", "4.0.0", "npm")
+    vuln = _make_vuln("CVE-2026-9", Severity.CRITICAL, 9.1)
+    br = _make_blast_radius(pkg=pkg, vuln=vuln)
+
+    exposure = exposure_path_for_blast_radius(br)
+
+    assert exposure["label"] == "form-data@4.0.0 -> CVE-2026-9"
+    assert "@4.0.0@4.0.0" not in exposure["label"]
+    assert "@4.0.0@4.0.0" not in exposure["summary"]
+    assert exposure["dependencyContext"]["package"] == "form-data"
+
+    # A clean package name (the common case) is unaffected.
+    clean = exposure_path_for_blast_radius(_make_blast_radius(pkg=_make_pkg("form-data", "4.0.0", "npm"), vuln=vuln))
+    assert clean["label"] == "form-data@4.0.0 -> CVE-2026-9"
 
 
 def test_skill_trust_axes_are_embedded_in_sarif_properties():

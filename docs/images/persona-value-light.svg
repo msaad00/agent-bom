@@ -7,38 +7,38 @@
 <text x="28" y="88" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.12em" fill="#7c3aed">PERSONAS</text>
 <text x="500" y="88" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="800" letter-spacing="0.12em" fill="#7c3aed">VALUE PROOF</text>
 <rect x="28" y="108" width="432" height="54" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="40" y="122" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(44,126)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></g>
+<rect x="40" y="122" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(44,126) scale(0.6666666666666666)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></g>
 <text x="76" y="132" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">AppSec / GRC</text>
 <text x="76" y="148" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#34d399">SARIF · compliance · audit</text>
 <rect x="28" y="176" width="432" height="54" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="40" y="190" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(44,194)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z"/><path d="M9 12l2 2 4-4"/></g>
+<rect x="40" y="190" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(44,194) scale(0.6666666666666666)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l7 2.5v5c0 4.5-3 7-7 8.5-4-1.5-7-4-7-8.5v-5z"/><path d="M9 12l2 2 4-4"/></g>
 <text x="76" y="200" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Platform / SRE</text>
 <text x="76" y="216" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#fbbf24">fleet · Helm · CI gates</text>
 <rect x="28" y="244" width="432" height="54" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="40" y="258" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(44,262)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
+<rect x="40" y="258" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(44,262) scale(0.6666666666666666)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="17" r="2.4"/><circle cx="16" cy="17" r="2.4"/><path d="M10 11l-2 4 M14 11l2 4"/></g>
 <text x="76" y="268" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Agent builders</text>
 <text x="76" y="284" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#60a5fa">MCP inventory · shield</text>
 <rect x="28" y="312" width="432" height="54" rx="10" fill="#ffffff" stroke="#e6e6ea"/>
-<rect x="40" y="326" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(44,330)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="12" cy="16" r="2.5"/><path d="M10 9.5l1.5 5 M14 9.5l-1.5 5"/></g>
+<rect x="40" y="326" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(44,330) scale(0.6666666666666666)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="12" cy="16" r="2.5"/><path d="M10 9.5l1.5 5 M14 9.5l-1.5 5"/></g>
 <text x="76" y="336" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Security engineers</text>
 <text x="76" y="352" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#a78bfa">blast radius · paths</text>
 <rect x="500" y="108" width="432" height="54" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>
-<rect x="512" y="122" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(516,126)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10h8M6 14h12M9 6l-2 2M15 6l2 2M9 18l-2 2M15 18l2 2"/><circle cx="12" cy="12" r="4"/></g>
+<rect x="512" y="122" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(516,126) scale(0.6666666666666666)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10h8M6 14h12M9 6l-2 2M15 6l2 2M9 18l-2 2M15 18l2 2"/><circle cx="12" cy="12" r="4"/></g>
 <text x="548" y="132" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Accurate SCA</text>
 <text x="548" y="148" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">15 ecosystems · distro-aware</text>
 <line x1="468" y1="135" x2="485" y2="135" stroke="#7c3aed" stroke-width="1.6"/><polygon points="491,135 484,131.5 484,138.5" fill="#7c3aed"/>
 <rect x="500" y="176" width="432" height="54" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>
-<rect x="512" y="190" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(516,194)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="12" rx="2"/><path d="M7 15l3-3 2 2 3-3 2 4"/></g>
+<rect x="512" y="190" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(516,194) scale(0.6666666666666666)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="12" rx="2"/><path d="M7 15l3-3 2 2 3-3 2 4"/></g>
 <text x="548" y="200" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Container coverage</text>
 <text x="548" y="216" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">OCI native · Grype opt-in</text>
 <line x1="468" y1="203" x2="485" y2="203" stroke="#7c3aed" stroke-width="1.6"/><polygon points="491,203 484,199.5 484,206.5" fill="#7c3aed"/>
 <rect x="500" y="244" width="432" height="54" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>
-<rect x="512" y="258" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(516,262)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/></g>
+<rect x="512" y="258" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(516,262) scale(0.6666666666666666)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/></g>
 <text x="548" y="268" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Self-hosted evidence</text>
 <text x="548" y="284" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">your VPC · signed audit</text>
 <line x1="468" y1="271" x2="485" y2="271" stroke="#7c3aed" stroke-width="1.6"/><polygon points="491,271 484,267.5 484,274.5" fill="#7c3aed"/>
 <rect x="500" y="312" width="432" height="54" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>
-<rect x="512" y="326" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(516,330)" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
+<rect x="512" y="326" width="24" height="24" rx="6" fill="#f4f4f6" stroke="#e6e6ea"/><g transform="translate(516,330) scale(0.6666666666666666)" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></g>
 <text x="548" y="336" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700" fill="#18181b">Agent-native API</text>
 <text x="548" y="352" font-family="ui-monospace,monospace" font-size="8" font-weight="600" fill="#71717a">283 ops · 70 MCP tools</text>
 <line x1="468" y1="339" x2="485" y2="339" stroke="#7c3aed" stroke-width="1.6"/><polygon points="491,339 484,335.5 484,342.5" fill="#7c3aed"/>

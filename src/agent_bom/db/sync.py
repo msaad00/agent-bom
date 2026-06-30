@@ -1435,6 +1435,8 @@ def sync_nvd_incremental(
     start_index = 0
     page_size = min(2000, max_results)
 
+    sync_failed = False
+
     while enriched < max_results:
         params: dict[str, str | int] = {
             "lastModStartDate": start_ts,
@@ -1442,14 +1444,19 @@ def sync_nvd_incremental(
             "resultsPerPage": page_size,
             "startIndex": start_index,
         }
+        # NVD API 2.0 only honors the key in the `apiKey` request header; a
+        # query-string key is ignored and the call is throttled as anonymous
+        # (5 req/30s), so the key must travel in the headers.
+        request_headers = {"Accept": "application/json"}
         if api_key:
-            params["apiKey"] = api_key
+            request_headers["apiKey"] = api_key
         fetch_url = f"{base_url}?{urllib.parse.urlencode(params)}"
 
         try:
-            data = fetch_json(fetch_url, timeout=60, headers={"Accept": "application/json"})
+            data = fetch_json(fetch_url, timeout=60, headers=request_headers)
         except Exception as exc:
             _logger.warning("NVD incremental sync failed at startIndex=%s: %s", start_index, exc)
+            sync_failed = True
             break
 
         items = data.get("vulnerabilities") or []
@@ -1484,9 +1491,13 @@ def sync_nvd_incremental(
         {
             "mode": "incremental",
             "last_modified_start": start_ts,
-            "last_modified_end": end_ts,
+            # Only advance the synced-through cursor when the whole window
+            # fetched cleanly; on failure keep the window start so the next run
+            # retries it instead of permanently skipping the unsynced CVEs.
+            "last_modified_end": start_ts if sync_failed else end_ts,
             "max_results": max_results,
             "api_key_used": bool(api_key),
+            "sync_failed": sync_failed,
         },
     )
     _logger.info("NVD incremental sync complete: %d CVE rows upserted", enriched)

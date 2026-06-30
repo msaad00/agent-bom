@@ -9,12 +9,74 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-06-30
+
+A platform release: AI agents, MCP servers, and their tools become first-class
+governed assets behind a runtime broker, while the SCA/SBOM/identity/cost depth
+and the UI all level up. Availability, accuracy, security, and scalability are
+treated as non-negotiable throughout.
+
+### Runtime broker / gateway
+- **OAuth 2.1 Authorization Server conformance** for the MCP auth spec — AS
+  metadata (RFC 8414), dynamic client registration (RFC 7591), PKCE
+  authorize/token endpoints, and JWKS — so standard MCP clients auto-authenticate
+  to brokered MCP servers.
+- **Inline agent-to-agent (A2A) mutual-auth enforcement** at the gateway relay
+  (`off`/`warn`/`enforce`): rejects anonymous / unverified inter-agent and
+  agent→MCP edges.
+- **Per-tool-call OAuth scope mapping + DLP** on tool args/results: denies
+  insufficient-scope calls and redacts/blocks sensitive data.
+
+### SCA / reachability
+- **Function-level reachability → CVE** — joins the Python symbol call-graph to
+  advisory affected-symbols, marking findings `function_reachable` vs
+  `package_reachable` for noise reduction.
+- **`match_confidence_tier` surfaced across SARIF, JSON, and HTML** (not only the
+  unified Finding), with canonical `cve_ids`.
+- NVD capped-sync now ingests its unsynced tail across runs (no silent CVE
+  drops); CPE inclusive/exclusive version bounds honored exactly; Go
+  pseudo-version bounds; CycloneDX component de-duplication + finding-id scoping.
+
+### SBOM / supply chain
+- **Sign + attest generated SBOMs** (Ed25519 / HMAC, in-toto / SLSA) via
+  `agent-bom attest`.
+- **SPDX 2.2 / 2.3 emitter** + per-component checksums.
+
+### Identity / FinOps
+- **Owner-binding + attribution** on issued agent identities.
+- **Reconcilable / actual cost rates** (vs static list price) with
+  estimated-vs-reconciled provenance.
+
+### Security hardening
+- **SSRF blocked in the MCP repo-scan path** (egress validation, no
+  redirect-follow, fail-closed remote bind) and the clone offloaded off the
+  event loop.
+- Server-authoritative tenant binding on audit ingest; pre-auth global IP rate
+  limiter; X-Forwarded-For spoof fix; identity-keyed MCP rate limiter.
+- Pickle scanner now scans oversized / disguised pickles (size-gate + memo
+  evasion closed); `--fail-on-severity` fails closed on unknown/none.
+- DB resilience: SQLite `busy_timeout` + WAL checkpoint; OSV archive streamed to
+  disk (no OOM); KEV/NVD/GHSA wrong-shape + partial-sync guards.
+
+### UI
+- **Design-system foundation** — Collapsible, Card/Section, StatCard, shared
+  entity icons, vendor logos, and consolidated state primitives.
+- **Real connections experience** wired to the backend with vendor logos and
+  honest provider readiness.
+- Declutter + **capability-driven IA** ("Set up" badges, summary surfaces), a
+  **data-driven AI-agent trust stack**, and interaction-state fixes (graph filter
+  soft-lock, provider re-select, URL-as-source-of-truth filters).
+
+### Output
+- De-duplicated cloud CIS findings in SARIF and HTML; canonical OWASP-MCP/LLM
+  codes from the tool-abuse rules.
+
 ## [0.90.0] - 2026-06-30
 
-Native, self-sufficient SCA: distro-confirmed findings match or exceed Trivy on
-published benchmarks (e.g. alpine 3.14.2), with an optional NVD CPE candidate
+Native, self-sufficient SCA: distro-confirmed findings are benchmark-grade
+(e.g. alpine 3.14.2), with an optional NVD CPE candidate
 tier (review-grade, opt-in) for the long tail OSV and distro feeds do not cover —
-on top of the multi-account CNAPP estate work below. No Trivy/Grype/Syft
+on top of the multi-account CNAPP estate work below. No external-scanner
 subprocess is required on the vulnerability path.
 
 ### Vulnerability scanning / SCA
@@ -37,8 +99,8 @@ subprocess is required on the vulnerability path.
 - **Forced OSV fallback for sparse/EOL distro releases** so end-of-life images do
   not silently miss advisories.
 - **Real offline + online scan-accuracy validation** — a deterministic offline
-  three-tier (OSV / distro / CPE) regression net plus live OSV ground-truth and a
-  Trivy binary-diff harness.
+  three-tier (OSV / distro / CPE) regression net plus live OSV ground-truth and an
+  external-scanner binary-diff harness.
 
 Deepens the cloud/CNAPP estate from a single-provider inventory into a
 multi-account, multi-region, tenant-scale model that rolls up readably in the
@@ -1887,7 +1949,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.90.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.91.0...HEAD
+[0.91.0]: https://github.com/msaad00/agent-bom/compare/v0.90.0...v0.91.0
 [0.90.0]: https://github.com/msaad00/agent-bom/compare/v0.89.2...v0.90.0
 [0.89.2]: https://github.com/msaad00/agent-bom/compare/v0.89.1...v0.89.2
 [0.89.1]: https://github.com/msaad00/agent-bom/compare/v0.89.0...v0.89.1

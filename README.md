@@ -263,7 +263,7 @@ reproduce the dashboard screenshots from a clean local control-plane store.
 | Non-human identity posture | `agent-bom identity credential-expiry` |
 | Advisory remediation plan | `agent-bom remediate -p .` |
 | Gated-capability readiness | `agent-bom capabilities` |
-| CI gate | `uses: msaad00/agent-bom@v0.90.0` |
+| CI gate | `uses: msaad00/agent-bom@v0.91.0` |
 | Local API and dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` |
 
 The base wheel is the scanner and CLI path; optional runtime surfaces fail fast

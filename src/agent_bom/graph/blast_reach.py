@@ -25,9 +25,15 @@ from agent_bom.graph.builder import build_unified_graph_from_report
 from agent_bom.graph.dependency_reach import compute_dependency_reach
 
 if TYPE_CHECKING:
+    from agent_bom.ast_models import ASTAnalysisResult
     from agent_bom.models import Agent, BlastRadius
 
 _logger = logging.getLogger(__name__)
+
+# Package ecosystems where a Python symbol-level call graph exists. The
+# function-reachability join only applies here — for everything else we leave
+# the signal untouched rather than over-claim.
+_PYTHON_ECOSYSTEMS: frozenset[str] = frozenset({"pypi", "python"})
 
 
 def apply_dependency_reachability_to_blast_radii(
@@ -83,4 +89,66 @@ def apply_dependency_reachability_to_blast_radii(
     return stamped
 
 
-__all__ = ["apply_dependency_reachability_to_blast_radii"]
+def apply_symbol_reachability_to_blast_radii(
+    blast_radii: list["BlastRadius"],
+    ast_result: "ASTAnalysisResult",
+) -> int:
+    """Join CVE affected-symbols to AST symbol reach on each BlastRadius row.
+
+    Thin additive surfacing of :mod:`agent_bom.reachability_cve`. For every
+    Python finding it stamps ``symbol_reachability`` (function_reachable /
+    package_reachable / unreachable) and, when a match is found,
+    ``reachable_affected_symbols``. Non-Python findings are left untouched —
+    the call graph only exists for Python.
+
+    The graph-walk reach already on the row (``graph_reachable``) is fed in as
+    the import / dependency-closure fallback so a package that is reached but
+    whose symbols were not individually captured reports ``package_reachable``
+    rather than ``unreachable``.
+
+    Returns the count of rows whose signal was populated. Best-effort: any
+    failure downgrades to a no-op rather than failing the scan.
+    """
+    if not blast_radii or ast_result is None:
+        return 0
+
+    try:
+        from agent_bom.reachability_cve import SymbolReachIndex, classify_reachability
+
+        index = SymbolReachIndex.from_ast_result(ast_result)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Symbol reachability surfacing skipped: %s", exc)
+        return 0
+
+    # No symbol-reach evidence at all (no Python entrypoints analysed). Stamping
+    # would mark every Python finding "unreachable" on no basis, which is a
+    # false negative — skip entirely rather than over-claim.
+    if not index:
+        return 0
+
+    stamped = 0
+    for br in blast_radii:
+        ecosystem = (getattr(br.package, "ecosystem", "") or "").lower()
+        if ecosystem not in _PYTHON_ECOSYSTEMS:
+            continue
+        try:
+            signal = classify_reachability(
+                package=br.package.name,
+                advisory=br.vulnerability,
+                index=index,
+                package_reachable=br.graph_reachable,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Symbol reachability classify skipped for %s: %s", br.package.name, exc)
+            continue
+        br.symbol_reachability = signal.state
+        br.reachable_affected_symbols = list(signal.matched_symbols)
+        stamped += 1
+
+    return stamped
+
+
+__all__ = [
+    "apply_dependency_reachability_to_blast_radii",
+    "apply_symbol_reachability_to_blast_radii",
+]

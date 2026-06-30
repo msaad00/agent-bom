@@ -324,3 +324,53 @@ def test_data_roundtrip_preserves_fields():
 def test_clean_report_has_no_combination_findings():
     report = AIBOMReport()
     assert [f for f in report.to_findings() if f.finding_type == FindingType.COMBINATION] == []
+
+
+# ── Perf regression: privileged-edge source set computed once ─────────────────
+
+
+def _graph_multi_agent_privileged(n: int = 3) -> UnifiedGraph:
+    nodes: list[UnifiedNode] = []
+    edges: list[UnifiedEdge] = []
+    for i in range(n):
+        agent = _node(f"agent:{i}", EntityType.AGENT, severity="medium")
+        server = _node(f"server:{i}", EntityType.SERVER, severity="low")
+        cred = _node(f"cred:{i}", EntityType.CREDENTIAL, severity="high")
+        nodes += [agent, server, cred]
+        edges += [
+            _edge(f"agent:{i}", f"server:{i}", RelationshipType.USES),
+            _edge(f"server:{i}", f"cred:{i}", RelationshipType.EXPOSES_CRED),
+        ]
+    return _graph(nodes, edges)
+
+
+class _CountingList(list):
+    """List that counts how many times it is iterated."""
+
+    iter_count = 0
+
+    def __iter__(self):
+        self.iter_count += 1
+        return super().__iter__()
+
+
+def test_agent_reaches_privileged_multi_agent_parity():
+    from agent_bom.graph.toxic_findings import _match_agent_reaches_privileged
+
+    g = _graph_multi_agent_privileged(3)
+    matches = _match_agent_reaches_privileged(g)
+    # Every agent that traverses a privileged edge to a credential is reported.
+    assert {m.entry.id for m in matches} == {"agent:0", "agent:1", "agent:2"}
+
+
+def test_agent_reaches_privileged_scans_edges_once():
+    # Regression: the privileged-edge source set must be precomputed in a single
+    # O(E) pass, not re-scanned per agent (O(agents x edges)). With the old
+    # per-agent scan this iterates the edge list once per agent (3x); the fixed
+    # single pass touches it exactly once regardless of agent count.
+    from agent_bom.graph.toxic_findings import _match_agent_reaches_privileged
+
+    g = _graph_multi_agent_privileged(3)
+    g.edges = _CountingList(g.edges)
+    _match_agent_reaches_privileged(g)
+    assert g.edges.iter_count == 1

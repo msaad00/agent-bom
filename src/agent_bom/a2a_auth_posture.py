@@ -486,6 +486,73 @@ def _detect_unverified_actor_tokens(agents: list[Agent], policies: list[A2APolic
     return findings
 
 
+# ── Inline mutual-auth enforcement (assess → enforce) ─────────────────────────
+
+# Enforcement modes for the inline A2A mutual-auth gate at the relay.
+A2A_MUTUAL_AUTH_MODES = ("off", "warn", "enforce")
+
+# Sentinel matching agent_bom.agent_identity.ANONYMOUS without importing it here.
+ANONYMOUS_AGENT = "anonymous"
+
+
+@dataclass
+class InlineMutualAuthResult:
+    """Classification of one inter-agent / agent-MCP edge for inline enforcement."""
+
+    weak: bool
+    reason: str = ""
+    weakness: str = ""  # "invalid_identity" | "anonymous" | "unverified_identity"
+
+
+def evaluate_inline_mutual_auth(
+    *,
+    source_agent: str,
+    target: str,
+    token_present: bool,
+    verified: bool,
+    identity_invalid_reason: str | None = None,
+) -> InlineMutualAuthResult:
+    """Classify whether one relayed edge carries mutual authentication.
+
+    This is the inline, data-path counterpart to the reference-only posture
+    scan above: instead of producing a finding, it tells the gateway relay
+    whether the *current* call's caller→target edge is mutually authenticated so
+    the relay can DENY (enforce) or flag (warn) a weak edge.
+
+    An edge is weak when it does NOT carry a verified caller identity:
+      * ``invalid_identity`` — a token was presented but is invalid/revoked/
+        expired (``identity_invalid_reason`` set). Always weak.
+      * ``anonymous`` — no identity token at all (the downstream agent/MCP
+        cannot confirm who is calling).
+      * ``unverified_identity`` — a token resolved to a concrete agent but was
+        not cryptographically verified (opaque/shared/unsigned token, no
+        JWKS/AS signature), so it is not mutual auth.
+
+    Returns an :class:`InlineMutualAuthResult`; a verified, non-anonymous caller
+    yields ``weak=False``. Pure + deterministic — no I/O, no token values.
+    """
+    edge = f"{source_agent or ANONYMOUS_AGENT} -> {target or 'mcp'}"
+    if identity_invalid_reason:
+        return InlineMutualAuthResult(
+            weak=True,
+            reason=f"edge {edge} presents an invalid/revoked identity ({identity_invalid_reason})",
+            weakness="invalid_identity",
+        )
+    if not token_present or not source_agent or source_agent == ANONYMOUS_AGENT:
+        return InlineMutualAuthResult(
+            weak=True,
+            reason=f"edge {edge} has no verified caller identity (anonymous); mutual auth is required",
+            weakness="anonymous",
+        )
+    if not verified:
+        return InlineMutualAuthResult(
+            weak=True,
+            reason=(f"edge {edge} presents an unverified (opaque/shared/unsigned) identity; a signed/JWKS-backed token is required"),
+            weakness="unverified_identity",
+        )
+    return InlineMutualAuthResult(weak=False)
+
+
 # ── Public entry points ──────────────────────────────────────────────────────
 
 

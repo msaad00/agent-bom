@@ -335,6 +335,37 @@ def check_identity(
     return agent_id, None
 
 
+def identity_token_scopes(token: str) -> set[str]:
+    """Extract OAuth scopes from a JWT identity token's claims.
+
+    Reads the standard ``scope`` (space-delimited string) or ``scp`` (string or
+    list) claim. Returns an empty set for opaque tokens or tokens without a
+    scope claim. The token's signature is NOT (re)verified here — callers must
+    have already validated the token (the gateway verifies via JWKS / the AS
+    before reading scopes), so this only parses the already-trusted payload.
+    """
+    if not _looks_like_jwt(token):
+        return set()
+    claims = _decode_jwt_payload(token)
+    if not isinstance(claims, dict):
+        return set()
+    return scopes_from_claims(claims)
+
+
+def scopes_from_claims(claims: dict) -> set[str]:
+    """Return the OAuth scope set declared in a JWT claims dict."""
+    scopes: set[str] = set()
+    raw_scope = claims.get("scope")
+    if isinstance(raw_scope, str):
+        scopes |= {s for s in raw_scope.replace(",", " ").split() if s}
+    scp = claims.get("scp")
+    if isinstance(scp, str):
+        scopes |= {s for s in scp.replace(",", " ").split() if s}
+    elif isinstance(scp, (list, tuple)):
+        scopes |= {str(s) for s in scp if str(s).strip()}
+    return scopes
+
+
 def check_caller_identity(
     msg: dict,
     policy: dict,

@@ -125,6 +125,13 @@ def test_healthz_lists_configured_upstreams() -> None:
             "enforcement_mode": "enforce",
             "tenant_id": None,
         },
+        "broker_runtime": {
+            "oauth_as_enabled": False,
+            "a2a_mutual_auth_enforcement_mode": "off",
+            "tool_scope_mapped_tools": 0,
+            "dlp_enabled": False,
+            "dlp_mode": "disabled",
+        },
     }
 
 

@@ -289,6 +289,61 @@ def init_policy_cmd(output_path: Path, mode: str, output_format: str, tenant_id:
     ),
 )
 @click.option(
+    "--enable-oauth-as",
+    is_flag=True,
+    envvar="AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS",
+    default=False,
+    help=(
+        "Mount an OAuth 2.1 Authorization Server (RFC 8414 metadata, RFC 7591 dynamic "
+        "registration, PKCE authorize+token, JWKS) so standard MCP clients can auto-authenticate. "
+        "Set AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM for a stable signing key."
+    ),
+)
+@click.option(
+    "--oauth-as-issuer",
+    envvar="AGENT_BOM_GATEWAY_OAUTH_AS_ISSUER",
+    default=None,
+    help="Public issuer base URL for the OAuth AS (defaults to the request URL when unset).",
+)
+@click.option(
+    "--a2a-mutual-auth-enforcement",
+    type=click.Choice(["off", "warn", "enforce"]),
+    envvar="AGENT_BOM_GATEWAY_A2A_MUTUAL_AUTH_ENFORCEMENT",
+    default="off",
+    show_default=True,
+    help="Inline A2A mutual-auth: 'enforce' rejects unauthenticated/unverified inter-agent edges, 'warn' audits them.",
+)
+@click.option(
+    "--tool-scope-map",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar="AGENT_BOM_GATEWAY_TOOL_SCOPE_MAP",
+    default=None,
+    help='JSON file mapping tool names to required OAuth scopes, e.g. {"fs.write": ["tools:write"]}. "*" applies to all tools.',
+)
+@click.option(
+    "--enable-dlp",
+    is_flag=True,
+    envvar="AGENT_BOM_GATEWAY_ENABLE_DLP",
+    default=False,
+    help="Run a DLP pass on tool-call arguments and results (injection/PII/secrets/payload-vuln).",
+)
+@click.option(
+    "--dlp-mode",
+    type=click.Choice(["audit", "enforce"]),
+    envvar="AGENT_BOM_GATEWAY_DLP_MODE",
+    default="audit",
+    show_default=True,
+    help="DLP posture: 'enforce' blocks/redacts sensitive content, 'audit' only flags it.",
+)
+@click.option(
+    "--dlp-pii-action",
+    type=click.Choice(["redact", "block"]),
+    envvar="AGENT_BOM_GATEWAY_DLP_PII_ACTION",
+    default="redact",
+    show_default=True,
+    help="How DLP handles PII matches in enforce mode.",
+)
+@click.option(
     "--allow-visual-leak-best-effort",
     is_flag=True,
     default=False,
@@ -321,6 +376,13 @@ def serve_cmd(
     fleet_enforcement: str,
     graph_reachability_path: Path | None,
     graph_reachability_enforcement: str,
+    enable_oauth_as: bool,
+    oauth_as_issuer: str | None,
+    a2a_mutual_auth_enforcement: str,
+    tool_scope_map: Path | None,
+    enable_dlp: bool,
+    dlp_mode: str,
+    dlp_pii_action: str,
     allow_visual_leak_best_effort: bool,
     log_level: str,
 ) -> None:
@@ -428,6 +490,29 @@ def serve_cmd(
         control_plane_policies = [p for p in bundle_list if isinstance(p, dict)]
         click.echo(f"loaded {len(control_plane_policies)} control-plane policy/policies from {policy_bundle_path}")
 
+    # OAuth 2.1 broker AS (opt-in). Built once at startup; reuses an env-supplied
+    # signing key when present so issued tokens survive a restart.
+    oauth_as = None
+    if enable_oauth_as:
+        from agent_bom.api.oauth_as import OAuthAuthorizationServer
+
+        oauth_as = OAuthAuthorizationServer(issuer=oauth_as_issuer)
+        click.echo(f"OAuth 2.1 AS enabled (issuer={oauth_as_issuer or '<derived from request>'})")
+
+    tool_scope_mapping: dict[str, list[str]] = {}
+    if tool_scope_map is not None:
+        raw_map = read_json_file_for_cli(tool_scope_map, label="tool scope map")
+        if not isinstance(raw_map, dict):
+            raise click.ClickException("--tool-scope-map must be a JSON object of {tool_name: [scope, ...]}")
+        for tool, scopes in raw_map.items():
+            if isinstance(scopes, str):
+                tool_scope_mapping[str(tool)] = [scopes]
+            elif isinstance(scopes, list):
+                tool_scope_mapping[str(tool)] = [str(s) for s in scopes if str(s).strip()]
+            else:
+                raise click.ClickException(f"--tool-scope-map value for {tool!r} must be a string or list of strings")
+        click.echo(f"loaded OAuth scope requirements for {len(tool_scope_mapping)} tool(s)")
+
     settings = GatewaySettings(
         registry=registry,
         policy=policy,
@@ -450,6 +535,12 @@ def serve_cmd(
         fleet_enforcement_mode=fleet_enforcement,
         graph_reachability_path=graph_reachability_path,
         graph_reachability_enforcement_mode=graph_reachability_enforcement,
+        oauth_as=oauth_as,
+        a2a_mutual_auth_enforcement_mode=a2a_mutual_auth_enforcement,
+        tool_scope_map=tool_scope_mapping,
+        dlp_enabled=enable_dlp,
+        dlp_mode=dlp_mode,
+        dlp_pii_action=dlp_pii_action,
     )
     app = create_gateway_app(settings)
     policy_summary = summarize_policy_bundle(policy)

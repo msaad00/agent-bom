@@ -219,6 +219,27 @@ glibc-2.34-83.el9.x86_64
     assert "5.2.26" in bash.version
 
 
+def test_legacy_bdb_rpmdb_warns_and_does_not_fail(caplog):
+    """A legacy BerkeleyDB rpm db yields no fatal error, just a coverage warning."""
+    import logging
+
+    from agent_bom.image import _packages_from_tar
+
+    # A BerkeleyDB ``Packages`` file we cannot decode — arbitrary binary bytes.
+    bdb_blob = "\x00\x06\x15\x61 legacy berkeleydb rpm packages \x00\x00"
+    tar_bytes = _make_tar_with_file("var/lib/rpm/Packages", bdb_blob)
+
+    with tempfile.NamedTemporaryFile(suffix=".tar") as tmp:
+        tmp.write(tar_bytes)
+        tmp.flush()
+        with caplog.at_level(logging.WARNING, logger="agent_bom.image"):
+            packages = _packages_from_tar(tmp.name)
+
+    # No fatal error, and no phantom rpm packages invented from the binary db.
+    assert [p for p in packages if p.ecosystem == "rpm"] == []
+    assert any("legacy rpm database" in r.getMessage().lower() for r in caplog.records)
+
+
 def _make_tar_with_files(files: dict[str, str]) -> bytes:
     """Create an in-memory tar archive from a {path: content} mapping."""
     buf = BytesIO()

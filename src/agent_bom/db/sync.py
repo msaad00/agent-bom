@@ -1356,6 +1356,73 @@ def _extract_nvd_cve_fields(cve_data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _cpe_version_bound(match: dict[str, Any], including_key: str, excluding_key: str) -> tuple[Optional[str], Optional[str]]:
+    """Return (value, op) for one CPE version bound — 'including'/'excluding' or (None, None)."""
+    inc = match.get(including_key)
+    if inc:
+        return str(inc), "including"
+    exc = match.get(excluding_key)
+    if exc:
+        return str(exc), "excluding"
+    return None, None
+
+
+def _extract_nvd_cpe_matches(cve_data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract vulnerable CPE applicability ranges from one NVD CVE object.
+
+    NVD 2.0 nests applicability as ``configurations[].nodes[].cpeMatch[]``; each
+    match carries a ``cpe:2.3:part:vendor:product:version:...`` criteria string
+    plus optional version-range bounds. Only ``vulnerable`` matches are kept.
+    """
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, Optional[str], Optional[str]]] = set()
+    for config in cve_data.get("configurations") or []:
+        for node in config.get("nodes") or []:
+            for match in node.get("cpeMatch") or []:
+                if not match.get("vulnerable"):
+                    continue
+                criteria = str(match.get("criteria") or "")
+                parts = criteria.split(":")
+                if not criteria.startswith("cpe:2.3:") or len(parts) < 6:
+                    continue
+                vendor, product, version = parts[3], parts[4], parts[5]
+                start, start_op = _cpe_version_bound(match, "versionStartIncluding", "versionStartExcluding")
+                end, end_op = _cpe_version_bound(match, "versionEndIncluding", "versionEndExcluding")
+                key = (criteria, start, end)
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append(
+                    {
+                        "criteria": criteria,
+                        "vendor": vendor,
+                        "product": product,
+                        "version": version if version not in ("*", "-", "") else None,
+                        "version_start": start,
+                        "version_start_op": start_op,
+                        "version_end": end,
+                        "version_end_op": end_op,
+                    }
+                )
+    return rows
+
+
+def _upsert_cpe_matches(conn: sqlite3.Connection, cve_id: str, rows: list[dict[str, Any]]) -> int:
+    """Replace the stored CPE applicability rows for one CVE."""
+    conn.execute("DELETE FROM cpe_matches WHERE cve_id = ?", (cve_id,))
+    if not rows:
+        return 0
+    conn.executemany(
+        """
+        INSERT OR IGNORE INTO cpe_matches
+            (cve_id, criteria, vendor, product, version, version_start, version_start_op, version_end, version_end_op)
+        VALUES (:cve_id, :criteria, :vendor, :product, :version, :version_start, :version_start_op, :version_end, :version_end_op)
+        """,
+        [{"cve_id": cve_id, **r} for r in rows],
+    )
+    return len(rows)
+
+
 def _upsert_nvd_enrichment_row(conn: sqlite3.Connection, cve_id: str, fields: dict[str, Any]) -> bool:
     """Insert or update one CVE row from parsed NVD fields."""
     if not fields.get("cvss_score") and not fields.get("cwe_ids"):
@@ -1469,6 +1536,10 @@ def sync_nvd_incremental(
             if not cve_id.startswith("CVE-"):
                 continue
             fields = _extract_nvd_cve_fields(cve_data)
+            # Store CPE applicability for every synced CVE — it powers the
+            # nvd_cpe_candidate matcher independently of whether the CVE already
+            # has an enrichment row.
+            _upsert_cpe_matches(conn, cve_id, _extract_nvd_cpe_matches(cve_data))
             if _upsert_nvd_enrichment_row(conn, cve_id, fields):
                 enriched += 1
                 if enriched >= max_results:

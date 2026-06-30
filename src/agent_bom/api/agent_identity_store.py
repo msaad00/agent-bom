@@ -67,6 +67,18 @@ class AgentIdentity:
     # ("*" allows all). Enforced at the gateway/proxy decision point so the
     # identity itself constrains authorization, not just the policy.
     allowed_tools: list[str] = field(default_factory=list)
+    # Accountable owner of this ISSUED identity — the human / team / service that
+    # provisioned it and is answerable for it. New identities are always
+    # owner-bound at issue time (the issuing actor when no explicit owner is
+    # given), so an agent-bom-issued identity carries the same attribution as a
+    # discovered cloud NHI. Empty only for rows persisted before owner-binding
+    # existed; ``owner_type`` is advisory (user | team | service).
+    #
+    # Migration: persisted JSON rows written before this field existed simply
+    # lack the key and deserialize back to "" (no schema change needed — the
+    # SQLite/Postgres stores keep the full dataclass as JSON ``data``).
+    owner: str = ""
+    owner_type: str = ""
     rotated_to_id: str = ""
     revoked_at: str = ""
     revoked_reason: str = ""
@@ -649,9 +661,16 @@ def issue_identity(
     blueprint_id: str = "",
     ttl_seconds: int = 90 * 86400,
     allowed_tools: list[str] | None = None,
+    owner: str = "",
+    owner_type: str = "",
 ) -> tuple[AgentIdentity, str]:
     """Issue a new identity. Returns ``(identity, raw_token)``; the raw token is
-    only available here and at rotation."""
+    only available here and at rotation.
+
+    ``owner`` records the accountable principal (human / team / service) for the
+    issued identity and is preserved across rotation; pass it so the identity is
+    owner-bound at birth rather than orphaned.
+    """
     raw, prefix, token_hash = generate_token()
     now = _now()
     identity = AgentIdentity(
@@ -666,6 +685,8 @@ def issue_identity(
         issued_at=_iso(now),
         expires_at=_ttl_to_expiry(ttl_seconds, at=now),
         allowed_tools=list(allowed_tools or []),
+        owner=str(owner or "").strip()[:200],
+        owner_type=str(owner_type or "").strip()[:60],
     )
     store.put(identity)
     return identity, raw
@@ -705,6 +726,8 @@ def rotate_identity(
         blueprint_id=old.blueprint_id,
         ttl_seconds=ttl_seconds,
         allowed_tools=old.allowed_tools,
+        owner=old.owner,
+        owner_type=old.owner_type,
     )
     now = _now()
     old.status = "rotating"
@@ -1126,7 +1149,13 @@ def deprovision_dormant_identities(
                     "after_state": "revoked",
                     "observed_at": _iso(now),
                     "window_key": identity.revoked_at,
-                    "detail": {"agent_id": identity.agent_id, "last_used_at": last_used, "window_days": window},
+                    "detail": {
+                        "agent_id": identity.agent_id,
+                        "owner": identity.owner,
+                        "owner_type": identity.owner_type,
+                        "last_used_at": last_used,
+                        "window_days": window,
+                    },
                 },
                 audit_log,
             )
@@ -1195,7 +1224,13 @@ def flag_rotation_due_identities(
                     "after_state": "rotation_due",
                     "observed_at": _iso(now),
                     "window_key": identity.issued_at,
-                    "detail": {"agent_id": identity.agent_id, "issued_at": identity.issued_at, "window_days": window},
+                    "detail": {
+                        "agent_id": identity.agent_id,
+                        "owner": identity.owner,
+                        "owner_type": identity.owner_type,
+                        "issued_at": identity.issued_at,
+                        "window_days": window,
+                    },
                 },
                 audit_log,
             )

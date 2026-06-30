@@ -26,6 +26,7 @@ from agent_bom.output import (
     export_prometheus,
     export_sarif,
     export_spdx,
+    export_spdx2,
     print_agent_tree,
     print_attack_flow_tree,
     print_blast_radius,
@@ -52,6 +53,7 @@ from agent_bom.output import (
     to_prometheus,
     to_sarif,
     to_spdx,
+    to_spdx2,
 )
 
 _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
@@ -59,6 +61,7 @@ _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     "cyclonedx": ("agent-bom.cdx.json", (".cdx.json", ".json")),
     "sarif": ("agent-bom.sarif", (".sarif", ".sarif.json")),
     "spdx": ("agent-bom.spdx.json", (".spdx.json", ".json")),
+    "spdx2": ("agent-bom.spdx2.json", (".spdx2.json", ".spdx.json", ".json")),
     "junit": ("agent-bom-results.xml", (".xml",)),
     "csv": ("agent-bom-results.csv", (".csv",)),
     "markdown": ("agent-bom-report.md", (".md", ".markdown")),
@@ -128,6 +131,8 @@ def _stdout_serialization(
         return json.dumps(to_sarif(report, exclude_unfixable=exclude_unfixable), indent=2)
     if output_format == "spdx":
         return json.dumps(to_spdx(report), indent=2)
+    if output_format == "spdx2":
+        return json.dumps(to_spdx2(report), indent=2)
     if output_format == "junit":
         return to_junit(report, blast_radii)
     if output_format == "csv":
@@ -242,6 +247,8 @@ def render_output(
                 sys.stdout.write(json.dumps(to_sarif(report, exclude_unfixable=exclude_unfixable), indent=2))
             elif output_format == "spdx":
                 sys.stdout.write(json.dumps(to_spdx(report), indent=2))
+            elif output_format == "spdx2":
+                sys.stdout.write(json.dumps(to_spdx2(report), indent=2))
             elif output_format == "html":
                 from agent_bom.output import to_html
 
@@ -393,6 +400,10 @@ def render_output(
             out_path = _resolve_output_path(output, output_format)
             export_spdx(report, out_path)
             con.print(f"\n  [green]✓[/green] SPDX 3.0 BOM: {out_path}")
+        elif output_format == "spdx2":
+            out_path = _resolve_output_path(output, output_format)
+            export_spdx2(report, out_path)
+            con.print(f"\n  [green]✓[/green] SPDX 2.3 BOM: {out_path}")
         elif output_format == "junit":
             out_path = _resolve_output_path(output, output_format)
             export_junit(report, out_path, blast_radii)

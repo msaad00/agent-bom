@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_bom.asset_provenance import package_version_provenance
+from agent_bom.checksums import spdx3_verified_using
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
 from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version
@@ -148,6 +149,9 @@ def to_spdx(report: AIBOMReport) -> dict:
                             "statement": f"agent-bom:version-provenance-confidence={version_provenance.get('confidence', 'unknown')}",
                         },
                     ]
+                    verified_using = spdx3_verified_using(pkg.checksums)
+                    if verified_using:
+                        pkg_element["verifiedUsing"] = verified_using
                     if pkg.purl:
                         pkg_element["externalIdentifier"] = [{"type": "PackageURL", "identifier": pkg.purl}]
                     if pkg.license_expression or pkg.license:

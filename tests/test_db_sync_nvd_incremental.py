@@ -10,11 +10,11 @@ from agent_bom.db.schema import init_db
 from agent_bom.db.sync import sync_nvd_incremental
 
 
-def _incremental_payload(cve_id: str = "CVE-2026-10001") -> dict:
+def _incremental_payload(cve_id: str = "CVE-2026-10001", *, total_results: int = 1) -> dict:
     return {
         "resultsPerPage": 1,
         "startIndex": 0,
-        "totalResults": 1,
+        "totalResults": total_results,
         "vulnerabilities": [
             {
                 "cve": {
@@ -101,4 +101,27 @@ def test_sync_nvd_incremental_keeps_checkpoint_on_failure() -> None:
     # On failure the synced-through cursor must NOT jump to now — it stays at the
     # window start so the next run retries the unsynced window (no skipped CVEs).
     assert payload["sync_failed"] is True
+    assert payload["last_modified_end"] == payload["last_modified_start"]
+
+
+def test_sync_nvd_incremental_keeps_checkpoint_when_capped() -> None:
+    conn = init_db(Path(":memory:"))
+
+    def fake_fetch(url, *, timeout=60, headers=None):
+        return _incremental_payload(total_results=10)
+
+    with patch("agent_bom.http_client.fetch_json", side_effect=fake_fetch):
+        with patch("time.sleep"):
+            count = sync_nvd_incremental(
+                conn,
+                nvd_api_key="test-key",
+                url="https://services.nvd.nist.gov/rest/json/cves/2.0",
+                max_results=1,
+            )
+
+    assert count == 1
+    meta = conn.execute("SELECT metadata_json FROM sync_meta WHERE source = 'nvd'").fetchone()
+    payload = json.loads(meta[0])
+    assert payload["sync_failed"] is False
+    assert payload["sync_truncated"] is True
     assert payload["last_modified_end"] == payload["last_modified_start"]

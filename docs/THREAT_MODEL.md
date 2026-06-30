@@ -179,4 +179,4 @@ Current limitations:
 ## Review cadence
 
 This threat model is reviewed with each major release (x.0) and after any
-security advisory. Last reviewed: v0.88.1 (May 2026).
+security advisory. Last reviewed: v0.90.0 (June 2026).

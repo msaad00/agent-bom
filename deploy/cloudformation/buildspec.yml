@@ -8,7 +8,7 @@
 #   AGENT_BOM_AWS_INVENTORY=1     enables AWS inventory enrichment
 #   SCAN_REGION                   region passed to `agent-bom cloud aws --region`
 #   REPORT_BUCKET                 private S3 bucket for reports
-#   AGENT_BOM_SPEC                pip requirement, e.g. "agent-bom[aws]==0.89.2"
+#   AGENT_BOM_SPEC                pip requirement, e.g. "agent-bom[aws]==0.90.0"
 #   FAIL_ON_SEVERITY              none|low|medium|high|critical
 #
 # The scan is read-only: every `agent-bom cloud aws` invocation discovers

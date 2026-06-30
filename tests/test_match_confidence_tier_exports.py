@@ -6,8 +6,6 @@ and the HTML dashboard alike.
 
 from __future__ import annotations
 
-import json
-
 from agent_bom.models import (
     Agent,
     AgentType,
@@ -76,9 +74,11 @@ def test_sarif_carries_tier_and_canonical_cve_ids() -> None:
 
 def test_json_report_carries_tier() -> None:
     payload = to_json(_report_with_tier())  # to_json returns a dict
-    blob = json.dumps(payload)
-    assert "nvd_cpe_candidate" in blob
-    assert '"match_confidence_tier"' in blob
+    # Pin the tier on the blast_radius rollup — the row-for-row analog of the
+    # SARIF results and HTML rows — rather than a loose whole-document substring
+    # check, so a regression that drops it from this subtree fails loudly.
+    blast_radius = payload["blast_radius"][0]
+    assert blast_radius["match_confidence_tier"] == "nvd_cpe_candidate"
 
 
 def test_html_dashboard_renders_tier() -> None:

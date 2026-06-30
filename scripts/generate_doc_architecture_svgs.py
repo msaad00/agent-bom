@@ -150,17 +150,55 @@ def _lane_header(x: int, y: int, w: int, label: str, lane_key: str, tag: str, t:
 
 
 def _lane_flow(x1: int, x2: int, y: int, label: str, t: dict, accent: bool = False) -> str:
-    """Header-band connector without marker url(#…) refs (GitHub PR preview rejects those)."""
+    """Gutter connector between lane panels — label sits above the arrow stem."""
     color = t["arrow_accent"] if accent else t["arrow"]
     width = "2.2" if accent else "1.8"
     tip = x2 - 1
     stem = x2 - 7
+    mid = (x1 + x2) // 2
     return (
         f'<line x1="{x1}" y1="{y}" x2="{stem}" y2="{y}" stroke="{color}" stroke-width="{width}"/>'
         f'<polygon points="{tip},{y} {stem},{y - 3.5} {stem},{y + 3.5}" fill="{color}"/>'
-        f'<text x="{(x1 + x2) // 2}" y="{y - 8}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
-        f'font-size="7.5" font-weight="800" letter-spacing="0.08em" fill="{t["accent"] if accent else t["lane_muted"]}">'
-        f"{_esc(label)}</text>"
+        f'<text x="{mid}" y="{y - 10}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
+        f'font-size="7" font-weight="800" letter-spacing="0.1em" fill="{t["accent"] if accent else t["lane_muted"]}">'
+        f"{_esc(label.upper())}</text>"
+    )
+
+
+def _hub_node(
+    nx: int,
+    ny: int,
+    size: int,
+    label: str,
+    icon: str,
+    t: dict,
+    *,
+    center: bool = False,
+) -> str:
+    """Evidence-lane node card — icon and label stay inside the box."""
+    half = size // 2
+    x, y = nx - half, ny - half
+    fill = t["accent_fill"] if center else t["card"]
+    stroke = t["accent_stroke"] if center else t["card_stroke"]
+    icon_sz = max(22, int(size * 0.48))
+    icon_y = y + 8 if center else y + 7
+    label_y = y + size - 8
+    return (
+        f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="{max(8, size // 5)}" fill="{fill}" '
+        f'stroke="{stroke}" stroke-width="{"1.8" if center else "1.3"}"/>'
+        + _icon_box(nx - icon_sz // 2, icon_y, ICONS[icon], t, accent=center, box=False, size=icon_sz)
+        + _text(
+            nx,
+            label_y,
+            label,
+            **{
+                "text-anchor": "middle",
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "8" if center else "7.5",
+                "font-weight": "800",
+                "fill": t["accent"] if center else t["text"],
+            },
+        )
     )
 
 
@@ -305,11 +343,11 @@ def how_it_works(theme_name: str) -> str:
     ]
     outputs = ["SARIF", "SBOM", "HTML", "JSON", "GATE", "FIX"]
 
-    lane_top = 84
-    lane_h = 360
-    flow_y = 74
+    lane_top = 102
+    lane_h = 348
+    flow_y = 88
 
-    parts = _svg_open(w, h, "How agent-bom works", "Read-only intake through scan pipeline into unified Finding and UnifiedGraph.")
+    parts = _svg_open(w, h, "How agent-bom works", "Read-only intake through scan pipeline into unified Finding and ContextGraph.")
     parts += [
         "<defs>",
         '<linearGradient id="core-glow" x1="0" y1="0" x2="1" y2="1">'
@@ -327,7 +365,7 @@ def how_it_works(theme_name: str) -> str:
         _text(
             28,
             60,
-            "One read-only pipeline · one Finding + UnifiedGraph · CLI · API · UI · MCP",
+            "One read-only pipeline · one Finding + ContextGraph · CLI · API · UI · MCP",
             **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "500", "fill": t["subtitle"]},
         ),
     ]
@@ -421,39 +459,24 @@ def how_it_works(theme_name: str) -> str:
         )
 
     evidence_x = lane_x[2]
-    cx, cy = evidence_x + lane_w // 2, lane_top + 188
-    parts.append(f'<circle cx="{cx}" cy="{cy}" r="54" fill="url(#core-glow)"/>')
-    nodes = [
-        (cx, cy - 48, "Finding", True, "finding"),
-        (cx - 58, cy - 6, "Asset", False, "package"),
-        (cx + 58, cy - 6, "Agent", False, "mcp"),
-        (cx - 42, cy + 46, "Tool", False, "bug"),
-        (cx + 42, cy + 46, "Cred", False, "lock"),
+    cx = evidence_x + lane_w // 2
+    cy = lane_top + 198
+    parts.append(f'<circle cx="{cx}" cy="{cy}" r="58" fill="url(#core-glow)"/>')
+    hub_nodes = [
+        (cx, cy - 54, 58, "Finding", "finding", True),
+        (cx - 58, cy + 2, 50, "Asset", "package", False),
+        (cx + 58, cy + 2, 50, "Agent", "mcp", False),
+        (cx - 34, cy + 56, 46, "Tool", "bug", False),
+        (cx + 34, cy + 56, 46, "Cred", "lock", False),
     ]
-    for nx, ny, nlabel, center, icon in nodes:
+    for nx, ny, _size, _label, _icon, center in hub_nodes:
         if not center:
-            parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" stroke-width="1.2" opacity="0.7"/>')
-    for nx, ny, nlabel, center, icon in nodes:
-        r = 28 if center else 22
-        fill = t["accent_fill"] if center else t["card"]
-        stroke = t["accent_stroke"] if center else t["card_stroke"]
-        parts.append(f'<circle cx="{nx}" cy="{ny}" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{"1.8" if center else "1.3"}"/>')
-        icon_size = 22 if center else 16
-        parts.append(_icon_box(nx - icon_size // 2, ny - icon_size // 2 - 2, ICONS[icon], t, accent=center, box=False, size=icon_size))
-        parts.append(
-            _text(
-                nx,
-                ny + (22 if center else 28),
-                nlabel,
-                **{
-                    "text-anchor": "middle",
-                    "font-family": "Inter,system-ui,sans-serif",
-                    "font-size": "9" if center else "7.5",
-                    "font-weight": "800",
-                    "fill": t["accent"] if center else t["text"],
-                },
+            parts.append(
+                f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" '
+                f'stroke-width="1.3" opacity="0.75"/>'
             )
-        )
+    for nx, ny, size, nlabel, icon, center in hub_nodes:
+        parts.append(_hub_node(nx, ny, size, nlabel, icon, t, center=center))
 
     for i, chip in enumerate(["severity", "provenance", "tenant"]):
         chip_w, chip_gap = 50, 4
@@ -517,7 +540,17 @@ def how_it_works(theme_name: str) -> str:
         )
 
     for i in range(4):
-        parts.append(_lane_flow(lane_x[i] + lane_w, lane_x[i + 1], flow_y, ["collect", "normalize", "serve", "export"][i], t, accent=(i == 2)))
+        gutter_mid = (lane_x[i] + lane_w + lane_x[i + 1]) // 2
+        parts.append(
+            _lane_flow(
+                gutter_mid - 14,
+                gutter_mid + 14,
+                flow_y,
+                ["collect", "normalize", "serve", "export"][i],
+                t,
+                accent=(i == 2),
+            )
+        )
 
     parts.append(_trust_footer(w, h, t, "read-only · secret redaction · signed evidence · same model everywhere"))
     parts.append("</svg>")

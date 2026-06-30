@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from agent_bom.db.schema import init_db
 from agent_bom.db.sync import sync_nvd_incremental
@@ -125,3 +126,81 @@ def test_sync_nvd_incremental_keeps_checkpoint_when_capped() -> None:
     assert payload["sync_failed"] is False
     assert payload["sync_truncated"] is True
     assert payload["last_modified_end"] == payload["last_modified_start"]
+
+
+def _cve_object(cve_id: str) -> dict:
+    return {
+        "cve": {
+            "id": cve_id,
+            "descriptions": [{"lang": "en", "value": f"NVD CVE {cve_id}"}],
+            "metrics": {
+                "cvssMetricV31": [
+                    {
+                        "cvssData": {
+                            "baseScore": 7.5,
+                            "baseSeverity": "HIGH",
+                            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+                        }
+                    }
+                ]
+            },
+            "weaknesses": [{"description": [{"lang": "en", "value": "CWE-79"}]}],
+        }
+    }
+
+
+def _paginated_pool_fetch(pool: list[str]):
+    """Mock NVD that serves a fixed pool of distinct CVEs paginated by the
+    request's startIndex/resultsPerPage — so a capped run fetches a contiguous
+    prefix and a later run can reach the unsynced tail."""
+
+    def fetch(url, *, timeout=60, headers=None):
+        q = parse_qs(urlparse(url).query)
+        start = int(q["startIndex"][0])
+        per = int(q["resultsPerPage"][0])
+        window = pool[start : start + per]
+        return {
+            "resultsPerPage": per,
+            "startIndex": start,
+            "totalResults": len(pool),
+            "vulnerabilities": [_cve_object(cid) for cid in window],
+        }
+
+    return fetch
+
+
+def test_sync_nvd_incremental_capped_runs_make_forward_progress() -> None:
+    """Regression: a capped window must ingest its unsynced tail across runs.
+
+    The prior behaviour re-saturated the cap on the same head every run (cursor
+    pinned, start_index reset to 0, every CVE counted toward the cap), so the
+    tail was never reached and was eventually skipped by the lookback clamp.
+    """
+    conn = init_db(Path(":memory:"))
+    pool = [f"CVE-2026-2{n:04d}" for n in range(5)]  # 5 distinct CVEs
+
+    def distinct(n: int) -> int:
+        return conn.execute("SELECT COUNT(DISTINCT id) FROM vulns WHERE source='nvd'").fetchone()[0]
+
+    with patch("agent_bom.http_client.fetch_json", side_effect=_paginated_pool_fetch(pool)):
+        with patch("time.sleep"):
+            kwargs = dict(
+                nvd_api_key="test-key",
+                url="https://services.nvd.nist.gov/rest/json/cves/2.0",
+                max_results=2,
+            )
+            # Run 1: ingest the first 2, truncated.
+            assert sync_nvd_incremental(conn, **kwargs) == 2
+            assert distinct(0) == 2
+            # Run 2: head (0,1) no longer counts toward the cap -> reach 2,3.
+            assert sync_nvd_incremental(conn, **kwargs) == 2
+            assert distinct(0) == 4  # forward progress; the bug stayed at 2
+            # Run 3: only CVE 4 left -> window drains, cursor advances.
+            assert sync_nvd_incremental(conn, **kwargs) == 1
+            assert distinct(0) == 5
+
+    meta = conn.execute("SELECT metadata_json FROM sync_meta WHERE source = 'nvd'").fetchone()
+    payload = json.loads(meta[0])
+    assert payload["sync_truncated"] is False
+    # Window fully drained: synced-through cursor advances past the window start.
+    assert payload["last_modified_end"] != payload["last_modified_start"]

@@ -85,7 +85,7 @@ def match_component_cpe(
     rows = conn.execute(
         "SELECT cve_id, criteria, version, version_start, version_start_op, "
         "version_end, version_end_op "
-        f"FROM cpe_matches WHERE product IN ({placeholders}) LIMIT ?",
+        f"FROM cpe_matches WHERE product IN ({placeholders}) LIMIT ?",  # nosec B608 - placeholders are generated solely from "?" markers
         (*products, limit),
     ).fetchall()
 

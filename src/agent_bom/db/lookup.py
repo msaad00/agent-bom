@@ -220,7 +220,7 @@ def cpe_lookup_package(conn: sqlite3.Connection, name: str, version: str, *, lim
         row["id"]: row
         for row in conn.execute(
             "SELECT id, summary, severity, cvss_score, cvss_vector, fixed_version, "
-            f"cwe_ids, aliases, published, modified FROM vulns WHERE id IN ({placeholders})",
+            f"cwe_ids, aliases, published, modified FROM vulns WHERE id IN ({placeholders})",  # nosec B608 - placeholders are generated solely from "?" markers
             cve_ids,
         ).fetchall()
     }

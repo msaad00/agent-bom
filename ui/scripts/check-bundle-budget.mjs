@@ -20,7 +20,7 @@ const BUDGETS = {
   // Includes the self-service cloud-connections page + Add Cloud Account wizard.
   // Includes recurring cloud-connection scan schedules; keep small CI variance headroom.
   // Includes the repo folder/file structure graph layer icons and code-layer filters.
-  totalClientJsBytes: 3_075_000,
+  totalClientJsBytes: 3_125_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

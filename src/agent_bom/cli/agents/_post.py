@@ -241,6 +241,25 @@ def run_integrations(
         con.print(f"  [yellow]⚠[/yellow] --siem {siem_type} set but --siem-url is required")
 
 
+# Severities that carry no usable rank for a policy gate: UNKNOWN means the
+# finding has not been enriched yet, NONE means a missing/zeroed score. Both
+# compare below every selectable --fail-on-severity threshold, so a naive
+# rank comparison lets them slip past an active gate (fail-open). Treat them as
+# tripping any active gate instead (fail-closed) — a CVE whose severity has not
+# resolved must not silently pass CI.
+_FAIL_CLOSED_SEVERITIES = frozenset({"unknown", "none"})
+
+
+def _fail_gate_meets(sev: str, threshold: int) -> bool:
+    """Return True if a finding's severity should trip an active fail gate.
+
+    Fail-closed for UNKNOWN/NONE severities; otherwise compare by rank.
+    """
+    if sev in _FAIL_CLOSED_SEVERITIES:
+        return True
+    return SEVERITY_ORDER.get(sev, 0) >= threshold
+
+
 def compute_exit_code(
     ctx: ScanContext,
     *,
@@ -277,7 +296,7 @@ def compute_exit_code(
         threshold = SEVERITY_ORDER.get(fail_threshold, 0)
         for br in _active_blast_radii:
             sev = br.vulnerability.severity.value.lower()
-            if SEVERITY_ORDER.get(sev, 0) >= threshold:
+            if _fail_gate_meets(sev, threshold):
                 if not quiet:
                     con.print(f"\n  [red]Exiting with code 1: found {sev} vulnerability ({br.vulnerability.id})[/red]")
                 exit_code = 1
@@ -289,7 +308,7 @@ def compute_exit_code(
         threshold = SEVERITY_ORDER.get(fail_threshold, 0)
         for f in report.iac_findings_data.get("findings", []):
             sev = (f.get("severity") or "medium").lower()
-            if SEVERITY_ORDER.get(sev, 0) >= threshold:
+            if _fail_gate_meets(sev, threshold):
                 if not quiet:
                     con.print(
                         f"\n  [red]Exiting with code 1: IaC {sev} misconfiguration"
@@ -312,7 +331,7 @@ def compute_exit_code(
         threshold = SEVERITY_ORDER.get(fail_threshold, 0)
         for finding in unified_findings:
             sev = str(finding.severity or "low").lower()
-            if SEVERITY_ORDER.get(sev, 0) >= threshold:
+            if _fail_gate_meets(sev, threshold):
                 if not quiet:
                     con.print(f"\n  [red]Exiting with code 1: found {sev} finding ({finding.finding_type.value})[/red]")
                 exit_code = 1

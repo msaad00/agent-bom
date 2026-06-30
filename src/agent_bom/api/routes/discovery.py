@@ -384,12 +384,15 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
                 server.packages = extract_packages(server)
     scan_history_index = _build_scan_history_index(tenant_id)
     gateway_index = _build_gateway_index(tenant_id)
-    fleet_index = {item.name: item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
+    # Key by canonical_id so distinct FleetAgents that share a bare name
+    # (different source_ids) stay distinct; fall back to name only for legacy
+    # records that predate canonical-id backfill.
+    fleet_index = {(item.canonical_id or item.name): item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
     for agent in agents:
         _persist_agent_observations(
             tenant_id,
             agent,
-            fleet_agent=fleet_index.get(agent.name),
+            fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "") or agent.name),
             scan_history_index=scan_history_index,
             gateway_index=gateway_index,
         )
@@ -399,7 +402,7 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
         "agents": [
             _serialize_agent(
                 a,
-                fleet_agent=fleet_index.get(a.name),
+                fleet_agent=fleet_index.get(getattr(a, "canonical_id", "") or a.name),
                 scan_history_index=scan_history_index,
                 gateway_index=gateway_index,
                 observation_index=observation_index,
@@ -464,12 +467,12 @@ async def get_agent_mesh(request: Request) -> dict:
         tenant_id = _tenant_id(request)
         scan_history_index = _build_scan_history_index(tenant_id)
         gateway_index = _build_gateway_index(tenant_id)
-        fleet_index = {item.name: item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
+        fleet_index = {(item.canonical_id or item.name): item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
         for agent in agents:
             _persist_agent_observations(
                 tenant_id,
                 agent,
-                fleet_agent=fleet_index.get(agent.name),
+                fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "") or agent.name),
                 scan_history_index=scan_history_index,
                 gateway_index=gateway_index,
             )
@@ -477,7 +480,7 @@ async def get_agent_mesh(request: Request) -> dict:
         agents_data = [
             _serialize_agent(
                 a,
-                fleet_agent=fleet_index.get(a.name),
+                fleet_agent=fleet_index.get(getattr(a, "canonical_id", "") or a.name),
                 scan_history_index=scan_history_index,
                 gateway_index=gateway_index,
                 observation_index=observation_index,

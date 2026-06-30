@@ -2460,6 +2460,69 @@ class TestGraphStoreBackendSelection:
         assert any(call[0] == "traverse_subgraph" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
+    def test_graph_query_keeps_attack_path_with_filtered_intermediate_hop(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data")
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:cve",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                risk_score=9.8,
+            )
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:fs", relationship=RelationshipType.USES, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:fs", target="pkg:npm:form-data", relationship=RelationshipType.DEPENDS_ON, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="pkg:npm:form-data", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO, traversable=True)
+        )
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "server:fs", "pkg:npm:form-data", "vuln:cve"],
+                edges=["uses", "depends_on", "vulnerable_to"],
+                composite_risk=9.8,
+                summary="agent-a -> mcp-fs -> form-data -> CVE-2026-1",
+            )
+        )
+        client = TestClient(app)
+
+        # The entity_types filter drops the server/package hops from the returned
+        # node set, but the attack path rooted at agent:a must survive with its
+        # intermediate hop labels back-filled from the store.
+        response = client.post(
+            "/v1/graph/query",
+            json={
+                "roots": ["agent:a"],
+                "direction": "forward",
+                "max_depth": 3,
+                "entity_types": ["agent", "vulnerability"],
+                "include_attack_paths": True,
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert {node["id"] for node in body["nodes"]} == {"agent:a", "vuln:cve"}
+        assert body["attack_paths"], "filtered /graph/query dropped attack path with a filtered intermediate hop"
+        path = body["attack_paths"][0]
+        assert path["target"] == "vuln:cve"
+        exposure_hops = {hop["id"]: hop for hop in path["exposure_path"]["hops"]}
+        assert exposure_hops["pkg:npm:form-data"]["label"] == "form-data"
+        assert exposure_hops["pkg:npm:form-data"]["role"] != "unknown"
+        assert exposure_hops["server:fs"]["label"] == "mcp-fs"
+        assert exposure_hops["server:fs"]["role"] != "unknown"
+
     def test_graph_query_severity_filter_preserves_non_finding_context(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))

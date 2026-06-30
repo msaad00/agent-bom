@@ -100,8 +100,17 @@ def normalize_version(version: str, ecosystem: str) -> str:
     if ecosystem == "pypi":
         version = re.sub(r"\.?(alpha|a)(\d+)?", r"a\2", version, flags=re.IGNORECASE)
         version = re.sub(r"\.?(beta|b)(\d+)?", r"b\2", version, flags=re.IGNORECASE)
-        version = re.sub(r"\.?(preview|c|rc)(\d+)?", r"rc\2", version, flags=re.IGNORECASE)
-        version = re.sub(r"\.?(post|rev|r)(\d+)?", r".post\2", version, flags=re.IGNORECASE)
+        version = re.sub(r"\.?(preview|rc)(\d+)?", r"rc\2", version, flags=re.IGNORECASE)
+        # Legacy single-letter ``c`` spelling of ``rc`` (PEP 440 ``1.0c1`` ->
+        # ``1.0rc1``). Require a trailing digit and refuse the ``c`` that sits
+        # inside an already-normalized ``rc`` so we never double it into ``rrc``.
+        version = re.sub(r"(?<![a-z])c(\d+)", r"rc\1", version, flags=re.IGNORECASE)
+        # Post-release tags. The single-letter ``r`` spelling (PEP 440 ``1.0r5``
+        # -> ``1.0.post5``) MUST require a trailing digit; otherwise it swallows
+        # the ``r`` inside an ``rc`` pre-release (``1.0rc1`` -> ``1.0.postc1``),
+        # corrupting normalization and comparison for every release candidate.
+        version = re.sub(r"\.?(post|rev)(\d+)?", r".post\2", version, flags=re.IGNORECASE)
+        version = re.sub(r"\.?r(\d+)", r".post\1", version, flags=re.IGNORECASE)
         version = re.sub(r"\.?(dev)(\d+)?", r".dev\2", version, flags=re.IGNORECASE)
 
     return version
@@ -198,6 +207,19 @@ def _go_pseudo_timestamp(version: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _go_packaging_operand(version: str) -> str:
+    """Return the ``X.Y.Z`` base of a Go version for packaging comparison.
+
+    A pseudo-version (``vX.Y.Z-<ts>-<sha>``) is collapsed to its ``X.Y.Z``
+    base so it can be ordered against an ordinary tagged bound; the
+    date/sha suffix is not PEP 440-parsable on its own. Plain tags just
+    lose the leading ``v``.
+    """
+    if _go_pseudo_timestamp(version):
+        version = version.split("-", 1)[0]
+    return version[1:] if version.startswith("v") else version
+
+
 def _compare_go_versions(left: str, right: str) -> int | None:
     left_ts = _go_pseudo_timestamp(left)
     right_ts = _go_pseudo_timestamp(right)
@@ -206,8 +228,8 @@ def _compare_go_versions(left: str, right: str) -> int | None:
     try:
         from packaging.version import Version
 
-        left_norm = left[1:] if left.startswith("v") else left
-        right_norm = right[1:] if right.startswith("v") else right
+        left_norm = _go_packaging_operand(left)
+        right_norm = _go_packaging_operand(right)
         return (Version(left_norm) > Version(right_norm)) - (Version(left_norm) < Version(right_norm))
     except Exception:  # noqa: BLE001
         return None
@@ -448,11 +470,25 @@ def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
 
             left_stripped = _strip_semver_prerelease_tag(left)
             right_stripped = _strip_semver_prerelease_tag(right)
-            if left_stripped == left and right_stripped == right:
+            left_had_pre = left_stripped != left
+            right_had_pre = right_stripped != right
+            if not left_had_pre and not right_had_pre:
                 return None  # no pre-release tag — original failure stands
             ln = normalize_version(left_stripped, eco)
             rn = normalize_version(right_stripped, eco)
-            return (Version(ln) > Version(rn)) - (Version(ln) < Version(rn))
+            base_cmp = (Version(ln) > Version(rn)) - (Version(ln) < Version(rn))
+            if base_cmp != 0:
+                return base_cmp
+            # Equal base release. A SemVer pre-release sorts STRICTLY BELOW the
+            # release it precedes (``13.4.20-canary.13`` < ``13.4.20``). When
+            # only one side carries the pre-release tag, order it below the bare
+            # release — collapsing to equality here would let a canary/nightly
+            # build read as already past a fix bound, hiding the vulnerability.
+            if left_had_pre and not right_had_pre:
+                return -1
+            if right_had_pre and not left_had_pre:
+                return 1
+            return 0
         except Exception:  # noqa: BLE001
             return None
 
@@ -513,15 +549,22 @@ def version_in_range(
                 if not boundary:
                     continue
                 boundary_ts = _go_pseudo_timestamp(boundary)
-                if not boundary_ts:
+                cmp: int | None
+                if boundary_ts:
+                    cmp = (ver_ts > boundary_ts) - (ver_ts < boundary_ts)
+                else:
+                    # Tagged bound: route the pseudo-vs-tagged comparison
+                    # through compare_version_order instead of skipping it,
+                    # so the boundary still constrains range membership.
+                    cmp = compare_version_order(version, boundary, ecosystem)
+                if cmp is None:
                     continue
-                if is_lower and ver_ts < boundary_ts:
+                if is_lower and cmp < 0:
                     return False
-                if not is_lower and boundary == fix and ver_ts >= boundary_ts:
+                if not is_lower and boundary == fix and cmp >= 0:
                     return False
-                if not is_lower and boundary == last and ver_ts > boundary_ts:
+                if not is_lower and boundary == last and cmp > 0:
                     return False
-            return True
 
     if intro:
         intro_cmp = compare_version_order(version, intro, ecosystem)

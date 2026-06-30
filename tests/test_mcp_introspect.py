@@ -337,6 +337,39 @@ def test_enrich_servers_no_duplicate_tools():
     assert len(server.tools) == 1
 
 
+def test_enrich_servers_matches_by_identity_when_names_collide():
+    # Two agents expose servers with the SAME human-readable name but distinct
+    # commands (distinct identities). Enrichment must land on the right server.
+    from agent_bom.discovery.identity import server_identity_key
+    from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection, enrich_servers
+
+    server_a = MCPServer(name="shared", command="alpha-server", transport=TransportType.STDIO)
+    server_b = MCPServer(name="shared", command="beta-server", transport=TransportType.STDIO)
+
+    report = IntrospectionReport(
+        results=[
+            ServerIntrospection(
+                server_name="shared",
+                server_identity=server_identity_key(server_a),
+                success=True,
+                runtime_tools=[MCPTool(name="alpha_tool", description="From alpha")],
+            ),
+            ServerIntrospection(
+                server_name="shared",
+                server_identity=server_identity_key(server_b),
+                success=True,
+                runtime_tools=[MCPTool(name="beta_tool", description="From beta")],
+            ),
+        ]
+    )
+
+    enriched = enrich_servers([server_a, server_b], report)
+
+    assert enriched == 2
+    assert {t.name for t in server_a.tools} == {"alpha_tool"}
+    assert {t.name for t in server_b.tools} == {"beta_tool"}
+
+
 def test_enrich_servers_adds_new_prompts_without_duplicates():
     from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection, enrich_servers
 

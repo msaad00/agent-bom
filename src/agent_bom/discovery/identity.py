@@ -22,7 +22,12 @@ def server_identity_key(server: MCPServer) -> str:
     command = Path(server.command or "").name.lower().strip()
     args = tuple(_normalize_arg(arg) for arg in server.args if _normalize_arg(arg))
     if command or args:
-        return f"cmd:{command}:{' '.join(args)}"
+        arg_str = " ".join(args)
+        if not args:
+            # A bare command with no args is not distinctive enough to dedup on;
+            # fold in the server name so distinct servers keep distinct identities.
+            return f"cmd:{command}:{arg_str}:{server.name.strip().lower()}"
+        return f"cmd:{command}:{arg_str}"
 
     return f"name:{server.name.strip().lower()}"
 

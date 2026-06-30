@@ -162,13 +162,34 @@ GHSA_ECOSYSTEMS = (
     "maven",
     "nuget",
     "rubygems",
-    "cargo",
+    "rust",
     "composer",
     "swift",
     "pub",
     "erlang",
     "actions",
 )
+
+_GHSA_API_TO_DB_ECOSYSTEM = {
+    "actions": "actions",
+    "composer": "packagist",
+    "erlang": "hex",
+    "go": "go",
+    "maven": "maven",
+    "npm": "npm",
+    "nuget": "nuget",
+    "pip": "pypi",
+    "pub": "pub",
+    "rubygems": "rubygems",
+    "rust": "crates.io",
+    "swift": "swifturl",
+}
+
+
+def _normalize_ghsa_db_ecosystem(ecosystem: str) -> str:
+    """Map GitHub advisory ecosystem names to local DB/scanner ecosystem keys."""
+    eco = (ecosystem or "").strip().lower()
+    return _GHSA_API_TO_DB_ECOSYSTEM.get(eco, eco)
 
 # Batch insert size for performance
 _BATCH_SIZE = 500
@@ -1092,7 +1113,8 @@ def _ingest_ghsa_advisory(
         if not ecosystem or not pkg_name:
             continue
 
-        norm_name = normalize_package_name(pkg_name, ecosystem)  # type: ignore[operator]
+        db_ecosystem = _normalize_ghsa_db_ecosystem(str(ecosystem))
+        norm_name = normalize_package_name(pkg_name, db_ecosystem)  # type: ignore[operator]
         version_range = vuln.get("vulnerable_version_range") or ""
         patched = vuln.get("first_patched_version") or ""
         introduced, fixed = _parse_ghsa_version_range(version_range)
@@ -1106,7 +1128,7 @@ def _ingest_ghsa_advisory(
         affected_rows.append(
             {
                 "vuln_id": vuln_id,
-                "ecosystem": ecosystem.lower(),
+                "ecosystem": db_ecosystem,
                 "package_name": norm_name,
                 "introduced": introduced,
                 "fixed": fixed,
@@ -1164,7 +1186,7 @@ def sync_ghsa(
 ) -> int:
     """Fetch GitHub Security Advisories across all supported ecosystems and store in DB.
 
-    Iterates over each ecosystem (pip, npm, go, maven, nuget, rubygems, cargo)
+    Iterates over each ecosystem (pip, npm, go, maven, nuget, rubygems, rust)
     and paginates through ALL reviewed advisories.  No package-name filtering is
     applied — every advisory for the requested ecosystems is ingested.
 
@@ -1503,6 +1525,8 @@ def sync_nvd_incremental(
     page_size = min(2000, max_results)
 
     sync_failed = False
+    sync_truncated = False
+    total_results_seen = 0
 
     while enriched < max_results:
         params: dict[str, str | int] = {
@@ -1549,10 +1573,14 @@ def sync_nvd_incremental(
             conn.commit()
 
         total_results = int(data.get("totalResults") or 0)
+        total_results_seen = max(total_results_seen, total_results)
         start_index += len(items)
         if start_index >= total_results:
             break
         time.sleep(sleep_seconds)
+
+    if not sync_failed and enriched >= max_results and start_index < total_results_seen:
+        sync_truncated = True
 
     conn.commit()
     _update_sync_meta(
@@ -1565,10 +1593,11 @@ def sync_nvd_incremental(
             # Only advance the synced-through cursor when the whole window
             # fetched cleanly; on failure keep the window start so the next run
             # retries it instead of permanently skipping the unsynced CVEs.
-            "last_modified_end": start_ts if sync_failed else end_ts,
+            "last_modified_end": start_ts if (sync_failed or sync_truncated) else end_ts,
             "max_results": max_results,
             "api_key_used": bool(api_key),
             "sync_failed": sync_failed,
+            "sync_truncated": sync_truncated,
         },
     )
     _logger.info("NVD incremental sync complete: %d CVE rows upserted", enriched)

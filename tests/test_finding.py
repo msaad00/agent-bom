@@ -181,6 +181,28 @@ def test_finding_different_assets_produce_different_ids():
     assert f1.id != f2.id
 
 
+def test_finding_distinct_packages_under_one_server_get_distinct_ids():
+    """Two CVEs on different packages under one mcp_server asset must not collide."""
+    server_asset = Asset(name="filesystem", asset_type="mcp_server")
+    f_torch = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=server_asset,
+        severity="HIGH",
+        cve_id="CVE-2024-9999",
+        evidence={"package_name": "torch", "package_version": "2.3.0"},
+    )
+    f_numpy = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=server_asset,
+        severity="HIGH",
+        cve_id="CVE-2024-9999",
+        evidence={"package_name": "numpy", "package_version": "1.26.0"},
+    )
+    assert f_torch.id != f_numpy.id
+
+
 def test_finding_effective_severity_vendor_wins():
     finding = Finding(
         finding_type=FindingType.CVE,

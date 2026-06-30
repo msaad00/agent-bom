@@ -241,6 +241,13 @@ _GEMSPEC_VER_RE = re.compile(r'\.version\s*=\s*(?:Gem::Version\.new\()?["\']([^"
 
 # RPM sqlite: database path candidates in a container layer
 _RPM_SQLITE_PATHS = ("var/lib/rpm/rpmdb.sqlite", "./var/lib/rpm/rpmdb.sqlite")
+# Legacy rpm databases we cannot decode natively yet: the BerkeleyDB ``Packages``
+# file (RPM < 4.16, RHEL/CentOS <= 8, many older UBI images) and the NDB
+# ``Packages.db``. Tracked so a layer carrying one of these emits a coverage
+# warning instead of silently reporting zero RPMs.
+_RPM_BDB_PATHS = ("var/lib/rpm/Packages", "./var/lib/rpm/Packages")
+_RPM_NDB_PATHS = ("var/lib/rpm/Packages.db", "./var/lib/rpm/Packages.db")
+_RPM_MANIFEST_PATHS = ("var/log/installed-rpms", "./var/log/installed-rpms")
 # RPM header magic (8 bytes)
 _RPM_HDR_MAGIC = b"\x8e\xad\xe8\x01\x00\x00\x00\x00"
 _RPMTAG_NAME = 1000
@@ -601,6 +608,7 @@ def _extract_packages_from_layer(
     packages: list[Package],
     deleted_paths: set[str],
     layer: LayerMetadata,
+    warnings: list[str] | None = None,
 ) -> set[str]:
     """Extract packages from an open layer TarFile.
 
@@ -610,6 +618,8 @@ def _extract_packages_from_layer(
         packages: Mutable list of packages — updated in place.
         deleted_paths: Set of paths deleted in LATER layers (whiteouts already processed).
         layer: Layer provenance metadata for this concrete tar blob.
+        warnings: Optional mutable list — coverage gaps (e.g. an unsupported
+            legacy rpm database) are appended here for the caller to surface.
 
     Returns:
         Set of paths marked as whiteout in THIS layer (for caller to accumulate).
@@ -861,6 +871,30 @@ def _extract_packages_from_layer(
         except Exception:
             _logger.debug("Failed to parse rpmdb.sqlite")
         break
+
+    # --- Legacy rpm database coverage gap (BerkeleyDB / NDB) ---
+    # Only the modern ``rpmdb.sqlite`` (RPM >= 4.16) is decoded above. Older
+    # RHEL/CentOS/UBI images keep packages in the BerkeleyDB ``Packages`` file
+    # (or the NDB ``Packages.db``), which we cannot read yet. If a layer carries
+    # one of those and no rpmdb.sqlite / installed-rpms manifest to fall back on,
+    # the layer would silently contribute zero RPMs — surface a clear coverage
+    # warning so operators know the result is partial, not clean.
+    if warnings is not None:
+        has_parsable_rpm = any(
+            p in names and not _is_deleted(p) for p in (*_RPM_SQLITE_PATHS, *_RPM_MANIFEST_PATHS)
+        )
+        if not has_parsable_rpm:
+            legacy_rpmdb = next(
+                (p for p in (*_RPM_BDB_PATHS, *_RPM_NDB_PATHS) if p in names and not _is_deleted(p)),
+                None,
+            )
+            if legacy_rpmdb:
+                fmt = "NDB" if legacy_rpmdb.endswith("Packages.db") else "BerkeleyDB"
+                normalized = legacy_rpmdb[2:] if legacy_rpmdb.startswith("./") else legacy_rpmdb
+                warnings.append(
+                    f"Legacy {fmt} rpm database at /{normalized} is not yet supported — "
+                    "OS package coverage for this image is incomplete"
+                )
 
     # --- Java: JARs via META-INF/maven/*/pom.properties or MANIFEST.MF ---
     for member_name in names:
@@ -1256,7 +1290,7 @@ def _parse_layers_from_tarball(
                     detected_distro_name = layer_distro_name
                 if layer_distro_version:
                     detected_distro_version = layer_distro_version
-                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, set(), layer)
+                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, set(), layer, warnings)
                 if whiteouts:
                     whiteouts_by_index.setdefault(layer.layer_index, set()).update(whiteouts)
         except tarfile.TarError as e:
@@ -1475,7 +1509,7 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
                     detected_distro_name = layer_distro_name
                 if layer_distro_version:
                     detected_distro_version = layer_distro_version
-                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, set(), layer)
+                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, set(), layer, warnings)
                 if whiteouts:
                     whiteouts_by_index.setdefault(layer.layer_index, set()).update(whiteouts)
         except tarfile.TarError as e:

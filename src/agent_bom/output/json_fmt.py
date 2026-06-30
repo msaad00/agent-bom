@@ -1090,6 +1090,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "advisory_sources": br.vulnerability.all_advisory_sources,
                 "primary_advisory_source": (br.vulnerability.all_advisory_sources[0] if br.vulnerability.all_advisory_sources else None),
                 "advisory_coverage_state": br.vulnerability.advisory_coverage_state,
+                "match_confidence_tier": br.vulnerability.match_confidence_tier,
                 "cvss_score": br.vulnerability.cvss_score,
                 "epss_score": br.vulnerability.epss_score,
                 "is_kev": br.vulnerability.is_kev,

@@ -256,3 +256,84 @@ def test_npm_other_semver_prerelease_tags_compare_correctly():
     assert compare_version_order("2.0.0", "1.0.0-alpha.0", "npm") == 1
     assert compare_version_order("2.0.0", "1.99.0-pre.5", "npm") == 1
     assert compare_version_order("4.0.0", "3.5.0-nightly.20240101", "npm") == 1
+
+
+# ---------------------------------------------------------------------------
+# Regression: PyPI post-release normalization must not corrupt rc/alpha tags
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_pypi_rc_not_treated_as_post_release():
+    """The bare ``r`` post spelling must not swallow the ``r`` inside ``rc``.
+
+    Regression for the ``\\.?(post|rev|r)`` substitution turning ``1.0rc1``
+    into ``1.0.postc1`` — a corruption that broke comparison for every
+    release candidate flowing through SCA matching.
+    """
+    from packaging.version import Version
+
+    for raw, base in (("1.0rc1", "1.0"), ("1.0.0rc2", "1.0.0")):
+        result = normalize_version(raw, "pypi")
+        assert "post" not in result, f"{raw} -> {result} (should stay a pre-release)"
+        assert Version(result).is_prerelease is True
+        assert Version(result).pre is not None  # genuinely an ``rc`` pre-release
+        assert Version(result).post is None  # NOT corrupted into a post-release
+        # An rc sorts strictly below its base release; a post-release would be >.
+        assert compare_version_order(raw, base, "pypi") == -1
+
+
+def test_normalize_pypi_alpha_not_treated_as_post_release():
+    result = normalize_version("2.0a1", "pypi")
+    from packaging.version import Version
+
+    assert "post" not in result
+    assert Version(result).is_prerelease is True
+    assert Version(result).pre is not None
+
+
+def test_normalize_pypi_real_post_releases_still_normalize():
+    """Genuine post-releases (``post``/``rev``/``r<NN>``) keep normalizing."""
+    from packaging.version import Version
+
+    assert "post1" in normalize_version("1.0.post1", "pypi")
+    assert Version(normalize_version("1.0.post1", "pypi")).post == 1
+
+    rev = normalize_version("1.0rev2", "pypi")
+    assert Version(rev).post == 2
+
+    r_form = normalize_version("1.0r5", "pypi")
+    assert Version(r_form).post == 5
+    # A post-release sorts ABOVE its base release.
+    assert compare_version_order("1.0r5", "1.0", "pypi") == 1
+
+
+def test_normalize_pypi_legacy_c_spelling_still_maps_to_rc():
+    from packaging.version import Version
+
+    result = normalize_version("1.0c1", "pypi")
+    assert Version(result) == Version("1.0rc1")
+    assert Version(result).is_prerelease is True
+
+
+# ---------------------------------------------------------------------------
+# Regression: unparseable SemVer pre-release sorts STRICTLY below its release
+# ---------------------------------------------------------------------------
+
+
+def test_semver_prerelease_orders_below_equal_tagged_release():
+    """``X-canary`` / ``X-nightly`` / ``X-snapshot`` < ``X`` (and reverse > X).
+
+    packaging.Version cannot parse these npm SemVer tags, so the comparator
+    strips the suffix and compares the base release. Collapsing to equality
+    here let a canary build read as already past a fix bound (a false
+    negative that hid the vulnerability) — it must sort strictly below.
+    """
+    for tag in ("canary.13", "nightly.20240101", "snapshot", "next.7"):
+        pre = f"13.4.20-{tag}"
+        assert compare_version_order(pre, "13.4.20", "npm") == -1
+        assert compare_version_order("13.4.20", pre, "npm") == 1
+
+    # And the range matcher: a canary BEFORE the fix bound stays affected.
+    assert version_in_range("13.4.20-canary.13", "0.9.9", "13.4.20", None, "npm") is True
+    # while the released fix itself is not affected.
+    assert version_in_range("13.4.20", "0.9.9", "13.4.20", None, "npm") is False

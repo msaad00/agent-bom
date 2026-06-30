@@ -313,6 +313,21 @@ def _framework_taxa_references(properties: dict[str, Any]) -> list[dict]:
     return refs
 
 
+# Cloud providers whose CIS benchmark failures are emitted by the dedicated CIS
+# loop in to_sarif() with per-check rule IDs + structured remediation. The
+# unified non-CVE loop skips these so each failed check yields exactly one SARIF
+# result (no duplicate ruleId+location) in the GitHub Security tab. databricks
+# CIS and snowflake governance findings have no dedicated loop, so they keep
+# flowing through the unified path.
+_DEDICATED_CIS_BENCHMARKS: tuple[tuple[str, str], ...] = (
+    ("aws", "cis_benchmark_data"),
+    ("azure", "azure_cis_benchmark_data"),
+    ("gcp", "gcp_cis_benchmark_data"),
+    ("snowflake", "snowflake_cis_benchmark_data"),
+)
+_DEDICATED_CIS_PROVIDERS = frozenset(provider for provider, _ in _DEDICATED_CIS_BENCHMARKS)
+
+
 def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
     """Convert report to SARIF 2.1.0 dict for GitHub Security tab.
 
@@ -520,6 +535,18 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
     for finding in report.to_findings():
         if finding.finding_type == FindingType.CVE:
             continue
+        # Cloud CIS benchmark failures for the dedicated-loop providers are
+        # emitted once below with richer per-check rule IDs + structured
+        # remediation. Skip them here so a failed check is not double-counted in
+        # the GitHub Security tab. databricks CIS + snowflake governance have no
+        # dedicated loop, so they still flow through this unified path.
+        evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
+        if (
+            finding.finding_type == FindingType.CIS_FAIL
+            and evidence.get("benchmark") == "CIS"
+            and evidence.get("provider") in _DEDICATED_CIS_PROVIDERS
+        ):
+            continue
         sev = str(finding.severity or "medium").lower()
         rule_id = f"finding/{finding.finding_type.value}"
         level = finding_sev_map.get(sev, "warning")
@@ -717,12 +744,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
     # and downstream SARIF consumers can surface fix guidance per finding.
     cis_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
     cis_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
-    for cloud_key, data_attr in (
-        ("aws", "cis_benchmark_data"),
-        ("azure", "azure_cis_benchmark_data"),
-        ("gcp", "gcp_cis_benchmark_data"),
-        ("snowflake", "snowflake_cis_benchmark_data"),
-    ):
+    for cloud_key, data_attr in _DEDICATED_CIS_BENCHMARKS:
         bundle = getattr(report, data_attr, None)
         if not bundle:
             continue

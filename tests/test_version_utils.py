@@ -223,6 +223,48 @@ def test_version_in_range_pypi_fixed_requests_regression():
     assert version_in_range("2.25.0", "2.3.0", "2.31.0", None, "pypi") is True
 
 
+def test_version_in_range_go_pseudo_vs_tagged_bounds():
+    """Regression: a Go pseudo-version scanned against ordinary tagged bounds.
+
+    The pseudo-version branch used to ``continue`` past any bound that lacked a
+    pseudo timestamp and then unconditionally ``return True``, so a tagged
+    introduced/fixed/last_affected bound never constrained range membership and
+    every pseudo-version was reported as affected. Each bound must now be
+    honoured via ``compare_version_order`` (which collapses the pseudo-version
+    to its ``X.Y.Z`` base for the comparison).
+    """
+    older = "v1.2.3-20210101000000-abcdef123456"  # base 1.2.3
+    newer = "v1.6.0-20210101000000-abcdef123456"  # base 1.6.0
+
+    # Pseudo-vs-tagged comparison must now be decisive, not None.
+    assert compare_version_order(older, "v1.5.0", "go") == -1
+    assert compare_version_order(newer, "v1.2.3", "go") == 1
+
+    # introduced tagged above the pseudo base -> not yet affected.
+    assert version_in_range(older, "v1.5.0", None, None, "go") is False
+    # fixed tagged at/below the pseudo base -> already fixed, not affected.
+    assert version_in_range(newer, None, "v1.2.3", None, "go") is False
+    # last_affected tagged below the pseudo base -> out of range, not affected.
+    assert version_in_range(newer, None, None, "v1.2.0", "go") is False
+
+    # Truly affected pseudo-versions stay affected.
+    assert version_in_range(older, "v1.0.0", None, None, "go") is True
+    assert version_in_range(newer, None, "v2.0.0", None, "go") is True
+    assert version_in_range(newer, "v1.0.0", "v2.0.0", None, "go") is True
+
+    # Pseudo-vs-pseudo bounds still resolve by timestamp.
+    assert (
+        version_in_range(
+            "v1.0.0-20200101000000-aaaaaaaaaaaa",
+            "v1.0.0-20210101000000-bbbbbbbbbbbb",
+            None,
+            None,
+            "go",
+        )
+        is False
+    )
+
+
 def test_npm_canary_prerelease_compare_avoids_false_positive():
     """Regression: ``next@16.2.4`` must not match a fix bound of ``13.4.20-canary.13``.
 

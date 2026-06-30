@@ -1177,15 +1177,19 @@ function AddConnectionWizard({
   }
 
   function selectProvider(value: string) {
-    // Reset provider-specific fields so a previous provider's params don't leak.
-    setForm((current) => ({
-      ...current,
-      provider: value,
-      role_ref: "",
-      external_id: "",
-      regions: "",
-      auth: {},
-    }));
+    setForm((current) => {
+      // Re-selecting the already-active provider must not wipe entered fields.
+      if (current.provider === value) return current;
+      // Reset provider-specific fields so a previous provider's params don't leak.
+      return {
+        ...current,
+        provider: value,
+        role_ref: "",
+        external_id: "",
+        regions: "",
+        auth: {},
+      };
+    });
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {

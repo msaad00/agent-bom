@@ -190,6 +190,20 @@ export function isNavLinkVisible(href: string, counts: PostureCountsResponse | n
   return isDeploymentSurfaceAvailable(surface, counts);
 }
 
+/**
+ * A nav link is "capable but unconnected" when it maps to a deployment surface
+ * that the current deployment can populate but has not yet — i.e. the surface
+ * is visible in the sidebar but no evidence has landed for it. Used to render a
+ * muted "Set up" badge that points operators at the connect step. Returns false
+ * while counts are still loading so badges don't flash on first paint.
+ */
+export function navLinkNeedsSetup(href: string, counts: PostureCountsResponse | null): boolean {
+  if (!counts) return false;
+  const surface = deploymentSurfaceForHref(href);
+  if (!surface) return false;
+  return !isDeploymentSurfaceAvailable(surface, counts);
+}
+
 export function getDeploymentSurfaceState(
   surface: DeploymentSurface,
   counts: PostureCountsResponse | null,

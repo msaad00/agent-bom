@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { api, ScanJob, ScanResult, BlastRadius, Agent, JobListItem, PostureResponse, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
 import { AgentTopology } from "@/components/agent-topology";
-import { TrustStack } from "@/components/trust-stack";
+import { TrustStack, type TrustStackSignals } from "@/components/trust-stack";
 import { SeverityBadge } from "@/components/severity-badge";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
@@ -524,6 +524,29 @@ export default function Dashboard() {
     };
   }, [agentList]);
 
+  // Real signals feeding the AI trust stack — data sources connected (L1),
+  // governance/context surfaces populated (L2), tools scanned (L3), and
+  // supply-chain packages covered (L4). Counts come straight from scan output
+  // and discovered agents so the stack reflects evidence, not a fixed label.
+  const trustSignals = useMemo<TrustStackSignals>(() => {
+    const pkgs = new Set<string>();
+    for (const job of effectiveJobs) {
+      if (job.status !== "done" || !job.result) continue;
+      const result = job.result as ScanResult;
+      for (const agent of result.agents) {
+        for (const srv of agent.mcp_servers) {
+          for (const pkg of srv.packages) pkgs.add(`${pkg.name}@${pkg.version}`);
+        }
+      }
+    }
+    return {
+      1: { count: sources.length },
+      2: { count: estateSummary.servers },
+      3: { count: estateSummary.tools },
+      4: { count: pkgs.size },
+    };
+  }, [effectiveJobs, sources.length, estateSummary.servers, estateSummary.tools]);
+
   // Unique CVE count
   const uniqueCVEs = useMemo(() => {
     const ids = new Set(allBlast?.map((b) => b.vulnerability_id));
@@ -870,7 +893,7 @@ export default function Dashboard() {
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
             AI Agent Trust Stack
           </h2>
-          <TrustStack />
+          <TrustStack signals={trustSignals} />
         </section>
       )}
 

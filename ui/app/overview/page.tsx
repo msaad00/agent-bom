@@ -46,7 +46,7 @@ const STATUS_STYLES: Record<
   critical: { ring: "border-red-500/30", text: "text-red-300", dot: "bg-red-500", label: "Critical" },
   warn: { ring: "border-amber-500/30", text: "text-amber-300", dot: "bg-amber-500", label: "Attention" },
   ok: { ring: "border-emerald-500/25", text: "text-emerald-300", dot: "bg-emerald-500", label: "Healthy" },
-  idle: { ring: "border-zinc-700/70", text: "text-zinc-400", dot: "bg-zinc-600", label: "No data" },
+  idle: { ring: "border-[color:var(--border-subtle)]", text: "text-[color:var(--text-secondary)]", dot: "bg-[color:var(--text-tertiary)]", label: "No data" },
 };
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
@@ -156,8 +156,8 @@ export default function OverviewPage() {
       {/* Domain tiles */}
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-400">Domains</h2>
-          <span className="text-[10px] text-zinc-600">{DOMAIN_ORDER.length} surfaces</span>
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-[color:var(--text-tertiary)]">Domains</h2>
+          <span className="text-[10px] text-[color:var(--text-tertiary)]">{DOMAIN_ORDER.length} surfaces</span>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {DOMAIN_ORDER.map((key) => (
@@ -170,7 +170,7 @@ export default function OverviewPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <section className="min-w-0 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-400">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-[color:var(--text-tertiary)]">
               Top risks
             </h2>
             <Link href="/findings" className="flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400">
@@ -198,7 +198,7 @@ export default function OverviewPage() {
         </section>
 
         <section className="min-w-0">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-widest text-zinc-400">Activity</h2>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-widest text-[color:var(--text-tertiary)]">Activity</h2>
           <ActivityFeed maxItems={15} refresh={false} />
         </section>
       </div>
@@ -233,14 +233,14 @@ function DomainCard({ domainKey, domain }: { domainKey: DomainKey; domain: Overv
   return (
     <Link
       href={domain.href}
-      className={`group flex min-w-0 flex-col rounded-2xl border bg-zinc-950/70 p-4 transition-colors hover:border-zinc-600 ${s.ring}`}
+      className={`group flex min-w-0 flex-col rounded-2xl border bg-[color:var(--surface)] p-4 transition-colors hover:border-[color:var(--border-strong)] ${s.ring}`}
     >
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)]">
             <Icon className="h-4 w-4" />
           </span>
-          <span className="truncate text-sm font-semibold text-zinc-200">{domain.label}</span>
+          <span className="truncate text-sm font-semibold text-[color:var(--foreground)]">{domain.label}</span>
         </div>
         <span className={`flex shrink-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide ${s.text}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
@@ -249,10 +249,10 @@ function DomainCard({ domainKey, domain }: { domainKey: DomainKey; domain: Overv
       </div>
       <div className="mt-4 flex items-end justify-between gap-2">
         <div className="min-w-0">
-          <div className="font-mono text-2xl font-bold tracking-tight text-zinc-100">{domain.metric}</div>
-          <div className="mt-0.5 truncate text-xs text-zinc-500">{domain.metric_label}</div>
+          <div className="font-mono text-2xl font-bold tracking-tight text-[color:var(--foreground)]">{domain.metric}</div>
+          <div className="mt-0.5 truncate text-xs text-[color:var(--text-tertiary)]">{domain.metric_label}</div>
         </div>
-        <ArrowRight className="h-4 w-4 shrink-0 text-zinc-600 transition-colors group-hover:text-zinc-300" />
+        <ArrowRight className="h-4 w-4 shrink-0 text-[color:var(--text-tertiary)] transition-colors group-hover:text-[color:var(--foreground)]" />
       </div>
     </Link>
   );
@@ -262,18 +262,18 @@ function TopRiskRow({ risk }: { risk: OverviewTopRisk }) {
   return (
     <Link
       href={`/findings?cve=${encodeURIComponent(risk.vulnerability_id)}`}
-      className="flex min-w-0 items-start gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700"
+      className="flex min-w-0 items-start gap-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 transition-colors hover:border-[color:var(--border-strong)]"
     >
       <SeverityBadge severity={risk.severity} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm font-semibold text-zinc-100 group-hover:text-emerald-400">
+          <span className="font-mono text-sm font-semibold text-[color:var(--foreground)] group-hover:text-emerald-400">
             {risk.vulnerability_id}
           </span>
-          {risk.package && <span className="truncate font-mono text-xs text-zinc-500">{risk.package}</span>}
+          {risk.package && <span className="truncate font-mono text-xs text-[color:var(--text-tertiary)]">{risk.package}</span>}
           {risk.is_kev && <span className="text-xs font-semibold text-red-400">CISA KEV</span>}
         </div>
-        <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-zinc-500">
+        <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-[color:var(--text-tertiary)]">
           {risk.cvss_score != null && <span>CVSS {risk.cvss_score.toFixed(1)}</span>}
           {risk.epss_score != null && <span>EPSS {(risk.epss_score * 100).toFixed(0)}%</span>}
           {risk.affected_agents.length > 0 && (
@@ -287,7 +287,7 @@ function TopRiskRow({ risk }: { risk: OverviewTopRisk }) {
         {risk.risk_score > 0 && (
           <div className="text-right">
             <div className="font-mono text-lg font-bold text-red-400">{risk.risk_score.toFixed(0)}</div>
-            <div className="text-[10px] text-zinc-600">score</div>
+            <div className="text-[10px] text-[color:var(--text-tertiary)]">score</div>
           </div>
         )}
         <a
@@ -295,7 +295,7 @@ function TopRiskRow({ risk }: { risk: OverviewTopRisk }) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+          className="inline-flex items-center gap-1 text-[11px] text-[color:var(--text-tertiary)] transition-colors hover:text-[color:var(--foreground)]"
         >
           OSV <ExternalLink className="h-3 w-3" />
         </a>
@@ -310,12 +310,12 @@ function OverviewSkeleton() {
       <div className="h-48 animate-pulse rounded-[28px] border border-zinc-800/80 bg-zinc-900/40" />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-32 animate-pulse rounded-2xl border border-zinc-800/80 bg-zinc-900/40" />
+          <div key={i} className="h-32 animate-pulse rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]" />
         ))}
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="h-64 animate-pulse rounded-xl border border-zinc-800/80 bg-zinc-900/40 lg:col-span-2" />
-        <div className="h-64 animate-pulse rounded-xl border border-zinc-800/80 bg-zinc-900/40" />
+        <div className="h-64 animate-pulse rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] lg:col-span-2" />
+        <div className="h-64 animate-pulse rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]" />
       </div>
     </div>
   );

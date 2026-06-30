@@ -46,6 +46,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import {
   deploymentModeLabel,
   isNavLinkVisible,
+  navLinkNeedsSetup,
 } from "@/lib/deployment-context";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 
@@ -491,6 +492,8 @@ export function Nav() {
                         ? path.startsWith("/findings") || path.startsWith("/vulns")
                         : path.startsWith(href);
                     const isVulns = href === "/findings";
+                    const showVulnBadge = isVulns && counts && counts.critical > 0;
+                    const needsSetup = !active && !showVulnBadge && navLinkNeedsSetup(href, counts);
 
                     return (
                       <Link
@@ -513,8 +516,15 @@ export function Nav() {
                         />
                         <span className="truncate">{label}</span>
 
+                        {/* Capable-but-unconnected hint */}
+                        {needsSetup && (
+                          <span className="ml-auto rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0 text-[9px] font-medium uppercase tracking-[0.12em] leading-4 text-[color:var(--text-tertiary)]">
+                            Set up
+                          </span>
+                        )}
+
                         {/* Vuln count badges */}
-                        {isVulns && counts && counts.critical > 0 && (
+                        {showVulnBadge && (
                           <span className="ml-auto flex items-center gap-1">
                             <span className="text-[9px] font-mono font-bold text-red-400 bg-red-950/60 border border-red-800/40 rounded-full px-1.5 py-0 leading-4">
                               {counts.critical}

@@ -304,3 +304,92 @@ def test_sarif_exposure_chain_document_is_schema_valid(sarif_validator: Draft7Va
     if errors:
         rendered = "\n".join(f"  - {'/'.join(str(p) for p in e.path)}: {e.message}" for e in errors[:20])
         pytest.fail(f"SARIF document is not schema-valid ({len(errors)} error(s)):\n{rendered}")
+
+
+def _cloud_cis_report() -> AIBOMReport:
+    """A cloud report whose CIS failures flow through BOTH SARIF emission paths.
+
+    ``to_findings()`` lifts every failed cloud CIS check into the unified non-CVE
+    stream (``FindingType.CIS_FAIL``) AND the dedicated CIS loop emits each check
+    with a per-check rule id. Without de-duplication, every aws/azure/gcp/snowflake
+    benchmark failure lands in SARIF twice. databricks CIS + snowflake governance
+    have no dedicated loop, so they must still be emitted (exactly once).
+    """
+
+    def _benchmark(check_id: str) -> dict:
+        return {
+            "checks": [
+                {
+                    "check_id": check_id,
+                    "status": "fail",
+                    "severity": "high",
+                    "title": f"Ensure control {check_id}",
+                    "recommendation": f"Fix control {check_id}.",
+                    "cis_section": check_id,
+                    "resource_ids": [f"resource-{check_id}"],
+                    "remediation": {"docs": f"https://example.test/{check_id}", "fix_cli": "fix it", "effort": "low", "priority": 1},
+                }
+            ]
+        }
+
+    report = AIBOMReport(agents=[], blast_radii=[], scan_sources=["cloud"], scan_id="cis-dedup-001")
+    report.cis_benchmark_data = _benchmark("1.4")
+    report.azure_cis_benchmark_data = _benchmark("2.1")
+    report.gcp_cis_benchmark_data = _benchmark("3.2")
+    report.snowflake_cis_benchmark_data = _benchmark("4.3")
+    # databricks CIS has no dedicated SARIF loop — it rides the unified path only.
+    report.databricks_cis_benchmark_data = _benchmark("5.1")
+    # snowflake governance findings also ride the unified path only.
+    report.snowflake_governance_data = {
+        "account": "acme",
+        "findings": [
+            {
+                "category": "write_access",
+                "severity": "high",
+                "title": "Role has broad write access",
+                "description": "A role can write to sensitive objects.",
+                "agent_or_role": "ANALYST_ROLE",
+                "object_name": "SENSITIVE.PII",
+            }
+        ],
+    }
+    return report
+
+
+def test_sarif_cloud_cis_failure_emitted_once(sarif_validator: Draft7Validator) -> None:
+    """Each failed cloud CIS check yields exactly one SARIF result (no duplicate).
+
+    Regression for the double-emission bug: the unified non-CVE loop and the
+    dedicated CIS loop both surfaced aws/azure/gcp/snowflake benchmark failures,
+    double-counting them in the GitHub Security tab.
+    """
+    from agent_bom.output.sarif import to_sarif
+
+    doc = to_sarif(_cloud_cis_report())
+    results = doc["runs"][0]["results"]
+
+    # No (ruleId, location-uri) pair appears twice anywhere in the document.
+    seen: list[tuple[str, str]] = []
+    for result in results:
+        uri = result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+        seen.append((result["ruleId"], uri))
+    assert len(seen) == len(set(seen)), f"duplicate (ruleId, location) SARIF results: {seen}"
+
+    rule_ids = [r["ruleId"] for r in results]
+    # Each dedicated-loop provider emits its rich per-check rule exactly once...
+    for provider, check_id in (("aws", "1.4"), ("azure", "2.1"), ("gcp", "3.2"), ("snowflake", "4.3")):
+        rid = f"cis/{provider}/{check_id}"
+        assert rule_ids.count(rid) == 1, f"expected exactly one {rid}, got {rule_ids.count(rid)}"
+    # ...and the generic unified CIS rule no longer double-emits those checks.
+    # databricks CIS + snowflake governance keep the generic rule (one each).
+    assert rule_ids.count("finding/CIS_FAIL") == 2, rule_ids
+
+    # The single aws result keeps the richer structured remediation metadata.
+    aws_result = next(r for r in results if r["ruleId"] == "cis/aws/1.4")
+    assert aws_result["properties"]["remediation"]["docs"] == "https://example.test/1.4"
+    aws_rule = next(r for r in doc["runs"][0]["tool"]["driver"]["rules"] if r["id"] == "cis/aws/1.4")
+    assert aws_rule["helpUri"] == "https://example.test/1.4"
+
+    # And the de-duplicated document stays schema-valid SARIF 2.1.0.
+    errors = sorted(sarif_validator.iter_errors(doc), key=lambda e: list(e.path))
+    assert not errors, [e.message for e in errors[:5]]

@@ -112,3 +112,19 @@ def test_cpe_lookup_skips_cve_not_in_vulns() -> None:
     )
     conn.commit()
     assert cpe_lookup_package(conn, "ghost", "1.0") == []
+
+
+def test_product_only_index_exists_for_vendorless_lookup() -> None:
+    # match_component_cpe filters `WHERE product IN (...)` often without a vendor;
+    # the (vendor, product) index can't serve that path, so a product-only index
+    # must exist after init_db. Regression: idx_cpe_product_only must be present
+    # and SQLite must be willing to use it for a product-only lookup.
+    conn = init_db(Path(":memory:"))
+    indexes = {row["name"] for row in conn.execute("PRAGMA index_list('cpe_matches')")}
+    assert "idx_cpe_product_only" in indexes
+
+    plan = conn.execute(
+        "EXPLAIN QUERY PLAN SELECT * FROM cpe_matches WHERE product IN ('widget')"
+    ).fetchall()
+    detail = " ".join(str(row["detail"]) for row in plan)
+    assert "idx_cpe_product_only" in detail

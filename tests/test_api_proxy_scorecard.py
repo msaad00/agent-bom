@@ -120,6 +120,60 @@ def test_proxy_metrics_websocket_rejects_unauthenticated_rbac_key_store(monkeypa
     assert exc.value.code == 4001
 
 
+def test_proxy_metrics_websocket_rejects_unauthenticated_tenant_oidc(monkeypatch):
+    """Tenant-bound OIDC config must protect WebSockets the same way it protects HTTP."""
+    monkeypatch.delenv("AGENT_BOM_API_KEY", raising=False)
+    monkeypatch.setenv(
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+        '{"tenant-alpha":{"issuer":"https://alpha.okta.example","audience":"agent-bom"}}',
+    )
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/ws/proxy/metrics") as websocket:
+            websocket.receive_json()
+
+    assert exc.value.code == 4001
+
+
+def test_proxy_metrics_websocket_rejects_unauthenticated_saml_only(monkeypatch):
+    """SAML-only deployments still require a session/API-key before opening WebSocket streams."""
+    monkeypatch.delenv("AGENT_BOM_API_KEY", raising=False)
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_ENTITY_ID", "https://idp.example.com/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_SSO_URL", "https://idp.example.com/sso")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_X509_CERT", "-----BEGIN CERTIFICATE-----test-----END CERTIFICATE-----")
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ENTITY_ID", "https://agent-bom.example.com/saml/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ACS_URL", "https://agent-bom.example.com/v1/auth/saml/login")
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/ws/proxy/metrics") as websocket:
+            websocket.receive_json()
+
+    assert exc.value.code == 4001
+
+
+def test_proxy_metrics_websocket_rejects_weak_trusted_proxy_secret(monkeypatch):
+    """WebSockets must share HTTP's trusted-proxy minimum secret strength."""
+    monkeypatch.delenv("AGENT_BOM_API_KEY", raising=False)
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "short")
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(
+            "/ws/proxy/metrics",
+            headers={
+                "x-agent-bom-proxy-secret": "short",
+                "x-agent-bom-role": "viewer",
+                "x-agent-bom-tenant-id": "tenant-alpha",
+            },
+        ) as websocket:
+            websocket.receive_json()
+
+    assert exc.value.code == 4001
+
+
 def test_proxy_metrics_websocket_uses_rbac_key_tenant(monkeypatch):
     """WebSocket metrics are scoped to the authenticated API key tenant."""
     import agent_bom.api.routes.proxy as proxy_mod

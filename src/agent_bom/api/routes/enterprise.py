@@ -132,6 +132,10 @@ def _relay_state_digest(relay_state: str) -> str:
     return hashlib.sha256(relay_state.encode("utf-8")).hexdigest()
 
 
+def _saml_idp_initiated_allowed() -> bool:
+    return os.environ.get("AGENT_BOM_SAML_ALLOW_IDP_INITIATED", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _new_saml_relay_state() -> tuple[str, str]:
     # Sweep expired entries on issue too, not only on consume — otherwise
     # an attacker who issues many relay-state nonces but never completes
@@ -152,7 +156,9 @@ def _new_saml_relay_state() -> tuple[str, str]:
 
 def _consume_saml_relay_state(relay_state: str | None) -> None:
     if not relay_state:
-        return
+        if _saml_idp_initiated_allowed():
+            return
+        raise HTTPException(status_code=401, detail="SAML relay_state required")
     now = time.monotonic()
     digest = _relay_state_digest(relay_state)
     with _SAML_RELAY_LOCK:
@@ -162,6 +168,17 @@ def _consume_saml_relay_state(relay_state: str | None) -> None:
         expires_at = _SAML_RELAY_STATES.pop(digest, None)
     if expires_at is None or expires_at < now:
         raise HTTPException(status_code=401, detail="Invalid or expired SAML relay_state")
+
+
+def _consume_saml_response_once(saml_response: str, *, ttl_seconds: int) -> None:
+    from agent_bom.api.shared_auth_state import get_auth_state
+
+    digest = f"saml-response:{_relay_state_digest(saml_response)}"
+    backend = get_auth_state()
+    now = int(time.time())
+    if backend.is_nonce_revoked(digest, now=now):
+        raise HTTPException(status_code=401, detail="SAML assertion replay detected")
+    backend.revoke_nonce(digest, now + max(60, int(ttl_seconds)))
 
 
 def _request_actor(request: Request) -> str:
@@ -978,6 +995,7 @@ async def saml_login(req: SAMLLoginRequest) -> dict:
         _consume_saml_relay_state(req.relay_state)
         cfg = SAMLConfig.from_env()
         assertion = cfg.verify_response(req.saml_response, relay_state=req.relay_state)
+        _consume_saml_response_once(req.saml_response, ttl_seconds=cfg.session_ttl_seconds)
     except SAMLError as exc:
         raise HTTPException(status_code=401, detail=sanitize_error(exc)) from exc
 

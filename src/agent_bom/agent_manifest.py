@@ -467,23 +467,31 @@ def _union_named_rows(existing: object, incoming: object) -> list[dict[str, obje
     return rows
 
 
+def _object_list(value: object) -> list[object]:
+    return list(value) if isinstance(value, list) else []
+
+
+def _string_list(value: object) -> list[str]:
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
 def _union_server_rows(existing: dict[str, object], incoming: dict[str, object]) -> None:
-    existing["tools"] = _union_named_rows(existing.get("tools"), incoming.get("tools"))
-    existing["tool_count"] = len(existing["tools"])
+    tools = _union_named_rows(existing.get("tools"), incoming.get("tools"))
+    existing["tools"] = tools
+    existing["tool_count"] = len(tools)
     existing["credential_refs"] = _union_named_rows(existing.get("credential_refs"), incoming.get("credential_refs"))
     discovery = existing.get("discovery")
     if isinstance(discovery, dict):
-        existing_sources = discovery.get("sources") if isinstance(discovery.get("sources"), list) else []
+        existing_sources = _object_list(discovery.get("sources"))
         incoming_discovery = incoming.get("discovery")
-        incoming_sources = incoming_discovery.get("sources") if isinstance(incoming_discovery, dict) else None
-        incoming_sources = incoming_sources if isinstance(incoming_sources, list) else []
+        incoming_sources = _object_list(incoming_discovery.get("sources")) if isinstance(incoming_discovery, dict) else []
         discovery["sources"] = sorted(set(existing_sources) | set(incoming_sources))
 
 
 def _union_agent_rows(existing: dict[str, object], incoming: dict[str, object]) -> None:
-    server_ids = existing.get("mcp_server_ids") if isinstance(existing.get("mcp_server_ids"), list) else []
+    server_ids = _string_list(existing.get("mcp_server_ids"))
     seen = set(server_ids)
-    for server_id in incoming.get("mcp_server_ids") if isinstance(incoming.get("mcp_server_ids"), list) else []:
+    for server_id in _string_list(incoming.get("mcp_server_ids")):
         if server_id not in seen:
             server_ids.append(server_id)
             seen.add(server_id)

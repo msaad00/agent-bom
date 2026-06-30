@@ -222,6 +222,85 @@ def test_wired_benign_pickle_only_extension_flag(tmp_path: Path):
     assert "PICKLE_DESERIALIZATION" in types  # the existing extension signal
 
 
+def test_small_bin_disguised_pickle_is_scanned(tmp_path: Path):
+    """A sub-10MB malicious pickle disguised as .bin must still be scanned.
+
+    The .bin ``min_size_mb`` heuristic only classifies generic binaries as model
+    files; it must never gate the SECURITY scan, or a small malicious pickle
+    would slip through unscanned (CWE-502 evasion).
+    """
+    payload = _malicious_bytes()
+    assert len(payload) < 10 * 1024 * 1024  # below the .bin min_size_mb threshold
+    (tmp_path / "pytorch_model.bin").write_bytes(payload)
+
+    results, warnings = scan_model_files(tmp_path)
+    assert len(results) == 1, "small malicious .bin was filtered out before scanning"
+    types = {f["type"] for f in results[0]["security_flags"]}
+    assert "MALICIOUS_PICKLE" in types
+    assert any("MALICIOUS_PICKLE" in w for w in warnings)
+
+
+def test_small_benign_bin_still_filtered(tmp_path: Path):
+    """A small generic .bin with no pickle content stays filtered from inventory."""
+    (tmp_path / "tokenizer.bin").write_bytes(b"\x00" * 256)
+    results, _ = scan_model_files(tmp_path)
+    assert results == []
+
+
+def _short_binunicode(text: str) -> bytes:
+    raw = text.encode("utf-8")
+    return pickle.SHORT_BINUNICODE + bytes([len(raw)]) + raw
+
+
+def test_memo_referenced_dangerous_global_flagged(tmp_path: Path):
+    """A pickle that hides os.system behind the memo (BINPUT/BINGET) is flagged.
+
+    The dangerous operands are stored in the memo, then six benign padding
+    strings are pushed so the dangerous strings are NOT among the last literals,
+    and finally replayed via BINGET right before STACK_GLOBAL. A scanner that
+    only inspects the last few literal strings would miss this; memo tracking
+    recovers the operands.
+    """
+    parts = [pickle.PROTO + b"\x04"]
+    parts.append(_short_binunicode("os") + pickle.BINPUT + b"\x00")
+    parts.append(_short_binunicode("system") + pickle.BINPUT + b"\x01")
+    # Padding literals so the dangerous strings are not the most recent ones.
+    for i in range(6):
+        parts.append(_short_binunicode(f"pad{i}") + pickle.BINPUT + bytes([10 + i]))
+    # Replay the memoized operands, then resolve the global and call it.
+    parts.append(pickle.BINGET + b"\x00")  # push "os"
+    parts.append(pickle.BINGET + b"\x01")  # push "system"
+    parts.append(pickle.STACK_GLOBAL)
+    parts.append(pickle.EMPTY_TUPLE)
+    parts.append(pickle.REDUCE)
+    parts.append(pickle.STOP)
+    p = tmp_path / "memo_evasion.pkl"
+    p.write_bytes(b"".join(parts))
+
+    res = scan_pickle_file(p)[0]
+    assert res.is_pickle
+    assert res.verdict == "malicious"
+    assert res.severity == "CRITICAL"
+    captured = " ".join(res.dangerous_imports).lower()
+    assert "system" in captured
+    assert "os" in captured
+
+
+def test_unrecoverable_stack_global_is_suspicious(tmp_path: Path):
+    """A STACK_GLOBAL whose operands cannot be recovered fails safe (suspicious)."""
+    payload = pickle.PROTO + b"\x04" + pickle.STACK_GLOBAL + pickle.STOP
+    p = tmp_path / "unresolved.pkl"
+    p.write_bytes(payload)
+
+    res = scan_pickle_file(p)[0]
+    assert res.is_pickle
+    assert res.verdict == "suspicious"
+    assert res.severity == "HIGH"
+    flag = res.to_security_flag()
+    assert flag is not None
+    assert flag["type"] == "SUSPICIOUS_PICKLE"
+
+
 def test_module_code_has_no_deserialization_calls():
     """Source-level guard: no deserialization API appears in executable code.
 
@@ -243,3 +322,87 @@ def test_module_code_has_no_deserialization_calls():
     code_only = ast.unparse(tree)
     for forbidden in ("pickle.load", "pickle.loads", "Unpickler", "torch.load", "joblib.load", "find_class"):
         assert forbidden not in code_only, f"scanner must not call {forbidden}"
+
+
+def test_oversized_zip_member_is_flagged_not_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A pickle larger than the byte cap inside a zip must NOT be silently skipped.
+
+    Padding a pickle past ``AGENT_BOM_PICKLE_MAX_BYTES`` was an evasion: the old
+    ``file_size > cap`` guard ``continue``d, dropping the member entirely. The
+    fix scans the leading slice (bounded read) and emits an
+    OVERSIZE_PICKLE_UNSCANNED finding so the unscanned tail cannot hide a payload.
+    """
+    # Realistic padding evasion: a highly compressible payload keeps the ZIP
+    # itself tiny (so the outer archive read is unaffected) while the member's
+    # *uncompressed* size dwarfs the per-pickle byte cap.
+    cap = 50_000
+    monkeypatch.setenv("AGENT_BOM_PICKLE_MAX_BYTES", str(cap))
+    payload = pickle.dumps(b"\x00" * 2_000_000)  # benign, but uncompressed >> cap
+    assert len(payload) > cap
+    p = tmp_path / "padded.pt"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("archive/data.pkl", payload)
+    archive = buf.getvalue()
+    assert len(archive) < cap, "compressed archive must fit under the cap for this test"
+    p.write_bytes(archive)
+
+    flags, results = scan_pickle_file_flags(p)
+    # The oversized member must produce a result (not be dropped) ...
+    oversized = [r for r in results if r.oversize_unscanned]
+    assert oversized, "oversized zip member was silently skipped"
+    assert oversized[0].declared_size is not None and oversized[0].declared_size > cap
+    # ... and a fail-safe finding even though the scanned prefix looked clean.
+    types = {f["type"] for f in flags}
+    assert "OVERSIZE_PICKLE_UNSCANNED" in types
+    over_flag = [f for f in flags if f["type"] == "OVERSIZE_PICKLE_UNSCANNED"][0]
+    assert over_flag["severity"] == "HIGH"
+
+
+def test_normal_zip_member_within_cap_has_no_oversize_flag(tmp_path: Path):
+    """A normal-sized benign zip member produces no oversize finding."""
+    p = tmp_path / "ok.pt"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("archive/data.pkl", pickle.dumps({"layer": [1, 2, 3]}))
+    p.write_bytes(buf.getvalue())
+    flags, results = scan_pickle_file_flags(p)
+    assert all(not r.oversize_unscanned for r in results)
+    assert all(f["type"] != "OVERSIZE_PICKLE_UNSCANNED" for f in flags)
+
+
+def test_disguised_extension_pickle_is_discovered_and_scanned(tmp_path: Path):
+    """A malicious pickle saved under a non-model extension must be discovered.
+
+    Extension-only discovery never iterates ``.txt``; a renamed pickle would slip
+    through unscanned. The content sniff (pickle PROTO magic) discovers it.
+    """
+    (tmp_path / "weights.txt").write_bytes(_malicious_bytes())
+    results, warnings = scan_model_files(tmp_path)
+    disguised = [r for r in results if r["path"].endswith("weights.txt")]
+    assert disguised, "disguised pickle under .txt was never discovered"
+    types = {f["type"] for f in disguised[0]["security_flags"]}
+    assert "MALICIOUS_PICKLE" in types
+    assert any("MALICIOUS_PICKLE" in w for w in warnings)
+
+
+def test_disguised_pickle_under_model_extension_is_scanned(tmp_path: Path):
+    """A pickle renamed to a non-pickle MODEL extension (.safetensors) is scanned.
+
+    The file is still inventoried once (under its spoofed extension) but the
+    content findings are attached to that same entry, not duplicated.
+    """
+    (tmp_path / "model.safetensors").write_bytes(_malicious_bytes())
+    results, _ = scan_model_files(tmp_path)
+    entries = [r for r in results if r["path"].endswith("model.safetensors")]
+    assert len(entries) == 1, "spoofed-extension pickle was duplicated in inventory"
+    types = {f["type"] for f in entries[0]["security_flags"]}
+    assert "MALICIOUS_PICKLE" in types
+
+
+def test_benign_non_pickle_files_are_not_discovered(tmp_path: Path):
+    """Plain non-pickle files must not be pulled into the model inventory."""
+    (tmp_path / "notes.txt").write_bytes(b"just some text, not a pickle")
+    (tmp_path / "data.csv").write_bytes(b"a,b,c\n1,2,3\n")
+    results, _ = scan_model_files(tmp_path)
+    assert results == []

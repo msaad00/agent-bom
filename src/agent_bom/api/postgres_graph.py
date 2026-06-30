@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, graph_retention_po
 from agent_bom.graph import EntityType
 
 from .postgres_common import _apply_tenant_session, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
+
+logger = logging.getLogger(__name__)
 
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
 _FINDING_ENTITY_TYPES = {
@@ -351,6 +354,19 @@ class PostgresGraphStore:
                 _apply_tenant_session(conn)
                 _backfill_empty_tenant_ids(conn)
             _apply_tenant_session(conn)
+            _ensure_tenant_rls(conn, "graph_nodes", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_edges", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_snapshots", "tenant_id")
+            _ensure_tenant_rls(conn, "attack_paths", "tenant_id")
+            _ensure_tenant_rls(conn, "interaction_risks", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_filter_presets", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_node_search", "tenant_id")
+            conn.commit()
+        self._init_optional_search_indexes()
+
+    def _init_optional_search_indexes(self) -> None:
+        """Install optional trigram search acceleration without risking schema bootstrap."""
+        with self._pool.connection() as conn:
             try:
                 conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
                 conn.execute(
@@ -365,17 +381,11 @@ class PostgresGraphStore:
                     ON graph_node_search USING gin (LOWER(search_text) gin_trgm_ops)
                     """
                 )
-            except Exception:
+                conn.commit()
+            except Exception as exc:
                 # Some managed Postgres environments restrict extension installs.
                 conn.rollback()
-            _ensure_tenant_rls(conn, "graph_nodes", "tenant_id")
-            _ensure_tenant_rls(conn, "graph_edges", "tenant_id")
-            _ensure_tenant_rls(conn, "graph_snapshots", "tenant_id")
-            _ensure_tenant_rls(conn, "attack_paths", "tenant_id")
-            _ensure_tenant_rls(conn, "interaction_risks", "tenant_id")
-            _ensure_tenant_rls(conn, "graph_filter_presets", "tenant_id")
-            _ensure_tenant_rls(conn, "graph_node_search", "tenant_id")
-            conn.commit()
+                logger.warning("Skipping optional Postgres graph trigram indexes: %s", type(exc).__name__)
 
     def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
         tenant_id = normalize_graph_tenant_id(tenant_id)

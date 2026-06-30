@@ -80,7 +80,7 @@ Parameters:
     AllowedPattern: "^agent-bom\\[aws\\].*$"
     Description: >-
       pip requirement spec installed before the scan. Pin a version for
-      reproducible runs, e.g. "agent-bom[aws]==0.89.2".
+      reproducible runs, e.g. "agent-bom[aws]==0.90.0".
 
   ComputeType:
     Type: String

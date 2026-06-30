@@ -38,6 +38,39 @@ resources. Every source converges into a unified `Finding` model and a unified
 `ContextGraph`, so blast radius, multi-hop exposure paths, and exposure scoring
 all read from the same evidence.
 
+> `ContextGraph` is the customer-facing name for the unified evidence graph; it
+> is persisted and served as `UnifiedGraph` in the API and MCP exports.
+
+<details>
+<summary><strong>What's new in 0.90.0</strong></summary>
+
+- **Canonical CVE IDs** — `ALPINE-CVE-*` / `DEBIAN-CVE-*` are mapped to `CVE-*` for cross-tool parity.
+- **Match-confidence tiers** on every finding: `distro_confirmed` > `osv_range` > `osv_ecosystem` > `unfixed_distro` > `nvd_cpe_candidate`.
+- **NVD incremental sync** + **NVD CPE candidate matching** (opt-in via `AGENT_BOM_ENABLE_CPE_MATCH`) for non-ecosystem / OS / vendor software the OSV and distro feeds miss.
+- **Parallel OSV** batches with bounded concurrency.
+
+**Accuracy model.** Distro-confirmed findings match or exceed Trivy on published
+benchmarks (e.g. alpine 3.14.2). The optional `nvd_cpe_candidate` tier is
+review-grade and **off by default** — it widens long-tail coverage without
+inflating confirmed counts. No Trivy/Grype/Syft subprocess is required.
+
+**NVD key model.** CVE/CPE enrichment ships in the distributed vuln database
+(built server-side with an org key), so end users — and MCP/agent callers — do
+**not** supply an NVD key. `NVD_API_KEY` is an optional self-host/freshness knob,
+never a per-user requirement.
+</details>
+
+<details>
+<summary><strong>Who it's for</strong></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom value by persona: developers (CLI/CI), security teams (API/dashboard), and automation (MCP tools)" width="980" />
+  </picture>
+</p>
+</details>
+
 The product goal is interoperability for humans and agents: developers get a
 CLI/CI scanner, security teams get an API and dashboard, automation gets MCP
 tools and typed schemas, and runtime controls can enforce the same evidence when

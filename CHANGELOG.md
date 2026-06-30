@@ -11,10 +11,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [0.90.0] - 2026-06-30
 
-Native, self-sufficient SCA reaches Trivy/Grype/Syft-replacing maturity and adds
-NVD CPE candidate matching for the long tail OSV and distro feeds do not cover —
-on top of the multi-account CNAPP estate work below. No external scanner
-subprocess is required for the vulnerability path.
+Native, self-sufficient SCA: distro-confirmed findings match or exceed Trivy on
+published benchmarks (e.g. alpine 3.14.2), with an optional NVD CPE candidate
+tier (review-grade, opt-in) for the long tail OSV and distro feeds do not cover —
+on top of the multi-account CNAPP estate work below. No Trivy/Grype/Syft
+subprocess is required on the vulnerability path.
 
 ### Vulnerability scanning / SCA
 - **Canonical CVE identity + match-confidence tiers.** `ALPINE-CVE-*` /

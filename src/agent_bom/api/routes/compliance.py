@@ -408,6 +408,16 @@ async def get_compliance(request: Request) -> dict:
     else:
         overall_status = "pass"
 
+    # With zero completed scans there is nothing to measure — every control
+    # trivially "passes" because no findings map to it. Reporting
+    # overall_status="pass"/score=100 in that state reads as "fully compliant"
+    # when in fact no evidence exists. Surface an explicit no-data status
+    # (mirrors the Overview "idle" pattern) so consumers don't mistake an
+    # empty tenant for a clean audit.
+    if scan_count == 0:
+        overall_status = "no_data"
+        overall_score = 0.0
+
     aisvs = _latest_aisvs_benchmark_from_jobs(tenant_jobs)
     aisvs_summary = aisvs["summary"]
     summary: dict[str, int | float] = {}

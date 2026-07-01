@@ -269,8 +269,9 @@ async function expectSigmaCanvases(page: Page) {
 test("large graph overview renders above threshold and search drills back into React Flow", async ({ page }, testInfo: TestInfo) => {
   await routeLargeGraphPage(page);
 
-  await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package");
-  await page.waitForLoadState("networkidle");
+  await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package", {
+    waitUntil: "domcontentloaded",
+  });
 
   await expect(page.getByTestId("large-graph-overview")).toBeVisible();
   await expect(page.getByText("Large graph overview")).toBeVisible();
@@ -291,8 +292,9 @@ test("large graph overview renders above threshold and search drills back into R
 test("sigma webgl overview renders when explicitly requested", async ({ page }, testInfo: TestInfo) => {
   await routeLargeGraphPage(page);
 
-  await page.goto("/graph?renderer=webgl&vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package");
-  await page.waitForLoadState("networkidle");
+  await page.goto("/graph?renderer=webgl&vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package", {
+    waitUntil: "domcontentloaded",
+  });
 
   await expect(page.getByTestId("sigma-graph-overview")).toBeVisible();
   await expect(page.getByText("WebGL graph overview")).toBeVisible();

@@ -113,8 +113,123 @@ function fallbackPosition(index: number, total: number): { x: number; y: number 
   };
 }
 
-function numericPosition(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+const CLUSTER_ORDER: LineageNodeType[] = [
+  "provider",
+  "org",
+  "account",
+  "environment",
+  "fleet",
+  "cluster",
+  "cloudResource",
+  "container",
+  "agent",
+  "server",
+  "sharedServer",
+  "tool",
+  "credential",
+  "vulnerability",
+  "misconfiguration",
+  "package",
+  "model",
+  "dataset",
+  "dataStore",
+  "directory",
+  "sourceFile",
+  "configFile",
+  "user",
+  "group",
+  "role",
+  "policy",
+  "serviceAccount",
+  "servicePrincipal",
+  "federatedIdentity",
+  "managedIdentity",
+  "accessGrant",
+  "accessPolicy",
+  "driftIncident",
+];
+
+function clusterRank(nodeType: LineageNodeType): number {
+  const index = CLUSTER_ORDER.indexOf(nodeType);
+  return index === -1 ? CLUSTER_ORDER.length : index;
+}
+
+function clusterLabel(nodeType: LineageNodeType): string {
+  if (nodeType === "org" || nodeType === "account" || nodeType === "provider") return "cloud";
+  if (nodeType === "cloudResource" || nodeType === "container" || nodeType === "cluster") return "asset";
+  if (nodeType === "sharedServer") return "server";
+  if (nodeType === "vulnerability" || nodeType === "misconfiguration") return "finding";
+  if (nodeType === "dataset" || nodeType === "dataStore") return "data";
+  if (nodeType === "directory" || nodeType === "sourceFile" || nodeType === "configFile") return "source";
+  if (
+    nodeType === "user" ||
+    nodeType === "group" ||
+    nodeType === "role" ||
+    nodeType === "policy" ||
+    nodeType === "serviceAccount" ||
+    nodeType === "servicePrincipal" ||
+    nodeType === "federatedIdentity" ||
+    nodeType === "managedIdentity" ||
+    nodeType === "accessGrant" ||
+    nodeType === "accessPolicy"
+  ) {
+    return "identity";
+  }
+  return nodeType;
+}
+
+function buildClusteredOverviewPositions(
+  rankedNodes: Array<{ node: Node<LineageNodeData>; index: number; score: number }>,
+): Map<string, { x: number; y: number }> {
+  const groups = new Map<string, Array<{ node: Node<LineageNodeData>; index: number; score: number }>>();
+  for (const item of rankedNodes) {
+    const key = clusterLabel(item.node.data.nodeType);
+    const group = groups.get(key) ?? [];
+    group.push(item);
+    groups.set(key, group);
+  }
+
+  const orderedGroups = [...groups.entries()].sort((left, right) => {
+    const leftType = left[1][0]?.node.data.nodeType ?? "agent";
+    const rightType = right[1][0]?.node.data.nodeType ?? "agent";
+    return clusterRank(leftType) - clusterRank(rightType) || left[0].localeCompare(right[0]);
+  });
+
+  const positions = new Map<string, { x: number; y: number }>();
+  if (orderedGroups.length === 0) return positions;
+
+  const ringRadius = Math.max(360, Math.min(920, 280 + rankedNodes.length * 0.32));
+  const coreTypes = new Set(["agent", "server", "sharedServer", "tool", "credential", "vulnerability", "misconfiguration"]);
+  const coreGroups = orderedGroups.filter(([, items]) => coreTypes.has(items[0]?.node.data.nodeType ?? ""));
+  const outerGroups = orderedGroups.filter(([, items]) => !coreTypes.has(items[0]?.node.data.nodeType ?? ""));
+  const allGroups = [...coreGroups, ...outerGroups];
+
+  allGroups.forEach(([, items], groupIndex) => {
+    const inCore = coreTypes.has(items[0]?.node.data.nodeType ?? "");
+    const totalGroups = Math.max(1, inCore ? coreGroups.length : outerGroups.length);
+    const relativeIndex = inCore ? groupIndex : groupIndex - coreGroups.length;
+    const angleOffset = inCore ? -Math.PI / 2 : -Math.PI / 2 + Math.PI / Math.max(outerGroups.length, 1);
+    const radius = inCore ? ringRadius * 0.48 : ringRadius;
+    const angle = angleOffset + (relativeIndex / totalGroups) * Math.PI * 2;
+    const center = {
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
+    };
+    const sortedItems = [...items].sort((left, right) => right.score - left.score || left.index - right.index);
+    const columns = Math.max(1, Math.ceil(Math.sqrt(sortedItems.length)));
+    const spacing = Math.max(22, Math.min(42, 34 - Math.log10(Math.max(sortedItems.length, 1)) * 4));
+    sortedItems.forEach((item, itemIndex) => {
+      const column = itemIndex % columns;
+      const row = Math.floor(itemIndex / columns);
+      const rowCount = Math.ceil(sortedItems.length / columns);
+      positions.set(item.node.id, {
+        x: center.x + (column - (columns - 1) / 2) * spacing,
+        y: center.y + (row - (rowCount - 1) / 2) * spacing,
+      });
+    });
+  });
+
+  return positions;
 }
 
 function edgeRelationship(edge: Edge): string {
@@ -192,15 +307,15 @@ export function buildLargeGraphOverviewModel(
     .sort((left, right) => right.score - left.score)
     .slice(0, LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES)
     .sort((left, right) => left.index - right.index);
+  const clusteredPositions = buildClusteredOverviewPositions(rankedNodes);
   const overviewNodes: LargeGraphNode[] = rankedNodes.map(({ node, index }) => {
     const fallback = fallbackPosition(index, total);
     const data = node.data;
-    const x = numericPosition(node.position?.x) ?? fallback.x;
-    const y = numericPosition(node.position?.y) ?? fallback.y;
+    const position = clusteredPositions.get(node.id) ?? fallback;
     return {
       id: node.id,
-      x,
-      y,
+      x: position.x,
+      y: position.y,
       label: data.label,
       color: NODE_COLOR_MAP[data.nodeType] ?? "#71717a",
       size: nodeSize(data),

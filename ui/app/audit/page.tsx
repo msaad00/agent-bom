@@ -133,8 +133,8 @@ export default function AuditLogPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <FileText className="w-6 h-6 text-blue-400" />
             Audit Log
@@ -202,7 +202,7 @@ export default function AuditLogPage() {
           <Filter className="w-3.5 h-3.5" />
           Filter:
         </div>
-        <div className="flex gap-1">
+        <div className="flex min-w-0 flex-wrap gap-1">
           <button
             onClick={() => { setActionFilter(""); setPage(0); }}
             className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
@@ -227,7 +227,7 @@ export default function AuditLogPage() {
           value={resourceFilter}
           onChange={(e) => { setResourceFilter(e.target.value); setPage(0); }}
           placeholder="Filter by resource…"
-          className="bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-blue-600 w-48"
+          className="w-full min-w-0 rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-blue-600 sm:w-48"
         />
       </div>
 

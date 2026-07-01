@@ -38,11 +38,11 @@ resources. Every source converges into a unified `Finding` model and a unified
 `ContextGraph`, so blast radius, multi-hop exposure paths, and exposure scoring
 all read from the same evidence.
 
-> `ContextGraph` is the customer-facing name for the unified evidence graph; it
-> is persisted and served as `UnifiedGraph` in the API and MCP exports.
+`ContextGraph` is the product name for that unified evidence graph across CLI,
+API, UI, MCP, reports, and gateway decisions.
 
 <details>
-<summary><strong>What's new in 0.90.0</strong></summary>
+<summary><strong>Recent accuracy upgrades</strong></summary>
 
 - **Canonical CVE IDs** — `ALPINE-CVE-*` / `DEBIAN-CVE-*` are mapped to `CVE-*` for cross-tool parity.
 - **Match-confidence tiers** on every finding: `distro_confirmed` > `osv_range` > `osv_ecosystem` > `unfixed_distro` > `nvd_cpe_candidate`.

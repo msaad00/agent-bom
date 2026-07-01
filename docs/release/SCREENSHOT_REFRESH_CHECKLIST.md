@@ -26,6 +26,10 @@ PR clearly explains why an asset is unchanged.
 | `mesh-live.png` | Focused agent mesh graph with selected agents, MCP servers, tools, packages, credentials, findings, and no large empty canvas. |
 | `security-graph-live.png` | Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff. |
 | `lineage-graph-live.png` | Root-centered lineage investigation with reachable node counts, bounded paths, filters, and graph evidence export. |
+| `context-map-live.png` | Lateral context view with selected agent scope, reachable tools, shared infrastructure, and evidence metadata. |
+| `fleet-state-live.png` | Fleet lifecycle review state with owner, environment, trust factors, and quarantine context. |
+| `gateway-policies-live.png` | Runtime gateway posture with enforcement, firewall decisions, policy rules, and bound agents. |
+| `identity-audit-live.png` | Auth, key lifecycle, tenant boundaries, and audit log evidence without overflowing cards. |
 | `dependency-map-live.png` | Supply chain dependency map with scan pipeline counts and package risk distribution. |
 | `remediation-live.png` | Fix-first remediation table with prioritized packages and framework context. |
 
@@ -53,6 +57,8 @@ Before opening the PR, inspect every refreshed image:
 - graph evidence starts from an operator-readable workflow; raw expanded
   topology is acceptable only as a drilldown, not as the default public image
 - text and critical UI affordances are readable at GitHub README scale
+- no text, badge, code token, path, or graph label crosses its card/container
+  border; long strings must wrap, truncate, or move to a details affordance
 - light/dark theme claims are backed by captured evidence when the PR says so
 - the image shows shipped product behavior, not roadmap copy or mock data that
   is not produced by `agent-bom`

@@ -289,8 +289,23 @@ function TreemapCell({
 }) {
   if (!width || !height || width < 4 || height < 4) return null;
   const bg = color ?? "#27272a";
+  const showLabel = Boolean(name) && width >= 72 && height >= 34;
+  const maxChars = Math.max(6, Math.floor((width - 16) / 7));
+  const label = name && name.length > maxChars ? `${name.slice(0, Math.max(3, maxChars - 1))}…` : name;
+  const clipId = `treemap-cell-${Math.round(x ?? 0)}-${Math.round(y ?? 0)}-${Math.round(width)}-${Math.round(height)}`;
   return (
     <g>
+      <defs>
+        <clipPath id={clipId}>
+          <rect
+            x={(x ?? 0) + 6}
+            y={(y ?? 0) + 4}
+            width={Math.max(0, width - 12)}
+            height={Math.max(0, height - 8)}
+            rx={2}
+          />
+        </clipPath>
+      </defs>
       <rect
         x={x} y={y} width={width} height={height}
         fill={bg}
@@ -299,17 +314,17 @@ function TreemapCell({
         strokeWidth={1.5}
         rx={3}
       />
-      {width > 40 && height > 20 && (
+      {showLabel && (
         <text
-          x={(x ?? 0) + (width) / 2}
-          y={(y ?? 0) + (height) / 2}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fill="#e4e4e7"
-          fontSize={Math.min(11, Math.max(8, width / 10))}
+          x={(x ?? 0) + 8}
+          y={(y ?? 0) + 18}
+          clipPath={`url(#${clipId})`}
+          fill="#f4f4f5"
+          fontSize={Math.min(11, Math.max(9, width / 18))}
           fontFamily="monospace"
+          fontWeight={700}
         >
-          {name && name.length > 16 ? name.slice(0, 14) + "…" : name}
+          {label}
         </text>
       )}
     </g>

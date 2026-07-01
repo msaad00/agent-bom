@@ -223,8 +223,8 @@ export default function FleetPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <Users className="w-6 h-6 text-emerald-400" />
             Fleet
@@ -233,7 +233,7 @@ export default function FleetPage() {
             Persisted agent inventory, review state, and trust score from the fleet store
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {agents.length > 0 && (
             <button
               onClick={() => downloadJson(filtered, `fleet-${new Date().toISOString().slice(0, 10)}.json`)}
@@ -436,17 +436,17 @@ export default function FleetPage() {
               <div key={agent.agent_id} className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
                 <button
                   onClick={() => toggleExpand(agent.agent_id)}
-                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/50 transition-colors"
+                  className="w-full px-4 py-3 flex flex-col gap-3 text-left transition-colors hover:bg-zinc-800/50 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="flex items-center gap-3">
-                    {isExpanded ? <ChevronDown className="w-4 h-4 text-zinc-500" /> : <ChevronRight className="w-4 h-4 text-zinc-500" />}
-                    <span className="font-medium text-zinc-100">{agent.name}</span>
+                  <div className="flex min-w-0 flex-wrap items-center gap-3">
+                    {isExpanded ? <ChevronDown className="w-4 h-4 shrink-0 text-zinc-500" /> : <ChevronRight className="w-4 h-4 shrink-0 text-zinc-500" />}
+                    <span className="min-w-0 break-words font-medium text-zinc-100">{agent.name}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATE_COLORS[agent.lifecycle_state]}`}>
                       {STATE_LABELS[agent.lifecycle_state]}
                     </span>
-                    <span className="text-xs text-zinc-600">{agent.agent_type}</span>
+                    <span className="break-words text-xs text-zinc-600">{agent.agent_type}</span>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-4">
                     {/* Trust score bar */}
                     <div className="flex items-center gap-2 w-32">
                       <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
@@ -460,7 +460,7 @@ export default function FleetPage() {
                       </span>
                     </div>
                     {/* Counts */}
-                    <div className="flex items-center gap-3 text-xs text-zinc-500">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
                       <span className="flex items-center gap-1"><Server className="w-3 h-3" />{agent.server_count}</span>
                       <span className="flex items-center gap-1"><Package className="w-3 h-3" />{agent.package_count}</span>
                       {agent.credential_count > 0 && (
@@ -478,11 +478,11 @@ export default function FleetPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <div>
                         <span className="text-zinc-500">Owner</span>
-                        <div className="text-zinc-300 mt-0.5">{agent.owner || "—"}</div>
+                        <div className="text-zinc-300 mt-0.5 break-words">{agent.owner || "—"}</div>
                       </div>
                       <div>
                         <span className="text-zinc-500">Environment</span>
-                        <div className="text-zinc-300 mt-0.5">{agent.environment || "—"}</div>
+                        <div className="text-zinc-300 mt-0.5 break-words">{agent.environment || "—"}</div>
                       </div>
                       <div>
                         <span className="text-zinc-500">Last Discovery</span>
@@ -490,7 +490,7 @@ export default function FleetPage() {
                       </div>
                       <div>
                         <span className="text-zinc-500">Config</span>
-                        <div className="text-zinc-300 mt-0.5 font-mono truncate">{agent.config_path || "—"}</div>
+                        <div className="text-zinc-300 mt-0.5 break-all font-mono">{agent.config_path || "—"}</div>
                       </div>
                     </div>
                     {/* Trust factors */}
@@ -500,7 +500,7 @@ export default function FleetPage() {
                         <div className="flex flex-wrap gap-2">
                           {Object.entries(agent.trust_factors).map(([k, v]) => (
                             <span key={k} className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-zinc-400">
-                              {k.replace(/_/g, " ")}: <span className="text-zinc-200 font-mono">{v}</span>
+                              {k.replace(/_/g, " ")}: <span className="break-all font-mono text-zinc-200">{v}</span>
                             </span>
                           ))}
                         </div>
@@ -508,7 +508,7 @@ export default function FleetPage() {
                     )}
                     {/* State transitions */}
                     {transitions.length > 0 && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs text-zinc-500">Transition:</span>
                         {transitions?.map((t) => (
                           <button
@@ -526,7 +526,7 @@ export default function FleetPage() {
                     )}
                     {/* One-click containment: quarantine + gateway deny */}
                     {agent.lifecycle_state !== "decommissioned" && (
-                      <div className="flex items-center gap-2 border-t border-zinc-800 pt-3">
+                      <div className="flex flex-col gap-2 border-t border-zinc-800 pt-3 sm:flex-row sm:items-center">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -546,7 +546,7 @@ export default function FleetPage() {
                             ? "Re-enforce gateway deny"
                             : "Quarantine + gateway deny"}
                         </button>
-                        <span className="text-[10px] text-zinc-600">
+                        <span className="min-w-0 break-words text-[10px] text-zinc-600">
                           Blocks every tool call from this agent at the gateway.
                         </span>
                       </div>

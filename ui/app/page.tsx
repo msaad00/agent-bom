@@ -79,6 +79,13 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"command" | "analytics">("command");
   const { counts } = useDeploymentContext();
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "analytics") {
+      setActiveTab("analytics");
+    }
+  }, []);
+
   // Fetch posture grade + cross-domain overview (folded into the header scorecard)
   useEffect(() => {
     api.getPosture().then(setPosture).catch(() => {});

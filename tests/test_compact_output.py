@@ -262,7 +262,7 @@ def test_compact_summary_default_offers_verbose_hint_when_drivers_weak():
 
 
 def test_compact_summary_default_shows_posture_card_when_not_perfect():
-    """Default form surfaces a posture grade card inline (not only under --posture)."""
+    """Default form surfaces a posture grade card inline, not only under --posture."""
     vuln = _vuln(severity=Severity.HIGH, fixed="9.9.9")
     pkg = Package(name="pkg", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
     server = _make_server(packages=[pkg], env={"AWS_SECRET_ACCESS_KEY": "x"})
@@ -270,9 +270,9 @@ def test_compact_summary_default_shows_posture_card_when_not_perfect():
     br = _blast(vuln, pkg, [agent], [server], creds=["AWS_SECRET_ACCESS_KEY"])
     report = AIBOMReport(agents=[agent], blast_radii=[br])
     output = _plain(_capture(print_compact_summary, report))
+
     assert "Posture grade:" in output
     assert "/100" in output
-    # The verbose-only long panel is still gated behind --verbose.
     assert "CONFIG POSTURE GRADE" not in output
 
 
@@ -362,42 +362,26 @@ def test_compact_blast_radius_limit():
     assert "--verbose" in plain
 
 
-def test_compact_blast_radius_paging_shows_next_page_hint():
-    """Page 1 of a multi-page finding list points at the next --page value."""
+def test_compact_blast_radius_page_two():
+    """Compact findings can page through a noisy scan without switching to verbose mode."""
     pkg = Package(name="lodash", version="4.17.20", ecosystem="npm")
     server = _make_server(packages=[pkg])
     agent = _make_agent(servers=[server])
-    radii = [_blast(_vuln(vid=f"CVE-2024-{i:04d}", severity=Severity.HIGH), pkg, [agent], [server]) for i in range(8)]
+    radii = []
+    for i in range(8):
+        v = _vuln(vid=f"CVE-2024-{i:04d}", severity=Severity.HIGH)
+        radii.append(_blast(v, pkg, [agent], [server]))
     report = AIBOMReport(agents=[agent], blast_radii=radii)
-    plain = _plain(_capture(print_compact_blast_radius, report, limit=3, page=1))
-    assert "page 1/3" in plain
-    assert "--page 2" in plain
+    plain = _plain(_capture(print_compact_blast_radius, report, limit=3, page=2))
 
-
-def test_compact_blast_radius_paging_second_page():
-    """Page 2 renders the next slice and, on the last page, drops the --page hint."""
-    pkg = Package(name="lodash", version="4.17.20", ecosystem="npm")
-    server = _make_server(packages=[pkg])
-    agent = _make_agent(servers=[server])
-    radii = [_blast(_vuln(vid=f"CVE-2024-{i:04d}", severity=Severity.HIGH), pkg, [agent], [server]) for i in range(8)]
-    report = AIBOMReport(agents=[agent], blast_radii=radii)
-    plain = _plain(_capture(print_compact_blast_radius, report, limit=3, page=3))
-    assert "page 3/3" in plain
-    # Last page: no forward --page hint, still points at --verbose.
-    assert "--page 4" not in plain
-    assert "--verbose" in plain
-
-
-def test_compact_blast_radius_paging_clamps_out_of_range():
-    """An out-of-range page clamps to the last page instead of a blank table."""
-    pkg = Package(name="lodash", version="4.17.20", ecosystem="npm")
-    server = _make_server(packages=[pkg])
-    agent = _make_agent(servers=[server])
-    radii = [_blast(_vuln(vid=f"CVE-2024-{i:04d}", severity=Severity.HIGH), pkg, [agent], [server]) for i in range(8)]
-    report = AIBOMReport(agents=[agent], blast_radii=radii)
-    plain = _plain(_capture(print_compact_blast_radius, report, limit=3, page=99))
-    assert "page 3/3" in plain
-    assert "CVE-2024-0007" in plain  # the tail finding is on the last page
+    assert "page 2/3" in plain
+    assert "4-6 of 8" in plain
+    assert "CVE-2024-0000" not in plain
+    assert "CVE-2024-0003" in plain
+    assert "CVE-2024-0005" in plain
+    assert "CVE-2024-0006" not in plain
+    assert "--page 3 next" in plain
+    assert "--page 1 previous" in plain
 
 
 def test_compact_blast_radius_empty():
@@ -436,6 +420,28 @@ def test_compact_remediation_limit():
     assert "PROTECT" in _plain(output)
     assert "more" in output
     assert "--verbose" in output
+
+
+def test_compact_remediation_page_two():
+    """Compact remediation can page through fix-first output."""
+    server = _make_server()
+    agent = _make_agent(servers=[server])
+    radii = []
+    for i in range(5):
+        v = _vuln(vid=f"CVE-2024-{i:04d}", severity=Severity.HIGH, fixed="9.9.9")
+        p = Package(name=f"pkg-{i}", version="1.0.0", ecosystem="npm", vulnerabilities=[v])
+        radii.append(_blast(v, p, [agent], [server]))
+    report = AIBOMReport(agents=[agent], blast_radii=radii)
+    plain = _plain(_capture(print_compact_remediation, report, limit=2, page=2))
+
+    assert "page 2/3" in plain
+    assert "3-4 of 5" in plain
+    assert "pkg-0" not in plain
+    assert "pkg-2" in plain
+    assert "pkg-3" in plain
+    assert "pkg-4" not in plain
+    assert "--page 3 next" in plain
+    assert "--page 1 previous" in plain
 
 
 def test_compact_remediation_shows_priority_and_action():

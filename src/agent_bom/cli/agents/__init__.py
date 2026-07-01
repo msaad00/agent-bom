@@ -433,6 +433,7 @@ def scan(
     siem_format: str,
     clickhouse_url: Optional[str],
     verbose: bool,
+    page: int,
     log_level: Optional[str],
     log_json: bool,
     log_file: Optional[str],
@@ -455,7 +456,6 @@ def scan(
     iac_paths: tuple = (),
     ignore_file: Optional[str] = None,
     posture: bool = False,
-    findings_page: int = 1,
     _iac_only: bool = False,
     _image_only: bool = False,
     _apply_profile_defaults: bool = True,
@@ -2500,10 +2500,10 @@ def scan(
             verbose=verbose,
             exclude_unfixable=exclude_unfixable,
             fixable_only=fixable_only,
-            findings_page=findings_page,
             agent_mode=agent_mode,
             agent_token_budget=agent_token_budget,
             agent_mode_full=agent_mode_full,
+            page=page,
         )
 
     # ── Posture summary mode (--posture) ──────────────────────────────────────
@@ -2647,10 +2647,10 @@ def scan(
             verbose=verbose,
             exclude_unfixable=exclude_unfixable,
             fixable_only=fixable_only,
-            findings_page=findings_page,
             agent_mode=agent_mode,
             agent_token_budget=agent_token_budget,
             agent_mode_full=agent_mode_full,
+            page=page,
         )
 
     if exit_code:

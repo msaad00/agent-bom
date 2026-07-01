@@ -204,6 +204,13 @@ def output_options(fn):
                 help="Full output — dependency tree, all findings, severity chart, threat frameworks, debug logging",
             ),
             click.option(
+                "--page",
+                type=click.IntRange(min=1),
+                default=1,
+                show_default=True,
+                help="Compact console page for findings and remediation when the default output is truncated.",
+            ),
+            click.option(
                 "--log-level",
                 "log_level",
                 type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
@@ -260,15 +267,6 @@ def output_options(fn):
                 is_flag=True,
                 default=False,
                 help="Show a concise 5-line workstation posture summary.",
-            ),
-            click.option(
-                "--page",
-                "findings_page",
-                type=click.IntRange(min=1),
-                default=1,
-                show_default=True,
-                metavar="N",
-                help="Page of compact findings to show (page size 10). An out-of-range page clamps to the last page.",
             ),
         ]
     )(fn)

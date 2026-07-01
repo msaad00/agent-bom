@@ -64,6 +64,7 @@ function SecurityGraphPageContent() {
   const [apiErrorKind, setApiErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
   const [focusApplied, setFocusApplied] = useState(false);
+  const [showAllSnapshots, setShowAllSnapshots] = useState(false);
   const captureMode = useCaptureMode();
 
   const focus = useMemo(
@@ -173,6 +174,10 @@ function SecurityGraphPageContent() {
   const selectedSnapshot = useMemo(
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
     [snapshots, selectedScanId],
+  );
+  const displayedSnapshots = useMemo(
+    () => (showAllSnapshots ? snapshots : snapshots.slice(0, 8)),
+    [showAllSnapshots, snapshots],
   );
 
   const fixFirstCards = useMemo(() => fixFirstView?.cards ?? [], [fixFirstView?.cards]);
@@ -443,26 +448,37 @@ function SecurityGraphPageContent() {
             </div>
 
             {snapshots.length > 0 ? (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {snapshots.slice(0, 8).map((snapshot) => {
-                  const selected = snapshot.scan_id === selectedScanId;
-                  return (
-                    <button
-                      key={snapshot.scan_id}
-                      type="button"
-                      onClick={() => setSelectedScanId(snapshot.scan_id)}
-                      className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
-                        selected
-                          ? "border-emerald-700 bg-emerald-950/40 text-emerald-200"
-                          : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                      }`}
-                    >
-                      <div className="font-mono">{snapshot.scan_id.slice(0, 8)}…</div>
-                      <div className="mt-1 text-[11px] opacity-80">{snapshot.node_count} nodes</div>
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {displayedSnapshots.map((snapshot) => {
+                    const selected = snapshot.scan_id === selectedScanId;
+                    return (
+                      <button
+                        key={snapshot.scan_id}
+                        type="button"
+                        onClick={() => setSelectedScanId(snapshot.scan_id)}
+                        className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                          selected
+                            ? "border-emerald-700 bg-emerald-950/40 text-emerald-200"
+                            : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                        }`}
+                      >
+                        <div className="font-mono">{snapshot.scan_id.slice(0, 8)}…</div>
+                        <div className="mt-1 text-[11px] opacity-80">{snapshot.node_count} nodes</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {snapshots.length > 8 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllSnapshots((current) => !current)}
+                    className="mt-3 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                  >
+                    {showAllSnapshots ? "Show recent snapshots" : `Show all ${snapshots.length} snapshots`}
+                  </button>
+                )}
+              </>
             ) : (
               !loadingSnapshots && (
                 <div className="mt-4">

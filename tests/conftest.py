@@ -212,6 +212,23 @@ _STORAGE_ENV_VARS = (
     "AGENT_BOM_POSTGRES_DSN",
 )
 
+# Env vars that server/CLI runtime code sets as a side effect during a test body
+# (e.g. binding the MCP server remotely, enabling permissive CORS). They are NOT
+# auth/storage config, but if a test that triggers this code path skips its own
+# cleanup the value leaks into later tests on the same worker and makes outcomes
+# depend on collection order — e.g. AGENT_BOM_MCP_REMOTE_BIND leaking into
+# repo_scan, which then demands an explicit host allowlist. Snapshot + revert.
+_SERVER_RUNTIME_ENV_VARS = (
+    "AGENT_BOM_MCP_REMOTE_BIND",
+    "AGENT_BOM_CORS_ALL",
+    "AGENT_BOM_ANALYTICS_BACKEND",
+    "AGENT_BOM_CLICKHOUSE_URL",
+    "AGENT_BOM_CLICKHOUSE_BUFFERED",
+    "AGENT_BOM_CLICKHOUSE_FLUSH_INTERVAL",
+    "AGENT_BOM_CLICKHOUSE_MAX_BATCH",
+    "AGENT_BOM_PROFILE",
+)
+
 
 @pytest.fixture(autouse=True)
 def reset_global_test_state():
@@ -231,10 +248,15 @@ def reset_global_test_state():
     # 401-inducing env var into the next test on the same worker.
     auth_env_snapshot = {var: os.environ.get(var) for var in _AUTH_ENV_VARS}
     storage_env_snapshot = {var: os.environ.get(var) for var in _STORAGE_ENV_VARS}
+    server_env_snapshot = {var: os.environ.get(var) for var in _SERVER_RUNTIME_ENV_VARS}
 
     yield
 
-    for var, value in {**auth_env_snapshot, **storage_env_snapshot}.items():
+    for var, value in {
+        **auth_env_snapshot,
+        **storage_env_snapshot,
+        **server_env_snapshot,
+    }.items():
         if value is None:
             os.environ.pop(var, None)
         else:

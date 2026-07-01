@@ -75,10 +75,13 @@ describe('Nav', () => {
     expect(screen.getByText('Protect')).toBeInTheDocument()
   })
 
-  it('renders the Governance nav group', () => {
+  it('renders the three Govern groups (Compliance, Operations, Remediation)', () => {
     render(<Nav />)
-    // 'Govern' appears both as a group label and as a page link, so use getAllByText
-    expect(screen.getAllByText('Govern').length).toBeGreaterThan(0)
+    // 'Compliance'/'Remediation' appear both as a group label and as a page link,
+    // so use getAllByText.
+    expect(screen.getAllByText('Compliance').length).toBeGreaterThan(0)
+    expect(screen.getByText('Operations')).toBeInTheDocument()
+    expect(screen.getAllByText('Remediation').length).toBeGreaterThan(0)
   })
 
   it('contains link to Dashboard (/)', () => {
@@ -117,7 +120,7 @@ describe('Nav', () => {
 
   it('contains Remediation link', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    fireEvent.click(screen.getByRole('button', { name: /remediation/i }))
     const links = screen.getAllByRole('link', { name: /remediation/i })
     expect(links.some((l) => l.getAttribute('href') === '/remediation')).toBe(true)
   })
@@ -154,37 +157,31 @@ describe('Nav', () => {
 
   it('contains Compliance link', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    fireEvent.click(screen.getByRole('button', { name: /compliance/i }))
     const links = screen.getAllByRole('link', { name: /^compliance$/i })
     expect(links.some((l) => l.getAttribute('href') === '/compliance')).toBe(true)
   })
 
   it('contains Governance link', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    fireEvent.click(screen.getByRole('button', { name: /compliance/i }))
     const links = screen.getAllByRole('link', { name: /^governance$/i })
     expect(links.some((l) => l.getAttribute('href') === '/governance')).toBe(true)
   })
 
-  it('tucks Govern deep-dives (cost/identity/drift) under a More disclosure to keep the group tight', () => {
+  it('keeps cost, identity, drift, and activity reachable directly from the Operations group', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
-    const summaries = Array.from(document.querySelectorAll('summary')).map((s) => s.textContent ?? '')
-    expect(summaries.some((t) => /More \(3\)/.test(t))).toBe(true)
-  })
-
-  it('keeps cost, identity, and drift reachable from the Govern group', () => {
-    render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    fireEvent.click(screen.getByRole('button', { name: /operations/i }))
     const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
     expect(hrefs).toContain('/cost')
     expect(hrefs).toContain('/identity')
     expect(hrefs).toContain('/drift')
+    expect(hrefs).toContain('/activity')
   })
 
-  it('contains Audit Log link', () => {
+  it('moves the Audit Log into the Compliance group', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /protect/i }))
+    fireEvent.click(screen.getByRole('button', { name: /compliance/i }))
     const links = screen.getAllByRole('link', { name: /audit log/i })
     expect(links.some((l) => l.getAttribute('href') === '/audit')).toBe(true)
   })
@@ -205,10 +202,11 @@ describe('Nav', () => {
     expect(screen.getAllByText('agent-bom').length).toBeGreaterThan(0)
   })
 
-  it('renders all 5 nav group labels', () => {
+  it('renders all 7 nav group labels', () => {
     render(<Nav />)
-    // Use getAllByText to handle cases where a label also appears as a page link (e.g. Governance)
-    const groups = ['Discover', 'Scan', 'Analyze', 'Protect', 'Govern']
+    // Use getAllByText to handle cases where a label also appears as a page link
+    // (e.g. Compliance, Remediation).
+    const groups = ['Discover', 'Scan', 'Analyze', 'Protect', 'Compliance', 'Operations', 'Remediation']
     for (const group of groups) {
       expect(screen.getAllByText(group).length).toBeGreaterThan(0)
     }
@@ -229,8 +227,10 @@ describe('Nav', () => {
       Discover: ['/', '/agents', '/fleet', '/registry'],
       Scan: ['/sources', '/scan', '/jobs', '/findings'],
       Analyze: ['/security-graph'],
-      Protect: ['/proxy', '/audit', '/gateway'],
-      Govern: ['/compliance', '/remediation', '/governance', '/traces', '/activity'],
+      Protect: ['/proxy', '/gateway'],
+      Compliance: ['/compliance', '/governance', '/audit'],
+      Operations: ['/identity', '/cost', '/drift', '/activity'],
+      Remediation: ['/remediation', '/traces'],
     }
 
     for (const [group, hrefs] of Object.entries(expectedByGroup)) {
@@ -252,7 +252,9 @@ describe('Nav', () => {
       expect(screen.getByText('Choose source mode, run scans, and review findings')).toBeInTheDocument()
       expect(screen.getByText('One security graph with attack-path, lineage, mesh, and context lenses')).toBeInTheDocument()
       expect(screen.getByText('Proxy, policy, and runtime enforcement surfaces')).toBeInTheDocument()
-      expect(screen.getByText('Evidence, remediation, governance, and activity')).toBeInTheDocument()
+      expect(screen.getByText('Evidence, policy governance, and audit export')).toBeInTheDocument()
+      expect(screen.getByText('Identity, cost, drift, and activity posture')).toBeInTheDocument()
+      expect(screen.getByText('Fix workflow and runtime trace evidence')).toBeInTheDocument()
     })
 
     expect(screen.getAllByRole('link', { name: /dashboard/i }).length).toBeGreaterThan(0)
@@ -332,7 +334,7 @@ describe('Nav', () => {
       expect(screen.getAllByRole('link', { name: /^gateway$/i }).some((link) => link.getAttribute('href') === '/gateway')).toBe(true)
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    fireEvent.click(screen.getByRole('button', { name: /remediation/i }))
     expect(screen.getAllByRole('link', { name: /^traces$/i }).some((link) => link.getAttribute('href') === '/traces')).toBe(true)
   })
 

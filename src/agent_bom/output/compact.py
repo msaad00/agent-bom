@@ -228,15 +228,24 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
     )
 
     if not verbose:
-        # Default verdict-led form: 2 lines + optional --verbose hint.
+        # Default verdict-led form: verdict + inventory + a compact posture
+        # card + optional --verbose hint. The posture grade is now surfaced
+        # inline (previously only under --posture / --verbose) so a normal scan
+        # reads a posture verdict in one screen.
         lines = [
             f"  [bold]Security posture:[/bold]  {posture}",
             inventory_line,
         ]
+        if scorecard.score < 100 or high_risk_policy_count:
+            grade_line = f"  [bold]Posture grade:[/bold]  {_posture_grade_badge(scorecard.grade)} {scorecard.score:.0f}/100"
+            if scorecard_summary:
+                grade_line += f"  [dim]{_compact_detail(scorecard_summary, limit=48)}[/dim]"
+            lines.append(grade_line)
+            if weak_dimensions:
+                lines.append(f"  [dim]Top driver:[/dim] [yellow]{weak_dimensions[0].name}[/yellow]")
         if has_more_context:
+            # The grade is shown above, so the hint covers the remaining detail.
             hint_bits: list[str] = []
-            if scorecard.score < 100:
-                hint_bits.append(f"posture grade {_posture_grade_badge(scorecard.grade)} {scorecard.score:.0f}/100")
             if weak_dimensions:
                 hint_bits.append(f"{len(weak_dimensions)} weak driver(s)")
             if cred_names:
@@ -346,12 +355,17 @@ def print_compact_agents(report: AIBOMReport) -> None:
     console.print(table)
 
 
-def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_only: bool = False) -> None:
-    """Show top N findings in a compact table.
+def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_only: bool = False, page: int = 1) -> None:
+    """Show a page of findings in a compact table.
 
     Context-aware: shows blast radius chain (agent → server → credential) only
     when MCP agent context is available. Falls back to a clean vuln table for
     scan types without agent context (image, check, iac, CI/CD).
+
+    ``limit`` is the page size (default 10). ``page`` (1-indexed) selects which
+    page of the priority-ordered finding list to render; an out-of-range page
+    clamps to the last page so ``--page`` never yields an empty screen. When
+    more pages remain, the overflow hint points at the next ``--page`` value.
     """
     from agent_bom.output import _sev_badge, console
     from agent_bom.vex import active_blast_radii
@@ -371,22 +385,31 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
         display_list = [br for br in active_findings if _forward_fix_version(br)] if fixable_only else active_findings
     else:
         display_list = priority
-    shown = display_list[:limit]
+
+    # Paging: ``limit`` is the page size, ``page`` is 1-indexed. Clamp an
+    # out-of-range page to the last page so ``--page 99`` shows the tail rather
+    # than a blank table.
+    total = len(display_list)
+    page_size = max(1, limit)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = min(max(1, page), total_pages)
+    page_start = (page - 1) * page_size
+    shown = display_list[page_start : page_start + page_size]
 
     # Detect if we have blast radius context (agents/servers/credentials)
     has_blast_context = any(br.affected_agents and (br.affected_servers or br.exposed_credentials) for br in shown)
 
     console.print()
-    total = len(display_list)
     shown_n = len(shown)
     total_active = len(active_findings)
-    if total > limit:
-        # Priority list truncated by --limit; tell the operator how many
-        # additional priority rows aren't shown.
+    page_label = f" · page {page}/{total_pages}" if total_pages > 1 else ""
+    if total > page_size:
+        # Priority list spans more than one page; tell the operator how many
+        # rows this page shows out of the full priority list.
         suffix = ""
         if total_active > total:
             suffix = f" · {total_active - total} more below priority"
-        title = f"Top Findings ({min(limit, total)} of {total}{suffix})"
+        title = f"Top Findings ({shown_n} of {total}{suffix}{page_label})"
     elif total_active > shown_n:
         # Display list fits in --limit but priority filtering hid some
         # lower-severity rows further down. Tell the operator both numbers
@@ -469,14 +492,18 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
 
     console.print(table)
 
-    overflow = total - len(shown)
+    overflow = total - (page_start + len(shown))
     if overflow > 0 or rest_count > 0:
         parts = []
         if overflow > 0:
             parts.append(f"{overflow} more critical/high")
         if rest_count > 0:
             parts.append(f"{rest_count} medium/low hidden")
-        console.print(f"  [dim]+ {' · '.join(parts)} — use --verbose for full list[/dim]")
+        if page < total_pages:
+            nav = f"use --page {page + 1} for the next {min(page_size, overflow)} · --verbose for full list"
+        else:
+            nav = "use --verbose for full list"
+        console.print(f"  [dim]+ {' · '.join(parts)} — {nav}[/dim]")
 
     # Critical details section — show description and blast chain for CRIT/HIGH only
     critical_findings = [br for br in shown if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]

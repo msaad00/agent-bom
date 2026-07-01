@@ -235,6 +235,7 @@ def render_output(
     verbose: bool = False,
     exclude_unfixable: bool = False,
     fixable_only: bool = False,
+    findings_page: int = 1,
     agent_mode: bool = False,
     agent_token_budget: int = 0,
     agent_mode_full: bool = False,
@@ -335,7 +336,7 @@ def render_output(
                 print_compact_summary(report, verbose=verbose)
                 print_scan_performance_summary(report)
                 print_compact_agents(report)
-                print_compact_blast_radius(report, fixable_only=fixable_only)
+                print_compact_blast_radius(report, fixable_only=fixable_only, page=findings_page)
 
             # AI enrichment output (both modes)
             if report.executive_summary:

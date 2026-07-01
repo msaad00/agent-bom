@@ -14,6 +14,15 @@ The canonical command reference lives in
   blast-radius summary (`N cred(s), N tool(s) reachable`). The same chain is
   emitted in SARIF result messages, an `exposure_chain` property, and
   `relatedLocations`.
+- The default (non-`--verbose`) console output shows a compact posture card —
+  the posture grade badge, `score/100`, and the top weak driver — inline after
+  any normal scan, not only under `--posture`. `--verbose` still expands the
+  full posture panel and credential/driver detail.
+- Compact findings are paged with a page size of 10. `agent-bom agents --page N`
+  selects the page of the priority-ordered finding list; when more pages remain
+  the overflow hint points at the next `--page` value, and an out-of-range page
+  clamps to the last page (never a blank table). Machine-readable JSON / SARIF /
+  SBOM output is unaffected by `--page`.
 - `agent-bom agents --agent-mode` writes a stable JSON envelope for assistant
   and automation callers. By default the envelope's `data` is a bounded summary
   (`data_mode: "summary"`) — counts plus the top-ranked findings and exposure

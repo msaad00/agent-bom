@@ -261,6 +261,15 @@ def output_options(fn):
                 default=False,
                 help="Show a concise 5-line workstation posture summary.",
             ),
+            click.option(
+                "--page",
+                "findings_page",
+                type=click.IntRange(min=1),
+                default=1,
+                show_default=True,
+                metavar="N",
+                help="Page of compact findings to show (page size 10). An out-of-range page clamps to the last page.",
+            ),
         ]
     )(fn)
 

@@ -50,13 +50,15 @@ class PostgresConnectionStore:
                     updated_at            TEXT NOT NULL,
                     last_scan_at          TEXT,
                     scan_interval_minutes INTEGER,
-                    auth_params           TEXT NOT NULL DEFAULT '{}'
+                    auth_params           TEXT NOT NULL DEFAULT '{}',
+                    last_event_at         TEXT
                 )
             """)
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS scan_interval_minutes INTEGER")
             # Idempotent migration: backfill existing rows with an empty object so
             # the column stays NOT NULL and legacy connections read as no-params.
             conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS auth_params TEXT NOT NULL DEFAULT '{}'")
+            conn.execute("ALTER TABLE cloud_connections ADD COLUMN IF NOT EXISTS last_event_at TEXT")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
@@ -71,8 +73,8 @@ class PostgresConnectionStore:
                 INSERT INTO cloud_connections
                     (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
                      regions, status, status_detail, created_at, updated_at, last_scan_at,
-                     scan_interval_minutes, auth_params)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     scan_interval_minutes, auth_params, last_event_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     provider = EXCLUDED.provider,
                     display_name = EXCLUDED.display_name,
@@ -84,7 +86,8 @@ class PostgresConnectionStore:
                     updated_at = EXCLUDED.updated_at,
                     last_scan_at = EXCLUDED.last_scan_at,
                     scan_interval_minutes = EXCLUDED.scan_interval_minutes,
-                    auth_params = EXCLUDED.auth_params
+                    auth_params = EXCLUDED.auth_params,
+                    last_event_at = EXCLUDED.last_event_at
                 """,
                 (
                     record.id,
@@ -101,6 +104,7 @@ class PostgresConnectionStore:
                     record.last_scan_at,
                     record.scan_interval_minutes,
                     json.dumps(record.auth_params),
+                    record.last_event_at,
                 ),
             )
             conn.commit()
@@ -109,7 +113,7 @@ class PostgresConnectionStore:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-                "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes, auth_params "
+                "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes, auth_params, last_event_at "
                 "FROM cloud_connections WHERE tenant_id = %s AND id = %s",
                 (tenant_id, connection_id),
             ).fetchone()
@@ -119,7 +123,7 @@ class PostgresConnectionStore:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-                "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes, auth_params "
+                "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes, auth_params, last_event_at "
                 "FROM cloud_connections WHERE tenant_id = %s ORDER BY created_at, id",
                 (tenant_id,),
             ).fetchall()
@@ -144,7 +148,7 @@ class PostgresConnectionStore:
         with bypass_tenant_rls(), _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-                "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes, auth_params "
+                "regions, status, status_detail, created_at, updated_at, last_scan_at, scan_interval_minutes, auth_params, last_event_at "
                 "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
             ).fetchall()
         return [_row_to_record(row) for row in rows]

@@ -165,9 +165,9 @@ posture re-evaluation, not a full runtime CDR product.
 
 For DSPM, Snowflake has the deepest current support because agent-bom can read
 warehouse metadata, grants, tags, lineage, and governance activity visible to
-the configured role. AWS S3 also has an opt-in bounded content-sampling lane for
-classifier-backed PII/PHI/PCI/secrets evidence; it stores only redacted
-classification counts, never raw object bytes. Other cloud data-store
+the configured role. AWS S3 and GCP Cloud Storage also have opt-in bounded
+content-sampling lanes for classifier-backed PII/PHI/PCI/secrets evidence; they
+store only redacted classification counts, never raw object bytes. Other cloud data-store
 sensitivity is posture and metadata based until broader provider DLP/Macie
 wrapping, database/warehouse sampling, and object/table/column-level access
 mapping land. Snowflake is therefore a strong optional lane for

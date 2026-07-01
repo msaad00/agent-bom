@@ -330,6 +330,11 @@ docker compose -f docker-compose.pilot.yml up -d
 # Dashboard -> http://localhost:3000
 ```
 
+The pilot compose profile is a single-workstation evaluator: API and UI ports
+bind to `127.0.0.1`, CORS is scoped to local UI origins, and no-auth is enabled
+only for that loopback boundary. Use `docker-compose.platform.yml` or
+`docs/HOSTED_POC.md` before sharing a link with anyone else.
+
 - [Deploy anywhere guide](docs/DEPLOY_PLATFORM.md) — laptop, your Kubernetes, or hosted control plane
 - [Helm chart](deploy/helm/agent-bom) and [one-apply EKS platform module](deploy/terraform/platform-eks)
 - [Docker Hub image](https://hub.docker.com/r/agentbom/agent-bom)

@@ -145,7 +145,7 @@ def test_monitoring_example_has_no_default_admin_password_or_public_ports():
 
 
 def test_pilot_insecure_mode_is_loopback_scoped():
-    """Pilot no-auth mode is acceptable only because it is loopback-only."""
+    """Pilot no-auth mode is acceptable only with loopback ports and local CORS."""
     import yaml
 
     path = ROOT / "deploy" / "docker-compose.pilot.yml"
@@ -154,7 +154,8 @@ def test_pilot_insecure_mode_is_loopback_scoped():
     ui = data["services"]["ui"]
 
     assert "--allow-insecure-no-auth" in api["command"]
-    assert "--cors-allow-all" in api["command"]
+    assert "--cors-allow-all" not in api["command"]
+    assert "--cors-origins http://localhost:3000,http://127.0.0.1:3000" in api["command"]
     assert api["ports"] == ["127.0.0.1:8422:8422"]
     assert ui["ports"] == ["127.0.0.1:3000:3000"]
 

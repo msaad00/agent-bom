@@ -256,8 +256,10 @@ for (const theme of ["dark", "light"] as const) {
       window.localStorage.setItem("agent-bom-theme", selectedTheme);
     }, theme);
 
-    await page.goto("/graph");
-    await page.waitForLoadState("networkidle");
+    await page.goto("/graph", { waitUntil: "domcontentloaded" });
+    await page.waitForURL((url) => url.pathname === "/graph" && url.searchParams.has("layers"), {
+      waitUntil: "domcontentloaded",
+    });
     await captureGraphScreenshot(page, testInfo, theme);
   });
 }

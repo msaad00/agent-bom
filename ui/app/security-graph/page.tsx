@@ -22,6 +22,7 @@ import { AttackPathCard } from "@/components/attack-path-card";
 import { ExposurePathCommandCenter } from "@/components/exposure-path-command-center";
 import { ExposurePathStrip } from "@/components/exposure-path-strip";
 import { GraphEvidenceExportButton } from "@/components/graph-chrome";
+import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import {
   api,
@@ -353,6 +354,7 @@ function SecurityGraphPageContent() {
 
   return (
     <div className="space-y-4">
+      <GraphLensSwitcher />
       {selectedExposurePath && (
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="overflow-hidden rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">

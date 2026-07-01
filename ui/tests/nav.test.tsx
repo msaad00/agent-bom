@@ -129,18 +129,27 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/security-graph')).toBe(true)
   })
 
-  it('contains Lineage Graph link', () => {
+  it('contains Registry link in Discover', () => {
     render(<Nav />)
-    fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
-    const links = screen.getAllByRole('link', { name: /lineage graph/i })
-    expect(links.some((l) => l.getAttribute('href') === '/graph')).toBe(true)
+    const links = screen.getAllByRole('link', { name: /^registry$/i })
+    expect(links.some((l) => l.getAttribute('href') === '/registry')).toBe(true)
   })
 
-  it('contains Agent Mesh link', () => {
+  it('consolidates lineage/mesh/context into the single Security Graph lens (no separate nav links)', () => {
     render(<Nav />)
     fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
-    const links = screen.getAllByRole('link', { name: /agent mesh/i })
-    expect(links.some((l) => l.getAttribute('href') === '/mesh')).toBe(true)
+    const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/security-graph')
+    expect(hrefs).not.toContain('/graph')
+    expect(hrefs).not.toContain('/mesh')
+    expect(hrefs).not.toContain('/context')
+    expect(hrefs).not.toContain('/insights')
+  })
+
+  it('drops the duplicate /overview home entry', () => {
+    render(<Nav />)
+    const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
+    expect(hrefs).not.toContain('/overview')
   })
 
   it('contains Compliance link', () => {
@@ -155,6 +164,22 @@ describe('Nav', () => {
     fireEvent.click(screen.getByRole('button', { name: /govern/i }))
     const links = screen.getAllByRole('link', { name: /^governance$/i })
     expect(links.some((l) => l.getAttribute('href') === '/governance')).toBe(true)
+  })
+
+  it('tucks Govern deep-dives (cost/identity/drift) under a More disclosure to keep the group tight', () => {
+    render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    const summaries = Array.from(document.querySelectorAll('summary')).map((s) => s.textContent ?? '')
+    expect(summaries.some((t) => /More \(3\)/.test(t))).toBe(true)
+  })
+
+  it('keeps cost, identity, and drift reachable from the Govern group', () => {
+    render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/cost')
+    expect(hrefs).toContain('/identity')
+    expect(hrefs).toContain('/drift')
   })
 
   it('contains Audit Log link', () => {
@@ -201,9 +226,9 @@ describe('Nav', () => {
   it('contains links for all primary pages across all groups', async () => {
     render(<Nav />)
     const expectedByGroup: Record<string, string[]> = {
-      Discover: ['/', '/agents', '/fleet'],
+      Discover: ['/', '/agents', '/fleet', '/registry'],
       Scan: ['/sources', '/scan', '/jobs', '/findings'],
-      Analyze: ['/security-graph', '/graph', '/mesh', '/context', '/insights'],
+      Analyze: ['/security-graph'],
       Protect: ['/proxy', '/audit', '/gateway'],
       Govern: ['/compliance', '/remediation', '/governance', '/traces', '/activity'],
     }
@@ -225,7 +250,7 @@ describe('Nav', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Choose source mode, run scans, and review findings')).toBeInTheDocument()
-      expect(screen.getByText('Trace blast radius and graph relationships')).toBeInTheDocument()
+      expect(screen.getByText('One security graph with attack-path, lineage, mesh, and context lenses')).toBeInTheDocument()
       expect(screen.getByText('Proxy, policy, and runtime enforcement surfaces')).toBeInTheDocument()
       expect(screen.getByText('Evidence, remediation, governance, and activity')).toBeInTheDocument()
     })

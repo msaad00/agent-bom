@@ -264,9 +264,7 @@ def _provider_status(provider_name: str) -> AIProviderStatus:
             installed=installed,
             configured=configured,
             available=installed and configured,
-            reason="available"
-            if installed and configured
-            else "huggingface-hub and HF_TOKEN are required for HuggingFace enrichment",
+            reason="available" if installed and configured else "huggingface-hub and HF_TOKEN are required for HuggingFace enrichment",
         )
     installed = _check_litellm()
     return AIProviderStatus(

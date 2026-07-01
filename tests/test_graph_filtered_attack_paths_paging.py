@@ -20,9 +20,7 @@ def _graph_larger_than_page(filler: int) -> UnifiedGraph:
     # The rest of the kill-chain is inserted last, so it falls on a later page.
     g.add_node(UnifiedNode(id="server:fs", entity_type=EntityType.SERVER, label="fs"))
     g.add_node(UnifiedNode(id="pkg:express", entity_type=EntityType.PACKAGE, label="express"))
-    g.add_node(
-        UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical", risk_score=9.0)
-    )
+    g.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical", risk_score=9.0))
     g.add_edge(UnifiedEdge(source="agent:a", target="server:fs", relationship=RelationshipType.USES))
     g.add_edge(UnifiedEdge(source="server:fs", target="pkg:express", relationship=RelationshipType.DEPENDS_ON))
     g.add_edge(UnifiedEdge(source="pkg:express", target="vuln:CVE-1", relationship=RelationshipType.VULNERABLE_TO))

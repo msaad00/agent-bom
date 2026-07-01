@@ -1553,15 +1553,11 @@ async def test_auth_session_xff_spoof_does_not_reset_bruteforce_window(monkeypat
         )
 
     with pytest.raises(HTTPException) as first:
-        await enterprise.create_browser_session(
-            make_request("1.1.1.1"), Response(), enterprise.BrowserSessionRequest(api_key="bad-1")
-        )
+        await enterprise.create_browser_session(make_request("1.1.1.1"), Response(), enterprise.BrowserSessionRequest(api_key="bad-1"))
     assert first.value.status_code == 401
 
     with pytest.raises(HTTPException) as second:
-        await enterprise.create_browser_session(
-            make_request("2.2.2.2"), Response(), enterprise.BrowserSessionRequest(api_key="bad-2")
-        )
+        await enterprise.create_browser_session(make_request("2.2.2.2"), Response(), enterprise.BrowserSessionRequest(api_key="bad-2"))
     assert second.value.status_code == 429
 
 

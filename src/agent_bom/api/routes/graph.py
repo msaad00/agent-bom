@@ -1196,9 +1196,7 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
     off_page_hops = {hop for p in kept_paths for hop in p.hops} - paged_ids
     nodes_by_id = {n.id: n for n in paged_nodes}
     nodes_by_id.update({hop: graph.nodes[hop] for hop in off_page_hops if hop in graph.nodes})
-    attack_paths = [
-        _serialize_attack_path(p, graph.edges, nodes_by_id=nodes_by_id, scan_id=graph.scan_id) for p in kept_paths
-    ]
+    attack_paths = [_serialize_attack_path(p, graph.edges, nodes_by_id=nodes_by_id, scan_id=graph.scan_id) for p in kept_paths]
     interaction_risks = [
         r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)
     ]
@@ -2181,8 +2179,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         )
         nodes_by_id = {**filtered_graph.nodes, **{node.id: node for node in backfilled_nodes}}
         attack_paths = [
-            _serialize_attack_path(ap, filtered_graph.edges, nodes_by_id=nodes_by_id, scan_id=filtered_graph.scan_id)
-            for ap in root_paths
+            _serialize_attack_path(ap, filtered_graph.edges, nodes_by_id=nodes_by_id, scan_id=filtered_graph.scan_id) for ap in root_paths
         ]
 
     return {

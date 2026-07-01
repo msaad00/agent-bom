@@ -641,8 +641,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
             legacy_rpmdb = next((p for p in _LEGACY_RPMDB_PATHS if p in names), None)
             if legacy_rpmdb and "var/log/installed-rpms" not in names:
                 _logger.warning(
-                    "Legacy rpm database at /%s is not yet supported — OS package "
-                    "coverage from this image is incomplete",
+                    "Legacy rpm database at /%s is not yet supported — OS package coverage from this image is incomplete",
                     legacy_rpmdb,
                 )
 

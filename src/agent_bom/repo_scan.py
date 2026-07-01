@@ -117,8 +117,7 @@ def validate_repo_url(repo_url: str) -> str:
         # arbitrary hosts unless the operator pins an explicit allowlist. Mirrors
         # _enforce_remote_mcp_auth_defaults' posture for remote binds.
         raise RepoScanError(
-            f"{_ALLOWED_HOSTS_ENV} must be set to an explicit host allowlist before "
-            "scanning repositories on a remotely-bound MCP server"
+            f"{_ALLOWED_HOSTS_ENV} must be set to an explicit host allowlist before scanning repositories on a remotely-bound MCP server"
         )
 
     # SSRF defense: reject IP-literal private hosts and hostnames that resolve to

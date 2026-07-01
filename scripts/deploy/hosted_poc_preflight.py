@@ -148,7 +148,7 @@ def _validate_compose_config(errors: list[str], rendered: str) -> None:
     for needle, message in forbidden.items():
         if needle in rendered:
             _fail(errors, message)
-    if "AGENT_BOM_SESSION_COOKIE_SECURE=1" not in rendered and "AGENT_BOM_SESSION_COOKIE_SECURE: \"1\"" not in rendered:
+    if "AGENT_BOM_SESSION_COOKIE_SECURE=1" not in rendered and 'AGENT_BOM_SESSION_COOKIE_SECURE: "1"' not in rendered:
         _fail(errors, "compose output must set AGENT_BOM_SESSION_COOKIE_SECURE=1")
 
 

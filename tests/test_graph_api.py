@@ -2464,9 +2464,7 @@ class TestGraphStoreBackendSelection:
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
         recording_graph_store.graph.add_node(UnifiedNode(id="server:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
-        recording_graph_store.graph.add_node(
-            UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data")
-        )
+        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data"))
         recording_graph_store.graph.add_node(
             UnifiedNode(
                 id="vuln:cve",

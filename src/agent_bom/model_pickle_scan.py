@@ -63,9 +63,7 @@ _MAX_STR_STACK = 4096
 _MAX_MEMO_ENTRIES = 200_000
 
 # String-pushing opcodes whose operands can become a STACK_GLOBAL module/name.
-_STRING_OPCODES = frozenset(
-    {"SHORT_BINUNICODE", "BINUNICODE", "BINUNICODE8", "UNICODE", "SHORT_BINSTRING", "BINSTRING", "STRING"}
-)
+_STRING_OPCODES = frozenset({"SHORT_BINUNICODE", "BINUNICODE", "BINUNICODE8", "UNICODE", "SHORT_BINSTRING", "BINSTRING", "STRING"})
 # Memo store/load opcodes. Tracking them defeats evasion that hides the
 # dangerous operands behind the memo (PUT/BINPUT then a later BINGET) instead of
 # leaving them as the most recent literal strings.

@@ -97,9 +97,7 @@ def cyclonedx_hashes(checksums: dict[str, str]) -> list[dict[str, str]]:
 def spdx2_checksums(checksums: dict[str, str]) -> list[dict[str, str]]:
     """Render checksums as SPDX 2.x ``checksums`` entries (no-dash algorithm)."""
     return [
-        {"algorithm": alg.replace("-", ""), "checksumValue": value}
-        for alg, value in sorted(checksums.items())
-        if alg in _HEX_LEN_BY_ALG
+        {"algorithm": alg.replace("-", ""), "checksumValue": value} for alg, value in sorted(checksums.items()) if alg in _HEX_LEN_BY_ALG
     ]
 
 

@@ -376,12 +376,7 @@ def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):
 
 
 def test_analyze_project_surfaces_dependency_symbol_reach_from_tool(tmp_path: Path):
-    (tmp_path / "agent.py").write_text(
-        "import requests\n\n"
-        "@tool\n"
-        "def fetch(url):\n"
-        "    return requests.get(url)\n"
-    )
+    (tmp_path / "agent.py").write_text("import requests\n\n@tool\ndef fetch(url):\n    return requests.get(url)\n")
 
     result = analyze_project(tmp_path)
     payload = result.to_dict()

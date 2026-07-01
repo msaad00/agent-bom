@@ -123,8 +123,6 @@ def test_product_only_index_exists_for_vendorless_lookup() -> None:
     indexes = {row["name"] for row in conn.execute("PRAGMA index_list('cpe_matches')")}
     assert "idx_cpe_product_only" in indexes
 
-    plan = conn.execute(
-        "EXPLAIN QUERY PLAN SELECT * FROM cpe_matches WHERE product IN ('widget')"
-    ).fetchall()
+    plan = conn.execute("EXPLAIN QUERY PLAN SELECT * FROM cpe_matches WHERE product IN ('widget')").fetchall()
     detail = " ".join(str(row["detail"]) for row in plan)
     assert "idx_cpe_product_only" in detail

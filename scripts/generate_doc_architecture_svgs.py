@@ -94,8 +94,7 @@ def _svg_open(w: int, h: int, title: str, desc: str | None = None) -> list[str]:
     """GitHub-safe SVG root — explicit dimensions, no role/aria (sanitizer-friendly)."""
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
-        f'viewBox="0 0 {w} {h}" fill="none">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" fill="none">',
         f"<title>{_esc(title)}</title>",
     ]
     if desc:
@@ -126,9 +125,7 @@ def _icon_box(
     inner = size - pad * 2
     scale = inner / 24
     box_svg = (
-        f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="6" fill="{t["icon_bg"]}" stroke="{t["icon_stroke"]}"/>'
-        if box
-        else ""
+        f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="6" fill="{t["icon_bg"]}" stroke="{t["icon_stroke"]}"/>' if box else ""
     )
     return (
         f"{box_svg}"
@@ -204,20 +201,17 @@ def _hub_node(
 
 def _trust_footer(w: int, h: int, t: dict, message: str, *, height: int = 28) -> str:
     y = h - height - 12
-    return (
-        f'<rect x="24" y="{y}" width="{w - 48}" height="{height}" rx="8" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>'
-        + _text(
-            w // 2,
-            y + height - 8,
-            message,
-            **{
-                "text-anchor": "middle",
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "8.5",
-                "font-weight": "600",
-                "fill": t["trust"],
-            },
-        )
+    return f'<rect x="24" y="{y}" width="{w - 48}" height="{height}" rx="8" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>' + _text(
+        w // 2,
+        y + height - 8,
+        message,
+        **{
+            "text-anchor": "middle",
+            "font-family": "Inter,system-ui,sans-serif",
+            "font-size": "8.5",
+            "font-weight": "600",
+            "fill": t["trust"],
+        },
     )
 
 
@@ -230,7 +224,7 @@ def _audit_github_safe(svg: str) -> list[str]:
         issues.append("role/aria-labelledby attributes are not GitHub-safe")
     if not re.search(r'<svg[^>]+width="\d+"', svg):
         issues.append("missing explicit svg width")
-    if re.search(r'&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)', svg):
+    if re.search(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)", svg):
         issues.append("unescaped ampersand in SVG text")
     if "→" in svg or "←" in svg:
         issues.append("raw Unicode arrows — use ASCII -> instead")
@@ -426,9 +420,7 @@ def how_it_works(theme_name: str) -> str:
     step_cx = scan_x + 40
     for i, (icon, label) in enumerate(steps):
         sy = lane_top + 44 + i * 46
-        parts.append(
-            f'<circle cx="{step_cx}" cy="{sy + 12}" r="10" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.4"/>'
-        )
+        parts.append(f'<circle cx="{step_cx}" cy="{sy + 12}" r="10" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.4"/>')
         parts.append(
             f'<text x="{step_cx}" y="{sy + 16}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
             f'font-size="8" font-weight="800" fill="{scan_accent}">{i + 1}</text>'
@@ -471,10 +463,7 @@ def how_it_works(theme_name: str) -> str:
     ]
     for nx, ny, _size, _label, _icon, center in hub_nodes:
         if not center:
-            parts.append(
-                f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" '
-                f'stroke-width="1.3" opacity="0.75"/>'
-            )
+            parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" stroke-width="1.3" opacity="0.75"/>')
     for nx, ny, size, nlabel, icon, center in hub_nodes:
         parts.append(_hub_node(nx, ny, size, nlabel, icon, t, center=center))
 
@@ -494,7 +483,9 @@ def how_it_works(theme_name: str) -> str:
     for i, (icon, label) in enumerate(control):
         col, row = i % 2, i // 2
         tx, ty = control_x + col * 78, lane_top + 44 + row * 52
-        parts.append(f'<rect x="{tx}" y="{ty}" width="{control_card_w}" height="42" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(
+            f'<rect x="{tx}" y="{ty}" width="{control_card_w}" height="42" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
+        )
         parts.append(_icon_box(tx + (control_card_w - 24) // 2, ty + 5, ICONS[icon], t))
         parts.append(
             _text(

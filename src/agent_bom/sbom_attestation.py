@@ -297,14 +297,11 @@ def verify_sbom_attestation(
     if sig_path.is_file():
         try:
             sig_obj = json.loads(sig_path.read_text(encoding="utf-8"))
-            blob_ok = (
-                sig_obj.get("sha256") == actual_digest
-                and _verify_signature(
-                    sbom_bytes,
-                    sig_obj.get("signature", ""),
-                    str(sig_obj.get("algorithm", "")),
-                    sig_obj.get("publicKeyPem"),
-                )
+            blob_ok = sig_obj.get("sha256") == actual_digest and _verify_signature(
+                sbom_bytes,
+                sig_obj.get("signature", ""),
+                str(sig_obj.get("algorithm", "")),
+                sig_obj.get("publicKeyPem"),
             )
         except (OSError, ValueError):
             blob_ok = False

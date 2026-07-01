@@ -228,7 +228,8 @@ def _match_public_exposed_vulnerability_where(
         vuln_ids = [
             e.target
             for e in graph.adjacency.get(node.id, [])
-            if e.relationship == RelationshipType.VULNERABLE_TO and graph.nodes.get(e.target) is not None
+            if e.relationship == RelationshipType.VULNERABLE_TO
+            and graph.nodes.get(e.target) is not None
             and predicate(graph.nodes[e.target])
         ]
         if not vuln_ids:
@@ -449,10 +450,7 @@ TOXIC_RULES: tuple[ToxicRule, ...] = (
             "listed in CISA Known Exploited Vulnerabilities. This is observed "
             "exploitation plus public reachability."
         ),
-        remediation=(
-            "Patch or remove the vulnerable component immediately and remove public "
-            "exposure until remediation is verified."
-        ),
+        remediation=("Patch or remove the vulnerable component immediately and remove public exposure until remediation is verified."),
         match=_match_public_exposed_kev,
         owasp_tags=("A06:2021",),
     ),
@@ -462,13 +460,9 @@ TOXIC_RULES: tuple[ToxicRule, ...] = (
         severity="critical",
         mitre=("T1190", "T1059"),
         description=(
-            "A resource reachable from the public internet carries a vulnerability "
-            "whose CWE/advisory metadata supports code execution."
+            "A resource reachable from the public internet carries a vulnerability whose CWE/advisory metadata supports code execution."
         ),
-        remediation=(
-            "Patch the vulnerable component or remove the public path before leaving "
-            "the workload in service."
-        ),
+        remediation=("Patch the vulnerable component or remove the public path before leaving the workload in service."),
         match=_match_public_exposed_rce,
         owasp_tags=("A06:2021",),
     ),
@@ -478,8 +472,7 @@ TOXIC_RULES: tuple[ToxicRule, ...] = (
         severity="critical",
         mitre=("T1190",),
         description=(
-            "A resource reachable from the public internet carries a vulnerability "
-            "whose CVSS vector says the attack vector is network."
+            "A resource reachable from the public internet carries a vulnerability whose CVSS vector says the attack vector is network."
         ),
         remediation=(
             "Restrict the public network path or patch the network-exploitable "

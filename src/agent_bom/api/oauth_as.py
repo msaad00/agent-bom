@@ -532,9 +532,7 @@ class OAuthAuthorizationServer:
             request_base_url=request_base_url,
         )
 
-    def _issue_access_token(
-        self, *, subject: str, client_id: str, scopes: set[str], request_base_url: str | None
-    ) -> dict[str, Any]:
+    def _issue_access_token(self, *, subject: str, client_id: str, scopes: set[str], request_base_url: str | None) -> dict[str, Any]:
         now = int(time.time())
         issuer = self.resolve_issuer(request_base_url)
         claims = {

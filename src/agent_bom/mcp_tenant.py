@@ -66,8 +66,7 @@ def resolve_mcp_tool_tenant_id(requested_tenant_id: str | None = None) -> str:
     requested = (requested_tenant_id or "").strip()
     if requested and requested not in {resolved, DEFAULT_TENANT_ID}:
         logger.warning(
-            "Ignoring MCP tool-supplied tenant_id=%r; using server-bound tenant_id=%r. "
-            "Set %s on the MCP server process to change scope.",
+            "Ignoring MCP tool-supplied tenant_id=%r; using server-bound tenant_id=%r. Set %s on the MCP server process to change scope.",
             requested,
             resolved,
             MCP_TENANT_ENV_VAR,

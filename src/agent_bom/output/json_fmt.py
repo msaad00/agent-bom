@@ -1133,9 +1133,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "network_exploitable": getattr(br.vulnerability, "network_exploitable", False),
                 "triage_priority": fused_triage_priority(
                     severity=(
-                        br.vulnerability.severity.value
-                        if hasattr(br.vulnerability.severity, "value")
-                        else str(br.vulnerability.severity)
+                        br.vulnerability.severity.value if hasattr(br.vulnerability.severity, "value") else str(br.vulnerability.severity)
                     ),
                     is_kev=bool(br.vulnerability.is_kev),
                     epss_score=getattr(br.vulnerability, "epss_score", None),

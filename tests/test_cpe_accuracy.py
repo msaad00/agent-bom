@@ -36,21 +36,21 @@ _GROUND_TRUTH = [
 
 # (component_name, version, vendor_hint, expected_cves)
 _CASES = [
-    ("struts", "2.5.0", "apache", {"CVE-T-STRUTS"}),   # in range
-    ("struts", "2.5.30", "apache", set()),             # exclusive end -> excluded
-    ("struts", "1.9.0", "apache", set()),              # below start
-    ("log4j", "2.14.1", "apache", {"CVE-T-LOG4J"}),    # exact hit
-    ("log4j", "2.14.2", "apache", set()),              # exact mismatch
-    ("openssl", "3.0.6", None, {"CVE-T-OPENSSL"}),     # inclusive end -> included
-    ("openssl", "3.0.7", None, set()),                 # above inclusive end
+    ("struts", "2.5.0", "apache", {"CVE-T-STRUTS"}),  # in range
+    ("struts", "2.5.30", "apache", set()),  # exclusive end -> excluded
+    ("struts", "1.9.0", "apache", set()),  # below start
+    ("log4j", "2.14.1", "apache", {"CVE-T-LOG4J"}),  # exact hit
+    ("log4j", "2.14.2", "apache", set()),  # exact mismatch
+    ("openssl", "3.0.6", None, {"CVE-T-OPENSSL"}),  # inclusive end -> included
+    ("openssl", "3.0.7", None, set()),  # above inclusive end
     # No vendor hint: the acme no-bounds "log4j" collision DOES match (apache log4j
     # is exact-2.14.1 so it does not at 9.9.9). This is the false-positive risk.
     ("log4j", "9.9.9", None, {"CVE-T-FAKELOG"}),
     # With the correct vendor hint, the acme collision is suppressed -> clean.
     ("log4j", "9.9.9", "apache", set()),
-    ("widget", "1.0.0", "acme", set()),                 # exclusive start -> excluded
-    ("widget", "1.0.1", "acme", {"CVE-T-STARTEX"}),     # above exclusive start -> included
-    ("nonexistent", "1.0", None, set()),               # unknown product
+    ("widget", "1.0.0", "acme", set()),  # exclusive start -> excluded
+    ("widget", "1.0.1", "acme", {"CVE-T-STARTEX"}),  # above exclusive start -> included
+    ("nonexistent", "1.0", None, set()),  # unknown product
 ]
 
 
@@ -102,10 +102,7 @@ def test_batch_scanner_uses_cpe_candidates_with_vendor_hint(monkeypatch: pytest.
     )
     conn.commit()
 
-    packages = [
-        Package(name=f"dummy-{idx}", version="1.0.0", ecosystem="generic")
-        for idx in range(50)
-    ]
+    packages = [Package(name=f"dummy-{idx}", version="1.0.0", ecosystem="generic") for idx in range(50)]
     target = Package(name="widget", version="1.2.3", ecosystem="generic", purl="pkg:generic/apache/widget@1.2.3")
     packages.append(target)
 

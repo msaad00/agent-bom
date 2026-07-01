@@ -191,6 +191,7 @@ def _normalize_ghsa_db_ecosystem(ecosystem: str) -> str:
     eco = (ecosystem or "").strip().lower()
     return _GHSA_API_TO_DB_ECOSYSTEM.get(eco, eco)
 
+
 # Batch insert size for performance
 _BATCH_SIZE = 500
 
@@ -1523,9 +1524,9 @@ def sync_nvd_incremental(
 ) -> int:
     """Fetch recently modified CVEs from NVD and upsert enrichment into the local DB.
 
-  Requires ``NVD_API_KEY`` for practical rate limits. Uses ``lastModStartDate`` /
-  ``lastModEndDate`` windows and stores the end timestamp in sync metadata for
-  the next incremental run.
+    Requires ``NVD_API_KEY`` for practical rate limits. Uses ``lastModStartDate`` /
+    ``lastModEndDate`` windows and stores the end timestamp in sync metadata for
+    the next incremental run.
     """
     import os
     import time

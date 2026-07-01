@@ -307,6 +307,9 @@ jobs:
       - name: Ruff
         run: uv run ruff check src/
 
+      - name: Ruff format
+        run: uv run ruff format --check src/
+
       - name: MyPy
         run: uv run mypy src/ --ignore-missing-imports --disable-error-code import-untyped
 

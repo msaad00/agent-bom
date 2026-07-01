@@ -228,8 +228,7 @@ def test_raising_plugin_fails_closed_by_default():
     assert body["error"]["data"]["policy_source"] == "policy_plugin"
     assert body["error"]["data"]["reason"] == "A gateway policy plugin blocked this request"
     assert any(
-        event["policy_source"] == "policy_plugin"
-        and event["reason"] == "policy evaluator unavailable; fail-closed mode denies"
+        event["policy_source"] == "policy_plugin" and event["reason"] == "policy evaluator unavailable; fail-closed mode denies"
         for event in audit
     )
 

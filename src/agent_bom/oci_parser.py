@@ -880,9 +880,7 @@ def _extract_packages_from_layer(
     # the layer would silently contribute zero RPMs — surface a clear coverage
     # warning so operators know the result is partial, not clean.
     if warnings is not None:
-        has_parsable_rpm = any(
-            p in names and not _is_deleted(p) for p in (*_RPM_SQLITE_PATHS, *_RPM_MANIFEST_PATHS)
-        )
+        has_parsable_rpm = any(p in names and not _is_deleted(p) for p in (*_RPM_SQLITE_PATHS, *_RPM_MANIFEST_PATHS))
         if not has_parsable_rpm:
             legacy_rpmdb = next(
                 (p for p in (*_RPM_BDB_PATHS, *_RPM_NDB_PATHS) if p in names and not _is_deleted(p)),
@@ -892,8 +890,7 @@ def _extract_packages_from_layer(
                 fmt = "NDB" if legacy_rpmdb.endswith("Packages.db") else "BerkeleyDB"
                 normalized = legacy_rpmdb[2:] if legacy_rpmdb.startswith("./") else legacy_rpmdb
                 warnings.append(
-                    f"Legacy {fmt} rpm database at /{normalized} is not yet supported — "
-                    "OS package coverage for this image is incomplete"
+                    f"Legacy {fmt} rpm database at /{normalized} is not yet supported — OS package coverage for this image is incomplete"
                 )
 
     # --- Java: JARs via META-INF/maven/*/pom.properties or MANIFEST.MF ---

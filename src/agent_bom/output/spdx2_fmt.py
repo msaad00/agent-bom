@@ -238,9 +238,7 @@ def to_spdx2_tagvalue(report: AIBOMReport, version: str = "2.3") -> str:
         for checksum in pkg.get("checksums", []):
             lines.append(f"PackageChecksum: {checksum['algorithm']}: {checksum['checksumValue']}")
         for ext in pkg.get("externalRefs", []):
-            lines.append(
-                f"ExternalRef: {ext['referenceCategory']} {ext['referenceType']} {ext['referenceLocator']}"
-            )
+            lines.append(f"ExternalRef: {ext['referenceCategory']} {ext['referenceType']} {ext['referenceLocator']}")
         for annotation in pkg.get("annotations", []):
             lines.append(f"PackageComment: {annotation['comment']}")
         lines.append("")

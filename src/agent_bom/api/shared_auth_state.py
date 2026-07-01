@@ -85,10 +85,7 @@ _UPSERT_REVOKED_SQL = (
 )
 _DELETE_EXPIRED_NONCE_SQL = "DELETE FROM revoked_session_nonces WHERE nonce = %s AND expires_at <= TO_TIMESTAMP(%s)"
 _CONSUME_REVOKED_SQL = (
-    "INSERT INTO revoked_session_nonces (nonce, expires_at)"
-    " VALUES (%s, TO_TIMESTAMP(%s))"
-    " ON CONFLICT (nonce) DO NOTHING"
-    " RETURNING 1"
+    "INSERT INTO revoked_session_nonces (nonce, expires_at) VALUES (%s, TO_TIMESTAMP(%s)) ON CONFLICT (nonce) DO NOTHING RETURNING 1"
 )
 _CHECK_REVOKED_SQL = "SELECT 1 FROM revoked_session_nonces WHERE nonce = %s AND expires_at > TO_TIMESTAMP(%s)"
 _DELETE_OLD_ATTEMPTS_SWEEP_SQL = "DELETE FROM auth_session_attempts WHERE attempted_at < NOW() - INTERVAL '24 hours'"

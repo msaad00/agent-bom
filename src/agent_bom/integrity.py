@@ -660,13 +660,9 @@ def _try_cosign_verify(file_path: Path, bundle_path: Path) -> bool:
     if cosign is None:
         return False
     certificate_identity = (
-        os.environ.get(_COSIGN_CERTIFICATE_IDENTITY_REGEXP_ENV, "").strip()
-        or _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP
+        os.environ.get(_COSIGN_CERTIFICATE_IDENTITY_REGEXP_ENV, "").strip() or _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP
     )
-    certificate_issuer = (
-        os.environ.get(_COSIGN_CERTIFICATE_OIDC_ISSUER_ENV, "").strip()
-        or _DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER
-    )
+    certificate_issuer = os.environ.get(_COSIGN_CERTIFICATE_OIDC_ISSUER_ENV, "").strip() or _DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER
 
     try:
         proc = subprocess.run(

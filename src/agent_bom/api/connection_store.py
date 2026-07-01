@@ -200,9 +200,7 @@ def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
         updated_at=row[10] or "",
         last_scan_at=row[11] if len(row) > 11 else None,
         last_scan_id=row[12] if has_last_scan_id else None,
-        scan_interval_minutes=(
-            _decode_interval(row[13] if has_last_scan_id else row[12]) if len(row) > 12 else None
-        ),
+        scan_interval_minutes=(_decode_interval(row[13] if has_last_scan_id else row[12]) if len(row) > 12 else None),
         auth_params=_decode_auth_params(row[14] if has_last_scan_id else row[13]) if len(row) > 13 else {},
     )
 

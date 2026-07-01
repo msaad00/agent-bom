@@ -38,6 +38,8 @@ import {
   Grid3X3,
   List,
   Search,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
@@ -50,6 +52,15 @@ function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
   if (err instanceof ApiForbiddenError) return "forbidden";
   return "network";
+}
+
+function downloadBlobToFile(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
@@ -391,6 +402,22 @@ function CompliancePageContent() {
   const [viewMode, setViewMode] = useState<"detail" | "heatmap" | "matrix">("detail");
   const [controlQuery, setControlQuery] = useState(queryParam);
   const [statusFilter, setStatusFilter] = useState<"all" | "pass" | "warning" | "fail">("all");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExportPack = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const blob = await api.downloadCompliancePack();
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadBlobToFile(blob, `agent-bom-compliance-pack-${stamp}.json`);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Failed to export compliance pack");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     setControlQuery(queryParam);
@@ -574,6 +601,21 @@ function CompliancePageContent() {
                 <span>Latest: {formatDate(data.latest_scan)}</span>
               )}
             </div>
+          </div>
+          <div className="flex flex-col items-end gap-1 self-start">
+            <button
+              onClick={() => void handleExportPack()}
+              disabled={exporting}
+              title="Download a signed evidence pack covering every framework"
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-2 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-900/40 disabled:opacity-50"
+              data-testid="compliance-export-pack"
+            >
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {exporting ? "Exporting…" : "Export pack"}
+            </button>
+            {exportError && (
+              <span className="max-w-[220px] text-right text-xs text-red-400">{exportError}</span>
+            )}
           </div>
         </div>
 

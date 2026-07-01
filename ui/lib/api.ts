@@ -66,6 +66,7 @@ import type {
   AgentLifecycleResponse,
   FleetAgent,
   FleetResponse,
+  FleetQuarantineResult,
   FleetStatsResponse,
   FleetSyncResult,
   ScanSchedule,
@@ -231,6 +232,7 @@ export type {
   FleetLifecycleState,
   FleetAgent,
   FleetResponse,
+  FleetQuarantineResult,
   FleetStatsResponse,
   FleetSyncResult,
   ScanSchedule,
@@ -779,6 +781,13 @@ export const api = {
   /** Compliance Hub: aggregate posture across native + ingested findings (#1044) */
   getHubPosture: () => get<HubPostureResponse>("/v1/compliance/hub/posture"),
 
+  /**
+   * Download one signed evidence pack covering every tag-mapped framework.
+   * Returns the raw bundle Blob (JSON) so the caller can save it to disk; the
+   * tamper-evident signature travels in the response headers.
+   */
+  downloadCompliancePack: () => getBlob("/v1/compliance/report/pack"),
+
   /** Fleet management */
   listFleet: (filters?: {
     state?: string | undefined;
@@ -806,6 +815,12 @@ export const api = {
     put<unknown>(`/v1/fleet/${agentId}/state`, { state, reason: reason ?? "" }),
   updateFleetAgent: (agentId: string, update: Partial<FleetAgent>) =>
     put<unknown>(`/v1/fleet/${agentId}`, update),
+  /**
+   * One-click containment: quarantine the agent AND mint an enforce-mode
+   * gateway deny policy bound to its identity (fail closed, idempotent).
+   */
+  quarantineFleetAgent: (agentId: string) =>
+    post<FleetQuarantineResult>(`/v1/fleet/${encodeURIComponent(agentId)}/quarantine`, {}),
   getFleetStats: () => get<FleetStatsResponse>("/v1/fleet/stats"),
 
   // ── Connectors / sources ──

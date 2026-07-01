@@ -4891,6 +4891,86 @@ paths:
       summary: Get Compliance Narrative By Framework
       tags:
       - compliance
+  /v1/compliance/report/pack:
+    get:
+      description: 'Export one signed evidence pack covering every tag-mapped framework.
+
+
+        This is the auditor "grab everything" download: instead of pulling a
+
+        per-framework bundle from ``/v1/compliance/{framework}/report`` one at a
+
+        time, operators get a single tamper-evident JSON with each framework''s
+
+        controls, mapped findings, and the shared audit-window integrity totals.
+
+
+        The pack shares the single-bundle security envelope: a fresh 128-bit
+
+        ``nonce`` and explicit ``expires_at`` are inside the signed body, the
+
+        signature (``X-Agent-Bom-Compliance-Report-Signature``) covers the
+
+        canonical UTF-8 body, and every framework''s evidence + the audit events
+
+        are tenant-filtered so cross-tenant data never leaks into the pack.'
+      operationId: export_compliance_pack_v1_compliance_report_pack_get
+      parameters:
+      - in: query
+        name: since
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Since
+      - in: query
+        name: until
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Until
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Export Compliance Pack
+      tags:
+      - compliance
   /v1/compliance/summary:
     get:
       description: 'Return aggregate compliance score and per-framework status counts.
@@ -6930,6 +7010,66 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Update Fleet Agent
+      tags:
+      - fleet
+  /v1/fleet/{agent_id}/quarantine:
+    post:
+      description: "Quarantine an agent and fail closed with a gateway DENY policy\
+        \ for its identity.\n\nOne click performs two containment actions:\n\n1. Moves\
+        \ the fleet agent to the ``QUARANTINED`` lifecycle state.\n2. Creates (or\
+        \ re-enables) an ``enforce``-mode gateway policy bound to the\n   agent's\
+        \ identity whose single rule denies every tool call\n   (``block_tools=[\"\
+        *\"]``).\n\nThe deny policy is scoped via ``bound_agents`` so only the quarantined\n\
+        agent's traffic is blocked at the proxy / gateway relay \u2014 other agents\
+        \ are\nunaffected. The operation is idempotent (a second call re-enables the\
+        \ same\npolicy rather than stacking duplicates) and both actions are audit-logged.\n\
+        Requires the ``policy_write`` permission because it mints a gateway\nenforcement\
+        \ policy."
+      operationId: quarantine_fleet_agent_v1_fleet__agent_id__quarantine_post
+      parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema:
+          title: Agent Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Quarantine Fleet Agent
       tags:
       - fleet
   /v1/fleet/{agent_id}/state:

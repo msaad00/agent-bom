@@ -34,6 +34,7 @@ import {
   Settings,
   Download,
   Search,
+  Ban,
 } from "lucide-react";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
@@ -96,6 +97,8 @@ export default function FleetPage() {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [quarantiningId, setQuarantiningId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [fleetTotal, setFleetTotal] = useState(0);
@@ -175,6 +178,31 @@ export default function FleetPage() {
     if (!confirm(`Change this agent state to ${newState}?`)) return;
     await api.updateFleetState(agentId, newState);
     void load();
+  };
+
+  const handleQuarantine = async (agentId: string, agentName: string) => {
+    if (
+      !confirm(
+        `Quarantine "${agentName}" and enforce a gateway DENY policy for its identity?\n\n` +
+          "This blocks every tool call from this agent at the gateway until you re-approve it.",
+      )
+    )
+      return;
+    setQuarantiningId(agentId);
+    setNotice(null);
+    try {
+      const result = await api.quarantineFleetAgent(agentId);
+      setNotice(
+        `Quarantined "${agentName}" — gateway ${result.gateway_policy.mode} deny policy ${
+          result.gateway_policy.created ? "created" : "re-enabled"
+        }.`,
+      );
+      void load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Failed to quarantine agent");
+    } finally {
+      setQuarantiningId(null);
+    }
   };
 
   const toggleExpand = (id: string) => {
@@ -372,6 +400,18 @@ export default function FleetPage() {
         </div>
       )}
 
+      {notice && (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3">
+          <p className="text-sm text-red-200">{notice}</p>
+          <button
+            onClick={() => setNotice(null)}
+            className="text-xs text-red-300/70 hover:text-red-200"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Empty state */}
       {!loading && !error && agents.length === 0 &&
         (counts && !isDeploymentSurfaceAvailable("fleet", counts) ? (
@@ -482,6 +522,33 @@ export default function FleetPage() {
                             {STATE_LABELS[t]}
                           </button>
                         ))}
+                      </div>
+                    )}
+                    {/* One-click containment: quarantine + gateway deny */}
+                    {agent.lifecycle_state !== "decommissioned" && (
+                      <div className="flex items-center gap-2 border-t border-zinc-800 pt-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleQuarantine(agent.agent_id, agent.name);
+                          }}
+                          disabled={quarantiningId === agent.agent_id}
+                          title="Quarantine this agent and enforce a gateway DENY policy for its identity"
+                          className="flex items-center gap-1.5 rounded-md border border-red-800 bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-900/40 disabled:opacity-50"
+                          data-testid="fleet-quarantine-deny"
+                        >
+                          {quarantiningId === agent.agent_id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Ban className="h-3.5 w-3.5" />
+                          )}
+                          {agent.lifecycle_state === "quarantined"
+                            ? "Re-enforce gateway deny"
+                            : "Quarantine + gateway deny"}
+                        </button>
+                        <span className="text-[10px] text-zinc-600">
+                          Blocks every tool call from this agent at the gateway.
+                        </span>
                       </div>
                     )}
                   </div>

@@ -33,11 +33,24 @@ def test_persona_value_renders_buyer_lanes() -> None:
     assert "283 ops" in svg
 
 
+def test_blast_radius_text_is_clipped_in_cards() -> None:
+    from scripts.generate_blast_radius_svgs import blast_radius
+
+    svg = blast_radius("light")
+    assert "clipPath" in svg
+    assert 'clip-path="url(#br-light-pkg)"' in svg
+    assert "ANTHROPIC_KEY" in svg
+    assert "run_shell" in svg
+    assert _audit_layout(svg) == []
+    assert _audit_github_safe(svg) == []
+
+
 def test_generated_svgs_have_no_rect_overflow() -> None:
     for name in (
         "how-it-works-dark.svg",
         "architecture-dark.svg",
         "persona-value-dark.svg",
+        "blast-radius-dark.svg",
     ):
         text = (IMAGES / name).read_text(encoding="utf-8")
         assert _audit_layout(text) == [], name
@@ -51,6 +64,8 @@ def test_generated_files_exist_and_are_valid_svg() -> None:
         "architecture-light.svg",
         "persona-value-dark.svg",
         "persona-value-light.svg",
+        "blast-radius-dark.svg",
+        "blast-radius-light.svg",
     ):
         path = IMAGES / name
         assert path.exists(), name
@@ -67,6 +82,7 @@ def test_generated_svgs_are_github_safe() -> None:
         "how-it-works-dark.svg",
         "architecture-dark.svg",
         "persona-value-dark.svg",
+        "blast-radius-dark.svg",
     ):
         text = (IMAGES / name).read_text(encoding="utf-8")
         assert _audit_github_safe(text) == [], name

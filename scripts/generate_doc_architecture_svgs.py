@@ -94,8 +94,7 @@ def _svg_open(w: int, h: int, title: str, desc: str | None = None) -> list[str]:
     """GitHub-safe SVG root — explicit dimensions, no role/aria (sanitizer-friendly)."""
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
-        f'viewBox="0 0 {w} {h}" fill="none">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" fill="none">',
         f"<title>{_esc(title)}</title>",
     ]
     if desc:
@@ -120,20 +119,19 @@ def _icon_box(
     *,
     box: bool = True,
     size: int = 24,
+    stroke_width: float = 1.5,
 ) -> str:
     stroke = t["ic_accent"] if accent else t["ic"]
     pad = 4
     inner = size - pad * 2
     scale = inner / 24
     box_svg = (
-        f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="6" fill="{t["icon_bg"]}" stroke="{t["icon_stroke"]}"/>'
-        if box
-        else ""
+        f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="6" fill="{t["icon_bg"]}" stroke="{t["icon_stroke"]}"/>' if box else ""
     )
     return (
         f"{box_svg}"
         f'<g transform="translate({x + pad},{y + pad}) scale({scale})" fill="none" stroke="{stroke}" '
-        f'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">{paths}</g>'
+        f'stroke-width="{stroke_width}" stroke-linecap="round" stroke-linejoin="round">{paths}</g>'
     )
 
 
@@ -175,18 +173,28 @@ def _hub_node(
     *,
     center: bool = False,
 ) -> str:
-    """Evidence-lane node card — icon and label stay inside the box."""
+    """Evidence-lane node card — large semantic icon with label below."""
     half = size // 2
     x, y = nx - half, ny - half
     fill = t["accent_fill"] if center else t["card"]
     stroke = t["accent_stroke"] if center else t["card_stroke"]
-    icon_sz = max(22, int(size * 0.48))
-    icon_y = y + 8 if center else y + 7
-    label_y = y + size - 8
+    icon_sz = max(30, int(size * 0.62)) if center else max(26, int(size * 0.56))
+    icon_y = y + (10 if center else 8)
+    label_y = y + size - 7
+    label_size = "9" if center else "8"
     return (
         f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="{max(8, size // 5)}" fill="{fill}" '
-        f'stroke="{stroke}" stroke-width="{"1.8" if center else "1.3"}"/>'
-        + _icon_box(nx - icon_sz // 2, icon_y, ICONS[icon], t, accent=center, box=False, size=icon_sz)
+        f'stroke="{stroke}" stroke-width="{"2" if center else "1.4"}"/>'
+        + _icon_box(
+            nx - icon_sz // 2,
+            icon_y,
+            ICONS[icon],
+            t,
+            accent=center,
+            box=False,
+            size=icon_sz,
+            stroke_width=2.0 if center else 1.7,
+        )
         + _text(
             nx,
             label_y,
@@ -194,7 +202,7 @@ def _hub_node(
             **{
                 "text-anchor": "middle",
                 "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "8" if center else "7.5",
+                "font-size": label_size,
                 "font-weight": "800",
                 "fill": t["accent"] if center else t["text"],
             },
@@ -204,20 +212,17 @@ def _hub_node(
 
 def _trust_footer(w: int, h: int, t: dict, message: str, *, height: int = 28) -> str:
     y = h - height - 12
-    return (
-        f'<rect x="24" y="{y}" width="{w - 48}" height="{height}" rx="8" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>'
-        + _text(
-            w // 2,
-            y + height - 8,
-            message,
-            **{
-                "text-anchor": "middle",
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "8.5",
-                "font-weight": "600",
-                "fill": t["trust"],
-            },
-        )
+    return f'<rect x="24" y="{y}" width="{w - 48}" height="{height}" rx="8" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>' + _text(
+        w // 2,
+        y + height - 8,
+        message,
+        **{
+            "text-anchor": "middle",
+            "font-family": "Inter,system-ui,sans-serif",
+            "font-size": "8.5",
+            "font-weight": "600",
+            "fill": t["trust"],
+        },
     )
 
 
@@ -230,7 +235,7 @@ def _audit_github_safe(svg: str) -> list[str]:
         issues.append("role/aria-labelledby attributes are not GitHub-safe")
     if not re.search(r'<svg[^>]+width="\d+"', svg):
         issues.append("missing explicit svg width")
-    if re.search(r'&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)', svg):
+    if re.search(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)", svg):
         issues.append("unescaped ampersand in SVG text")
     if "→" in svg or "←" in svg:
         issues.append("raw Unicode arrows — use ASCII -> instead")
@@ -259,49 +264,63 @@ ICONS = {
     "audit": '<path d="M6 5h12v14H6z M9 9h8 M9 12h8"/><path d="M9 16l2 2 4-4"/>',
     "cli": '<path d="M7 8l-4 4 4 4 M13 16h7"/>',
     "lock": '<rect x="7" y="11" width="10" height="8" rx="2"/><path d="M9 11V8a3 3 0 0 1 6 0v3"/>',
-    "finding": '<path d="M8 6h7l3 3v9H8z M15 6v3h3 M10 14l1.5 1.5 3-3"/>',
+    "finding": '<path d="M12 3l8 3v6.5c0 4.5-3.2 7.8-8 9.5-4.8-1.7-8-5-8-9.5V6z"/><path d="M12 9v4"/><path d="M12 16.5h.01"/>',
+    "asset": '<rect x="5" y="6" width="14" height="5" rx="1.5"/><rect x="5" y="13" width="14" height="5" rx="1.5"/><path d="M8 8.5h.01 M8 15.5h.01"/>',
+    "agent": '<rect x="6" y="9" width="12" height="9" rx="2.5"/><circle cx="10" cy="13.5" r="1.3"/><circle cx="14" cy="13.5" r="1.3"/><path d="M9 17h6M12 6v3M9 6h6"/>',
+    "tool": '<path d="M14.7 6.3a4.5 4.5 0 0 0-6.1 6.1L5 16l3 3 3.6-3.6a4.5 4.5 0 0 0 6.1-6.1l-2.4 2.4"/>',
+    "cred": '<circle cx="9" cy="12" r="3.5"/><path d="M12.5 12H19v2.5h-2V12"/>',
     "graph": '<circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="12" cy="16" r="2.5"/><path d="M10 9.5l1.5 5 M14 9.5l-1.5 5"/>',
     "db": '<ellipse cx="12" cy="7" rx="7" ry="3"/><path d="M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7"/>',
 }
 
 
 def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict) -> tuple[str, int]:
-    """2x2 provider grid inside a lane; returns SVG fragment and total pixel height."""
+    """2x2 provider grid — stylized marks (not trademark logos) for GitHub-safe docs."""
     items = [
         (
             "AWS",
             "#ff9900",
-            '<path d="M4 16c5-1.5 11-1.5 16 0M6.5 12c3-.9 7-.9 11 0M8 8.5c2-.5 4-.5 8 0" stroke="#ff9900" fill="none" stroke-width="1.6" stroke-linecap="round"/>',
+            '<path d="M4 17c4.5-1.2 11.5-1.2 16 0" stroke="#ff9900" fill="none" stroke-width="1.8" stroke-linecap="round"/>'
+            '<path d="M6 13.5c3-.8 9-.8 12 0" stroke="#ff9900" fill="none" stroke-width="1.6" stroke-linecap="round"/>'
+            '<path d="M8.5 10c2.2-.5 5-.5 7.5 0" stroke="#ff9900" fill="none" stroke-width="1.4" stroke-linecap="round"/>'
+            '<path d="M10.5 7.5c1.2-.3 2.3-.3 3.5 0" stroke="#ff9900" fill="none" stroke-width="1.2" stroke-linecap="round"/>',
         ),
-        ("Azure", "#0078d4", '<path d="M5.5 17 L12 6 L18.5 17 Z" fill="#0078d4"/>'),
+        (
+            "Azure",
+            "#0078d4",
+            '<path d="M5 17 L12 5.5 L19 17 Z" fill="#0078d4" opacity="0.92"/>'
+            '<path d="M8.5 17 L12 10 L15.5 17 Z" fill="#50e6ff" opacity="0.85"/>',
+        ),
         (
             "GCP",
             "#4285f4",
-            '<circle cx="9.5" cy="11.5" r="3.2" fill="#ea4335"/>'
-            '<circle cx="15.5" cy="11.5" r="3.2" fill="#4285f4"/>'
-            '<circle cx="12.5" cy="16" r="3.2" fill="#34a853"/>',
+            '<circle cx="12" cy="8.5" r="3" fill="#fbbc04"/>'
+            '<circle cx="9" cy="12.5" r="3" fill="#ea4335"/>'
+            '<circle cx="15" cy="12.5" r="3" fill="#4285f4"/>'
+            '<circle cx="12" cy="16.5" r="3" fill="#34a853"/>',
         ),
         (
             "Snow",
             "#29b5e8",
-            '<path d="M12 5.5v13M6 12h12M8 8l8 8M16 8l-8 8" stroke="#29b5e8" stroke-width="1.5" stroke-linecap="round"/>',
+            '<path d="M12 5v14M6.5 8.5l11 7M17.5 8.5l-11 7M6.5 15.5l11-7M17.5 15.5l-11-7" '
+            'stroke="#29b5e8" stroke-width="1.4" stroke-linecap="round"/>',
         ),
     ]
     cols = 2
     gap_x = 6
     gap_y = 6
     card_w = (lane_inner_w - gap_x) // cols
-    card_h = 36
+    card_h = 40
     out: list[str] = []
     for i, (label, color, art) in enumerate(items):
         col, row = i % cols, i // cols
         bx = x + col * (card_w + gap_x)
         by = y + row * (card_h + gap_y)
-        icon_area = 18
+        icon_area = 22
         icon_x = bx + (card_w - icon_area) / 2
         out.append(
             f'<rect x="{bx}" y="{by}" width="{card_w}" height="{card_h}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
-            f'<g transform="translate({icon_x},{by + 4}) scale({icon_area / 24})">{art}</g>'
+            f'<g transform="translate({icon_x},{by + 5}) scale({icon_area / 24})">{art}</g>'
             f'<text x="{bx + card_w / 2}" y="{by + card_h - 6}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
             f'font-size="7" font-weight="700" fill="{color}">{_esc(label)}</text>'
         )
@@ -426,9 +445,7 @@ def how_it_works(theme_name: str) -> str:
     step_cx = scan_x + 40
     for i, (icon, label) in enumerate(steps):
         sy = lane_top + 44 + i * 46
-        parts.append(
-            f'<circle cx="{step_cx}" cy="{sy + 12}" r="10" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.4"/>'
-        )
+        parts.append(f'<circle cx="{step_cx}" cy="{sy + 12}" r="10" fill="{t["card"]}" stroke="{scan_accent}" stroke-width="1.4"/>')
         parts.append(
             f'<text x="{step_cx}" y="{sy + 16}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
             f'font-size="8" font-weight="800" fill="{scan_accent}">{i + 1}</text>'
@@ -460,21 +477,18 @@ def how_it_works(theme_name: str) -> str:
 
     evidence_x = lane_x[2]
     cx = evidence_x + lane_w // 2
-    cy = lane_top + 198
-    parts.append(f'<circle cx="{cx}" cy="{cy}" r="58" fill="url(#core-glow)"/>')
+    cy = lane_top + 200
+    parts.append(f'<circle cx="{cx}" cy="{cy}" r="64" fill="url(#core-glow)"/>')
     hub_nodes = [
-        (cx, cy - 54, 58, "Finding", "finding", True),
-        (cx - 58, cy + 2, 50, "Asset", "package", False),
-        (cx + 58, cy + 2, 50, "Agent", "mcp", False),
-        (cx - 34, cy + 56, 46, "Tool", "bug", False),
-        (cx + 34, cy + 56, 46, "Cred", "lock", False),
+        (cx, cy - 58, 68, "Finding", "finding", True),
+        (cx - 60, cy + 4, 56, "Asset", "asset", False),
+        (cx + 60, cy + 4, 56, "Agent", "agent", False),
+        (cx - 36, cy + 60, 52, "Tool", "tool", False),
+        (cx + 36, cy + 60, 52, "Cred", "cred", False),
     ]
     for nx, ny, _size, _label, _icon, center in hub_nodes:
         if not center:
-            parts.append(
-                f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" '
-                f'stroke-width="1.3" opacity="0.75"/>'
-            )
+            parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{t["panel_stroke"]}" stroke-width="1.3" opacity="0.75"/>')
     for nx, ny, size, nlabel, icon, center in hub_nodes:
         parts.append(_hub_node(nx, ny, size, nlabel, icon, t, center=center))
 
@@ -494,7 +508,9 @@ def how_it_works(theme_name: str) -> str:
     for i, (icon, label) in enumerate(control):
         col, row = i % 2, i // 2
         tx, ty = control_x + col * 78, lane_top + 44 + row * 52
-        parts.append(f'<rect x="{tx}" y="{ty}" width="{control_card_w}" height="42" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>')
+        parts.append(
+            f'<rect x="{tx}" y="{ty}" width="{control_card_w}" height="42" rx="9" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
+        )
         parts.append(_icon_box(tx + (control_card_w - 24) // 2, ty + 5, ICONS[icon], t))
         parts.append(
             _text(

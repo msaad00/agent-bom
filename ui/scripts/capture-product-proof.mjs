@@ -65,7 +65,7 @@ function buildGraph() {
     node("provider:aws-prod", "provider", "AWS prod account", "medium", 5.4, { environment: "prod", owner: "cloud-platform" }),
     node("env:prod-ai", "environment", "prod-ai-control-plane", "high", 7.8, { environment: "prod", owner: "ai-platform" }),
     node("cluster:eks-ai", "cluster", "eks-ai-runtime", "high", 7.5, { environment: "prod", owner: "platform-security" }),
-    node("container:agent-gateway", "container", "agent-gateway:0.88.6", "high", 7.6, { image: "agent-bom/gateway:0.88.6" }),
+    node("container:agent-gateway", "container", "agent-gateway:0.91.0", "high", 7.6, { image: "agent-bom/gateway:0.91.0" }),
     node("agent:developer-copilot", "agent", "developer-copilot", "critical", 9.4, { agent_type: "ide", owner: "platform-security", environment: "prod" }),
     node("agent:sre-runbook", "agent", "sre-runbook-agent", "high", 8.6, { agent_type: "runbook", owner: "sre", environment: "prod" }),
     node("agent:finance-rag", "agent", "finance-rag-agent", "high", 8.2, { agent_type: "rag", owner: "finance-data", environment: "prod" }),
@@ -288,7 +288,180 @@ function contextGraph() {
   };
 }
 
+function scanAgents() {
+  const vuln = (id, severity, cvss, epss, fixedVersion, isKev = false) => ({
+    id,
+    severity,
+    summary: `${id} reachable from an MCP-backed runtime path`,
+    description: `${id} is present in a package reachable from agent tooling.`,
+    references: [`https://example.invalid/advisory/${id}`],
+    advisory_sources: ["nvd", "osv"],
+    cvss_score: cvss,
+    epss_score: epss,
+    is_kev: isKev,
+    cisa_kev: isKev,
+    fixed_version: fixedVersion,
+    confidence: 0.98,
+  });
+  return [
+    {
+      name: "developer-copilot",
+      agent_type: "ide",
+      owner: "platform-security",
+      environment: "prod-ai-control-plane",
+      tags: ["prod", "repo-write", "jit-review"],
+      mcp_servers: [
+        {
+          name: "github-enterprise MCP",
+          transport: "sse",
+          config_path: "/workspace/prod/.cursor/mcp.json",
+          has_credentials: true,
+          credential_env_vars: ["GITHUB_FINE_GRAINED_TOKEN"],
+          tools: [{ name: "create_pull_request" }, { name: "read_repository" }],
+          packages: [
+            {
+              name: "next",
+              version: "16.2.6",
+              ecosystem: "npm",
+              purl: "pkg:npm/next@16.2.6",
+              vulnerabilities: [vuln("CVE-2026-21441", "critical", 9.8, 0.82, "16.2.7", true)],
+            },
+          ],
+        },
+        {
+          name: "filesystem MCP",
+          transport: "stdio",
+          config_path: "/workspace/prod/.cursor/mcp.json",
+          has_credentials: true,
+          credential_env_vars: ["AWS_ROLE_SESSION"],
+          tools: [{ name: "execute_command" }, { name: "read_file" }],
+          packages: [
+            {
+              name: "urllib3",
+              version: "2.4.0",
+              ecosystem: "pypi",
+              purl: "pkg:pypi/urllib3@2.4.0",
+              vulnerabilities: [vuln("CVE-2026-32597", "high", 8.8, 0.51, "2.5.1")],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      name: "sre-runbook-agent",
+      agent_type: "runbook",
+      owner: "sre",
+      environment: "prod-ai-control-plane",
+      tags: ["prod", "command-tooling"],
+      mcp_servers: [
+        {
+          name: "filesystem MCP",
+          transport: "stdio",
+          config_path: "/ops/runbooks/mcp.json",
+          has_credentials: true,
+          credential_env_vars: ["AWS_ROLE_SESSION"],
+          tools: [{ name: "execute_command" }, { name: "read_file" }],
+          packages: [
+            {
+              name: "urllib3",
+              version: "2.4.0",
+              ecosystem: "pypi",
+              purl: "pkg:pypi/urllib3@2.4.0",
+              vulnerabilities: [vuln("CVE-2026-32597", "high", 8.8, 0.51, "2.5.1")],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      name: "finance-rag-agent",
+      agent_type: "rag",
+      owner: "finance-data",
+      environment: "prod-finance",
+      tags: ["prod", "rag", "confidential-data"],
+      mcp_servers: [
+        {
+          name: "snowflake-rag MCP",
+          transport: "sse",
+          config_path: "/finance/rag/mcp.json",
+          has_credentials: true,
+          credential_env_vars: ["SNOWFLAKE_PROD_KEY"],
+          tools: [{ name: "run_sql" }, { name: "read_lineage" }],
+          packages: [
+            {
+              name: "protobuf",
+              version: "6.33.2",
+              ecosystem: "pypi",
+              purl: "pkg:pypi/protobuf@6.33.2",
+              vulnerabilities: [vuln("CVE-2026-0994", "high", 8.1, 0.38, "6.33.4")],
+            },
+            {
+              name: "langchain",
+              version: "0.3.21",
+              ecosystem: "pypi",
+              purl: "pkg:pypi/langchain@0.3.21",
+              vulnerabilities: [],
+            },
+          ],
+        },
+      ],
+    },
+  ];
+}
+
 function scanJob() {
+  const remediationPlan = [
+    {
+      package: "next",
+      ecosystem: "npm",
+      current_version: "16.2.6",
+      fixed_version: "16.2.7",
+      severity: "critical",
+      is_kev: true,
+      impact_score: 9.8,
+      priority: 1,
+      action: "upgrade",
+      reason: "Critical reachable package on the highest-risk repo-write MCP path.",
+      command: "npm install next@16.2.7",
+      verify_command: "agent-bom scan --fail-on-severity high",
+      vulnerabilities: ["CVE-2026-21441"],
+      affected_agents: ["developer-copilot"],
+      agents_pct: 33,
+      exposed_credentials: ["GITHUB_FINE_GRAINED_TOKEN"],
+      credentials_pct: 33,
+      reachable_tools: ["create_pull_request"],
+      tools_pct: 25,
+      owasp_tags: ["LLM05", "LLM06"],
+      atlas_tags: ["AML.T0051"],
+      references: ["https://example.invalid/advisory/CVE-2026-21441"],
+      risk_narrative: "Patch the package first because the affected server exposes repo-write tooling and a credential reference.",
+    },
+    {
+      package: "urllib3",
+      ecosystem: "pypi",
+      current_version: "2.4.0",
+      fixed_version: "2.5.1",
+      severity: "high",
+      is_kev: false,
+      impact_score: 8.9,
+      priority: 2,
+      action: "upgrade",
+      reason: "Runbook agent reaches command tooling through the vulnerable dependency path.",
+      command: "python -m pip install urllib3==2.5.1",
+      verify_command: "agent-bom scan --fail-on-severity high",
+      vulnerabilities: ["CVE-2026-32597"],
+      affected_agents: ["sre-runbook-agent"],
+      agents_pct: 33,
+      exposed_credentials: ["AWS_ROLE_SESSION"],
+      credentials_pct: 33,
+      reachable_tools: ["execute_command"],
+      tools_pct: 25,
+      owasp_tags: ["LLM06"],
+      atlas_tags: ["AML.T0054"],
+      references: ["https://example.invalid/advisory/CVE-2026-32597"],
+      risk_narrative: "Prioritize after the KEV path because it reaches shell-class tooling.",
+    },
+  ];
   return {
     job_id: SCAN_ID,
     status: "done",
@@ -297,11 +470,10 @@ function scanJob() {
     progress: [],
     result: {
       agents: [
-        { name: "developer-copilot", agent_type: "ide", mcp_servers: [] },
-        { name: "sre-runbook-agent", agent_type: "runbook", mcp_servers: [] },
-        { name: "finance-rag-agent", agent_type: "rag", mcp_servers: [] },
+        ...scanAgents(),
       ],
       blast_radius: [],
+      remediation_plan: remediationPlan,
       scan_sources: ["demo-scan", "fleet-sync", "gateway-runtime"],
     },
   };
@@ -497,6 +669,316 @@ const gatewayAudit = [
   timestamp: CREATED_AT,
 }));
 
+function overviewResponse() {
+  const domain = (label, href, metric, metricLabel, status, detail = {}) => ({
+    label,
+    href,
+    metric,
+    metric_label: metricLabel,
+    status,
+    detail,
+  });
+  return {
+    schema_version: "overview.v1",
+    tenant_id: "default",
+    posture: {
+      grade: "D",
+      score: 43,
+      summary: "Reachable agent, MCP, credential, and package evidence is normalized into one operator queue.",
+    },
+    headline: {
+      critical: 9,
+      high: 13,
+      critical_high: 22,
+      kev: 1,
+      credential_exposed: 3,
+      scans: 3,
+      latest_scan_at: CREATED_AT,
+    },
+    domains: {
+      cloud: domain("Cloud", "/connections", 4, "connected surfaces", "warn", { mode: "read-only" }),
+      runtime: domain("Runtime", "/gateway", 247, "blocked today", "critical", { mode: "enforce" }),
+      cost: domain("Cost", "/cost", 18, "agent budgets", "ok", { forecast: "stable" }),
+      identity: domain("Identity", "/identity", 3, "keys rotated", "warn", { scim: "enabled" }),
+      ops: domain("Ops", "/jobs", 3, "completed scans", "ok", { scheduler: "enabled" }),
+    },
+    top_risks: [
+      {
+        vulnerability_id: "CVE-2026-21441",
+        package: "next",
+        severity: "critical",
+        risk_score: 9.8,
+        is_kev: true,
+        cvss_score: 9.8,
+        epss_score: 0.82,
+        affected_agents: ["developer-copilot"],
+      },
+    ],
+  };
+}
+
+function authPolicyResponse() {
+  const quota = (limit, current, status = "ok") => ({
+    limit,
+    default_limit: limit,
+    override_limit: null,
+    current,
+    remaining: Math.max(0, limit - current),
+    enforced: true,
+    source: "tenant_default",
+    utilization_pct: Math.round((current / limit) * 100),
+    status,
+    recommended_action: status === "near_limit" ? "raise quota or reduce schedule cadence" : "no action",
+  });
+  const rotation = (status, message) => ({
+    status,
+    configured: true,
+    required: true,
+    source: "environment",
+    persists_across_restart: true,
+    rotation_tracking_supported: true,
+    rotation_status: "ok",
+    rotation_method: "operator_rotated",
+    rotation_days: 30,
+    max_age_days: 90,
+    last_rotated: CREATED_AT,
+    age_days: 0,
+    rotation_message: "Rotation metadata is present and current.",
+    message,
+  });
+  return {
+    api_key: {
+      default_ttl_seconds: 86400,
+      max_ttl_seconds: 604800,
+      default_overlap_seconds: 900,
+      max_overlap_seconds: 3600,
+      rotation_policy: "overlap_then_revoke",
+      rotation_endpoint: "/v1/auth/keys/{key_id}/rotate",
+    },
+    rate_limit_key: {
+      status: "ok",
+      last_rotated: CREATED_AT,
+      age_days: 0,
+      rotation_days: 30,
+      max_age_days: 90,
+      message: "Rate-limit identity is bound to authenticated tenant and caller.",
+      fallback_source: null,
+    },
+    audit_hmac: { status: "configured", configured: true, key_id_configured: true, rotation_tracking_supported: true },
+    ui: {
+      recommended_mode: "trusted_proxy",
+      configured_modes: ["api_key", "trusted_proxy", "oidc_bearer"],
+      browser_session: "signed_http_only_cookie",
+      session_storage_fallback: "disabled",
+      credentials_mode: "include",
+      trusted_proxy_headers: ["X-Agent-Bom-Role", "X-Agent-Bom-Tenant-ID"],
+      message: "Browser sessions are bound to trusted upstream identity and CSRF-protected cookies.",
+    },
+    rate_limit_runtime: {
+      backend: "postgres",
+      postgres_configured: true,
+      configured_api_replicas: 2,
+      shared_required: true,
+      shared_across_replicas: true,
+      fail_closed: true,
+      message: "Global and per-tenant ceilings are enforced before expensive work starts.",
+    },
+    secret_integrity: {
+      audit_hmac: rotation("configured", "Audit HMAC signing is configured and persists across restarts."),
+      compliance_signing: {
+        ...rotation("configured", "Compliance bundles are signed for auditor verification."),
+        algorithm: "ed25519",
+        mode: "detached",
+        key_id: "capture-key",
+        public_key_endpoint: "/v1/compliance/public-key",
+        auditor_distributable: true,
+        uses_audit_hmac_secret: false,
+      },
+    },
+    tenant_quotas: { active_scan_jobs: 4, retained_scan_jobs: 200, fleet_agents: 500, schedules: 25 },
+    tenant_quota_runtime: {
+      source: "tenant_defaults",
+      per_tenant_overrides: true,
+      active_override: false,
+      override_endpoint: "/v1/auth/quota",
+      message: "Quotas protect scan workers, graph storage, and hosted POC capacity.",
+      overrides: {},
+      usage: {
+        active_scan_jobs: quota(4, 1),
+        retained_scan_jobs: quota(200, 83),
+        fleet_agents: quota(500, fleetAgents.length),
+        schedules: quota(25, 3),
+      },
+    },
+    identity_provisioning: {
+      oidc: {
+        supported: true,
+        configured: true,
+        mode: "trusted_proxy",
+        issuer_hosts: ["idp.example.invalid"],
+        provider_count: 1,
+        audience_configured: true,
+        role_claim: "agent_bom_role",
+        tenant_claim: "agent_bom_tenant",
+        require_role_claim: true,
+        require_tenant_claim: true,
+        allow_default_tenant: false,
+        required_nonce: true,
+        message: "OIDC sessions bind role and tenant server-side.",
+      },
+      saml: {
+        supported: true,
+        configured: true,
+        metadata_endpoint: "/v1/auth/saml/metadata",
+        acs_path: "/v1/auth/saml/acs",
+        idp_host: "idp.example.invalid",
+        role_attribute: "agent_bom_role",
+        tenant_attribute: "agent_bom_tenant",
+        require_role_attribute: true,
+        require_tenant_attribute: true,
+        session_ttl_seconds: 3600,
+        message: "SAML browser sessions expire quickly and stay tenant-bound.",
+      },
+      scim: {
+        supported: true,
+        configured: true,
+        status: "configured",
+        base_path: "/v1/scim/v2",
+        token_configured: true,
+        external_id_attribute: "externalId",
+        role_attribute: "agent_bom_role",
+        default_role: "viewer",
+        role_values: ["admin", "analyst", "viewer", "external"],
+        tenant_attribute: "agent_bom_tenant",
+        tenant_assignment: { source: "server_bound_tenant", payload_tenant_attributes_ignored: true },
+        provisioning_authority: "scim_lifecycle_store",
+        auth_authority: "api_key_oidc_saml_trusted_proxy_with_scim_role_overlay",
+        runtime_auth_enforced: true,
+        deprovisioning_boundary: "SCIM deactivate/delete updates provisioned lifecycle state.",
+        groups_required: false,
+        message: "SCIM roles overlay authenticated users inside the server-bound tenant.",
+      },
+      session_revocation: {
+        service_keys: "API key revocation takes effect at the control-plane auth layer.",
+        session_api_key: "Browser fallback keys disappear when the local session is cleared.",
+        browser_sessions: "OIDC and reverse-proxy sessions terminate at the upstream identity provider.",
+      },
+    },
+    data_access_boundaries: {
+      default_posture: {
+        self_hosted_first: true,
+        mandatory_hosted_control_plane: false,
+        hidden_telemetry: false,
+        default_network_mode: "read_only_pull",
+        credential_values_stored: false,
+        credential_values_transmitted: false,
+        credential_values_validated_by_default: false,
+        support_access_default: "customer_controlled",
+      },
+      modes: [
+        { mode: "local_cli", reads: ["repo", "image", "sbom"], evidence: ["sarif", "json"], does_not_read: ["cloud_secret_values"] },
+        { mode: "self_hosted", reads: ["cloud_metadata", "snowflake_account_usage"], controls: ["tenant_scope", "rbac", "audit"] },
+        { mode: "gateway", reads: ["tool_call_metadata"], controls: ["scope", "dlp", "deny"] },
+      ],
+      network_boundaries: {
+        telemetry: "disabled_by_default",
+        vulnerability_enrichment: "bounded_http_to_public_advisory_sources",
+        cloud_provider_api_calls: "read_only",
+        outbound_exports: "operator_configured",
+        proxy_gateway_egress: "policy_controlled",
+        disable_controls: ["AGENT_BOM_OFFLINE", "AGENT_BOM_DISABLE_NETWORK"],
+      },
+      storage_boundaries: {
+        local_default: "local_file",
+        control_plane_default: "tenant_scoped_database",
+        secret_values: "never_stored",
+        secret_previews: "redacted_only",
+        raw_artifact_exports: "operator_requested",
+        support_bundle_default: "redacted",
+      },
+      auth_boundaries: {
+        api: ["api_key", "oidc", "saml", "trusted_proxy"],
+        authorization: ["server_bound_tenant", "rbac_role", "capability_scope"],
+        scim: {
+          provisioning_authority: "scim_lifecycle_store",
+          runtime_auth_overlay: "upstream_authenticated",
+          tenant_source: "server_bound_tenant",
+          payload_tenant_attributes_ignored: true,
+        },
+        does_not_do: ["password_auth", "plaintext_key_storage", "caller_asserted_tenant"],
+      },
+      deployment_boundaries: { hosted_poc: ["manual_invites", "quotas", "monitoring"], self_hosted: ["customer_vpc", "customer_database"] },
+      extension_boundaries: {
+        connectors: {
+          default_posture: "read_only",
+          credential_scope: "per_tenant_connection",
+          does_not_do: ["read_secret_values", "write_cloud_resources"],
+          stronger_actions_require: ["operator_approval", "explicit_flag"],
+        },
+        plugins_and_skills: {
+          default_posture: "disabled_until_configured",
+          execution_boundary: "operator_controlled",
+          does_not_do: ["ambient_execution"],
+          controls: ["allowlist", "audit", "timeouts"],
+        },
+        roles: {
+          viewer: ["read"],
+          analyst: ["read", "triage"],
+          admin: ["read", "write", "configure"],
+          principle: "least_privilege_by_default",
+        },
+      },
+      posture_vocabulary: {
+        capability_flags: ["cloud", "mcp", "gateway"],
+        enforcement_flags: ["fail_closed", "quarantine"],
+        intentional_boundary_flags: ["read_only", "no_secret_values"],
+      },
+      operator_controls: {
+        scope_preview: "Scans default to the requested path or connected account.",
+        inventory_only: "AGENT_BOM_INVENTORY_ONLY",
+        project_scope: "--project",
+        config_scope: "--config",
+        disable_vulnerability_network: "AGENT_BOM_DISABLE_VULN_LOOKUP",
+        disable_scan_network_and_vuln_lookup: "AGENT_BOM_OFFLINE",
+        disable_skill_scan: "AGENT_BOM_DISABLE_SKILL_SCAN",
+        isolate_skill_scan: "AGENT_BOM_ISOLATE_SKILL_SCAN",
+        api_access_control: ["rbac", "tenant", "csrf"],
+        optional_exports: ["sarif", "sbom", "json", "compliance_bundle"],
+      },
+      credential_evidence: {
+        config_env_vars: "names_only",
+        project_secret_scan: "redacted",
+        stores_matched_value: false,
+        stores_matched_prefix: false,
+        validates_live_secret: false,
+      },
+      redacted_evidence_context: {
+        allowed_context: ["resource_id", "env_var_name", "service_name"],
+        never_show: ["secret_value", "token", "private_key"],
+        display_model: "redacted_summary",
+      },
+    },
+  };
+}
+
+function auditEntries() {
+  return [
+    ["scan.completed", "api", "scan/" + SCAN_ID, { findings: 26, graph_nodes: graph.nodes.length }],
+    ["gateway.policy.denied", "gateway", "tool/execute_command", { agent: "developer-copilot", rule: "block-shell" }],
+    ["agent_identity.rotated", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
+    ["agent_identity.revoked", "api", "identity/id_89c1a6f406bd7189", { tenant: "default" }],
+    ["compliance.bundle.signed", "api", "compliance/soc2", { signer: "capture-key" }],
+  ].map(([action, actor, resource, details], index) => ({
+    entry_id: `entry-${index + 1}`,
+    timestamp: CREATED_AT,
+    action,
+    actor,
+    resource,
+    details,
+    hmac_signature: "verified-demo-signature",
+  }));
+}
+
 function graphResponseWithPagination(data = graph) {
   return {
     ...data,
@@ -514,6 +996,7 @@ async function fulfill(route, body, status = 200) {
 
 async function installRoutes(page) {
   await page.route("**/health", (route) => fulfill(route, { status: "ok" }));
+  await page.route("**/version", (route) => fulfill(route, { version: "0.91.0", name: "agent-bom" }));
   await page.route("**/v1/auth/me", (route) => fulfill(route, {
     authenticated: true,
     auth_required: false,
@@ -522,7 +1005,12 @@ async function installRoutes(page) {
     auth_method: null,
     subject: null,
     role: "admin",
-    role_summary: null,
+    role_summary: {
+      role: "admin",
+      ui_role: "admin",
+      display_name: "Admin",
+      capabilities: ["keys.manage", "audit.read", "scan.write", "gateway.write"],
+    },
     tenant_id: "default",
     memberships: [],
     request_id: "req-proof-capture",
@@ -556,6 +1044,12 @@ async function installRoutes(page) {
       identity: { score: 34, label: "Identity", details: "JIT reviewer can assume prod AI role." },
       runtime: { score: 61, label: "Runtime", details: "Gateway blocks high-risk tool classes." },
     },
+  }));
+  await page.route("**/v1/overview", (route) => fulfill(route, overviewResponse()));
+  await page.route("**/v1/agents", (route) => fulfill(route, {
+    agents: scanJob().result.agents,
+    count: scanJob().result.agents.length,
+    warnings: [],
   }));
   await page.route("**/v1/jobs**", (route) => fulfill(route, { jobs: [scanJob()], count: 1, total: 1, limit: 50, offset: 0, has_more: false }));
   await page.route(`**/v1/scan/${SCAN_ID}`, (route) => fulfill(route, scanJob()));
@@ -607,6 +1101,45 @@ async function installRoutes(page) {
     });
   });
   await page.route("**/v1/graph?**", (route) => fulfill(route, graphResponseWithPagination()));
+  await page.route("**/v1/findings?**", (route) => fulfill(route, {
+    schema_version: "findings.v1",
+    findings: [
+      {
+        id: "finding-cve-next",
+        canonical_id: "CVE-2026-21441",
+        finding_type: "vulnerability",
+        source: "nvd",
+        severity: "critical",
+        effective_severity: "critical",
+        title: "Reachable critical package on repo-write MCP path",
+        description: "A critical advisory is reachable from developer-copilot through GitHub MCP tooling.",
+        cve_id: "CVE-2026-21441",
+        cvss_score: 9.8,
+        cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        attack_vector: "network",
+        epss_score: 0.82,
+        is_kev: true,
+        fixed_version: "16.2.7",
+        remediation_guidance: "Upgrade next to 16.2.7 and rerun the graph scan.",
+        compliance_tags: ["OWASP-LLM05", "ATLAS-AML.T0051"],
+        risk_score: 9.8,
+        impact_category: "RCE",
+        affected_servers: ["github-enterprise MCP"],
+        affected_agents: ["developer-copilot"],
+        exposed_credentials: ["GITHUB_FINE_GRAINED_TOKEN"],
+        exposed_tools: ["create_pull_request"],
+        scan_id: SCAN_ID,
+        scan_sources: ["demo-scan"],
+      },
+    ],
+    count: 1,
+    total: 1,
+    limit: 50,
+    offset: 0,
+    sort: "risk",
+    scan_id: SCAN_ID,
+    warnings: [],
+  }));
   await page.route("**/v1/fleet/stats", (route) => fulfill(route, {
     total: fleetAgents.length,
     by_state: { discovered: 0, pending_review: 1, approved: 2, quarantined: 1, decommissioned: 0 },
@@ -621,6 +1154,36 @@ async function installRoutes(page) {
     limit: 100,
     offset: 0,
     has_more: false,
+  }));
+  await page.route("**/v1/auth/policy", (route) => fulfill(route, authPolicyResponse()));
+  await page.route("**/v1/auth/keys", (route) => fulfill(route, {
+    keys: [
+      {
+        key_id: "key_demo_admin",
+        key_prefix: "abom_live_demo",
+        name: "hosted-demo-admin",
+        role: "admin",
+        created_at: CREATED_AT,
+        expires_at: "2026-07-03T20:30:00Z",
+        scopes: ["admin", "scan:write", "gateway:write"],
+        tenant_id: "default",
+        revoked_at: null,
+        rotation_overlap_until: null,
+        replacement_key_id: null,
+        state: "active",
+        overlap_seconds_remaining: null,
+      },
+    ],
+  }));
+  // Register the broad audit route before the specific integrity route.
+  await page.route("**/v1/audit?**", (route) => {
+    const entries = auditEntries();
+    return fulfill(route, { entries, total: entries.length });
+  });
+  await page.route("**/v1/audit/integrity?**", (route) => fulfill(route, {
+    verified: 78,
+    tampered: 0,
+    checked: 78,
   }));
   await page.route("**/v1/gateway/policies", (route) => fulfill(route, { policies: gatewayPolicies, count: gatewayPolicies.length }));
   // Register the broad feed route first so the more specific feed/kpis route
@@ -735,6 +1298,11 @@ async function capture(page, urlPath, filename, beforeShot) {
   console.log(`captured ${filename}`);
 }
 
+async function scrollTo(page, y) {
+  await page.evaluate((targetY) => window.scrollTo({ top: targetY, behavior: "instant" }), y);
+  await page.waitForTimeout(350);
+}
+
 async function main() {
   await fs.mkdir(IMAGE_DIR, { recursive: true });
   const server = startServerIfNeeded();
@@ -747,19 +1315,26 @@ async function main() {
       window.localStorage.setItem("agent-bom-theme", "dark");
     });
 
+    await capture(page, "/?capture=1", "dashboard-live.png");
+    await capture(page, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
+      await scrollTo(dashboardPage, 620);
+    });
+    await capture(page, "/mesh?capture=1", "mesh-live.png");
     await capture(page, "/security-graph?capture=1", "security-graph-live.png");
     await capture(page, `/graph?capture=1&scan=${SCAN_ID}`, "lineage-graph-live.png", async (lineagePage) => {
-      await lineagePage.getByText("View controls").first().click();
-      await lineagePage.getByRole("button", { name: "Expanded topology" }).click();
-      await lineagePage.waitForTimeout(800);
       await lineagePage.locator(".react-flow").first().scrollIntoViewIfNeeded();
       await lineagePage.locator(".react-flow__controls-fitview").first().click();
       await lineagePage.waitForTimeout(500);
     });
-    await capture(page, "/context?capture=1", "context-map-live.png");
+    await capture(page, "/context?capture=1", "context-map-live.png", async (contextPage) => {
+      await contextPage.locator(".react-flow").first().scrollIntoViewIfNeeded();
+      await contextPage.locator(".react-flow__controls-fitview").first().click();
+      await contextPage.waitForTimeout(500);
+    });
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
       await fleetPage.getByText("developer-copilot").first().click();
       await fleetPage.waitForTimeout(500);
+      await scrollTo(fleetPage, 130);
     });
     await capture(page, "/gateway?capture=1", "gateway-policies-live.png", async (gatewayPage) => {
       // The gateway page now defaults to the Live Feed tab; switch to Policies
@@ -774,6 +1349,12 @@ async function main() {
         await gatewayPage.waitForTimeout(500);
       }
     });
+    await capture(page, "/audit?capture=1", "identity-audit-live.png", async (auditPage) => {
+      await auditPage.getByPlaceholder("Filter by resource…").fill("identity");
+      await auditPage.waitForTimeout(350);
+    });
+    await capture(page, "/insights?capture=1", "dependency-map-live.png");
+    await capture(page, "/remediation?capture=1", "remediation-live.png");
     await browser.close();
   } finally {
     if (server) {

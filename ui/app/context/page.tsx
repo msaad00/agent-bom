@@ -69,7 +69,7 @@ function ContextStats({ data }: { data: ContextGraphData }) {
   ];
 
   return (
-    <div className="flex items-center gap-4 px-4 py-2 border-b border-zinc-800 text-xs">
+    <div className="flex flex-wrap items-center gap-4 border-b border-zinc-800 px-4 py-2 text-xs">
       {items?.map((it) => (
         <div key={it.label} className="flex items-center gap-1.5">
           <span className="text-zinc-500">{it.label}</span>
@@ -101,7 +101,7 @@ function LateralPanel({
   const topPaths = distinctPaths.slice(0, 6);
 
   return (
-    <div className="w-72 border-l border-zinc-800 overflow-y-auto bg-zinc-950">
+    <div className="w-72 shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-950">
       {/* Lateral paths */}
       <div className="p-3 border-b border-zinc-800">
         <h3 className="text-xs font-semibold text-zinc-300 mb-2">
@@ -132,21 +132,21 @@ function LateralPanel({
                     Risk {p.composite_risk}
                   </span>
                 </div>
-                <p className="text-[10px] text-zinc-300 leading-relaxed">
+                <p className="break-words text-[10px] leading-relaxed text-zinc-300">
                   {p.summary}
                 </p>
                 {p.credential_exposure.length > 0 && (
-                  <p className="text-[10px] text-amber-400 mt-1">
+                  <p className="mt-1 break-words text-[10px] text-amber-400">
                     Creds: {p.credential_exposure.join(", ")}
                   </p>
                 )}
                 {p.tool_exposure.length > 0 && (
-                  <p className="text-[10px] text-purple-400 mt-1">
+                  <p className="mt-1 break-words text-[10px] text-purple-400">
                     Tools: {p.tool_exposure.join(", ")}
                   </p>
                 )}
                 {p.vuln_ids.length > 0 && (
-                  <p className="text-[10px] text-red-400 mt-1">
+                  <p className="mt-1 break-words text-[10px] text-red-400">
                     Vulns: {p.vuln_ids.join(", ")}
                   </p>
                 )}
@@ -192,7 +192,7 @@ function LateralPanel({
                     {r.risk_score.toFixed(1)}
                   </span>
                 </div>
-                <p className="text-[10px] text-zinc-400 leading-relaxed">
+                <p className="break-words text-[10px] leading-relaxed text-zinc-400">
                   {r.description}
                 </p>
                 {r.owasp_agentic_tag && (
@@ -458,24 +458,24 @@ export default function ContextPage() {
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-        <div>
+      <div className="flex flex-col gap-3 border-b border-zinc-800 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <h1 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
             <Waypoints className="w-5 h-5 text-orange-400" />
             Context Map
           </h1>
-          <p className="text-xs text-zinc-500">
+          <p className="break-words text-xs text-zinc-500">
             Static reachability map for one agent scope at a time; runtime evidence is shown only when scans provide it.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           {/* Agent selector */}
           <select
             value={selectedAgent ?? ""}
             onChange={(e) =>
               setSelectedAgent(e.target.value || null)
             }
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-orange-600"
+            className="min-w-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-orange-600"
           >
             <option value="">All agents</option>
             {agentNames?.map((name) => (
@@ -489,7 +489,7 @@ export default function ContextPage() {
           <select
             value={selectedJobId}
             onChange={(e) => setSelectedJobId(e.target.value)}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
+            className="min-w-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
           >
             {jobs?.map((j) => (
               <option key={j.job_id} value={j.job_id}>
@@ -500,7 +500,7 @@ export default function ContextPage() {
           </select>
 
           {/* Search */}
-          <div className="relative max-w-xs">
+          <div className="relative w-full min-w-0 sm:max-w-xs">
             <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2" />
             <input
               type="text"

@@ -31,13 +31,16 @@ Regenerate `how-it-works` and `architecture` pairs from
 Regenerate `how-it-works`, `architecture`, and `persona-value` SVGs from
 `scripts/generate_doc_architecture_svgs.py` after changing lane content or counts.
 The generator escapes XML text (`&` → `&amp;`) so GitHub can render diffs.
+Every generated visual must keep text inside its parent shape at README scale:
+no clipped labels, no text crossing card borders, no arrows covering text, and
+no stale visible version stamp.
 
 Current SVG inventory:
 
 | File | What it shows | Where it lives in the README |
 |---|---|---|
 | `logo-{light,dark}.svg` | Brand mark | hero |
-| `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + UnifiedGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; available for README architecture section |
+| `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + ContextGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; available for README architecture section |
 | `how-it-works-{light,dark}.svg` | Six-step scan pipeline from read-only intake through evidence core to outputs | README "How It Works" |
 | `persona-value-{light,dark}.svg` | Buyer personas mapped to product value proof points | README / GTM collateral |
 | `blast-radius-{light,dark}.svg` | CVE, package, MCP server, agent, credentials, and tools in one blast-radius path | hero, under tagline |

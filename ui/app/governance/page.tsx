@@ -94,13 +94,13 @@ export default function GovernancePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-zinc-100 flex items-center gap-2">
             <Eye className="w-6 h-6 text-emerald-400" />
             Governance Posture
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="mt-1 break-words text-sm text-zinc-500">
             Account: {report.account} | Discovered: {formatDate(report.discovered_at)}
           </p>
         </div>
@@ -371,16 +371,16 @@ function FindingCard({ finding }: { finding: GovernanceFinding }) {
 
   return (
     <div
-      className={`rounded-lg border p-4 cursor-pointer transition-colors ${severityColor(finding.severity)}`}
+      className={`cursor-pointer rounded-lg border p-4 transition-colors ${severityColor(finding.severity)}`}
       onClick={() => setExpanded(!expanded)}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3">
-          <span className={`w-2 h-2 rounded-full mt-1.5 ${severityDot(finding.severity)}`} />
-          <div>
-            <p className="text-sm font-medium text-zinc-100">{finding.title}</p>
-            <p className="text-xs text-zinc-400 mt-0.5">{finding.description}</p>
-            <div className="flex gap-2 mt-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${severityDot(finding.severity)}`} />
+          <div className="min-w-0">
+            <p className="break-words text-sm font-medium text-zinc-100">{finding.title}</p>
+            <p className="mt-0.5 break-words text-xs text-zinc-400">{finding.description}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
               <span className="px-2 py-0.5 rounded text-xs bg-zinc-800 text-zinc-400 capitalize">
                 {finding.category.replace("_", " ")}
               </span>
@@ -388,7 +388,7 @@ function FindingCard({ finding }: { finding: GovernanceFinding }) {
                 {finding.severity}
               </span>
               {finding.agent_or_role && (
-                <span className="px-2 py-0.5 rounded text-xs bg-zinc-800 text-zinc-400 font-mono">
+                <span className="max-w-full break-all rounded bg-zinc-800 px-2 py-0.5 font-mono text-xs text-zinc-400">
                   {finding.agent_or_role}
                 </span>
               )}

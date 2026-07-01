@@ -85,6 +85,7 @@ all = [
     { name = "azure-mgmt-sql" },
     { name = "azure-mgmt-storage" },
     { name = "azure-mgmt-web" },
+    { name = "azure-storage-queue" },
     { name = "boto3" },
     { name = "cryptography" },
     { name = "databricks-sdk" },
@@ -172,6 +173,7 @@ azure = [
     { name = "azure-mgmt-sql" },
     { name = "azure-mgmt-storage" },
     { name = "azure-mgmt-web" },
+    { name = "azure-storage-queue" },
     { name = "six" },
 ]
 cloud = [
@@ -205,6 +207,7 @@ cloud = [
     { name = "azure-mgmt-sql" },
     { name = "azure-mgmt-storage" },
     { name = "azure-mgmt-web" },
+    { name = "azure-storage-queue" },
     { name = "boto3" },
     { name = "databricks-sdk" },
     { name = "google-api-python-client" },
@@ -414,6 +417,7 @@ requires-dist = [
     { name = "azure-mgmt-sql", marker = "extra == 'azure'", specifier = ">=3.0" },
     { name = "azure-mgmt-storage", marker = "extra == 'azure'", specifier = ">=21.0" },
     { name = "azure-mgmt-web", marker = "extra == 'azure'", specifier = ">=7.2" },
+    { name = "azure-storage-queue", marker = "extra == 'azure'", specifier = ">=12.9" },
     { name = "bandit", marker = "extra == 'dev'", specifier = ">=1.9" },
     { name = "boto3", marker = "extra == 'aws'", specifier = ">=1.34" },
     { name = "click", specifier = ">=8.0" },
@@ -1226,6 +1230,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3b/48/84a820d898267f662b5c06f7cd76fdb8a9e272b44aa9376cef3ec0f6a294/azure_storage_blob-12.30.0.tar.gz", hash = "sha256:2cd74d4d5731e5eb6b8d5c5056ee115a5e88f8fdf22517b739836fda685018be", size = 618229, upload-time = "2026-06-08T11:45:35.575Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5e/0b/e106f0fd7fa785867d9ffcc47dc9e6237c0e58f51058473b777487a98edc/azure_storage_blob-12.30.0-py3-none-any.whl", hash = "sha256:d415ac50b67a8da6b3ae7e9f1014b1b55cd7aafa0b8d4ca9b380568dc7360423", size = 435610, upload-time = "2026-06-08T11:45:37.213Z" },
+]
+
+[[package]]
+name = "azure-storage-queue"
+version = "12.17.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "cryptography" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/84/7d/babb616eb1ed1ac5f13cbb336875fd91c9c6f8b1702bf2ff860b222cb833/azure_storage_queue-12.17.0.tar.gz", hash = "sha256:6eb108a88554be371feb2eba9715fa0e3f7baca7b3f00c19ec417fc7ce5b3834", size = 203777, upload-time = "2026-06-08T18:03:16.393Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8c/e3/6aee19df63974d87e55dc0ddf5bb18eb1022cd290b125a46792594a00673/azure_storage_queue-12.17.0-py3-none-any.whl", hash = "sha256:aaef08ee2613f84a3a85e60a059d29567361e5a2af455298bb0e529f0b47d5a1", size = 189526, upload-time = "2026-06-08T18:03:19.139Z" },
 ]
 
 [[package]]

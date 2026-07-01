@@ -195,6 +195,18 @@ def _emit_runtime_summary(title: str, rows: list[tuple[str, str]], *, err: bool 
     click.echo("  Press Ctrl+C to stop.\n", err=err)
 
 
+_MCP_WORKFLOW_NAMES = (
+    "quick-audit",
+    "pre-install-check",
+    "compliance-report",
+    "fleet-audit",
+    "incident-triage",
+    "remediation-plan",
+    "cloud-connection-review",
+    "gateway-fleet-live-demo",
+)
+
+
 def _auth_summary(
     *,
     host: str,
@@ -819,62 +831,20 @@ def mcp_server_cmd(
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 70 security tools via MCP protocol:
-      scan                   Full scan — CVEs, config security, blast radius, compliance
-      check                  Check a specific package for CVEs before installing
-      blast_radius           Look up blast radius for a specific CVE
-      exposure_paths         Return ranked ExposurePath JSON for headless agents
-      should_i_deploy        Return allow/warn/block deploy guidance from ExposurePath risk
-      policy_check           Evaluate policy rules against scan findings
-      registry_lookup        Query MCP server security metadata registry
-      generate_sbom          Generate CycloneDX or SPDX SBOM
-      compliance             15-framework compliance posture
-      remediate              Generate actionable remediation plan
-      skill_scan             Scan instruction files for trust, provenance, and findings
-      skill_verify           Verify Sigstore provenance for instruction files
-      skill_trust            Trust assessment for SKILL.md files
-      verify                 Package integrity + SLSA provenance verification
-      where                  Show all MCP discovery paths + existence status
-      tool_risk_assessment   Score live MCP tool capabilities and server risk
-      inventory              List agents/servers without CVE scanning
-      diff                   Compare scan against baseline for new/resolved vulns
-      marketplace_check      Pre-install marketplace trust check
-      code_scan              SAST scanning via Semgrep with CWE mapping
-      context_graph          Agent context graph with lateral movement analysis
-      graph_export           Export dependency graph as GraphML, Cypher, DOT, or Mermaid
-      analytics_query        Query vulnerability trends from ClickHouse
-      cis_benchmark          Run CIS benchmark checks (AWS/Snowflake)
-      fleet_scan             Batch registry lookup for fleet inventories
-      runtime_correlate      Cross-reference runtime logs with CVE findings
-      runtime_production_index Runtime production posture summary
-      runtime_blueprints     Role/profile blueprints for runtime policy design
-      proxy_status           Current MCP proxy metrics and alert posture
-      proxy_alerts           Recent tenant-scoped runtime proxy alerts
-      gateway_status         Gateway policy and firewall runtime statistics
-      shield_status          Shield session status without changing enforcement
-      shield_start           Start Shield enforcement with admin/scope/audit gating
-      shield_unblock         Unblock Shield enforcement with admin/scope/audit gating
-      shield_break_glass     Emergency Shield override with admin/scope/audit gating
-      identity_issue         Issue a managed agent identity (admin/scope/audit gated)
-      identity_rotate        Rotate a managed identity with an overlap window
-      identity_revoke        Revoke a managed identity immediately
-      identity_grant_jit     Grant time-bound JIT access to one tool
-      identity_revoke_jit    Revoke an active JIT access grant immediately
-      firewall_check         Read-only inter-agent firewall decision dry run
-      audit_query            Tenant-scoped control-plane audit records
-      audit_integrity        Control-plane and runtime audit-chain verification
-      vector_db_scan         Discover vector databases and assess auth exposure
-      aisvs_benchmark        OWASP AISVS v1.0 compliance checks
-      gpu_infra_scan         GPU container and K8s node inventory + DCGM probe
-      ai_inventory_scan      Detect AI SDK imports, shadow AI, deprecated models
-      browser_extension_scan Audit browser extensions for AI/MCP capabilities
-      dataset_card_scan      Scan dataset cards for license and provenance
-      ingest_external_scan   Import external SBOM/SCA scanner output (CycloneDX, SPDX, SARIF, or scanner-native JSON)
-      license_compliance_scan License risk detection for dependencies
-      model_file_scan        Scan ML model files for security risks
-      model_provenance_scan  Verify model origin and supply chain integrity
-      prompt_scan            Detect prompt injection patterns
-      training_pipeline_scan Audit ML training pipeline configurations
+    Workflow prompts first:
+      quick-audit              scan -> exposure_paths -> compliance
+      pre-install-check        check -> registry_lookup -> should_i_deploy
+      compliance-report        compliance -> audit_integrity -> report export
+      fleet-audit              fleet_scan -> context_graph -> policy_check
+      incident-triage          intel_lookup -> exposure_paths -> runtime_correlate
+      remediation-plan         remediate -> generate_sbom -> policy_check
+      cloud-connection-review  connection evidence -> cis_benchmark -> graph_export
+      gateway-fleet-live-demo  gateway_status -> proxy_alerts -> fleet_scan -> firewall_check
+
+    \b
+    The server still exposes the full tool catalog for advanced agents. Start
+    from prompts unless you already know the exact tool sequence. See:
+      docs/MCP_WORKFLOWS.md
 
     \b
     Usage:
@@ -919,6 +889,7 @@ def mcp_server_cmd(
             ("Version", _ver),
             ("Transport", transport),
             ("Bind", f"http://{host}:{port}"),
+            ("Workflows", f"{len(_MCP_WORKFLOW_NAMES)} prompts; see docs/MCP_WORKFLOWS.md"),
             (
                 "Auth",
                 _auth_summary(

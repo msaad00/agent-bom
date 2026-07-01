@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import ipaddress
 import os
+import secrets
 import ssl
 import sys
 from pathlib import Path
@@ -233,21 +234,59 @@ def _resolve_allow_unauthenticated(allow_insecure_no_auth: bool) -> bool:
     return bool(allow_insecure_no_auth) or _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API")
 
 
+_DEV_API_KEY_PREFIX = "abk"
+
+
+def _generate_dev_api_key() -> str:
+    """Return a fresh ephemeral loopback dev API key (per-process, not persisted)."""
+    return f"{_DEV_API_KEY_PREFIX}_{secrets.token_urlsafe(24)}"
+
+
+def _should_auto_generate_dev_key(*, host: str, api_key: str | None, allow_insecure_no_auth: bool) -> bool:
+    """Decide whether a zero-config loopback dev API key should be auto-generated.
+
+    Fail-closed by construction: only ever true on a loopback bind with no other
+    auth path configured. Any explicit key, override, configured auth backend, or
+    the ``AGENT_BOM_NO_AUTO_DEV_KEY`` opt-out keeps the current behaviour (fail
+    closed on loopback, or the existing non-loopback refusal in
+    ``_enforce_auth_defaults``). A non-loopback host NEVER auto-generates a key.
+    """
+    if not _is_loopback_host(host):
+        return False
+    if _env_truthy("AGENT_BOM_NO_AUTO_DEV_KEY"):
+        return False
+    if api_key or allow_insecure_no_auth:
+        return False
+    if os.environ.get("AGENT_BOM_API_KEYS", "").strip():
+        return False
+    if _oidc_enabled() or _scim_bearer_enabled():
+        return False
+    if _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API"):
+        return False
+    if _env_truthy("AGENT_BOM_TRUST_PROXY_AUTH"):
+        return False
+    return True
+
+
 def _api_auth_summary(
     *,
     host: str,
     api_key: str | None,
     oidc_enabled: bool,
     allow_unauthenticated: bool,
+    dev_api_key: str | None = None,
 ) -> str:
     """Return a startup banner that matches the server's real auth posture.
 
     Derived from the same inputs ``configure_api`` uses so the banner can never
     claim unauthenticated access while the API actually fails closed (or vice
     versa). ``allow_unauthenticated`` is the resolved flag-OR-env value.
+    ``dev_api_key`` is the auto-generated loopback key, if one was minted.
     """
     if api_key or os.environ.get("AGENT_BOM_API_KEYS", "").strip():
         return "API key required (Bearer / X-API-Key)"
+    if dev_api_key:
+        return "auto dev API key (loopback only); the local UI uses it automatically"
     if oidc_enabled:
         return "OIDC bearer token required"
     if _scim_bearer_enabled():
@@ -430,13 +469,24 @@ def serve_cmd(
     _enforce_control_plane_listener_posture(host)
     tls_kwargs = _uvicorn_tls_kwargs()
 
-    from agent_bom.api.server import configure_api
+    # Zero-config loopback: when bound to loopback with no auth configured and no
+    # opt-out, mint an ephemeral dev key so the dashboard loads without flags.
+    # Non-loopback binds never reach here unauthenticated (see the gate above),
+    # so this can only ever fire on loopback.
+    dev_api_key = (
+        _generate_dev_api_key()
+        if _should_auto_generate_dev_key(host=host, api_key=api_key, allow_insecure_no_auth=allow_insecure_no_auth)
+        else None
+    )
+
+    from agent_bom.api.server import configure_api, set_dev_api_key
 
     configure_api(
         cors_allow_all=cors_allow_all,
-        api_key=api_key,
+        api_key=api_key or dev_api_key,
         allow_unauthenticated=allow_insecure_no_auth,
     )
+    set_dev_api_key(dev_api_key)
 
     _ui_dist = Path(__file__).resolve().parents[1] / "ui_dist"
     rows = [
@@ -453,6 +503,7 @@ def serve_cmd(
                 api_key=api_key,
                 oidc_enabled=_oidc_enabled(),
                 allow_unauthenticated=_resolve_allow_unauthenticated(allow_insecure_no_auth),
+                dev_api_key=dev_api_key,
             ),
         ),
         ("TLS", "app-native mTLS" if tls_kwargs.get("ssl_ca_certs") else ("server TLS" if tls_kwargs else "delegated/none")),
@@ -466,6 +517,17 @@ def serve_cmd(
         ),
     ]
     _emit_runtime_summary("agent-bom serve", rows)
+    if dev_api_key:
+        click.secho(
+            f"  Dev API key (loopback only): {dev_api_key}",
+            fg="cyan",
+            bold=True,
+        )
+        click.echo(
+            "  The local dashboard uses this automatically. Send it as "
+            "'Authorization: Bearer <key>' for CLI/API calls.\n"
+            "  Ephemeral (per-process, not saved). Set AGENT_BOM_NO_AUTO_DEV_KEY=1 to disable.\n"
+        )
 
     try:
         import uvicorn as _uvicorn

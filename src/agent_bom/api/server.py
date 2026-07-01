@@ -95,7 +95,7 @@ def _api_extra_import_error_message(exc: ImportError) -> str:
 
 
 try:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, RedirectResponse
     from pydantic import BaseModel  # noqa: F401 — presence check for [api] extra
@@ -579,6 +579,29 @@ DEFAULT_RATE_LIMIT_RPM = DEFAULT_SCAN_RATE_LIMIT_RPM
 _rate_limit_rpm: int = DEFAULT_RATE_LIMIT_RPM
 _env_api_keys_seeded = False
 _runtime_api_key_seeded = False
+# Ephemeral, per-process loopback dev API key. Only ever set by the CLI
+# (`agent-bom serve`) on a LOOPBACK bind when no other auth is configured, so
+# the same-origin dashboard can mint a matching browser session and load with
+# zero flags. Never persisted; non-loopback binds never set this (the CLI auth
+# gate refuses them first). See cli/_server._should_auto_generate_dev_key.
+_dev_api_key: str | None = None
+
+
+def set_dev_api_key(raw_key: str | None) -> None:
+    """Register (or clear) the ephemeral loopback dev API key for the UI.
+
+    The key itself is seeded into the RBAC key store by ``configure_api``; this
+    holder only lets the dashboard HTML routes issue a matching browser-session
+    cookie so the first-party same-origin UI authenticates automatically on a
+    loopback bind. Process-local and never written to disk.
+    """
+    global _dev_api_key
+    _dev_api_key = (raw_key or "").strip() or None
+
+
+def get_dev_api_key() -> str | None:
+    """Return the active ephemeral loopback dev API key, if any."""
+    return _dev_api_key
 
 
 def _env_truthy(name: str) -> bool:
@@ -1017,11 +1040,76 @@ def _dashboard_html_response(dashboard_file: _DashboardFile):
     return HTMLResponse(_DASHBOARD_CSP_META_RE.sub("", html))
 
 
+_DEV_SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
+
+
+def _maybe_attach_dev_session_cookie(response: Any, request: Request) -> None:
+    """Seed a loopback browser session so the zero-config dev key authenticates
+    the same-origin dashboard without any flag or manual key entry.
+
+    No-op unless an ephemeral dev key is active. The dev key is only ever set on
+    a loopback bind (the CLI auth gate refuses non-loopback binds before the key
+    is generated), so a set key already means "loopback, no other auth". The
+    minted session carries no ``key_id``, so it stays valid for the process
+    lifetime without depending on key-store lookups, and is re-used across page
+    loads instead of churning a fresh nonce each request.
+    """
+    if _dev_api_key is None:
+        return
+    from agent_bom.api.browser_session import (
+        CSRF_COOKIE_NAME,
+        SESSION_COOKIE_NAME,
+        BrowserSessionError,
+        create_browser_session_token,
+        verify_browser_session_token,
+    )
+
+    existing = request.cookies.get(SESSION_COOKIE_NAME, "")
+    if existing:
+        try:
+            verify_browser_session_token(existing)
+            return
+        except BrowserSessionError:
+            pass
+    try:
+        token, csrf = create_browser_session_token(
+            subject="loopback-dev-key",
+            role="admin",
+            tenant_id="default",
+            auth_method="browser_session_dev_key",
+            key_id=None,
+            scopes=[],
+            max_age_seconds=_DEV_SESSION_MAX_AGE_SECONDS,
+        )
+    except BrowserSessionError:
+        return
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        token,
+        max_age=_DEV_SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=False,
+        samesite="strict",
+        path="/",
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        csrf,
+        max_age=_DEV_SESSION_MAX_AGE_SECONDS,
+        httponly=False,
+        secure=False,
+        samesite="strict",
+        path="/",
+    )
+
+
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
-async def root():
+async def root(request: Request):
     dashboard_index = _dashboard_index_file()
     if dashboard_index:
-        return _dashboard_html_response(dashboard_index)
+        response = _dashboard_html_response(dashboard_index)
+        _maybe_attach_dev_session_cookie(response, request)
+        return response
     return RedirectResponse(url="/docs")
 
 
@@ -1127,7 +1215,7 @@ def _mount_dashboard(application: FastAPI) -> None:
 
     # SPA catch-all for client-side routing
     @application.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
-    async def _spa_catch_all(path: str):
+    async def _spa_catch_all(path: str, request: Request):
         # Skip API and docs paths
         if path.startswith(("v1/", "docs", "redoc", "openapi.json", "health", "version", "readyz", "metrics")):
             raise _HTTPException(status_code=404)
@@ -1140,13 +1228,15 @@ def _mount_dashboard(application: FastAPI) -> None:
             or (normalized_path and _static_file_map.get(f"{normalized_path}/index.html"))
         )
         if resolved:
-            if path.lower().endswith(".html"):
-                return _dashboard_html_response(resolved)
-            if resolved.relative_path.lower().endswith(".html"):
-                return _dashboard_html_response(resolved)
+            if path.lower().endswith(".html") or resolved.relative_path.lower().endswith(".html"):
+                html_response = _dashboard_html_response(resolved)
+                _maybe_attach_dev_session_cookie(html_response, request)
+                return html_response
             return FileResponse(resolved.path)
         # SPA fallback — serve index.html for client-side routing
-        return _dashboard_html_response(_index_html)
+        fallback_response = _dashboard_html_response(_index_html)
+        _maybe_attach_dev_session_cookie(fallback_response, request)
+        return fallback_response
 
 
 _mount_dashboard(app)

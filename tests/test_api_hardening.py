@@ -1553,15 +1553,11 @@ async def test_auth_session_xff_spoof_does_not_reset_bruteforce_window(monkeypat
         )
 
     with pytest.raises(HTTPException) as first:
-        await enterprise.create_browser_session(
-            make_request("1.1.1.1"), Response(), enterprise.BrowserSessionRequest(api_key="bad-1")
-        )
+        await enterprise.create_browser_session(make_request("1.1.1.1"), Response(), enterprise.BrowserSessionRequest(api_key="bad-1"))
     assert first.value.status_code == 401
 
     with pytest.raises(HTTPException) as second:
-        await enterprise.create_browser_session(
-            make_request("2.2.2.2"), Response(), enterprise.BrowserSessionRequest(api_key="bad-2")
-        )
+        await enterprise.create_browser_session(make_request("2.2.2.2"), Response(), enterprise.BrowserSessionRequest(api_key="bad-2"))
     assert second.value.status_code == 429
 
 
@@ -1618,3 +1614,100 @@ def test_configure_api_mounts_global_limiter_outermost(monkeypatch):
         server_app.user_middleware = original
         if server_app.middleware_stack is not None:
             server_app.middleware_stack = server_app.build_middleware_stack()
+
+
+# ── Zero-config loopback dev key (feat/serve-zero-config-devkey) ─────────────
+
+
+def _clear_dev_key_auth_env(monkeypatch):
+    for name in (
+        "AGENT_BOM_API_KEY",
+        "AGENT_BOM_API_KEYS",
+        "AGENT_BOM_OIDC_ISSUER",
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+        "AGENT_BOM_TRUST_PROXY_AUTH",
+        "AGENT_BOM_SCIM_BEARER_TOKEN",
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_loopback_dev_key_request_succeeds(monkeypatch):
+    """A request bearing the seeded dev key succeeds (200) while unauthenticated fails closed (401)."""
+    from agent_bom.api.server import configure_api as cfg
+    from agent_bom.api.server import set_dev_api_key
+    from agent_bom.cli._server import _generate_dev_api_key
+
+    _clear_dev_key_auth_env(monkeypatch)
+    dev_key = _generate_dev_api_key()
+    cfg(api_key=dev_key)
+    set_dev_api_key(dev_key)
+
+    client = TestClient(app)
+    # Fail-closed without credentials.
+    assert client.get("/v1/overview").status_code == 401
+    # Authenticated with the dev key (Bearer and X-API-Key both accepted).
+    assert client.get("/v1/overview", headers={"Authorization": f"Bearer {dev_key}"}).status_code == 200
+    assert client.get("/v1/overview", headers={"X-API-Key": dev_key}).status_code == 200
+
+
+def test_dev_session_cookie_authenticates_dashboard(monkeypatch):
+    """With a dev key active, the auto-issued browser session cookie authenticates the overview."""
+    from agent_bom.api.server import _maybe_attach_dev_session_cookie, set_dev_api_key
+    from agent_bom.api.server import configure_api as cfg
+    from agent_bom.cli._server import _generate_dev_api_key
+
+    _clear_dev_key_auth_env(monkeypatch)
+    dev_key = _generate_dev_api_key()
+    cfg(api_key=dev_key)
+    set_dev_api_key(dev_key)
+
+    response = Response()
+    _maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={}))
+    set_cookies = [v.decode() for k, v in response.raw_headers if k == b"set-cookie"]
+    session_cookie = next((c for c in set_cookies if c.startswith(f"{SESSION_COOKIE_NAME}=")), None)
+    assert session_cookie is not None, "dev session cookie should be issued when a dev key is active"
+    token = session_cookie.split("=", 1)[1].split(";", 1)[0]
+
+    client = TestClient(app)
+    client.cookies.set(SESSION_COOKIE_NAME, token)
+    assert client.get("/v1/overview").status_code == 200
+
+
+def test_no_dev_session_cookie_without_active_dev_key(monkeypatch):
+    """No dev key set => the helper is a no-op (fail-closed for non-zero-config serves)."""
+    from agent_bom.api.server import _maybe_attach_dev_session_cookie, set_dev_api_key
+
+    _clear_dev_key_auth_env(monkeypatch)
+    set_dev_api_key(None)
+
+    response = Response()
+    _maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={}))
+    set_cookies = [v.decode() for k, v in response.raw_headers if k == b"set-cookie"]
+    assert set_cookies == []
+
+
+def test_dev_session_cookie_not_reissued_when_session_present(monkeypatch):
+    """An existing valid session cookie is reused, not churned into a fresh nonce."""
+    from agent_bom.api.server import _maybe_attach_dev_session_cookie, set_dev_api_key
+    from agent_bom.api.server import configure_api as cfg
+    from agent_bom.cli._server import _generate_dev_api_key
+
+    _clear_dev_key_auth_env(monkeypatch)
+    dev_key = _generate_dev_api_key()
+    cfg(api_key=dev_key)
+    set_dev_api_key(dev_key)
+
+    existing_token, _ = create_browser_session_token(
+        subject="loopback-dev-key",
+        role="admin",
+        tenant_id="default",
+        auth_method="browser_session_dev_key",
+        key_id=None,
+        scopes=[],
+        max_age_seconds=3600,
+    )
+    response = Response()
+    _maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={SESSION_COOKIE_NAME: existing_token}))
+    set_cookies = [v.decode() for k, v in response.raw_headers if k == b"set-cookie"]
+    assert set_cookies == []

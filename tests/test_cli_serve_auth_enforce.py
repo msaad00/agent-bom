@@ -11,7 +11,12 @@ from __future__ import annotations
 import click
 import pytest
 
-from agent_bom.cli._server import _api_auth_summary, _enforce_auth_defaults
+from agent_bom.cli._server import (
+    _api_auth_summary,
+    _enforce_auth_defaults,
+    _generate_dev_api_key,
+    _should_auto_generate_dev_key,
+)
 
 
 def test_enforce_auth_defaults_loopback_always_passes() -> None:
@@ -90,6 +95,7 @@ def _clear_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "AGENT_BOM_TRUST_PROXY_AUTH",
         "AGENT_BOM_SCIM_BEARER_TOKEN",
         "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
+        "AGENT_BOM_NO_AUTO_DEV_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -147,5 +153,89 @@ def test_api_auth_summary_prefers_api_key(monkeypatch: pytest.MonkeyPatch) -> No
         api_key="secret",
         oidc_enabled=False,
         allow_unauthenticated=True,
+    )
+    assert "API key required" in summary
+
+
+# ── Zero-config loopback dev key ────────────────────────────────────────────
+
+
+def test_should_auto_generate_dev_key_loopback_no_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bare loopback serve with no auth configured => auto dev key."""
+    _clear_auth_env(monkeypatch)
+    for host in ("127.0.0.1", "localhost", "::1"):
+        assert _should_auto_generate_dev_key(host=host, api_key=None, allow_insecure_no_auth=False) is True
+
+
+def test_should_auto_generate_dev_key_never_on_non_loopback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-loopback bind must NEVER auto-generate a key (stays fail-closed)."""
+    _clear_auth_env(monkeypatch)
+    assert _should_auto_generate_dev_key(host="0.0.0.0", api_key=None, allow_insecure_no_auth=False) is False
+    assert _should_auto_generate_dev_key(host="192.168.1.10", api_key=None, allow_insecure_no_auth=False) is False
+
+
+def test_should_auto_generate_dev_key_opt_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AGENT_BOM_NO_AUTO_DEV_KEY=1 restores the current fail-closed behaviour."""
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_NO_AUTO_DEV_KEY", "1")
+    assert _should_auto_generate_dev_key(host="127.0.0.1", api_key=None, allow_insecure_no_auth=False) is False
+
+
+def test_should_auto_generate_dev_key_explicit_auth_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicit key/flag/env auth path suppresses the auto dev key."""
+    _clear_auth_env(monkeypatch)
+    assert _should_auto_generate_dev_key(host="127.0.0.1", api_key="secret", allow_insecure_no_auth=False) is False
+    assert _should_auto_generate_dev_key(host="127.0.0.1", api_key=None, allow_insecure_no_auth=True) is False
+
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_API_KEYS", "raw:admin")
+    assert _should_auto_generate_dev_key(host="127.0.0.1", api_key=None, allow_insecure_no_auth=False) is False
+
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN", "x" * 32)
+    assert _should_auto_generate_dev_key(host="127.0.0.1", api_key=None, allow_insecure_no_auth=False) is False
+
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    assert _should_auto_generate_dev_key(host="127.0.0.1", api_key=None, allow_insecure_no_auth=False) is False
+
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    assert _should_auto_generate_dev_key(host="127.0.0.1", api_key=None, allow_insecure_no_auth=False) is False
+
+
+def test_generate_dev_api_key_is_prefixed_and_unique() -> None:
+    """Dev keys carry the abk_ prefix and are per-call random."""
+    first = _generate_dev_api_key()
+    second = _generate_dev_api_key()
+    assert first.startswith("abk_")
+    assert second.startswith("abk_")
+    assert first != second
+
+
+def test_api_auth_summary_reports_dev_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When a dev key is minted (and no explicit key), the banner is honest about it."""
+    _clear_auth_env(monkeypatch)
+    summary = _api_auth_summary(
+        host="127.0.0.1",
+        api_key=None,
+        oidc_enabled=False,
+        allow_unauthenticated=False,
+        dev_api_key="abk_example",
+    )
+    assert "auto dev API key" in summary
+    assert "loopback" in summary.lower()
+    assert "fail closed" not in summary.lower()
+
+
+def test_api_auth_summary_explicit_key_beats_dev_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicit --api-key always wins over an (unexpected) dev key value."""
+    _clear_auth_env(monkeypatch)
+    summary = _api_auth_summary(
+        host="127.0.0.1",
+        api_key="secret",
+        oidc_enabled=False,
+        allow_unauthenticated=False,
+        dev_api_key="abk_example",
     )
     assert "API key required" in summary

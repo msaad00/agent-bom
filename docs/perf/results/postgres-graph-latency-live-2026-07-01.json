@@ -1,143 +1,143 @@
 {
-  "commands": {
-    "dry_run": "uv run python scripts/run_graph_postgres_latency.py --dry-run",
-    "live": "AGENT_BOM_POSTGRES_DSN=postgresql://... uv run python scripts/run_graph_postgres_latency.py --run --scan-id <new> --old-scan-id <old> --repeat 30"
-  },
-  "edge_targets": "10000,50000,100000",
-  "evidence_status": "postgres_latency_client_wall_clock",
-  "gaps": [
-    "Client-side psql wall-clock timings include process startup and client transfer overhead.",
-    "Pair these repeated latencies with EXPLAIN ANALYZE plans before making production SLO claims."
-  ],
-  "generated_at": "2026-07-01T01:33:09.768996+00:00",
-  "old_scan_id": "graph-benchmark-estate-old",
-  "owner_issue": 2145,
-  "psql_bin": "/tmp/agent-bom-psql-docker",
-  "query_artifacts": {
-    "attack_path_drilldown": "docs/perf/results/postgres-graph-latency-live-2026-07-01/attack_path_drilldown.sql",
-    "bounded_traversal_edges": "docs/perf/results/postgres-graph-latency-live-2026-07-01/bounded_traversal_edges.sql",
-    "graph_diff_nodes": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_diff_nodes.sql",
-    "graph_evidence_manifest_digest": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_evidence_manifest_digest.sql",
-    "graph_history": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_history.sql",
-    "node_detail": "docs/perf/results/postgres-graph-latency-live-2026-07-01/node_detail.sql",
-    "node_search": "docs/perf/results/postgres-graph-latency-live-2026-07-01/node_search.sql"
-  },
-  "repeat": 30,
-  "results": [
-    {
-      "failures_sample": [],
-      "latency": {
-        "max_ms": 502.35,
-        "mean_ms": 98.442,
-        "p50_ms": 77.941,
-        "p95_ms": 182.647,
-        "p99_ms": 502.35,
-        "samples": 30
-      },
-      "name": "node_search",
-      "returncode_counts": {
-        "0": 30
-      },
-      "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/node_search.sql"
+    "commands": {
+        "dry_run": "uv run python scripts/run_graph_postgres_latency.py --dry-run",
+        "live": "AGENT_BOM_POSTGRES_DSN=postgresql://... uv run python scripts/run_graph_postgres_latency.py --run --scan-id <new> --old-scan-id <old> --repeat 30"
     },
-    {
-      "failures_sample": [],
-      "latency": {
-        "max_ms": 129.372,
-        "mean_ms": 79.485,
-        "p50_ms": 73.804,
-        "p95_ms": 128.536,
-        "p99_ms": 129.372,
-        "samples": 30
-      },
-      "name": "node_detail",
-      "returncode_counts": {
-        "0": 30
-      },
-      "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/node_detail.sql"
+    "edge_targets": "10000,50000,100000",
+    "evidence_status": "postgres_latency_client_wall_clock",
+    "gaps": [
+        "Client-side psql wall-clock timings include process startup and client transfer overhead.",
+        "Pair these repeated latencies with EXPLAIN ANALYZE plans before making production SLO claims."
+    ],
+    "generated_at": "2026-07-01T01:33:09.768996+00:00",
+    "old_scan_id": "graph-benchmark-estate-old",
+    "owner_issue": 3353,
+    "psql_bin": "/tmp/agent-bom-psql-docker",
+    "query_artifacts": {
+        "attack_path_drilldown": "docs/perf/results/postgres-graph-latency-live-2026-07-01/attack_path_drilldown.sql",
+        "bounded_traversal_edges": "docs/perf/results/postgres-graph-latency-live-2026-07-01/bounded_traversal_edges.sql",
+        "graph_diff_nodes": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_diff_nodes.sql",
+        "graph_evidence_manifest_digest": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_evidence_manifest_digest.sql",
+        "graph_history": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_history.sql",
+        "node_detail": "docs/perf/results/postgres-graph-latency-live-2026-07-01/node_detail.sql",
+        "node_search": "docs/perf/results/postgres-graph-latency-live-2026-07-01/node_search.sql"
     },
-    {
-      "failures_sample": [],
-      "latency": {
-        "max_ms": 99.619,
-        "mean_ms": 76.019,
-        "p50_ms": 75.949,
-        "p95_ms": 89.377,
-        "p99_ms": 99.619,
-        "samples": 30
-      },
-      "name": "attack_path_drilldown",
-      "returncode_counts": {
-        "0": 30
-      },
-      "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/attack_path_drilldown.sql"
-    },
-    {
-      "failures_sample": [],
-      "latency": {
-        "max_ms": 104.114,
-        "mean_ms": 76.601,
-        "p50_ms": 73.383,
-        "p95_ms": 103.289,
-        "p99_ms": 104.114,
-        "samples": 30
-      },
-      "name": "graph_diff_nodes",
-      "returncode_counts": {
-        "0": 30
-      },
-      "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_diff_nodes.sql"
-    },
-    {
-      "failures_sample": [],
-      "latency": {
-        "max_ms": 138.774,
-        "mean_ms": 83.144,
-        "p50_ms": 77.961,
-        "p95_ms": 128.294,
-        "p99_ms": 138.774,
-        "samples": 30
-      },
-      "name": "graph_history",
-      "returncode_counts": {
-        "0": 30
-      },
-      "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_history.sql"
-    },
-    {
-      "failures_sample": [],
-      "latency": {
-        "max_ms": 210.068,
-        "mean_ms": 116.882,
-        "p50_ms": 106.545,
-        "p95_ms": 180.376,
-        "p99_ms": 210.068,
-        "samples": 30
-      },
-      "name": "graph_evidence_manifest_digest",
-      "returncode_counts": {
-        "0": 30
-      },
-      "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_evidence_manifest_digest.sql"
-    },
-    {
-      "failures_sample": [],
-      "latency": {
-        "max_ms": 152.17,
-        "mean_ms": 83.571,
-        "p50_ms": 80.181,
-        "p95_ms": 101.969,
-        "p99_ms": 152.17,
-        "samples": 30
-      },
-      "name": "bounded_traversal_edges",
-      "returncode_counts": {
-        "0": 30
-      },
-      "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/bounded_traversal_edges.sql"
-    }
-  ],
-  "scan_id": "graph-benchmark-estate-current",
-  "schema_version": 1,
-  "tenant_id": "default"
+    "repeat": 30,
+    "results": [
+        {
+            "failures_sample": [],
+            "latency": {
+                "max_ms": 502.35,
+                "mean_ms": 98.442,
+                "p50_ms": 77.941,
+                "p95_ms": 182.647,
+                "p99_ms": 502.35,
+                "samples": 30
+            },
+            "name": "node_search",
+            "returncode_counts": {
+                "0": 30
+            },
+            "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/node_search.sql"
+        },
+        {
+            "failures_sample": [],
+            "latency": {
+                "max_ms": 129.372,
+                "mean_ms": 79.485,
+                "p50_ms": 73.804,
+                "p95_ms": 128.536,
+                "p99_ms": 129.372,
+                "samples": 30
+            },
+            "name": "node_detail",
+            "returncode_counts": {
+                "0": 30
+            },
+            "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/node_detail.sql"
+        },
+        {
+            "failures_sample": [],
+            "latency": {
+                "max_ms": 99.619,
+                "mean_ms": 76.019,
+                "p50_ms": 75.949,
+                "p95_ms": 89.377,
+                "p99_ms": 99.619,
+                "samples": 30
+            },
+            "name": "attack_path_drilldown",
+            "returncode_counts": {
+                "0": 30
+            },
+            "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/attack_path_drilldown.sql"
+        },
+        {
+            "failures_sample": [],
+            "latency": {
+                "max_ms": 104.114,
+                "mean_ms": 76.601,
+                "p50_ms": 73.383,
+                "p95_ms": 103.289,
+                "p99_ms": 104.114,
+                "samples": 30
+            },
+            "name": "graph_diff_nodes",
+            "returncode_counts": {
+                "0": 30
+            },
+            "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_diff_nodes.sql"
+        },
+        {
+            "failures_sample": [],
+            "latency": {
+                "max_ms": 138.774,
+                "mean_ms": 83.144,
+                "p50_ms": 77.961,
+                "p95_ms": 128.294,
+                "p99_ms": 138.774,
+                "samples": 30
+            },
+            "name": "graph_history",
+            "returncode_counts": {
+                "0": 30
+            },
+            "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_history.sql"
+        },
+        {
+            "failures_sample": [],
+            "latency": {
+                "max_ms": 210.068,
+                "mean_ms": 116.882,
+                "p50_ms": 106.545,
+                "p95_ms": 180.376,
+                "p99_ms": 210.068,
+                "samples": 30
+            },
+            "name": "graph_evidence_manifest_digest",
+            "returncode_counts": {
+                "0": 30
+            },
+            "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/graph_evidence_manifest_digest.sql"
+        },
+        {
+            "failures_sample": [],
+            "latency": {
+                "max_ms": 152.17,
+                "mean_ms": 83.571,
+                "p50_ms": 80.181,
+                "p95_ms": 101.969,
+                "p99_ms": 152.17,
+                "samples": 30
+            },
+            "name": "bounded_traversal_edges",
+            "returncode_counts": {
+                "0": 30
+            },
+            "sql": "docs/perf/results/postgres-graph-latency-live-2026-07-01/bounded_traversal_edges.sql"
+        }
+    ],
+    "scan_id": "graph-benchmark-estate-current",
+    "schema_version": 1,
+    "tenant_id": "default"
 }

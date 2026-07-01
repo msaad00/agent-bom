@@ -671,6 +671,9 @@ function GraphPageInner() {
       : null,
   );
   const firstScanSelectionRef = useRef(true);
+  // Last URL the filter→URL sync effect wrote, used to break an infinite
+  // router.replace loop (see the sync effect below for the full rationale).
+  const lastSyncedUrlRef = useRef<string | null>(null);
   const captureMode = useCaptureMode();
 
   useEffect(() => {
@@ -937,15 +940,18 @@ function GraphPageInner() {
   // copied address bar reproduces the view but back/forward isn't spammed.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Read preserved renderer flags from the live address bar rather than
+    // useSearchParams(): on this page the filter/layout state churns rapidly
+    // on load and useSearchParams() can lag or read empty across those
+    // re-renders.
+    const currentSearch = new URLSearchParams(window.location.search);
     const nextParams = encodeFiltersToParams(filters);
     if (selectedScanId) nextParams.set("scan", selectedScanId);
-    const requestedRenderer = searchParams?.get("renderer");
-    if (requestedRenderer === "webgl") {
-      nextParams.set("renderer", requestedRenderer);
+    if (currentSearch.get("renderer") === "webgl") {
+      nextParams.set("renderer", "webgl");
     }
-    const requestedWebgl = searchParams?.get("webgl");
-    if (requestedWebgl === "1") {
-      nextParams.set("webgl", requestedWebgl);
+    if (currentSearch.get("webgl") === "1") {
+      nextParams.set("webgl", "1");
     }
     const shareableInvestigation =
       investigationMode ?? requestedInvestigationRef.current;
@@ -960,18 +966,21 @@ function GraphPageInner() {
       }
     }
     const next = nextParams.toString();
-    const current = searchParams?.toString() ?? "";
-    if (next === current) return;
     const url = next ? `${pathname}?${next}` : pathname;
+    // Guard against an infinite navigation loop. router.replace() in the App
+    // Router applies history/useSearchParams updates asynchronously through a
+    // transition, so neither useSearchParams() nor window.location.search is
+    // guaranteed to reflect the URL we just wrote by the time this effect
+    // re-runs. Comparing against either one therefore never settled and
+    // router.replace fired on every render (dozens of navigations/second),
+    // which hung Playwright screenshots on "waiting for navigation to finish".
+    // Remembering the last URL we synced breaks the loop regardless of when
+    // the router catches up; a genuine filter change produces a new target.
+    if (lastSyncedUrlRef.current === url) return;
+    lastSyncedUrlRef.current = url;
+    if (next === currentSearch.toString()) return;
     router.replace(url, { scroll: false });
-  }, [
-    filters,
-    investigationMode,
-    pathname,
-    router,
-    searchParams,
-    selectedScanId,
-  ]);
+  }, [filters, investigationMode, pathname, router, selectedScanId]);
 
   // Constraint propagation — recompute valid values whenever graph or
   // filters change. Cheap on focused snapshots, BFS-bounded on expanded.

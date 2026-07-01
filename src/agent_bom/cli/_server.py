@@ -207,6 +207,18 @@ _MCP_WORKFLOW_NAMES = (
 )
 
 
+def _emit_mcp_stdio_workflow_splash() -> None:
+    """Emit a TTY-only MCP workflow hint without touching protocol stdout."""
+    if not sys.stderr.isatty():
+        return
+    rows = [
+        ("Transport", "stdio"),
+        ("Workflows", f"{len(_MCP_WORKFLOW_NAMES)} prompts; see docs/MCP_WORKFLOWS.md"),
+        ("Tools", "full catalog available after workflow prompts"),
+    ]
+    _emit_runtime_summary("agent-bom MCP server", rows, err=True)
+
+
 def _auth_summary(
     *,
     host: str,
@@ -910,4 +922,5 @@ def mcp_server_cmd(
     else:
         if bearer_token:
             click.echo("  Warning:   --bearer-token applies only to SSE / Streamable HTTP transports", err=True)
+        _emit_mcp_stdio_workflow_splash()
         server.run(transport="stdio")

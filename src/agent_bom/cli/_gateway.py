@@ -19,6 +19,7 @@ import click
 
 from agent_bom.cli._common import read_json_file_for_cli
 from agent_bom.cli._grouped_help import SuggestingGroup
+from agent_bom.cli._runtime_status import emit_runtime_status_strip
 from agent_bom.cli._server import _is_loopback_host
 
 logger = logging.getLogger(__name__)
@@ -601,6 +602,7 @@ def serve_cmd(
     for label, value in rows:
         click.echo(f"  {label:<11} {value}")
     click.echo("  Press Ctrl+C to stop.\n")
+    emit_runtime_status_strip("gateway", calls=0, blocked=0, last_decision="listening")
     uvicorn.run(app, host=host, port=port_num, log_level=log_level.lower())
 
 

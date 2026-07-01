@@ -575,6 +575,7 @@ def test_proxy_metrics_record_call():
     m.record_call("write_file")
     assert m.tool_calls["read_file"] == 2
     assert m.tool_calls["write_file"] == 1
+    assert m.last_decision == "allowed:write_file"
 
 
 def test_proxy_metrics_record_blocked():
@@ -585,6 +586,19 @@ def test_proxy_metrics_record_blocked():
     m.record_blocked("undeclared")
     assert m.blocked_calls["policy"] == 2
     assert m.blocked_calls["undeclared"] == 1
+    assert m.last_decision == "blocked:undeclared"
+
+
+def test_proxy_metrics_update_callback_tracks_live_status():
+    """record_call/record_blocked notify an attached live status callback."""
+    m = ProxyMetrics()
+    seen: list[str] = []
+    m.set_update_callback(lambda metrics: seen.append(metrics.last_decision))
+
+    m.record_call("read_file")
+    m.record_blocked("policy")
+
+    assert seen == ["allowed:read_file", "blocked:policy"]
 
 
 def test_proxy_metrics_latency():
@@ -615,6 +629,7 @@ def test_proxy_metrics_summary():
     assert s["calls_by_tool"]["scan"] == 2
     assert s["calls_by_tool"]["check"] == 1
     assert s["blocked_by_reason"]["policy"] == 1
+    assert s["last_decision"] == "blocked:policy"
     assert s["latency"]["min_ms"] == 10.0
     assert s["latency"]["max_ms"] == 50.0
     assert s["latency"]["count"] == 2

@@ -15,7 +15,7 @@ from collections import Counter, OrderedDict, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import IO, Any, Optional
+from typing import IO, Any, Callable, Optional
 
 from agent_bom.agent_identity import ANONYMOUS
 from agent_bom.audit_integrity import (
@@ -140,14 +140,32 @@ class ProxyMetrics:
     audit_push_failures: int = 0
     audit_push_backoff_seconds: int = 0
     audit_circuit_open: bool = False
+    last_decision: str = "waiting"
+    _on_update: Callable[["ProxyMetrics"], None] | None = field(default=None, repr=False, compare=False)
 
     _MAX_LATENCY_ENTRIES = 10_000
 
+    def set_update_callback(self, callback: Callable[["ProxyMetrics"], None] | None) -> None:
+        """Attach a best-effort live status callback for interactive CLIs."""
+        self._on_update = callback
+
+    def _notify_update(self) -> None:
+        if self._on_update is None:
+            return
+        try:
+            self._on_update(self)
+        except Exception:  # noqa: BLE001 - status rendering must never affect enforcement
+            logger.debug("Proxy metrics update callback failed", exc_info=True)
+
     def record_call(self, tool_name: str) -> None:
         self.tool_calls[tool_name] += 1
+        self.last_decision = f"allowed:{tool_name}"
+        self._notify_update()
 
     def record_blocked(self, reason: str) -> None:
         self.blocked_calls[reason] += 1
+        self.last_decision = f"blocked:{reason}"
+        self._notify_update()
 
     def record_latency(self, duration_ms: float) -> None:
         self.latencies_ms.append(duration_ms)
@@ -205,6 +223,7 @@ class ProxyMetrics:
             "messages_server_to_client": self.total_messages_server_to_client,
             "replay_rejections": self.replay_rejections,
             "relay_errors": self.relay_errors,
+            "last_decision": self.last_decision,
             "audit_buffer_bytes": self.audit_buffer_bytes,
             "audit_spillover_bytes": self.audit_spillover_bytes,
             "audit_dlq_bytes": self.audit_dlq_bytes,

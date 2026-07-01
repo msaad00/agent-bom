@@ -6,8 +6,11 @@
 <linearGradient id="core-glow" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#a78bfa" stop-opacity="0.28"/><stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/></linearGradient>
 </defs>
 <rect width="960" height="560" rx="14" fill="#0a0a0c"/>
+<rect x="10" y="10" width="940" height="540" rx="16" fill="none" stroke="#f59e0b" stroke-width="2" opacity="0.28"/>
+<rect x="850" y="20" width="86" height="22" rx="11" fill="#78350f" opacity="0.72"/>
+<text x="893" y="35" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="800" letter-spacing="0.14em" fill="#fde68a">WORKFLOW</text>
 <text x="28" y="40" font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="800" fill="#f4f4f5">From inventory to enforceable evidence</text>
-<text x="28" y="60" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="500" fill="#71717a">One read-only pipeline · one Finding + ContextGraph · CLI · API · UI · MCP</text>
+<text x="28" y="60" font-family="Inter,system-ui,sans-serif" font-size="10" font-weight="500" fill="#71717a">Five-stage read-only flow · intake -&gt; scan -&gt; evidence -&gt; control -&gt; artifacts</text>
 <rect x="24" y="102" width="174" height="348" rx="12" fill="#0f0f13" stroke="#222228"/>
 <rect x="27" y="105" width="168" height="29" rx="7" fill="#1e3a5f"/><text x="37" y="123" font-family="Inter,system-ui,sans-serif" font-size="9.5" font-weight="800" letter-spacing="0.12em" fill="#93c5fd">INTAKE</text><text x="187" y="123" text-anchor="end" font-family="Inter,system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#60a5fa" opacity="0.95">read-only</text>
 <rect x="208" y="102" width="174" height="348" rx="12" fill="#0f0f13" stroke="#222228"/>

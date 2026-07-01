@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, Suspense, useCallback, useEffect, useState, useMemo, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useState, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -22,7 +22,7 @@ import { ApiOfflineState } from "@/components/api-offline-state";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { severityRank } from "@/lib/severity";
-import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert, ClipboardCheck } from "lucide-react";
+import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert, ClipboardCheck, X } from "lucide-react";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -350,9 +350,9 @@ function VulnsPage() {
   const [triageError, setTriageError] = useState("");
   const [triageBusyKey, setTriageBusyKey] = useState<string | null>(null);
   const [vexExporting, setVexExporting] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(paramCve ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(paramCve ?? null);
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 25;
 
   // URL-as-source-of-truth: when the query string changes (link, back/forward),
   // re-sync the derived filter state so the view matches the address bar instead
@@ -371,7 +371,7 @@ function VulnsPage() {
   }, [paramCve, paramAgent]);
 
   useEffect(() => {
-    if (paramCve) setExpandedId(paramCve);
+    if (paramCve) setSelectedId(paramCve);
   }, [paramCve]);
 
   const collectVulns = useCallback((fullJobs: ScanJob[]) => {
@@ -686,6 +686,10 @@ function VulnsPage() {
 
   const totalPages = Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
   const paged = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const selectedVuln = useMemo(
+    () => displayed.find((vuln) => vuln.id === selectedId) ?? vulns.find((vuln) => vuln.id === selectedId) ?? null,
+    [displayed, selectedId, vulns],
+  );
   const triageByKey = useMemo(() => {
     const rows = new Map<string, FindingTriageItem>();
     for (const row of triageRows) {
@@ -825,6 +829,20 @@ function VulnsPage() {
         <>
           {/* Controls */}
           <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-200">Findings queue</h2>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Triage one finding at a time. Rows stay compact; evidence, reachability, fixes, and VEX decisions open in the drawer.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
+                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1">{PAGE_SIZE} per page</span>
+                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1">{displayed.length} filtered</span>
+                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-1">{vexEligibleCount} VEX-ready</span>
+              </div>
+            </div>
+
             {/* Filters + search */}
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
               <div className="flex items-center gap-1 flex-wrap">
@@ -923,11 +941,8 @@ function VulnsPage() {
                       handleSort={handleSort}
                       suppressed={suppressed}
                       onMarkFP={handleMarkFP}
-                      triageByKey={triageByKey}
-                      triageBusyKey={triageBusyKey}
-                      onTriageDecision={handleTriageDecision}
-                      expandedId={expandedId}
-                      onToggleExpanded={setExpandedId}
+                      selectedId={selectedId}
+                      onSelect={setSelectedId}
                     />
                     {groupOverflow > 0 && (
                       <p className="mt-2 text-xs text-zinc-600">
@@ -948,11 +963,8 @@ function VulnsPage() {
               handleSort={handleSort}
               suppressed={suppressed}
               onMarkFP={handleMarkFP}
-              triageByKey={triageByKey}
-              triageBusyKey={triageBusyKey}
-              onTriageDecision={handleTriageDecision}
-              expandedId={expandedId}
-              onToggleExpanded={setExpandedId}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
             />
           )}
 
@@ -988,6 +1000,16 @@ function VulnsPage() {
               Showing {displayed.length} of {vulns.length} findings
             </p>
           )}
+
+          {selectedVuln && (
+            <FindingDrawer
+              vuln={selectedVuln}
+              triage={triageByKey.get(triageKey(selectedVuln.id, selectedVuln.packages[0] ?? "*"))}
+              triageBusy={triageBusyKey === triageKey(selectedVuln.id, selectedVuln.packages[0] ?? "*")}
+              onTriageDecision={handleTriageDecision}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
         </>
       )}
     </div>
@@ -1001,11 +1023,8 @@ function VulnTable({
   handleSort,
   suppressed,
   onMarkFP,
-  triageByKey,
-  triageBusyKey,
-  onTriageDecision,
-  expandedId,
-  onToggleExpanded,
+  selectedId,
+  onSelect,
 }: {
   vulns: EnrichedVuln[];
   sortKey: SortKey;
@@ -1013,15 +1032,8 @@ function VulnTable({
   handleSort: (f: SortKey) => void;
   suppressed: Set<string>;
   onMarkFP: (vulnId: string, packageName: string) => void;
-  triageByKey: Map<string, FindingTriageItem>;
-  triageBusyKey: string | null;
-  onTriageDecision: (
-    vuln: EnrichedVuln,
-    decision: FindingTriageDecision,
-    justification?: FindingTriageJustification,
-  ) => void;
-  expandedId: string | null;
-  onToggleExpanded: (vulnId: string | null) => void;
+  selectedId: string | null;
+  onSelect: (vulnId: string | null) => void;
 }) {
   return (
     <div className="border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
@@ -1048,29 +1060,35 @@ function VulnTable({
         </thead>
         <tbody className="divide-y divide-zinc-800 bg-zinc-950">
           {vulns?.map((v) => {
-            const isExpanded = expandedId === v.id;
-            const primaryPackage = v.packages[0] ?? "*";
-            const currentTriage = triageByKey.get(triageKey(v.id, primaryPackage));
-            const busy = triageBusyKey === triageKey(v.id, primaryPackage);
+            const isSelected = selectedId === v.id;
             return (
-              <Fragment key={v.id}>
-                <tr key={v.id} className={`transition-colors ${isExpanded ? "bg-zinc-900/80" : "hover:bg-zinc-900"}`}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onToggleExpanded(isExpanded ? null : v.id)}
-                        className="mt-0.5 rounded p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-                        aria-label={isExpanded ? `Collapse ${v.id}` : `Expand ${v.id}`}
-                      >
-                        {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                      </button>
+              <tr
+                key={v.id}
+                className={`cursor-pointer transition-colors ${isSelected ? "bg-zinc-900/90 ring-1 ring-inset ring-emerald-900/60" : "hover:bg-zinc-900"}`}
+                onClick={() => onSelect(v.id)}
+              >
+                <td className="px-4 py-3">
+                  <div className="flex items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelect(v.id);
+                      }}
+                      className="mt-0.5 rounded p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+                      aria-label={`Open details for ${v.id}`}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${severityDot(v.severity)}`} />
                           <button
                             type="button"
-                            onClick={() => onToggleExpanded(isExpanded ? null : v.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onSelect(v.id);
+                            }}
                             className="font-mono text-xs text-zinc-200 transition-colors hover:text-emerald-400"
                           >
                             {v.id}
@@ -1079,6 +1097,7 @@ function VulnTable({
                             href={`https://osv.dev/vulnerability/${v.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
                             className="inline-flex items-center gap-1 rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
                           >
                             OSV
@@ -1098,7 +1117,7 @@ function VulnTable({
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                <td className="px-4 py-3">
                     <span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(v.severity)}`}>
                       {v.severity}
                     </span>
@@ -1135,7 +1154,10 @@ function VulnTable({
                       </span>
                     ) : (
                       <button
-                        onClick={() => onMarkFP(v.id, v.packages[0] ?? "")}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onMarkFP(v.id, v.packages[0] ?? "");
+                        }}
                         className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
                       >
                         <ShieldOff className="w-3 h-3" />
@@ -1143,20 +1165,7 @@ function VulnTable({
                       </button>
                     )}
                   </td>
-                </tr>
-                {isExpanded && (
-                  <tr key={`${v.id}-detail`} className="bg-zinc-950">
-                    <td colSpan={8} className="px-4 pb-4">
-                      <VulnDetailPanel
-                        vuln={v}
-                        triage={currentTriage}
-                        triageBusy={busy}
-                        onTriageDecision={onTriageDecision}
-                      />
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
+              </tr>
             );
           })}
         </tbody>
@@ -1167,6 +1176,55 @@ function VulnTable({
           No vulnerabilities match your filters.
         </div>
       )}
+    </div>
+  );
+}
+
+function FindingDrawer({
+  vuln,
+  triage,
+  triageBusy,
+  onTriageDecision,
+  onClose,
+}: {
+  vuln: EnrichedVuln;
+  triage: FindingTriageItem | undefined;
+  triageBusy: boolean;
+  onTriageDecision: (
+    vuln: EnrichedVuln,
+    decision: FindingTriageDecision,
+    justification?: FindingTriageJustification,
+  ) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/45 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={`Finding details for ${vuln.id}`}>
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close finding details" onClick={onClose} />
+      <aside className="relative h-full w-full max-w-3xl overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-4 border-b border-zinc-800 pb-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Evidence drawer</p>
+            <h2 className="mt-1 break-all font-mono text-lg font-semibold text-zinc-100">{vuln.id}</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Reachability, impacted packages, agent exposure, remediation, and VEX decisioning.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-100"
+            aria-label="Close finding drawer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <VulnDetailPanel
+          vuln={vuln}
+          triage={triage}
+          triageBusy={triageBusy}
+          onTriageDecision={onTriageDecision}
+        />
+      </aside>
     </div>
   );
 }

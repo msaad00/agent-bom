@@ -129,7 +129,9 @@ def _reset_api_runtime_state() -> None:
 
         set_key_store(KeyStore())
         api_server._env_api_keys_seeded = False
+        api_server._runtime_api_key_seeded = False
         api_server._api_key = None
+        api_server.set_dev_api_key(None)
     except Exception:
         pass
 

@@ -2650,6 +2650,7 @@ def scan(
             agent_mode=agent_mode,
             agent_token_budget=agent_token_budget,
             agent_mode_full=agent_mode_full,
+            page=page,
         )
 
     if exit_code:

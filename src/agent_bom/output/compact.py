@@ -238,15 +238,23 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
     )
 
     if not verbose:
-        # Default verdict-led form: 2 lines + optional --verbose hint.
+        # Default verdict-led form: verdict + inventory + a compact posture
+        # card + optional --verbose hint. The posture grade is now surfaced
+        # inline so a normal scan reads a posture verdict in one screen.
         lines = [
             f"  [bold]Security posture:[/bold]  {posture}",
             inventory_line,
         ]
+        if scorecard.score < 100 or high_risk_policy_count:
+            grade_line = f"  [bold]Posture grade:[/bold]  {_posture_grade_badge(scorecard.grade)} {scorecard.score:.0f}/100"
+            if scorecard_summary:
+                grade_line += f"  [dim]{_compact_detail(scorecard_summary, limit=48)}[/dim]"
+            lines.append(grade_line)
+            if weak_dimensions:
+                lines.append(f"  [dim]Top driver:[/dim] [yellow]{weak_dimensions[0].name}[/yellow]")
         if has_more_context:
+            # The grade is shown above, so the hint covers the remaining detail.
             hint_bits: list[str] = []
-            if scorecard.score < 100:
-                hint_bits.append(f"posture grade {_posture_grade_badge(scorecard.grade)} {scorecard.score:.0f}/100")
             if weak_dimensions:
                 hint_bits.append(f"{len(weak_dimensions)} weak driver(s)")
             if cred_names:

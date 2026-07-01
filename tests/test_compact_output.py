@@ -261,6 +261,21 @@ def test_compact_summary_default_offers_verbose_hint_when_drivers_weak():
     assert "weak driver" in output or "credential" in output  # hint mentions what's behind it
 
 
+def test_compact_summary_default_shows_posture_card_when_not_perfect():
+    """Default form surfaces a posture grade card inline, not only under --posture."""
+    vuln = _vuln(severity=Severity.HIGH, fixed="9.9.9")
+    pkg = Package(name="pkg", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = _make_server(packages=[pkg], env={"AWS_SECRET_ACCESS_KEY": "x"})
+    agent = _make_agent(servers=[server])
+    br = _blast(vuln, pkg, [agent], [server], creds=["AWS_SECRET_ACCESS_KEY"])
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    output = _plain(_capture(print_compact_summary, report))
+
+    assert "Posture grade:" in output
+    assert "/100" in output
+    assert "CONFIG POSTURE GRADE" not in output
+
+
 # ── print_compact_agents ─────────────────────────────────────────────────────
 
 

@@ -21,6 +21,7 @@ from agent_bom.models import (
 from agent_bom.output import (
     print_compact_agents,
     print_compact_blast_radius,
+    print_compact_cis_posture,
     print_compact_export_hint,
     print_compact_remediation,
     print_compact_summary,
@@ -163,6 +164,7 @@ def test_compact_summary_default_is_verdict_led():
     assert "CONFIG POSTURE GRADE" not in output
     assert "Top Drivers" not in output
     # Verdict + inventory still surface:
+    assert "SCAN" in output
     assert "CLEAN" in output
     assert "agents" in output
     assert "packages" in output
@@ -289,6 +291,7 @@ def test_compact_agents_table():
     )
     report = AIBOMReport(agents=[a1, a2])
     output = _capture(print_compact_agents, report)
+    assert "DISCOVER" in _plain(output)
     assert "claude-desktop" in output
     assert "cursor" in output
 
@@ -338,6 +341,7 @@ def test_compact_blast_radius_limit():
     import re
 
     plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    assert "ANALYZE" in plain
     assert "3 of 8" in plain
     assert "more" in plain
     assert "--verbose" in plain
@@ -376,6 +380,7 @@ def test_compact_remediation_limit():
         radii.append(_blast(v, p, [agent], [server]))
     report = AIBOMReport(agents=[agent], blast_radii=radii)
     output = _capture(print_compact_remediation, report, limit=2)
+    assert "PROTECT" in _plain(output)
     assert "more" in output
     assert "--verbose" in output
 
@@ -446,3 +451,28 @@ def test_compact_export_hint():
     assert "servers" in output
     assert "packages" in output
     assert "vulns" in output
+
+
+def test_compact_cis_posture_uses_govern_lane():
+    """CIS posture is a governance surface in the compact CLI."""
+    report = AIBOMReport(
+        agents=[],
+        cis_benchmark_data={
+            "checks": [
+                {
+                    "check_id": "1.1",
+                    "title": "Ensure root account MFA is enabled",
+                    "status": "pass",
+                    "severity": "high",
+                }
+            ],
+            "passed": 1,
+            "failed": 0,
+            "pass_rate": 100.0,
+        },
+    )
+
+    output = _plain(_capture(print_compact_cis_posture, report))
+
+    assert "GOVERN" in output
+    assert "CIS Benchmark Posture" in output

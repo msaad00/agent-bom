@@ -58,6 +58,11 @@ class CloudConnectionRecord:
     last_scan_at: str | None = None
     last_scan_id: str | None = None
     scan_interval_minutes: int | None = None
+    # Timestamp of the most recent event-driven (CloudTrail/EventBridge) posture
+    # re-evaluation, distinct from ``last_scan_at`` (the last full polling scan).
+    # Lets the UI surface an event-driven-vs-polling freshness signal: a
+    # connection reacting to change events stays fresh between scheduled scans.
+    last_event_at: str | None = None
     # Non-secret, provider-specific connection parameters (e.g. Azure
     # tenant_id/subscription_id, GCP project_id, Snowflake user/role/warehouse).
     # The single reversible secret per connection lives in
@@ -117,6 +122,7 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                 "last_scan_id",
                 "scan_interval_minutes",
                 "auth_params",
+                "last_event_at",
             ),
             ddl_by_backend={
                 "sqlite": (
@@ -126,7 +132,8 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', "
                     "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
                     "updated_at TEXT NOT NULL, last_scan_at TEXT, last_scan_id TEXT, "
-                    "scan_interval_minutes INTEGER, auth_params TEXT NOT NULL DEFAULT '{}')"
+                    "scan_interval_minutes INTEGER, auth_params TEXT NOT NULL DEFAULT '{}', "
+                    "last_event_at TEXT)"
                 ),
                 "postgres": (
                     "CREATE TABLE IF NOT EXISTS cloud_connections (id TEXT PRIMARY KEY, "
@@ -135,7 +142,8 @@ CONNECTION_STORAGE_SCHEMA = StorageSchema(
                     "regions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', "
                     "status_detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
                     "updated_at TEXT NOT NULL, last_scan_at TEXT, last_scan_id TEXT, "
-                    "scan_interval_minutes INTEGER, auth_params TEXT NOT NULL DEFAULT '{}')"
+                    "scan_interval_minutes INTEGER, auth_params TEXT NOT NULL DEFAULT '{}', "
+                    "last_event_at TEXT)"
                 ),
             },
         ),
@@ -184,8 +192,19 @@ def _decode_auth_params(raw: Any) -> dict[str, Any]:
 
 
 def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
-    """Map a ``cloud_connections`` row tuple to a record (shared by backends)."""
-    has_last_scan_id = len(row) > 14
+    """Map a ``cloud_connections`` row tuple to a record (shared by backends).
+
+    The two durable backends select slightly different column shapes: the SQLite
+    SELECT carries ``last_scan_id`` (16 columns) while the Postgres SELECT omits
+    it (15 columns). ``last_scan_id`` therefore only exists in the wider SQLite
+    shape; every other column keeps the same relative order in both, so a single
+    length check distinguishes them and the trailing columns are read positionally
+    from the correct index in each shape.
+    """
+    has_last_scan_id = len(row) >= 16
+    interval_idx = 13 if has_last_scan_id else 12
+    auth_idx = 14 if has_last_scan_id else 13
+    event_idx = 15 if has_last_scan_id else 14
     return CloudConnectionRecord(
         id=row[0],
         tenant_id=row[1],
@@ -200,10 +219,9 @@ def _row_to_record(row: Sequence[Any]) -> CloudConnectionRecord:
         updated_at=row[10] or "",
         last_scan_at=row[11] if len(row) > 11 else None,
         last_scan_id=row[12] if has_last_scan_id else None,
-        scan_interval_minutes=(
-            _decode_interval(row[13] if has_last_scan_id else row[12]) if len(row) > 12 else None
-        ),
-        auth_params=_decode_auth_params(row[14] if has_last_scan_id else row[13]) if len(row) > 13 else {},
+        scan_interval_minutes=(_decode_interval(row[interval_idx]) if len(row) > interval_idx else None),
+        auth_params=_decode_auth_params(row[auth_idx]) if len(row) > auth_idx else {},
+        last_event_at=row[event_idx] if len(row) > event_idx else None,
     )
 
 
@@ -307,6 +325,8 @@ class SQLiteConnectionStore:
             # Idempotent migration: backfill existing rows with an empty object so
             # the column stays NOT NULL and legacy connections read as no-params.
             self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN auth_params TEXT NOT NULL DEFAULT '{}'")
+        if "last_event_at" not in columns:
+            self._conn.execute("ALTER TABLE cloud_connections ADD COLUMN last_event_at TEXT")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cloud_connections_tenant ON cloud_connections(tenant_id, created_at)")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_cloud_connections_schedulable ON cloud_connections(scan_interval_minutes, last_scan_at)"
@@ -319,8 +339,8 @@ class SQLiteConnectionStore:
             INSERT OR REPLACE INTO cloud_connections
                 (id, tenant_id, provider, display_name, role_ref, external_id_encrypted,
                  regions, status, status_detail, created_at, updated_at, last_scan_at,
-                 last_scan_id, scan_interval_minutes, auth_params)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 last_scan_id, scan_interval_minutes, auth_params, last_event_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.id,
@@ -338,6 +358,7 @@ class SQLiteConnectionStore:
                 record.last_scan_id,
                 record.scan_interval_minutes,
                 json.dumps(record.auth_params),
+                record.last_event_at,
             ),
         )
         self._conn.commit()
@@ -345,7 +366,8 @@ class SQLiteConnectionStore:
     def get(self, tenant_id: str, connection_id: str) -> CloudConnectionRecord | None:
         row = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-            "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, scan_interval_minutes, auth_params "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, "
+            "last_scan_id, scan_interval_minutes, auth_params, last_event_at "
             "FROM cloud_connections WHERE tenant_id = ? AND id = ?",
             (tenant_id, connection_id),
         ).fetchone()
@@ -354,7 +376,8 @@ class SQLiteConnectionStore:
     def list_for_tenant(self, tenant_id: str) -> list[CloudConnectionRecord]:
         rows = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-            "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, scan_interval_minutes, auth_params "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, "
+            "last_scan_id, scan_interval_minutes, auth_params, last_event_at "
             "FROM cloud_connections WHERE tenant_id = ? ORDER BY created_at, id",
             (tenant_id,),
         ).fetchall()
@@ -371,7 +394,8 @@ class SQLiteConnectionStore:
     def list_schedulable(self) -> list[CloudConnectionRecord]:
         rows = self._conn.execute(
             "SELECT id, tenant_id, provider, display_name, role_ref, external_id_encrypted, "
-            "regions, status, status_detail, created_at, updated_at, last_scan_at, last_scan_id, scan_interval_minutes, auth_params "
+            "regions, status, status_detail, created_at, updated_at, last_scan_at, "
+            "last_scan_id, scan_interval_minutes, auth_params, last_event_at "
             "FROM cloud_connections WHERE scan_interval_minutes IS NOT NULL ORDER BY created_at, id"
         ).fetchall()
         return [_row_to_record(row) for row in rows]

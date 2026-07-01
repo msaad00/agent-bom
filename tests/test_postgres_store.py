@@ -1130,6 +1130,26 @@ def test_tenant_rls_bypass_activation_writes_signed_audit_event(monkeypatch):
     assert audit_log.verify_integrity() == (1, 0)
 
 
+def test_tenant_rls_bypass_can_skip_audit_for_schema_bootstrap():
+    """Schema initialization may bypass RLS without recursively bootstrapping the audit store."""
+    from agent_bom.api import postgres_common
+    from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
+
+    audit_log = InMemoryAuditLog()
+    set_audit_log(audit_log)
+    token = postgres_common.set_current_tenant("tenant-alpha")
+    try:
+        with postgres_common.bypass_tenant_rls(audit=False):
+            assert postgres_common.is_tenant_rls_bypassed() is True
+    finally:
+        postgres_common.reset_current_tenant(token)
+        set_audit_log(InMemoryAuditLog())
+
+    entries = audit_log.list_entries(action="postgres.rls_bypass_activated", tenant_id="tenant-alpha")
+    assert entries == []
+    assert audit_log.verify_integrity() == (0, 0)
+
+
 def test_ensure_tenant_rls_forces_policy_through_session_helpers():
     """Tenant RLS policies should be enforced by Postgres session state, not app filters alone."""
     from agent_bom.api import postgres_common
@@ -1422,9 +1442,18 @@ def test_graph_store_init_backfills_empty_tenant_rows(mock_pool):
     assert expected_tables.issubset(delete_tables)
 
 
-def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(mock_pool):
+def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(mock_pool, monkeypatch):
+    from agent_bom.api import postgres_graph
     from agent_bom.api.postgres_store import PostgresGraphStore
 
+    bypass_audit_flags: list[bool] = []
+    real_bypass_tenant_rls = postgres_graph.bypass_tenant_rls
+
+    def recording_bypass_tenant_rls(*args, **kwargs):
+        bypass_audit_flags.append(kwargs.get("audit", True))
+        return real_bypass_tenant_rls(*args, **kwargs)
+
+    monkeypatch.setattr(postgres_graph, "bypass_tenant_rls", recording_bypass_tenant_rls)
     PostgresGraphStore(pool=mock_pool)
 
     executed = mock_pool._conn.executed
@@ -1443,6 +1472,7 @@ def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(mock_pool)
 
     assert bypass_on_index < first_backfill_index
     assert bypass_off_after_backfill
+    assert False in bypass_audit_flags
 
 
 def test_graph_store_save_graph_normalizes_empty_tenant_to_default(mock_pool):

@@ -94,6 +94,20 @@ def _resolve_output_path(output: Any, output_format: str) -> str:
         default_suffix = "".join(Path(default_name).suffixes)
         return f"{raw_path}{default_suffix}"
 
+    # Friendly short-form handling: a truncated final suffix like `.cdx` /
+    # `.spdx` / `.spdx2` that becomes a valid multi-part suffix for this format
+    # once `.json` is appended is accepted rather than hard-erroring. We match
+    # the exact allowed multi-part suffix (e.g. `.cdx.json`), so unrelated
+    # extensions like `.png` still error instead of silently gaining `.json`.
+    short_form = f"{path.suffix.lower()}.json"
+    if short_form in allowed_suffixes:
+        aliased = f"{raw_path}.json"
+        click.echo(
+            f"--format {output_format}: '{raw_path}' looks like a short form for this format; writing to '{aliased}'.",
+            err=True,
+        )
+        return aliased
+
     suffix_list = ", ".join(allowed_suffixes)
     click.echo(
         f"--format {output_format} cannot write to '{raw_path}' because the file extension does not match. Use one of: {suffix_list}.",

@@ -292,6 +292,17 @@ API_SCAN_CLAIM_POLL_SECONDS = _int("AGENT_BOM_API_SCAN_CLAIM_POLL_SECONDS", 3)
 CONNECTIONS_SCHEDULER_POLL_SECONDS = _int("AGENT_BOM_CONNECTIONS_SCHEDULER_POLL_SECONDS", 60)
 CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES = _int("AGENT_BOM_CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES", 15)
 CONNECTIONS_SCHEDULER_MAX_CONCURRENCY = _int("AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY", 4)
+# Event-driven AWS posture ingestion (continuous posture). When an operator
+# wires EventBridge→SQS (opt-in via AGENT_BOM_AWS_EVENT_QUEUE_URL, read live,
+# default off), the bounded SQS consumer drains change events and re-evaluates
+# only the affected resource's CIS rules — polling stays the fallback. These
+# knobs bound a single consume pass so it always terminates: messages per
+# receive, receive batches per pass, per-message visibility timeout, and the
+# long-poll wait. Caps mirror the SQS API limits (10 messages, 20s wait).
+AWS_EVENT_MAX_MESSAGES = _int("AGENT_BOM_AWS_EVENT_MAX_MESSAGES", 10)
+AWS_EVENT_MAX_BATCHES = _int("AGENT_BOM_AWS_EVENT_MAX_BATCHES", 10)
+AWS_EVENT_VISIBILITY_TIMEOUT = _int("AGENT_BOM_AWS_EVENT_VISIBILITY_TIMEOUT", 120)
+AWS_EVENT_WAIT_SECONDS = _int("AGENT_BOM_AWS_EVENT_WAIT_SECONDS", 5)
 API_JOB_TTL_SECONDS = _int("AGENT_BOM_API_JOB_TTL", 3_600)
 API_MAX_IN_MEMORY_JOBS = _int("AGENT_BOM_API_MAX_MEMORY_JOBS", 200)
 API_MAX_JOB_PROGRESS_EVENTS = _int("AGENT_BOM_API_MAX_JOB_PROGRESS_EVENTS", 500)

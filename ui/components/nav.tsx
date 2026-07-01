@@ -19,7 +19,6 @@ import {
   Eye,
   Clock,
   Radio,
-  BarChart3,
   FileText,
   ChevronDown,
   ChevronRight,
@@ -35,7 +34,7 @@ import {
   DollarSign,
   Fingerprint,
   Radar,
-  Compass,
+  Boxes,
   Cloud,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -64,6 +63,11 @@ interface NavGroup {
   description: string;
   icon: React.ElementType;
   links: NavLink[];
+  /**
+   * Closely-related deep-dive destinations that stay reachable from nav but are
+   * tucked under a "More" disclosure so the group isn't a long flat list.
+   */
+  secondary?: NavLink[];
   /** Accent color from architecture diagram — matches the product layer */
   accent: string;
 }
@@ -82,11 +86,11 @@ const NAV_GROUPS: NavGroup[] = [
     icon: LayoutDashboard,
     accent: "#58a6ff", // blue — discovery layer
     links: [
-      { href: "/overview", label: "Overview", icon: Compass },
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/agents", label: "Agents", icon: Server },
       { href: "/manifest", label: "Agent BOM", icon: Waypoints },
       { href: "/fleet", label: "Fleet", icon: Users },
+      { href: "/registry", label: "Registry", icon: Boxes },
     ],
   },
   {
@@ -104,15 +108,13 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Analyze",
-    description: "Trace blast radius and graph relationships",
+    description: "One security graph with attack-path, lineage, mesh, and context lenses",
     icon: GitBranch,
     accent: "#d29922", // amber — analysis layer
     links: [
+      // Single graph surface. Lineage / mesh / context are lenses reached from the
+      // in-page lens switcher, not separate nav links (see graph-lens-switcher).
       { href: "/security-graph", label: "Security Graph", icon: Network },
-      { href: "/graph", label: "Lineage Graph", icon: GitBranch },
-      { href: "/mesh", label: "Agent Mesh", icon: Network },
-      { href: "/context", label: "Context Map", icon: Waypoints },
-      { href: "/insights", label: "Insights", icon: BarChart3 },
     ],
   },
   {
@@ -131,15 +133,20 @@ const NAV_GROUPS: NavGroup[] = [
     description: "Evidence, remediation, governance, and activity",
     icon: Eye,
     accent: "#3fb950", // green — output/governance layer
+    // Primary evidence + governance surfaces. Cost / Identity / Drift are
+    // posture deep-dives reachable from the in-group "More" disclosure so the
+    // sidebar stays tight instead of an eight-deep flat list.
     links: [
       { href: "/compliance", label: "Compliance", icon: Shield },
+      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
+      { href: "/remediation", label: "Remediation", icon: Wrench },
+      { href: "/traces", label: "Traces", icon: Radio },
+      { href: "/activity", label: "Activity", icon: Activity },
+    ],
+    secondary: [
       { href: "/cost", label: "Cost", icon: DollarSign },
       { href: "/identity", label: "Identity", icon: Fingerprint },
       { href: "/drift", label: "Drift", icon: Radar },
-      { href: "/remediation", label: "Remediation", icon: Wrench },
-      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
-      { href: "/traces", label: "Traces", icon: Radio },
-      { href: "/activity", label: "Activity", icon: Activity },
     ],
   },
 ];
@@ -271,7 +278,8 @@ export function Nav() {
     ? NAV_GROUPS.map((g) => ({
         ...g,
         links: g.links.filter((l) => l.label.toLowerCase().includes(searchQuery.toLowerCase())),
-      })).filter((g) => g.links.length > 0)
+        secondary: (g.secondary ?? []).filter((l) => l.label.toLowerCase().includes(searchQuery.toLowerCase())),
+      })).filter((g) => g.links.length > 0 || (g.secondary?.length ?? 0) > 0)
     : NAV_GROUPS;
 
   const roleAllowsLink = useCallback(
@@ -289,16 +297,19 @@ export function Nav() {
 
   const navGroups = filteredGroups
     .map((group) => {
+      const secondaryLinks = (group.secondary ?? []).filter(roleAllowsLink);
       if (searchQuery) {
-        return { ...group, visibleLinks: group.links.filter(roleAllowsLink), hiddenLinks: [] as NavLink[] };
+        return { ...group, visibleLinks: group.links.filter(roleAllowsLink), hiddenLinks: [] as NavLink[], secondaryLinks };
       }
       const roleAllowed = group.links.filter(roleAllowsLink);
       const visibleLinks = roleAllowed.filter((link) => isNavLinkVisible(link.href, counts));
       const hiddenLinks = roleAllowed.filter((link) => !isNavLinkVisible(link.href, counts));
-      return { ...group, visibleLinks, hiddenLinks };
+      return { ...group, visibleLinks, hiddenLinks, secondaryLinks };
     })
-    .filter((group) => group.visibleLinks.length > 0 || group.hiddenLinks.length > 0);
-  const commandLinks = navGroups.flatMap((group) => group.visibleLinks.map((link) => ({ ...link, group: group.label })));
+    .filter((group) => group.visibleLinks.length > 0 || group.hiddenLinks.length > 0 || group.secondaryLinks.length > 0);
+  const commandLinks = navGroups.flatMap((group) =>
+    [...group.visibleLinks, ...group.secondaryLinks].map((link) => ({ ...link, group: group.label }))
+  );
   const commandActions = useMemo<CommandPaletteAction[]>(
     () => [
       {
@@ -559,6 +570,36 @@ export function Nav() {
                       </div>
                     </details>
                   )}
+                  {group.secondaryLinks.length > 0 && (
+                    <details className="mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2">
+                      <summary className="cursor-pointer list-none text-[11px] font-medium uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">
+                        More ({group.secondaryLinks.length})
+                      </summary>
+                      <div className="mt-2 space-y-0.5">
+                        {group.secondaryLinks.map(({ href, label, icon: Icon }) => {
+                          const active = path.startsWith(href);
+                          return (
+                            <Link
+                              key={href}
+                              href={href}
+                              className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12px] transition-colors ${
+                                active
+                                  ? "font-medium"
+                                  : "text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
+                              }`}
+                              style={active ? { color: group.accent } : undefined}
+                            >
+                              <Icon
+                                className="h-3.5 w-3.5 shrink-0 opacity-70"
+                                style={active ? { color: group.accent } : undefined}
+                              />
+                              <span className="truncate">{label}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  )}
                 </div>
               )}
 
@@ -616,6 +657,29 @@ export function Nav() {
                             />
                             <span className="min-w-0">
                               <span className="block text-sm font-medium">{label}</span>
+                            </span>
+                          </Link>
+                        );
+                      })}
+                      {group.secondaryLinks.map(({ href, label, icon: Icon }) => {
+                        const active = path.startsWith(href);
+                        return (
+                          <Link
+                            key={href}
+                            href={href}
+                            className={`group/link flex items-start gap-3 rounded-xl px-3 py-2 transition-colors ${
+                              active
+                                ? "bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                                : "text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--foreground)]"
+                            }`}
+                            onClick={() => setCollapsedFlyoutGroup(null)}
+                          >
+                            <Icon
+                              className="mt-0.5 h-4 w-4 shrink-0 opacity-70"
+                              style={active ? { color: group.accent } : undefined}
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-[13px]">{label}</span>
                             </span>
                           </Link>
                         );

@@ -40,10 +40,12 @@ import {
   type CloudConnectionScanResponse,
 } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
-import { EmptyState, ErrorBanner } from "@/components/empty-state";
+import { ErrorBanner } from "@/components/empty-state";
+import { PageEmptyState } from "@/components/states/page-state";
 import { Card, Section } from "@/components/card";
 import { Collapsible } from "@/components/collapsible";
 import { StatCard } from "@/components/stat-card";
+import { RUN_SCAN_ACTION } from "@/lib/empty-state-actions";
 import { vendorLogo } from "@/lib/vendor-logos";
 
 // ── Provider catalog ──────────────────────────────────────────────────────────
@@ -664,10 +666,19 @@ export default function ConnectionsPage() {
               ))}
             </div>
           ) : connections.length === 0 ? (
-            <EmptyState
+            <PageEmptyState
               icon={Cloud}
               title="No cloud accounts connected"
-              description="Add a read-only AWS, Azure, GCP, or Snowflake account to launch inventory and CIS discovery from the control plane."
+              detail="Add a read-only AWS, Azure, GCP, or Snowflake account to launch inventory and CIS discovery from the control plane."
+              suggestions={[
+                "Start with AWS when you want the deepest CSPM and inventory coverage.",
+                "Use Snowflake when you want warehouse governance and activity evidence.",
+                "Run a local scan if you need repo, image, IaC, or MCP evidence first.",
+              ]}
+              actions={[
+                { label: "Connect cloud", onClick: () => openWizard("aws") },
+                { ...RUN_SCAN_ACTION, variant: "secondary" },
+              ]}
             />
           ) : (
             <div className="overflow-x-auto rounded-xl border border-[color:var(--border-subtle)]">

@@ -40,4 +40,22 @@ describe("page state components", () => {
     expect(screen.getByTestId("error-state")).toHaveTextContent("Could not load agents");
     expect(screen.getByTestId("loading-state")).toHaveTextContent("Loading compliance posture");
   });
+
+  it("renders multiple empty-state actions without replacing the primary action path", () => {
+    render(
+      <PageEmptyState
+        title="No evidence yet"
+        detail="Choose the next setup step."
+        actions={[
+          { label: "Run scan", href: "/scan" },
+          { label: "Connect cloud", href: "/connections", variant: "secondary" },
+          { label: "Open graph", href: "/security-graph", variant: "secondary" },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Run scan" })).toHaveAttribute("href", "/scan");
+    expect(screen.getByRole("link", { name: "Connect cloud" })).toHaveAttribute("href", "/connections");
+    expect(screen.getByRole("link", { name: "Open graph" })).toHaveAttribute("href", "/security-graph");
+  });
 });

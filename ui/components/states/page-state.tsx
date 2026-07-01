@@ -4,10 +4,11 @@ import Link from "next/link";
 import type { ElementType, ReactNode } from "react";
 import { AlertTriangle, Loader2, SearchX } from "lucide-react";
 
-type PageStateAction = {
+export type PageStateAction = {
   label: string;
   href?: string | undefined;
   onClick?: (() => void) | undefined;
+  variant?: "primary" | "secondary" | undefined;
 };
 
 type PageStateProps = {
@@ -17,6 +18,7 @@ type PageStateProps = {
   suggestions?: string[] | undefined;
   command?: string | undefined;
   action?: PageStateAction | undefined;
+  actions?: PageStateAction[] | undefined;
   tone?: "neutral" | "warning" | "danger" | "success" | undefined;
   children?: ReactNode;
   "data-testid"?: string | undefined;
@@ -36,10 +38,13 @@ export function PageState({
   suggestions = [],
   command,
   action,
+  actions,
   tone = "neutral",
   children,
   "data-testid": testId,
 }: PageStateProps) {
+  const resolvedActions = actions ?? (action ? [action] : []);
+
   return (
     <div className="flex min-h-[18rem] items-center justify-center px-4 py-10" data-testid={testId}>
       <div className={`w-full max-w-2xl rounded-2xl border p-6 shadow-lg ${TONE_CLASS[tone]}`}>
@@ -73,28 +78,39 @@ export function PageState({
 
         {children}
 
-        {action ? (
-          <div className="mt-5">
-            {action.href ? (
-              <Link
-                href={action.href}
-                className="inline-flex items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
-              >
-                {action.label}
-              </Link>
-            ) : (
-              <button
-                type="button"
-                onClick={action.onClick}
-                className="inline-flex items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
-              >
-                {action.label}
-              </button>
-            )}
+        {resolvedActions.length > 0 ? (
+          <div className="mt-5 flex flex-wrap gap-2">
+            {resolvedActions.map((currentAction) => (
+              <PageStateActionButton
+                key={`${currentAction.label}:${currentAction.href ?? "button"}`}
+                action={currentAction}
+              />
+            ))}
           </div>
         ) : null}
       </div>
     </div>
+  );
+}
+
+function PageStateActionButton({ action }: { action: PageStateAction }) {
+  const className =
+    action.variant === "secondary"
+      ? "inline-flex items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm font-medium text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+      : "inline-flex items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20";
+
+  if (action.href) {
+    return (
+      <Link href={action.href} className={className}>
+        {action.label}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" onClick={action.onClick} className={className}>
+      {action.label}
+    </button>
   );
 }
 

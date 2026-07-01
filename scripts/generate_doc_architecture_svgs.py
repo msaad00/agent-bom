@@ -85,6 +85,15 @@ LANE_COLORS = {
     "consumers": ("#1e3a8a", "#60a5fa", "#93c5fd"),
 }
 
+# Architecture diagram uses a cool layered palette — intentionally distinct from the
+# warm left-to-right pipeline lanes in how-it-works.
+ARCH_LAYER_COLORS = {
+    "sources": ("#0c4a6e", "#38bdf8", "#bae6fd"),
+    "engine": ("#312e81", "#818cf8", "#c7d2fe"),
+    "platform": ("#134e4a", "#2dd4bf", "#99f6e4"),
+    "consumers": ("#4c1d95", "#c084fc", "#e9d5ff"),
+}
+
 
 def _esc(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -160,6 +169,59 @@ def _lane_flow(x1: int, x2: int, y: int, label: str, t: dict, accent: bool = Fal
         f'<text x="{mid}" y="{y - 10}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
         f'font-size="7" font-weight="800" letter-spacing="0.1em" fill="{t["accent"] if accent else t["lane_muted"]}">'
         f"{_esc(label.upper())}</text>"
+    )
+
+
+def _arch_tier_label(x: int, y: int, w: int, label: str, tag: str, layer_key: str, t: dict) -> str:
+    """Left-stripe tier header for the layered architecture diagram."""
+    _, accent, text_c = ARCH_LAYER_COLORS[layer_key]
+    return (
+        f'<rect x="{x}" y="{y}" width="4" height="22" rx="2" fill="{accent}"/>'
+        + _text(
+            x + 14,
+            y + 15,
+            label,
+            **{
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "9.5",
+                "font-weight": "800",
+                "letter-spacing": "0.14em",
+                "fill": accent,
+            },
+        )
+        + _text(
+            x + w - 10,
+            y + 15,
+            tag,
+            **{
+                "text-anchor": "end",
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "7.5",
+                "font-weight": "600",
+                "fill": text_c,
+            },
+        )
+    )
+
+
+def _tier_down_arrow(cx: int, y: int, label: str, color: str) -> str:
+    """Vertical connector between architecture tiers."""
+    return (
+        f'<line x1="{cx}" y1="{y}" x2="{cx}" y2="{y + 14}" stroke="{color}" stroke-width="1.6" stroke-linecap="round"/>'
+        f'<polygon points="{cx},{y + 18} {cx - 4},{y + 12} {cx + 4},{y + 12}" fill="{color}"/>'
+        + _text(
+            cx,
+            y - 5,
+            label,
+            **{
+                "text-anchor": "middle",
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "7",
+                "font-weight": "800",
+                "letter-spacing": "0.1em",
+                "fill": color,
+            },
+        )
     )
 
 
@@ -375,6 +437,21 @@ def how_it_works(theme_name: str) -> str:
         "</linearGradient>",
         "</defs>",
         f'<rect width="{w}" height="{h}" rx="14" fill="{t["bg"]}"/>',
+        f'<rect x="10" y="10" width="{w - 20}" height="{h - 20}" rx="16" fill="none" stroke="#f59e0b" stroke-width="2" opacity="0.28"/>',
+        f'<rect x="{w - 110}" y="20" width="86" height="22" rx="11" fill="#78350f" opacity="0.72"/>',
+        _text(
+            w - 67,
+            35,
+            "WORKFLOW",
+            **{
+                "text-anchor": "middle",
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "8",
+                "font-weight": "800",
+                "letter-spacing": "0.14em",
+                "fill": "#fde68a",
+            },
+        ),
         _text(
             28,
             40,
@@ -384,7 +461,7 @@ def how_it_works(theme_name: str) -> str:
         _text(
             28,
             60,
-            "One read-only pipeline · one Finding + ContextGraph · CLI · API · UI · MCP",
+            "Five-stage read-only flow · intake -> scan -> evidence -> control -> artifacts",
             **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "500", "fill": t["subtitle"]},
         ),
     ]
@@ -574,11 +651,12 @@ def how_it_works(theme_name: str) -> str:
 
 
 def architecture(theme_name: str) -> str:
+    """Layered control-plane map — visually distinct from the horizontal how-it-works pipeline."""
     t = THEMES[theme_name]
-    w, h = 960, 560
-    lane_gap = 10
-    lane_w = (w - 48 - 4 * lane_gap) // 5
-    lane_x = [24 + i * (lane_w + lane_gap) for i in range(5)]
+    w, h = 960, 620
+    margin_x = 28
+    tier_w = w - 2 * margin_x
+    icon_size = 24
 
     sources = [
         ("package", "Supply chain", "15 eco"),
@@ -589,20 +667,20 @@ def architecture(theme_name: str) -> str:
         ("model", "Models", "13 formats"),
         ("sbom", "SBOM import", "CDX·SPDX"),
     ]
-    scan_items = [
+    engine_items = [
         ("bug", "OSV scan", "batch"),
         ("zap", "Enrichment", "NVD·EPSS"),
         ("shield", "Posture", "CIS·MCP"),
         ("graph", "Blast radius", "fusion"),
         ("file", "Policy", "as-code"),
     ]
-    core_items = [
-        ("finding", "Unified Finding", "one schema", True),
-        ("graph", "UnifiedGraph", "attack paths", True),
-        ("db", "Stores", "PG·SQLite", False),
-        ("audit", "Audit chain", "signed", False),
+    evidence_items = [
+        ("finding", "Unified Finding", "one schema"),
+        ("graph", "UnifiedGraph", "attack paths"),
+        ("db", "Stores", "PG·SQLite"),
+        ("audit", "Audit chain", "signed"),
     ]
-    cp_items = [
+    platform_items = [
         ("api", "REST API", "283 ops"),
         ("gate", "Gateway", "runtime"),
         ("mcp", "MCP server", "70 tools"),
@@ -612,189 +690,272 @@ def architecture(theme_name: str) -> str:
     agents = [("mcp", "MCP"), ("api", "SDK")]
     artifacts = ["SARIF", "CDX", "SPDX", "OCSF", "HTML", "JSON"]
 
-    lane_top = 78
-    lane_h = 400
-    flow_y = 68
-    card_w = lane_w - 16
-    content_top = lane_top + 38
-    icon_size = 26
+    tier_y = [78, 192, 300, 448]
+    tier_h = [102, 96, 136, 140]
+    cx = w // 2
 
     parts = _svg_open(
         w,
         h,
         "agent-bom control-plane architecture",
-        "Sources through scan and evidence core to control plane and consumers.",
+        "Layered sources, processing engine, platform, and consumers.",
     )
     parts += [
         f'<rect width="{w}" height="{h}" rx="14" fill="{t["bg"]}"/>',
+        f'<rect x="12" y="12" width="{w - 24}" height="{h - 24}" rx="18" fill="none" stroke="#6366f1" stroke-width="2" opacity="0.22"/>',
+        f'<rect x="{w - 118}" y="20" width="90" height="22" rx="11" fill="#312e81" opacity="0.85"/>',
         _text(
-            28,
-            38,
+            w - 73,
+            35,
+            "LAYERED",
+            **{
+                "text-anchor": "middle",
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "8",
+                "font-weight": "800",
+                "letter-spacing": "0.14em",
+                "fill": "#c7d2fe",
+            },
+        ),
+        _text(
+            margin_x,
+            40,
             "Control-plane architecture",
             **{"font-family": "Inter,system-ui,sans-serif", "font-size": "20", "font-weight": "800", "fill": t["title"]},
         ),
         _text(
-            28,
-            58,
-            "Sources -> scan -> Finding + UnifiedGraph -> API · Gateway · MCP -> people + agents",
+            margin_x,
+            60,
+            "Vertical tiers · sources feed engine · evidence + platform · people + agents consume",
             **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10", "font-weight": "500", "fill": t["subtitle"]},
         ),
     ]
 
-    lane_meta = [
-        ("SOURCES", "sources", "read-only"),
-        ("SCAN", "enrich", "local"),
-        ("EVIDENCE", "evidence", "model"),
-        ("CONTROL", "control", "auth"),
-        ("CONSUMERS", "consumers", "deliver"),
-    ]
-    for i, (label, key, tag) in enumerate(lane_meta):
-        x = lane_x[i]
-        parts.append(
-            f'<rect x="{x}" y="{lane_top}" width="{lane_w}" height="{lane_h}" rx="11" fill="{t["panel"]}" stroke="{t["panel_stroke"]}"/>'
+    def _tier_band(y: int, th: int, layer_key: str) -> str:
+        _, accent, _text_c = ARCH_LAYER_COLORS[layer_key]
+        return (
+            f'<rect x="{margin_x}" y="{y}" width="{tier_w}" height="{th}" rx="12" fill="{t["panel"]}" '
+            f'stroke="{accent}" stroke-width="1.2" opacity="0.95"/>'
+            f'<rect x="{margin_x}" y="{y}" width="{tier_w}" height="3" rx="12" fill="{accent}" opacity="0.55"/>'
         )
-        parts.append(_lane_header(x, lane_top, lane_w, label, key, tag, t))
 
-    def _lane_card(
-        lane_i: int,
-        row: int,
+    def _tier_chip(
+        x: int,
+        y: int,
+        cw: int,
+        ch: int,
         icon: str,
         title: str,
         badge: str,
+        layer_key: str,
         *,
-        row_h: int = 50,
         highlight: bool = False,
     ) -> None:
-        x = lane_x[lane_i] + 8
-        sy = content_top + row * row_h
+        _, accent, text_c = ARCH_LAYER_COLORS[layer_key]
         fill = t["accent_fill"] if highlight else t["card"]
-        stroke = t["accent_stroke"] if highlight else t["card_stroke"]
-        ch = row_h - 5
-        text_x = x + icon_size + 18
+        stroke = accent if highlight else t["card_stroke"]
+        text_x = x + icon_size + 14
         parts.append(
-            f'<rect x="{x}" y="{sy}" width="{card_w}" height="{ch}" rx="8" fill="{fill}" stroke="{stroke}" stroke-width="{"1.5" if highlight else "1"}"/>'
+            f'<rect x="{x}" y="{y}" width="{cw}" height="{ch}" rx="8" fill="{fill}" stroke="{stroke}" '
+            f'stroke-width="{"1.5" if highlight else "1"}"/>'
         )
-        parts.append(_icon_box(x + 10, sy + (ch - icon_size) // 2, ICONS[icon], t, accent=highlight, size=icon_size))
+        parts.append(_icon_box(x + 8, y + (ch - icon_size) // 2, ICONS[icon], t, accent=highlight, size=icon_size))
         parts.append(
             _text(
                 text_x,
-                sy + ch // 2 - 1,
+                y + ch // 2 - 1,
                 title,
-                **{"font-family": "Inter,system-ui,sans-serif", "font-size": "9", "font-weight": "700", "fill": t["text"]},
+                **{"font-family": "Inter,system-ui,sans-serif", "font-size": "8.5", "font-weight": "700", "fill": t["text"]},
             )
         )
         parts.append(
             _text(
                 text_x,
-                sy + ch // 2 + 10,
+                y + ch // 2 + 10,
                 badge,
                 **{
                     "font-family": "ui-monospace,monospace",
-                    "font-size": "7",
+                    "font-size": "6.5",
                     "font-weight": "600",
-                    "fill": t["accent"] if highlight else t["text_muted"],
+                    "fill": accent if highlight else t["text_muted"],
                 },
             )
         )
 
+    # Tier 1 — sources
+    y0, h0 = tier_y[0], tier_h[0]
+    parts.append(_tier_band(y0, h0, "sources"))
+    parts.append(_arch_tier_label(margin_x + 12, y0 + 10, tier_w - 24, "INTAKE SOURCES", "read-only", "sources", t))
+    chip_gap = 8
+    chip_h = 44
+    chip_w = (tier_w - 24 - (len(sources) - 1) * chip_gap) // len(sources)
     for i, (icon, title, badge) in enumerate(sources):
-        _lane_card(0, i, icon, title, badge, row_h=44)
+        cx_chip = margin_x + 12 + i * (chip_w + chip_gap)
+        _tier_chip(cx_chip, y0 + 32, chip_w, chip_h, icon, title, badge, "sources")
 
-    for i, (icon, title, badge) in enumerate(scan_items):
-        _lane_card(1, i, icon, title, badge, row_h=52)
+    parts.append(_tier_down_arrow(cx, y0 + h0 + 2, "INGEST", ARCH_LAYER_COLORS["sources"][1]))
 
-    for i, (icon, title, badge, highlight) in enumerate(core_items):
-        _lane_card(2, i, icon, title, badge, row_h=64, highlight=highlight)
+    # Tier 2 — processing engine
+    y1, h1 = tier_y[1], tier_h[1]
+    parts.append(_tier_band(y1, h1, "engine"))
+    parts.append(_arch_tier_label(margin_x + 12, y1 + 10, tier_w - 24, "PROCESSING ENGINE", "local scan", "engine", t))
+    eng_gap = 10
+    eng_w = (tier_w - 24 - (len(engine_items) - 1) * eng_gap) // len(engine_items)
+    for i, (icon, title, badge) in enumerate(engine_items):
+        ex = margin_x + 12 + i * (eng_w + eng_gap)
+        _tier_chip(ex, y1 + 36, eng_w, 52, icon, title, badge, "engine")
 
-    for i, (icon, title, badge) in enumerate(cp_items):
-        _lane_card(3, i, icon, title, badge, row_h=64)
+    parts.append(_tier_down_arrow(cx, y1 + h1 + 2, "PROCESS", ARCH_LAYER_COLORS["engine"][1]))
+
+    # Tier 3 — evidence + platform (two columns, 2x2 grids)
+    y2, h2 = tier_y[2], tier_h[2]
+    parts.append(_tier_band(y2, h2, "platform"))
+    parts.append(_arch_tier_label(margin_x + 12, y2 + 10, tier_w - 24, "EVIDENCE & PLATFORM", "auth · self-hosted", "platform", t))
+    col_gap = 16
+    col_w = (tier_w - 24 - col_gap) // 2
+    left_x = margin_x + 12
+    right_x = left_x + col_w + col_gap
+    mini_gap = 6
+    mini_w = (col_w - mini_gap) // 2
+    mini_h = 32
+    grid_y = y2 + 32
+
+    def _mini_chip(gx: int, gy: int, icon: str, title: str, badge: str, *, highlight: bool = False) -> None:
+        _tier_chip(gx, gy, mini_w, mini_h, icon, title, badge, "platform", highlight=highlight)
+
+    for i, (icon, title, badge) in enumerate(evidence_items):
+        col, row = i % 2, i // 2
+        gx = left_x + col * (mini_w + mini_gap)
+        gy = grid_y + row * (mini_h + mini_gap)
+        _mini_chip(gx, gy, icon, title, badge, highlight=title in ("Unified Finding", "UnifiedGraph"))
+
+    for i, (icon, title, badge) in enumerate(platform_items):
+        col, row = i % 2, i // 2
+        gx = right_x + col * (mini_w + mini_gap)
+        gy = grid_y + row * (mini_h + mini_gap)
+        _mini_chip(gx, gy, icon, title, badge)
 
     parts.append(
-        f'<rect x="{lane_x[3] + 8}" y="{lane_top + lane_h - 30}" width="{card_w}" height="22" rx="7" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
+        f'<rect x="{right_x}" y="{y2 + h2 - 24}" width="{col_w}" height="18" rx="6" fill="{t["footer_bg"]}" stroke="{t["footer_stroke"]}"/>'
         + _text(
-            lane_x[3] + 8 + card_w // 2,
-            lane_top + lane_h - 14,
+            right_x + col_w // 2,
+            y2 + h2 - 11,
             "OIDC · SAML · SCIM · RBAC",
             **{
                 "text-anchor": "middle",
                 "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "7",
+                "font-size": "6.5",
                 "font-weight": "700",
                 "fill": t["chip"],
             },
         )
     )
 
-    cons_x = lane_x[4] + 8
+    parts.append(_tier_down_arrow(cx, y2 + h2 + 2, "DELIVER", ARCH_LAYER_COLORS["platform"][1]))
 
-    def _section_label(y: int, label: str) -> None:
+    # Tier 4 — consumers
+    y3, h3 = tier_y[3], tier_h[3]
+    parts.append(_tier_band(y3, h3, "consumers"))
+    parts.append(_arch_tier_label(margin_x + 12, y3 + 10, tier_w - 24, "CONSUMERS & ARTIFACTS", "deliver", "consumers", t))
+
+    cons_col_w = (tier_w - 24 - col_gap) // 2
+    cons_left = margin_x + 12
+    cons_right = cons_left + cons_col_w + col_gap
+
+    def _consumer_mini(y: int, x: int, cw: int, icon: str, label: str) -> int:
+        mh = 30
+        parts.append(
+            f'<rect x="{x}" y="{y}" width="{cw}" height="{mh}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
+        )
+        parts.append(_icon_box(x + 10, y + 3, ICONS[icon], t, size=22))
         parts.append(
             _text(
-                cons_x + card_w // 2,
-                y,
-                label,
-                **{
-                    "text-anchor": "middle",
-                    "font-family": "Inter,system-ui,sans-serif",
-                    "font-size": "7.5",
-                    "font-weight": "800",
-                    "letter-spacing": "0.1em",
-                    "fill": t["accent"],
-                },
-            )
-        )
-
-    def _consumer_card(y: int, icon: str, label: str) -> int:
-        card_h = 32
-        parts.append(
-            f'<rect x="{cons_x}" y="{y}" width="{card_w}" height="{card_h}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
-        )
-        parts.append(_icon_box(cons_x + 12, y + 4, ICONS[icon], t, size=24))
-        parts.append(
-            _text(
-                cons_x + 44,
-                y + 20,
+                x + 40,
+                y + 19,
                 label,
                 **{"font-family": "Inter,system-ui,sans-serif", "font-size": "9", "font-weight": "700", "fill": t["text"]},
             )
         )
-        return card_h
+        return mh
 
-    y = content_top
-    _section_label(y, "PEOPLE")
-    y += 12
+    cy = y3 + 34
+    parts.append(
+        _text(
+            cons_left + cons_col_w // 2,
+            cy,
+            "PEOPLE",
+            **{
+                "text-anchor": "middle",
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "7.5",
+                "font-weight": "800",
+                "letter-spacing": "0.1em",
+                "fill": ARCH_LAYER_COLORS["consumers"][1],
+            },
+        )
+    )
+    cy += 10
     for icon, label in people:
-        h_card = _consumer_card(y, icon, label)
-        y += h_card + 6
-    y += 4
-    _section_label(y, "AGENTS")
-    y += 12
-    for icon, label in agents:
-        h_card = _consumer_card(y, icon, label)
-        y += h_card + 6
-    y += 4
-    _section_label(y, "ARTIFACTS")
-    y += 12
+        h_card = _consumer_mini(cy, cons_left, cons_col_w, icon, label)
+        cy += h_card + 5
 
+    ay = y3 + 34
+    parts.append(
+        _text(
+            cons_right + cons_col_w // 2,
+            ay,
+            "AGENTS",
+            **{
+                "text-anchor": "middle",
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "7.5",
+                "font-weight": "800",
+                "letter-spacing": "0.1em",
+                "fill": ARCH_LAYER_COLORS["consumers"][1],
+            },
+        )
+    )
+    ay += 10
+    for icon, label in agents:
+        h_card = _consumer_mini(ay, cons_right, cons_col_w, icon, label)
+        ay += h_card + 5
+
+    art_y = y3 + 34
+    art_x = margin_x + 12 + (tier_w - 24) * 0.58
+    art_w = tier_w - 24 - (tier_w - 24) * 0.58 - 8
+    parts.append(
+        _text(
+            art_x + art_w // 2,
+            art_y,
+            "ARTIFACTS",
+            **{
+                "text-anchor": "middle",
+                "font-family": "Inter,system-ui,sans-serif",
+                "font-size": "7.5",
+                "font-weight": "800",
+                "letter-spacing": "0.1em",
+                "fill": ARCH_LAYER_COLORS["consumers"][1],
+            },
+        )
+    )
+    art_y += 10
     chip_cols = 3
     chip_gap = 5
-    chip_w = (card_w - (chip_cols - 1) * chip_gap) // chip_cols
+    chip_w = (art_w - (chip_cols - 1) * chip_gap) // chip_cols
     chip_h = 20
     for i, label in enumerate(artifacts):
         col, row = i % chip_cols, i // chip_cols
-        ax = cons_x + col * (chip_w + chip_gap)
-        ay = y + row * (chip_h + chip_gap)
+        ax = art_x + col * (chip_w + chip_gap)
+        ay_chip = art_y + row * (chip_h + chip_gap)
         parts.append(
-            f'<rect x="{ax}" y="{ay}" width="{chip_w}" height="{chip_h}" rx="5" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
-            f'<text x="{ax + chip_w / 2}" y="{ay + 13}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" '
+            f'<rect x="{ax}" y="{ay_chip}" width="{chip_w}" height="{chip_h}" rx="5" fill="{t["footer_bg"]}" stroke="{t["card_stroke"]}"/>'
+            f'<text x="{ax + chip_w / 2}" y="{ay_chip + 13}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" '
             f'font-weight="700" fill="{t["chip"]}">{_esc(label)}</text>'
         )
-    y += 2 * (chip_h + chip_gap) + 8
-
     parts.append(
         _text(
-            cons_x + card_w // 2,
-            y,
+            art_x + art_w // 2,
+            art_y + 2 * (chip_h + chip_gap) + 10,
             "SIEM · webhooks",
             **{
                 "text-anchor": "middle",
@@ -805,9 +966,6 @@ def architecture(theme_name: str) -> str:
             },
         )
     )
-
-    for i, (label, accent) in enumerate([("SCAN", False), ("NORMALIZE", False), ("SERVE", True), ("DELIVER", False)]):
-        parts.append(_lane_flow(lane_x[i] + lane_w, lane_x[i + 1], flow_y, label, t, accent=accent))
 
     parts.append(
         _trust_footer(

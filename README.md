@@ -357,7 +357,7 @@ References: [Threat model](docs/THREAT_MODEL.md) ·
 | Runtime proxy/gateway | runtime operators | scoped MCP traffic inspection, policy decisions, redacted audit evidence |
 | Python / TypeScript clients | services and agent runtimes | typed helpers for stable REST endpoints |
 
-MCP server mode advertises 70 MCP tools, 6 resources, and 6 workflow prompts.
+MCP server mode advertises 70 MCP tools, 6 resources, and 8 workflow prompts.
 Most tools are read-only; Shield and identity write actions fail closed unless
 the MCP request is authenticated with `AGENT_BOM_MCP_OPERATOR_TOKEN` and the
 tool call includes the matching admin role, write scope, and audit reason. CLI

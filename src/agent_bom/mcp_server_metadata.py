@@ -421,6 +421,8 @@ _SERVER_CARD_PROMPTS = [
     {"name": "fleet-audit", "description": "Audit an endpoint or cloud inventory file and return graph-ready findings"},
     {"name": "incident-triage", "description": "Prioritize a CVE or suspicious MCP finding using blast radius and runtime evidence"},
     {"name": "remediation-plan", "description": "Draft a human-reviewed remediation plan without modifying files"},
+    {"name": "cloud-connection-review", "description": "Review a read-only cloud or Snowflake connection before the first scan"},
+    {"name": "gateway-fleet-live-demo", "description": "Run the gateway and fleet enforcement story as a guided demo"},
 ]
 
 _SERVER_CARD_RESOURCES = [

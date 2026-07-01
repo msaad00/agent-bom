@@ -1,7 +1,7 @@
 # MCP Server Setup
 
 agent-bom runs as an MCP server, exposing 70 MCP tools to any MCP client.
-The server card also advertises 6 resources and 6 workflow prompts so agents can
+The server card also advertises 6 resources and 8 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
 Most tools are read-only. Shield write actions require `operator_role=admin`,
 `operator_scopes=shield:write`, and an audit reason.

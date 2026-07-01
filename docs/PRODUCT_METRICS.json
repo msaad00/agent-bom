@@ -1,5 +1,5 @@
 {
-  "generated_on": "2026-06-29",
+  "generated_on": "2026-06-30",
   "version": "0.91.0",
   "metrics": [
     {
@@ -16,7 +16,7 @@
     },
     {
       "name": "MCP prompts",
-      "value": 6,
+      "value": 8,
       "source": "src/agent_bom/mcp_server_metadata.py",
       "notes": "Counted from the advertised server-card workflow prompts."
     },
@@ -28,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 668,
+      "value": 677,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -46,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 595,
+      "value": 601,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

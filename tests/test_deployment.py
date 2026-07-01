@@ -288,6 +288,8 @@ def test_server_card_exposes_resources_and_workflow_prompts():
     assert "fleet-audit" in prompt_names
     assert "incident-triage" in prompt_names
     assert "remediation-plan" in prompt_names
+    assert "cloud-connection-review" in prompt_names
+    assert "gateway-fleet-live-demo" in prompt_names
 
 
 def test_mcp_docs_match_resource_and_prompt_catalog():

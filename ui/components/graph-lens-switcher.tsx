@@ -46,7 +46,13 @@ const GRAPH_LENSES: GraphLens[] = [
   },
 ];
 
-export function GraphLensSwitcher() {
+interface GraphLensSwitcherProps {
+  variant?: "inline" | "floating";
+}
+
+export function GraphLensSwitcher({
+  variant = "inline",
+}: GraphLensSwitcherProps) {
   const path = usePathname() ?? "/security-graph";
   const router = useRouter();
 
@@ -63,17 +69,40 @@ export function GraphLensSwitcher() {
     router.push(lens.href);
   };
 
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3">
+  const content = (
+    <div
+      className={
+        variant === "floating"
+          ? "pointer-events-auto flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-zinc-700/80 bg-zinc-950/85 px-3 py-2 shadow-2xl shadow-black/40 backdrop-blur"
+          : "flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3"
+      }
+    >
       <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-tertiary)]">
-          Security Graph
+          {variant === "floating" ? "Security Graph Lens" : "Security Graph"}
         </p>
-        <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
+        <p
+          className={`mt-0.5 text-xs text-[color:var(--text-secondary)] ${
+            variant === "floating" ? "hidden sm:block" : ""
+          }`}
+        >
           One graph, multiple lenses — switch how you read the same estate.
         </p>
       </div>
       <InsightLayerToggle layers={layers} onToggle={onToggle} />
     </div>
   );
+
+  if (variant === "floating") {
+    return (
+      <div
+        data-testid="graph-lens-floating-bar"
+        className="pointer-events-none absolute left-1/2 top-3 z-30 w-[min(760px,calc(100%-2rem))] -translate-x-1/2"
+      >
+        {content}
+      </div>
+    );
+  }
+
+  return content;
 }

@@ -45,7 +45,8 @@ query source.
   webhooks or runtime emitter plugins.
 - Generic database evidence is not full DSPM by itself. Only call data
   sensitive when explicit tags, classifications, imported classifier evidence,
-  or target-scoped dataset scan results support that label.
+  target-scoped dataset scan results, or opt-in S3 content-sampling evidence
+  support that label.
 - ODBC/JDBC do not replace native Snowflake, Postgres/Supabase, Databricks,
   BigQuery, Redshift, or Athena paths where native APIs are available.
 - The default wheel does not bundle ODBC drivers, JDBC drivers, a JVM, or

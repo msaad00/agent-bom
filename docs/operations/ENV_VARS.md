@@ -91,6 +91,12 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_AUDIT_TRAIL_LOOKBACK_HOURS` | `int` | `24` | Lookback window (hours) for audit events; the reader clamps to two weeks. |
 | `AGENT_BOM_AUDIT_TRAIL_MAX_EVENTS` | `int` | `2000` | Per-provider event cap; the reader clamps to a hard ceiling and warns when hit. |
 
+## DSPM content sampling
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_DSPM_S3_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
+| `AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET` | `int` | `10` | Content reads are opt-in at the caller/module level. These caps bound the amount of object-store data read when an operator enables S3 sampling. |
+
 ## EPSS Thresholds
 | Env var | Type | Default | Description |
 |---|---|---|---|

@@ -1021,17 +1021,23 @@ def _discover_s3_buckets(
         location = _bucket_location(s3, name, warnings)
         publicly_accessible = _bucket_public(s3, name, warnings)
         tags = _bucket_tags(s3, name, warnings)
-        buckets.append(
-            {
-                "name": name,
-                "arn": arn,
-                "location": location,
-                "publicly_accessible": publicly_accessible,
-                "tags": tags,
-                "account_id": account_id or "",
-                "created_at": _iso(bucket.get("CreationDate")),
-            }
-        )
+        bucket_record = {
+            "name": name,
+            "arn": arn,
+            "location": location,
+            "publicly_accessible": publicly_accessible,
+            "tags": tags,
+            "account_id": account_id or "",
+            "created_at": _iso(bucket.get("CreationDate")),
+        }
+        try:
+            from agent_bom.cloud.s3_data_classifier import classify_s3_bucket, s3_sampling_enabled
+
+            if s3_sampling_enabled():
+                bucket_record["content_classification"] = classify_s3_bucket(s3, name).to_dict()
+        except Exception as exc:  # noqa: BLE001 — sampling is optional and must not sink inventory
+            warnings.append(f"Could not classify S3 bucket {name}: {sanitize_discovery_warning(exc)}")
+        buckets.append(bucket_record)
     return buckets
 
 

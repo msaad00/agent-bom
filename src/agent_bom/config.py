@@ -227,6 +227,14 @@ GHSA_UNAUTH_PACKAGE_BUDGET = _int("AGENT_BOM_GHSA_UNAUTH_PACKAGE_BUDGET", 25)
 SCAN_CACHE_MAX_ENTRIES = _int("AGENT_BOM_SCAN_CACHE_MAX_ENTRIES", 100_000)
 
 
+# ── DSPM content sampling ────────────────────────────────────────────────────
+# Content reads are opt-in at the caller/module level. These caps bound the
+# amount of object-store data read when an operator enables S3 sampling.
+
+DSPM_S3_MAX_OBJECTS_PER_BUCKET = _int("AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET", 10)
+DSPM_S3_MAX_BYTES_PER_OBJECT = _int("AGENT_BOM_DSPM_S3_MAX_BYTES_PER_OBJECT", 64 * 1024)
+
+
 # ── Local Analytics ─────────────────────────────────────────────────────────
 # Optional path override for the local scan analytics SQL mirror. Empty string
 # means use ~/.agent-bom/local-analytics.sqlite.

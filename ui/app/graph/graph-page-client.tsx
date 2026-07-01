@@ -23,6 +23,7 @@ import {
   GraphLegend,
   FullscreenButton,
 } from "@/components/graph-chrome";
+import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { LargeGraphOverview } from "@/components/large-graph-overview";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import {
@@ -2239,6 +2240,7 @@ function GraphPageInner() {
 
       <div className="flex-1 flex relative min-h-[68vh]">
         <div className="flex-1 relative min-h-[60vh]">
+          <GraphLensSwitcher variant="floating" />
           {loadingGraph && !graphData ? (
             <GraphPanelSkeleton
               title="Loading graph window"

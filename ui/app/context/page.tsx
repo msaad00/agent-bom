@@ -49,6 +49,7 @@ import {
 } from "@/lib/graph-utils";
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/components/graph-state-panels";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
@@ -523,6 +524,7 @@ export default function ContextPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Graph */}
         <div className="flex-1 relative">
+          <GraphLensSwitcher variant="floating" />
           {detailLoading && graphData && (
             <GraphRefreshOverlay label="Updating context graph" />
           )}

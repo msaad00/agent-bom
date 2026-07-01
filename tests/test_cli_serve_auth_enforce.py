@@ -11,7 +11,7 @@ from __future__ import annotations
 import click
 import pytest
 
-from agent_bom.cli._server import _enforce_auth_defaults
+from agent_bom.cli._server import _api_auth_summary, _enforce_auth_defaults
 
 
 def test_enforce_auth_defaults_loopback_always_passes() -> None:
@@ -79,3 +79,73 @@ def test_enforce_auth_defaults_warns_on_api_key_conflict(
     captured = capsys.readouterr()
     assert "warning" in captured.err.lower()
     assert "API-key" in captured.err
+
+
+def _clear_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "AGENT_BOM_API_KEY",
+        "AGENT_BOM_API_KEYS",
+        "AGENT_BOM_OIDC_ISSUER",
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+        "AGENT_BOM_TRUST_PROXY_AUTH",
+        "AGENT_BOM_SCIM_BEARER_TOKEN",
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_resolve_allow_unauthenticated_honors_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The env opt-out must resolve on the CLI path even when the flag is False.
+
+    Regression for the P0 bug: `serve` passes --allow-insecure-no-auth as an
+    explicit False, which previously masked AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1.
+    """
+    from agent_bom.cli._server import _resolve_allow_unauthenticated
+
+    _clear_auth_env(monkeypatch)
+    assert _resolve_allow_unauthenticated(False) is False
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    assert _resolve_allow_unauthenticated(False) is True
+    _clear_auth_env(monkeypatch)
+    assert _resolve_allow_unauthenticated(True) is True
+
+
+def test_api_auth_summary_claims_unauthenticated_only_when_effective(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Banner says 'local unauthenticated mode' iff the server truly allows it."""
+    _clear_auth_env(monkeypatch)
+    # Loopback + env opt-out => unauthenticated is real => banner is truthful.
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    summary = _api_auth_summary(
+        host="127.0.0.1",
+        api_key=None,
+        oidc_enabled=False,
+        allow_unauthenticated=True,
+    )
+    assert "local unauthenticated mode" in summary
+
+
+def test_api_auth_summary_is_accurate_when_failing_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no auth and no opt-out, the banner must NOT claim unauthenticated access."""
+    _clear_auth_env(monkeypatch)
+    summary = _api_auth_summary(
+        host="127.0.0.1",
+        api_key=None,
+        oidc_enabled=False,
+        allow_unauthenticated=False,
+    )
+    assert "unauthenticated" not in summary.lower()
+    assert "fail closed" in summary.lower()
+    assert "--allow-insecure-no-auth" in summary
+
+
+def test_api_auth_summary_prefers_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A configured API key is reported even if the env opt-out is also set."""
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    summary = _api_auth_summary(
+        host="127.0.0.1",
+        api_key="secret",
+        oidc_enabled=False,
+        allow_unauthenticated=True,
+    )
+    assert "API key required" in summary

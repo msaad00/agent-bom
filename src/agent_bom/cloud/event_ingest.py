@@ -293,6 +293,7 @@ def dispatch_change_event(
     *,
     tenant_id: str | None = None,
     session: Any = None,
+    benchmark_runner: Callable[..., Any] | None = None,
     persist: Callable[[CloudConnectionRecord, str, Any], str] | None = None,
     store: Any = None,
 ) -> dict[str, Any] | None:
@@ -332,8 +333,15 @@ def dispatch_change_event(
         return None
 
     from agent_bom.cloud import aws_inventory
-    from agent_bom.cloud.aws_cis_benchmark import run_benchmark
     from agent_bom.models import AIBOMReport
+
+    run_cis_benchmark: Callable[..., Any]
+    if benchmark_runner is not None:
+        run_cis_benchmark = benchmark_runner
+    else:
+        from agent_bom.cloud.aws_cis_benchmark import run_benchmark
+
+        run_cis_benchmark = run_benchmark
 
     if session is None:
         from agent_bom.cloud.connection_broker import broker_session
@@ -356,7 +364,7 @@ def dispatch_change_event(
     )
     affected = _find_affected_resource(rule, inventory_payload, event.resource_id)
 
-    cis_report = run_benchmark(region=region, session=session, checks=list(rule.check_ids))
+    cis_report = run_cis_benchmark(region=region, session=session, checks=list(rule.check_ids))
     cis_dict = cis_report.to_dict()
     findings = [check for check in cis_dict.get("checks", []) if check.get("status") == "fail"]
 
@@ -431,6 +439,7 @@ def consume_aws_events(
     max_batches: int | None = None,
     visibility_timeout: int | None = None,
     wait_seconds: int | None = None,
+    benchmark_runner: Callable[..., Any] | None = None,
     persist: Callable[[CloudConnectionRecord, str, Any], str] | None = None,
     store: Any = None,
 ) -> dict[str, Any]:
@@ -540,7 +549,13 @@ def consume_aws_events(
 
             try:
                 dispatch_change_event(
-                    event, record, tenant_id=tenant_id, session=session, persist=persist, store=store
+                    event,
+                    record,
+                    tenant_id=tenant_id,
+                    session=session,
+                    benchmark_runner=benchmark_runner,
+                    persist=persist,
+                    store=store,
                 )
             except Exception as exc:  # noqa: BLE001 — leave on queue for redelivery; never crash the drain
                 logger.warning(

@@ -121,6 +121,74 @@ class _FakeSession:
         return MagicMock()  # unused services (their checks are filtered out)
 
 
+class _FakeCISReport:
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "benchmark": "CIS AWS Foundations",
+            "benchmark_version": "3.0",
+            "account_id": _ACCOUNT,
+            "region": "us-east-1",
+            "passed": 5,
+            "failed": 1,
+            "total": 6,
+            "checks": [
+                {
+                    "check_id": "2.1.1",
+                    "title": "Ensure that S3 Block Public Access is enabled account-wide",
+                    "status": "fail",
+                    "severity": "high",
+                    "resource_ids": ["public-bucket"],
+                    "evidence": "Account-level public access block is not fully enforced.",
+                },
+                {
+                    "check_id": "2.1.2",
+                    "title": "Ensure S3 buckets use server-side encryption",
+                    "status": "pass",
+                    "severity": "medium",
+                    "resource_ids": ["public-bucket"],
+                    "evidence": "Bucket encryption is configured.",
+                },
+                {
+                    "check_id": "2.1.3",
+                    "title": "Ensure S3 bucket versioning is enabled",
+                    "status": "pass",
+                    "severity": "medium",
+                    "resource_ids": ["public-bucket"],
+                    "evidence": "Versioning is enabled.",
+                },
+                {
+                    "check_id": "2.1.4",
+                    "title": "Ensure MFA delete is enabled",
+                    "status": "pass",
+                    "severity": "medium",
+                    "resource_ids": ["public-bucket"],
+                    "evidence": "MFA delete is enabled.",
+                },
+                {
+                    "check_id": "3.3",
+                    "title": "Ensure S3 bucket logging is enabled for CloudTrail buckets",
+                    "status": "pass",
+                    "severity": "medium",
+                    "resource_ids": ["public-bucket"],
+                    "evidence": "Bucket logging is enabled.",
+                },
+                {
+                    "check_id": "3.6",
+                    "title": "Ensure CloudTrail S3 bucket is not publicly accessible",
+                    "status": "pass",
+                    "severity": "high",
+                    "resource_ids": ["public-bucket"],
+                    "evidence": "Bucket policy is not public for CloudTrail writes.",
+                },
+            ],
+        }
+
+
+def _fake_run_benchmark(*, checks: list[str], **kwargs: Any) -> _FakeCISReport:
+    assert set(checks) == {"2.1.1", "2.1.2", "2.1.3", "2.1.4", "3.3", "3.6"}
+    return _FakeCISReport()
+
+
 # --------------------------------------------------------------------------- #
 # dispatch: S3 PutBucketPolicy → affected CIS check re-evaluates + finding
 # --------------------------------------------------------------------------- #
@@ -144,7 +212,12 @@ def test_dispatch_s3_public_bucket_reevaluates_and_produces_finding() -> None:
         return "scan-xyz"
 
     delta = dispatch_change_event(
-        event, record, session=_FakeSession(), persist=_persist, store=store
+        event,
+        record,
+        session=_FakeSession(),
+        benchmark_runner=_fake_run_benchmark,
+        persist=_persist,
+        store=store,
     )
 
     assert delta is not None
@@ -313,6 +386,7 @@ def test_consume_dispatches_and_deletes_valid_event() -> None:
         queue_url="https://sqs/queue",
         sqs_client=sqs,
         session=_FakeSession(),
+        benchmark_runner=_fake_run_benchmark,
         persist=_persist,
         store=store,
         max_batches=2,

@@ -51,6 +51,8 @@ AGENT_BOM_AUTH_SESSION_ATTEMPTS_PER_MINUTE
 AGENT_BOM_AUTO_UPDATE_DB
 # Opt-in (default OFF) gate to fan the read-only AWS inventory across every enabled region (multi-region aggregation).
 AGENT_BOM_AWS_ALL_REGIONS
+# Opt-in (default OFF, read live) SQS queue URL for event-driven AWS posture ingestion; when set, the operator has wired EventBridge→SQS and the bounded consumer drains CloudTrail change events. Deploy-only toggle; absence disables the consumer.
+AGENT_BOM_AWS_EVENT_QUEUE_URL
 # Opt-in (default OFF) gate for the estate-wide read-only Azure asset inventory scanner (token/credential auth only).
 AGENT_BOM_AWS_INVENTORY
 # Defensive cap on the number of member accounts a single AWS Organizations scan fans out over (default 200).

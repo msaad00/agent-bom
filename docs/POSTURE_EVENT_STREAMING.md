@@ -20,6 +20,10 @@ push-delivery primitive:
 - REST outbox observability at `GET /v1/posture/webhooks/outbox`,
   `GET /v1/posture/webhooks/outbox/stats`, and
   `POST /v1/posture/webhooks/outbox/{row_id}/retry`
+- opt-in cloud posture event consumers:
+  AWS CloudTrail/EventBridge→SQS, Azure Activity Log/Event Grid→Storage Queue,
+  and GCP Cloud Asset/Audit Log→Pub/Sub. These are bounded re-evaluation lanes
+  for connected cloud accounts, not a managed streaming service.
 
 The shipped webhook outbox core does not create hidden egress. Operators must
 provide an explicit `WebhookDestination` and delivery function. Managed
@@ -74,16 +78,21 @@ they are separate from the durable generic webhook path.
 3. OCSF envelope shared by all connector adapters.
 4. Kafka connector for enterprise posture-event sinks covering findings,
    `ExposurePath` changes, skill verdicts, deploy decisions, and audit deltas.
-5. AWS EventBridge plus S3/SQS CloudTrail ingestion for cloud activity
-   evidence.
-6. GCP Pub/Sub plus Azure Event Hub/Event Grid for multi-cloud parity.
-7. Kinesis/Firehose as a later AWS high-volume adapter for customers that
+5. AWS CloudTrail/EventBridge→SQS posture re-evaluation for connected accounts.
+   Shipped as an opt-in bounded consumer.
+6. Azure Activity Log/Event Grid→Storage Queue and GCP Cloud Asset/Audit
+   Log→Pub/Sub posture re-evaluation for connected accounts. Shipped as opt-in
+   bounded consumers.
+7. General EventBridge/Pub/Sub/Event Hub connector packages for posture-event
+   delivery. Roadmap: these are broader sink/source adapters, not the same as
+   the provider-specific posture re-evaluation lanes above.
+8. Kinesis/Firehose as a later AWS high-volume adapter for customers that
    already centralize telemetry there.
-8. MCP posture subscription tool backed by the same replay contract.
+9. MCP posture subscription tool backed by the same replay contract.
 
-Do not document Kafka, EventBridge, Pub/Sub, Event Hub, Kinesis, Firehose, or
-MCP posture subscriptions as shipped until their adapters and tests land. The
-current claim is: posture/event streaming has a signed webhook outbox core;
-Kafka-style sinks are next; AWS cloud-log ingestion should start with
-CloudTrail S3/SQS and EventBridge. Kinesis is a later adapter, not a release
-blocker.
+Do not document Kafka, generic EventBridge/Pub/Sub/Event Hub connector
+packages, Kinesis, Firehose, or MCP posture subscriptions as shipped until their
+adapters and tests land. The current claim is: posture/event streaming has a
+signed webhook outbox core; connected cloud posture has opt-in AWS/Azure/GCP
+event consumers that re-evaluate affected resources; Kafka-style sinks and
+general event connector packages remain roadmap.

@@ -1,341 +1,66 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { api, ScanJob, ScanResult, BlastRadius, Agent, JobListItem, PostureResponse, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
-import { AgentTopology } from "@/components/agent-topology";
-import { TrustStack, type TrustStackSignals } from "@/components/trust-stack";
-import { SeverityBadge } from "@/components/severity-badge";
-import { ActivityFeed } from "@/components/activity-feed";
 import {
-  PostureGrade,
-} from "@/components/posture-grade";
+  api,
+  ScanJob,
+  ScanResult,
+  Agent,
+  JobListItem,
+  PostureResponse,
+  OverviewResponse,
+  OverviewDomain,
+  formatDate,
+} from "@/lib/api";
+import { TrustStackSignals } from "@/components/trust-stack";
+import { ActivityFeed } from "@/components/activity-feed";
+import { PostureGrade } from "@/components/posture-grade";
 import { AttackPathCard } from "@/components/attack-path-card";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
-import { useAuthState } from "@/components/auth-provider";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { deploymentModeLabel, hasDeploymentSignals } from "@/lib/deployment-context";
+import { buildSecurityGraphHref } from "@/lib/attack-paths";
+import {
+  aggregateCompoundIssues,
+  aggregateEpss,
+  aggregateEpssVsCvss,
+  aggregateEstate,
+  aggregatePackages,
+  aggregateSeverity,
+  aggregateSources,
+  aggregateTrend,
+  blastAgents,
+  blastCredentials,
+  blastTools,
+} from "@/lib/dashboard-data";
+import {
+  ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
+  AlertTriangle, Layers, GitBranch, ChevronRight, BarChart3, LayoutGrid,
+} from "lucide-react";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
   if (err instanceof ApiForbiddenError) return "forbidden";
   return "network";
 }
-import { buildSecurityGraphHref } from "@/lib/attack-paths";
-import { severityRank } from "@/lib/severity";
-import {
-  ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
-  AlertTriangle, Container, Layers, FileText, ExternalLink, GitBranch, ChevronRight,
-} from "lucide-react";
-import { VulnTrendChart, EpssDistributionChart, EpssVsCvssChart, TrendDataPoint, EpssDataPoint, EpssVsCvssPoint } from "@/components/charts";
 
-// ─── Aggregation helpers ──────────────────────────────────────────────────────
-
-interface AggregatedPackage {
-  name: string;
-  version: string;
-  ecosystem: string;
-  vulnCount: number;
-  critCount: number;
-  highCount: number;
-  agents: string[];
-}
-
-function aggregatePackages(jobs: ScanJob[]): AggregatedPackage[] {
-  const pkgMap = new Map<string, AggregatedPackage>();
-  for (const job of jobs) {
-    if (job.status !== "done" || !job.result) continue;
-    const result = job.result as ScanResult;
-    for (const agent of result.agents) {
-      for (const srv of agent.mcp_servers) {
-        for (const pkg of srv.packages) {
-          const key = `${pkg.name}@${pkg.version}`;
-          const existing = pkgMap.get(key);
-          const vulns = pkg.vulnerabilities ?? [];
-          const crit = vulns.filter((v) => v.severity === "critical").length;
-          const high = vulns.filter((v) => v.severity === "high").length;
-          if (existing) {
-            existing.vulnCount = Math.max(existing.vulnCount, vulns.length);
-            existing.critCount = Math.max(existing.critCount, crit);
-            existing.highCount = Math.max(existing.highCount, high);
-            if (!existing.agents.includes(agent.name)) existing.agents.push(agent.name);
-          } else {
-            pkgMap.set(key, {
-              name: pkg.name,
-              version: pkg.version,
-              ecosystem: pkg.ecosystem,
-              vulnCount: vulns.length,
-              critCount: crit,
-              highCount: high,
-              agents: [agent.name],
-            });
-          }
-        }
-      }
-    }
-  }
-  return Array.from(pkgMap.values())
-    .filter((p) => p.vulnCount > 0)
-    .sort((a, b) => b.critCount - a.critCount || b.highCount - a.highCount || b.vulnCount - a.vulnCount);
-}
-
-interface SeverityCounts {
-  critical: number;
-  high: number;
-  medium: number;
-  low: number;
-  total: number;
-}
-
-function aggregateSeverity(allBlast: BlastRadius[]): SeverityCounts {
-  const c = { critical: 0, high: 0, medium: 0, low: 0, total: allBlast.length };
-  for (const b of allBlast) {
-    const s = b.severity?.toLowerCase();
-    if (s === "critical") c.critical++;
-    else if (s === "high") c.high++;
-    else if (s === "medium") c.medium++;
-    else if (s === "low") c.low++;
-  }
-  return c;
-}
-
-interface ScanSource {
-  label: string;
-  icon: React.ElementType;
-  count: number;
-  vulns: number;
-  critical: number;
-}
-
-const SOURCE_META: Record<string, { label: string; icon: React.ElementType }> = {
-  agent_discovery: { label: "MCP Agents", icon: Server },
-  image: { label: "Container Images", icon: Container },
-  k8s: { label: "Kubernetes", icon: Layers },
-  sbom: { label: "SBOM Imports", icon: FileText },
-  filesystem: { label: "Filesystem", icon: FileText },
-  terraform: { label: "Terraform", icon: Layers },
-  github_actions: { label: "GitHub Actions", icon: Layers },
-  browser_extensions: { label: "Browser Extensions", icon: ExternalLink },
-  jupyter: { label: "Jupyter Notebooks", icon: FileText },
-  gpu_infra: { label: "GPU Infrastructure", icon: Server },
-};
-
-function aggregateSources(jobs: ScanJob[]): ScanSource[] {
-  const srcMap = new Map<string, ScanSource>();
-
-  for (const job of jobs) {
-    if (job.status !== "done") continue;
-    const result = job.result as ScanResult | undefined;
-    const blast = result?.blast_radius ?? [];
-    // Prefer scan_sources from result (auto-detected), fall back to request inference
-    const sources = result?.scan_sources ?? [];
-
-    if (sources.length > 0) {
-      for (const src of sources) {
-        const meta = SOURCE_META[src] ?? { label: src, icon: FileText };
-        const existing = srcMap.get(src);
-        if (existing) {
-          existing.count++;
-          existing.vulns += blast.length;
-          existing.critical += blast.filter((b) => b.severity === "critical").length;
-        } else {
-          srcMap.set(src, {
-            label: meta.label,
-            icon: meta.icon,
-            count: 1,
-            vulns: blast.length,
-            critical: blast.filter((b) => b.severity === "critical").length,
-          });
-        }
-      }
-    } else {
-      // Legacy fallback: infer from request
-      const req = job.request;
-      if (req.images && req.images.length > 0) {
-        const e = srcMap.get("image") ?? { label: "Container Images", icon: Container, count: 0, vulns: 0, critical: 0 };
-        e.count += req.images.length;
-        e.vulns += blast.length;
-        e.critical += blast.filter((b) => b.severity === "critical").length;
-        srcMap.set("image", e);
-      } else {
-        const e = srcMap.get("agent_discovery") ?? { label: "MCP Agents", icon: Server, count: 0, vulns: 0, critical: 0 };
-        e.count++;
-        e.vulns += blast.length;
-        e.critical += blast.filter((b) => b.severity === "critical").length;
-        srcMap.set("agent_discovery", e);
-      }
-    }
-  }
-  return Array.from(srcMap.values());
-}
-
-function aggregateTrend(jobs: ScanJob[]): TrendDataPoint[] {
-  const done = jobs
-    .filter((j) => j.status === "done" && j.result)
-    .sort((a, b) => a.created_at.localeCompare(b.created_at));
-  return done?.map((j) => {
-    const blast = (j.result as ScanResult)?.blast_radius ?? [];
-    const sev = aggregateSeverity(blast);
-    const d = new Date(j.created_at);
-    return {
-      label: `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`,
-      critical: sev.critical,
-      high: sev.high,
-      medium: sev.medium,
-      low: sev.low,
-    };
-  });
-}
-
-function aggregateEpss(allBlast: BlastRadius[]): EpssDataPoint[] {
-  const buckets = [
-    { range: "0-10%", min: 0, max: 0.1, count: 0 },
-    { range: "10-30%", min: 0.1, max: 0.3, count: 0 },
-    { range: "30-50%", min: 0.3, max: 0.5, count: 0 },
-    { range: "50-70%", min: 0.5, max: 0.7, count: 0 },
-    { range: "70-90%", min: 0.7, max: 0.9, count: 0 },
-    { range: "90-100%", min: 0.9, max: 1.01, count: 0 },
-  ];
-  for (const b of allBlast) {
-    if (b.epss_score == null) continue;
-    for (const bucket of buckets) {
-      if (b.epss_score >= bucket.min && b.epss_score < bucket.max) {
-        bucket.count++;
-        break;
-      }
-    }
-  }
-  return buckets?.map(({ range, count }) => ({ range, count }));
-}
-
-function aggregateEpssVsCvss(allBlast: BlastRadius[]): EpssVsCvssPoint[] {
-  return allBlast
-    .filter((b) => b.cvss_score != null && b.epss_score != null)
-    .map((b) => ({
-      cve: b.vulnerability_id,
-      cvss: b.cvss_score!,
-      epss: b.epss_score!,
-      blast: b.risk_score ?? b.blast_score,
-      severity: b.severity?.toLowerCase() ?? "low",
-      kev: !!(b.is_kev ?? b.cisa_kev),
-      package: b.package,
-    }));
-}
-
-// Compound issue: a finding that meets 2+ independent risk signals simultaneously.
-// Each rule returns a subset of blast radius entries.
-export interface CompoundIssue {
-  id: string;
-  title: string;
-  description: string;
-  count: number;
-  severity: "critical" | "high";
-  findings: BlastRadius[];
-  filter: string; // URL param for /vulns deep-link
-}
-
-function blastTools(blast: BlastRadius): string[] {
-  return blast.exposed_tools ?? blast.reachable_tools ?? [];
-}
-
-function blastCredentials(blast: BlastRadius): string[] {
-  return blast.exposed_credentials ?? [];
-}
-
-function blastAgents(blast: BlastRadius): string[] {
-  return blast.affected_agents ?? [];
-}
-
-function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
-  const issues: CompoundIssue[] = [];
-
-  // 1. CISA KEV + reachable tool exposure
-  const kevReachable = allBlast.filter(
-    (b) => (b.is_kev ?? b.cisa_kev) && blastTools(b).length > 0
-  );
-  if (kevReachable.length > 0) {
-    issues.push({
-      id: "kev-reachable",
-      title: "Actively Exploited + Tool Reachability",
-      description:
-        "Known-exploited vulnerabilities (CISA KEV) in packages reachable by MCP tools — immediate patching required.",
-      count: kevReachable.length,
-      severity: "critical",
-      findings: kevReachable.sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score)),
-      filter: "kev=true",
-    });
-  }
-
-  // 2. CISA KEV + credential exposure
-  const kevCredential = allBlast.filter(
-    (b) => (b.is_kev ?? b.cisa_kev) && blastCredentials(b).length > 0
-  );
-  if (kevCredential.length > 0) {
-    issues.push({
-      id: "kev-credential",
-      title: "Actively Exploited + Credential Exposure",
-      description:
-        "Known-exploited CVEs co-located with exposed credentials — data exfiltration risk.",
-      count: kevCredential.length,
-      severity: "critical",
-      findings: kevCredential.sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score)),
-      filter: "kev=true",
-    });
-  }
-
-  // 3. High EPSS (≥30%) + Critical/High CVSS (≥7) — imminent exploitation likely
-  const epssHighCvss = allBlast.filter(
-    (b) =>
-      (b.epss_score ?? 0) >= 0.3 &&
-      (b.cvss_score ?? 0) >= 7 &&
-      !(b.is_kev ?? b.cisa_kev)
-  );
-  if (epssHighCvss.length > 0) {
-    issues.push({
-      id: "epss-cvss",
-      title: "High Exploit Probability + Critical Severity",
-      description:
-        "CVEs with EPSS ≥ 30% and CVSS ≥ 7.0 — statistically likely to be exploited in the wild within 30 days.",
-      count: epssHighCvss.length,
-      severity: "high",
-      findings: epssHighCvss.sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score)),
-      filter: "severity=high",
-    });
-  }
-
-  // 4. Credential exposure + reachable exec tools
-  const credExec = allBlast.filter(
-    (b) =>
-      blastCredentials(b).length > 0 &&
-      blastTools(b).some((t) =>
-        ["bash", "exec", "shell", "run", "execute", "subprocess"].some((kw) =>
-          t.toLowerCase().includes(kw)
-        )
-      )
-  );
-  if (credExec.length > 0) {
-    issues.push({
-      id: "cred-exec",
-      title: "Credential Exposure + Code Execution Path",
-      description:
-        "Exposed credentials reachable from tools with code execution capability — privilege escalation vector.",
-      count: credExec.length,
-      severity: "critical",
-      findings: credExec.sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score)),
-      filter: "severity=critical",
-    });
-  }
-
-  return issues.sort(
-    (a, b) =>
-      severityRank(b.severity) -
-      severityRank(a.severity)
-  );
-}
+// Heavy, below-the-fold charts + tables. Loaded lazily (client-only) so recharts
+// and the long tables stay out of the home route's first-paint bundle.
+const DashboardAnalytics = dynamic(() => import("@/components/dashboard-analytics"), {
+  ssr: false,
+  loading: () => (
+    <div className="rounded-[28px] border border-zinc-800/90 bg-zinc-950/60 p-8 text-center text-sm text-zinc-500">
+      Loading analytics…
+    </div>
+  ),
+});
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { session } = useAuthState();
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [detailJobs, setDetailJobs] = useState<ScanJob[]>([]);
   const [agentCount, setAgentCount] = useState<number>(0);
@@ -350,10 +75,14 @@ export default function Dashboard() {
   const [apiErrorDetail, setApiErrorDetail] = useState<string | null>(null);
   const [importedReport, setImportedReport] = useState<ScanResult | null>(null);
   const [posture, setPosture] = useState<PostureResponse | null>(null);
+  const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [activeTab, setActiveTab] = useState<"command" | "analytics">("command");
+  const { counts } = useDeploymentContext();
 
-  // Fetch posture grade
+  // Fetch posture grade + cross-domain overview (folded into the header scorecard)
   useEffect(() => {
     api.getPosture().then(setPosture).catch(() => {});
+    api.getOverview().then(setOverview).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -494,35 +223,7 @@ export default function Dashboard() {
   const credentialExposureCount = useMemo(() => allBlast.filter((b) => blastCredentials(b).length > 0).length, [allBlast]);
   const reachableToolCount = useMemo(() => new Set(allBlast.flatMap(blastTools)).size, [allBlast]);
   const impactedAgentCount = useMemo(() => new Set(allBlast.flatMap(blastAgents)).size, [allBlast]);
-  const estateSummary = useMemo(() => {
-    const environments = new Set<string>();
-    const servers = new Set<string>();
-    const credentialedServers = new Set<string>();
-    const tools = new Set<string>();
-    const configuredAgents = agentList.filter((agent) => agent.status !== "installed-not-configured").length;
-
-    for (const agent of agentList) {
-      environments.add(agent.environment || "local");
-      for (const server of agent.mcp_servers ?? []) {
-        const serverKey = `${agent.name}:${server.name}`;
-        servers.add(serverKey);
-        if (server.has_credentials || (server.credential_env_vars?.length ?? 0) > 0) {
-          credentialedServers.add(serverKey);
-        }
-        for (const tool of server.tools ?? []) {
-          tools.add(`${server.name}:${tool.name}`);
-        }
-      }
-    }
-
-    return {
-      configuredAgents,
-      environments: environments.size,
-      servers: servers.size,
-      credentialedServers: credentialedServers.size,
-      tools: tools.size,
-    };
-  }, [agentList]);
+  const estateSummary = useMemo(() => aggregateEstate(agentList), [agentList]);
 
   // Real signals feeding the AI trust stack — data sources connected (L1),
   // governance/context surfaces populated (L2), tools scanned (L3), and
@@ -609,10 +310,25 @@ export default function Dashboard() {
   const agentsReady = !agentsLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
+  const criticalCount = detailsReady ? severity.critical : (overview?.headline.critical ?? summaryStats?.critical_findings ?? 0);
+  const highCount = detailsReady ? severity.high : (overview?.headline.high ?? 0);
+
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} kind={apiErrorKind} detail={apiErrorDetail} />;
 
   return (
     <div className="space-y-8">
+      {/* Scorecard strip — one posture grade + risk score, critical/high, coverage,
+          connect status. Folds the former /overview domain tiles into the home
+          header so `/` opens above the fold with a single command surface. */}
+      <ScorecardStrip
+        posture={posture ?? (overview ? { grade: overview.posture.grade, score: overview.posture.score, summary: overview.posture.summary, dimensions: {} } : null)}
+        overview={overview}
+        critical={criticalCount}
+        high={highCount}
+        counts={counts}
+        summaryReady={summaryReady}
+      />
+
       <section className="relative overflow-hidden rounded-[28px] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(239,68,68,0.12),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.98),rgba(9,9,11,0.96))] p-6 shadow-2xl shadow-black/20">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
@@ -650,7 +366,7 @@ export default function Dashboard() {
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              href="/graph"
+              href="/security-graph"
               className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800"
             >
               Open graph
@@ -697,7 +413,7 @@ export default function Dashboard() {
                   <p className="mt-2 font-mono text-2xl font-semibold text-amber-100">{agentsReady ? estateSummary.credentialedServers : "—"}</p>
                   <p className="mt-1 text-xs text-amber-100/60">credentialed services</p>
                 </Link>
-                <Link href="/graph" className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4 transition-colors hover:border-fuchsia-400/40">
+                <Link href="/security-graph" className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4 transition-colors hover:border-fuchsia-400/40">
                   <p className="text-[10px] uppercase tracking-[0.2em] text-fuchsia-200/70">Environments</p>
                   <p className="mt-2 font-mono text-2xl font-semibold text-fuchsia-100">{agentsReady ? estateSummary.environments : "—"}</p>
                   <p className="mt-1 text-xs text-fuchsia-100/60">observed scopes</p>
@@ -739,6 +455,7 @@ export default function Dashboard() {
         )}
       </section>
 
+      {/* Top exposure paths — the fix-first shortlist, kept above the fold. */}
       {(!isLoading) && allBlast.length > 0 && (
         <details open className="group/attack rounded-[28px] border border-zinc-800/90 bg-zinc-950/70 p-4 shadow-[0_24px_80px_-48px_rgba(16,185,129,0.28)]">
           <summary className="flex cursor-pointer list-none items-start justify-between gap-4 select-none">
@@ -796,6 +513,7 @@ export default function Dashboard() {
         </details>
       )}
 
+      {/* Exposure KPIs — coverage + backlog snapshot. */}
       <details open className="group/metrics rounded-[28px] border border-zinc-800/90 bg-zinc-950/70 p-4 shadow-[0_24px_80px_-48px_rgba(59,130,246,0.24)]">
         <summary className="flex cursor-pointer list-none items-start justify-between gap-4 select-none">
           <div className="flex items-start gap-3">
@@ -827,200 +545,206 @@ export default function Dashboard() {
         </div>
       </details>
 
-      {/* Severity distribution + Sources — side by side */}
-      {(!isLoading) && allBlast.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <SeverityChart severity={severity} />
-          <SourceBreakdown sources={sources} />
+      {/* Tabbed area: the command-center feed is the default; deep analytics
+          (recharts + long tables) lives behind a tab so it never loads on first
+          paint. */}
+      <div>
+        <div className="mb-4 inline-flex rounded-2xl border border-zinc-800 bg-zinc-950/70 p-1">
+          <TabButton icon={LayoutGrid} label="Command center" active={activeTab === "command"} onClick={() => setActiveTab("command")} />
+          <TabButton icon={BarChart3} label="Deep analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
         </div>
-      )}
 
-      {/* Trend charts */}
-      {(!isLoading) && allBlast.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <VulnTrendChart data={trendData} />
-          <EpssDistributionChart data={epssData} />
-        </div>
-      )}
+        {activeTab === "command" ? (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <section className="lg:col-span-2">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
+                  Recent scans
+                </h2>
+                {effectiveRecentJobs.length > 8 && (
+                  <Link href="/jobs" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
+                    View all <ArrowRight className="w-3 h-3" />
+                  </Link>
+                )}
+              </div>
+              {jobsLoading && !importedReport ? (
+                <div className="text-zinc-500 text-sm">Loading...</div>
+              ) : effectiveRecentJobs.length === 0 ? (
+                <EmptyState />
+              ) : (
+                <div className="space-y-2">
+                  {effectiveRecentJobs.slice(0, 8).map((job) => (
+                    <JobRow key={job.job_id} job={job} />
+                  ))}
+                </div>
+              )}
+            </section>
 
-      {/* EPSS × CVSS risk map */}
-      {(!isLoading) && scatterData.length > 0 && (
-        <EpssVsCvssChart data={scatterData} />
-      )}
-
-      {/* Compound Issues */}
-      {(!isLoading) && compoundIssues.length > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
-                Compound Issues
+            <section>
+              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+                Activity
               </h2>
-              <p className="text-[10px] text-zinc-600 mt-0.5">
-                Findings that meet multiple independent risk criteria simultaneously
-              </p>
-            </div>
-            <Link href="/findings" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
-              View all <ArrowRight className="w-3 h-3" />
-            </Link>
+              <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} refresh={false} />
+            </section>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {compoundIssues?.map((issue) => (
-              <CompoundIssueCard key={issue.id} issue={issue} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Agent topology */}
-      {(!isLoading) && agentList.length > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
-              Agent Topology
-            </h2>
-            <Link href="/agents" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
-              View all <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-          <AgentTopology agents={agentList} session={session} />
-        </section>
-      )}
-
-      {/* AI Agent Trust Stack */}
-      {(!isLoading) && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-            AI Agent Trust Stack
-          </h2>
-          <TrustStack signals={trustSignals} />
-        </section>
-      )}
-
-      {/* Top vulnerable packages */}
-      {(!isLoading) && topPackages.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-            Top vulnerable packages
-          </h2>
-          <div className="border border-zinc-800 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-900 border-b border-zinc-800">
-                <tr>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wide">Package</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wide">Ecosystem</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wide">CVEs</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wide">Crit</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wide">High</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-zinc-500 uppercase tracking-wide">Agents</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800 bg-zinc-950">
-                {topPackages.slice(0, 10).map((pkg) => (
-                  <tr key={`${pkg.name}@${pkg.version}`} className="hover:bg-zinc-900 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <span className="font-mono text-xs text-zinc-200">{pkg.name}</span>
-                      <span className="font-mono text-xs text-zinc-600 ml-1">@{pkg.version}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-zinc-500">{pkg.ecosystem}</td>
-                    <td className="px-4 py-2.5 text-center">
-                      <span className="font-mono text-xs text-zinc-300">{pkg.vulnCount}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      {pkg.critCount > 0 ? (
-                        <span className="font-mono text-xs font-semibold text-red-400">{pkg.critCount}</span>
-                      ) : (
-                        <span className="text-zinc-700">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      {pkg.highCount > 0 ? (
-                        <span className="font-mono text-xs font-semibold text-orange-400">{pkg.highCount}</span>
-                      ) : (
-                        <span className="text-zinc-700">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-zinc-500">
-                      {pkg.agents.slice(0, 3).join(", ")}
-                      {pkg.agents.length > 3 && <span className="text-zinc-600"> +{pkg.agents.length - 3}</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {topPackages.length > 10 && (
-            <p className="text-xs text-zinc-600 text-right mt-1">
-              Showing 10 of {topPackages.length} — <Link href="/findings" className="text-emerald-500 hover:text-emerald-400">view all</Link>
-            </p>
-          )}
-        </section>
-      )}
-
-      {/* Blast radius highlights */}
-      {(!isLoading) && allBlast.length > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
-              Highest risk findings
-            </h2>
-            <Link href="/findings" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
-              View all <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {[...allBlast]
-              .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
-              .slice(0, 5)
-              .map((b, index) => (
-                <BlastCard
-                  key={`${b.vulnerability_id}:${b.package ?? "unknown"}:${index}`}
-                  blast={b}
-                  detailHref={`/findings?cve=${b.vulnerability_id}`}
-                />
-              ))}
-          </div>
-        </section>
-      )}
-
-      {/* Recent scans + Activity feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <section className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
-              Recent scans
-            </h2>
-            {effectiveRecentJobs.length > 8 && (
-              <Link href="/jobs" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
-                View all <ArrowRight className="w-3 h-3" />
-              </Link>
-            )}
-          </div>
-          {jobsLoading && !importedReport ? (
-            <div className="text-zinc-500 text-sm">Loading...</div>
-          ) : effectiveRecentJobs.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div className="space-y-2">
-              {effectiveRecentJobs.slice(0, 8).map((job) => (
-                <JobRow key={job.job_id} job={job} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-            Activity
-          </h2>
-          <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} refresh={false} />
-        </section>
+        ) : (
+          <DashboardAnalytics
+            severity={severity}
+            sources={sources}
+            trendData={trendData}
+            epssData={epssData}
+            scatterData={scatterData}
+            compoundIssues={compoundIssues}
+            agentList={agentList}
+            trustSignals={trustSignals}
+            topPackages={topPackages}
+            allBlast={allBlast}
+          />
+        )}
       </div>
     </div>
   );
 }
 
 // ─── Components ───────────────────────────────────────────────────────────────
+
+function TabButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+        active
+          ? "bg-zinc-800 text-zinc-100"
+          : "text-zinc-500 hover:text-zinc-200"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
+function statusTone(status: OverviewDomain["status"]): { dot: string; text: string } {
+  switch (status) {
+    case "critical":
+      return { dot: "bg-red-500", text: "text-red-300" };
+    case "warn":
+      return { dot: "bg-amber-500", text: "text-amber-300" };
+    case "ok":
+      return { dot: "bg-emerald-500", text: "text-emerald-300" };
+    default:
+      return { dot: "bg-zinc-600", text: "text-zinc-500" };
+  }
+}
+
+function ScorecardStrip({
+  posture,
+  overview,
+  critical,
+  high,
+  counts,
+  summaryReady,
+}: {
+  posture: PostureResponse | null;
+  overview: OverviewResponse | null;
+  critical: number;
+  high: number;
+  counts: ReturnType<typeof useDeploymentContext>["counts"];
+  summaryReady: boolean;
+}) {
+  const domains = overview ? Object.values(overview.domains) : [];
+  const activeDomains = domains.filter((d) => d.status !== "idle").length;
+  const coverage = domains.length > 0 ? Math.round((activeDomains / domains.length) * 100) : null;
+  const connected = hasDeploymentSignals(counts);
+  const grade = posture?.grade ?? "—";
+  const score = posture?.score;
+
+  return (
+    <section className="rounded-[28px] border border-zinc-800/80 bg-zinc-950/60 p-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {/* Posture grade + score */}
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-emerald-200/70">Posture grade</p>
+          <div className="mt-1 flex items-end gap-2">
+            <span className="font-mono text-3xl font-semibold text-emerald-100">{grade}</span>
+            {typeof score === "number" && (
+              <span className="mb-1 font-mono text-xs text-emerald-200/70">score {score}</span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-emerald-100/60">overall risk grade</p>
+        </div>
+
+        {/* Critical */}
+        <Link href="/findings?severity=critical" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 transition-colors hover:border-red-400/40">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-red-200/70">Critical</p>
+          <p className="mt-1 font-mono text-3xl font-semibold text-red-100">{summaryReady ? critical : "—"}</p>
+          <p className="mt-1 text-xs text-red-100/60">open critical findings</p>
+        </Link>
+
+        {/* High */}
+        <Link href="/findings?severity=high" className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 transition-colors hover:border-orange-400/40">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-orange-200/70">High</p>
+          <p className="mt-1 font-mono text-3xl font-semibold text-orange-100">{summaryReady ? high : "—"}</p>
+          <p className="mt-1 text-xs text-orange-100/60">open high findings</p>
+        </Link>
+
+        {/* Coverage */}
+        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-sky-200/70">Coverage</p>
+          <p className="mt-1 font-mono text-3xl font-semibold text-sky-100">{coverage != null ? `${coverage}%` : "—"}</p>
+          <p className="mt-1 text-xs text-sky-100/60">{activeDomains}/{domains.length || 5} domains active</p>
+        </div>
+
+        {/* Connect status */}
+        <Link href="/connections" className="rounded-2xl border border-zinc-700/60 bg-zinc-900/60 p-4 transition-colors hover:border-zinc-500">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Connect status</p>
+          <div className="mt-1 flex items-center gap-2">
+            <span className={`h-2.5 w-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
+            <span className="text-lg font-semibold text-zinc-100">{connected ? "Connected" : "Not connected"}</span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">{deploymentModeLabel(counts?.deployment_mode)} mode</p>
+        </Link>
+      </div>
+
+      {/* Cross-domain tiles folded in from the former /overview landing page. */}
+      {domains.length > 0 && (
+        <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {domains.map((domain) => {
+            const tone = statusTone(domain.status);
+            return (
+              <Link
+                key={domain.href}
+                href={domain.href}
+                className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5 transition-colors hover:border-zinc-600"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-medium text-zinc-300">{domain.label}</p>
+                  <p className="truncate text-[10px] text-zinc-500">{domain.metric_label}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`font-mono text-sm font-semibold ${tone.text}`}>{domain.metric}</span>
+                  <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function StatCard({
   icon: Icon,
@@ -1062,7 +786,7 @@ function StatCard({
           <span className={`text-[10px] font-medium ${
             trend.direction === "down" ? "text-emerald-400" : trend.direction === "up" ? "text-red-400" : "text-[var(--text-tertiary)]"
           }`}>
-            {trend.direction === "up" ? "\u2191" : trend.direction === "down" ? "\u2193" : "\u2022"} {trend.label}
+            {trend.direction === "up" ? "↑" : trend.direction === "down" ? "↓" : "•"} {trend.label}
           </span>
         )}
       </div>
@@ -1075,164 +799,6 @@ function StatCard({
   );
   if (href) return <Link href={href}>{inner}</Link>;
   return inner;
-}
-
-function SeverityChart({ severity }: { severity: SeverityCounts }) {
-  const total = severity.total || 1;
-  const bars = [
-    { label: "Critical", count: severity.critical, color: "bg-red-500", text: "text-red-400", ring: "ring-red-500/20" },
-    { label: "High", count: severity.high, color: "bg-orange-500", text: "text-orange-400", ring: "ring-orange-500/20" },
-    { label: "Medium", count: severity.medium, color: "bg-yellow-500", text: "text-yellow-400", ring: "ring-yellow-500/20" },
-    { label: "Low", count: severity.low, color: "bg-blue-500", text: "text-blue-400", ring: "ring-blue-500/20" },
-  ];
-
-  return (
-    <div
-      className="rounded-xl border p-5 shadow-lg"
-      style={{
-        backgroundColor: "var(--surface)",
-        borderColor: "var(--border-subtle)",
-        boxShadow: "0 18px 36px -24px var(--shadow-color)",
-      }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-zinc-300">Severity Distribution</h3>
-        <span className="text-xs font-mono text-[var(--text-tertiary)]">{total} total</span>
-      </div>
-
-      {/* Stacked bar */}
-      <div className="mb-5 flex h-3 overflow-hidden rounded-full bg-[var(--surface-muted)]">
-        {bars?.map((b) =>
-          b.count > 0 ? (
-            <Link
-              key={b.label}
-              href={`/findings?severity=${b.label.toLowerCase()}`}
-              className={`${b.color} transition-all duration-500 hover:brightness-125`}
-              style={{ width: `${(b.count / total) * 100}%` }}
-              title={`${b.label}: ${b.count}`}
-            />
-          ) : null
-        )}
-      </div>
-
-      {/* Legend with hover rings */}
-      <div className="grid grid-cols-4 gap-2">
-        {bars?.map((b) => (
-          <Link key={b.label} href={`/findings?severity=${b.label.toLowerCase()}`} className={`rounded-lg py-2 text-center transition-all hover:bg-[var(--surface-muted)] hover:ring-1 ${b.ring}`}>
-            <div className={`text-xl font-bold font-mono ${b.text}`}>{b.count}</div>
-            <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">{b.label}</div>
-            <div className="text-[10px] font-mono text-[var(--text-tertiary)]">{total > 0 ? Math.round((b.count / total) * 100) : 0}%</div>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SourceBreakdown({ sources }: { sources: ScanSource[] }) {
-  return (
-    <div
-      className="rounded-xl border p-5 shadow-lg"
-      style={{
-        backgroundColor: "var(--surface)",
-        borderColor: "var(--border-subtle)",
-        boxShadow: "0 18px 36px -24px var(--shadow-color)",
-      }}
-    >
-      <h3 className="text-sm font-semibold text-zinc-300 mb-4">Scan Sources</h3>
-      {sources.length === 0 ? (
-        <p className="text-sm text-[var(--text-tertiary)]">No completed scans yet.</p>
-      ) : (
-        <div className="space-y-3">
-          {sources?.map((s) => (
-            <div
-              key={s.label}
-              className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
-              style={{ backgroundColor: "var(--surface-elevated)", borderColor: "var(--border-subtle)" }}
-            >
-              <s.icon className="h-4 w-4 flex-shrink-0 text-[var(--text-secondary)]" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-zinc-200">{s.label}</span>
-                  <span className="text-xs font-mono text-[var(--text-secondary)]">{s.count} scanned</span>
-                </div>
-                <div className="mt-0.5 flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
-                  <span>{s.vulns} findings</span>
-                  {s.critical > 0 && (
-                    <span className="text-red-400 font-semibold">{s.critical} critical</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BlastCard({ blast, detailHref }: { blast: BlastRadius; detailHref: string }) {
-  return (
-    <div className="flex items-start gap-4 bg-zinc-900 border border-zinc-800 rounded-xl p-4 transition-colors hover:border-zinc-700">
-      <SeverityBadge severity={blast.severity} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <Link
-            href={detailHref}
-            className="font-mono text-sm font-semibold text-zinc-100 hover:text-emerald-400"
-          >
-            {blast.vulnerability_id}
-          </Link>
-          <a
-            href={`https://osv.dev/vulnerability/${blast.vulnerability_id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
-          >
-            OSV
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
-        <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-zinc-500">
-          <span>{blastAgents(blast).length} agent{blastAgents(blast).length !== 1 ? "s" : ""}</span>
-          {blastCredentials(blast).length > 0 && (
-            <span className="text-orange-400">{blastCredentials(blast).length} credential{blastCredentials(blast).length !== 1 ? "s" : ""}</span>
-          )}
-          <span>{blastTools(blast).length} tool{blastTools(blast).length !== 1 ? "s" : ""}</span>
-          {(blast.is_kev ?? blast.cisa_kev) && <span className="text-red-400 font-semibold">CISA KEV</span>}
-          {blast.cvss_score != null && <span>CVSS {blast.cvss_score.toFixed(1)}</span>}
-          {blast.epss_score != null && <span>EPSS {(blast.epss_score * 100).toFixed(0)}%</span>}
-        </div>
-        {((blast.owasp_tags && blast.owasp_tags.length > 0) || (blast.atlas_tags && blast.atlas_tags.length > 0)) && (
-          <div className="flex flex-wrap gap-1 mt-1.5">
-            {blast.owasp_tags?.map((tag) => (
-              <span key={tag} title={OWASP_LLM_TOP10[tag] ?? tag} className="text-xs font-mono bg-purple-950 border border-purple-800 text-purple-400 rounded px-1 py-0.5 cursor-help">{tag}</span>
-            ))}
-            {blast.atlas_tags?.map((tag) => (
-              <span key={tag} title={MITRE_ATLAS[tag] ?? tag} className="text-xs font-mono bg-cyan-950 border border-cyan-800 text-cyan-400 rounded px-1 py-0.5 cursor-help">{tag}</span>
-            ))}
-          </div>
-        )}
-        {blast.attack_vector_summary && (
-          <p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-400">{blast.attack_vector_summary}</p>
-        )}
-      </div>
-      <div className="flex flex-col items-end gap-2">
-        {(blast.risk_score ?? blast.blast_score) > 0 && (
-          <div className="text-right">
-            <div className="text-lg font-bold font-mono text-red-400">{(blast.risk_score ?? blast.blast_score).toFixed(0)}</div>
-            <div className="text-xs text-zinc-600">score</div>
-          </div>
-        )}
-        <Link
-          href={detailHref}
-          className="text-xs font-medium text-emerald-400 transition-colors hover:text-emerald-300"
-        >
-          Review evidence
-        </Link>
-      </div>
-    </div>
-  );
 }
 
 function JobRow({ job }: { job: JobListItem }) {
@@ -1310,55 +876,5 @@ function EmptyState() {
         <ArrowRight className="w-3.5 h-3.5" />
       </Link>
     </div>
-  );
-}
-
-function CompoundIssueCard({ issue }: { issue: CompoundIssue }) {
-  const isCrit = issue.severity === "critical";
-  const borderColor = isCrit ? "border-red-900" : "border-orange-900/60";
-  const badgeColor = isCrit
-    ? "bg-red-950 border border-red-800 text-red-400"
-    : "bg-orange-950 border border-orange-800 text-orange-400";
-  const countColor = isCrit ? "text-red-400" : "text-orange-400";
-
-  return (
-    <Link href={`/findings?${issue.filter}`}>
-      <div
-        className={`bg-zinc-900 border ${borderColor} rounded-xl p-4 hover:bg-zinc-800/80 transition-colors cursor-pointer`}
-      >
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2">
-            <AlertTriangle
-              className={`w-4 h-4 shrink-0 ${isCrit ? "text-red-400" : "text-orange-400"}`}
-            />
-            <span className="text-sm font-semibold text-zinc-200 leading-tight">
-              {issue.title}
-            </span>
-          </div>
-          <span className={`text-xs font-mono font-bold ${countColor} shrink-0`}>
-            {issue.count}
-          </span>
-        </div>
-        <p className="text-xs text-zinc-500 leading-relaxed mb-3">
-          {issue.description}
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          {issue.findings.slice(0, 4).map((f, index) => (
-            <span
-              key={`${issue.id}:${f.vulnerability_id}:${f.package ?? "unknown"}:${index}`}
-              className={`text-[10px] font-mono rounded px-1.5 py-0.5 ${badgeColor}`}
-            >
-              {f.vulnerability_id}
-              {(f.is_kev ?? f.cisa_kev) && " ⚡"}
-            </span>
-          ))}
-          {issue.findings.length > 4 && (
-            <span className="text-[10px] text-zinc-600 font-mono px-1 py-0.5">
-              +{issue.findings.length - 4} more
-            </span>
-          )}
-        </div>
-      </div>
-    </Link>
   );
 }

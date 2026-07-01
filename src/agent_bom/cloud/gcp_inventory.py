@@ -549,16 +549,22 @@ def _discover_buckets(
             name = str(getattr(bucket, "name", "") or "").strip()
             if not name:
                 continue
-            buckets.append(
-                {
-                    "name": name,
-                    "id": f"//storage.googleapis.com/{name}",
-                    "location": str(getattr(bucket, "location", "") or ""),
-                    "publicly_accessible": _bucket_public(bucket, name, warnings),
-                    "tags": _clean_labels(getattr(bucket, "labels", None)),
-                    "project_id": project_id,
-                }
-            )
+            bucket_record = {
+                "name": name,
+                "id": f"//storage.googleapis.com/{name}",
+                "location": str(getattr(bucket, "location", "") or ""),
+                "publicly_accessible": _bucket_public(bucket, name, warnings),
+                "tags": _clean_labels(getattr(bucket, "labels", None)),
+                "project_id": project_id,
+            }
+            try:
+                from agent_bom.cloud.gcs_data_classifier import classify_gcs_bucket, gcs_sampling_enabled
+
+                if gcs_sampling_enabled():
+                    bucket_record["content_classification"] = classify_gcs_bucket(client, name).to_dict()
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"Could not classify GCS bucket {name}: {sanitize_discovery_warning(exc)}")
+            buckets.append(bucket_record)
     except Exception as exc:  # noqa: BLE001 — one failed GCS buckets list must not sink the scan
         record_discovery_failure(
             exc=exc,

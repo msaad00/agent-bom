@@ -140,6 +140,28 @@ URL is still localhost, CORS is wildcarded, unauthenticated API mode is enabled,
 API/UI ports bind publicly, or the composed stack would mount placeholder
 secrets. Run it again after any `.env`, DNS, or compose change.
 
+### Production auth checklist
+
+For the gated POC, users are invited manually. Do not enable public signup until
+tenant lifecycle, abuse controls, quotas, billing, and self-service credential
+rotation exist.
+
+Before sharing the link, verify:
+
+| Boundary | Required setting |
+|---|---|
+| Browser session | `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY` is set, random, and stored as a secret. `AGENT_BOM_SESSION_COOKIE_SECURE=1` is enabled behind HTTPS. |
+| API auth | `AGENT_BOM_API_KEY` or OIDC/SAML/proxy auth is configured. `AGENT_BOM_ALLOW_UNAUTHENTICATED_API` is unset. |
+| Tenant binding | Each invited account has an explicit tenant. Do not use default-tenant OIDC/SAML fallbacks for multi-tenant testing. |
+| Connection broker | `AGENT_BOM_CONNECTIONS_KEY` is a Fernet key and is never committed, logged, or reused across unrelated environments. |
+| Audit integrity | `AGENT_BOM_AUDIT_HMAC_KEY` is set and survives restarts so audit signatures remain verifiable. |
+| MCP read access | `AGENT_BOM_MCP_BEARER_TOKEN` is tenant/environment-scoped and has an expiry where possible. |
+| MCP write access | `AGENT_BOM_MCP_OPERATOR_TOKEN` is separate from the read token, expires, and is issued only to operators who need Shield/gateway write tools. |
+| CORS/TLS | `CORS_ORIGINS` contains only the hosted URL and internal UI origin. Caddy/ALB terminates HTTPS; API/UI bind to loopback/private network only. |
+| Usage control | Invitees have explicit scan windows, provider/account scope, and a manual revoke path before they connect a cloud or Snowflake account. |
+
+If any row is unknown, stop and keep the deployment internal.
+
 ### Caddy front door
 
 Example `Caddyfile`:

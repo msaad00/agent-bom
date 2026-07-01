@@ -80,6 +80,7 @@ from agent_bom.proxy_policy import (
 )
 from agent_bom.proxy_scanner import ScanConfig, redact_pii, scan_tool_call, scan_tool_response
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
+from agent_bom.security import sanitize_error, sanitize_text
 
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")
@@ -98,7 +99,12 @@ _visual_detector_lock = threading.Lock()
 
 def _sanitize_for_log(value: Any) -> str:
     """Return a single-line representation safe for plain-text logs."""
-    return str(value).replace("\r", "").replace("\n", "")
+    return sanitize_text(value).replace("\r", "").replace("\n", "")
+
+
+def _public_gateway_error(exc: Exception | str) -> str:
+    """Return a non-diagnostic gateway error safe for clients and audit sinks."""
+    return sanitize_error(exc, generic=True)
 
 
 def _public_gateway_block_reason(policy_source: str) -> str:
@@ -1008,11 +1014,11 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     return False
                 next_policy = _load_policy_file(settings.policy_path)
             except FileNotFoundError as exc:
-                policy_state["last_error"] = str(exc)
+                policy_state["last_error"] = sanitize_error(exc)
                 logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, _sanitize_for_log(exc))
                 return False
             except Exception as exc:  # noqa: BLE001
-                policy_state["last_error"] = str(exc)
+                policy_state["last_error"] = sanitize_error(exc)
                 logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, _sanitize_for_log(exc))
                 return False
 
@@ -1070,7 +1076,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     return False
                 next_policy = load_firewall_policy_file(settings.firewall_policy_path)
             except (FileNotFoundError, FirewallPolicyError) as exc:
-                firewall_state["last_error"] = str(exc)
+                firewall_state["last_error"] = sanitize_error(exc)
                 logger.warning(
                     "gateway firewall policy reload failed for %s: %s",
                     settings.firewall_policy_path,
@@ -1078,7 +1084,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 )
                 return False
             except Exception as exc:  # noqa: BLE001
-                firewall_state["last_error"] = str(exc)
+                firewall_state["last_error"] = sanitize_error(exc)
                 logger.warning(
                     "gateway firewall policy reload failed for %s: %s",
                     settings.firewall_policy_path,
@@ -1351,7 +1357,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         try:
             body = json.loads(raw_body)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=400, detail=f"body is not valid JSON: {exc}") from exc
+            raise HTTPException(status_code=400, detail=f"body is not valid JSON: {sanitize_error(exc)}") from exc
 
         # Parse the JSON-RPC envelope so check_policy sees the real message shape.
         if isinstance(body, dict) and "jsonrpc" in body:
@@ -2399,10 +2405,10 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "action": "gateway.upstream_error",
                         "upstream": upstream.name,
                         "tenant_id": tenant_id,
-                        "error": str(exc),
+                        "error": _public_gateway_error(exc),
                     }
                 )
-            raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
+            raise HTTPException(status_code=502, detail=f"upstream error: {_public_gateway_error(exc)}") from exc
 
         record_gateway_relay(upstream.name, "forwarded")
 

@@ -1014,7 +1014,7 @@ def test_relay_upstream_error_surfaces_as_502_and_is_audited() -> None:
     audit_events: list[dict[str, Any]] = []
 
     async def failing_caller(upstream, message, extra_headers):
-        raise RuntimeError("boom")
+        raise RuntimeError("boom token=SECRET123 /etc/agent-bom/upstream.yml")
 
     async def audit_sink(event):
         audit_events.append(event)
@@ -1031,8 +1031,17 @@ def test_relay_upstream_error_surfaces_as_502_and_is_audited() -> None:
         json=_json_rpc("tools/call", name="read_file", arguments={"path": "/tmp/x"}),
     )
     assert resp.status_code == 502
-    assert "boom" in resp.json()["detail"]
-    assert any(e["action"] == "gateway.upstream_error" for e in audit_events)
+    assert resp.json()["detail"] == "upstream error: An internal error occurred. Please contact support."
+    assert audit_events == [
+        {
+            "action": "gateway.upstream_error",
+            "upstream": "filesystem",
+            "tenant_id": "default",
+            "error": "An internal error occurred. Please contact support.",
+        }
+    ]
+    assert "SECRET123" not in json.dumps(audit_events)
+    assert "/etc/agent-bom" not in json.dumps(audit_events)
 
 
 def test_relay_upstream_timeout_surfaces_as_502_and_is_audited() -> None:

@@ -14,19 +14,30 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
-from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store
+from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store, _get_policy_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_fleet_agents_quota, tenant_quota_guard
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
+from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_command_args, sanitize_error, sanitize_security_warnings, sanitize_text, sanitize_url
 
 router = APIRouter()
+
+
+def _dep(permission: str) -> Any:
+    return cast(Any, require_authenticated_permission(permission))
+
+
+def _quarantine_policy_name(agent_name: str) -> str:
+    """Deterministic gateway-policy name for an agent's quarantine deny rule."""
+    return f"Quarantine deny — {agent_name}"
 
 
 def _state_value(agent) -> str:
@@ -487,6 +498,113 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
         lifecycle_state=new_state.value,
     )
     return {"agent_id": agent_id, "lifecycle_state": new_state.value}
+
+
+@router.post("/v1/fleet/{agent_id}/quarantine", tags=["fleet"], dependencies=[_dep("policy_write")])
+async def quarantine_fleet_agent(request: Request, agent_id: str):
+    """Quarantine an agent and fail closed with a gateway DENY policy for its identity.
+
+    One click performs two containment actions:
+
+    1. Moves the fleet agent to the ``QUARANTINED`` lifecycle state.
+    2. Creates (or re-enables) an ``enforce``-mode gateway policy bound to the
+       agent's identity whose single rule denies every tool call
+       (``block_tools=["*"]``).
+
+    The deny policy is scoped via ``bound_agents`` so only the quarantined
+    agent's traffic is blocked at the proxy / gateway relay — other agents are
+    unaffected. The operation is idempotent (a second call re-enables the same
+    policy rather than stacking duplicates) and both actions are audit-logged.
+    Requires the ``policy_write`` permission because it mints a gateway
+    enforcement policy.
+    """
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.fleet_store import FleetLifecycleState
+    from agent_bom.api.policy_store import GatewayPolicy, GatewayRule, PolicyMode
+
+    tenant_id = require_request_tenant_id(request)
+    actor = getattr(request.state, "api_key_name", "") or "system"
+    fleet_store = _get_fleet_store()
+    agent = fleet_store.get(agent_id, tenant_id=tenant_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Fleet agent not found")
+
+    # 1) Quarantine the fleet agent (fail-closed lifecycle state).
+    fleet_store.update_state(agent_id, FleetLifecycleState.QUARANTINED)
+    log_action(
+        "fleet.quarantine",
+        actor=actor,
+        resource=f"fleet/{agent_id}",
+        tenant_id=tenant_id,
+        agent_name=agent.name,
+        lifecycle_state=FleetLifecycleState.QUARANTINED.value,
+    )
+
+    # 2) Create or re-enable a gateway DENY policy bound to this agent's identity.
+    policy_store = _get_policy_store()
+    now = datetime.now(timezone.utc).isoformat()
+    policy_name = _quarantine_policy_name(agent.name)
+    deny_rule = GatewayRule(
+        id="quarantine-deny-all",
+        action="block",
+        block_tools=["*"],
+        description=f"Quarantine: deny all tool calls for {agent.name}",
+    )
+    existing = next(
+        (p for p in policy_store.list_policies(tenant_id=tenant_id) if p.name == policy_name),
+        None,
+    )
+    if existing is not None:
+        existing.mode = PolicyMode.ENFORCE
+        existing.rules = [deny_rule]
+        if agent.name not in (existing.bound_agents or []):
+            existing.bound_agents = [*(existing.bound_agents or []), agent.name]
+        existing.enabled = True
+        existing.updated_at = now
+        policy_store.put_policy(existing)
+        policy = existing
+        policy_action = "gateway.policy_updated"
+    else:
+        policy = GatewayPolicy(
+            policy_id=str(uuid.uuid4()),
+            name=policy_name,
+            description=f"Auto-generated on fleet quarantine of {agent.name}. Denies all tool calls for this agent's identity.",
+            mode=PolicyMode.ENFORCE,
+            rules=[deny_rule],
+            bound_agents=[agent.name],
+            enabled=True,
+            created_at=now,
+            updated_at=now,
+            tenant_id=tenant_id,
+        )
+        policy_store.put_policy(policy)
+        policy_action = "gateway.policy_created"
+
+    log_action(
+        policy_action,
+        actor=actor,
+        resource=f"gateway-policy/{policy.policy_id}",
+        tenant_id=tenant_id,
+        name=policy.name,
+        mode=policy.mode.value,
+        enabled=policy.enabled,
+        rule_count=len(policy.rules),
+        bound_agents=policy.bound_agents,
+        origin="fleet_quarantine",
+    )
+
+    return {
+        "agent_id": agent_id,
+        "lifecycle_state": FleetLifecycleState.QUARANTINED.value,
+        "gateway_policy": {
+            "policy_id": policy.policy_id,
+            "name": policy.name,
+            "mode": policy.mode.value,
+            "enabled": policy.enabled,
+            "bound_agents": policy.bound_agents,
+            "created": policy_action == "gateway.policy_created",
+        },
+    }
 
 
 @router.put("/v1/fleet/{agent_id}", tags=["fleet"])

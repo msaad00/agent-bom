@@ -1147,6 +1147,49 @@ def _verify_audit_entries(entries: list) -> tuple[int, int]:
     return verified, tampered
 
 
+def _enrich_controls_with_evidence(
+    controls: list[dict],
+    blast_by_tag: dict[str, list[dict]],
+    *,
+    completed_scan_count: int,
+) -> tuple[list[dict], int, dict[str, int]]:
+    """Pair each control with its blast-radius evidence and roll up bundle-status counts.
+
+    Shared by the single-framework report bundle and the multi-framework
+    evidence pack so both surfaces map controls to findings identically.
+    """
+    enriched_controls: list[dict] = []
+    total_findings = 0
+    for control in controls:
+        evidence = _evidence_for_control(control, blast_by_tag)
+        total_findings += len(evidence)
+        source_status = str(control.get("status", "unknown")).lower()
+        bundle_status, evidence_state = _bundle_control_status(
+            source_status,
+            evidence,
+            has_completed_scans=completed_scan_count > 0,
+        )
+        enriched_controls.append(
+            {
+                "control_id": control.get("control_id") or control.get("id"),
+                "control_name": control.get("name") or control.get("title"),
+                "status": bundle_status,
+                "source_status": source_status,
+                "evidence_state": evidence_state,
+                "finding_count": len(evidence),
+                "evidence": evidence,
+            }
+        )
+    counts = {
+        "pass": sum(1 for c in enriched_controls if c.get("status") == "pass"),
+        "warning": sum(1 for c in enriched_controls if c.get("status") == "warning"),
+        "fail": sum(1 for c in enriched_controls if c.get("status") == "fail"),
+        "incomplete": sum(1 for c in enriched_controls if c.get("status") == "incomplete"),
+        "not_evaluated": sum(1 for c in enriched_controls if c.get("status") == "not_evaluated"),
+    }
+    return enriched_controls, total_findings, counts
+
+
 @router.get("/v1/compliance/{framework}/report", tags=["compliance"], response_model=ComplianceReportBundle)
 async def export_compliance_report(
     request: Request,
@@ -1226,34 +1269,17 @@ async def export_compliance_report(
     audit_in_window = [e for e in audit_entries if audit_since_iso <= (e.timestamp or "") <= until_iso]
     verified, tampered = _verify_audit_entries(audit_in_window)
 
-    enriched_controls: list[dict] = []
-    total_findings = 0
     completed_scan_count = sum(1 for job in tenant_jobs if job.status == JobStatus.DONE and bool(job.result))
-    for control in controls:
-        evidence = _evidence_for_control(control, blast_by_tag)
-        total_findings += len(evidence)
-        source_status = str(control.get("status", "unknown")).lower()
-        bundle_status, evidence_state = _bundle_control_status(
-            source_status,
-            evidence,
-            has_completed_scans=completed_scan_count > 0,
-        )
-        enriched_controls.append(
-            {
-                "control_id": control.get("control_id") or control.get("id"),
-                "control_name": control.get("name") or control.get("title"),
-                "status": bundle_status,
-                "source_status": source_status,
-                "evidence_state": evidence_state,
-                "finding_count": len(evidence),
-                "evidence": evidence,
-            }
-        )
-    pass_count = sum(1 for c in enriched_controls if c.get("status") == "pass")
-    warn_count = sum(1 for c in enriched_controls if c.get("status") == "warning")
-    fail_count = sum(1 for c in enriched_controls if c.get("status") == "fail")
-    incomplete_count = sum(1 for c in enriched_controls if c.get("status") == "incomplete")
-    not_evaluated_count = sum(1 for c in enriched_controls if c.get("status") == "not_evaluated")
+    enriched_controls, total_findings, status_counts = _enrich_controls_with_evidence(
+        controls,
+        blast_by_tag,
+        completed_scan_count=completed_scan_count,
+    )
+    pass_count = status_counts["pass"]
+    warn_count = status_counts["warning"]
+    fail_count = status_counts["fail"]
+    incomplete_count = status_counts["incomplete"]
+    not_evaluated_count = status_counts["not_evaluated"]
 
     # Replay-protection envelope: every bundle carries a fresh 128-bit nonce
     # and an explicit expiry. The signature is computed over the canonical
@@ -1402,6 +1428,161 @@ async def export_compliance_report(
             **_signing_headers(payload),
         },
     )
+
+
+# ─── Multi-framework evidence pack ─────────────────────────────────────────
+
+
+@router.get("/v1/compliance/report/pack", tags=["compliance"])
+async def export_compliance_pack(
+    request: Request,
+    since: str | None = None,
+    until: str | None = None,
+) -> JSONResponse:
+    """Export one signed evidence pack covering every tag-mapped framework.
+
+    This is the auditor "grab everything" download: instead of pulling a
+    per-framework bundle from ``/v1/compliance/{framework}/report`` one at a
+    time, operators get a single tamper-evident JSON with each framework's
+    controls, mapped findings, and the shared audit-window integrity totals.
+
+    The pack shares the single-bundle security envelope: a fresh 128-bit
+    ``nonce`` and explicit ``expires_at`` are inside the signed body, the
+    signature (``X-Agent-Bom-Compliance-Report-Signature``) covers the
+    canonical UTF-8 body, and every framework's evidence + the audit events
+    are tenant-filtered so cross-tenant data never leaks into the pack.
+    """
+    now = datetime.now(timezone.utc)
+    since_dt = _parse_iso_or_default(since, now - timedelta(days=30))
+    until_dt = _parse_iso_or_default(until, now)
+    if since_dt >= until_dt:
+        raise HTTPException(status_code=400, detail="since must be earlier than until")
+
+    full = await get_compliance(request)
+    from agent_bom.compliance_coverage import framework_report_labels_by_slug
+
+    framework_map = framework_report_labels_by_slug()
+
+    tenant_id = _tenant_id(request)
+    actor = getattr(request.state, "api_key_name", "") or "system"
+
+    tenant_jobs = _tenant_jobs(request)
+    blast_by_tag = _index_blast_radii_by_tag(tenant_jobs)
+    completed_scan_count = sum(1 for job in tenant_jobs if job.status == JobStatus.DONE and bool(job.result))
+
+    from agent_bom.api.audit_log import get_audit_log, log_action
+
+    store = get_audit_log()
+    audit_since_iso = since_dt.isoformat()
+    audit_entries = store.list_entries(since=audit_since_iso, limit=10_000, tenant_id=tenant_id)
+    until_iso = until_dt.isoformat()
+    audit_in_window = [e for e in audit_entries if audit_since_iso <= (e.timestamp or "") <= until_iso]
+    verified, tampered = _verify_audit_entries(audit_in_window)
+
+    framework_bundles: list[dict[str, Any]] = []
+    total_findings = 0
+    total_controls = 0
+    combined_summary = {"pass": 0, "warning": 0, "fail": 0, "incomplete": 0, "not_evaluated": 0}
+    for slug, (framework_key, framework_label) in framework_map.items():
+        controls = full.get(framework_key, [])
+        enriched_controls, framework_findings, status_counts = _enrich_controls_with_evidence(
+            controls,
+            blast_by_tag,
+            completed_scan_count=completed_scan_count,
+        )
+        total_findings += framework_findings
+        total_controls += len(controls)
+        for key in combined_summary:
+            combined_summary[key] += status_counts[key]
+        framework_bundles.append(
+            {
+                "framework": slug,
+                "framework_key": framework_key,
+                "framework_label": framework_label,
+                "summary": {
+                    **status_counts,
+                    "score": round((status_counts["pass"] / len(controls)) * 100, 1) if controls else 0.0,
+                },
+                "control_count": len(controls),
+                "finding_count": framework_findings,
+                "controls": enriched_controls,
+            }
+        )
+
+    nonce = secrets.token_hex(16)
+    bundle_ttl_seconds = int(os.environ.get("AGENT_BOM_COMPLIANCE_BUNDLE_TTL_SECONDS", "86400"))
+    bundle_ttl_seconds = max(60, min(bundle_ttl_seconds, 30 * 86400))
+    expires_at = now + timedelta(seconds=bundle_ttl_seconds)
+
+    from agent_bom.api.compliance_signing import (
+        describe_current_signer,
+        sign_compliance_bundle,
+    )
+
+    signing_algorithm, signing_key_id, signing_public_key_pem = describe_current_signer()
+
+    body: dict[str, Any] = {
+        "schema_version": "v1",
+        "document_type": "compliance-evidence-pack",
+        "tenant_id": tenant_id,
+        "generated_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "nonce": nonce,
+        "scope": {
+            "since": since_dt.isoformat(),
+            "until": until_dt.isoformat(),
+            "framework_count": len(framework_bundles),
+            "control_count": total_controls,
+            "finding_count": total_findings,
+            "audit_event_count": len(audit_in_window),
+            "completed_scan_count": completed_scan_count,
+        },
+        "summary": {
+            **combined_summary,
+            "score": round((combined_summary["pass"] / total_controls) * 100, 1) if total_controls else 0.0,
+        },
+        "frameworks": framework_bundles,
+        "audit_events": [entry.to_dict() for entry in audit_in_window],
+        "audit_log_integrity": {
+            "verified": verified,
+            "tampered": tampered,
+            "checked": len(audit_in_window),
+        },
+        "signature_algorithm": signing_algorithm,
+    }
+    if signing_key_id is not None:
+        body["signature_key_id"] = signing_key_id
+    if signing_public_key_pem is not None:
+        body["signature_public_key_pem"] = signing_public_key_pem
+
+    log_action(
+        "compliance.pack_exported",
+        actor=actor,
+        resource="compliance/pack",
+        tenant_id=tenant_id,
+        since=since_dt.isoformat(),
+        until=until_dt.isoformat(),
+        framework_count=len(framework_bundles),
+        control_count=total_controls,
+        finding_count=total_findings,
+        audit_event_count=len(audit_in_window),
+        nonce=nonce,
+        expires_at=expires_at.isoformat(),
+    )
+
+    from agent_bom.api.metrics import record_compliance_export
+
+    payload = json.dumps(body, sort_keys=True).encode()
+    record_compliance_export(signing_algorithm, "pack", len(payload))
+    sig_result = sign_compliance_bundle(payload)
+    headers = {
+        "Content-Disposition": 'attachment; filename="agent-bom-compliance-pack.json"',
+        "X-Agent-Bom-Compliance-Report-Signature": sig_result.signature_hex,
+        "X-Agent-Bom-Compliance-Signature-Algorithm": sig_result.algorithm,
+    }
+    if sig_result.key_id is not None:
+        headers["X-Agent-Bom-Compliance-Signature-KeyId"] = sig_result.key_id
+    return JSONResponse(content=body, headers=headers)
 
 
 # ─── Posture Scorecard ─────────────────────────────────────────────────────

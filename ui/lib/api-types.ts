@@ -1839,6 +1839,19 @@ export interface FleetSyncResult {
   updated: number;
 }
 
+export interface FleetQuarantineResult {
+  agent_id: string;
+  lifecycle_state: string;
+  gateway_policy: {
+    policy_id: string;
+    name: string;
+    mode: string;
+    enabled: boolean;
+    bound_agents: string[];
+    created: boolean;
+  };
+}
+
 export interface ScanSchedule {
   schedule_id: string;
   name: string;

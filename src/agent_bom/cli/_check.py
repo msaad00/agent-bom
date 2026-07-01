@@ -634,8 +634,13 @@ def check(
                 output_format=output_format,
             )
         else:
-            console.print(f"[yellow]⚠ No version specified for {name} — skipping OSV lookup.[/yellow]")
-            console.print("  Provide a version: agent-bom check name@version --ecosystem ecosystem")
+            # Route the skip notice to stderr with a loud WARNING banner so it
+            # is not mistaken for a clean result. Without a version we cannot
+            # query OSV, so NOTHING was actually checked — that must be
+            # unmistakable even when stdout is piped or scanned by a wrapper.
+            warn_console = Console(stderr=True, no_color=no_color)
+            warn_console.print(f"[bold yellow]⚠ WARNING: no version given for '{name}' — NOT scanned (OSV lookup skipped).[/bold yellow]")
+            warn_console.print(f"  This is not a clean result. Re-run with a version: agent-bom check {name}@<version>")
         sys.exit(0)
 
     ecosystems = _resolve_check_ecosystems(name, version, ecosystem, detected_eco)

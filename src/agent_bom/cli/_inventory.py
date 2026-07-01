@@ -29,6 +29,7 @@ from agent_bom.parsers import extract_packages
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results")
 @click.option("-f", "--format", "output_format", type=click.Choice(["console", "json"]), default="console", show_default=True)
 @click.option("--json", "as_json", is_flag=True, help="Deprecated alias for `--format json`.")
+@click.option("--demo", is_flag=True, help="Show the bundled demo inventory (matches `agent-bom agents --demo`).")
 @click.pass_context
 def inventory(
     ctx: click.Context,
@@ -39,6 +40,7 @@ def inventory(
     quiet: bool,
     output_format: str,
     as_json: bool,
+    demo: bool,
 ):
     """Show discovered agents and MCP servers (no vulnerability scan)."""
     con = _make_console(quiet=quiet)
@@ -54,7 +56,12 @@ def inventory(
     discovery_stderr = redirect_stderr(StringIO()) if json_output else nullcontext()
     inventory_source: Optional[str] = None
     with discovery_stdout, discovery_stderr:
-        if config:
+        if demo:
+            from agent_bom.demo import DEMO_INVENTORY
+
+            inventory_source = "agent-bom --demo"
+            agents = _build_agents_from_inventory(DEMO_INVENTORY, inventory_source)
+        elif config:
             config_path = Path(config)
             inventory_source = str(config_path)
             try:

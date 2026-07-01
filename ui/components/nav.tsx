@@ -19,7 +19,6 @@ import {
   Eye,
   Clock,
   Radio,
-  BarChart3,
   FileText,
   ChevronDown,
   ChevronRight,
@@ -35,7 +34,7 @@ import {
   DollarSign,
   Fingerprint,
   Radar,
-  Compass,
+  Boxes,
   Cloud,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -82,11 +81,11 @@ const NAV_GROUPS: NavGroup[] = [
     icon: LayoutDashboard,
     accent: "#58a6ff", // blue — discovery layer
     links: [
-      { href: "/overview", label: "Overview", icon: Compass },
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/agents", label: "Agents", icon: Server },
       { href: "/manifest", label: "Agent BOM", icon: Waypoints },
       { href: "/fleet", label: "Fleet", icon: Users },
+      { href: "/registry", label: "Registry", icon: Boxes },
     ],
   },
   {
@@ -104,15 +103,13 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Analyze",
-    description: "Trace blast radius and graph relationships",
+    description: "One security graph with attack-path, lineage, mesh, and context lenses",
     icon: GitBranch,
     accent: "#d29922", // amber — analysis layer
     links: [
+      // Single graph surface. Lineage / mesh / context are lenses reached from the
+      // in-page lens switcher, not separate nav links (see graph-lens-switcher).
       { href: "/security-graph", label: "Security Graph", icon: Network },
-      { href: "/graph", label: "Lineage Graph", icon: GitBranch },
-      { href: "/mesh", label: "Agent Mesh", icon: Network },
-      { href: "/context", label: "Context Map", icon: Waypoints },
-      { href: "/insights", label: "Insights", icon: BarChart3 },
     ],
   },
   {

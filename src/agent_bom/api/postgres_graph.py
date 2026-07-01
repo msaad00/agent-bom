@@ -350,7 +350,7 @@ class PostgresGraphStore:
                 ON graph_node_search(tenant_id, scan_id, severity)
                 """
             )
-            with bypass_tenant_rls():
+            with bypass_tenant_rls(audit=False):
                 _apply_tenant_session(conn)
                 _backfill_empty_tenant_ids(conn)
             _apply_tenant_session(conn)

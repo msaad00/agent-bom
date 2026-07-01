@@ -70,13 +70,14 @@ def _audit_rls_bypass_activation(*, caller: str) -> None:
 
 
 @contextmanager
-def bypass_tenant_rls() -> Iterator[None]:
+def bypass_tenant_rls(*, audit: bool = True) -> Iterator[None]:
     """Temporarily disable Postgres tenant RLS for trusted internal tasks."""
     stack = inspect.stack(context=0)
     frame = next((candidate for candidate in stack[1:] if os.path.basename(candidate.filename) != "contextlib.py"), None)
     caller = f"{os.path.basename(frame.filename)}:{frame.lineno}" if frame else "unknown"
     logger.warning("Postgres tenant RLS bypass activated caller=%s", caller)
-    _audit_rls_bypass_activation(caller=caller)
+    if audit:
+        _audit_rls_bypass_activation(caller=caller)
     token = _bypass_tenant_rls.set(True)
     try:
         yield

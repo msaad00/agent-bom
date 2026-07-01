@@ -1,0 +1,129 @@
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import VulnsPage from "@/app/vulns/page";
+
+const { apiMock } = vi.hoisted(() => ({
+  apiMock: {
+    listJobs: vi.fn(),
+    getScan: vi.fn(),
+    listFindingTriage: vi.fn(),
+    createException: vi.fn(),
+    exportFindingTriageVex: vi.fn(),
+  },
+}));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
+}));
+
+vi.mock("@/lib/api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+  return {
+    ...actual,
+    api: apiMock,
+  };
+});
+
+function scanJob() {
+  return {
+    job_id: "scan-1",
+    status: "done",
+    created_at: "2026-07-01T00:00:00Z",
+    request: {},
+    result: {
+      agents: [
+        {
+          name: "developer-copilot",
+          mcp_servers: [
+            {
+              name: "github-mcp",
+              packages: [
+                {
+                  name: "better-sqlite3",
+                  vulnerabilities: [
+                    {
+                      id: "CVE-2026-1234",
+                      severity: "critical",
+                      summary: "Remote command execution in package binding",
+                      description: "Remote command execution in package binding",
+                      cvss_score: 9.8,
+                      epss_score: 0.71,
+                      fixed_version: "11.7.0",
+                      references: ["https://osv.dev/vulnerability/CVE-2026-1234"],
+                      advisory_sources: ["OSV"],
+                      aliases: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      blast_radius: [
+        {
+          vulnerability_id: "CVE-2026-1234",
+          cvss_score: 9.8,
+          epss_score: 0.71,
+          fixed_version: "11.7.0",
+          affected_servers: ["github-mcp"],
+          exposed_credentials: ["GITHUB_TOKEN"],
+          reachable_tools: ["repo_write"],
+          graph_reachable: true,
+          graph_min_hop_distance: 2,
+          attack_vector_summary: "Agent reaches vulnerable MCP package.",
+        },
+      ],
+      remediation_plan: [],
+    },
+  };
+}
+
+describe("VulnsPage", () => {
+  beforeEach(() => {
+    apiMock.listJobs.mockReset();
+    apiMock.getScan.mockReset();
+    apiMock.listFindingTriage.mockReset();
+    apiMock.createException.mockReset();
+    apiMock.exportFindingTriageVex.mockReset();
+
+    apiMock.listJobs.mockResolvedValue({
+      jobs: [
+        {
+          job_id: "scan-1",
+          status: "done",
+          created_at: "2026-07-01T00:00:00Z",
+        },
+      ],
+    });
+    apiMock.getScan.mockResolvedValue(scanJob());
+    apiMock.listFindingTriage.mockResolvedValue({ triage: [] });
+  });
+
+  it("keeps findings as a compact queue and opens evidence in a drawer", async () => {
+    render(<VulnsPage />);
+
+    expect(await screen.findByText("Findings queue")).toBeInTheDocument();
+    expect(screen.getByText("25 per page")).toBeInTheDocument();
+    expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open details for CVE-2026-1234" }));
+
+    const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-1234" });
+    expect(within(drawer).getByText("Evidence drawer")).toBeInTheDocument();
+    expect(within(drawer).getByText("Agent reaches vulnerable MCP package.")).toBeInTheDocument();
+    expect(within(drawer).getByText("GITHUB_TOKEN")).toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close finding drawer" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Finding details for CVE-2026-1234" })).not.toBeInTheDocument();
+    });
+  });
+});

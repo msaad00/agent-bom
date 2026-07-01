@@ -132,7 +132,29 @@ def test_api_cmd_allows_non_loopback_bind_with_api_key():
     assert "Bind" in result.output
 
 
-def test_api_cmd_loopback_no_auth_warns_local_mode():
+def test_api_cmd_loopback_no_auth_reports_fail_closed(monkeypatch):
+    """Bare `api` on loopback fails closed; the banner must say so, not claim no-auth."""
+    for name in ("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "AGENT_BOM_API_KEYS", "AGENT_BOM_OIDC_ISSUER", "AGENT_BOM_SCIM_BEARER_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    runner = CliRunner()
+
+    with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
+        result = runner.invoke(api_cmd, [])
+
+    assert result.exit_code == 0
+    mock_configure.assert_called_once()
+    mock_run.assert_called_once()
+    assert "local unauthenticated mode" not in result.output
+    assert "fail closed" in result.output
+    assert "--allow-insecure-no-auth" in result.output
+    assert "In-memory (ephemeral)" in result.output
+
+
+def test_api_cmd_loopback_env_opt_out_reports_unauthenticated(monkeypatch):
+    """With the env opt-out set, bare `api` on loopback truly runs unauthenticated."""
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    for name in ("AGENT_BOM_API_KEYS", "AGENT_BOM_OIDC_ISSUER", "AGENT_BOM_SCIM_BEARER_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
     runner = CliRunner()
 
     with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
@@ -142,7 +164,6 @@ def test_api_cmd_loopback_no_auth_warns_local_mode():
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "local unauthenticated mode" in result.output
-    assert "In-memory (ephemeral)" in result.output
 
 
 def test_api_cmd_enables_clickhouse_analytics():
@@ -242,7 +263,29 @@ def test_serve_cmd_configures_api_auth():
     assert "Storage" in result.output
 
 
-def test_serve_cmd_loopback_no_auth_warns_local_mode():
+def test_serve_cmd_loopback_no_auth_reports_fail_closed(monkeypatch):
+    """Bare `serve` on loopback fails closed; the banner must say so, not claim no-auth."""
+    for name in ("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "AGENT_BOM_API_KEYS", "AGENT_BOM_OIDC_ISSUER", "AGENT_BOM_SCIM_BEARER_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    runner = CliRunner()
+
+    with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
+        result = runner.invoke(serve_cmd, [])
+
+    assert result.exit_code == 0
+    mock_configure.assert_called_once()
+    mock_run.assert_called_once()
+    assert "local unauthenticated mode" not in result.output
+    assert "fail closed" in result.output
+    assert "--allow-insecure-no-auth" in result.output
+    assert "In-memory (ephemeral)" in result.output
+
+
+def test_serve_cmd_loopback_env_opt_out_reports_unauthenticated(monkeypatch):
+    """With the env opt-out set, bare `serve` on loopback truly runs unauthenticated."""
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    for name in ("AGENT_BOM_API_KEYS", "AGENT_BOM_OIDC_ISSUER", "AGENT_BOM_SCIM_BEARER_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
     runner = CliRunner()
 
     with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
@@ -252,7 +295,6 @@ def test_serve_cmd_loopback_no_auth_warns_local_mode():
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "local unauthenticated mode" in result.output
-    assert "In-memory (ephemeral)" in result.output
 
 
 def test_serve_cmd_enables_clickhouse_analytics():

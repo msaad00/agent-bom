@@ -189,3 +189,25 @@ def attach_resources_and_prompts(
             "Do not modify files, open pull requests, or run package managers. Include fixed versions when known, blast radius, "
             "risk reduction, validation commands, rollback notes, and the evidence artifact to attach to a change request."
         )
+
+    @mcp.prompt(name="cloud-connection-review", description="Review a read-only cloud or Snowflake connection before the first scan")
+    def cloud_connection_review_prompt(provider: str = "aws") -> str:
+        return (
+            "Review the agent-bom connection setup for the requested provider as a read-only evidence workflow. "
+            f"Provider: {_safe_prompt_arg(provider)}. "
+            "Verify that credentials are least-privilege, tenant-scoped, non-secret values are the only values shown, "
+            "the first scan will run with explicit provider/account scope, and the operator knows where to inspect "
+            "jobs, findings, graph evidence, CIS posture, and compliance output. Do not request passwords, PATs, "
+            "or raw secret values."
+        )
+
+    @mcp.prompt(name="gateway-fleet-live-demo", description="Run the gateway and fleet enforcement story as a guided demo")
+    def gateway_fleet_live_demo_prompt() -> str:
+        return (
+            "Guide a live agent-bom gateway and fleet demo using only safe, reversible actions. "
+            "Show discovered agents and MCP servers, inspect gateway policy and recent audit events, "
+            "explain the allow/warn/block decision path for one tool call, demonstrate how a high-risk agent "
+            "would be quarantined or denied by policy, and list the exact evidence artifacts to share afterward. "
+            "Do not mutate production policy unless an authenticated operator token, admin role, write scope, "
+            "and audit reason are already present."
+        )

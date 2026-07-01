@@ -238,6 +238,14 @@ Built-in prompts for common workflows:
 - `quick-audit` — Full agent + MCP server vulnerability scan
 - `pre-install-check` — Check a package before installing
 - `compliance-report` — Multi-framework compliance assessment
+- `fleet-audit` — Endpoint or cloud inventory audit with graph-ready findings
+- `incident-triage` — CVE or suspicious MCP finding triage using blast radius and runtime evidence
+- `remediation-plan` — Human-reviewed remediation plan without modifying files
+- `cloud-connection-review` — Read-only cloud or Snowflake connection review before first scan
+- `gateway-fleet-live-demo` — Gateway and fleet enforcement walkthrough for a live demo
+
+See [MCP workflow bundles](MCP_WORKFLOWS.md) for the tool order, evidence
+outputs, and demo script behind each workflow.
 - `fleet-audit` — Inventory and fleet scan playbook
 - `incident-triage` — Finding triage with blast radius and runtime context
 - `remediation-plan` — Human-reviewed remediation plan without file writes

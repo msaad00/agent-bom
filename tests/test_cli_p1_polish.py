@@ -98,3 +98,48 @@ def test_mcp_inventory_json_alias_emits_deprecation(tmp_path, monkeypatch) -> No
     result = CliRunner().invoke(main, ["mcp", "inventory", "--json"])
     assert result.exit_code == 0, result.output
     assert "deprecated" in result.output.lower()
+
+
+def test_mcp_inventory_demo_shows_bundled_inventory() -> None:
+    """`mcp inventory --demo` is a working alias for the bundled demo inventory.
+
+    Previously this errored with "No such option '--demo'"; now it loads the
+    same DEMO_INVENTORY as `agent-bom agents --demo`.
+    """
+    result = CliRunner().invoke(main, ["mcp", "inventory", "--demo", "-f", "json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    names = {a["name"] for a in payload.get("agents", [])}
+    assert {"cursor", "claude-desktop"} <= names
+
+
+def test_check_no_version_warns_loudly_on_stderr() -> None:
+    """A version-less `check` must surface a loud NOT-scanned warning, not a
+    silent skip on stdout that reads like a clean result."""
+    result = CliRunner().invoke(main, ["check", "requests"])
+    assert result.exit_code == 0
+    # Click 8.2+ captures stderr separately; the warning must be there.
+    assert result.stdout == ""
+    assert "WARNING" in result.stderr
+    assert "NOT scanned" in result.stderr
+
+
+def test_resolve_output_path_accepts_short_form_extensions(capsys) -> None:
+    """`--format cyclonedx -o x.cdx` (and `.spdx`) auto-completes to the
+    canonical multi-part suffix instead of hard-erroring."""
+    from agent_bom.cli.agents._output import _resolve_output_path
+
+    assert _resolve_output_path("out.cdx", "cyclonedx") == "out.cdx.json"
+    assert _resolve_output_path("out.spdx", "spdx") == "out.spdx.json"
+    assert _resolve_output_path("out.spdx2", "spdx2") == "out.spdx2.json"
+
+
+def test_resolve_output_path_still_rejects_unrelated_extension() -> None:
+    """The short-form alias must not mask a genuinely wrong extension."""
+    import pytest
+
+    from agent_bom.cli.agents._output import _resolve_output_path
+
+    with pytest.raises(SystemExit) as exc:
+        _resolve_output_path("out.png", "cyclonedx")
+    assert exc.value.code == 2

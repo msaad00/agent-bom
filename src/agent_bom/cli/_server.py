@@ -217,6 +217,53 @@ def _auth_summary(
     return "local unauthenticated mode (loopback only); add --api-key or OIDC before exposing remotely"
 
 
+def _env_truthy(name: str) -> bool:
+    """Return True when environment variable ``name`` holds a truthy flag."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_allow_unauthenticated(allow_insecure_no_auth: bool) -> bool:
+    """Resolve the effective unauthenticated-API posture the server will apply.
+
+    Mirrors ``configure_api``: the ``--allow-insecure-no-auth`` flag OR the
+    ``AGENT_BOM_ALLOW_UNAUTHENTICATED_API`` env var enables it. Non-loopback
+    binds are already gated fail-closed by ``_enforce_auth_defaults`` before
+    this runs, so the env var can only take effect on loopback.
+    """
+    return bool(allow_insecure_no_auth) or _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API")
+
+
+def _api_auth_summary(
+    *,
+    host: str,
+    api_key: str | None,
+    oidc_enabled: bool,
+    allow_unauthenticated: bool,
+) -> str:
+    """Return a startup banner that matches the server's real auth posture.
+
+    Derived from the same inputs ``configure_api`` uses so the banner can never
+    claim unauthenticated access while the API actually fails closed (or vice
+    versa). ``allow_unauthenticated`` is the resolved flag-OR-env value.
+    """
+    if api_key or os.environ.get("AGENT_BOM_API_KEYS", "").strip():
+        return "API key required (Bearer / X-API-Key)"
+    if oidc_enabled:
+        return "OIDC bearer token required"
+    if _scim_bearer_enabled():
+        return "SCIM bearer token required"
+    if _env_truthy("AGENT_BOM_TRUST_PROXY_AUTH"):
+        return "Reverse-proxy auth (trusted proxy headers)"
+    if allow_unauthenticated:
+        if _is_loopback_host(host):
+            return "local unauthenticated mode (loopback only); add --api-key or OIDC before exposing remotely"
+        return "Disabled by explicit override (--allow-insecure-no-auth)"
+    return (
+        "auth required but no key configured; requests fail closed (401). "
+        "Pass --allow-insecure-no-auth for a local demo, or set --api-key / AGENT_BOM_API_KEY."
+    )
+
+
 def _storage_summary(*, persist: str | None) -> str:
     """Describe the active API job storage mode."""
     pg_url = os.environ.get("AGENT_BOM_POSTGRES_URL")
@@ -399,7 +446,15 @@ def serve_cmd(
             "Dashboard",
             f"http://{host}:{port}" if (_ui_dist / "index.html").exists() else "Not bundled (run: make build-ui)",
         ),
-        ("Auth", _auth_summary(host=host, api_key=api_key, allow_insecure_no_auth=allow_insecure_no_auth, oidc_enabled=_oidc_enabled())),
+        (
+            "Auth",
+            _api_auth_summary(
+                host=host,
+                api_key=api_key,
+                oidc_enabled=_oidc_enabled(),
+                allow_unauthenticated=_resolve_allow_unauthenticated(allow_insecure_no_auth),
+            ),
+        ),
         ("TLS", "app-native mTLS" if tls_kwargs.get("ssl_ca_certs") else ("server TLS" if tls_kwargs else "delegated/none")),
         ("Storage", _storage_summary(persist=persist)),
         *_analytics_summary_rows(
@@ -623,7 +678,15 @@ def api_cmd(
         ("Version", _ver),
         ("Bind", f"http://{host}:{port}"),
         ("Docs", f"http://{host}:{port}/docs"),
-        ("Auth", _auth_summary(host=host, api_key=api_key, allow_insecure_no_auth=allow_insecure_no_auth, oidc_enabled=_oidc_enabled())),
+        (
+            "Auth",
+            _api_auth_summary(
+                host=host,
+                api_key=api_key,
+                oidc_enabled=_oidc_enabled(),
+                allow_unauthenticated=_resolve_allow_unauthenticated(allow_insecure_no_auth),
+            ),
+        ),
         ("TLS", "app-native mTLS" if tls_kwargs.get("ssl_ca_certs") else ("server TLS" if tls_kwargs else "delegated/none")),
         ("Storage", _storage_summary(persist=persist)),
         *_analytics_summary_rows(

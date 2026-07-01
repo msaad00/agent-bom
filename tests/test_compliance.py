@@ -59,14 +59,19 @@ def _add_done_job(
 
 
 def test_compliance_no_scans():
-    """With no completed scans, all controls pass and score is 100%."""
+    """With no completed scans, the endpoint reports no_data — not a clean pass.
+
+    An empty tenant has no evidence to evaluate, so reporting
+    overall_status="pass"/score=100 would read as "fully compliant" when in
+    fact nothing was measured. Mirror the Overview idle pattern instead.
+    """
     _clear_jobs()
     client = TestClient(app)
     resp = client.get("/v1/compliance", headers=_AUTH_HEADERS)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["overall_score"] == 100.0
-    assert data["overall_status"] == "pass"
+    assert data["overall_score"] == 0.0
+    assert data["overall_status"] == "no_data"
     assert data["scan_count"] == 0
     assert data["latest_scan"] is None
     assert data["aisvs_benchmark"]["framework"] == "aisvs"

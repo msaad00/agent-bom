@@ -9,6 +9,7 @@ import {
   type AuthPolicyResponse,
   formatDate,
 } from "@/lib/api";
+import { PaginationBar } from "@/components/pagination-bar";
 import {
   FileText,
   RefreshCw,
@@ -17,8 +18,6 @@ import {
   ShieldCheck,
   ShieldAlert,
   Search,
-  ChevronLeft,
-  ChevronRight,
   CheckCircle2,
   Filter,
 } from "lucide-react";
@@ -342,31 +341,18 @@ export default function AuditLogPage() {
             </div>
           )}
 
-          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-xs text-zinc-500">
-                Page {page + 1} of {totalPages} ({total.toLocaleString()} entries)
-              </span>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-xs text-zinc-300 transition-colors"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  Prev
-                </button>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-xs text-zinc-300 transition-colors"
-                >
-                  Next
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
+            <PaginationBar
+              page={page + 1}
+              totalPages={totalPages}
+              totalItems={total}
+              itemLabel="entries"
+              onPrevious={() => setPage((p) => Math.max(0, p - 1))}
+              onNext={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              previousDisabled={page === 0}
+              nextDisabled={page >= totalPages - 1}
+              className="pt-2"
+            />
           )}
         </>
       )}

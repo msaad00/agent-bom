@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PaginationBar } from "@/components/pagination-bar";
 import {
   api,
   type FleetAgent,
@@ -560,30 +561,15 @@ export default function FleetPage() {
       )}
 
       {!loading && fleetTotal > FLEET_PAGE_SIZE && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
-          <div className="text-xs text-zinc-500">
-            Page <span className="font-mono text-zinc-300">{pageNumber}</span> of{" "}
-            <span className="font-mono text-zinc-300">{totalPages}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setFleetOffset((current) => Math.max(0, current - FLEET_PAGE_SIZE))}
-              disabled={fleetOffset === 0}
-              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() => setFleetOffset((current) => current + FLEET_PAGE_SIZE)}
-              disabled={fleetOffset + agents.length >= fleetTotal}
-              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        <PaginationBar
+          page={pageNumber}
+          totalPages={totalPages}
+          onPrevious={() => setFleetOffset((current) => Math.max(0, current - FLEET_PAGE_SIZE))}
+          onNext={() => setFleetOffset((current) => current + FLEET_PAGE_SIZE)}
+          previousDisabled={fleetOffset === 0}
+          nextDisabled={fleetOffset + agents.length >= fleetTotal}
+          className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3"
+        />
       )}
     </div>
   );

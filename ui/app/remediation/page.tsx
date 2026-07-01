@@ -7,13 +7,12 @@ import {
   severityColor,
   severityDot,
 } from "@/lib/api";
+import { PaginationBar } from "@/components/pagination-bar";
 import {
   Wrench,
   Download,
   ChevronDown,
   ChevronUp,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   Ticket,
 } from "lucide-react";
@@ -837,30 +836,13 @@ function RemediationPage() {
             )}
           </div>
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-zinc-600">
-              Page {page} of {totalPages} ({displayed.length} total)
-            </p>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronLeft className="w-3 h-3" />
-                Prev
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
-                <ChevronRight className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
+          <PaginationBar
+            page={page}
+            totalPages={totalPages}
+            totalItems={displayed.length}
+            onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+            onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+          />
         </>
       )}
 

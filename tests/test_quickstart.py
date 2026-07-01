@@ -92,6 +92,9 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     # handoff printed
     assert "Onboarding complete" in result.output
     assert "/security-graph" in result.output
+    # cockpit handoff must pass a flag that actually lets /v1/overview load on loopback
+    assert "agent-bom serve --host 127.0.0.1 --port 8422 --allow-insecure-no-auth" in result.output
+    assert "--api-key <key>" in result.output
 
 
 def test_quickstart_run_no_gateway_policy_skips_file(tmp_path, _fake_scan):

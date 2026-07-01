@@ -718,8 +718,14 @@ def configure_api(
     auth_configured = bool(
         api_key or env_key_store_configured or runtime_key_store_configured or oidc_enabled or trusted_proxy_enabled or scim_enabled
     )
-    if allow_unauthenticated is None:
-        allow_unauthenticated = _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API")
+    # Honor AGENT_BOM_ALLOW_UNAUTHENTICATED_API on every (re)configure, not just
+    # when the caller omits the argument. CLI wrappers (`serve` / `api`) pass the
+    # ``--allow-insecure-no-auth`` flag as an explicit bool, so a ``None`` check
+    # alone would silently drop the env-var opt-out and leave the loopback banner
+    # claiming unauthenticated access while the API actually fails closed (401).
+    # Non-loopback binds stay fail-closed because the CLI auth gate refuses them
+    # before configure_api runs unless real auth or the explicit flag is present.
+    allow_unauthenticated = bool(allow_unauthenticated) or _env_truthy("AGENT_BOM_ALLOW_UNAUTHENTICATED_API")
     auth_required = auth_configured or not allow_unauthenticated
     configure_auth_runtime(
         api_key_configured=bool(api_key or env_key_store_configured or runtime_key_store_configured),

@@ -9,6 +9,7 @@
 #   - uses SQLite persistence in a named Docker volume
 #   - allows no-auth browser access only because both API/UI ports are
 #     loopback-bound for fast evaluation on one workstation
+#   - scopes CORS to local UI origins; do not add public origins here
 #
 # For a multi-developer dev stack, see docker-compose.fullstack.yml.
 # For a production-shaped deployment, see docker-compose.platform.yml.
@@ -27,7 +28,7 @@ services:
       --host 0.0.0.0
       --port 8422
       --persist /var/lib/agent-bom/jobs.db
-      --cors-allow-all
+      --cors-origins http://localhost:3000,http://127.0.0.1:3000
       --allow-insecure-no-auth
     environment:
       AGENT_BOM_DB_PATH: /var/lib/agent-bom/vulns.db

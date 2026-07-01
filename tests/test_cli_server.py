@@ -60,6 +60,99 @@ def test_serve_cmd_invalid_port_is_usage_error():
     assert "1024<=x<=65535" in result.output
 
 
+_AUTH_ENV_NAMES = (
+    "AGENT_BOM_API_KEY",
+    "AGENT_BOM_API_KEYS",
+    "AGENT_BOM_OIDC_ISSUER",
+    "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+    "AGENT_BOM_TRUST_PROXY_AUTH",
+    "AGENT_BOM_SCIM_BEARER_TOKEN",
+    "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
+    "AGENT_BOM_NO_AUTO_DEV_KEY",
+)
+
+
+def test_serve_cmd_loopback_auto_generates_dev_key(monkeypatch):
+    """Bare loopback `serve` mints + prints an ephemeral dev key and seeds it into the API."""
+    for name in _AUTH_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    runner = CliRunner()
+    with (
+        patch("agent_bom.api.server.configure_api") as mock_configure,
+        patch("agent_bom.api.server.set_dev_api_key") as mock_set_dev,
+        patch("uvicorn.run") as mock_run,
+    ):
+        result = runner.invoke(serve_cmd, [])
+
+    assert result.exit_code == 0
+    assert mock_run.called
+    # Prominent, honest banner line with the actual key.
+    assert "Dev API key (loopback only): abk_" in result.output
+    assert "uses this automatically" in result.output
+    assert "AGENT_BOM_NO_AUTO_DEV_KEY=1 to disable" in result.output
+    # The same key is both seeded into the API and registered for the UI.
+    configured_key = mock_configure.call_args.kwargs["api_key"]
+    assert configured_key.startswith("abk_")
+    mock_set_dev.assert_called_once_with(configured_key)
+
+
+def test_serve_cmd_no_auto_dev_key_env_fails_closed(monkeypatch):
+    """AGENT_BOM_NO_AUTO_DEV_KEY=1 keeps the current fail-closed loopback behaviour."""
+    for name in _AUTH_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AGENT_BOM_NO_AUTO_DEV_KEY", "1")
+    runner = CliRunner()
+    with (
+        patch("agent_bom.api.server.configure_api") as mock_configure,
+        patch("agent_bom.api.server.set_dev_api_key") as mock_set_dev,
+        patch("uvicorn.run") as mock_run,
+    ):
+        result = runner.invoke(serve_cmd, [])
+
+    assert result.exit_code == 0
+    assert mock_run.called
+    assert "Dev API key" not in result.output
+    assert mock_configure.call_args.kwargs["api_key"] is None
+    mock_set_dev.assert_called_once_with(None)
+    assert "fail closed" in result.output.lower()
+
+
+def test_serve_cmd_explicit_api_key_skips_dev_key(monkeypatch):
+    """An explicit --api-key suppresses the auto dev key and is used as-is."""
+    for name in _AUTH_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    runner = CliRunner()
+    with (
+        patch("agent_bom.api.server.configure_api") as mock_configure,
+        patch("agent_bom.api.server.set_dev_api_key") as mock_set_dev,
+        patch("uvicorn.run"),
+    ):
+        result = runner.invoke(serve_cmd, ["--api-key", "operator-key"])
+
+    assert result.exit_code == 0
+    assert "Dev API key" not in result.output
+    assert mock_configure.call_args.kwargs["api_key"] == "operator-key"
+    mock_set_dev.assert_called_once_with(None)
+
+
+def test_serve_cmd_non_loopback_never_auto_generates_dev_key(monkeypatch):
+    """A non-loopback bind (with real auth) must never mint a dev key."""
+    for name in _AUTH_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    runner = CliRunner()
+    with (
+        patch("agent_bom.api.server.configure_api") as mock_configure,
+        patch("agent_bom.api.server.set_dev_api_key") as mock_set_dev,
+        patch("uvicorn.run"),
+    ):
+        result = runner.invoke(serve_cmd, ["--host", "0.0.0.0", "--api-key", "operator-key"])
+
+    assert result.exit_code == 0
+    assert "Dev API key" not in result.output
+    assert mock_configure.call_args.kwargs["api_key"] == "operator-key"
+    mock_set_dev.assert_called_once_with(None)
+
+
 # ---------------------------------------------------------------------------
 # api_cmd
 # ---------------------------------------------------------------------------
@@ -263,9 +356,19 @@ def test_serve_cmd_configures_api_auth():
     assert "Storage" in result.output
 
 
-def test_serve_cmd_loopback_no_auth_reports_fail_closed(monkeypatch):
-    """Bare `serve` on loopback fails closed; the banner must say so, not claim no-auth."""
-    for name in ("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "AGENT_BOM_API_KEYS", "AGENT_BOM_OIDC_ISSUER", "AGENT_BOM_SCIM_BEARER_TOKEN"):
+def test_serve_cmd_loopback_no_auth_mints_dev_key(monkeypatch):
+    """Bare `serve` on loopback now mints an ephemeral dev key instead of failing closed.
+
+    The banner must never claim unauthenticated access, and the opt-out hint
+    keeps the previous fail-closed posture discoverable.
+    """
+    for name in (
+        "AGENT_BOM_ALLOW_UNAUTHENTICATED_API",
+        "AGENT_BOM_API_KEYS",
+        "AGENT_BOM_OIDC_ISSUER",
+        "AGENT_BOM_SCIM_BEARER_TOKEN",
+        "AGENT_BOM_NO_AUTO_DEV_KEY",
+    ):
         monkeypatch.delenv(name, raising=False)
     runner = CliRunner()
 
@@ -276,8 +379,8 @@ def test_serve_cmd_loopback_no_auth_reports_fail_closed(monkeypatch):
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "local unauthenticated mode" not in result.output
-    assert "fail closed" in result.output
-    assert "--allow-insecure-no-auth" in result.output
+    assert "Dev API key (loopback only): abk_" in result.output
+    assert "AGENT_BOM_NO_AUTO_DEV_KEY=1 to disable" in result.output
     assert "In-memory (ephemeral)" in result.output
 
 

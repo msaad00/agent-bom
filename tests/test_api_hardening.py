@@ -102,6 +102,35 @@ def test_explicit_unauthenticated_dev_opt_out(monkeypatch):
     assert client.get("/v1/auth/policy").status_code == 200
 
 
+def test_env_opt_out_honored_when_flag_passed_explicitly(monkeypatch):
+    """`serve`/`api` pass --allow-insecure-no-auth as an explicit bool.
+
+    A ``False`` flag must NOT mask AGENT_BOM_ALLOW_UNAUTHENTICATED_API=1: otherwise
+    the loopback banner claims unauthenticated access while the API fails closed.
+    """
+    for name in (
+        "AGENT_BOM_API_KEY",
+        "AGENT_BOM_API_KEYS",
+        "AGENT_BOM_OIDC_ISSUER",
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+        "AGENT_BOM_TRUST_PROXY_AUTH",
+        "AGENT_BOM_SCIM_BEARER_TOKEN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+    # Mirror the exact call the serve/api CLI wrappers make (flag defaults to False).
+    configure_api(api_key=None, allow_unauthenticated=False)
+    try:
+        client = TestClient(app)
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["unauthenticated_allowed"] is True
+        assert health.json()["auth_required"] is False
+        assert client.get("/v1/auth/policy").status_code == 200
+    finally:
+        configure_api(api_key=None)
+
+
 def test_direct_asgi_import_configures_static_api_key_from_env(monkeypatch):
     """Raw uvicorn imports must honor AGENT_BOM_API_KEY without the CLI wrapper."""
     raw_key = "raw-uvicorn-static-key"

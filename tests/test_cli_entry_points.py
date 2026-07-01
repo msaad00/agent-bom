@@ -54,6 +54,7 @@ class TestAgentBom:
         r = CliRunner().invoke(main, ["agents", "--help"])
         assert r.exit_code == 0
         assert "OpenSSF Scorecard" in r.output
+        assert "--page" in r.output
 
     def test_report_dashboard_help_points_to_serve_for_next_ui(self):
         from agent_bom.cli import main

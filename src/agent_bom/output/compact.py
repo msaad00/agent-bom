@@ -66,6 +66,16 @@ def _compact_detail(text: str, limit: int = 88) -> str:
     return clean[: limit - 1].rstrip() + "…"
 
 
+def _page_window(total: int, limit: int, page: int) -> tuple[int, int, int]:
+    """Return a bounded page window as (page, start, end)."""
+    safe_limit = max(1, limit)
+    total_pages = max(1, (total + safe_limit - 1) // safe_limit)
+    safe_page = min(max(1, page), total_pages)
+    start = (safe_page - 1) * safe_limit
+    end = min(start + safe_limit, total)
+    return safe_page, start, end
+
+
 def _forward_fix_version(br: object) -> str | None:
     """Return a fix version only when it is a forward upgrade for this package."""
     fixed = getattr(getattr(br, "vulnerability", None), "fixed_version", None)
@@ -346,7 +356,7 @@ def print_compact_agents(report: AIBOMReport) -> None:
     console.print(table)
 
 
-def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_only: bool = False) -> None:
+def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_only: bool = False, page: int = 1) -> None:
     """Show top N findings in a compact table.
 
     Context-aware: shows blast radius chain (agent → server → credential) only
@@ -371,22 +381,24 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
         display_list = [br for br in active_findings if _forward_fix_version(br)] if fixable_only else active_findings
     else:
         display_list = priority
-    shown = display_list[:limit]
+    total = len(display_list)
+    page, start, end = _page_window(total, limit, page)
+    shown = display_list[start:end]
 
     # Detect if we have blast radius context (agents/servers/credentials)
     has_blast_context = any(br.affected_agents and (br.affected_servers or br.exposed_credentials) for br in shown)
 
     console.print()
-    total = len(display_list)
     shown_n = len(shown)
     total_active = len(active_findings)
+    total_pages = max(1, (total + max(1, limit) - 1) // max(1, limit))
     if total > limit:
         # Priority list truncated by --limit; tell the operator how many
         # additional priority rows aren't shown.
         suffix = ""
         if total_active > total:
             suffix = f" · {total_active - total} more below priority"
-        title = f"Top Findings ({min(limit, total)} of {total}{suffix})"
+        title = f"Top Findings (page {page}/{total_pages} · {start + 1}-{end} of {total}{suffix})"
     elif total_active > shown_n:
         # Display list fits in --limit but priority filtering hid some
         # lower-severity rows further down. Tell the operator both numbers
@@ -469,14 +481,23 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
 
     console.print(table)
 
-    overflow = total - len(shown)
-    if overflow > 0 or rest_count > 0:
+    overflow = total - end
+    hidden_before = start
+    if overflow > 0 or hidden_before > 0 or rest_count > 0:
         parts = []
+        if hidden_before > 0:
+            parts.append(f"{hidden_before} earlier hidden")
         if overflow > 0:
             parts.append(f"{overflow} more critical/high")
         if rest_count > 0:
             parts.append(f"{rest_count} medium/low hidden")
-        console.print(f"  [dim]+ {' · '.join(parts)} — use --verbose for full list[/dim]")
+        nav_hints = []
+        if page < total_pages:
+            nav_hints.append(f"--page {page + 1} next")
+        if page > 1:
+            nav_hints.append(f"--page {page - 1} previous")
+        nav_hints.append("--verbose full list")
+        console.print(f"  [dim]+ {' · '.join(parts)} — {' · '.join(nav_hints)}[/dim]")
 
     # Critical details section — show description and blast chain for CRIT/HIGH only
     critical_findings = [br for br in shown if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]
@@ -516,6 +537,8 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     kev_count = sum(1 for br in report.blast_radii if br.vulnerability.is_kev)
     unknown_sev = sum(1 for br in report.blast_radii if br.vulnerability.severity == Severity.NONE)
     hints = ["[dim]--verbose[/dim] full details", "[dim]-f html[/dim] interactive report"]
+    if page < total_pages:
+        hints.insert(0, f"[dim]--page {page + 1}[/dim] next findings")
     if fixable:
         hints.insert(0, f"[green]{fixable} fixable[/green]")
     if kev_count:
@@ -526,7 +549,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     console.print(f"  {' · '.join(hints)}")
 
 
-def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
+def print_compact_remediation(report: AIBOMReport, limit: int = 5, page: int = 1) -> None:
     """Top N remediation items, one-liner each."""
     from agent_bom.output import build_remediation_plan, console
 
@@ -540,7 +563,12 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
 
     console.print()
     total = len(fixable)
-    title = f"Fix First (top {min(limit, total)} of {total})" if total > limit else f"Fix First ({total})"
+    page, start, end = _page_window(total, limit, page)
+    total_pages = max(1, (total + max(1, limit) - 1) // max(1, limit))
+    if total > limit:
+        title = f"Fix First (page {page}/{total_pages} · {start + 1}-{end} of {total})"
+    else:
+        title = f"Fix First ({total})"
     console.print(Rule(lane_title("protect", title), style="dim"))
     console.print("  [dim]Each item shows the impact radius, the primary action, and a verification command.[/dim]")
     console.print()
@@ -553,8 +581,8 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
         Severity.NONE: "white",
     }
 
-    shown = fixable[:limit]
-    for i, item in enumerate(shown, 1):
+    shown = fixable[start:end]
+    for row_number, item in enumerate(shown, start + 1):
         style = sev_style.get(item["max_severity"], "white")
         kev = " [red]KEV[/red]" if item["has_kev"] else ""
         reach_parts = [f"{len(item['vulns'])} vuln(s)", f"{len(item['agents'])} agent(s)"]
@@ -564,7 +592,8 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
             reach_parts.append(f"{len(item['tools'])} tool(s)")
         reach = ", ".join(reach_parts)
         console.print(
-            f"  [{style}]{i}.[/{style}] [bold]{item['package']}[/bold] [dim]{item['current']}[/dim] → [green]{item['fix']}[/green]{kev}"
+            f"  [{style}]{row_number}.[/{style}] "
+            f"[bold]{item['package']}[/bold] [dim]{item['current']}[/dim] → [green]{item['fix']}[/green]{kev}"
         )
         console.print(f"     [bold]Priority:[/bold] {item['priority']} [dim]· clears {reach}[/dim]")
         console.print(f"     [bold]Action:[/bold] [dim]{_compact_detail(item['action'], limit=96)}[/dim]")
@@ -574,12 +603,18 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
             console.print(
                 f"     [bold dim cyan]Verify:[/bold dim cyan] [dim cyan]$ {item['verify_command']}[/dim cyan] [dim](verify)[/dim]"
             )
-        if i < len(shown):
+        if row_number < end:
             console.print()
 
     if total > limit:
         console.print()
-        console.print(f"  [dim]... {total - limit} more (use --verbose for full plan)[/dim]")
+        nav_hints = []
+        if page < total_pages:
+            nav_hints.append(f"--page {page + 1} next")
+        if page > 1:
+            nav_hints.append(f"--page {page - 1} previous")
+        nav_hints.append("--verbose full plan")
+        console.print(f"  [dim]... {total - end} more · {' · '.join(nav_hints)}[/dim]")
     console.print()
 
 

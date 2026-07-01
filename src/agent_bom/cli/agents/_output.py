@@ -246,6 +246,7 @@ def render_output(
     report = ctx.report
     blast_radii = ctx.blast_radii
     is_stdout = output == "-"
+    compact_page = int(kwargs.get("page") or 1)
 
     def _emit_report() -> None:
         """All console/stdout/file emission for the report.
@@ -335,7 +336,7 @@ def render_output(
                 print_compact_summary(report, verbose=verbose)
                 print_scan_performance_summary(report)
                 print_compact_agents(report)
-                print_compact_blast_radius(report, fixable_only=fixable_only)
+                print_compact_blast_radius(report, fixable_only=fixable_only, page=compact_page)
 
             # AI enrichment output (both modes)
             if report.executive_summary:
@@ -387,7 +388,7 @@ def render_output(
                 print_compact_cis_posture(report, limit=20)
                 print_export_hint(report)
             else:
-                print_compact_remediation(report)
+                print_compact_remediation(report, page=compact_page)
                 print_compact_cis_posture(report)
                 print_compact_export_hint(report)
         elif output_format in ("text", "plain") and not output:

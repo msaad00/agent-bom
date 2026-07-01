@@ -166,6 +166,22 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/governance')).toBe(true)
   })
 
+  it('tucks Govern deep-dives (cost/identity/drift) under a More disclosure to keep the group tight', () => {
+    render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    const summaries = Array.from(document.querySelectorAll('summary')).map((s) => s.textContent ?? '')
+    expect(summaries.some((t) => /More \(3\)/.test(t))).toBe(true)
+  })
+
+  it('keeps cost, identity, and drift reachable from the Govern group', () => {
+    render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/cost')
+    expect(hrefs).toContain('/identity')
+    expect(hrefs).toContain('/drift')
+  })
+
   it('contains Audit Log link', () => {
     render(<Nav />)
     fireEvent.click(screen.getByRole('button', { name: /protect/i }))

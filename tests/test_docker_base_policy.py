@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from subprocess import CompletedProcess
 
 import pytest
 
@@ -34,6 +35,39 @@ def test_repo_state_passes_policy() -> None:
     # The committed repo must satisfy the policy on every push so the
     # error path of the script never lands silently.
     script = _load_script()
+    assert script.main() == 0
+
+
+def test_repo_state_ignores_untracked_codex_worktrees(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Local Codex worktrees should not be treated as repo Dockerfiles."""
+    script = _load_script()
+    repo = tmp_path
+    tracked = repo / "Dockerfile"
+    tracked.write_text("FROM python:3.14.3-alpine3.23@sha256:" + "a" * 64 + "\n", encoding="utf-8")
+    untracked = repo / ".codex" / "worktrees" / "other-branch" / "Dockerfile"
+    untracked.parent.mkdir(parents=True)
+    untracked.write_text("FROM node:24-slim\n", encoding="utf-8")
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        if cmd[:3] == ["git", "ls-files", "*Dockerfile*"]:
+            return CompletedProcess(cmd, 0, stdout="Dockerfile\n", stderr="")
+        msg = f"unexpected command: {cmd!r}"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(script, "ROOT", repo)
+    monkeypatch.setattr(script.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        script,
+        "POLICY",
+        {
+            "Dockerfile": script.BasePolicy(
+                image="python",
+                expected_tags=("3.14.3-alpine3.23",),
+                rationale="synthetic test fixture",
+            )
+        },
+    )
+
     assert script.main() == 0
 
 

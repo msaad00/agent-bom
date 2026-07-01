@@ -927,7 +927,13 @@ def test_tool_risk_assessment_impl_success():
 
 @pytest.mark.asyncio
 async def test_runtime_production_index_impl_empty_state():
+    import agent_bom.api.routes.proxy as proxy_mod
     from agent_bom.mcp_tools.runtime import runtime_production_index_impl
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_alerts_total = 0
+    proxy_mod._proxy_metrics = None
+    proxy_mod._proxy_metrics_by_tenant.clear()
 
     result = await runtime_production_index_impl(tenant_id="default", _truncate_response=_trunc)
     data = json.loads(result)

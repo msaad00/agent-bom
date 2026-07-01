@@ -192,6 +192,19 @@ def _policy_key(path: Path) -> str | None:
 
 
 def _collect_dockerfiles() -> list[Path]:
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "*Dockerfile*"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        result = None
+    if result is not None and result.stdout.strip():
+        return sorted(ROOT / line.strip() for line in result.stdout.splitlines() if line.strip())
+
     skip = {"node_modules", ".venv", ".git", ".claude", "build", "dist", "site"}
     out: list[Path] = []
     for path in ROOT.rglob("Dockerfile*"):

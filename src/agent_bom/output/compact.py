@@ -20,6 +20,7 @@ from rich.rule import Rule
 from rich.table import Table
 
 from agent_bom.models import AgentStatus, AIBOMReport, Severity
+from agent_bom.output.brand_tokens import lane_title
 
 # The cross-cutting helpers (`console`, `_sev_badge`, `build_remediation_plan`)
 # live in the package's __init__. Import lazily inside functions to avoid a
@@ -249,7 +250,7 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
         console.print(
             Panel(
                 "\n".join(lines),
-                title=f"[bold]agent-bom[/bold]  v{report.tool_version}",
+                title=lane_title("scan", f"agent-bom v{report.tool_version}"),
                 border_style=border_style,
                 padding=(0, 1),
             )
@@ -301,7 +302,7 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
     console.print(
         Panel(
             "\n".join(lines),
-            title=f"[bold]agent-bom[/bold]  v{report.tool_version}",
+            title=lane_title("scan", f"agent-bom v{report.tool_version}"),
             border_style=border_style,
             padding=(0, 1),
         )
@@ -317,7 +318,7 @@ def print_compact_agents(report: AIBOMReport) -> None:
         return
 
     console.print()
-    console.print(Rule("[bold]Agents[/bold]", style="dim"))
+    console.print(Rule(lane_title("discover", "Agents"), style="dim"))
     table = Table(box=None, padding=(0, 2), show_header=True, header_style="bold dim")
     table.add_column("Agent")
     table.add_column("Type", style="dim")
@@ -393,7 +394,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
         title = f"Findings ({shown_n} of {total_active} shown · {total_active - shown_n} hidden)"
     else:
         title = f"Findings ({shown_n})"
-    console.print(Rule(f"[bold]{title}[/bold]", style="dim"))
+    console.print(Rule(lane_title("analyze", title), style="dim"))
 
     # Context-aware table layout
     table = Table(expand=True, padding=(0, 1))
@@ -481,7 +482,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     critical_findings = [br for br in shown if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]
     if critical_findings:
         console.print()
-        console.print(Rule("[bold]Critical Details[/bold]", style="dim"))
+        console.print(Rule(lane_title("analyze", "Critical Details"), style="dim"))
         sev_style_map = {Severity.CRITICAL: "red bold", Severity.HIGH: "#e67e22 bold"}
         for br in critical_findings[:5]:
             style = sev_style_map.get(br.vulnerability.severity, "white")
@@ -540,7 +541,7 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
     console.print()
     total = len(fixable)
     title = f"Fix First (top {min(limit, total)} of {total})" if total > limit else f"Fix First ({total})"
-    console.print(Rule(f"[bold]{title}[/bold]", style="dim"))
+    console.print(Rule(lane_title("protect", title), style="dim"))
     console.print("  [dim]Each item shows the impact radius, the primary action, and a verification command.[/dim]")
     console.print()
 
@@ -605,7 +606,7 @@ def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
         return
 
     console.print()
-    console.print("  [bold]CIS Benchmark Posture[/bold]")
+    console.print(f"  {lane_title('govern', 'CIS Benchmark Posture')}")
 
     for cloud, bundle in bundles:
         checks = bundle.get("checks") or []

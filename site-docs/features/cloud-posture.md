@@ -72,10 +72,13 @@ or deployments are discovered on the next run, removed resources appear in graph
 history/diff as deleted evidence, and findings are regenerated from the latest
 read-only inventory.
 
-This is scheduled polling, not provider event streaming. It does not observe a
-resource the instant it is created, and it does not replace CloudTrail,
-EventBridge, Azure Activity Log/Event Grid, or GCP Audit Log/Pub/Sub pipelines.
-Those event-driven sources are separate roadmap work.
+The default mode is scheduled polling. When an operator wires the optional event
+queues, agent-bom can also consume AWS CloudTrail/EventBridge events from SQS,
+Azure Activity Log/Event Grid events from Storage Queue, and GCP Cloud Asset or
+Audit Log events from Pub/Sub. Those consumers are bounded, provider-scoped, and
+re-evaluate the affected resource class through the same read-only connection.
+If no event queue is configured, the connection falls back to scheduled or
+manual scans.
 
 ## How to read the result
 

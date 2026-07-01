@@ -25,6 +25,13 @@ Not shipped today:
 - long-lived `subscribe_posture_changes` MCP tool
 - guaranteed production streaming SLO
 
+Cloud posture has a narrower event-driven lane: opt-in consumers can drain AWS
+CloudTrail/EventBridge events from SQS, Azure Activity Log/Event Grid events
+from Storage Queue, and GCP Cloud Asset or Audit Log events from Pub/Sub to
+re-evaluate the affected resource class. Those consumers update connection
+freshness and persist through the normal scan/graph path. They are not a
+managed streaming service or a general posture-event connector package.
+
 ## Connector Contract
 
 Every posture event connector should preserve the same envelope so downstream
@@ -58,8 +65,10 @@ for SIEM/security-lake interoperability, not a replacement for the graph model.
 | Webhook outbox core | shipped | `agent_bom.posture_streaming.WebhookOutbox` | operator-provided sender performs explicit HTTPS POST; no hidden egress |
 | Webhook outbox observability | shipped | `GET /v1/posture/webhooks/outbox` | tenant-scoped status, stats, dead-letter inspection, admin retry |
 | Kafka | roadmap | topic-per-tenant or topic with tenant key | first enterprise stream sink for posture events |
-| AWS EventBridge + CloudTrail S3/SQS | roadmap | customer account event bus or S3/SQS trail feed | first AWS cloud activity evidence lane |
-| GCP Pub/Sub + Azure Event Hub/Event Grid | roadmap | customer-owned cloud event transports | multi-cloud parity after AWS |
+| AWS CloudTrail/EventBridge→SQS posture re-eval | shipped, opt-in | operator-owned SQS queue | bounded consumer re-checks affected AWS resource classes |
+| Azure Activity Log/Event Grid→Storage Queue posture re-eval | shipped, opt-in | operator-owned Storage Queue | bounded consumer re-checks affected Azure resource classes |
+| GCP Cloud Asset/Audit Log→Pub/Sub posture re-eval | shipped, opt-in | operator-owned Pub/Sub subscription | bounded consumer re-checks affected GCP resource classes |
+| Kafka / EventBridge / Pub/Sub connector packages | roadmap | enterprise event sinks | general posture-event delivery adapters, separate from cloud posture ingestion |
 | Kinesis/Firehose | roadmap | customer stream or delivery stream | later AWS high-volume adapter, not a release blocker |
 | Long-lived MCP subscription | roadmap | `subscribe_posture_changes` | agent-native stream; needs backpressure and replay contract |
 

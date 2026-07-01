@@ -157,17 +157,21 @@ stay readable.
 agent-bom is strongest today as a read-only CSPM/CIS, vuln/SCA, compliance,
 runtime-policy, and graph-posture product. Connected account scans can run on a
 schedule, so new or removed assets are picked up at the next scan and graph
-history can show appeared/removed evidence. It is not yet an event-streaming
-CDR product: CloudTrail/EventBridge, Azure Activity Log/Event Grid, and GCP
-Audit Log/Pub/Sub ingestion are roadmap work.
+history can show appeared/removed evidence. For cloud posture, opt-in event
+consumers can also drain AWS CloudTrail/EventBridge→SQS, Azure Activity
+Log/Event Grid→Storage Queue, and GCP Cloud Asset/Audit Log→Pub/Sub to re-check
+the affected resource class between scheduled scans. That is change-triggered
+posture re-evaluation, not a full runtime CDR product.
 
 For DSPM, Snowflake has the deepest current support because agent-bom can read
 warehouse metadata, grants, tags, lineage, and governance activity visible to
-the configured role. Other cloud data-store sensitivity is posture and metadata
-based until classifier-backed content inspection, provider DLP/Macie wrapping,
-and object/table/column-level access mapping land. Snowflake is therefore a
-strong optional lane for Snowflake-heavy customers, not the required data plane
-for the product.
+the configured role. AWS S3 also has an opt-in bounded content-sampling lane for
+classifier-backed PII/PHI/PCI/secrets evidence; it stores only redacted
+classification counts, never raw object bytes. Other cloud data-store
+sensitivity is posture and metadata based until broader provider DLP/Macie
+wrapping, database/warehouse sampling, and object/table/column-level access
+mapping land. Snowflake is therefore a strong optional lane for
+Snowflake-heavy customers, not the required data plane for the product.
 
 ## Product Map
 

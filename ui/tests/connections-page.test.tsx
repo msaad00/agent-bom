@@ -57,6 +57,7 @@ const CREATED_RECORD = {
   created_at: "2026-06-27T00:00:00Z",
   updated_at: "2026-06-27T00:00:00Z",
   last_scan_at: null,
+  last_event_at: null,
   last_scan_id: null,
   scan_interval_minutes: null,
 };
@@ -316,6 +317,32 @@ describe("ConnectionsPage", () => {
       "href",
       "/graph?scan_id=persisted-scan-123",
     );
+  });
+
+  it("surfaces event-driven freshness when a connection has processed cloud events", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [
+        {
+          ...CREATED_RECORD,
+          status: "active",
+          last_event_at: "2026-06-27T01:30:00Z",
+          scan_interval_minutes: 60,
+        },
+      ],
+      count: 1,
+    });
+
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Production account")).toBeInTheDocument(),
+    );
+
+    expect(screen.getByText("Event-driven")).toBeInTheDocument();
+    expect(screen.getByText(/Last event/)).toBeInTheDocument();
+    expect(screen.queryByText("Polling fallback")).toBeNull();
   });
 
   it("updates the recurring scan schedule without exposing secrets", async () => {

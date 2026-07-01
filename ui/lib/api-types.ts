@@ -2635,6 +2635,8 @@ export interface CloudConnectionRecord {
   created_at: string;
   updated_at: string;
   last_scan_at: string | null;
+  /** Last event-driven posture re-evaluation. Null means polling/manual only so far. */
+  last_event_at: string | null;
   /** Last successfully persisted scan id for durable handoff links. */
   last_scan_id: string | null;
   /** Recurring read-only scan cadence. Null means manual-only. */

@@ -362,6 +362,25 @@ def _aggregate(result: DatasetPiiResult, findings: list[PiiFinding]) -> None:
     result.top_findings = findings[:10]
 
 
+def scan_text_for_pii(
+    text: str,
+    *,
+    source: str,
+    max_chars: int = _MAX_FILE_SIZE,
+) -> DatasetPiiResult:
+    """Scan an in-memory text sample for PII without persisting raw content.
+
+    Cloud DSPM samplers use this entry point after reading a bounded byte range
+    from an object store. The returned findings carry redacted markers only; raw
+    object bytes and matched values are never included in the result.
+    """
+    clipped = text[: max(0, max_chars)]
+    result = DatasetPiiResult(file_path=source, rows_sampled=1 if clipped else 0, total_findings=0)
+    findings = _scan_cell(clipped, 0, "content", source) if clipped else []
+    _aggregate(result, findings)
+    return result
+
+
 def scan_dataset_file(path: Path, max_rows: int = _DEFAULT_MAX_ROWS) -> DatasetPiiResult | None:
     """Dispatch to the appropriate scanner based on file extension.
 

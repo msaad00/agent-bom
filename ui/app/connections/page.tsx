@@ -259,6 +259,32 @@ function formatWhen(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function eventMode(connection: CloudConnectionRecord): {
+  label: string;
+  detail: string;
+  tone: string;
+} {
+  if (connection.last_event_at) {
+    return {
+      label: "Event-driven",
+      detail: `Last event ${formatWhen(connection.last_event_at)}`,
+      tone: "border-cyan-900/60 bg-cyan-950/30 text-cyan-200",
+    };
+  }
+  if (connection.scan_interval_minutes) {
+    return {
+      label: "Polling fallback",
+      detail: `Every ${connection.scan_interval_minutes} min`,
+      tone: "border-amber-900/60 bg-amber-950/30 text-amber-200",
+    };
+  }
+  return {
+    label: "Manual",
+    detail: "No scheduled or event run yet",
+    tone: "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[var(--text-secondary)]",
+  };
+}
+
 function statusTone(status: string): string {
   switch (status) {
     case "active":
@@ -682,13 +708,14 @@ export default function ConnectionsPage() {
             />
           ) : (
             <div className="overflow-x-auto rounded-xl border border-[color:var(--border-subtle)]">
-              <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[880px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[11px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
                     <th className="px-4 py-3 font-medium">Account</th>
                     <th className="px-4 py-3 font-medium">Provider</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Last scan</th>
+                    <th className="px-4 py-3 font-medium">Mode</th>
                     <th className="px-4 py-3 font-medium">Schedule</th>
                     <th className="px-4 py-3 text-right font-medium">
                       Actions
@@ -879,6 +906,7 @@ function FragmentRow({
   onDelete: () => void;
 }) {
   const handoffScanId = result?.scan_id ?? connection.last_scan_id;
+  const mode = eventMode(connection);
   const showDetail = Boolean(
     result || handoffScanId || scanError || scheduleError || statusDetail,
   );
@@ -924,6 +952,18 @@ function FragmentRow({
         </td>
         <td className="px-4 py-3 text-[var(--text-secondary)]">
           {formatWhen(connection.last_scan_at)}
+        </td>
+        <td className="px-4 py-3">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium ${mode.tone}`}
+            title={mode.detail}
+          >
+            <Clock className="h-3 w-3" />
+            {mode.label}
+          </span>
+          <p className="mt-1 max-w-44 truncate text-[10px] text-[var(--text-tertiary)]">
+            {mode.detail}
+          </p>
         </td>
         <td className="px-4 py-3">
           <label className="sr-only" htmlFor={`schedule-${connection.id}`}>
@@ -972,7 +1012,7 @@ function FragmentRow({
       </tr>
       {showDetail ? (
         <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 bg-[color:var(--surface-elevated)]/40">
-          <td colSpan={6} className="px-4 pb-4 pt-0">
+          <td colSpan={7} className="px-4 pb-4 pt-0">
             {result ? <ScanResultPanel result={result} /> : null}
             {!result && handoffScanId ? (
               <ScanHandoffLinks scanId={handoffScanId} />

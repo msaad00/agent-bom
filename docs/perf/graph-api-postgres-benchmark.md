@@ -1,6 +1,6 @@
 # Graph API and Postgres Benchmark Evidence
 
-Evidence status: measured local API + Postgres EXPLAIN artifacts
+Evidence status: measured local API + Postgres EXPLAIN + repeated Postgres latency artifacts
 Owner issue: #2145
 Related evidence-lake issue: #2929
 Raw result artifacts:
@@ -20,13 +20,18 @@ Raw result artifacts:
 - `docs/perf/results/postgres-graph-explain-live-2026-05-13.json`
 - `docs/perf/results/postgres-graph-explain-live-2026-05-13/*.sql`
 - `docs/perf/results/postgres-graph-explain-live-2026-05-13/plans/*.txt`
+- `docs/perf/results/graph-benchmark-postgres-load-live-2026-07-01.json`
+- `docs/perf/results/postgres-graph-latency-live-2026-07-01.json`
+- `docs/perf/results/postgres-graph-latency-live-2026-07-01/*.sql`
 
 ## Claim
 
 This page documents benchmark commands plus checked-in measured artifacts for a
-local graph API run and a Docker Postgres `EXPLAIN ANALYZE` run. The measured
-artifacts support local evidence for graph API p50/p95/p99 client timings and
-database-local Postgres query plans on a deterministic synthetic estate.
+local graph API run, a Docker Postgres `EXPLAIN ANALYZE` run, and repeated
+Docker Postgres client wall-clock probes. The measured artifacts support local
+evidence for graph API p50/p95/p99 client timings, database-local Postgres query
+plans, and Postgres p50/p95/p99 query-family timings on a deterministic
+synthetic estate.
 
 These artifacts do not claim Snowflake behavior, browser timing, managed
 operator deployment timing, or production SLOs. Measured local CPU graph
@@ -46,15 +51,15 @@ Covered by the checked-in evidence:
 - Docker Postgres graph-store load for the same old/current snapshots
 - Postgres `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plan artifacts for node
   search, node detail, attack-path drilldown, graph diff, and bounded traversal
-- repeatable Postgres latency scaffold for the same query families, producing
-  p50/p95/p99 client wall-clock summaries when run against a loaded database
+- repeated Postgres client wall-clock latency artifacts for node search, node
+  detail, attack-path drilldown, graph diff, graph history, evidence-manifest
+  digest, and bounded traversal
 - retained graph history and redaction-aware evidence-manifest API/CLI surfaces
   backed by the same tenant-scoped snapshot store
 
 Excluded from these local artifacts:
 
 - authenticated remote API latency
-- measured Postgres p50/p95/p99 repeated-run latency
 - Snowflake or managed-operator deployment timings
 - browser/UI interaction timing
 - 50k / 100k edge Postgres runs
@@ -63,7 +68,7 @@ Excluded from these local artifacts:
 
 ## Environment
 
-The live artifacts were produced on 2026-05-13 with:
+The first live artifacts were produced on 2026-05-13 with:
 
 - API: `agent-bom api` loopback on `127.0.0.1:8429`, local unauthenticated
   mode, SQLite job store, SQLite graph store
@@ -76,9 +81,11 @@ The live artifacts were produced on 2026-05-13 with:
 - Scan IDs: `graph-benchmark-estate-old` and
   `graph-benchmark-estate-current`
 
-The API run uses local client wall-clock timing. The Postgres run uses
-database-local `EXPLAIN ANALYZE`; it is plan evidence, not repeated p95/p99
-Postgres latency evidence.
+The 2026-07-01 repeated Postgres latency artifact was produced with the same
+deterministic estate shape on Docker `postgres:16-alpine`, using a local Docker
+`psql` wrapper with 30 samples per query family. These are client wall-clock
+timings and include process/client overhead; pair them with the
+`EXPLAIN ANALYZE` artifacts before making deployment SLO claims.
 
 ## Commands
 
@@ -257,6 +264,8 @@ uv run python scripts/run_graph_postgres_latency.py \
 | `graph-api-benchmark-live-2026-05-13.json` | measured API | loopback API p50/p95/p99 client timings across five graph hot paths |
 | `graph-benchmark-postgres-load-live-2026-05-13.json` | measured load | Docker Postgres graph store loaded the same old/current snapshots |
 | `postgres-graph-explain-live-2026-05-13.json` | measured plan | five Postgres `EXPLAIN ANALYZE` runs returned successfully with plan files |
+| `graph-benchmark-postgres-load-live-2026-07-01.json` | measured load | Docker Postgres graph store loaded the same old/current snapshots after schema bootstrap hardening |
+| `postgres-graph-latency-live-2026-07-01.json` | measured latency | 30 repeated Postgres client wall-clock samples for seven graph hot paths |
 
 API client timings from `graph-api-benchmark-live-2026-05-13.json`:
 
@@ -278,6 +287,19 @@ Top-level Postgres plan times from
 | attack-path drilldown | 0.177 ms |
 | graph diff nodes | 38.421 ms |
 | bounded traversal edges | 8.903 ms |
+
+Postgres client wall-clock timings from
+`postgres-graph-latency-live-2026-07-01.json`:
+
+| Query | Samples | p50 ms | p95 ms | p99 ms |
+|---|---:|---:|---:|---:|
+| node search | 30 | 77.941 | 182.647 | 502.350 |
+| node detail | 30 | 73.804 | 128.536 | 129.372 |
+| attack-path drilldown | 30 | 75.949 | 89.377 | 99.619 |
+| graph diff nodes | 30 | 73.383 | 103.289 | 104.114 |
+| graph history | 30 | 77.961 | 128.294 | 138.774 |
+| evidence-manifest digest | 30 | 106.545 | 180.376 | 210.068 |
+| bounded traversal edges | 30 | 80.181 | 101.969 | 152.170 |
 
 ## Retained Graph Evidence Slice
 
@@ -317,6 +339,10 @@ checked-in artifacts above:
 - the Postgres bootstrap, runtime DDL, and Alembic path include trigram search,
   source-scoped attack-path ordering, traversable source-edge traversal, and
   scan/id node-covering indexes.
+- graph schema bootstrap suppresses the signed RLS-bypass audit write during
+  the legacy tenant backfill only, avoiding recursive audit-store bootstrap
+  while the graph DDL transaction is active. Runtime RLS bypasses still audit by
+  default.
 - the slowest API timings above are not explained by the database plans alone:
   attack-path drilldown and bounded traversal show fast single-query plans but
   much slower API timings. Treat app-side graph hydration/serialization as a
@@ -326,14 +352,12 @@ checked-in artifacts above:
 
 No production API/Postgres SLO is declared from this local run. A future SLO
 page should repeat these measurements under the intended authenticated
-deployment topology, include Postgres repeated-run p50/p95/p99, and attach
-resource sizing before making an operator or enterprise-pilot latency claim.
+deployment topology and attach resource sizing before making an operator or
+enterprise-pilot latency claim.
 
 ## Gaps
 
 - Run the API benchmark under the intended authenticated remote topology.
-- Run the repeated Postgres timing scaffold and check in measured
-  p50/p95/p99 artifacts in addition to single `EXPLAIN ANALYZE` plans.
 - Add 50k / 100k edge Postgres artifacts.
 - Add browser interaction timing separately if UI scale claims are needed.
 - Add hosted evidence-lake retention jobs and measured six-month history

@@ -124,29 +124,44 @@ const NAV_GROUPS: NavGroup[] = [
     accent: "#f778ba", // pink — enforcement layer
     links: [
       { href: "/proxy", label: "Proxy", icon: Shield, capability: "runtime.ingest" },
-      { href: "/audit", label: "Audit Log", icon: FileText },
       { href: "/gateway", label: "Gateway", icon: Lock, capability: "policy.manage" },
     ],
   },
+  // Govern is split into three tight, single-purpose groups instead of one
+  // eight-deep list with a "More" disclosure. Every former Govern route (plus
+  // the Audit Log moved out of Protect) stays reachable directly in the sidebar,
+  // the command palette, and deep links.
   {
-    label: "Govern",
-    description: "Evidence, remediation, governance, and activity",
-    icon: Eye,
-    accent: "#3fb950", // green — output/governance layer
-    // Primary evidence + governance surfaces. Cost / Identity / Drift are
-    // posture deep-dives reachable from the in-group "More" disclosure so the
-    // sidebar stays tight instead of an eight-deep flat list.
+    label: "Compliance",
+    description: "Evidence, policy governance, and audit export",
+    icon: Shield,
+    accent: "#3fb950", // green — evidence/governance layer
     links: [
       { href: "/compliance", label: "Compliance", icon: Shield },
       { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
-      { href: "/remediation", label: "Remediation", icon: Wrench },
-      { href: "/traces", label: "Traces", icon: Radio },
+      { href: "/audit", label: "Audit Log", icon: FileText },
+    ],
+  },
+  {
+    label: "Operations",
+    description: "Identity, cost, drift, and activity posture",
+    icon: Activity,
+    accent: "#a371f7", // purple — operational posture layer
+    links: [
+      { href: "/identity", label: "Identity", icon: Fingerprint },
+      { href: "/cost", label: "Cost", icon: DollarSign },
+      { href: "/drift", label: "Drift", icon: Radar },
       { href: "/activity", label: "Activity", icon: Activity },
     ],
-    secondary: [
-      { href: "/cost", label: "Cost", icon: DollarSign },
-      { href: "/identity", label: "Identity", icon: Fingerprint },
-      { href: "/drift", label: "Drift", icon: Radar },
+  },
+  {
+    label: "Remediation",
+    description: "Fix workflow and runtime trace evidence",
+    icon: Wrench,
+    accent: "#db6d28", // orange — remediation/action layer
+    links: [
+      { href: "/remediation", label: "Remediation", icon: Wrench },
+      { href: "/traces", label: "Traces", icon: Radio },
     ],
   },
 ];

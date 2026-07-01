@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from subprocess import run
 
 ROOT = Path(__file__).resolve().parents[1]
 PERF_DIR = ROOT / "docs" / "perf"
@@ -81,6 +82,9 @@ def main() -> int:
     errors: list[str] = []
     for path in REQUIRED_FILES:
         errors.extend(_check_file(path))
+    graph_result = run([sys.executable, "scripts/check_graph_scale_evidence.py"], cwd=ROOT, text=True, capture_output=True, check=False)
+    if graph_result.returncode != 0:
+        errors.append((graph_result.stderr or graph_result.stdout).strip() or "graph scale evidence check failed")
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

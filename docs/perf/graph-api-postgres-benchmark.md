@@ -1,7 +1,7 @@
 # Graph API and Postgres Benchmark Evidence
 
 Evidence status: measured local API + Postgres EXPLAIN + repeated Postgres latency artifacts
-Owner issue: #2145
+Owner issue: #3353
 Related evidence-lake issue: #2929
 Raw result artifacts:
 
@@ -34,8 +34,11 @@ plans, and Postgres p50/p95/p99 query-family timings on a deterministic
 synthetic estate.
 
 These artifacts do not claim Snowflake behavior, browser timing, managed
-operator deployment timing, or production SLOs. Measured local CPU graph
-timings remain in [`p95-p99-graph-query.md`](p95-p99-graph-query.md).
+operator deployment timing, or production SLOs. The current measured ceiling is
+the checked-in Docker Postgres estate with 10,479 nodes, 11,242 edges, and 291
+materialized attack paths. 100k+ and 1M-node Postgres claims are not yet
+measured; they remain the next #3353 work item. Measured local CPU graph timings
+remain in [`p95-p99-graph-query.md`](p95-p99-graph-query.md).
 
 ## Scope
 
@@ -62,7 +65,7 @@ Excluded from these local artifacts:
 - authenticated remote API latency
 - Snowflake or managed-operator deployment timings
 - browser/UI interaction timing
-- 50k / 100k edge Postgres runs
+- 50k / 100k / 1M edge Postgres runs
 - six-month hosted lake retention jobs, audit-chain bundle persistence,
   compliance bundle persistence, and legal-hold/deletion workflows
 
@@ -253,6 +256,19 @@ uv run python scripts/run_graph_postgres_latency.py \
 
 ## Results
 
+### Supported size from checked-in evidence
+
+The current supported-size statement is intentionally bounded:
+
+| Store | Current measured ceiling | Query families | Success criteria | Raw artifact |
+|---|---:|---|---|---|
+| Docker Postgres 16 | 10,479 nodes / 11,242 edges / 291 attack paths | search, detail, drilldown, diff, history, evidence digest, bounded traversal | 30 successful samples per query family; p95 <= 750 ms on the local Docker harness | `docs/perf/results/postgres-graph-latency-live-2026-07-01.json` |
+
+The release gate in `scripts/check_graph_scale_evidence.py` enforces the raw
+artifact shape, query-family coverage, sample count, p95 ceiling, and this
+document's explicit current-measured-ceiling language. Larger-estate numbers
+must be added as new checked-in artifacts before product copy can claim them.
+
 | Artifact | Status | What it supports |
 |---|---|---|
 | `graph-benchmark-estate-sample.json` | scaffold | deterministic skewed estate shape and source mix |
@@ -358,7 +374,7 @@ enterprise-pilot latency claim.
 ## Gaps
 
 - Run the API benchmark under the intended authenticated remote topology.
-- Add 50k / 100k edge Postgres artifacts.
+- Add 50k / 100k / 1M edge Postgres artifacts before claiming larger estates.
 - Add browser interaction timing separately if UI scale claims are needed.
 - Add hosted evidence-lake retention jobs and measured six-month history
   evidence before closing #2929.

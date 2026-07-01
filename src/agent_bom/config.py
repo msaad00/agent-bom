@@ -303,6 +303,22 @@ AWS_EVENT_MAX_MESSAGES = _int("AGENT_BOM_AWS_EVENT_MAX_MESSAGES", 10)
 AWS_EVENT_MAX_BATCHES = _int("AGENT_BOM_AWS_EVENT_MAX_BATCHES", 10)
 AWS_EVENT_VISIBILITY_TIMEOUT = _int("AGENT_BOM_AWS_EVENT_VISIBILITY_TIMEOUT", 120)
 AWS_EVENT_WAIT_SECONDS = _int("AGENT_BOM_AWS_EVENT_WAIT_SECONDS", 5)
+# Event-driven Azure posture ingestion. When an operator wires Azure Monitor
+# Activity Log / Event Grid → a Storage Queue (opt-in via AGENT_BOM_AZURE_EVENT_QUEUE,
+# read live, default off), the bounded queue consumer drains change events and
+# re-evaluates only the affected resource's Azure CIS rules. These knobs bound a
+# single consume pass so it always terminates: messages per receive, receive
+# batches per pass, and per-message visibility timeout.
+AZURE_EVENT_MAX_MESSAGES = _int("AGENT_BOM_AZURE_EVENT_MAX_MESSAGES", 10)
+AZURE_EVENT_MAX_BATCHES = _int("AGENT_BOM_AZURE_EVENT_MAX_BATCHES", 10)
+AZURE_EVENT_VISIBILITY_TIMEOUT = _int("AGENT_BOM_AZURE_EVENT_VISIBILITY_TIMEOUT", 120)
+# Event-driven GCP posture ingestion. When an operator wires Cloud Asset
+# Inventory feed / audit logs → a Pub/Sub subscription (opt-in via
+# AGENT_BOM_GCP_EVENT_SUBSCRIPTION, read live, default off), the bounded Pub/Sub
+# consumer drains change events and re-evaluates only the affected resource's GCP
+# CIS rules. These knobs bound a single pull pass so it always terminates.
+GCP_EVENT_MAX_MESSAGES = _int("AGENT_BOM_GCP_EVENT_MAX_MESSAGES", 10)
+GCP_EVENT_MAX_BATCHES = _int("AGENT_BOM_GCP_EVENT_MAX_BATCHES", 10)
 API_JOB_TTL_SECONDS = _int("AGENT_BOM_API_JOB_TTL", 3_600)
 API_MAX_IN_MEMORY_JOBS = _int("AGENT_BOM_API_MAX_MEMORY_JOBS", 200)
 API_MAX_JOB_PROGRESS_EVENTS = _int("AGENT_BOM_API_MAX_JOB_PROGRESS_EVENTS", 500)

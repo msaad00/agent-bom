@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildFindingsHref } from "@/lib/attack-paths";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
+import type { PageStateAction } from "@/components/states/page-state";
 import type { LineageNodeData } from "./lineage-nodes";
 
 const FINDINGS_VIRTUALIZE_THRESHOLD = 80;
@@ -33,11 +34,13 @@ export function GraphEmptyState({
   detail,
   suggestions,
   command,
+  actions,
 }: {
   title: string;
   detail: string;
   suggestions: string[];
   command?: string | undefined;
+  actions?: PageStateAction[] | undefined;
 }) {
   return (
     <PageEmptyState
@@ -45,6 +48,7 @@ export function GraphEmptyState({
       detail={detail}
       suggestions={suggestions}
       command={command}
+      actions={actions}
     />
   );
 }

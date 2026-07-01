@@ -22,6 +22,7 @@ import { ApiOfflineState } from "@/components/api-offline-state";
 import { PaginationBar } from "@/components/pagination-bar";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+import { FIRST_SCAN_ACTIONS } from "@/lib/empty-state-actions";
 import { severityRank } from "@/lib/severity";
 import { Bug, Download, ExternalLink, ChevronDown, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert, ClipboardCheck, X } from "lucide-react";
 
@@ -821,7 +822,7 @@ function VulnsPage() {
             "Use all completed scans when you need aggregate evidence across jobs.",
           ]}
           command="agent-bom agents --demo --offline"
-          action={{ label: "Open scan", href: "/scan" }}
+          actions={FIRST_SCAN_ACTIONS}
           data-testid="findings-empty-state"
         />
       )}

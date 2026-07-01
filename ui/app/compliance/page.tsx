@@ -47,6 +47,7 @@ import { CISBenchmarkDetail } from "@/components/cis-benchmark-detail";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+import { FIRST_EVIDENCE_ACTIONS } from "@/lib/empty-state-actions";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -978,7 +979,7 @@ function CompliancePageContent() {
             "Use the matrix view once multiple frameworks have populated control coverage.",
           ]}
           command="agent-bom agents --demo --offline"
-          action={{ label: "Start a scan", href: "/scan" }}
+          actions={FIRST_EVIDENCE_ACTIONS}
           data-testid="compliance-empty-state"
         />
       )}

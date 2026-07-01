@@ -58,6 +58,7 @@ import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/states/page-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
+import { FIRST_SCAN_ACTIONS } from "@/lib/empty-state-actions";
 
 // ─── Agents List Helpers ────────────────────────────────────────────────────
 
@@ -387,7 +388,7 @@ function AgentsList() {
               "Open the mesh view after discovery to inspect agent and server relationships.",
             ]}
             command="agent-bom agents --demo --offline"
-            action={{ label: "Open scan", href: "/scan" }}
+            actions={FIRST_SCAN_ACTIONS}
             data-testid="agents-empty-state"
           />
         ))}

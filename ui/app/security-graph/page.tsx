@@ -48,6 +48,7 @@ import {
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
 const ATTACK_PATH_QUEUE_LIMIT = 75;
+const ATTACK_PATH_QUEUE_PAGE_SIZE = 12;
 const FIX_FIRST_CARD_LIMIT = 12;
 
 function SecurityGraphPageContent() {
@@ -65,6 +66,7 @@ function SecurityGraphPageContent() {
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
   const [focusApplied, setFocusApplied] = useState(false);
   const [showAllSnapshots, setShowAllSnapshots] = useState(false);
+  const [visibleAttackPathCount, setVisibleAttackPathCount] = useState(ATTACK_PATH_QUEUE_PAGE_SIZE);
   const captureMode = useCaptureMode();
 
   const focus = useMemo(
@@ -209,6 +211,11 @@ function SecurityGraphPageContent() {
           ),
     [fixFirstCards, graphData?.attack_paths],
   );
+  const visibleAttackPaths = useMemo(
+    () => attackPaths.slice(0, Math.min(visibleAttackPathCount, attackPaths.length)),
+    [attackPaths, visibleAttackPathCount],
+  );
+  const hiddenAttackPathCount = Math.max(0, attackPaths.length - visibleAttackPaths.length);
 
   const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName);
   const selectedAttackPath = useMemo(
@@ -315,7 +322,18 @@ function SecurityGraphPageContent() {
 
   useEffect(() => {
     setFocusApplied(false);
+    setVisibleAttackPathCount(ATTACK_PATH_QUEUE_PAGE_SIZE);
   }, [focus.agentName, focus.cve, focus.packageName, selectedScanId]);
+
+  useEffect(() => {
+    if (!selectedAttackPathKey) return;
+    const selectedIndex = attackPaths.findIndex((path) => attackPathKey(path) === selectedAttackPathKey);
+    if (selectedIndex < 0 || selectedIndex < visibleAttackPathCount) return;
+    const nextPageCount =
+      Math.ceil((selectedIndex + 1) / ATTACK_PATH_QUEUE_PAGE_SIZE) *
+      ATTACK_PATH_QUEUE_PAGE_SIZE;
+    setVisibleAttackPathCount(Math.min(attackPaths.length, nextPageCount));
+  }, [attackPaths, selectedAttackPathKey, visibleAttackPathCount]);
 
   useEffect(() => {
     if (attackPaths.length === 0) {
@@ -668,7 +686,7 @@ function SecurityGraphPageContent() {
               onKeyDown={handleAttackPathQueueKeyDown}
               aria-label="Attack path queue"
             >
-              {attackPaths.map((path) => {
+              {visibleAttackPaths.map((path) => {
                 const key = attackPathKey(path);
                 const card = cardByPathKey.get(key);
                 const pathNodes = toAttackCardNodes(path, graphNodeById);
@@ -717,6 +735,24 @@ function SecurityGraphPageContent() {
                 );
               })}
             </div>
+            {hiddenAttackPathCount > 0 && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3">
+                <p className="text-xs text-[color:var(--text-tertiary)]">
+                  Showing {visibleAttackPaths.length} of {attackPaths.length} ranked paths.
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleAttackPathCount((current) =>
+                      Math.min(attackPaths.length, current + ATTACK_PATH_QUEUE_PAGE_SIZE),
+                    )
+                  }
+                  className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                >
+                  Show {Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, hiddenAttackPathCount)} more
+                </button>
+              </div>
+            )}
           </section>
         </>
       )}

@@ -1195,6 +1195,12 @@ async def run_proxy(
 
     # Metrics
     metrics = ProxyMetrics()
+    from agent_bom.cli._runtime_status import proxy_metrics_status_callback
+
+    status_strip_active, status_update = proxy_metrics_status_callback(surface="proxy")
+    if status_strip_active:
+        metrics.set_update_callback(status_update)
+        status_update(metrics)
 
     # Prometheus metrics server
     metrics_server = ProxyMetricsServer(metrics, port=metrics_port, token=metrics_token)
@@ -2059,6 +2065,9 @@ async def run_proxy(
                         err_entry,
                     )
     finally:
+        if status_strip_active:
+            sys.stderr.write("\n")
+            sys.stderr.flush()
         # Write metrics summary + runtime alerts to audit log before closing
         summary = metrics.summary()
         summary.update(summarize_runtime_alerts(runtime_alerts))

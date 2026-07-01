@@ -41,7 +41,7 @@
 
   <rect x="38" y="164" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
   <text x="50" y="182" class="mod-name">Cloud Connectors</text>
-  <text x="210" y="182" text-anchor="end" class="mod-sub" fill="#2563eb">12 providers</text>
+  <text x="210" y="182" text-anchor="end" class="mod-sub" fill="#2563eb">16 providers</text>
 
   <rect x="38" y="198" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
   <text x="50" y="216" class="mod-name">Container Scanner</text>
@@ -223,15 +223,15 @@
   <text x="352" y="504" text-anchor="middle" class="stat-num" fill="#e11d48">880</text>
   <text x="352" y="518" text-anchor="middle" class="stat-label">registry servers</text>
 
-  <text x="482" y="504" text-anchor="middle" class="stat-num" fill="#e11d48">15</text>
+  <text x="482" y="504" text-anchor="middle" class="stat-num" fill="#e11d48">16</text>
   <text x="482" y="518" text-anchor="middle" class="stat-label">compliance surfaces</text>
 
   <text x="612" y="504" text-anchor="middle" class="stat-num" fill="#059669">26</text>
   <text x="612" y="518" text-anchor="middle" class="stat-label">output formats</text>
 
-  <text x="742" y="504" text-anchor="middle" class="stat-num" fill="#7c3aed">36</text>
+  <text x="742" y="504" text-anchor="middle" class="stat-num" fill="#7c3aed">70</text>
   <text x="742" y="518" text-anchor="middle" class="stat-label">MCP server tools</text>
 
-  <text x="872" y="504" text-anchor="middle" class="stat-num" fill="#a1a1aa">419</text>
+  <text x="872" y="504" text-anchor="middle" class="stat-num" fill="#a1a1aa">677</text>
   <text x="872" y="518" text-anchor="middle" class="stat-label">test files</text>
 </svg>

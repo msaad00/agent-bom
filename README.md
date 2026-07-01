@@ -216,8 +216,16 @@ fleet, identity, audit, and gateway routes.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="agent-bom risk overview dashboard with posture score, findings, and attack path summary" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-paths-live.png" alt="agent-bom risk overview attack paths with exposure KPIs" width="900" />
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="agent-bom agent mesh graph showing agent, MCP server, package, tool, credential reference, and finding path" width="900" />
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="agent-bom security graph with attack-path queue, graph evidence export, and remediation handoff" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png" alt="agent-bom lineage topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/context-map-live.png" alt="agent-bom agent-scoped context map with reachable MCP servers and lateral movement side panel" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png" alt="agent-bom supply chain dependency map with scan pipeline counts and package risk distribution" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="agent-bom runtime gateway policy posture with baseline policy, rules, and bound agents" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/fleet-state-live.png" alt="agent-bom fleet state with lifecycle distribution, owner metadata, environment label, and discovery state" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/identity-audit-live.png" alt="agent-bom identity audit log with HMAC integrity counters and agent identity issue, rotate, and revoke events" width="900" />
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="agent-bom fix-first remediation table with prioritized packages and framework context" width="900" />
 </p>
 
 Capture rules and the full manifest live in [docs/CAPTURE.md](docs/CAPTURE.md)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -189,6 +189,34 @@ def _fake_run_benchmark(*, checks: list[str], **kwargs: Any) -> _FakeCISReport:
     return _FakeCISReport()
 
 
+# The scoped inventory a real S3 change re-fetch would return. dispatch resolves
+# the changed resource through ``aws_inventory.discover_inventory``; a clean env
+# with only these minimal boto3 stubs cannot fully emulate every call that fetch
+# makes, so we patch it to return this deterministic, env-independent payload
+# containing the public bucket (locators key off ``buckets`` → ``name``).
+_SCOPED_S3_INVENTORY: dict[str, Any] = {
+    "buckets": [
+        {
+            "name": "public-bucket",
+            "arn": "arn:aws:s3:::public-bucket",
+            "location": "us-east-1",
+            "publicly_accessible": True,
+            "tags": {},
+            "account_id": _ACCOUNT,
+            "created_at": None,
+        }
+    ],
+}
+
+
+def _patch_scoped_inventory() -> Any:
+    """Patch the scoped inventory fetch dispatch relies on (as imported in event_ingest)."""
+    return patch(
+        "agent_bom.cloud.aws_inventory.discover_inventory",
+        return_value=_SCOPED_S3_INVENTORY,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # dispatch: S3 PutBucketPolicy → affected CIS check re-evaluates + finding
 # --------------------------------------------------------------------------- #
@@ -211,14 +239,15 @@ def test_dispatch_s3_public_bucket_reevaluates_and_produces_finding() -> None:
         persisted["tenant_id"] = tenant_id
         return "scan-xyz"
 
-    delta = dispatch_change_event(
-        event,
-        record,
-        session=_FakeSession(),
-        benchmark_runner=_fake_run_benchmark,
-        persist=_persist,
-        store=store,
-    )
+    with _patch_scoped_inventory():
+        delta = dispatch_change_event(
+            event,
+            record,
+            session=_FakeSession(),
+            benchmark_runner=_fake_run_benchmark,
+            persist=_persist,
+            store=store,
+        )
 
     assert delta is not None
     assert delta["scan_id"] == "scan-xyz"
@@ -381,16 +410,17 @@ def test_consume_dispatches_and_deletes_valid_event() -> None:
         persisted["report"] = report
         return "scan-1"
 
-    summary = consume_aws_events(
-        record,
-        queue_url="https://sqs/queue",
-        sqs_client=sqs,
-        session=_FakeSession(),
-        benchmark_runner=_fake_run_benchmark,
-        persist=_persist,
-        store=store,
-        max_batches=2,
-    )
+    with _patch_scoped_inventory():
+        summary = consume_aws_events(
+            record,
+            queue_url="https://sqs/queue",
+            sqs_client=sqs,
+            session=_FakeSession(),
+            benchmark_runner=_fake_run_benchmark,
+            persist=_persist,
+            store=store,
+            max_batches=2,
+        )
     assert summary["processed"] == 1
     assert summary["deleted"] == 1
     assert sqs.deleted == ["receipt-1"]

@@ -138,14 +138,16 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/registry')).toBe(true)
   })
 
-  it('consolidates lineage/mesh/context into the single Security Graph lens (no separate nav links)', () => {
+  it('keeps graph lenses tucked under Analyze instead of primary sidebar links', () => {
     render(<Nav />)
     fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
+    expect(screen.getByText(/more \(3\)/i)).toBeInTheDocument()
     const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
     expect(hrefs).toContain('/security-graph')
-    expect(hrefs).not.toContain('/graph')
-    expect(hrefs).not.toContain('/mesh')
-    expect(hrefs).not.toContain('/context')
+    expect(screen.queryByRole('link', { name: /^lineage$/i })).not.toBeInTheDocument()
+    expect(hrefs).toContain('/graph')
+    expect(hrefs).toContain('/mesh')
+    expect(hrefs).toContain('/context')
     expect(hrefs).not.toContain('/insights')
   })
 
@@ -195,6 +197,9 @@ describe('Nav', () => {
     expect(palette).toBeInTheDocument()
     expect(within(palette).getByRole('button', { name: /refresh current view/i })).toBeInTheDocument()
     expect(within(palette).getByRole('link', { name: /dashboard/i })).toHaveAttribute('href', '/')
+    expect(within(palette).getByRole('link', { name: /lineage lens/i })).toHaveAttribute('href', '/graph')
+    expect(within(palette).getByRole('link', { name: /agent mesh lens/i })).toHaveAttribute('href', '/mesh')
+    expect(within(palette).getByRole('link', { name: /context lens/i })).toHaveAttribute('href', '/context')
   })
 
   it('renders the agent-bom brand text', () => {

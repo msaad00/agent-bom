@@ -74,7 +74,9 @@ interface NavGroup {
 
 function activeGroupForPath(path: string | null): string {
   const matched = NAV_GROUPS.find((group) =>
-    group.links.some((link) => (link.href === "/" ? path === "/" : Boolean(path?.startsWith(link.href))))
+    [...group.links, ...(group.secondary ?? [])].some((link) =>
+      link.href === "/" ? path === "/" : Boolean(path?.startsWith(link.href))
+    )
   );
   return matched?.label ?? NAV_GROUPS[0]!.label;
 }
@@ -115,6 +117,11 @@ const NAV_GROUPS: NavGroup[] = [
       // Single graph surface. Lineage / mesh / context are lenses reached from the
       // in-page lens switcher, not separate nav links (see graph-lens-switcher).
       { href: "/security-graph", label: "Security Graph", icon: Network },
+    ],
+    secondary: [
+      { href: "/graph", label: "Lineage Lens", icon: GitBranch },
+      { href: "/mesh", label: "Agent Mesh Lens", icon: Waypoints },
+      { href: "/context", label: "Context Lens", icon: Network },
     ],
   },
   {
@@ -443,7 +450,7 @@ export function Nav() {
         {navGroups.map((group) => {
           const isExpanded = captureMode || expandedGroups.has(group.label);
           const GroupIcon = group.icon;
-          const hasActiveChild = [...group.visibleLinks, ...group.hiddenLinks].some(
+          const hasActiveChild = [...group.visibleLinks, ...group.hiddenLinks, ...group.secondaryLinks].some(
             (l) => (l.href === "/" ? path === "/" : path.startsWith(l.href))
           );
 

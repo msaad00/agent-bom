@@ -347,6 +347,28 @@ def test_compact_blast_radius_limit():
     assert "--verbose" in plain
 
 
+def test_compact_blast_radius_page_two():
+    """Compact findings can page through a noisy scan without switching to verbose mode."""
+    pkg = Package(name="lodash", version="4.17.20", ecosystem="npm")
+    server = _make_server(packages=[pkg])
+    agent = _make_agent(servers=[server])
+    radii = []
+    for i in range(8):
+        v = _vuln(vid=f"CVE-2024-{i:04d}", severity=Severity.HIGH)
+        radii.append(_blast(v, pkg, [agent], [server]))
+    report = AIBOMReport(agents=[agent], blast_radii=radii)
+    plain = _plain(_capture(print_compact_blast_radius, report, limit=3, page=2))
+
+    assert "page 2/3" in plain
+    assert "4-6 of 8" in plain
+    assert "CVE-2024-0000" not in plain
+    assert "CVE-2024-0003" in plain
+    assert "CVE-2024-0005" in plain
+    assert "CVE-2024-0006" not in plain
+    assert "--page 3 next" in plain
+    assert "--page 1 previous" in plain
+
+
 def test_compact_blast_radius_empty():
     """No output when no blast radii."""
     report = AIBOMReport(agents=[])
@@ -383,6 +405,28 @@ def test_compact_remediation_limit():
     assert "PROTECT" in _plain(output)
     assert "more" in output
     assert "--verbose" in output
+
+
+def test_compact_remediation_page_two():
+    """Compact remediation can page through fix-first output."""
+    server = _make_server()
+    agent = _make_agent(servers=[server])
+    radii = []
+    for i in range(5):
+        v = _vuln(vid=f"CVE-2024-{i:04d}", severity=Severity.HIGH, fixed="9.9.9")
+        p = Package(name=f"pkg-{i}", version="1.0.0", ecosystem="npm", vulnerabilities=[v])
+        radii.append(_blast(v, p, [agent], [server]))
+    report = AIBOMReport(agents=[agent], blast_radii=radii)
+    plain = _plain(_capture(print_compact_remediation, report, limit=2, page=2))
+
+    assert "page 2/3" in plain
+    assert "3-4 of 5" in plain
+    assert "pkg-0" not in plain
+    assert "pkg-2" in plain
+    assert "pkg-3" in plain
+    assert "pkg-4" not in plain
+    assert "--page 3 next" in plain
+    assert "--page 1 previous" in plain
 
 
 def test_compact_remediation_shows_priority_and_action():

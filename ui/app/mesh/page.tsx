@@ -86,7 +86,7 @@ function MeshToolbar({
   ];
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 text-xs">
+    <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800 px-4 py-2 text-xs">
       <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
 
       {/* Node type toggles */}
@@ -102,7 +102,7 @@ function MeshToolbar({
         </label>
       ))}
 
-      <div className="w-px h-4 bg-zinc-700" />
+      <div className="hidden h-4 w-px bg-zinc-700 sm:block" />
 
       {/* Severity filter */}
       <select
@@ -127,10 +127,10 @@ function MeshToolbar({
         Vulnerable only
       </label>
 
-      <div className="w-px h-4 bg-zinc-700" />
+      <div className="hidden h-4 w-px bg-zinc-700 sm:block" />
 
       {/* Search */}
-      <div className="relative flex-1 max-w-xs">
+      <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
         <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2" />
         <input
           type="text"
@@ -151,8 +151,8 @@ function MeshToolbar({
 
       {agentOptions.length > 0 && (
         <>
-          <div className="w-px h-4 bg-zinc-700" />
-          <div className="flex items-center gap-1.5 overflow-x-auto max-w-[28rem] pb-1">
+          <div className="hidden h-4 w-px bg-zinc-700 sm:block" />
+          <div className="flex max-w-full items-center gap-1.5 overflow-x-auto pb-1 sm:max-w-[28rem]">
             {agentOptions.map(({ key, label }) => {
               const active = selectedAgents.includes(key);
               return (
@@ -160,7 +160,7 @@ function MeshToolbar({
                   key={key}
                   type="button"
                   onClick={() => toggleAgent(key)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                  className={`max-w-[13rem] truncate rounded-full border px-2.5 py-1 text-[11px] transition ${
                     active
                       ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
                       : "border-zinc-700 bg-zinc-900/70 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"
@@ -479,18 +479,18 @@ export default function MeshPage() {
   return (
     <div className={`${captureMode ? "h-screen" : "h-[calc(100vh-3.5rem)]"} flex flex-col bg-background text-foreground`}>
       {/* Header */}
-      <div className={`flex items-center justify-between border-b border-[var(--border-subtle)] ${captureMode ? "px-5 py-3" : "px-4 py-3"}`}>
-        <div>
+      <div className={`flex flex-col gap-3 border-b border-[var(--border-subtle)] lg:flex-row lg:items-center lg:justify-between ${captureMode ? "px-5 py-3" : "px-4 py-3"}`}>
+        <div className="min-w-0">
           <h1 className="text-lg font-semibold text-foreground">Agent Mesh</h1>
-          <p className="text-xs text-[var(--text-secondary)]">
+          <p className="break-words text-xs text-[var(--text-secondary)]">
             Evidence-scoped path view across agents, MCP servers, tools, packages, credential references, and findings
           </p>
-          <p className={`mt-1 text-[var(--text-tertiary)] ${captureMode ? "text-xs" : "text-[11px]"}`}>
+          <p className={`mt-1 break-words text-[var(--text-tertiary)] ${captureMode ? "text-xs" : "text-[11px]"}`}>
             Default view ranks the highest-risk agent first and hides lower-priority nodes until you expand filters.
           </p>
         </div>
-        <div className={`flex items-center ${captureMode ? "gap-2" : "gap-3"}`}>
-          <div className="flex items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800">
+        <div className={`flex min-w-0 flex-wrap items-center ${captureMode ? "gap-2" : "gap-3"}`}>
+          <div className="flex max-w-full items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800">
             {[
               { key: "radial" as const, label: "Risk Map", icon: Orbit },
               { key: "topology" as const, label: "Dependency Flow", icon: Network },
@@ -514,7 +514,7 @@ export default function MeshPage() {
           <select
             value={selectedJob}
             onChange={(e) => setSelectedJob(e.target.value)}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
+            className="min-w-0 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-emerald-600"
           >
             {jobs?.map((j) => (
               <option key={j.job_id} value={j.job_id}>

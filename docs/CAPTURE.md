@@ -104,6 +104,13 @@ package evidence into the real Next.js pages. It is suitable for README proof
 captures, not for claiming those exact entities were discovered from a buyer
 environment.
 
+The capture harness must refresh every asset listed in
+`docs/images/product-screenshots.json`; adding a new manifest entry without a
+matching Playwright capture is a stale-evidence bug. Inspect each generated PNG
+at README scale before publishing: text must stay inside cards and controls,
+long identifiers must wrap or truncate, graph labels must remain legible, and no
+browser chrome, dev overlay, local path, or stale version stamp may be visible.
+
 For environment and IAM proof, keep the claim precise. The demo graph scan
 stores agents, MCP servers, tools, credentials, packages, findings, provider,
 and graph edges. Environment review state and identity lifecycle are seeded

@@ -49,7 +49,10 @@ INCLUDE_DIRS: tuple[str, ...] = (
     "src/agent_bom/cloud",
     "src/agent_bom/runtime",
 )
-INCLUDE_FILES: tuple[str, ...] = ("src/agent_bom/proxy.py",)
+INCLUDE_FILES: tuple[str, ...] = (
+    "src/agent_bom/gateway_server.py",
+    "src/agent_bom/proxy.py",
+)
 
 EXCLUDE_FRAGMENTS: tuple[str, ...] = (
     "/test",

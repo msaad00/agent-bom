@@ -4268,6 +4268,70 @@ paths:
       summary: Scan Connection
       tags:
       - cloud-connections
+  /v1/cloud/connections/{connection_id}/test:
+    post:
+      description: 'Validate a stored connection''s brokered read-only credential.
+
+
+        This is the pre-scan button for hosted POCs and self-hosted onboarding. It
+        is
+
+        tenant-scoped, uses the same RBAC gate as scans, and never runs inventory/CIS
+
+        or writes findings. On success the connection becomes ``active``; on failure
+
+        it becomes ``error`` with sanitized status detail.'
+      operationId: test_connection_v1_cloud_connections__connection_id__test_post
+      parameters:
+      - in: path
+        name: connection_id
+        required: true
+        schema:
+          title: Connection Id
+          type: string
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Test Connection V1 Cloud Connections  Connection Id  Test
+                  Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Test Connection
+      tags:
+      - cloud-connections
   /v1/cloud/{provider}/cis-benchmark:
     get:
       description: 'Run the CIS Foundations benchmark for a cloud provider over REST.

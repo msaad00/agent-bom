@@ -86,6 +86,22 @@ def test_preflight_rejects_bad_connections_key(monkeypatch: pytest.MonkeyPatch, 
     assert any("Fernet key" in error or "32 bytes" in error for error in errors)
 
 
+def test_preflight_rejects_reused_secret_values(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("POSTGRES_APP_PASSWORD", VALID_ENV["POSTGRES_PASSWORD"])
+
+    errors = run_preflight(tmp_path, skip_compose=True, write_secret=False, force=False)
+
+    assert any("POSTGRES_APP_PASSWORD must not reuse" in error for error in errors)
+
+
+def test_preflight_rejects_ephemeral_audit_hmac(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC", "1")
+
+    errors = run_preflight(tmp_path, skip_compose=True, write_secret=False, force=False)
+
+    assert "AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC must be unset or false" in errors
+
+
 def test_preflight_can_write_postgres_secret(tmp_path: Path) -> None:
     errors = run_preflight(tmp_path, skip_compose=True, write_secret=True, force=False)
 

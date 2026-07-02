@@ -106,6 +106,7 @@ import type {
   CloudConnectionsResponse,
   CloudConnectionCreateRequest,
   CloudConnectionUpdateRequest,
+  CloudConnectionTestResponse,
   CloudConnectionScanResponse
 } from "./api-types";
 export type {
@@ -295,6 +296,7 @@ export type {
   CloudConnectionUpdateRequest,
   CloudConnectionScanInventory,
   CloudConnectionScanCis,
+  CloudConnectionTestResponse,
   CloudConnectionScanResponse,
 } from "./api-types";
 export type { MitreAtlasCatalogMetadata } from "./api-types";
@@ -1038,7 +1040,10 @@ export const api = {
     patch<CloudConnectionRecord>(`/v1/cloud/connections/${encodeURIComponent(id)}`, body),
   /** Delete a connection owned by this tenant. */
   deleteCloudConnection: (id: string) => del(`/v1/cloud/connections/${encodeURIComponent(id)}`),
-  /** Launch a read-only scan via the credential broker (AWS today). */
+  /** Validate the stored read-only credential without running inventory/CIS. */
+  testCloudConnection: (id: string) =>
+    post<CloudConnectionTestResponse>(`/v1/cloud/connections/${encodeURIComponent(id)}/test`, {}),
+  /** Launch a read-only scan via the credential broker (AWS, Azure, GCP, Snowflake). */
   scanCloudConnection: (id: string) =>
     post<CloudConnectionScanResponse>(`/v1/cloud/connections/${encodeURIComponent(id)}/scan`, {}),
 

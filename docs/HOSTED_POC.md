@@ -1,10 +1,8 @@
 # Hosted POC Runbook
 
 This runbook is for a gated customer-0 deployment: a live URL that shows how
-agent-bom works, lets a small set of users connect read-only accounts, and
-proves the product loop before a managed cloud edition is offered.
-
-It is not a claim that public `agent-bom Cloud` is generally available.
+agent-bom works, lets a small set of invited users connect read-only accounts,
+and proves the product loop with operator-controlled access.
 
 ## Recommended path
 
@@ -24,7 +22,6 @@ is ready.
 |---|---|---|
 | Public demo link | AWS VM + Caddy + platform compose | Fastest custom URL, simple TLS, works for any tester |
 | Customer-owned warehouse install | Snowflake Native App | Runs inside the customer's Snowflake account with Snowflake auth and SPCS |
-| Later managed product | Hosted chart + connect roles | Same control plane, stricter tenant onboarding and quotas |
 
 ## Customer-0 AWS VM
 
@@ -137,14 +134,52 @@ python scripts/deploy/hosted_poc_preflight.py --write-postgres-secret
 
 The preflight fails closed when required secrets are missing, the browser API
 URL is still localhost, CORS is wildcarded, unauthenticated API mode is enabled,
-API/UI ports bind publicly, or the composed stack would mount placeholder
-secrets. Run it again after any `.env`, DNS, or compose change.
+API/UI ports bind publicly, required secrets are reused, audit integrity is
+allowed to fall back to an ephemeral key, or the composed stack would mount
+placeholder secrets. Run it again after any `.env`, DNS, or compose change.
+
+Mint the first invited admin key from inside the API container so the key record
+lands in the same persistent store used by the API:
+
+```bash
+docker compose \
+  -f deploy/docker-compose.platform.yml \
+  -f deploy/docker-compose.hosted-poc.yml \
+  exec api \
+  python scripts/deploy/mint_hosted_admin_key.py \
+    --tenant-id customer-0 \
+    --name customer-0-admin \
+    --raw-key-file /tmp/customer0-admin.key
+```
+
+The JSON response includes key metadata only. The raw key is written once to the
+private `0600` file passed with `--raw-key-file`; store that value in your
+password manager, then delete or move the file into your secret store. Do not
+commit it or paste it into docs, screenshots, tickets, or chat transcripts.
+
+Run the hosted smoke before inviting anyone:
+
+```bash
+AGENT_BOM_SMOKE_URL="https://demo.agent-bom.com" \
+AGENT_BOM_SMOKE_API_KEY="<raw admin key>" \
+scripts/deploy/hosted_poc_smoke.sh
+```
+
+After at least one cloud/Snowflake connection is stored, verify the broker path
+without launching a full scan:
+
+```bash
+AGENT_BOM_SMOKE_URL="https://demo.agent-bom.com" \
+AGENT_BOM_SMOKE_API_KEY="<raw admin key>" \
+AGENT_BOM_SMOKE_CONNECTION_ID="<connection id>" \
+scripts/deploy/hosted_poc_smoke.sh
+```
 
 ### Production auth checklist
 
-For the gated POC, users are invited manually. Do not enable public signup until
-tenant lifecycle, abuse controls, quotas, billing, and self-service credential
-rotation exist.
+For the gated POC, users are invited manually and access is revoked manually.
+Keep the surface operator-controlled; this profile is not a public registration
+flow.
 
 Before sharing the link, verify:
 
@@ -274,7 +309,7 @@ If this succeeds, the account can run the Native App containers.
 
 ## What to avoid
 
-- Do not present the AWS demo as generally available managed SaaS.
+- Do not present the AWS demo as anything beyond an invite-only hosted POC.
 - Do not ask testers for long-lived cloud keys when assumable roles work.
 - Do not enable unauthenticated API access.
 - Do not publish Grafana, observability, or development compose profiles.

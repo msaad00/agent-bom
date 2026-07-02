@@ -2700,6 +2700,21 @@ export interface CloudConnectionScanCis {
   pass_rate: number | null;
 }
 
+/** Response from `POST /v1/cloud/connections/{id}/test`; no scan is created. */
+export interface CloudConnectionTestResponse {
+  schema_version: string;
+  connection_id: string;
+  tenant_id: string;
+  provider: string;
+  status: "ok" | string;
+  audit_metadata: {
+    read_only: boolean;
+    writes_performed: boolean;
+    note: string;
+  };
+  connection: CloudConnectionRecord;
+}
+
 /** Response from `POST /v1/cloud/connections/{id}/scan` (AWS, Azure, GCP, Snowflake). */
 export interface CloudConnectionScanResponse {
   schema_version: string;

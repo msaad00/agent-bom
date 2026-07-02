@@ -30,6 +30,14 @@ REQUIRED_ENV = (
 SECRET_MIN_LENGTH = 32
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 TRUTHY = {"1", "true", "yes", "on"}
+UNIQUE_SECRET_ENV = (
+    "POSTGRES_PASSWORD",
+    "POSTGRES_APP_PASSWORD",
+    "AGENT_BOM_API_KEY",
+    "AGENT_BOM_AUDIT_HMAC_KEY",
+    "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY",
+    "AGENT_BOM_CONNECTIONS_KEY",
+)
 
 
 def _repo_root() -> Path:
@@ -64,6 +72,19 @@ def _validate_fernet_key(errors: list[str]) -> None:
         return
     if len(decoded) != 32:
         _fail(errors, "AGENT_BOM_CONNECTIONS_KEY must decode to 32 bytes")
+
+
+def _validate_secret_uniqueness(errors: list[str]) -> None:
+    seen: dict[str, str] = {}
+    for name in UNIQUE_SECRET_ENV:
+        value = os.environ.get(name, "")
+        if not value:
+            continue
+        previous = seen.get(value)
+        if previous:
+            _fail(errors, f"{name} must not reuse the same secret value as {previous}")
+            continue
+        seen[value] = name
 
 
 def _validate_public_url(errors: list[str]) -> str:
@@ -108,6 +129,10 @@ def _validate_auth_and_bindings(errors: list[str]) -> None:
     if os.environ.get("AGENT_BOM_SESSION_COOKIE_SECURE", "1").strip().lower() in {"0", "false", "no", "off"}:
         _fail(errors, "AGENT_BOM_SESSION_COOKIE_SECURE must stay enabled")
 
+    ephemeral_audit = os.environ.get("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC", "")
+    if ephemeral_audit.strip().lower() in TRUTHY:
+        _fail(errors, "AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC must be unset or false")
+
 
 def _write_postgres_secret(root: Path, *, force: bool) -> None:
     secret_path = root / "deploy" / "secrets" / "postgres_password"
@@ -148,7 +173,7 @@ def _validate_compose_config(errors: list[str], rendered: str) -> None:
     for needle, message in forbidden.items():
         if needle in rendered:
             _fail(errors, message)
-    if "AGENT_BOM_SESSION_COOKIE_SECURE=1" not in rendered and "AGENT_BOM_SESSION_COOKIE_SECURE: \"1\"" not in rendered:
+    if "AGENT_BOM_SESSION_COOKIE_SECURE=1" not in rendered and 'AGENT_BOM_SESSION_COOKIE_SECURE: "1"' not in rendered:
         _fail(errors, "compose output must set AGENT_BOM_SESSION_COOKIE_SECURE=1")
 
 
@@ -156,6 +181,7 @@ def run_preflight(root: Path, *, skip_compose: bool, write_secret: bool, force: 
     errors: list[str] = []
     _validate_secret_lengths(errors)
     _validate_fernet_key(errors)
+    _validate_secret_uniqueness(errors)
     public_url = _validate_public_url(errors)
     _validate_cors(errors, public_url)
     _validate_auth_and_bindings(errors)

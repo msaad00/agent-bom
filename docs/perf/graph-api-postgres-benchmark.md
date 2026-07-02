@@ -34,11 +34,12 @@ plans, and Postgres p50/p95/p99 query-family timings on a deterministic
 synthetic estate.
 
 These artifacts do not claim Snowflake behavior, browser timing, managed
-operator deployment timing, or production SLOs. The current measured ceiling is
-the checked-in Docker Postgres estate with 10,479 nodes, 11,242 edges, and 291
-materialized attack paths. 100k+ and 1M-node Postgres claims are not yet
-measured; they remain the next #3353 work item. Measured local CPU graph timings
-remain in [`p95-p99-graph-query.md`](p95-p99-graph-query.md).
+operator deployment timing, managed graph-backend timing, or production SLOs.
+The current measured ceiling is the checked-in Docker Postgres estate with
+10,479 nodes, 11,242 edges, and 291 materialized attack paths. 100k+ and
+1M-node Postgres claims are not yet measured; they remain follow-on scale work.
+Measured local CPU graph timings remain in
+[`p95-p99-graph-query.md`](p95-p99-graph-query.md).
 
 ## Scope
 
@@ -59,6 +60,8 @@ Covered by the checked-in evidence:
   digest, and bounded traversal
 - retained graph history and redaction-aware evidence-manifest API/CLI surfaces
   backed by the same tenant-scoped snapshot store
+- fail-closed backend selection for experimental Neptune so unmeasured managed
+  graph paths cannot be selected accidentally
 
 Excluded from these local artifacts:
 
@@ -66,6 +69,7 @@ Excluded from these local artifacts:
 - Snowflake or managed-operator deployment timings
 - browser/UI interaction timing
 - 50k / 100k / 1M edge Postgres runs
+- Amazon Neptune or other managed graph backend latency
 - six-month hosted lake retention jobs, audit-chain bundle persistence,
   compliance bundle persistence, and legal-hold/deletion workflows
 

@@ -1,9 +1,10 @@
 """Amazon Neptune graph store adapter.
 
 The adapter is intentionally optional: importing agent-bom must not require
-Gremlin, AWS credentials, or a reachable Neptune cluster. Production callers
-select it explicitly through ``AGENT_BOM_GRAPH_BACKEND=neptune`` and an
-endpoint; tests can inject a small Gremlin-compatible client.
+Gremlin, AWS credentials, or a reachable Neptune cluster. Operators select it
+explicitly through ``AGENT_BOM_GRAPH_BACKEND=neptune``,
+``AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH=1``, and an endpoint; tests can inject a
+small Gremlin-compatible client.
 """
 
 from __future__ import annotations
@@ -34,6 +35,25 @@ class GremlinClientProtocol(Protocol):
     def submit(self, query: str, bindings: dict[str, Any] | None = None) -> Any: ...
 
 
+def neptune_graph_backend_enabled() -> bool:
+    """Return whether the experimental Neptune backend may be selected."""
+    return os.environ.get("AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def require_neptune_graph_backend_enabled() -> None:
+    """Fail closed unless an operator explicitly opts into the experimental backend."""
+    if not neptune_graph_backend_enabled():
+        raise NeptuneGraphStoreConfigError(
+            "AGENT_BOM_GRAPH_BACKEND=neptune is experimental and requires "
+            "AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH=1; use SQLite/Postgres for supported graph scale."
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class NeptuneGraphConfig:
     """Connection settings for a Neptune Gremlin endpoint."""
@@ -43,6 +63,7 @@ class NeptuneGraphConfig:
 
     @classmethod
     def from_env(cls) -> "NeptuneGraphConfig":
+        require_neptune_graph_backend_enabled()
         endpoint = os.environ.get("AGENT_BOM_NEPTUNE_ENDPOINT", "").strip()
         if not endpoint:
             raise NeptuneGraphStoreConfigError(

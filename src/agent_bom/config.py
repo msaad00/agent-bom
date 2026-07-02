@@ -248,10 +248,11 @@ LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 
 # ── Graph Backend Selection ───────────────────────────────────────────────
 # SQLite is the local default. Postgres remains selected by AGENT_BOM_POSTGRES_URL.
-# Neptune is an explicit enterprise lane and must fail closed without endpoint
-# configuration so deployments do not silently fall back to a different graph.
+# Neptune is experimental and requires explicit opt-in plus endpoint config.
+# SQLite and Postgres remain the supported graph backends.
 
 GRAPH_BACKEND = _str("AGENT_BOM_GRAPH_BACKEND", "")
+EXPERIMENTAL_NEPTUNE_GRAPH = _bool("AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH", False)
 NEPTUNE_ENDPOINT = _str("AGENT_BOM_NEPTUNE_ENDPOINT", "")
 NEPTUNE_TRAVERSAL_SOURCE = _str("AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE", "g")
 

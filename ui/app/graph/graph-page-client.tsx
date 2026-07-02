@@ -1346,9 +1346,17 @@ function GraphPageInner() {
   );
 
   const graphOnlyFindings = displayNodes.length > 0 && !hasContextualGraph;
+  // Match the filter→URL sync behavior above: during the initial graph load,
+  // App Router search params can lag behind router.replace() churn. The live
+  // address bar is the source of truth for renderer flags so explicit
+  // /graph?renderer=webgl requests cannot briefly fall back to React Flow.
+  const liveRendererParams =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search)
+      : searchParams;
   const webglGraphEnabled =
-    searchParams?.get("renderer") === "webgl" ||
-    searchParams?.get("webgl") === "1";
+    liveRendererParams?.get("renderer") === "webgl" ||
+    liveRendererParams?.get("webgl") === "1";
   const graphRenderer = decideGraphRenderer({
     nodeCount: sourceNodeCount,
     edgeCount: graphData?.edges.length ?? displayEdges.length,

@@ -140,7 +140,7 @@ credential environment names in reach, and the agents that can call it.
 | Cloud estate | Read-only, gated asset inventory and CIS posture across AWS, Azure, GCP, and Snowflake, plus AI/GPU provider posture |
 | Identity (NHI) | Non-human identity discovery (Okta/Entra, gated), credential-expiry posture, and access-review recertification |
 | LLM cost | Spend forecasting, budget runway, chargeback/allocation, and seasonal-aware spend-anomaly detection |
-| Containers + IaC | OCI images, Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes; registry sweeps across ECR/ACR/GAR and agentless AWS EBS disk side-scan (read-only, snapshot-based) |
+| Containers + IaC | OCI images, Dockerfile, Terraform, CloudFormation, Helm, and Kubernetes; registry sweeps across ECR/ACR/GAR and opt-in agentless AWS EBS disk side-scan (scoped snapshot lifecycle) |
 | Secrets + runtime | Secret detection, MCP proxy/gateway, A2A and MCP auth-posture checks, inline firewall enforcement, and redaction |
 | Compliance | Mapped governance frameworks plus ZIP evidence bundles for auditors |
 

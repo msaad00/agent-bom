@@ -370,6 +370,12 @@ attached to an instance. `--no-secrets` returns SBOM + CVEs only;
 unset the command prints how to enable it and exits non-zero — it never starts a
 snapshot implicitly.
 
+Azure Managed Disk and GCP Persistent Disk inventory also emits
+`side_scan_targets` records with provider, target id, location, size, encryption,
+and execution state. Those records are target discovery only: the current
+snapshot executor is AWS EBS, and Azure/GCP snapshot lifecycle execution remains
+explicit follow-up work under the CWPP lane.
+
 ---
 
 ## 8. Why it scales and stays accurate

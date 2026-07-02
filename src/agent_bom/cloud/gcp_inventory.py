@@ -44,6 +44,7 @@ from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, Sca
 
 from .aws_inventory import dedupe_missing_permissions, record_discovery_failure
 from .normalization import sanitize_discovery_warning
+from .side_scan_targets import gcp_persistent_disk_targets
 
 logger = logging.getLogger(__name__)
 
@@ -515,6 +516,7 @@ def discover_inventory(
         "route_tables": route_tables,
         "ip_addresses": ip_addresses,
         "disks": disks,
+        "side_scan_targets": gcp_persistent_disk_targets(disks, project_id=resolved_project),
         "pubsub_topics": pubsub_topics,
         "warnings": warnings,
         "missing_permissions": dedupe_missing_permissions(missing),

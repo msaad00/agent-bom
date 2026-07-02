@@ -39,7 +39,7 @@
     "directory": "sdks/typescript"
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   }
 }

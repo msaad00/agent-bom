@@ -31,10 +31,11 @@ API persistence boundary.
 
 The adapter design is:
 
-- **Configuration:** opt in with a backend selector such as
-  `AGENT_BOM_GRAPH_BACKEND=neptune` plus endpoint, AWS auth mode, region, TLS,
-  and optional IAM role settings. Missing config must fail startup for the
-  Neptune backend rather than falling back silently to another tenant's store.
+- **Configuration:** opt in with `AGENT_BOM_GRAPH_BACKEND=neptune`,
+  `AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH=1`, endpoint, AWS auth mode, region,
+  TLS, and optional IAM role settings. Missing experimental opt-in or endpoint
+  config must fail startup for the Neptune backend rather than falling back
+  silently to another tenant's store.
 - **Dependency boundary:** keep AWS/Gremlin dependencies in an optional extra.
   Base installs, CLI scans, SQLite, and Postgres deployments must not import
   those packages at module import time.
@@ -75,7 +76,7 @@ The adapter design is:
 ## Migration Strategy
 
 1. Add a `NeptuneGraphStore` skeleton behind an optional import boundary and
-   feature flag.
+   `AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH=1` feature flag.
 2. Add mocked adapter contract tests that exercise the full
    `GraphStoreProtocol` surface without requiring AWS.
 3. Add a local serializer that exports a `UnifiedGraph` into the exact
@@ -97,5 +98,6 @@ The adapter design is:
   not a shipped managed graph backend.
 - **Trade-off:** Search may need a separate indexed text service at very large
   scale; that is outside the first adapter.
-- **Boundary:** This ADR does not add Neptune code, Gremlin/openCypher public
-  query endpoints, WebGL rendering, or production latency claims.
+- **Boundary:** The first code path remains experimental and fail-closed. This
+  ADR does not add Gremlin/openCypher public query endpoints, WebGL rendering, or
+  production latency claims.

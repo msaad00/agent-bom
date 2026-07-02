@@ -13104,6 +13104,34 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "description": "Max governance edges to return",
+            "in": "query",
+            "name": "edge_limit",
+            "required": false,
+            "schema": {
+              "default": 5000,
+              "description": "Max governance edges to return",
+              "maximum": 25000,
+              "minimum": 1,
+              "title": "Edge Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max governance attack paths to embed",
+            "in": "query",
+            "name": "attack_path_limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "description": "Max governance attack paths to embed",
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Attack Path Limit",
+              "type": "integer"
+            }
           }
         ],
         "responses": {

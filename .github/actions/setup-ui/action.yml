@@ -24,7 +24,19 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        npm install -g "npm@${{ inputs.npm-version }}"
+        npm config set fetch-retries 5
+        npm config set fetch-retry-mintimeout 20000
+        npm config set fetch-retry-maxtimeout 120000
+        for attempt in 1 2 3; do
+          if npm install -g "npm@${{ inputs.npm-version }}"; then
+            break
+          fi
+          if [ "${attempt}" = "3" ]; then
+            echo "::error::Failed to install npm ${{ inputs.npm-version }} after ${attempt} attempts"
+            exit 1
+          fi
+          sleep $((attempt * 10))
+        done
         actual="$(npm --version)"
         if [ "${actual}" != "${{ inputs.npm-version }}" ]; then
           echo "::error::Expected npm ${{ inputs.npm-version }}, got ${actual}"

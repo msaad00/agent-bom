@@ -17,6 +17,7 @@ Endpoints:
     GET    /v1/cloud/connections          list this tenant's connections
     GET    /v1/cloud/connections/{id}     one connection (non-secret metadata)
     DELETE /v1/cloud/connections/{id}     remove a connection
+    POST   /v1/cloud/connections/{id}/test  validate brokered read-only auth
     POST   /v1/cloud/connections/{id}/scan  launch a read-only scan via the broker
 
 The ``/scan`` endpoint brokers the stored connection into a short-lived read-only
@@ -390,6 +391,24 @@ def _scan_audit_metadata(note: str) -> dict[str, Any]:
     return {"read_only": True, "writes_performed": False, "note": note}
 
 
+def _test_connection_broker(record: CloudConnectionRecord) -> None:
+    """Validate that the broker can materialize read-only credentials.
+
+    This deliberately does not run inventory, CIS, or persistence. It only proves
+    that the encrypted connection secret can be decrypted and exchanged for the
+    provider credential/session the scan path will later use.
+    """
+
+    from agent_bom.cloud.connection_broker import broker_session
+
+    brokered = broker_session(record, session_name=f"agent-bom-test-{record.id[:8]}")
+    if (record.provider or "").strip().lower() == "snowflake":
+        try:
+            brokered.close()
+        except Exception:  # noqa: BLE001 - close best-effort; never mask broker success
+            _logger.debug("Snowflake broker connection close failed for test connection %s", record.id)
+
+
 def _run_aws_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[str, Any]:
     """Broker the connection into a read-only session and run inventory + CIS.
 
@@ -596,6 +615,61 @@ def _run_connection_scan(record: CloudConnectionRecord, tenant_id: str) -> dict[
     return runner(record, tenant_id)
 
 
+@router.post("/v1/cloud/connections/{connection_id}/test")
+async def test_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> dict[str, Any]:
+    """Validate a stored connection's brokered read-only credential.
+
+    This is the pre-scan button for hosted POCs and self-hosted onboarding. It is
+    tenant-scoped, uses the same RBAC gate as scans, and never runs inventory/CIS
+    or writes findings. On success the connection becomes ``active``; on failure
+    it becomes ``error`` with sanitized status detail.
+    """
+
+    record = _require_connection(request, connection_id)
+    tenant_id = record.tenant_id
+    actor = _actor(request)
+
+    if (record.provider or "").strip().lower() not in _SCAN_RUNNERS:
+        raise HTTPException(status_code=400, detail=f"Unsupported provider '{record.provider}'.")
+
+    try:
+        _test_connection_broker(record)
+    except Exception as exc:  # noqa: BLE001 - broker failure
+        detail = sanitize_error(exc, generic=True)
+        _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
+        _logger.exception("Cloud connection test failed for connection %s", record.id)
+        log_action(
+            "cloud_connection.test",
+            actor=actor,
+            resource=f"cloud-connection/{record.id}",
+            tenant_id=tenant_id,
+            provider=record.provider,
+            outcome="failure",
+        )
+        raise HTTPException(status_code=502, detail="Cloud connection test failed; see server logs.") from exc
+
+    _mark_connection(record, status=STATUS_ACTIVE, status_detail="")
+    log_action(
+        "cloud_connection.test",
+        actor=actor,
+        resource=f"cloud-connection/{record.id}",
+        tenant_id=tenant_id,
+        provider=record.provider,
+        outcome="success",
+    )
+    return {
+        "schema_version": "cloud.connections.test.v1",
+        "connection_id": record.id,
+        "tenant_id": tenant_id,
+        "provider": record.provider,
+        "status": "ok",
+        "audit_metadata": _scan_audit_metadata(
+            "Connection test brokered a read-only credential only; no inventory, CIS, findings, or resource writes ran."
+        ),
+        "connection": record.to_public_dict(),
+    }
+
+
 @router.post("/v1/cloud/connections/{connection_id}/scan")
 async def scan_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> dict[str, Any]:
     """Launch a read-only cloud scan for a stored connection via the broker.
@@ -620,7 +694,7 @@ async def scan_connection(request: Request, connection_id: str, _role: Any = _SC
     except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
         # Persist an error status with a sanitized, secret-free detail. Full
         # diagnostics go to the server log only; the client gets a generic message.
-        detail = sanitize_error(exc)
+        detail = sanitize_error(exc, generic=True)
         _mark_connection(record, status=STATUS_ERROR, status_detail=detail)
         _logger.exception("Cloud connection scan failed for connection %s", record.id)
         log_action(

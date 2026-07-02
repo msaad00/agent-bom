@@ -1205,6 +1205,74 @@ def test_scan_missing_connection_404(monkeypatch: pytest.MonkeyPatch) -> None:
     assert resp.status_code == 404
 
 
+def test_connection_test_brokers_without_scan_persistence(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.store import InMemoryJobStore
+    from agent_bom.api.stores import _get_store, set_job_store
+    from agent_bom.cloud import connection_broker
+
+    calls: dict[str, Any] = {}
+    set_job_store(InMemoryJobStore())
+
+    def _fake_broker(record: CloudConnectionRecord, **kwargs: Any) -> Any:
+        calls["broker_record_id"] = record.id
+        calls["session_name"] = kwargs.get("session_name")
+        return _BROKER_SESSION_SENTINEL
+
+    monkeypatch.setattr(connection_broker, "broker_session", _fake_broker)
+    client = TestClient(_app())
+    cid = _seed_connection("tenant-alpha")
+
+    resp = client.post(f"/v1/cloud/connections/{cid}/test", headers=_proxy_headers(tenant="tenant-alpha"))
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["schema_version"] == "cloud.connections.test.v1"
+    assert body["provider"] == "aws"
+    assert body["status"] == "ok"
+    assert "scan_id" not in body
+    assert calls["broker_record_id"] == cid
+    assert str(calls["session_name"]).startswith("agent-bom-test-")
+
+    assert _get_store().list_all("tenant-alpha") == []
+    fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
+    assert fetched["status"] == "active"
+    assert fetched["last_scan_at"] is None
+    assert fetched["last_scan_id"] is None
+    assert "super-secret-external-id" not in str(body)
+
+
+def test_connection_test_failure_marks_error_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import connection_broker
+
+    def _fake_broker(record: CloudConnectionRecord, **kwargs: Any) -> Any:
+        raise connection_broker.ConnectionBrokerError("failed for super-secret-external-id")
+
+    monkeypatch.setattr(connection_broker, "broker_session", _fake_broker)
+    cid = _seed_connection("tenant-alpha")
+    client = TestClient(_app())
+
+    resp = client.post(f"/v1/cloud/connections/{cid}/test", headers=_proxy_headers(tenant="tenant-alpha"))
+
+    assert resp.status_code == 502
+    assert "super-secret-external-id" not in str(resp.json())
+    fetched = client.get(f"/v1/cloud/connections/{cid}", headers=_proxy_headers(tenant="tenant-alpha")).json()
+    assert fetched["status"] == "error"
+    assert "super-secret-external-id" not in fetched["status_detail"]
+    assert fetched["last_scan_id"] is None
+
+
+def test_connection_test_is_tenant_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.cloud import connection_broker
+
+    monkeypatch.setattr(connection_broker, "broker_session", lambda record, **kwargs: _BROKER_SESSION_SENTINEL)
+    cid = _seed_connection("tenant-alpha")
+    client = TestClient(_app())
+
+    resp = client.post(f"/v1/cloud/connections/{cid}/test", headers=_proxy_headers(tenant="tenant-beta"))
+
+    assert resp.status_code == 404
+
+
 class _FakeProviderCIS:
     def to_dict(self) -> dict[str, Any]:
         return {

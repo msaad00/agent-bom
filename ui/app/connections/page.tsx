@@ -37,6 +37,7 @@ import {
   api,
   type CloudConnectionRecord,
   type CloudConnectionCreateRequest,
+  type CloudConnectionTestResponse,
   type CloudConnectionScanResponse,
 } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
@@ -54,11 +55,10 @@ import { vendorLogo } from "@/lib/vendor-logos";
 // (non-secret provider params). `permissions` / `cli` mirror the real
 // `agent-bom connect <provider>` onboarding (src/agent_bom/cli/_entry_points.py).
 //
-// `readiness` reflects connection_store.py's documented Phase A nuance: AWS is
-// broker-enabled and live; Azure/GCP/Snowflake accept the connect flow and store
-// the connection, with brokering still maturing ("Brokering planned").
+// `readiness` reflects the API's broker-enabled scan runners for AWS, Azure,
+// GCP, and Snowflake.
 
-type ProviderReadiness = "live" | "planned";
+type ProviderReadiness = "live";
 
 interface ProviderField {
   key: string;
@@ -123,7 +123,7 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     tagline: "Read-only Reader credential",
     permissions: "Reader-role service principal (read-only)",
     cli: "agent-bom connect azure",
-    readiness: "planned",
+    readiness: "live",
     roleField: {
       key: "role_ref",
       label: "Client ID (app registration)",
@@ -164,7 +164,7 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     tagline: "Read-only service account",
     permissions: "roles/viewer service account (read-only)",
     cli: "agent-bom connect gcp",
-    readiness: "planned",
+    readiness: "live",
     roleField: {
       key: "role_ref",
       label: "Service account email",
@@ -200,7 +200,7 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     tagline: "Read-only key-pair connection",
     permissions: "Read-only governance role (key-pair auth)",
     cli: "agent-bom connect snowflake",
-    readiness: "planned",
+    readiness: "live",
     roleField: {
       key: "role_ref",
       label: "Account",
@@ -273,7 +273,7 @@ function eventMode(connection: CloudConnectionRecord): {
   }
   if (connection.scan_interval_minutes) {
     return {
-      label: "Polling fallback",
+      label: "Scheduled scan",
       detail: `Every ${connection.scan_interval_minutes} min`,
       tone: "border-amber-900/60 bg-amber-950/30 text-amber-200",
     };
@@ -356,21 +356,10 @@ function ProviderLogo({
 }
 
 function ReadinessBadge({ readiness }: { readiness: ProviderReadiness }) {
-  if (readiness === "live") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-900/60 bg-emerald-950/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
-        <CheckCircle2 className="h-3 w-3" />
-        Live
-      </span>
-    );
-  }
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-sky-900/60 bg-sky-950/30 px-2.5 py-0.5 text-[11px] font-medium text-sky-300"
-      title="The connect flow stores this connection; broker-side scanning is still maturing in Phase A."
-    >
-      <Clock className="h-3 w-3" />
-      Brokering planned
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-900/60 bg-emerald-950/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
+      <CheckCircle2 className="h-3 w-3" />
+      {readiness === "live" ? "Live" : "Live"}
     </span>
   );
 }
@@ -437,6 +426,9 @@ export default function ConnectionsPage() {
     Record<string, CloudConnectionScanResponse>
   >({});
   const [scanErrors, setScanErrors] = useState<Record<string, string>>({});
+  const [testResults, setTestResults] = useState<
+    Record<string, CloudConnectionTestResponse>
+  >({});
   const [scheduleErrors, setScheduleErrors] = useState<Record<string, string>>(
     {},
   );
@@ -491,6 +483,29 @@ export default function ConnectionsPage() {
       await refresh();
     } catch (err) {
       const detail = err instanceof Error ? err.message : "Scan failed.";
+      setScanErrors((prev) => ({ ...prev, [connection.id]: detail }));
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleTest(connection: CloudConnectionRecord) {
+    setBusyId(connection.id);
+    setMessage(null);
+    setScanErrors((prev) => {
+      const next = { ...prev };
+      delete next[connection.id];
+      return next;
+    });
+    try {
+      const result = await api.testCloudConnection(connection.id);
+      setTestResults((prev) => ({ ...prev, [connection.id]: result }));
+      setMessage(`${connection.display_name} read-only credential verified.`);
+      await refresh();
+    } catch (err) {
+      const detail =
+        err instanceof Error ? err.message : "Connection test failed.";
       setScanErrors((prev) => ({ ...prev, [connection.id]: detail }));
       await refresh();
     } finally {
@@ -738,6 +753,7 @@ export default function ConnectionsPage() {
                         canManage={canManage}
                         scannable={scannable}
                         result={result}
+                        testResult={testResults[connection.id]}
                         scanError={scanError}
                         scheduleError={scheduleErrors[connection.id]}
                         statusDetail={
@@ -745,6 +761,7 @@ export default function ConnectionsPage() {
                             ? connection.status_detail
                             : ""
                         }
+                        onTest={() => void handleTest(connection)}
                         onScan={() => void handleScan(connection)}
                         onScheduleChange={(value) =>
                           void handleScheduleChange(connection, value)
@@ -886,9 +903,11 @@ function FragmentRow({
   canManage,
   scannable,
   result,
+  testResult,
   scanError,
   scheduleError,
   statusDetail,
+  onTest,
   onScan,
   onScheduleChange,
   onDelete,
@@ -898,9 +917,11 @@ function FragmentRow({
   canManage: boolean;
   scannable: boolean;
   result: CloudConnectionScanResponse | undefined;
+  testResult: CloudConnectionTestResponse | undefined;
   scanError: string | undefined;
   scheduleError: string | undefined;
   statusDetail: string;
+  onTest: () => void;
   onScan: () => void;
   onScheduleChange: (value: string) => void;
   onDelete: () => void;
@@ -908,7 +929,12 @@ function FragmentRow({
   const handoffScanId = result?.scan_id ?? connection.last_scan_id;
   const mode = eventMode(connection);
   const showDetail = Boolean(
-    result || handoffScanId || scanError || scheduleError || statusDetail,
+    result ||
+      testResult ||
+      handoffScanId ||
+      scanError ||
+      scheduleError ||
+      statusDetail,
   );
   return (
     <>
@@ -986,17 +1012,30 @@ function FragmentRow({
         <td className="px-4 py-3">
           <div className="flex justify-end gap-2">
             <button
+              onClick={onTest}
+              disabled={isBusy || !canManage || !scannable}
+              title={
+                scannable
+                  ? "Verify the stored read-only credential without running inventory"
+                  : "Testing for this provider is unavailable"
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-800/70 bg-emerald-950/20 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-600 hover:bg-emerald-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {isBusy ? "Working…" : "Test"}
+            </button>
+            <button
               onClick={onScan}
               disabled={isBusy || !canManage || !scannable}
               title={
                 scannable
-                  ? "Validate credentials and run a read-only scan"
+                  ? "Run a read-only inventory and CIS scan"
                   : "Scanning for this provider is unavailable"
               }
               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ShieldCheck className="h-3.5 w-3.5" />
-              {isBusy ? "Scanning…" : "Test and scan"}
+              {isBusy ? "Working…" : "Run scan"}
             </button>
             <button
               onClick={onDelete}
@@ -1014,6 +1053,12 @@ function FragmentRow({
         <tr className="border-b border-[color:var(--border-subtle)] last:border-b-0 bg-[color:var(--surface-elevated)]/40">
           <td colSpan={7} className="px-4 pb-4 pt-0">
             {result ? <ScanResultPanel result={result} /> : null}
+            {!result && testResult ? (
+              <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-200">
+                Read-only credential verified. No inventory, CIS, findings, or
+                resource writes ran.
+              </div>
+            ) : null}
             {!result && handoffScanId ? (
               <ScanHandoffLinks scanId={handoffScanId} />
             ) : null}

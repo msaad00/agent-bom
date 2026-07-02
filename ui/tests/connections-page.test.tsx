@@ -10,6 +10,7 @@ const { apiMock } = vi.hoisted(() => ({
     createCloudConnection: vi.fn(),
     updateCloudConnection: vi.fn(),
     deleteCloudConnection: vi.fn(),
+    testCloudConnection: vi.fn(),
     scanCloudConnection: vi.fn(),
   },
 }));
@@ -252,7 +253,7 @@ describe("ConnectionsPage", () => {
       expect(screen.getByText("Production account")).toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Test and scan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run scan" }));
 
     await waitFor(() =>
       expect(apiMock.scanCloudConnection).toHaveBeenCalledWith("conn-1"),
@@ -277,6 +278,49 @@ describe("ConnectionsPage", () => {
       "href",
       "/graph?scan_id=abcdef12-3456-7890-abcd-ef1234567890",
     );
+  });
+
+  it("tests a brokered credential without launching a scan", async () => {
+    apiMock.listCloudConnections.mockResolvedValue({
+      schema_version: "cloud.connections.v1",
+      tenant_id: "tenant-acme",
+      connections: [CREATED_RECORD],
+      count: 1,
+    });
+    apiMock.testCloudConnection.mockResolvedValue({
+      schema_version: "cloud.connections.test.v1",
+      connection_id: "conn-1",
+      tenant_id: "tenant-acme",
+      provider: "aws",
+      status: "ok",
+      audit_metadata: {
+        read_only: true,
+        writes_performed: false,
+        note: "Connection test brokered a read-only credential only.",
+      },
+      connection: { ...CREATED_RECORD, status: "active" },
+    });
+
+    render(<ConnectionsPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Production account")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Test" }));
+
+    await waitFor(() =>
+      expect(apiMock.testCloudConnection).toHaveBeenCalledWith("conn-1"),
+    );
+    expect(apiMock.scanCloudConnection).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        screen.getByText("Production account read-only credential verified."),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(/No inventory, CIS, findings, or resource writes ran/),
+    ).toBeInTheDocument();
   });
 
   it("shows durable handoff links from the persisted last scan id after reload", async () => {
@@ -342,7 +386,7 @@ describe("ConnectionsPage", () => {
 
     expect(screen.getByText("Event-driven")).toBeInTheDocument();
     expect(screen.getByText(/Last event/)).toBeInTheDocument();
-    expect(screen.queryByText("Polling fallback")).toBeNull();
+    expect(screen.queryByText("Scheduled scan")).toBeNull();
   });
 
   it("updates the recurring scan schedule without exposing secrets", async () => {

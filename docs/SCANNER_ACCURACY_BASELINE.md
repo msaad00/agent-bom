@@ -2,6 +2,9 @@
 
 This file defines what `agent-bom` can prove before a release and what remains a roadmap item.
 
+For match-confidence tiers, canonical CVE mapping, and NVD key boundaries, see
+[VULNERABILITY_MATCHING.md](VULNERABILITY_MATCHING.md).
+
 The machine-readable release artifact is [`accuracy-baseline.json`](accuracy-baseline.json). It is generated with:
 
 ```bash

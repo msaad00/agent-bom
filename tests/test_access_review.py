@@ -81,11 +81,11 @@ def test_create_campaign_sets_due_date(store):
 def test_lifecycle_create_decide_complete(store):
     campaign, items = create_campaign_from_discovery(store, tenant_id="t1", name="recert", discovered=_DISCOVERED, now=NOW)
     # First decision moves the campaign to in_progress.
-    _, c1 = record_decision(store, tenant_id="t1", item_id=items[0].item_id, decision=DECISION_ATTEST, decided_by="alice")
+    _, c1 = record_decision(store, tenant_id="t1", item_id=items[0].item_id, decision=DECISION_ATTEST, decided_by="alice", now=NOW)
     assert c1.status == STATUS_IN_PROGRESS
     assert c1.decided_count == 1
     # Deciding the last item completes it.
-    _, c2 = record_decision(store, tenant_id="t1", item_id=items[1].item_id, decision=DECISION_REVOKE, decided_by="alice")
+    _, c2 = record_decision(store, tenant_id="t1", item_id=items[1].item_id, decision=DECISION_REVOKE, decided_by="alice", now=NOW)
     assert c2.status == STATUS_COMPLETED
     assert c2.decided_count == 2
     assert c2.completed_at

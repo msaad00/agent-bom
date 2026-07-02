@@ -21,8 +21,9 @@ from agent_bom.models import AIBOMReport, Severity
 from agent_bom.output.exposure_path import (
     exposure_path_blast_summary,
     exposure_path_chain,
-    exposure_path_for_blast_radius,
+    exposure_path_for_report_finding,
 )
+from agent_bom.output.finding_views import cve_findings
 from agent_bom.security import sanitize_sensitive_payload
 
 _SARIF_SEVERITY_MAP = {
@@ -340,7 +341,10 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
     results = []
     seen_rule_ids: set[str] = set()
 
+    cve_items = cve_findings(report, report.blast_radii)
+
     for rank, br in enumerate(report.blast_radii, 1):
+        finding = cve_items[rank - 1]
         vuln = br.vulnerability
         rule_id = vuln.id
 
@@ -389,7 +393,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             rules.append(rule)
 
         affected = ", ".join(a.name for a in br.affected_agents)
-        exposure_path = exposure_path_for_blast_radius(br, rank=rank)
+        exposure_path = exposure_path_for_report_finding(finding, br=br, rank=rank)
         message_text = f"{vuln.id} ({vuln.severity.value}) in {br.package.name}@{br.package.version}. Affects agents: {affected}."
         if vuln.fixed_version:
             message_text += f" Fix: upgrade to {vuln.fixed_version}."

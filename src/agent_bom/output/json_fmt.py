@@ -18,7 +18,8 @@ from agent_bom.exploitability import fused_triage_priority
 from agent_bom.finding import FINDING_SCHEMA_VERSION
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
-from agent_bom.output.exposure_path import exposure_path_for_blast_radius
+from agent_bom.output.exposure_path import exposure_path_for_report_finding
+from agent_bom.output.finding_views import cve_findings
 from agent_bom.security import (
     sanitize_command_args,
     sanitize_path_label,
@@ -832,7 +833,11 @@ def to_json(report: AIBOMReport) -> dict:
     from agent_bom.scorecard import summarize_scorecard_coverage
 
     all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
-    exposure_paths = [exposure_path_for_blast_radius(br, rank=rank) for rank, br in enumerate(report.blast_radii, start=1)]
+    cve_items = cve_findings(report, report.blast_radii)
+    exposure_paths = [
+        exposure_path_for_report_finding(finding, br=br, rank=rank)
+        for rank, (finding, br) in enumerate(zip(cve_items, report.blast_radii, strict=True), start=1)
+    ]
     unified_findings = [finding.to_dict() for finding in report.to_findings()]
     finding_summary = _build_finding_summary(unified_findings)
     result = {

@@ -96,6 +96,21 @@ def test_discovery_runs_concurrently(monkeypatch) -> None:
     assert inv["status"] == "ok"
     for collection in ("storage_accounts", "container_clusters", "key_vaults", "databases", "public_ips", "load_balancers"):
         assert len(inv[collection]) == 1
+    assert inv["side_scan_targets"] == [
+        {
+            "provider": "azure",
+            "target_type": "managed_disk",
+            "target_id": "/id/_discover_managed_disks",
+            "name": "_discover_managed_disks-1",
+            "account_id": "sub-1",
+            "location": "",
+            "size_gb": None,
+            "encryption": "unknown",
+            "status": "eligible",
+            "execution": "not_started",
+            "requires_snapshot_role": True,
+        }
+    ]
 
 
 def test_warnings_preserved_in_deterministic_order(monkeypatch) -> None:

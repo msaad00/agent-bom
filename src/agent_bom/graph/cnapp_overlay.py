@@ -218,6 +218,9 @@ def _content_classification_evidence(node: UnifiedNode) -> dict[str, object]:
         ("data_sensitivity", "content_data_sensitivity"),
         ("total_findings", "content_classification_findings"),
         ("objects_sampled", "content_objects_sampled"),
+        ("rows_sampled", "content_rows_sampled"),
+        ("columns_sampled", "content_columns_sampled"),
+        ("tables_sampled", "content_tables_sampled"),
         ("warnings", "content_classification_warnings"),
         ("redaction", "content_classification_redaction"),
     ):
@@ -404,6 +407,57 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
                 node.attributes["data_regulatory_frameworks"] = frameworks
             sensitive_ids.add(node.id)
 
+    # Who/what can reach sensitive data stores. This is intentionally derived
+    # from existing permission/runtime edges so DSPM risk follows the same graph
+    # evidence as the rest of ContextGraph.
+    access_relationships = {
+        RelationshipType.CAN_ACCESS,
+        RelationshipType.HAS_PERMISSION,
+        RelationshipType.ACCESSED,
+        RelationshipType.STORES,
+        RelationshipType.EXPOSED_TO,
+    }
+    sensitive_access_paths = 0
+    for node_id in sorted(sensitive_ids):
+        node = graph.nodes.get(node_id)
+        if node is None:
+            continue
+        subjects: list[dict[str, str]] = []
+        seen_subjects: set[str] = set()
+        for edge in graph.edges:
+            if edge.target != node_id or edge.relationship not in access_relationships:
+                continue
+            if edge.source == node.attributes.get("backed_by"):
+                continue
+            source = graph.nodes.get(edge.source)
+            if source is None or source.id in seen_subjects:
+                continue
+            seen_subjects.add(source.id)
+            subjects.append(
+                {
+                    "id": source.id,
+                    "label": source.label,
+                    "entity_type": source.entity_type.value,
+                    "relationship": edge.relationship.value,
+                }
+            )
+        if not subjects:
+            continue
+        sensitive_access_paths += len(subjects)
+        node.attributes["sensitive_data_access_subjects"] = subjects[:25]
+        node.attributes["sensitive_data_access_count"] = len(subjects)
+        if node.risk_score < 7.0:
+            node.risk_score = 7.0
+        graph.interaction_risks.append(
+            InteractionRisk(
+                pattern="sensitive_data_reachable",
+                agents=[node.label],
+                risk_score=7.0,
+                description=f"{node.label} holds sensitive data and is reachable by {len(subjects)} identity/tool path(s).",
+                owasp_agentic_tag=None,
+            )
+        )
+
     # Toxic: sensitive data that is internet-exposed.
     exposed_sensitive = 0
     for node_id in sorted(sensitive_ids):
@@ -440,5 +494,6 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
         "toxic_combinations_mitigated": toxic_mitigated,
         "exposure_mitigated_nodes": mitigated,
         "sensitive_data_nodes": len(sensitive_ids),
+        "sensitive_data_access_paths": sensitive_access_paths,
         "exposed_sensitive_data": exposed_sensitive,
     }

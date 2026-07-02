@@ -217,3 +217,57 @@ def test_review_content_classification_does_not_escalate_to_sensitive():
     assert companion.attributes.get("toxic_exposed_sensitive") is None
     assert stats["sensitive_data_nodes"] == 0
     assert stats["exposed_sensitive_data"] == 0
+
+
+def test_sensitive_database_classification_records_access_paths():
+    graph = UnifiedGraph(scan_id="s", tenant_id="t")
+    graph.add_node(
+        UnifiedNode(
+            id="cloud:rds-customers",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="customer RDS database",
+            attributes={
+                "resource_type": "rds",
+                "content_classification": {
+                    "schema_version": "agent-bom.dspm.database_classification.v1",
+                    "status": "ok",
+                    "rows_sampled": 2,
+                    "columns_sampled": 3,
+                    "total_findings": 2,
+                    "findings_by_type": {"ssn": 1, "email": 1},
+                    "sensitivity_score": 90,
+                    "data_sensitivity": "sensitive",
+                    "redaction": "raw row values and matched values are not stored",
+                },
+            },
+        )
+    )
+    graph.add_node(UnifiedNode(id="managed_identity:etl", entity_type=EntityType.MANAGED_IDENTITY, label="etl-role"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="managed_identity:etl",
+            target="data_store:cloud:rds-customers",
+            relationship=RelationshipType.CAN_ACCESS,
+        )
+    )
+
+    stats = apply_cnapp_overlay(graph)
+
+    companion = graph.nodes.get("data_store:cloud:rds-customers")
+    assert companion is not None
+    assert companion.attributes.get("data_sensitivity") == "sensitive"
+    assert companion.attributes.get("content_rows_sampled") == 2
+    assert companion.attributes.get("content_columns_sampled") == 3
+    assert companion.attributes.get("content_classification_counts") == {"ssn": 1, "email": 1}
+    assert companion.attributes.get("sensitive_data_access_count") == 1
+    assert companion.attributes.get("sensitive_data_access_subjects") == [
+        {
+            "id": "managed_identity:etl",
+            "label": "etl-role",
+            "entity_type": "managed_identity",
+            "relationship": "can_access",
+        }
+    ]
+    assert stats["sensitive_data_nodes"] == 1
+    assert stats["sensitive_data_access_paths"] == 1
+    assert any(r.pattern == "sensitive_data_reachable" for r in graph.interaction_risks)

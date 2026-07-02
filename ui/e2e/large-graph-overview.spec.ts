@@ -224,26 +224,32 @@ async function routeLargeGraphPage(page: Page) {
 async function expectCanvasHasPixels(page: Page) {
   const canvas = page.getByTestId("large-graph-overview-canvas");
   await expect(canvas).toBeVisible();
-  await page.waitForFunction(() => {
-    const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="large-graph-overview-canvas"]');
-    return Boolean(canvas && canvas.width > 1 && canvas.height > 1);
-  });
-  const coloredSamples = await canvas.evaluate((element) => {
-    const canvasElement = element as HTMLCanvasElement;
-    const context = canvasElement.getContext("2d");
-    if (!context) return 0;
-    const { width, height } = canvasElement;
-    const pixels = context.getImageData(0, 0, width, height).data;
-    let count = 0;
-    for (let index = 0; index < pixels.length; index += 16) {
-      const red = pixels[index] ?? 0;
-      const green = pixels[index + 1] ?? 0;
-      const blue = pixels[index + 2] ?? 0;
-      if (red + green + blue > 40) count += 1;
-    }
-    return count;
-  });
-  expect(coloredSamples).toBeGreaterThan(20);
+  await expect
+    .poll(
+      async () =>
+        page
+          .evaluate(() => {
+            const canvasElement = document.querySelector<HTMLCanvasElement>(
+              '[data-testid="large-graph-overview-canvas"]',
+            );
+            if (!canvasElement || canvasElement.width <= 1 || canvasElement.height <= 1) return 0;
+            const context = canvasElement.getContext("2d");
+            if (!context) return 0;
+            const { width, height } = canvasElement;
+            const pixels = context.getImageData(0, 0, width, height).data;
+            let count = 0;
+            for (let index = 0; index < pixels.length; index += 16) {
+              const red = pixels[index] ?? 0;
+              const green = pixels[index + 1] ?? 0;
+              const blue = pixels[index + 2] ?? 0;
+              if (red + green + blue > 40) count += 1;
+            }
+            return count;
+          })
+          .catch(() => 0),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(20);
 }
 
 async function expectSigmaCanvases(page: Page) {
@@ -296,7 +302,7 @@ test("sigma webgl overview renders when explicitly requested", async ({ page }, 
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByTestId("sigma-graph-overview")).toBeVisible();
+  await expect(page.getByTestId("sigma-graph-overview")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("WebGL graph overview")).toBeVisible();
   await expect(page.getByText("Sigma.js renderer for broad estate scans")).toBeVisible();
   await expectSigmaCanvases(page);

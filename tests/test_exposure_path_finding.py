@@ -74,3 +74,34 @@ def test_exposure_path_for_blast_radius_keeps_legacy_id_prefix() -> None:
     path = exposure_path_for_blast_radius(br, rank=2)
     assert path["id"].startswith("blast:")
     assert path["rank"] == 2
+
+
+def test_json_and_sarif_exposure_paths_use_finding_native_projection() -> None:
+    from agent_bom.output.json_fmt import to_json
+    from agent_bom.output.sarif import to_sarif
+
+    tool = MCPTool(name="deploy", description="Deploy workloads")
+    server = _server(tools=[tool])
+    agent = _agent(servers=[server])
+    br = _blast_radius()
+    br.affected_servers = [server]
+    br.exposed_tools = [tool]
+    br.exposed_credentials = ["AWS_SECRET_ACCESS_KEY"]
+    br.risk_score = 9.4
+
+    from agent_bom.models import AIBOMReport
+
+    report = AIBOMReport(
+        agents=[agent],
+        blast_radii=[br],
+        tool_version="0.91.0",
+    )
+
+    json_path = to_json(report)["exposure_paths"]["paths"][0]
+    sarif_path = to_sarif(report)["runs"][0]["results"][0]["properties"]["exposure_path"]
+
+    assert json_path["id"].startswith("blast:")
+    assert sarif_path["id"].startswith("blast:")
+    assert json_path["label"] == sarif_path["label"] == "lodash@4.17.20 -> CVE-2024-0001"
+    assert json_path["affectedAgents"] == sarif_path["affectedAgents"] == ["prod-agent"]
+    assert json_path["reachableTools"] == sarif_path["reachableTools"] == ["deploy"]

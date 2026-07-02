@@ -257,7 +257,9 @@ async def enrich_unknown_packages(packages: list[Package], *, global_timeout: fl
         for task in pending:
             task.cancel()
         if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
+            # Do not block the scan path waiting for slow registry tasks to finish
+            # after cancellation; honor global_timeout wall-clock.
+            await asyncio.wait(pending, timeout=0.05)
             logger.warning(
                 "Auto-discovery metadata enrichment timed out after %.1fs; enriched %s/%s package(s)",
                 global_timeout or 0.0,

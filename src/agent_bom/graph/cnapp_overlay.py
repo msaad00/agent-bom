@@ -126,6 +126,39 @@ def _sensitive_text(node: UnifiedNode) -> str:
                 parts.append(str(tag_val))
         elif isinstance(bag, list):
             parts.extend(str(item) for item in bag)
+    classification = node.attributes.get("content_classification")
+    if isinstance(classification, dict):
+        for key in (
+            "schema_version",
+            "status",
+            "data_sensitivity",
+            "sensitivity_score",
+            "total_findings",
+            "objects_sampled",
+        ):
+            val = classification.get(key)
+            if isinstance(val, str | int | float):
+                parts.append(str(val))
+        for key in ("findings_by_type", "classification_counts"):
+            counts = classification.get(key)
+            if isinstance(counts, dict):
+                for finding_type, count in counts.items():
+                    finding_text = str(finding_type)
+                    parts.append(finding_text)
+                    parts.append(finding_text.replace("_", " "))
+                    parts.append(str(count))
+        frameworks = classification.get("data_regulatory_frameworks")
+        if isinstance(frameworks, list):
+            parts.extend(str(item) for item in frameworks)
+        top_findings = classification.get("top_findings")
+        if isinstance(top_findings, list):
+            for finding in top_findings:
+                if not isinstance(finding, dict):
+                    continue
+                pii_type = str(finding.get("pii_type", ""))
+                parts.append(pii_type)
+                parts.append(pii_type.replace("_", " "))
+                parts.append(str(finding.get("severity", "")))
     return " ".join(parts).lower()
 
 
@@ -170,6 +203,33 @@ def _framework_label(code: str) -> str:
         if c == code:
             return f"{c} {label}"
     return code
+
+
+def _content_classification_evidence(node: UnifiedNode) -> dict[str, object]:
+    """Stable, redacted DSPM sampling evidence copied onto DATA_STORE nodes."""
+    classification = node.attributes.get("content_classification")
+    if not isinstance(classification, dict):
+        return {}
+    evidence: dict[str, object] = {"data_classification_source": "content_sampling"}
+    for source_key, target_key in (
+        ("schema_version", "content_classification_schema"),
+        ("status", "content_classification_status"),
+        ("sensitivity_score", "content_sensitivity_score"),
+        ("data_sensitivity", "content_data_sensitivity"),
+        ("total_findings", "content_classification_findings"),
+        ("objects_sampled", "content_objects_sampled"),
+        ("warnings", "content_classification_warnings"),
+        ("redaction", "content_classification_redaction"),
+    ):
+        value = classification.get(source_key)
+        if value not in (None, "", [], {}):
+            evidence[target_key] = value
+    for source_key in ("findings_by_type", "classification_counts"):
+        counts = classification.get(source_key)
+        if isinstance(counts, dict) and counts:
+            evidence["content_classification_counts"] = dict(counts)
+            break
+    return evidence
 
 
 def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
@@ -258,6 +318,7 @@ def apply_cnapp_overlay(graph: UnifiedGraph) -> dict[str, int]:
                 )
             )
             data_stores_added += 1
+        graph.nodes[ds_id].attributes.update(_content_classification_evidence(node))
         graph.add_edge(
             UnifiedEdge(
                 source=node.id,

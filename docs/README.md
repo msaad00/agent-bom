@@ -22,6 +22,7 @@ material. The index below groups the canonical docs by audience.
 - [`../PROJECT_STRUCTURE.md`](../PROJECT_STRUCTURE.md) — repo map: where everything lives, which trees are canonical
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — layered stack, data flow, scan pipeline, blast radius, compliance tagging (mermaid)
 - [`CLI_MAP.md`](CLI_MAP.md) — all 50 top-level commands grouped by domain + intentional aliases
+- [`DATA_SOURCES.md`](DATA_SOURCES.md) — intake diagram → mechanism → permission boundary
 
 ## Security engineers (scan · gate · export)
 

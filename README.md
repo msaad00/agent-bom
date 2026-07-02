@@ -220,7 +220,8 @@ capture protocol: <a href="docs/CAPTURE.md">docs/CAPTURE.md</a>.</sub>
 **Cloud (read-only).** Four connectors — AWS, Azure, GCP, Snowflake — are
 opt-in, agentless, and default-off. No secret values are read or stored.
 `agent-bom connect <provider>` prints the grant template and enable flag without
-network I/O until you opt in.
+network I/O until you opt in. Full intake map:
+[docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)
 
 | Cloud | Enable | Scan |
 |---|---|---|

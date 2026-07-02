@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import uuid
@@ -107,6 +108,26 @@ class SideScanSecret:
 
 
 @dataclass
+class SideScanDiskFinding:
+    """Metadata-only workload disk finding from mounted side-scan content."""
+
+    finding_type: str
+    file_path: str
+    severity: str
+    category: str
+    evidence: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.finding_type,
+            "file": self.file_path,
+            "severity": self.severity,
+            "category": self.category,
+            "evidence": self.evidence,
+        }
+
+
+@dataclass
 class SideScanResult:
     """Metadata-only result of an EBS side-scan for a single target volume.
 
@@ -120,6 +141,8 @@ class SideScanResult:
     snapshot_id: Optional[str] = None
     packages: list[Package] = field(default_factory=list)
     secrets: list[SideScanSecret] = field(default_factory=list)
+    config_findings: list[SideScanDiskFinding] = field(default_factory=list)
+    ioc_findings: list[SideScanDiskFinding] = field(default_factory=list)
     vulnerability_count: int = 0
     warnings: list[str] = field(default_factory=list)
     cleaned_up: bool = False
@@ -132,7 +155,11 @@ class SideScanResult:
             "package_count": len(self.packages),
             "vulnerability_count": self.vulnerability_count,
             "secret_count": len(self.secrets),
+            "config_finding_count": len(self.config_findings),
+            "ioc_finding_count": len(self.ioc_findings),
             "secrets": [s.to_dict() for s in self.secrets],
+            "config_findings": [finding.to_dict() for finding in self.config_findings],
+            "ioc_findings": [finding.to_dict() for finding in self.ioc_findings],
             "warnings": list(self.warnings),
             "cleaned_up": self.cleaned_up,
         }
@@ -327,6 +354,7 @@ class AwsEbsSideScanner:
             packages = self._parse_packages(mount_point)
             result.packages = packages
             result.vulnerability_count = await self._scan_cves(packages)
+            result.config_findings, result.ioc_findings = scan_workload_disk_findings(mount_point)
 
             if scan_secrets_enabled:
                 result.secrets = self._scan_secrets_redacted(mount_point)
@@ -523,6 +551,124 @@ class AwsEbsSideScanner:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("side-scan: orphan sweep could not delete %s: %s", snap_id, sanitize_text(exc))
         return deleted
+
+
+_DISK_SCAN_MAX_FILES = 500
+_DISK_SCAN_MAX_BYTES_PER_FILE = 256 * 1024
+
+_INTERESTING_RELATIVE_PATHS = (
+    "etc/crontab",
+    "etc/cron.d",
+    "etc/cron.daily",
+    "etc/cron.hourly",
+    "etc/ssh/sshd_config",
+    "etc/systemd/system",
+    "lib/systemd/system",
+    "usr/lib/systemd/system",
+    "root/.bashrc",
+    "root/.profile",
+)
+
+_IOC_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
+    (
+        re.compile(r"\b(xmrig|kinsing|kdevtmpfsi|masscan)\b", re.IGNORECASE),
+        "known_malware_or_scanner_marker",
+        "critical",
+    ),
+    (re.compile(r"(/dev/tcp/|nc\s+-e\b|bash\s+-i\b)", re.IGNORECASE), "reverse_shell_pattern", "high"),
+    (
+        re.compile(r"\b(curl|wget)\b[^\n|;&]*(\||;|&&)\s*(sh|bash)\b", re.IGNORECASE),
+        "download_execute_startup",
+        "high",
+    ),
+)
+
+_CONFIG_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
+    (re.compile(r"^\s*PermitRootLogin\s+yes\b", re.IGNORECASE | re.MULTILINE), "ssh_root_login_enabled", "medium"),
+    (re.compile(r"^\s*PasswordAuthentication\s+yes\b", re.IGNORECASE | re.MULTILINE), "ssh_password_auth_enabled", "medium"),
+)
+
+
+def _iter_interesting_disk_files(mount_point: Path) -> list[Path]:
+    files: list[Path] = []
+    for relative in _INTERESTING_RELATIVE_PATHS:
+        candidate = mount_point / relative
+        try:
+            if candidate.is_file():
+                files.append(candidate)
+            elif candidate.is_dir():
+                files.extend(path for path in candidate.rglob("*") if path.is_file())
+        except OSError:
+            continue
+        if len(files) >= _DISK_SCAN_MAX_FILES:
+            break
+    return files[:_DISK_SCAN_MAX_FILES]
+
+
+def _relative_disk_path(mount_point: Path, path: Path) -> str:
+    try:
+        return str(path.relative_to(mount_point))
+    except ValueError:
+        return path.name
+
+
+def _read_bounded_text(path: Path) -> str:
+    try:
+        if path.stat().st_size > _DISK_SCAN_MAX_BYTES_PER_FILE:
+            return ""
+        return path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
+def scan_workload_disk_findings(mount_point: Path) -> tuple[list[SideScanDiskFinding], list[SideScanDiskFinding]]:
+    """Scan mounted workload config/startup files for metadata-only risk signals.
+
+    The output deliberately records finding type, path, severity, and a stable
+    evidence label only. It never returns matched file contents.
+    """
+
+    config_findings: list[SideScanDiskFinding] = []
+    ioc_findings: list[SideScanDiskFinding] = []
+    seen: set[tuple[str, str]] = set()
+    for path in _iter_interesting_disk_files(mount_point):
+        text = _read_bounded_text(path)
+        if not text:
+            continue
+        relative_path = _relative_disk_path(mount_point, path)
+        for pattern, finding_type, severity in _IOC_PATTERNS:
+            if not pattern.search(text):
+                continue
+            key = (relative_path, finding_type)
+            if key in seen:
+                continue
+            seen.add(key)
+            ioc_findings.append(
+                SideScanDiskFinding(
+                    finding_type=finding_type,
+                    file_path=relative_path,
+                    severity=severity,
+                    category="ioc",
+                    evidence=f"{finding_type}_matched",
+                )
+            )
+        for pattern, finding_type, severity in _CONFIG_PATTERNS:
+            if not pattern.search(text):
+                continue
+            key = (relative_path, finding_type)
+            if key in seen:
+                continue
+            seen.add(key)
+            config_findings.append(
+                SideScanDiskFinding(
+                    finding_type=finding_type,
+                    file_path=relative_path,
+                    severity=severity,
+                    category="configuration",
+                    evidence=f"{finding_type}_matched",
+                )
+            )
+    return config_findings, ioc_findings
 
 
 # ---------------------------------------------------------------------------

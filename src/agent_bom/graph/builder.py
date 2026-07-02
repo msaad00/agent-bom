@@ -612,16 +612,11 @@ def build_unified_graph_from_report(
         if not cis_data:
             continue
         cloud_provider = (
-            _clean_graph_part(cis_data.get("provider"))
-            or _clean_graph_part(cis_data.get("cloud_provider"))
-            or default_cloud_provider
+            _clean_graph_part(cis_data.get("provider")) or _clean_graph_part(cis_data.get("cloud_provider")) or default_cloud_provider
         )
         checks = cis_data.get("checks", [])
         cloud_account_id = _clean_graph_part(
-            cis_data.get("subscription_id")
-            or cis_data.get("account_id")
-            or cis_data.get("aws_account_id")
-            or cis_data.get("project_id")
+            cis_data.get("subscription_id") or cis_data.get("account_id") or cis_data.get("aws_account_id") or cis_data.get("project_id")
         )
         for check in checks:
             if str(check.get("status", "")).upper() != "FAIL":
@@ -4353,6 +4348,53 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         )
 
     resource_ids: list[str] = []
+
+    # ── Agentless side-scan targets → workload disk CLOUD_RESOURCE ──
+    for target in inventory.get("side_scan_targets", []) or []:
+        if not isinstance(target, dict):
+            continue
+        target_id_raw = target.get("target_id") or target.get("id") or target.get("name")
+        target_id = _clean_graph_part(target_id_raw)
+        if not target_id:
+            continue
+        target_provider = _clean_graph_part(target.get("provider")) or provider
+        target_type = _clean_graph_part(target.get("target_type")) or "disk"
+        target_location = _clean_graph_part(target.get("location")) or region
+        node_id = f"cloud_resource:{target_provider}:cwpp:{target_type}:{target_id}"
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label=f"{target_type}: {target.get('name') or target_id}",
+                attributes={
+                    "resource_id": target_id_raw,
+                    "resource_name": _clean_graph_part(target.get("name")) or target_id,
+                    "resource_type": "workload_disk",
+                    "resource_kind": target_type,
+                    "cloud_provider": target_provider,
+                    "cloud_service": "cwpp-side-scan",
+                    "location": target_location,
+                    "account_id": target.get("account_id") or account_id,
+                    "side_scan_status": _clean_graph_part(target.get("status")) or "eligible",
+                    "side_scan_execution": _clean_graph_part(target.get("execution")) or "not_started",
+                    "side_scan_requires_snapshot_role": bool(target.get("requires_snapshot_role", True)),
+                    "size_gb": target.get("size_gb"),
+                    "encryption": _clean_graph_part(target.get("encryption")) or "unknown",
+                },
+                data_sources=data_sources,
+                dimensions=NodeDimensions(cloud_provider=target_provider, surface="cwpp"),
+            )
+        )
+        resource_ids.append(node_id)
+        if account_node_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=account_node_id,
+                    target=node_id,
+                    relationship=RelationshipType.OWNS,
+                    evidence={"source": "cloud-inventory", "reason": "side_scan_target"},
+                )
+            )
 
     # ── S3 buckets → CLOUD_RESOURCE (CNAPP makes the DATA_STORE companion) ──
     for bucket in inventory.get("buckets", []) or []:

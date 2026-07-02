@@ -81,3 +81,14 @@ def has_high_or_critical(finding: Finding) -> bool:
 
 def is_medium(finding: Finding) -> bool:
     return severity_value(finding) == "medium"
+
+
+def ranked_cve_findings(
+    report: AIBOMReport,
+    blast_radii: list[BlastRadius] | None = None,
+    *,
+    limit: int = 10,
+) -> list[Finding]:
+    """Return top CVE findings by unified risk score for exposure-path views."""
+    findings = cve_findings(report, blast_radii)
+    return sorted(findings, key=lambda finding: float(finding.risk_score or 0.0), reverse=True)[:limit]

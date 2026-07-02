@@ -25,7 +25,8 @@ from typing import TYPE_CHECKING, Any
 
 from agent_bom.finding import FindingType
 from agent_bom.graph.severity import severity_policy_rank
-from agent_bom.output.exposure_path import exposure_path_brief
+from agent_bom.output.exposure_path import exposure_path_brief_for_finding
+from agent_bom.output.finding_views import ranked_cve_findings
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 if TYPE_CHECKING:
@@ -378,13 +379,14 @@ def _blast_table(blast_radii: list["BlastRadius"]) -> str:
     )
 
 
-def _exposure_path_section(blast_radii: list["BlastRadius"]) -> str:
-    if not blast_radii:
+def _exposure_path_section(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
+    findings = ranked_cve_findings(report, blast_radii)
+    if not findings:
         return ""
     cards = []
-    for rank, br in enumerate(sorted(blast_radii, key=lambda b: b.risk_score, reverse=True)[:10], 1):
-        brief = exposure_path_brief(br, rank=rank)
-        sev = br.vulnerability.severity.value.lower()
+    for rank, finding in enumerate(findings, 1):
+        brief = exposure_path_brief_for_finding(finding, rank=rank)
+        sev = str(finding.effective_severity() or finding.severity or "unknown").lower()
         color = _SEV_COLOR.get(sev, "#6b7280")
         cards.append(
             '<div class="exposure-path-card">'
@@ -1430,7 +1432,7 @@ def to_html(
             f'<sup style="font-size:.65rem;color:#475569;margin-left:6px;font-weight:400">'
             f"ranked investigation briefs from blast-radius evidence"
             f"</sup></div>"
-            f'<div class="panel exposure-paths">{_exposure_path_section(blast_radii)}</div>'
+            f'<div class="panel exposure-paths">{_exposure_path_section(report, blast_radii)}</div>'
             f"</section>"
             f'<section id="blast">'
             f'<div class="sec-title">&#x1f4a5; Blast Radius'

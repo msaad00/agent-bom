@@ -9,7 +9,8 @@ from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
 from agent_bom.finding import Finding, FindingType
 from agent_bom.graph.severity import severity_policy_rank
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
-from agent_bom.output.exposure_path import exposure_path_brief
+from agent_bom.output.exposure_path import exposure_path_brief_for_finding
+from agent_bom.output.finding_views import ranked_cve_findings
 
 
 def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
@@ -113,7 +114,7 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
 
         lines.append("")
 
-        lines.extend(_exposure_path_section(brs))
+        lines.extend(_exposure_path_section(report, brs))
 
     # Critical/High details
     critical_high = [br for br in brs if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]
@@ -235,9 +236,10 @@ def _compliance_tags_text(br: BlastRadius) -> str:
     return ", ".join(framework_qualified_blast_radius_tags(br))
 
 
-def _exposure_path_section(brs: list[BlastRadius]) -> list[str]:
-    """Render the top blast-radius findings as investigation-first paths."""
-    if not brs:
+def _exposure_path_section(report: AIBOMReport, blast_radii: list[BlastRadius]) -> list[str]:
+    """Render the top CVE findings as investigation-first exposure paths."""
+    findings = ranked_cve_findings(report, blast_radii)
+    if not findings:
         return []
 
     lines = [
@@ -246,8 +248,8 @@ def _exposure_path_section(brs: list[BlastRadius]) -> list[str]:
         "| Rank | Risk | Severity | Path | Proof | Fix |",
         "|------|------|----------|------|-------|-----|",
     ]
-    for rank, br in enumerate(sorted(brs, key=lambda b: b.risk_score, reverse=True)[:10], 1):
-        brief = exposure_path_brief(br, rank=rank)
+    for rank, finding in enumerate(findings, 1):
+        brief = exposure_path_brief_for_finding(finding, rank=rank)
         lines.append(
             f"| #{brief['rank']} | {brief['risk']} | {brief['severity']} | {_md_cell(brief['path'])} | "
             f"{_md_cell(brief['proof'])} | {_md_cell(brief['fix'])} |"

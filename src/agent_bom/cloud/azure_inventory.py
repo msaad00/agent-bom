@@ -45,6 +45,7 @@ from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, Sca
 
 from .aws_inventory import dedupe_missing_permissions, record_discovery_failure
 from .normalization import sanitize_discovery_warning
+from .side_scan_targets import azure_managed_disk_targets
 
 logger = logging.getLogger(__name__)
 
@@ -444,6 +445,7 @@ def discover_inventory(
         "service_bus_namespaces": service_bus_namespaces,
         "redis_caches": redis_caches,
         "managed_disks": managed_disks,
+        "side_scan_targets": azure_managed_disk_targets(managed_disks, subscription_id=resolved_sub),
         "app_services": app_services,
         "management_groups": management_groups,
         "warnings": warnings,

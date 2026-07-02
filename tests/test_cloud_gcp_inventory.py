@@ -946,6 +946,21 @@ def test_inventory_enumerates_estate_breadth(monkeypatch: pytest.MonkeyPatch) ->
     assert disks["web-disk"]["size_gb"] == 50
     assert disks["web-disk"]["encrypted"] is True
     assert disks["web-disk"]["source_image"] == "debian-12"
+    assert payload["side_scan_targets"] == [
+        {
+            "provider": "gcp",
+            "target_type": "persistent_disk",
+            "target_id": "disk-1",
+            "name": "web-disk",
+            "account_id": "proj-1",
+            "location": "us-central1-a",
+            "size_gb": 50,
+            "encryption": "customer-managed",
+            "status": "eligible",
+            "execution": "not_started",
+            "requires_snapshot_role": True,
+        }
+    ]
 
     # Pub/Sub topic.
     topics = {t["name"]: t for t in payload["pubsub_topics"]}

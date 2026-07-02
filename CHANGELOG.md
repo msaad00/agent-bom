@@ -9,6 +9,70 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-07-02
+
+Release hardens the product path from first run to hosted POC: a user can
+install or run the control plane, connect read-only sources, scan, triage in the
+queue, inspect graph evidence, export compliance packs, and exercise runtime
+controls without falling into stale docs or empty UI states.
+
+### Hosted / first-run
+- **Customer-zero hosted POC loop** with admin-key bootstrap, hosted preflight,
+  smoke script, live brokered connector test actions, and invite-only POC docs.
+- **Zero-config loopback serve** prints and wires a local development API key so
+  `agent-bom serve` opens a working dashboard without unsafe global auth flags.
+- **Product editions clarified** around local CLI/CI, self-hosted platform, and
+  gated hosted POC; future managed SaaS plans are not presented as shipped
+  capability.
+
+### UI / operator workflow
+- **Findings are now an issue queue** with evidence drawer, shared pagination,
+  URL-synced filters, and server-side paging hooks so triage starts from a
+  readable list instead of a dense wall.
+- **Unified runtime surface** merges proxy and gateway views, adds a runtime
+  live status strip for demos, and keeps fleet quarantine -> gateway deny as a
+  one-click control loop.
+- **Graph IA cleanup**: one Security Graph entry, discoverable graph lenses in
+  navigation, full-canvas lens switching, older snapshot picker, attack-path
+  queue paging, and WebGL renderer stability for large graphs.
+- **Offline and empty-state polish** gives every major page actionable next
+  steps when the API, data, or optional connector surface is unavailable.
+
+### Cloud posture / CWPP / DSPM
+- **Event-driven posture freshness** for AWS, Azure, and GCP: posture can be
+  re-evaluated from provider events with polling/manual freshness surfaced in
+  the Connections UI and docs.
+- **Multi-cloud side-scan lifecycle** adds provider-neutral workload disk
+  side-scan execution hooks, metadata-only workload findings, redacted secrets,
+  target caps, guaranteed cleanup, and graph promotion of workload-disk
+  resources.
+- **DSPM classification enters graph risk** with opt-in S3 and GCS sampling,
+  database sample classification, redacted evidence, and low-confidence
+  sampling kept as evidence rather than risk inflation.
+
+### Graph / scale / evidence model
+- Governance, attack-path, and filtered graph payloads are capped so large
+  estates stay responsive while retaining ranked evidence.
+- Postgres scale evidence is checked in for release guidance, and large-graph
+  UI tests now focus on stable render proof instead of brittle search drilldown.
+- Exposure paths now flow through the unified `Finding` projection in
+  Markdown, HTML, SARIF, and JSON outputs, reducing `BlastRadius` formatter
+  drift.
+
+### CLI / MCP
+- Compact CLI output now has lane branding, a default posture card after scans,
+  paged findings/remediation output, friendlier output-extension checks, and
+  clearer idle compliance semantics.
+- MCP startup is workflow-first: the server presents curated workflow prompts
+  and demo scripts instead of making users start from the raw tool count.
+
+### Docs / proof / reliability
+- README, Snowflake connect docs, data-source docs, architecture diagrams, and
+  product proof sections were refreshed for the current surfaces.
+- CI reliability fixes cover graph E2E stability, access-review date flakes,
+  autodiscovery timeouts, environment leakage between tests, and weekly
+  dependency consolidation.
+
 ## [0.91.0] - 2026-06-30
 
 A platform release: AI agents, MCP servers, and their tools become first-class
@@ -1949,7 +2013,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.91.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.92.0...HEAD
+[0.92.0]: https://github.com/msaad00/agent-bom/compare/v0.91.0...v0.92.0
 [0.91.0]: https://github.com/msaad00/agent-bom/compare/v0.90.0...v0.91.0
 [0.90.0]: https://github.com/msaad00/agent-bom/compare/v0.89.2...v0.90.0
 [0.89.2]: https://github.com/msaad00/agent-bom/compare/v0.89.1...v0.89.2

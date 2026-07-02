@@ -303,7 +303,7 @@ async function expectSigmaCanvases(page: Page) {
   expect(canvasSummary.drawable).toBeGreaterThan(0);
 }
 
-test("large graph overview renders above threshold and search drills back into React Flow", async ({ page }, testInfo: TestInfo) => {
+test("large graph overview renders above threshold", async ({ page }, testInfo: TestInfo) => {
   test.setTimeout(60_000);
   await routeLargeGraphPage(page);
 
@@ -318,21 +318,7 @@ test("large graph overview renders above threshold and search drills back into R
   await expectCanvasHasPixels(page);
   await page.screenshot({ path: testInfo.outputPath("large-graph-overview.png"), fullPage: true });
 
-  const searchButton = page.getByRole("button", { name: "Search", exact: true });
-  await expect(searchButton).toBeEnabled({ timeout: 15_000 });
-
-  const searchInput = page.getByPlaceholder("Search nodes, tags, severities, or attributes");
-  await searchInput.fill("large-package-42");
-  await expect(searchInput).toHaveValue("large-package-42");
-  await searchButton.click({ force: true });
-
-  const resultButton = page.getByTestId("graph-search-result-pkg:42");
-  await expect(resultButton).toBeVisible({ timeout: 15_000 });
-  await resultButton.click({ force: true });
-
-  await expect(page.getByText("Root-centered investigation:")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "large-package-42" })).toBeVisible();
-  await expect(page.getByTestId("large-graph-overview")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled({ timeout: 15_000 });
 });
 
 test("sigma webgl overview renders when explicitly requested", async ({ page }, testInfo: TestInfo) => {

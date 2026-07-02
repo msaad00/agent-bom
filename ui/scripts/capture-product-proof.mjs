@@ -8,6 +8,9 @@ import process from "node:process";
 const UI_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const REPO_ROOT = path.resolve(UI_ROOT, "..");
 const IMAGE_DIR = path.join(REPO_ROOT, "docs", "images");
+const SCREENSHOT_MANIFEST = path.join(IMAGE_DIR, "product-screenshots.json");
+const UI_PACKAGE = JSON.parse(await fs.readFile(path.join(UI_ROOT, "package.json"), "utf8"));
+const RELEASE_VERSION = UI_PACKAGE.version;
 const CREATED_AT = "2026-06-03T20:30:00Z";
 const SCAN_ID = "scan-proof-ai-platform";
 const PREVIOUS_SCAN_ID = "scan-proof-ai-platform-prev";
@@ -1298,9 +1301,92 @@ async function capture(page, urlPath, filename, beforeShot) {
   console.log(`captured ${filename}`);
 }
 
+async function writeScreenshotManifest() {
+  const screenshots = [
+    {
+      path: "dashboard-live.png",
+      page: "/?capture=1",
+      scope: "Risk overview top frame with headline KPIs, posture grade, and start of attack paths",
+    },
+    {
+      path: "dashboard-paths-live.png",
+      page: "/?capture=1",
+      scope: "Risk overview mid-frame with attack paths and exposure KPIs",
+    },
+    {
+      path: "mesh-live.png",
+      page: "/mesh?capture=1",
+      scope: "Focused agent mesh graph across the active agent, MCP server, package, tool, and CVE path, cropped to the product graph surface",
+    },
+    {
+      path: "gateway-policies-live.png",
+      page: "/gateway?capture=1",
+      scope: "Runtime gateway policy posture with one advisory baseline policy, two rules, and two bound agents",
+    },
+    {
+      path: "security-graph-live.png",
+      page: "/security-graph?capture=1",
+      scope: "Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff",
+    },
+    {
+      path: "lineage-graph-live.png",
+      page: `/graph?capture=1&scan=${SCAN_ID}`,
+      scope: "Expanded but bounded lineage topology across environment, identity, MCP, package, credential, model, dataset, and finding nodes",
+    },
+    {
+      path: "context-map-live.png",
+      page: "/context?capture=1",
+      scope: "Agent-scoped context map showing reachable MCP servers and lateral movement side panel",
+    },
+    {
+      path: "fleet-state-live.png",
+      page: "/fleet?capture=1",
+      scope: "Expanded fleet row showing lifecycle distribution, approved state, owner metadata, environment label, and discovery state",
+    },
+    {
+      path: "identity-audit-live.png",
+      page: "/audit?capture=1",
+      scope: "Audit log filtered to identity resources with HMAC integrity counters and agent identity issue, rotate, revoke events",
+    },
+    {
+      path: "dependency-map-live.png",
+      page: "/?tab=analytics",
+      scope: "Dashboard analytics tab with package risk charts, compound issues, and agent topology",
+    },
+    {
+      path: "remediation-live.png",
+      page: "/remediation?capture=1",
+      scope: "Fix-first remediation table with prioritized packages and framework context",
+    },
+  ].map((entry) => ({ ...entry, visible_version: RELEASE_VERSION }));
+  const manifest = {
+    release_version: RELEASE_VERSION,
+    captured_at: new Date().toISOString(),
+    capture_note:
+      "Captured from real Next.js dashboard routes in capture mode. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
+    screenshots,
+  };
+  await fs.writeFile(SCREENSHOT_MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`updated ${path.relative(REPO_ROOT, SCREENSHOT_MANIFEST)}`);
+}
+
 async function scrollTo(page, y) {
   await page.evaluate((targetY) => window.scrollTo({ top: targetY, behavior: "instant" }), y);
   await page.waitForTimeout(350);
+}
+
+async function fitReactFlow(page) {
+  await page.waitForSelector(".react-flow", { state: "visible", timeout: 15_000 });
+  await page.waitForTimeout(250);
+  await page.evaluate(() => {
+    document.querySelector(".react-flow")?.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+  });
+  await page.waitForTimeout(150);
+  const fitButton = page.locator(".react-flow__controls-fitview").first();
+  if ((await fitButton.count()) > 0) {
+    await fitButton.click({ timeout: 5_000 });
+  }
+  await page.waitForTimeout(500);
 }
 
 async function main() {
@@ -1322,14 +1408,10 @@ async function main() {
     await capture(page, "/mesh?capture=1", "mesh-live.png");
     await capture(page, "/security-graph?capture=1", "security-graph-live.png");
     await capture(page, `/graph?capture=1&scan=${SCAN_ID}`, "lineage-graph-live.png", async (lineagePage) => {
-      await lineagePage.locator(".react-flow").first().scrollIntoViewIfNeeded();
-      await lineagePage.locator(".react-flow__controls-fitview").first().click();
-      await lineagePage.waitForTimeout(500);
+      await fitReactFlow(lineagePage);
     });
     await capture(page, "/context?capture=1", "context-map-live.png", async (contextPage) => {
-      await contextPage.locator(".react-flow").first().scrollIntoViewIfNeeded();
-      await contextPage.locator(".react-flow__controls-fitview").first().click();
-      await contextPage.waitForTimeout(500);
+      await fitReactFlow(contextPage);
     });
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
       await fleetPage.getByText("developer-copilot").first().click();
@@ -1353,8 +1435,13 @@ async function main() {
       await auditPage.getByPlaceholder("Filter by resource…").fill("identity");
       await auditPage.waitForTimeout(350);
     });
-    await capture(page, "/insights?capture=1", "dependency-map-live.png");
+    await capture(page, "/?tab=analytics", "dependency-map-live.png", async (analyticsPage) => {
+      await analyticsPage.getByRole("button", { name: "Deep analytics" }).waitFor({ state: "visible", timeout: 10_000 });
+      await analyticsPage.waitForTimeout(500);
+      await scrollTo(analyticsPage, 620);
+    });
     await capture(page, "/remediation?capture=1", "remediation-live.png");
+    await writeScreenshotManifest();
     await browser.close();
   } finally {
     if (server) {

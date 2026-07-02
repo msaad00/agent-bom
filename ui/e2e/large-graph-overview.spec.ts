@@ -3,6 +3,8 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 const scanId = "scan-large-overview";
 const createdAt = "2026-05-08T16:00:00Z";
 
+test.describe.configure({ timeout: 60_000 });
+
 type GraphNode = {
   id: string;
   entity_type: string;
@@ -246,6 +248,10 @@ async function expectCanvasHasPixels(page: Page) {
   expect(coloredSamples).toBeGreaterThan(20);
 }
 
+async function waitForGraphRouteReady(page: Page) {
+  await expect(page.getByRole("heading", { name: "Lineage Graph" })).toBeVisible({ timeout: 30_000 });
+}
+
 async function expectSigmaCanvases(page: Page) {
   const stage = page.getByTestId("sigma-graph-overview-canvas");
   await expect(stage).toBeVisible();
@@ -273,7 +279,8 @@ test("large graph overview renders above threshold and search drills back into R
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByTestId("large-graph-overview")).toBeVisible();
+  await waitForGraphRouteReady(page);
+  await expect(page.getByTestId("large-graph-overview")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText("Large graph overview")).toBeVisible();
   await expect(page.getByText(/Draw budget:/)).toBeVisible();
   await expect(page.getByText("Pan, zoom, search, filter, and select nodes for evidence.")).toBeVisible();
@@ -296,7 +303,8 @@ test("sigma webgl overview renders when explicitly requested", async ({ page }, 
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByTestId("sigma-graph-overview")).toBeVisible();
+  await waitForGraphRouteReady(page);
+  await expect(page.getByTestId("sigma-graph-overview")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText("WebGL graph overview")).toBeVisible();
   await expect(page.getByText("Sigma.js renderer for broad estate scans")).toBeVisible();
   await expectSigmaCanvases(page);

@@ -62,6 +62,8 @@ _GRAPH_QUERY_DEFAULT_BUDGET = {
     "timeout_ms": 2500,
 }
 _FILTERED_GRAPH_ATTACK_PATH_LIMIT = 100
+_GOVERNANCE_EDGE_LIMIT = 5_000
+_GOVERNANCE_ATTACK_PATH_LIMIT = 100
 
 _SEMANTIC_LAYER_LABELS = {
     GraphSemanticLayer.USER.value: "User",
@@ -1198,9 +1200,7 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
     off_page_hops = {hop for p in kept_paths for hop in p.hops} - paged_ids
     nodes_by_id = {n.id: n for n in paged_nodes}
     nodes_by_id.update({hop: graph.nodes[hop] for hop in off_page_hops if hop in graph.nodes})
-    attack_paths = [
-        _serialize_attack_path(p, graph.edges, nodes_by_id=nodes_by_id, scan_id=graph.scan_id) for p in kept_paths
-    ]
+    attack_paths = [_serialize_attack_path(p, graph.edges, nodes_by_id=nodes_by_id, scan_id=graph.scan_id) for p in kept_paths]
     interaction_risks = [
         r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)
     ]
@@ -1292,6 +1292,63 @@ def _serialize_attack_path_queue(
         "interaction_risks": [],
         "stats": stats,
         "pagination": _page_meta(total, offset, limit),
+    }
+
+
+def _governance_graph_payload(
+    graph: UnifiedGraph,
+    *,
+    tenant_id: str,
+    overlay_stats: dict[str, Any],
+    node_limit: int,
+    edge_limit: int,
+    attack_path_limit: int,
+) -> dict[str, Any]:
+    governance_types = {
+        EntityType.MANAGED_IDENTITY,
+        EntityType.ACCESS_GRANT,
+        EntityType.ACCESS_POLICY,
+        EntityType.DRIFT_INCIDENT,
+    }
+    governance_ids = {node.id for node in graph.nodes.values() if node.entity_type in governance_types}
+    keep_edges = [e for e in graph.edges if e.source in governance_ids or e.target in governance_ids]
+    keep_ids = set(governance_ids)
+    for edge in keep_edges:
+        keep_ids.add(edge.source)
+        keep_ids.add(edge.target)
+    nodes = [graph.nodes[nid].to_dict() for nid in keep_ids if nid in graph.nodes][:node_limit]
+    node_id_window = {n["id"] for n in nodes}
+    candidate_edges = [e for e in keep_edges if e.source in node_id_window and e.target in node_id_window]
+    edges = candidate_edges[:edge_limit]
+
+    matching_paths = [p for p in _derived_attack_paths(graph) if p.hops and any(hop in governance_ids for hop in p.hops)]
+    attack_paths = [
+        _serialize_attack_path(p, keep_edges, nodes_by_id=graph.nodes, scan_id=graph.scan_id) for p in matching_paths[:attack_path_limit]
+    ]
+    counts: dict[str, int] = {}
+    for node in graph.nodes.values():
+        if node.entity_type in governance_types:
+            counts[node.entity_type.value] = counts.get(node.entity_type.value, 0) + 1
+    return {
+        "scan_id": graph.scan_id,
+        "tenant_id": tenant_id,
+        "created_at": graph.created_at,
+        "nodes": nodes,
+        "edges": [e.to_dict() for e in edges],
+        "attack_paths": attack_paths,
+        "overlay": overlay_stats,
+        "governance_counts": counts,
+        "stats": {"node_count": len(nodes), "edge_count": len(edges)},
+        "edge_pagination": {
+            "total": len(candidate_edges),
+            "limit": edge_limit,
+            "has_more": len(candidate_edges) > edge_limit,
+        },
+        "attack_path_pagination": {
+            "total": len(matching_paths),
+            "limit": attack_path_limit,
+            "has_more": len(matching_paths) > attack_path_limit,
+        },
     }
 
 
@@ -1730,6 +1787,13 @@ async def get_graph_governance(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan ID"),
     limit: int = Query(2000, ge=1, le=10000, description="Max nodes to return"),
+    edge_limit: int = Query(_GOVERNANCE_EDGE_LIMIT, ge=1, le=25_000, description="Max governance edges to return"),
+    attack_path_limit: int = Query(
+        _GOVERNANCE_ATTACK_PATH_LIMIT,
+        ge=1,
+        le=1000,
+        description="Max governance attack paths to embed",
+    ),
 ) -> dict:
     """Return the agent-identity governance subgraph projected onto the inventory.
 
@@ -1746,45 +1810,15 @@ async def get_graph_governance(
     graph_store = _get_graph_store_or_503()
     graph = await _graph_store_call(graph_store.load_graph, scan_id=scan_id or "", tenant_id=tenant)
     overlay_stats = apply_governance_overlay(graph, tenant_id=tenant)
-
-    governance_types = {
-        EntityType.MANAGED_IDENTITY,
-        EntityType.ACCESS_GRANT,
-        EntityType.ACCESS_POLICY,
-        EntityType.DRIFT_INCIDENT,
-    }
-    governance_ids = {node.id for node in graph.nodes.values() if node.entity_type in governance_types}
-    # Keep governance nodes plus the inventory nodes they touch (one hop) so the
-    # subgraph is self-contained and renderable.
-    keep_edges = [e for e in graph.edges if e.source in governance_ids or e.target in governance_ids]
-    keep_ids = set(governance_ids)
-    for edge in keep_edges:
-        keep_ids.add(edge.source)
-        keep_ids.add(edge.target)
-    nodes = [graph.nodes[nid].to_dict() for nid in keep_ids if nid in graph.nodes][:limit]
-    node_id_window = {n["id"] for n in nodes}
-    edges = [e.to_dict() for e in keep_edges if e.source in node_id_window and e.target in node_id_window]
-
-    derived = [
-        _serialize_attack_path(p, keep_edges, nodes_by_id=graph.nodes, scan_id=graph.scan_id)
-        for p in _derived_attack_paths(graph)
-        if p.hops and any(hop in governance_ids for hop in p.hops)
-    ]
-    counts: dict[str, int] = {}
-    for node in graph.nodes.values():
-        if node.entity_type in governance_types:
-            counts[node.entity_type.value] = counts.get(node.entity_type.value, 0) + 1
-    return {
-        "scan_id": graph.scan_id,
-        "tenant_id": tenant,
-        "created_at": graph.created_at,
-        "nodes": nodes,
-        "edges": edges,
-        "attack_paths": derived,
-        "overlay": overlay_stats,
-        "governance_counts": counts,
-        "stats": {"node_count": len(nodes), "edge_count": len(edges)},
-    }
+    return await _graph_compute_call(
+        _governance_graph_payload,
+        graph,
+        tenant_id=tenant,
+        overlay_stats=overlay_stats,
+        node_limit=limit,
+        edge_limit=edge_limit,
+        attack_path_limit=attack_path_limit,
+    )
 
 
 @router.get("/v1/graph/nhi/governance", tags=["graph"])
@@ -2188,8 +2222,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         )
         nodes_by_id = {**filtered_graph.nodes, **{node.id: node for node in backfilled_nodes}}
         attack_paths = [
-            _serialize_attack_path(ap, filtered_graph.edges, nodes_by_id=nodes_by_id, scan_id=filtered_graph.scan_id)
-            for ap in root_paths
+            _serialize_attack_path(ap, filtered_graph.edges, nodes_by_id=nodes_by_id, scan_id=filtered_graph.scan_id) for ap in root_paths
         ]
 
     return {

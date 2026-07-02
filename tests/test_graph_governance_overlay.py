@@ -11,7 +11,9 @@ from agent_bom.api.agent_identity_store import (
     issue_jit_grant,
 )
 from agent_bom.api.drift_incident_store import DriftIncident
-from agent_bom.graph.container import UnifiedGraph
+from agent_bom.api.routes.graph import _governance_graph_payload
+from agent_bom.graph.container import AttackPath, UnifiedGraph
+from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.governance_overlay import apply_governance_overlay
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
@@ -158,3 +160,43 @@ def test_governance_endpoint_returns_overlay_subgraph(tmp_path):
     finally:
         set_graph_store(original_graph)
         set_agent_identity_store(None)
+
+
+def test_governance_payload_caps_edges_and_attack_paths_for_large_graphs():
+    graph = UnifiedGraph(scan_id="gov-large", tenant_id="default")
+    graph.add_node(
+        UnifiedNode(
+            id="managed_identity:svc",
+            entity_type=EntityType.MANAGED_IDENTITY,
+            label="svc",
+        )
+    )
+    for index in range(8):
+        tool_id = f"tool:srv:tool-{index}"
+        graph.add_node(UnifiedNode(id=tool_id, entity_type=EntityType.TOOL, label=f"tool-{index}"))
+        graph.add_edge(UnifiedEdge(source="managed_identity:svc", target=tool_id, relationship=RelationshipType.CAN_ACCESS))
+        graph.attack_paths.append(
+            AttackPath(
+                source="managed_identity:svc",
+                target=tool_id,
+                hops=["managed_identity:svc", tool_id],
+                edges=["can_access"],
+                composite_risk=7.0,
+                summary=f"governance path {index}",
+            )
+        )
+
+    payload = _governance_graph_payload(
+        graph,
+        tenant_id="default",
+        overlay_stats={"nodes_added": 0},
+        node_limit=20,
+        edge_limit=3,
+        attack_path_limit=2,
+    )
+
+    assert len(payload["edges"]) == 3
+    assert payload["edge_pagination"] == {"total": 8, "limit": 3, "has_more": True}
+    assert len(payload["attack_paths"]) == 2
+    assert payload["attack_path_pagination"] == {"total": 8, "limit": 2, "has_more": True}
+    assert payload["stats"]["edge_count"] == 3

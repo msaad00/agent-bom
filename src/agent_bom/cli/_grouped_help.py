@@ -13,15 +13,15 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
     [
         (
             "Get started",
-            ["connect", "agents", "graph", "report", "up"],
+            ["connect", "agents", "graph", "report", "up", "quickstart", "capabilities", "doctor", "samples"],
         ),
         (
             "Scanning",
-            ["skills", "image", "fs", "iac", "sbom", "ingest", "cloud", "check", "verify", "secrets", "code"],
+            ["skills", "image", "fs", "iac", "sbom", "ingest", "cloud", "check", "verify", "secrets", "code", "manifest", "scanners"],
         ),
         (
             "Runtime",
-            ["proxy", "watch", "audit"],
+            ["proxy", "watch", "audit", "gateway", "firewall", "proxy-bootstrap", "sidecar-injector"],
         ),
         (
             "MCP",
@@ -33,7 +33,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
         ),
         (
             "Governance",
-            ["policy", "trust", "fleet", "cost", "identity", "serve", "api", "schedule", "remediate", "teardown"],
+            ["policy", "trust", "fleet", "cost", "identity", "serve", "api", "schedule", "remediate", "teardown", "findings", "attest", "audit-drain-dlq"],
         ),
         (
             "Database",
@@ -41,7 +41,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
         ),
         (
             "Utilities",
-            ["upgrade", "completions"],
+            ["upgrade", "completions", "plugins", "profiles", "interactive", "graph-evidence"],
         ),
     ]
 )

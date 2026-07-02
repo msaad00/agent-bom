@@ -103,6 +103,7 @@ async def scan_impl(
             _run_scan_pipeline=_run_scan_pipeline,
             _truncate_response=_truncate_response,
         )
+    raise ToolError("scan failed before producing a result")
 
 
 async def _scan_impl_inner(

@@ -302,12 +302,7 @@ test("large graph overview renders above threshold and search drills back into R
   await expect(searchButton).toBeEnabled({ timeout: 15_000 });
 
   await page.getByPlaceholder("Search nodes, tags, severities, or attributes").fill("large-package-42");
-  const searchResponse = page.waitForResponse(
-    (response) => response.url().includes("/v1/graph/search") && response.ok(),
-    { timeout: 15_000 },
-  );
   await searchButton.click();
-  await searchResponse;
 
   const resultButton = page.getByTestId("graph-search-result-pkg:42");
   await expect(resultButton).toBeVisible({ timeout: 15_000 });

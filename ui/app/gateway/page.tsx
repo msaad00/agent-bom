@@ -36,6 +36,7 @@ import {
   Activity,
 } from "lucide-react";
 import { GatewayFeedPanel } from "./GatewayFeedPanel";
+import { useRuntimeEmbedded } from "@/components/runtime-embed-context";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ const RUNTIME_COLORS: Record<GatewayPolicyRuntimeSummary["rollout_mode"], string
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function GatewayPage() {
+  const embedded = useRuntimeEmbedded();
   const [policies, setPolicies] = useState<GatewayPolicy[]>([]);
   const [stats, setStats] = useState<GatewayStatsResponse | null>(null);
   const [audit, setAudit] = useState<PolicyAuditEntry[]>([]);
@@ -151,7 +153,7 @@ export default function GatewayPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {!embedded ? (
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
@@ -170,6 +172,7 @@ export default function GatewayPage() {
           Create Policy
         </button>
       </div>
+      ) : null}
 
       {/* Stats */}
       {stats && (

@@ -21,6 +21,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { useRuntimeEmbedded } from "@/components/runtime-embed-context";
 import {
   Shield,
   Activity,
@@ -64,6 +65,7 @@ interface LiveMetrics {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function ProxyDashboard() {
+  const embedded = useRuntimeEmbedded();
   const [status, setStatus] = useState<ProxyStatusResponse | null>(null);
   const [alerts, setAlerts] = useState<ProxyAlert[]>([]);
   const [live, setLive] = useState<LiveMetrics | null>(null);
@@ -183,7 +185,7 @@ export default function ProxyDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {!embedded ? (
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
@@ -217,6 +219,7 @@ export default function ProxyDashboard() {
           </button>
         </div>
       </div>
+      ) : null}
 
       {/* Loading */}
       {loading && (

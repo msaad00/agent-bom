@@ -47,7 +47,7 @@ export function postureDimensionHref(key: string, label: string) {
   if (text.includes("credential") || text.includes("tool")) return "/mesh";
   if (text.includes("agent") || text.includes("server")) return "/agents";
   if (text.includes("trust") || text.includes("framework") || text.includes("compliance")) return "/compliance";
-  if (text.includes("runtime") || text.includes("proxy") || text.includes("watch")) return "/proxy";
+  if (text.includes("runtime") || text.includes("proxy") || text.includes("watch")) return "/runtime?tab=proxy";
   return "/graph";
 }
 

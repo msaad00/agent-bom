@@ -232,7 +232,7 @@ describe('Nav', () => {
       Discover: ['/', '/agents', '/fleet', '/registry'],
       Scan: ['/sources', '/scan', '/jobs', '/findings'],
       Analyze: ['/security-graph'],
-      Protect: ['/proxy', '/gateway'],
+      Protect: ['/runtime'],
       Compliance: ['/compliance', '/governance', '/audit'],
       Operations: ['/identity', '/cost', '/drift', '/activity'],
       Remediation: ['/remediation', '/traces'],
@@ -264,7 +264,7 @@ describe('Nav', () => {
 
     expect(screen.getAllByRole('link', { name: /dashboard/i }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('link', { name: /new scan/i }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('link', { name: /proxy/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /runtime/i }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('link', { name: /remediation/i }).length).toBeGreaterThan(0)
   })
 
@@ -336,7 +336,7 @@ describe('Nav', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /protect/i }))
     await waitFor(() => {
-      expect(screen.getAllByRole('link', { name: /^gateway$/i }).some((link) => link.getAttribute('href') === '/gateway')).toBe(true)
+      expect(screen.getAllByRole('link', { name: /^runtime$/i }).some((link) => link.getAttribute('href') === '/runtime')).toBe(true)
     })
 
     fireEvent.click(screen.getByRole('button', { name: /remediation/i }))

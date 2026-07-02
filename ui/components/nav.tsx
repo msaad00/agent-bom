@@ -130,8 +130,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Shield,
     accent: "#f778ba", // pink — enforcement layer
     links: [
-      { href: "/proxy", label: "Proxy", icon: Shield, capability: "runtime.ingest" },
-      { href: "/gateway", label: "Gateway", icon: Lock, capability: "policy.manage" },
+      { href: "/runtime", label: "Runtime", icon: Shield },
     ],
   },
   // Govern is split into three tight, single-purpose groups instead of one

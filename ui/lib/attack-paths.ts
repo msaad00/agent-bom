@@ -414,7 +414,7 @@ export function recommendedInteractionRiskActions(risk: InteractionRiskLike): In
   } else {
     actions.push({
       label: "Inspect runtime controls",
-      href: "/proxy",
+      href: "/runtime?tab=proxy",
     });
   }
 

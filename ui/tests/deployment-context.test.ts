@@ -71,8 +71,8 @@ describe("deployment-context helpers", () => {
       has_traces: true,
       scan_count: 3,
     });
-    expect(isNavLinkVisible("/gateway", counts)).toBe(true);
-    expect(isNavLinkVisible("/proxy", counts)).toBe(true);
+    expect(isNavLinkVisible("/runtime", counts)).toBe(true);
+    expect(isNavLinkVisible("/runtime?tab=proxy", counts)).toBe(true);
     expect(isNavLinkVisible("/audit", counts)).toBe(true);
   });
 

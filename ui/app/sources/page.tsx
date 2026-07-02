@@ -171,14 +171,14 @@ const OPERATING_SURFACES = [
   },
   {
     title: "Runtime proxy and alerts",
-    href: "/proxy",
+    href: "/runtime?tab=proxy",
     summary: "Live runtime enforcement, detector alerts, drift protection, and audit review for MCP and tool-call activity.",
     status: "Runtime",
     icon: Radio,
   },
   {
     title: "Gateway and policy enforcement",
-    href: "/gateway",
+    href: "/runtime?tab=gateway",
     summary: "Policy evaluation and enforcement for high-impact tool usage and approval workflows.",
     status: "Protect",
     icon: Shield,

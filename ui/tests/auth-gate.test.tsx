@@ -91,7 +91,7 @@ describe("AuthGate", () => {
     expect(unlock).toBeEnabled();
   });
 
-  it("lets pages render their own offline state when auth discovery gets a server error", async () => {
+  it("blocks protected content when auth discovery gets a server error", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -109,6 +109,8 @@ describe("AuthGate", () => {
       </AuthProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText("page-level offline state")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Control plane unreachable")).toBeInTheDocument());
+    expect(screen.queryByText("page-level offline state")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry connection" })).toBeInTheDocument();
   });
 });

@@ -12,7 +12,7 @@ describe("posture-grade helpers", () => {
   it("maps dimension labels to evidence destinations", () => {
     expect(postureDimensionHref("vulnerability_exposure", "Vulnerability Exposure")).toBe("/findings");
     expect(postureDimensionHref("credential_reach", "Credential Reach")).toBe("/mesh");
-    expect(postureDimensionHref("runtime_watch", "Runtime Watch")).toBe("/proxy");
+    expect(postureDimensionHref("runtime_watch", "Runtime Watch")).toBe("/runtime?tab=proxy");
   });
 
   it("returns readable drilldown hints", () => {

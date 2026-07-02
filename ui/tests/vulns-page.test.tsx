@@ -8,6 +8,7 @@ const { apiMock } = vi.hoisted(() => ({
   apiMock: {
     listJobs: vi.fn(),
     getScan: vi.fn(),
+    listFindings: vi.fn(),
     listFindingTriage: vi.fn(),
     createException: vi.fn(),
     exportFindingTriageVex: vi.fn(),
@@ -89,6 +90,7 @@ describe("VulnsPage", () => {
   beforeEach(() => {
     apiMock.listJobs.mockReset();
     apiMock.getScan.mockReset();
+    apiMock.listFindings.mockReset();
     apiMock.listFindingTriage.mockReset();
     apiMock.createException.mockReset();
     apiMock.exportFindingTriageVex.mockReset();
@@ -103,6 +105,7 @@ describe("VulnsPage", () => {
       ],
     });
     apiMock.getScan.mockResolvedValue(scanJob());
+    apiMock.listFindings.mockResolvedValue({ findings: [], total: 0 });
     apiMock.listFindingTriage.mockResolvedValue({ triage: [] });
   });
 

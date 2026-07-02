@@ -107,6 +107,12 @@ type SortKey = "severity" | "cvss" | "epss" | "id";
 type GroupKey = "none" | "package" | "agent" | "severity";
 type ScanScope = "latest" | "all";
 
+function serverFindingsSort(sortKey: SortKey): string {
+  if (sortKey === "cvss") return "cvss";
+  if (sortKey === "severity") return "severity";
+  return "effective_reach";
+}
+
 function CisaKevBadge() {
   return (
     <span className="text-xs font-mono bg-red-950 border border-red-800 text-red-400 rounded px-1.5 py-0.5">
@@ -354,7 +360,9 @@ function VulnsPage() {
   const [vexExporting, setVexExporting] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(paramCve ?? null);
   const [page, setPage] = useState(1);
+  const [findingsTotal, setFindingsTotal] = useState(0);
   const PAGE_SIZE = 25;
+  const useServerPaging = groupBy === "none" && !search.trim();
 
   // URL-as-source-of-truth: when the query string changes (link, back/forward),
   // re-sync the derived filter state so the view matches the address bar instead
@@ -584,54 +592,71 @@ function VulnsPage() {
   }, [refreshTriage]);
 
   useEffect(() => {
-    async function loadDetails() {
-      if (loading) return;
+    async function loadLegacyFindings() {
       if (paramScan) {
-        setDetailLoading(true);
-        setError("");
         try {
           const findings = await api.listFindings({ scanId: paramScan, limit: 1000 });
           if (findings.findings.length > 0) {
             setVulns(collectUnifiedFindings(findings.findings));
+            setFindingsTotal(findings.total);
             return;
           }
           const graph = await api.getGraph({ scanId: paramScan, limit: 2500 });
           setVulns(collectGraphVulns(graph));
+          setFindingsTotal(graph.nodes.filter((node) => graphNodeKind(node) === "vulnerability").length);
+          return;
         } catch (graphError) {
-          try {
-            const selectedJob = await api.getScan(paramScan);
-            setVulns(collectVulns([selectedJob]));
-          } catch (jobError) {
-            setError(
-              jobError instanceof Error
-                ? jobError.message
-                : graphError instanceof Error
-                  ? graphError.message
-                  : "Failed to load selected scan",
-            );
-            setErrorKind(_classifyApiErrorKind(jobError));
-          }
-        } finally {
-          setDetailLoading(false);
+          const selectedJob = await api.getScan(paramScan);
+          setVulns(collectVulns([selectedJob]));
+          setFindingsTotal(collectVulns([selectedJob]).length);
+          return;
         }
-        return;
       }
+
       if (jobs.length === 0) {
         setVulns([]);
-        setDetailLoading(false);
+        setFindingsTotal(0);
         return;
       }
+
+      if (scope === "latest") {
+        const latestJob = await api.getScan(jobs[0]!.job_id);
+        const collected = collectVulns([latestJob]);
+        setVulns(collected);
+        setFindingsTotal(collected.length);
+        return;
+      }
+
+      const fullJobs = await Promise.all(jobs.map((job) => api.getScan(job.job_id).catch(() => null)));
+      const collected = collectVulns(fullJobs.filter((job): job is ScanJob => Boolean(job)));
+      setVulns(collected);
+      setFindingsTotal(collected.length);
+    }
+
+    async function loadDetails() {
+      if (loading) return;
 
       setDetailLoading(true);
       setError("");
       try {
-        if (scope === "latest") {
-          const latestJob = await api.getScan(jobs[0]!.job_id);
-          setVulns(collectVulns([latestJob]));
-        } else {
-          const fullJobs = await Promise.all(jobs.map((job) => api.getScan(job.job_id).catch(() => null)));
-          setVulns(collectVulns(fullJobs.filter((job): job is ScanJob => Boolean(job))));
+        if (useServerPaging) {
+          const scanId =
+            paramScan ?? (scope === "latest" && jobs[0] ? jobs[0].job_id : undefined);
+          const response = await api.listFindings({
+            ...(scanId ? { scanId } : {}),
+            ...(filter !== "all" ? { severity: filter } : {}),
+            sort: serverFindingsSort(sortKey),
+            limit: PAGE_SIZE,
+            offset: (page - 1) * PAGE_SIZE,
+          });
+          if (response.total > 0 || response.findings.length > 0) {
+            setVulns(collectUnifiedFindings(response.findings));
+            setFindingsTotal(response.total);
+            return;
+          }
         }
+
+        await loadLegacyFindings();
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to load");
         setErrorKind(_classifyApiErrorKind(e));
@@ -641,7 +666,17 @@ function VulnsPage() {
     }
 
     void loadDetails();
-  }, [jobs, scope, loading, collectVulns, paramScan]);
+  }, [
+    jobs,
+    scope,
+    loading,
+    collectVulns,
+    paramScan,
+    useServerPaging,
+    page,
+    filter,
+    sortKey,
+  ]);
 
   function handleSort(field: SortKey) {
     if (sortKey === field) {
@@ -653,6 +688,9 @@ function VulnsPage() {
   }
 
   const displayed = useMemo(() => {
+    if (useServerPaging) {
+      return vulns;
+    }
     let list = vulns;
     if (filter !== "all") {
       list = list.filter((v) => v.severity.toLowerCase() === filter);
@@ -681,13 +719,17 @@ function VulnsPage() {
       return sortDir === "desc" ? -diff : diff;
     });
     return list;
-  }, [vulns, filter, search, sortKey, sortDir]);
+  }, [vulns, filter, search, sortKey, sortDir, useServerPaging]);
 
   // Reset page when filters change
-  useEffect(() => { setPage(1); }, [filter, search, sortKey, sortDir]);
+  useEffect(() => { setPage(1); }, [filter, search, sortKey, sortDir, groupBy, scope, paramScan]);
 
-  const totalPages = Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
-  const paged = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = useServerPaging
+    ? Math.max(1, Math.ceil(findingsTotal / PAGE_SIZE))
+    : Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
+  const paged = useServerPaging
+    ? displayed
+    : displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const selectedVuln = useMemo(
     () => displayed.find((vuln) => vuln.id === selectedId) ?? vulns.find((vuln) => vuln.id === selectedId) ?? null,
     [displayed, selectedId, vulns],
@@ -733,11 +775,15 @@ function VulnsPage() {
   }, [vulns]);
 
   const FILTERS: { key: SeverityFilter; label: string; color: string }[] = [
-    { key: "all",      label: `All (${vulns.length})`,          color: "text-zinc-300" },
-    { key: "critical", label: `Critical (${counts.critical})`,  color: "text-red-400" },
-    { key: "high",     label: `High (${counts.high})`,          color: "text-orange-400" },
-    { key: "medium",   label: `Medium (${counts.medium})`,      color: "text-yellow-400" },
-    { key: "low",      label: `Low (${counts.low})`,            color: "text-blue-400" },
+    {
+      key: "all",
+      label: `All (${useServerPaging ? findingsTotal : vulns.length})`,
+      color: "text-zinc-300",
+    },
+    { key: "critical", label: `Critical${useServerPaging ? "" : ` (${counts.critical})`}`, color: "text-red-400" },
+    { key: "high",     label: `High${useServerPaging ? "" : ` (${counts.high})`}`,         color: "text-orange-400" },
+    { key: "medium",   label: `Medium${useServerPaging ? "" : ` (${counts.medium})`}`,     color: "text-yellow-400" },
+    { key: "low",      label: `Low${useServerPaging ? "" : ` (${counts.low})`}`,           color: "text-blue-400" },
   ];
 
   const GROUP_OPTIONS: { key: GroupKey; label: string; icon: React.ElementType }[] = [
@@ -755,9 +801,9 @@ function VulnsPage() {
           <p className="text-zinc-400 text-sm mt-1">
             {scope === "latest"
               ? paramScan
-                ? `${vulns.length} findings from scan ${paramScan.slice(0, 8)}.`
-                : `${vulns.length} findings from the latest completed scan.`
-              : `${vulns.length} findings aggregated across all completed scans.`}{" "}
+                ? `${useServerPaging ? findingsTotal : vulns.length} findings from scan ${paramScan.slice(0, 8)}.`
+                : `${useServerPaging ? findingsTotal : vulns.length} findings from the latest completed scan.`
+              : `${useServerPaging ? findingsTotal : vulns.length} findings aggregated across all completed scans.`}{" "}
             CVSS and EPSS appear for advisory-backed vulnerabilities; cloud and governance findings use source evidence and policy severity.
           </p>
         </div>
@@ -974,7 +1020,8 @@ function VulnsPage() {
             <PaginationBar
               page={page}
               totalPages={totalPages}
-              totalItems={displayed.length}
+              totalItems={useServerPaging ? findingsTotal : displayed.length}
+              itemLabel="findings"
               onPrevious={() => setPage((p) => Math.max(1, p - 1))}
               onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
             />

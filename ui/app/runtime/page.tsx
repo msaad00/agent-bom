@@ -6,6 +6,7 @@ import { Loader2, Lock, Shield } from "lucide-react";
 
 import ProxyDashboard from "@/app/proxy/page";
 import GatewayPage from "@/app/gateway/page";
+import { RuntimeEmbedProvider } from "@/components/runtime-embed-context";
 
 type RuntimeTab = "proxy" | "gateway";
 
@@ -65,7 +66,9 @@ function RuntimeTabs() {
 
       <p className="text-xs text-zinc-500">{active.description}</p>
 
-      {tab === "proxy" ? <ProxyDashboard /> : <GatewayPage />}
+      <RuntimeEmbedProvider>
+        {tab === "proxy" ? <ProxyDashboard /> : <GatewayPage />}
+      </RuntimeEmbedProvider>
     </div>
   );
 }

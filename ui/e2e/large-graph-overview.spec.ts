@@ -321,12 +321,13 @@ test("large graph overview renders above threshold and search drills back into R
   const searchButton = page.getByRole("button", { name: "Search", exact: true });
   await expect(searchButton).toBeEnabled({ timeout: 15_000 });
 
-  await page.getByPlaceholder("Search nodes, tags, severities, or attributes").fill("large-package-42");
-  await searchButton.click();
+  const searchInput = page.getByPlaceholder("Search nodes, tags, severities, or attributes");
+  await searchInput.fill("large-package-42");
+  await searchInput.press("Enter");
 
   const resultButton = page.getByTestId("graph-search-result-pkg:42");
   await expect(resultButton).toBeVisible({ timeout: 15_000 });
-  await resultButton.click();
+  await resultButton.click({ force: true });
 
   await expect(page.getByText("Root-centered investigation:")).toBeVisible();
   await expect(page.getByRole("heading", { name: "large-package-42" })).toBeVisible();

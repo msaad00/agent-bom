@@ -553,6 +553,11 @@ def test_sync_db_runs_wal_checkpoint(tmp_path, monkeypatch):
         return proxy
 
     monkeypatch.setattr(schema_mod, "init_db", fake_init)
+    monkeypatch.setattr("agent_bom.db.sync.sync_osv", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("agent_bom.db.sync.sync_alpine_secdb", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("agent_bom.db.sync.sync_debian_tracker", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("agent_bom.db.sync.sync_epss", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("agent_bom.db.sync.sync_kev", lambda *args, **kwargs: 0)
     sync_db(path=tmp_path / "ckpt.db", sources=[])
 
     assert proxies

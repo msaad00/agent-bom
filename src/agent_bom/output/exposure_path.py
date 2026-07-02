@@ -124,26 +124,33 @@ def exposure_path_for_finding(
     return {key: value for key, value in path.items() if value is not None}
 
 
-def exposure_path_for_blast_radius(br: BlastRadius, *, rank: int | None = None) -> dict[str, Any]:
-    """Return a bounded, report-safe ExposurePath view for a blast-radius item.
-
-    Legacy adapter: projects through the unified Finding model so file-based
-    formatters can converge on one canonical exposure-path builder.
-    """
-    from agent_bom.finding import blast_radius_to_finding
-
-    path = exposure_path_for_finding(
-        blast_radius_to_finding(br),
-        rank=rank,
-        provenance_source="blast_radius_output",
-    )
+def _blast_exposure_path_id(br: BlastRadius) -> str:
     vuln = br.vulnerability
     package = br.package
     package_name_value = _display_package_name(package.name, package.version)
-    path["id"] = "blast:" + ":".join(
+    return "blast:" + ":".join(
         _slug(part) for part in [vuln.id, package.ecosystem, package_name_value, package.version or "unknown"]
     )
+
+
+def exposure_path_for_report_finding(
+    finding: Finding,
+    *,
+    br: BlastRadius | None = None,
+    rank: int | None = None,
+) -> dict[str, Any]:
+    """Project a unified Finding to a legacy-compatible ExposurePath payload."""
+    path = exposure_path_for_finding(finding, rank=rank, provenance_source="blast_radius_output")
+    if br is not None:
+        path["id"] = _blast_exposure_path_id(br)
     return path
+
+
+def exposure_path_for_blast_radius(br: BlastRadius, *, rank: int | None = None) -> dict[str, Any]:
+    """Return a bounded, report-safe ExposurePath view for a blast-radius item."""
+    from agent_bom.finding import blast_radius_to_finding
+
+    return exposure_path_for_report_finding(blast_radius_to_finding(br), br=br, rank=rank)
 
 
 def _chain_token(hop: str) -> str:

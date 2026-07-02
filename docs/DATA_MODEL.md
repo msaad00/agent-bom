@@ -637,7 +637,35 @@ change in the same PR.
 
 ---
 
-## 9. Pointers
+## 9. Canonical IDs
+
+agent-bom emits deterministic canonical IDs (UUID v5 in a fixed namespace) so
+repeat scans join the same entities, findings, and graph relationships without
+replacing existing readable IDs. Inputs are normalized (lowercased, trimmed;
+structured parts such as tool schemas serialized as sorted JSON) before hashing.
+Existing `id` / `stable_id` fields stay backward-compatible; prefer
+`canonical_id` when diffing scans, joining graph nodes, or linking findings over
+time. Source IDs remain as provenance in `source_ids`.
+
+| Entity | Canonical input |
+|---|---|
+| Agent | agent type + name; graph fleet agents use source or endpoint ID when provided |
+| MCP server | registry ID when available, otherwise server name + launch command |
+| MCP tool | tool name + sorted input schema |
+| MCP resource | resource URI + MIME type |
+| MCP prompt | prompt name + sorted argument descriptors |
+| Package | normalized ecosystem + package name + version, with valid PURL input authoritative |
+| Finding | affected asset canonical ID + vulnerability or finding key + package qualifiers |
+| Graph node | node `stable_id`/`canonical_id` when supplied, otherwise entity type + graph node ID |
+| Graph edge | relationship + source graph ID + target graph ID |
+
+Graph node IDs such as `agent:claude-desktop` and `pkg:npm:express@4.18.0` stay
+readable and stable for API/UI consumers; `canonical_id` is an additional join
+key for scan history, deduplication, and saved investigations.
+
+---
+
+## 10. Pointers
 
 - README sections that reference these flows: `## How a scan moves through the system`, `## Deploy in your own AWS / EKS`, `## Trust & transparency`, `## Compliance`
 - Architecture deep-dive: [site-docs/architecture/how-agent-bom-works.md](../site-docs/architecture/how-agent-bom-works.md)

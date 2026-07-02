@@ -30,6 +30,7 @@ material. The index below groups the canonical docs by audience.
 - [`SECURITY_ARCHITECTURE.md`](SECURITY_ARCHITECTURE.md) — security architecture
 - [`THREAT_MODEL.md`](THREAT_MODEL.md) — threat model
 - [`PENTEST_READINESS.md`](PENTEST_READINESS.md) — pentest readiness
+- [`SCANNER_CONTEXT_CONTRACT.md`](SCANNER_CONTEXT_CONTRACT.md) — IaC `ScanContext` two-gate authorization model
 
 ## Platform / SRE (self-host · deploy · operate)
 
@@ -47,6 +48,7 @@ material. The index below groups the canonical docs by audience.
 - [`MCP_SERVER.md`](MCP_SERVER.md) — run the MCP server, 70 tools
 - [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md) — connect MCP clients
 - [`PYTHON_API.md`](PYTHON_API.md) — Python control-plane client
+- [`PLUGIN_ENTRYPOINTS.md`](PLUGIN_ENTRYPOINTS.md) — opt-in plugin entry-point loader and author contract
 
 ## Graph subsystem
 

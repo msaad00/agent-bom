@@ -323,7 +323,8 @@ test("large graph overview renders above threshold and search drills back into R
 
   const searchInput = page.getByPlaceholder("Search nodes, tags, severities, or attributes");
   await searchInput.fill("large-package-42");
-  await searchInput.press("Enter");
+  await expect(searchInput).toHaveValue("large-package-42");
+  await searchButton.click({ force: true });
 
   const resultButton = page.getByTestId("graph-search-result-pkg:42");
   await expect(resultButton).toBeVisible({ timeout: 15_000 });

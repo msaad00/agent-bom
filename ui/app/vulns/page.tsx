@@ -605,7 +605,7 @@ function VulnsPage() {
           setVulns(collectGraphVulns(graph));
           setFindingsTotal(graph.nodes.filter((node) => graphNodeKind(node) === "vulnerability").length);
           return;
-        } catch (graphError) {
+        } catch {
           const selectedJob = await api.getScan(paramScan);
           setVulns(collectVulns([selectedJob]));
           setFindingsTotal(collectVulns([selectedJob]).length);

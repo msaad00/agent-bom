@@ -12,7 +12,6 @@ import {
   Activity,
   GitBranch,
   Shield,
-  Lock,
   Users,
   Network,
   Waypoints,

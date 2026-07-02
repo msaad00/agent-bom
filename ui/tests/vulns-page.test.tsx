@@ -17,6 +17,8 @@ const { apiMock } = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ replace: vi.fn() }),
+  usePathname: () => "/vulns",
 }));
 
 vi.mock("next/link", () => ({

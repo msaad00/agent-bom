@@ -129,106 +129,126 @@ async function routeLargeGraphPage(page: Page) {
     focusedNodes.some((node) => node.id === entry.source) && focusedNodes.some((node) => node.id === entry.target),
   );
 
-  await page.route("**/health", async (route) => {
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "ok" }) });
-  });
-  await page.route("**/v1/auth/me", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        authenticated: true,
-        auth_required: false,
-        configured_modes: [],
-        recommended_ui_mode: "no_auth",
-        auth_method: null,
-        subject: null,
-        role: null,
-        role_summary: null,
-        tenant_id: "default",
-        memberships: [],
-        request_id: "req-large-overview",
-        trace_id: "trace-large-overview",
-        span_id: "span-large-overview",
-      }),
-    });
-  });
-  await page.route("**/v1/posture/counts", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ critical: 0, high: 621, medium: 0, low: 0, total: 621, kev: 0, compound_issues: 0 }),
-    });
-  });
-  await page.route("**/v1/posture", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        score: 72,
-        grade: "C",
-        findings: { critical: 0, high: 621, medium: 0, low: 0, total: 621 },
-        last_scan_at: createdAt,
-      }),
-    });
-  });
-  await page.route("**/v1/graph/snapshots**", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify([
-        { scan_id: scanId, created_at: createdAt, node_count: graph.nodes.length, edge_count: graph.edges.length, risk_summary: graph.stats.severity_counts },
-      ]),
-    });
-  });
-  await page.route("**/v1/graph/diff?**", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ nodes_added: [], nodes_removed: [], nodes_changed: [], edges_added: [], edges_removed: [] }),
-    });
-  });
-  await page.route("**/v1/graph/search**", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        query: "large-package-42",
-        results: [root],
-        pagination: { total: 1, offset: 0, limit: 16, has_more: false },
-      }),
-    });
-  });
-  await page.route("**/v1/graph/query", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        scan_id: scanId,
-        tenant_id: "default",
-        created_at: createdAt,
-        nodes: focusedNodes,
-        edges: focusedEdges,
-        attack_paths: [],
-        interaction_risks: [],
-        stats: {
-          total_nodes: focusedNodes.length,
-          total_edges: focusedEdges.length,
-          node_types: { agent: 1, package: 3 },
-          severity_counts: { high: focusedNodes.length },
-          relationship_types: { uses: 1, depends_on: 2 },
-          attack_path_count: 0,
-          interaction_risk_count: 0,
-          max_attack_path_risk: 0,
-          highest_interaction_risk: 0,
-        },
-        roots: ["pkg:42"],
-        direction: "both",
-        max_depth: 4,
-        max_nodes: 800,
-        max_edges: 8000,
-        timeout_ms: 2500,
-        budget: {},
-        depth_by_node: { "pkg:42": 0, "pkg:41": 1, "pkg:43": 1, "agent:large": 2 },
-        truncated: false,
-      }),
-    });
-  });
-  await page.route("**/v1/graph?**", async (route) => {
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    const pathname = url.pathname;
+    if (pathname === "/health") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "ok" }) });
+      return;
+    }
+    if (pathname === "/v1/auth/me") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          authenticated: true,
+          auth_required: false,
+          configured_modes: [],
+          recommended_ui_mode: "no_auth",
+          auth_method: null,
+          subject: null,
+          role: null,
+          role_summary: null,
+          tenant_id: "default",
+          memberships: [],
+          request_id: "req-large-overview",
+          trace_id: "trace-large-overview",
+          span_id: "span-large-overview",
+        }),
+      });
+      return;
+    }
+    if (pathname === "/v1/posture/counts") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ critical: 0, high: 621, medium: 0, low: 0, total: 621, kev: 0, compound_issues: 0 }),
+      });
+      return;
+    }
+    if (pathname === "/v1/posture") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          score: 72,
+          grade: "C",
+          findings: { critical: 0, high: 621, medium: 0, low: 0, total: 621 },
+          last_scan_at: createdAt,
+        }),
+      });
+      return;
+    }
+    if (pathname === "/v1/graph/snapshots") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            scan_id: scanId,
+            created_at: createdAt,
+            node_count: graph.nodes.length,
+            edge_count: graph.edges.length,
+            risk_summary: graph.stats.severity_counts,
+          },
+        ]),
+      });
+      return;
+    }
+    if (pathname === "/v1/graph/diff") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ nodes_added: [], nodes_removed: [], nodes_changed: [], edges_added: [], edges_removed: [] }),
+      });
+      return;
+    }
+    if (pathname === "/v1/graph/search") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          query: "large-package-42",
+          results: [root],
+          pagination: { total: 1, offset: 0, limit: 16, has_more: false },
+        }),
+      });
+      return;
+    }
+    if (pathname === "/v1/graph/query") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          scan_id: scanId,
+          tenant_id: "default",
+          created_at: createdAt,
+          nodes: focusedNodes,
+          edges: focusedEdges,
+          attack_paths: [],
+          interaction_risks: [],
+          stats: {
+            total_nodes: focusedNodes.length,
+            total_edges: focusedEdges.length,
+            node_types: { agent: 1, package: 3 },
+            severity_counts: { high: focusedNodes.length },
+            relationship_types: { uses: 1, depends_on: 2 },
+            attack_path_count: 0,
+            interaction_risk_count: 0,
+            max_attack_path_risk: 0,
+            highest_interaction_risk: 0,
+          },
+          roots: ["pkg:42"],
+          direction: "both",
+          max_depth: 4,
+          max_nodes: 800,
+          max_edges: 8000,
+          timeout_ms: 2500,
+          budget: {},
+          depth_by_node: { "pkg:42": 0, "pkg:41": 1, "pkg:43": 1, "agent:large": 2 },
+          truncated: false,
+        }),
+      });
+      return;
+    }
+    if (pathname === "/v1/graph") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
+      return;
+    }
+    await route.continue();
   });
 }
 

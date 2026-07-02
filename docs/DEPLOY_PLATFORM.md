@@ -115,13 +115,15 @@ feed its `helm_values_hint` output into your values file.
 
 ---
 
-## Tier 3 — Hosted / SaaS (you run the control plane)
+## Tier 3 — Operator-hosted / gated POC
 
-The hosted tier is the same control plane chart, operated centrally, with
-customers connecting read-only across the control-plane / collector seam:
+The operator-hosted tier is the same control plane chart, operated centrally,
+with invited customers connecting read-only across the control-plane /
+collector seam:
 
 1. **You run the control plane** — deploy the chart (Tier 2) in your account,
-   multi-tenant, behind your ingress and identity provider.
+   behind your ingress and identity provider. For customer-0 and design
+   partners, keep access invite-only with operator-minted tenants and keys.
 2. **Customers connect read-only** — each customer applies a connect module
    (`deploy/terraform/connect-aws`, `connect-azure`, `connect-gcp`,
    `connect-snowflake`) that mints a read-only role trusting your hosted
@@ -143,12 +145,12 @@ customers connecting read-only across the control-plane / collector seam:
 This is the same primitive used by `create_aws_connect_role` in the EKS module,
 just pointed at a hosted scanner instead of a local one.
 
-For a gated customer-0 URL, start with the smaller hosted POC runbook instead
-of presenting a generally available SaaS product:
+Start with the smaller hosted POC runbook for invite-only hosted evaluations:
 [`HOSTED_POC.md`](HOSTED_POC.md). The recommended first proof is one AWS VM
-behind HTTPS with `deploy/docker-compose.hosted-poc.yml` layered on top of the
-platform compose so Caddy is the only public listener. The Snowflake Native App
-lane remains the enterprise customer-owned install path.
+behind HTTPS with
+`deploy/docker-compose.hosted-poc.yml` layered on top of the platform compose
+so Caddy is the only public listener. The Snowflake Native App lane remains an
+enterprise customer-owned install path.
 
 ---
 
@@ -160,7 +162,7 @@ lane remains the enterprise customer-owned install path.
 | Single team / air-gapped VM | 1 — Docker Compose (or `docker-compose.platform.yml`) |
 | Production on AWS, one command | 2A — `platform-eks` Terraform |
 | Production on an existing/any cluster | 2B — Helm |
-| Multi-tenant, you operate it for others | 3 — Hosted + connect roles |
+| Invite-only hosted design partner or customer-0 | 3 — Operator-hosted + connect roles |
 | Gated customer-0 demo link | [`HOSTED_POC.md`](HOSTED_POC.md) |
 
 ## Related

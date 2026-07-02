@@ -1,8 +1,8 @@
 # Hosted Product Control-Plane Spec
 
-This is the next implementation spec for making `agent-bom` feel like one
-coherent hosted product instead of a collection of good but partially separate
-surfaces.
+This spec tracks the hosted control-plane shape for `agent-bom`: one coherent
+product surface across sources, jobs, schedules, evidence, graph, runtime
+policy, and reports.
 
 The product rule stays simple:
 
@@ -98,10 +98,13 @@ product surface.
 | Auth / audit | `/v1/auth/*`, `/v1/audit*`, `/v1/exceptions*` |
 | Findings / posture / graph | `/v1/assets*`, `/v1/graph*`, `/v1/compliance*`, `/v1/posture*`, `/v1/governance*` |
 
-## New API surface to add next
+## Source and credential API surface
 
-The control plane is still missing a first-class source registry. That should
-be the next backend slice.
+The control plane now has first-class source and credential-reference routes.
+They are tenant-scoped and RBAC-gated, and should remain the canonical backend
+for the Connections and Sources product surfaces. The remaining work is
+productization: customer-0 bootstrap, hosted smoke tests, connection validation
+clarity, and source-to-evidence provenance.
 
 ### `Source` registry routes
 
@@ -115,7 +118,7 @@ be the next backend slice.
 | `POST /v1/sources/{source_id}/test` | validate credentials and connectivity |
 | `POST /v1/sources/{source_id}/run` | trigger a job now |
 | `GET /v1/sources/{source_id}/jobs` | show source-linked job history |
-| `GET /v1/sources/{source_id}/evidence` | show evidence and provenance linked to the source |
+| `GET /v1/sources/{source_id}/evidence` | show evidence and provenance linked to the source, where evidence indexing is enabled |
 
 ### Credential reference routes
 
@@ -179,26 +182,23 @@ These rules should be enforced in both the API and background execution paths.
 - audit events are emitted for create, update, run, toggle, delete, export, allow, and block actions
 - gateway and proxy events carry tenant context, source identity, and trace correlation
 
-## Rollout order for the next PRs
+## Remaining hosted-product rollout
 
-This should land as alignment work, not surface-area sprawl.
+The core source and credential route layer has landed. The next work should be
+alignment and hosted-readiness work, not unrelated surface-area sprawl.
 
-1. **Source registry backend**  
-   Add `sources`, `credential_refs`, and source-linked job metadata.
-2. **Real Sources control-plane UI**  
-   Replace brochure content with source list, health, status, and run actions.
-3. **Schedule CRUD in UI**  
-   Make recurring runs editable from the product, not only via API.
+1. **Customer-0 bootstrap**
+   Provide an operator script or runbook path that creates one tenant-bound
+   admin/API key without requiring an already-authenticated browser session.
+2. **Hosted POC smoke**
+   Test login, connect, scan, scan detail, findings, graph, compliance export,
+   and audit export against the hosted compose profile.
+3. **Connection test clarity**
+   Keep "test and scan" clear in the UI, or add a standalone connection
+   validation route for roles and warehouse credentials.
 4. **Source / job / evidence linkage**  
-   Add provenance views so every finding can be traced to a source and job.
-5. **Auth / RBAC / tenant enforcement pass**  
-   Confirm every source, job, schedule, and evidence route is tenant-scoped and role-gated.
-6. **Credential reference model**  
-   Support customer-managed secrets and role references without leaking secret material into the UI.
-7. **Audit trail views**  
-   Add source and job-level audit visibility in the product.
-8. **Multi-tenant isolation hardening**  
-   Make tenant ownership explicit in DB access paths, worker claims, exports, and UI filters.
+   Continue tightening provenance views so every finding can be traced to a
+   source and job.
 
 ## Short implementation rule
 

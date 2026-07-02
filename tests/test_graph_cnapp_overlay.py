@@ -142,3 +142,132 @@ def test_non_sensitive_tags_do_not_falsely_classify():
     assert companion is not None
     assert not companion.attributes.get("data_sensitivity")
     assert not companion.attributes.get("toxic_exposed_sensitive")
+
+
+def test_content_classification_drives_sensitive_data_store_risk():
+    graph = UnifiedGraph(scan_id="s", tenant_id="t")
+    graph.add_node(
+        UnifiedNode(
+            id="cloud:s3-classified",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="customer exports bucket",
+            attributes={
+                "resource_type": "bucket",
+                "internet_exposed": True,
+                "content_classification": {
+                    "schema_version": "agent-bom.dspm.s3_classification.v1",
+                    "status": "ok",
+                    "objects_sampled": 2,
+                    "total_findings": 4,
+                    "findings_by_type": {"credit_card": 1, "email": 3},
+                    "sensitivity_score": 90,
+                    "data_sensitivity": "sensitive",
+                    "redaction": "raw object bytes and matched values are not stored",
+                },
+            },
+        )
+    )
+
+    stats = apply_cnapp_overlay(graph)
+
+    companion = graph.nodes.get("data_store:cloud:s3-classified")
+    assert companion is not None, "classified object-store evidence must flow into the graph"
+    assert companion.attributes.get("data_sensitivity") == "sensitive"
+    assert companion.attributes.get("toxic_exposed_sensitive") is True
+    assert companion.attributes.get("data_classification_tier") == "restricted"
+    assert "PCI-DSS" in (companion.attributes.get("data_regulatory_frameworks") or [])
+    assert companion.attributes.get("data_classification_source") == "content_sampling"
+    assert companion.attributes.get("content_classification_counts") == {"credit_card": 1, "email": 3}
+    assert companion.attributes.get("content_classification_findings") == 4
+    assert companion.attributes.get("content_objects_sampled") == 2
+    assert stats["sensitive_data_nodes"] == 1
+    assert stats["exposed_sensitive_data"] == 1
+
+
+def test_review_content_classification_does_not_escalate_to_sensitive():
+    graph = UnifiedGraph(scan_id="s", tenant_id="t")
+    graph.add_node(
+        UnifiedNode(
+            id="cloud:gcs-review",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="analytics bucket",
+            attributes={
+                "resource_type": "bucket",
+                "internet_exposed": True,
+                "content_classification": {
+                    "schema_version": "agent-bom.dspm.gcs_classification.v1",
+                    "status": "ok",
+                    "objects_sampled": 1,
+                    "total_findings": 1,
+                    "findings_by_type": {"phone": 1},
+                    "sensitivity_score": 30,
+                    "data_sensitivity": "review",
+                },
+            },
+        )
+    )
+
+    stats = apply_cnapp_overlay(graph)
+
+    companion = graph.nodes.get("data_store:cloud:gcs-review")
+    assert companion is not None
+    assert companion.attributes.get("content_data_sensitivity") == "review"
+    assert companion.attributes.get("data_classification_source") == "content_sampling"
+    assert companion.attributes.get("data_sensitivity") is None
+    assert companion.attributes.get("toxic_exposed_sensitive") is None
+    assert stats["sensitive_data_nodes"] == 0
+    assert stats["exposed_sensitive_data"] == 0
+
+
+def test_sensitive_database_classification_records_access_paths():
+    graph = UnifiedGraph(scan_id="s", tenant_id="t")
+    graph.add_node(
+        UnifiedNode(
+            id="cloud:rds-customers",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="customer RDS database",
+            attributes={
+                "resource_type": "rds",
+                "content_classification": {
+                    "schema_version": "agent-bom.dspm.database_classification.v1",
+                    "status": "ok",
+                    "rows_sampled": 2,
+                    "columns_sampled": 3,
+                    "total_findings": 2,
+                    "findings_by_type": {"ssn": 1, "email": 1},
+                    "sensitivity_score": 90,
+                    "data_sensitivity": "sensitive",
+                    "redaction": "raw row values and matched values are not stored",
+                },
+            },
+        )
+    )
+    graph.add_node(UnifiedNode(id="managed_identity:etl", entity_type=EntityType.MANAGED_IDENTITY, label="etl-role"))
+    graph.add_edge(
+        UnifiedEdge(
+            source="managed_identity:etl",
+            target="data_store:cloud:rds-customers",
+            relationship=RelationshipType.CAN_ACCESS,
+        )
+    )
+
+    stats = apply_cnapp_overlay(graph)
+
+    companion = graph.nodes.get("data_store:cloud:rds-customers")
+    assert companion is not None
+    assert companion.attributes.get("data_sensitivity") == "sensitive"
+    assert companion.attributes.get("content_rows_sampled") == 2
+    assert companion.attributes.get("content_columns_sampled") == 3
+    assert companion.attributes.get("content_classification_counts") == {"ssn": 1, "email": 1}
+    assert companion.attributes.get("sensitive_data_access_count") == 1
+    assert companion.attributes.get("sensitive_data_access_subjects") == [
+        {
+            "id": "managed_identity:etl",
+            "label": "etl-role",
+            "entity_type": "managed_identity",
+            "relationship": "can_access",
+        }
+    ]
+    assert stats["sensitive_data_nodes"] == 1
+    assert stats["sensitive_data_access_paths"] == 1
+    assert any(r.pattern == "sensitive_data_reachable" for r in graph.interaction_risks)

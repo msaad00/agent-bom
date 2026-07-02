@@ -94,6 +94,8 @@ so they cannot regress silently, but they are not part of this reference.
 ## DSPM content sampling
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_DSPM_DB_MAX_CELL_CHARS` | `int` | `4096` | — |
+| `AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE` | `int` | `100` | — |
 | `AGENT_BOM_DSPM_GCS_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
 | `AGENT_BOM_DSPM_GCS_MAX_OBJECTS_PER_BUCKET` | `int` | `10` | — |
 | `AGENT_BOM_DSPM_S3_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |

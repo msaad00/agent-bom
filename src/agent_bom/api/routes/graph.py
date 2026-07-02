@@ -61,6 +61,7 @@ _GRAPH_QUERY_DEFAULT_BUDGET = {
     "max_edges": 10_000,
     "timeout_ms": 2500,
 }
+_FILTERED_GRAPH_ATTACK_PATH_LIMIT = 100
 
 _SEMANTIC_LAYER_LABELS = {
     GraphSemanticLayer.USER.value: "User",
@@ -1192,7 +1193,8 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
     paged_nodes, pagination = _paginate(all_nodes, offset, limit)
     paged_ids = {n.id for n in paged_nodes}
     paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
-    kept_paths = [p for p in _derived_attack_paths(graph) if p.hops and p.hops[0] in paged_ids]
+    matching_paths = [p for p in _derived_attack_paths(graph) if p.hops and p.hops[0] in paged_ids]
+    kept_paths = matching_paths[:_FILTERED_GRAPH_ATTACK_PATH_LIMIT]
     off_page_hops = {hop for p in kept_paths for hop in p.hops} - paged_ids
     nodes_by_id = {n.id: n for n in paged_nodes}
     nodes_by_id.update({hop: graph.nodes[hop] for hop in off_page_hops if hop in graph.nodes})
@@ -1213,6 +1215,11 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
         "interaction_risks": interaction_risks,
         "stats": stats,
         "pagination": pagination,
+        "attack_path_pagination": {
+            "total": len(matching_paths),
+            "limit": _FILTERED_GRAPH_ATTACK_PATH_LIMIT,
+            "has_more": len(matching_paths) > _FILTERED_GRAPH_ATTACK_PATH_LIMIT,
+        },
     }
 
 

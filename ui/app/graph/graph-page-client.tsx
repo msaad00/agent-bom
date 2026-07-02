@@ -1888,6 +1888,7 @@ function GraphPageInner() {
                   <button
                     key={result.id}
                     type="button"
+                    data-testid={`graph-search-result-${result.id}`}
                     onClick={() => void focusSearchResult(result)}
                     className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
                   >

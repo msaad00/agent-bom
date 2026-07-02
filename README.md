@@ -171,6 +171,50 @@ Run `agent-bom db update` before `--offline` image or package scans. Guided path
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo" width="820" />
 </p>
 
+<details>
+<summary><b>Product screenshots</b> — packaged dashboard on seeded demo data</summary>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png" alt="Risk overview dashboard with posture grade and attack paths" width="900" />
+  <br/><em>Risk overview — posture grade, KPIs, and fix-first attack paths</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png" alt="Fix-first attack-path queue with graph evidence export" width="900" />
+  <br/><em>Security graph — fix-first attack-path queue with evidence export</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png" alt="Agent mesh graph across agents, MCP servers, packages, tools, and findings" width="900" />
+  <br/><em>Blast radius — agent → MCP server → package → tool → CVE</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway policy posture with rules and bound agents" width="900" />
+  <br/><em>Runtime gateway — policy posture, rules, and bound agents</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/fleet-state-live.png" alt="Fleet lifecycle review state with owner and environment" width="900" />
+  <br/><em>Fleet — lifecycle review state, owner, and environment</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/identity-audit-live.png" alt="Audit log filtered to identity resources with HMAC integrity counters" width="900" />
+  <br/><em>Audit — identity lifecycle with tamper-evident HMAC counters</em>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png" alt="Fix-first remediation table with prioritized packages" width="900" />
+  <br/><em>Remediation — prioritized fix list with framework context</em>
+</p>
+
+<sub>Synthetic seeded evidence for docs proof, captured from the real Next.js
+routes — not a claim these entities came from a buyer environment. Full set and
+capture protocol: <a href="docs/CAPTURE.md">docs/CAPTURE.md</a>.</sub>
+
+</details>
+
 ## Cloud, Deploy, Trust
 
 **Cloud (read-only).** Four connectors — AWS, Azure, GCP, Snowflake — are
@@ -184,9 +228,12 @@ network I/O until you opt in. Full intake map:
 | AWS | `AGENT_BOM_AWS_INVENTORY=1` | `agent-bom cloud aws` |
 | Azure | `AGENT_BOM_AZURE_INVENTORY=1` | `agent-bom cloud azure` |
 | GCP | `AGENT_BOM_GCP_INVENTORY=1` | `agent-bom cloud gcp` |
-| Snowflake | key-pair role | `agent-bom agents --snowflake` |
+| Snowflake | SSO or key-pair auth | `pip install 'agent-bom[snowflake]'` then `agent-bom agents --snowflake` |
 
-Setup and grants: [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md)
+Snowflake auth defaults to browser SSO (`externalbrowser`); use
+`SNOWFLAKE_AUTHENTICATOR=snowflake_jwt` with `SNOWFLAKE_PRIVATE_KEY_PATH` for
+CI. agent-bom authenticates through the Python connector — no `snowsql` session
+needed. Setup and grants: [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md)
 
 **Deploy in your boundary.** OSS CLI, self-hosted API/UI, gated hosted POC, or
 optional Snowflake-native lane — no managed public SaaS in this repo yet.

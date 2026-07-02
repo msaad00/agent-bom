@@ -267,7 +267,7 @@ export SNOWFLAKE_USER=AGENT_BOM_SVC
 export SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/agent_bom_key.p8
 
 # Full Snowflake scan
-agent-bom scan --snowflake --snowflake-cis-benchmark --cortex-observability
+agent-bom agents --snowflake --snowflake-cis-benchmark --cortex-observability
 ```
 
 Docs: https://docs.snowflake.com/en/user-guide/key-pair-auth

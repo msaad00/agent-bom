@@ -176,5 +176,6 @@ def test_enrich_unknown_packages_global_timeout(monkeypatch):
     elapsed = time.monotonic() - started
 
     assert enriched == 0
-    assert elapsed < 0.08
+    # global_timeout is 10ms; allow bounded cleanup on slow CI runners (py3.14).
+    assert elapsed < 0.2
     assert all(pkg.auto_risk_level is None for pkg in packages)

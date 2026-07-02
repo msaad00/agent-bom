@@ -109,6 +109,20 @@ def test_neptune_backend_selection_is_explicit_and_fail_closed(monkeypatch: pyte
     previous = api_stores._graph_store
     api_stores._graph_store = None
     monkeypatch.setenv("AGENT_BOM_GRAPH_BACKEND", "neptune")
+    monkeypatch.delenv("AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH", raising=False)
+    monkeypatch.delenv("AGENT_BOM_NEPTUNE_ENDPOINT", raising=False)
+    try:
+        with pytest.raises(NeptuneGraphStoreConfigError, match="AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH"):
+            api_stores._get_graph_store()
+    finally:
+        api_stores._graph_store = previous
+
+
+def test_neptune_backend_selection_requires_endpoint_after_experimental_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    previous = api_stores._graph_store
+    api_stores._graph_store = None
+    monkeypatch.setenv("AGENT_BOM_GRAPH_BACKEND", "neptune")
+    monkeypatch.setenv("AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH", "1")
     monkeypatch.delenv("AGENT_BOM_NEPTUNE_ENDPOINT", raising=False)
     try:
         with pytest.raises(NeptuneGraphStoreConfigError, match="AGENT_BOM_NEPTUNE_ENDPOINT"):
@@ -122,6 +136,7 @@ def test_neptune_backend_selection_accepts_injected_client(monkeypatch: pytest.M
     api_stores._graph_store = None
     fake_client = FakeGremlinClient()
     monkeypatch.setenv("AGENT_BOM_GRAPH_BACKEND", "neptune")
+    monkeypatch.setenv("AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH", "1")
     monkeypatch.setenv("AGENT_BOM_NEPTUNE_ENDPOINT", "wss://neptune.example:8182/gremlin")
     monkeypatch.setattr("agent_bom.api.neptune_graph._client_from_config", lambda _config: fake_client)
     try:

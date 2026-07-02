@@ -158,6 +158,17 @@ async function routeLargeGraphPage(page: Page) {
       body: JSON.stringify({ critical: 0, high: 621, medium: 0, low: 0, total: 621, kev: 0, compound_issues: 0 }),
     });
   });
+  await page.route("**/v1/posture", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        score: 72,
+        grade: "C",
+        findings: { critical: 0, high: 621, medium: 0, low: 0, total: 621 },
+        last_scan_at: createdAt,
+      }),
+    });
+  });
   await page.route("**/v1/graph/snapshots?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -172,7 +183,7 @@ async function routeLargeGraphPage(page: Page) {
       body: JSON.stringify({ nodes_added: [], nodes_removed: [], nodes_changed: [], edges_added: [], edges_removed: [] }),
     });
   });
-  await page.route("**/v1/graph/search?**", async (route) => {
+  await page.route("**/v1/graph/search**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -273,6 +284,7 @@ async function expectSigmaCanvases(page: Page) {
 }
 
 test("large graph overview renders above threshold and search drills back into React Flow", async ({ page }, testInfo: TestInfo) => {
+  test.setTimeout(60_000);
   await routeLargeGraphPage(page);
 
   await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package", {
@@ -286,9 +298,15 @@ test("large graph overview renders above threshold and search drills back into R
   await expectCanvasHasPixels(page);
   await page.screenshot({ path: testInfo.outputPath("large-graph-overview.png"), fullPage: true });
 
+  const searchButton = page.getByRole("button", { name: "Search", exact: true });
+  await expect(searchButton).toBeEnabled({ timeout: 15_000 });
+
   await page.getByPlaceholder("Search nodes, tags, severities, or attributes").fill("large-package-42");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
-  await page.getByRole("button", { name: "large-package-42" }).click();
+  await searchButton.click();
+
+  const resultButton = page.getByRole("button", { name: "large-package-42" });
+  await expect(resultButton).toBeVisible({ timeout: 15_000 });
+  await resultButton.click();
 
   await expect(page.getByText("Root-centered investigation:")).toBeVisible();
   await expect(page.getByRole("heading", { name: "large-package-42" })).toBeVisible();

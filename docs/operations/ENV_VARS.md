@@ -122,7 +122,8 @@ so they cannot regress silently, but they are not part of this reference.
 ## Graph Backend Selection
 | Env var | Type | Default | Description |
 |---|---|---|---|
-| `AGENT_BOM_GRAPH_BACKEND` | `str` | `''` | SQLite is the local default. Postgres remains selected by AGENT_BOM_POSTGRES_URL. Neptune is an explicit enterprise lane and must fail closed without endpoint configuration so deployments do not silently fall back to a different graph. |
+| `AGENT_BOM_EXPERIMENTAL_NEPTUNE_GRAPH` | `bool` | `False` | — |
+| `AGENT_BOM_GRAPH_BACKEND` | `str` | `''` | SQLite is the local default. Postgres remains selected by AGENT_BOM_POSTGRES_URL. Neptune is experimental and requires explicit opt-in plus endpoint config. SQLite and Postgres remain the supported graph backends. |
 | `AGENT_BOM_NEPTUNE_ENDPOINT` | `str` | `''` | — |
 | `AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE` | `str` | `'g'` | — |
 

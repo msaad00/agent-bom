@@ -372,9 +372,12 @@ snapshot implicitly.
 
 Azure Managed Disk and GCP Persistent Disk inventory also emits
 `side_scan_targets` records with provider, target id, location, size, encryption,
-and execution state. Those records are target discovery only: the current
-snapshot executor is AWS EBS, and Azure/GCP snapshot lifecycle execution remains
-explicit follow-up work under the CWPP lane.
+and execution state. Those records are graph-visible workload-disk targets, and
+the provider-neutral side-scan runner can execute the same snapshot -> temp disk
+-> collector mount -> metadata parse -> cleanup lifecycle through scoped Azure
+or GCP lifecycle adapters. The CLI command above remains AWS EBS-specific; Azure
+and GCP execution is wired for connection/scheduler integrations and must still
+use provider-scoped snapshot permissions plus an in-account collector.
 
 ---
 

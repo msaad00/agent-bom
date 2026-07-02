@@ -25,6 +25,20 @@ def _report() -> dict:
                 "virtual_networks": [{"name": "vnet", "id": "/.../vnet"}],
                 "public_ips": [{"name": "pip", "id": "/.../pip", "ip_address": "20.1.2.3"}],
                 "load_balancers": [{"name": "lb", "id": "/.../lb", "internet_facing": True}],
+                "side_scan_targets": [
+                    {
+                        "provider": "azure",
+                        "target_type": "managed_disk",
+                        "target_id": "/subscriptions/sub-1/resourceGroups/rg/providers/Microsoft.Compute/disks/os-disk",
+                        "name": "os-disk",
+                        "account_id": "sub-1",
+                        "location": "eastus",
+                        "size_gb": 128,
+                        "encryption": "provider-managed",
+                        "status": "eligible",
+                        "execution": "not_started",
+                    }
+                ],
             }
         ]
     }
@@ -43,7 +57,7 @@ def test_new_resource_types_become_cloud_resource_nodes() -> None:
         for n in g.nodes.values()
         if str(getattr(n, "entity_type", "")).split(".")[-1].lower() == "cloud_resource"
     }
-    assert {"secret_store", "container_registry", "database", "virtual_network", "public_ip", "load_balancer"} <= by_type
+    assert {"secret_store", "container_registry", "database", "virtual_network", "public_ip", "load_balancer", "workload_disk"} <= by_type
 
 
 def test_resources_owned_by_account_and_not_orphaned() -> None:
@@ -63,6 +77,16 @@ def test_exposure_and_datastore_flags() -> None:
     assert by_name["lb"].attributes["internet_exposed"] is True
     assert by_name["kv"].attributes["is_data_store"] is True
     assert by_name["cos"].attributes["is_data_store"] is True
+
+
+def test_side_scan_target_becomes_owned_workload_disk_node() -> None:
+    g, edges = _build()
+    node = next(node for node in g.nodes.values() if node.attributes.get("resource_type") == "workload_disk")
+    assert node.attributes["resource_type"] == "workload_disk"
+    assert node.attributes["cloud_service"] == "cwpp-side-scan"
+    assert node.attributes["side_scan_status"] == "eligible"
+    owns = [edge for edge in edges if edge.target == node.id and edge.relationship.value == "owns"]
+    assert owns
 
 
 def test_public_ip_exposed_to_load_balancer_edge() -> None:

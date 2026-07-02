@@ -46,7 +46,28 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (error && isApiReachabilityFailure(error)) {
-    return <>{children}</>;
+    return (
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
+        <div className="w-full max-w-xl rounded-3xl border border-amber-900/50 bg-amber-950/20 p-8 text-center shadow-2xl shadow-black/20">
+          <ShieldCheck className="mx-auto mb-4 h-8 w-8 text-amber-300" />
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Control plane unreachable</h1>
+          <p className="mt-3 text-sm leading-6 text-zinc-400">
+            Authentication could not be verified because the API is offline or returned a server error. The dashboard
+            stays locked until session discovery succeeds.
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">
+            {userFacingApiErrorMessage(error, "Failed to load auth session")}
+          </p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="mt-6 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400"
+          >
+            Retry connection
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!error || isAuthFailure(error)) {

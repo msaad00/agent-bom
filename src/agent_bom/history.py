@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -10,15 +12,54 @@ from typing import Optional
 from agent_bom.models import Package
 from agent_bom.package_utils import canonical_package_key
 from agent_bom.sbom import parse_sbom_document
-from agent_bom.security import sanitize_path_label
+from agent_bom.security import sanitize_path_label, sanitize_text
+
+logger = logging.getLogger(__name__)
 
 HISTORY_DIR = Path.home() / ".agent-bom" / "history"
+
+# On-disk scan history is unbounded by default, so a long-lived workstation or
+# CI cache can accumulate thousands of reports. Cap the retained count and prune
+# the oldest reports on every save. Override with ``AGENT_BOM_HISTORY_MAX_REPORTS``.
+_DEFAULT_HISTORY_MAX_REPORTS = 500
+
+
+def _history_max_reports() -> int:
+    """Resolve the retained-report cap. ``<= 0`` disables pruning."""
+    raw = os.environ.get("AGENT_BOM_HISTORY_MAX_REPORTS", str(_DEFAULT_HISTORY_MAX_REPORTS))
+    try:
+        return int(raw)
+    except ValueError:
+        return _DEFAULT_HISTORY_MAX_REPORTS
 
 
 def history_dir() -> Path:
     """Return (and create) the history directory."""
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     return HISTORY_DIR
+
+
+def prune_history(max_reports: Optional[int] = None) -> int:
+    """Prune oldest saved reports when the count exceeds the cap.
+
+    Returns the number of reports deleted. A non-positive cap disables pruning.
+    Deletion is best-effort: a failure to remove one file is logged (sanitized)
+    and does not abort the sweep or the caller's save.
+    """
+    cap = _history_max_reports() if max_reports is None else max_reports
+    if cap <= 0:
+        return 0
+    reports = list_reports()  # newest first
+    if len(reports) <= cap:
+        return 0
+    removed = 0
+    for stale in reports[cap:]:
+        try:
+            stale.unlink()
+            removed += 1
+        except OSError as exc:
+            logger.warning("Failed to prune history report: %s", sanitize_text(str(exc)))
+    return removed
 
 
 def save_report(report_json: dict, label: Optional[str] = None) -> Path:
@@ -36,6 +77,7 @@ def save_report(report_json: dict, label: Optional[str] = None) -> Path:
         record_scan_report_best_effort(report_json, source="cli", artifact_path=path)
     except Exception:
         pass
+    prune_history()
     return path
 
 

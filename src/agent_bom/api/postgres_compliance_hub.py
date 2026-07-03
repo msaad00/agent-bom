@@ -50,7 +50,7 @@ class PostgresComplianceHubStore:
                     severity TEXT NOT NULL DEFAULT '',
                     severity_rank INTEGER NOT NULL DEFAULT 0,
                     cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0,
-                    PRIMARY KEY (tenant_id, finding_id, ordinal)
+                    PRIMARY KEY (tenant_id, finding_id)
                 )
                 """
             )
@@ -60,6 +60,7 @@ class PostgresComplianceHubStore:
             conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT ''")
             # Backfill origin from the stored payload for pre-migration rows.
             conn.execute("UPDATE compliance_hub_findings SET origin = COALESCE(payload->>'origin', '') WHERE origin = ''")
+            # Materialise severity/cvss sort keys so filtered severity/cvss
             # Materialise severity/cvss sort keys so filtered severity/cvss
             # sorts ride a composite index rather than a payload-expression
             # sort (#3192). Backfill extracts from payload for legacy rows.
@@ -75,6 +76,7 @@ class PostgresComplianceHubStore:
             conn.execute(
                 "UPDATE compliance_hub_findings SET cvss_score = COALESCE((payload->>'cvss_score')::float8, 0) WHERE cvss_score = 0"
             )
+            self._migrate_primary_key(conn)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
             conn.execute("DROP INDEX IF EXISTS idx_hub_findings_tenant_reach")
             # Backs the default effective_reach sort scoped by origin: an
@@ -100,6 +102,50 @@ class PostgresComplianceHubStore:
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
             conn.commit()
 
+    @staticmethod
+    def _migrate_primary_key(conn: Any) -> None:
+        """Collapse the primary key to ``(tenant_id, finding_id)`` (idempotent).
+
+        Pre-idempotency deployments keyed on ``(tenant_id, finding_id, ordinal)``
+        so every resend of the same finding appended a fresh row. Dedup existing
+        duplicates (keep the lowest ordinal), then swap the primary key. Guarded
+        so it is a no-op once the collapsed key is in place.
+        """
+        # Drop duplicates ahead of the unique key, keeping the original ingest.
+        conn.execute(
+            """
+            DELETE FROM compliance_hub_findings a
+            USING compliance_hub_findings b
+            WHERE a.tenant_id = b.tenant_id
+              AND a.finding_id = b.finding_id
+              AND a.ordinal > b.ordinal
+            """
+        )
+        conn.execute(
+            """
+            DO $$
+            DECLARE
+                pk_cols text;
+                pk_name text;
+            BEGIN
+                SELECT string_agg(a.attname, ',' ORDER BY array_position(c.conkey, a.attnum)), c.conname
+                  INTO pk_cols, pk_name
+                  FROM pg_constraint c
+                  JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+                 WHERE c.conrelid = 'compliance_hub_findings'::regclass
+                   AND c.contype = 'p'
+                 GROUP BY c.conname;
+                IF pk_cols IS DISTINCT FROM 'tenant_id,finding_id' THEN
+                    IF pk_name IS NOT NULL THEN
+                        EXECUTE 'ALTER TABLE compliance_hub_findings DROP CONSTRAINT ' || quote_ident(pk_name);
+                    END IF;
+                    ALTER TABLE compliance_hub_findings
+                        ADD CONSTRAINT compliance_hub_findings_pkey PRIMARY KEY (tenant_id, finding_id);
+                END IF;
+            END$$;
+            """
+        )
+
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         findings = _redact_findings(findings)
         if not findings:
@@ -107,12 +153,25 @@ class PostgresComplianceHubStore:
         now = _now_utc_iso()
         with _tenant_connection(self._pool) as conn:
             for payload in findings:
+                # Idempotent ingest: a resend of the same (tenant_id, finding_id)
+                # refreshes payload/metadata and keeps the original ``ordinal``
+                # (the BIGSERIAL default only advances on genuine inserts).
                 conn.execute(
                     """
                     INSERT INTO compliance_hub_findings
                         (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
                          effective_reach_score, origin, severity, severity_rank, cvss_score)
                     VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
+                    ON CONFLICT (tenant_id, finding_id) DO UPDATE SET
+                        ingested_at = EXCLUDED.ingested_at,
+                        source = EXCLUDED.source,
+                        applicable_frameworks_csv = EXCLUDED.applicable_frameworks_csv,
+                        payload = EXCLUDED.payload,
+                        effective_reach_score = EXCLUDED.effective_reach_score,
+                        origin = EXCLUDED.origin,
+                        severity = EXCLUDED.severity,
+                        severity_rank = EXCLUDED.severity_rank,
+                        cvss_score = EXCLUDED.cvss_score
                     """,
                     (
                         tenant_id,

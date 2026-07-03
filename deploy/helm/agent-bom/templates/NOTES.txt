@@ -1,3 +1,24 @@
+{{- if not .Values.controlPlane.enabled }}
+================================================================================
+  SCANNER-ONLY DEPLOYMENT (controlPlane.enabled=false)
+================================================================================
+
+This release deploys ONLY the scheduled Kubernetes scanner CronJob and its
+supporting RBAC. The REST API, dashboard, gateway, proxy, firewall, MCP server,
+and Postgres-backed control plane are NOT included.
+
+To deploy the full self-hosted platform, upgrade with:
+
+  helm upgrade {{ .Release.Name }} {{ .Chart.Name }} \
+    --namespace {{ .Release.Namespace }} \
+    --reuse-values \
+    --set controlPlane.enabled=true
+
+See deploy/helm/agent-bom/README.md and site-docs/deployment/control-plane-helm.md
+for production profiles, Postgres provisioning, and ingress guidance.
+
+================================================================================
+{{- else }}
 Enterprise pilot notes:
 
 - The chart does not provision Postgres. Production profiles expect an
@@ -6,16 +27,27 @@ Enterprise pilot notes:
   `deploy/helm/agent-bom/examples/postgres-secret.example.yaml` for the
   Kubernetes Secret shape and `site-docs/deployment/postgres-provisioning.md`
   for the ownership contract.
+{{- if .Values.controlPlane.migrations.postgres.enabled }}
+- Postgres migrations run automatically via a Helm pre-install/pre-upgrade hook
+  (`alembic -c deploy/supabase/postgres/alembic.ini upgrade head`). A failed
+  migration fails the release loudly — inspect the hook Job
+  `{{ include "agent-bom.name" . }}-postgres-migrate` before retrying.
+- For existing databases bootstrapped from `init.sql`, stamp the baseline once
+  before the first hooked upgrade:
+  `alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01`.
+{{- else }}
+- SQLite pilot mode skips the Alembic migration hook. Do not use SQLite for
+  multi-replica production control planes.
+{{- end }}
 - Set `AGENT_BOM_AUDIT_HMAC_KEY` in the control-plane secret.
 - Production and multi-replica control planes fail closed when `AGENT_BOM_AUDIT_HMAC_KEY` is missing.
   Keep `AGENT_BOM_REQUIRE_AUDIT_HMAC=1` set for explicit policy evidence.
 - Use Postgres for the pilot control plane; SQLite is not the multi-replica path.
 - Prefer internal ingress / VPN-only exposure for the API and UI.
-- Run Alembic before first multi-replica rollout: `alembic -c deploy/supabase/postgres/alembic.ini upgrade head`.
-- For existing databases bootstrapped from `init.sql`, stamp the baseline first: `alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01`.
 - Label the namespace with Pod Security Admission restricted mode before applying sidecars:
   `kubectl label namespace {{ .Release.Namespace }} pod-security.kubernetes.io/enforce=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/warn=restricted --overwrite`
 - The focused EKS pilot values lock ingress down; adjust `networkPolicy.ingress` if your ingress controller does not run in `ingress-nginx`.
 - For production operator defaults, start from `deploy/helm/agent-bom/examples/eks-production-values.yaml`.
 - `sidecarInjection.enabled=true` requires cert-manager because the chart packages
   the webhook TLS certificate and CA injection path.
+{{- end }}

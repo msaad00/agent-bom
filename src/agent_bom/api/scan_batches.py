@@ -17,6 +17,11 @@ BATCH_LIST_TARGET_FIELDS = (
 )
 BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom")
 
+# Parent-only metadata computed by the batch roll-up. These keys are never
+# copied up from child results so aggregation cannot clobber the parent's own
+# batch bookkeeping.
+_PARENT_METADATA_RESULT_KEYS = frozenset({"batch", "summary", "aggregation"})
+
 
 def scan_request_targets(request: ScanRequest) -> list[dict[str, Any]]:
     """Return explicit top-level scan targets that can be fanned out."""
@@ -73,6 +78,39 @@ def child_request_for_target(request: ScanRequest, target: dict[str, Any]) -> Sc
             payload["k8s_namespace"] = value.get("namespace")
 
     return ScanRequest.model_validate(payload)
+
+
+def _aggregate_child_results(children: list[ScanJob]) -> tuple[dict[str, list[Any]], list[str]]:
+    """Merge graph/finding evidence from completed children onto the parent.
+
+    Batch parents historically exposed only per-child roll-up rows, so reading
+    the parent ``job_id`` for graph exports or findings returned empty because
+    the top-level ``agents`` / ``findings`` / ``blast_radius`` fields the read
+    endpoints consume lived on the child results only. This concatenates every
+    top-level *list* field (agents, packages, findings, blast_radius, cloud
+    inventory, …) from successful children into a single parent result so the
+    existing scan read paths surface the union of child evidence.
+
+    Returns the aggregated field map and the child job ids that contributed
+    evidence (used for the explicit aggregation status block).
+    """
+
+    aggregated: dict[str, list[Any]] = {}
+    contributing: list[str] = []
+    for child in children:
+        result = child.result if isinstance(child.result, dict) else None
+        if child.status != JobStatus.DONE or not result:
+            continue
+        contributed = False
+        for key, value in result.items():
+            if key in _PARENT_METADATA_RESULT_KEYS:
+                continue
+            if isinstance(value, list) and value:
+                aggregated.setdefault(key, []).extend(value)
+                contributed = True
+        if contributed:
+            contributing.append(child.job_id)
+    return aggregated, contributing
 
 
 def refresh_batch_parent(parent_job_id: str, *, tenant_id: str | None = None) -> ScanJob | None:
@@ -143,7 +181,30 @@ def refresh_batch_parent(parent_job_id: str, *, tenant_id: str | None = None) ->
         "pending_targets": status_counts[JobStatus.PENDING.value],
         "children": sorted(child_rows, key=lambda row: row.get("target_index") or 0),
     }
-    result = {"batch": batch, "summary": batch}
+
+    aggregated_fields, contributing_children = _aggregate_child_results(children)
+    succeeded = status_counts[JobStatus.DONE.value]
+    if succeeded == total and total > 0:
+        aggregation_status = "complete"
+    elif succeeded > 0:
+        aggregation_status = "partial"
+    elif terminal < total:
+        aggregation_status = "pending"
+    else:
+        aggregation_status = "empty"
+    aggregation = {
+        "status": aggregation_status,
+        "child_job_ids": list(parent.child_job_ids),
+        "contributing_child_job_ids": contributing_children,
+        "target_count": total,
+        "succeeded_targets": succeeded,
+        "aggregated_counts": {key: len(value) for key, value in aggregated_fields.items()},
+    }
+
+    result: dict[str, Any] = dict(aggregated_fields)
+    result["batch"] = batch
+    result["summary"] = batch
+    result["aggregation"] = aggregation
 
     with _job_lock(parent.job_id):
         parent.status = next_status

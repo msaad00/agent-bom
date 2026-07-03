@@ -1,0 +1,65 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.migrations.enabled .Values.controlPlane.migrations.postgres.enabled }}
+{{- $migrations := .Values.controlPlane.migrations }}
+{{- $envFrom := $migrations.envFrom }}
+{{- if not $envFrom }}
+{{- $envFrom = .Values.controlPlane.api.envFrom }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agent-bom.name" . }}-postgres-migrate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-migration
+  annotations:
+    helm.sh/hook: {{ $migrations.hooks | quote }}
+    helm.sh/hook-weight: {{ $migrations.hookWeight | quote }}
+    helm.sh/hook-delete-policy: {{ $migrations.deletePolicy | quote }}
+spec:
+  ttlSecondsAfterFinished: {{ $migrations.ttlSecondsAfterFinished }}
+  backoffLimit: {{ $migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent-bom.labels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres-migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: alembic
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: {{ $migrations.workingDir | quote }}
+          command:
+            - alembic
+            - -c
+            - {{ $migrations.alembicConfig | quote }}
+            - upgrade
+            - head
+          env:
+            {{- with $migrations.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml $migrations.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

@@ -9,6 +9,12 @@ metadata:
   labels:
     {{- include "agent-bom.labels" . | nindent 4 }}
     app.kubernetes.io/component: scanner
+  {{- if not .Values.controlPlane.enabled }}
+  annotations:
+    agent-bom.io/scanner-only-warning: >-
+      controlPlane.enabled=false — only the scanner CronJob is deployed.
+      Enable the API/UI/gateway with --set controlPlane.enabled=true.
+  {{- end }}
 spec:
   schedule: {{ .Values.scanner.schedule | quote }}
   concurrencyPolicy: Forbid

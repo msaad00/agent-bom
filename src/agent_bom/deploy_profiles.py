@@ -31,6 +31,10 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
     examples = helm_example_dir(repo_root)
     return [
         HelmValidationProfile(
+            name="scanner-only",
+            description="Default scanner-only render (controlPlane.enabled=false).",
+        ),
+        HelmValidationProfile(
             name="sqlite-pilot",
             description="Single-node SQLite demo control plane for fast packaged pilots.",
             values_files=(examples / "eks-control-plane-sqlite-pilot-values.yaml",),

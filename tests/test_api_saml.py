@@ -276,6 +276,33 @@ async def test_saml_relay_state_is_one_time(isolated_key_store, monkeypatch, sam
 
 
 @pytest.mark.asyncio
+async def test_saml_relay_state_redeems_from_shared_auth_backend(isolated_key_store, monkeypatch, saml_runtime_enabled):
+    from agent_bom.api.shared_auth_state import InMemoryAuthState
+
+    shared = InMemoryAuthState()
+    monkeypatch.setattr("agent_bom.api.shared_auth_state.get_auth_state", lambda: shared)
+    relay = await enterprise.saml_relay_state()
+
+    monkeypatch.setattr(
+        "agent_bom.api.saml.SAMLConfig.verify_response",
+        lambda self, saml_response, relay_state=None: type(
+            "Assertion",
+            (),
+            {
+                "subject": "alice@example.com",
+                "attributes": {"agent_bom_role": "admin", "tenant_id": "tenant-alpha"},
+                "role": "admin",
+                "tenant_id": "tenant-alpha",
+                "session_index": "session-1",
+            },
+        )(),
+    )
+
+    response = await enterprise.saml_login(SAMLLoginRequest(saml_response="assertion", relay_state=relay["relay_state"]))
+    assert response["tenant_id"] == "tenant-alpha"
+
+
+@pytest.mark.asyncio
 async def test_saml_login_rejects_replayed_assertion_with_fresh_relay(isolated_key_store, monkeypatch, saml_runtime_enabled):
     first_relay = await enterprise.saml_relay_state()
     second_relay = await enterprise.saml_relay_state()

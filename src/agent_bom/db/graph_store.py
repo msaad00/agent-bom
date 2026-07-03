@@ -14,6 +14,7 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Generator, Iterable, Iterator, Sequence
 
@@ -30,6 +31,7 @@ from agent_bom.graph import (
     UnifiedNode,
     _now_iso,
 )
+from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +180,25 @@ CREATE TABLE IF NOT EXISTS interaction_risks (
 CREATE TABLE IF NOT EXISTS graph_schema_version (
     version INTEGER PRIMARY KEY
 );
+
+-- ── Retention purge state (single row) ──
+CREATE TABLE IF NOT EXISTS graph_retention_state (
+    id                INTEGER PRIMARY KEY CHECK (id = 1),
+    last_purge_at     TEXT,
+    last_purged_count INTEGER DEFAULT 0
+);
 """
+
+# Tables purged (in FK-safe order) when a graph snapshot ages out of the
+# retention window. Ordered children-before-parents so a partial failure never
+# leaves orphaned nodes/edges pointing at a deleted snapshot.
+_GRAPH_PURGEABLE_TABLES = (
+    "attack_paths",
+    "interaction_risks",
+    "graph_edges",
+    "graph_nodes",
+    "graph_snapshots",
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -297,12 +317,135 @@ def _graph_retention_days() -> int:
         return _DEFAULT_GRAPH_RETENTION_DAYS
 
 
-def graph_retention_policy() -> dict[str, Any]:
-    return {
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'virtual') AND name = ?",
+        (table,),
+    ).fetchone()
+    return row is not None
+
+
+def _read_purge_state(conn: sqlite3.Connection) -> tuple[str | None, int]:
+    """Return ``(last_purge_at, last_purged_count)`` for the retention state row."""
+    if not _table_exists(conn, "graph_retention_state"):
+        return None, 0
+    try:
+        row = conn.execute(
+            "SELECT last_purge_at, last_purged_count FROM graph_retention_state WHERE id = 1"
+        ).fetchone()
+    except sqlite3.Error:
+        return None, 0
+    if row is None:
+        return None, 0
+    last_purge_at = row[0]
+    last_purged_count = row[1] if row[1] is not None else 0
+    return (str(last_purge_at) if last_purge_at is not None else None), int(last_purged_count)
+
+
+def _record_purge_state(conn: sqlite3.Connection, *, purged_count: int, purged_at: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO graph_retention_state (id, last_purge_at, last_purged_count)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            last_purge_at = excluded.last_purge_at,
+            last_purged_count = excluded.last_purged_count
+        """,
+        (purged_at, int(purged_count)),
+    )
+
+
+def _parse_iso_timestamp(value: object) -> datetime | None:
+    """Parse an ISO-8601 timestamp; return ``None`` when unparseable."""
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def graph_retention_policy(conn: sqlite3.Connection | None = None) -> dict[str, Any]:
+    """Describe the active graph retention policy.
+
+    When a connection is supplied, the response reflects real enforcement state
+    (``last_purge_at`` / ``last_purged_count``) recorded by
+    :func:`purge_expired_graph_snapshots`, rather than metadata alone.
+    """
+    policy: dict[str, Any] = {
         "retention_days": _graph_retention_days(),
         "mode": "queryable_snapshot_history",
         "deletion_state": "active",
+        "enforcement": "age_based_purge_on_save",
         "legal_hold": False,
+    }
+    if conn is not None:
+        last_purge_at, last_purged_count = _read_purge_state(conn)
+        policy["last_purge_at"] = last_purge_at
+        policy["last_purged_count"] = last_purged_count
+    return policy
+
+
+def purge_expired_graph_snapshots(
+    conn: sqlite3.Connection,
+    *,
+    retention_days: int | None = None,
+    now: datetime | None = None,
+    tenant_id: str | None = None,
+) -> dict[str, Any]:
+    """Delete graph snapshots older than the retention window and their rows.
+
+    Age-based purge keyed on ``graph_snapshots.created_at``. Runs across every
+    tenant by default; pass ``tenant_id`` to scope the purge to a single tenant.
+
+    Fail-closed: a snapshot whose ``created_at`` cannot be parsed as an ISO-8601
+    timestamp is *retained*, never deleted, so malformed rows can never trigger
+    unintended data loss. Deletes cascade to ``graph_nodes``, ``graph_edges``,
+    ``attack_paths`` and ``interaction_risks`` for the same ``(scan_id,
+    tenant_id)`` pair, plus the API search index when present.
+    """
+    days = _graph_retention_days() if retention_days is None else max(1, int(retention_days))
+    now_dt = now or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    cutoff = now_dt - timedelta(days=days)
+
+    query = "SELECT scan_id, tenant_id, created_at FROM graph_snapshots"
+    params: list[Any] = []
+    if tenant_id is not None:
+        query += " WHERE tenant_id = ?"
+        params.append(normalize_graph_tenant_id(tenant_id))
+    rows = conn.execute(query, params).fetchall()
+
+    expired: list[tuple[str, str]] = []
+    for row in rows:
+        created = _parse_iso_timestamp(row[2])
+        if created is not None and created < cutoff:
+            expired.append((str(row[0]), str(row[1])))
+
+    if expired:
+        for table in _GRAPH_PURGEABLE_TABLES:
+            conn.executemany(
+                f"DELETE FROM {table} WHERE scan_id = ? AND tenant_id = ?",  # nosec B608 - table names are static internal schema metadata
+                expired,
+            )
+        if _table_exists(conn, "graph_node_search"):
+            conn.executemany(
+                "DELETE FROM graph_node_search WHERE scan_id = ? AND tenant_id = ?",
+                expired,
+            )
+
+    purged_at = _now_iso()
+    _record_purge_state(conn, purged_count=len(expired), purged_at=purged_at)
+    conn.commit()
+
+    return {
+        "retention_days": days,
+        "cutoff": cutoff.isoformat(),
+        "purged_count": len(expired),
+        "last_purge_at": purged_at,
+        "purged_snapshots": [{"scan_id": scan_id, "tenant_id": tid} for scan_id, tid in expired],
     }
 
 
@@ -592,6 +735,16 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
         len(graph.attack_paths),
         scan,
     )
+
+    # Enforce age-based retention on the post-save lifecycle hook. A purge
+    # failure must never fail the durable save that already committed above, so
+    # it is best-effort and logged with sanitized text.
+    try:
+        result = purge_expired_graph_snapshots(conn)
+        if result["purged_count"]:
+            logger.info("Purged %d expired graph snapshot(s)", result["purged_count"])
+    except sqlite3.Error as exc:
+        logger.warning("Graph snapshot retention purge skipped: %s", sanitize_text(str(exc)))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1031,7 +1184,7 @@ def graph_evidence_manifest(
             "tenant_id": tenant_id,
             "scan_id": "",
             "generated_at": _now_iso(),
-            "retention_policy": graph_retention_policy(),
+            "retention_policy": graph_retention_policy(conn),
             "included_tables": list(_GRAPH_EVIDENCE_INCLUDED_TABLES),
             "excluded_private_fields": list(_GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS),
         }
@@ -1053,7 +1206,7 @@ def graph_evidence_manifest(
         "counts": counts,
         "included_tables": list(_GRAPH_EVIDENCE_INCLUDED_TABLES),
         "excluded_private_fields": list(_GRAPH_EVIDENCE_EXCLUDED_PRIVATE_FIELDS),
-        "retention_policy": graph_retention_policy(),
+        "retention_policy": graph_retention_policy(conn),
     }
 
 
@@ -1081,6 +1234,6 @@ def graph_history(
     return {
         "schema_version": "agent-bom.graph_history/v1",
         "tenant_id": tenant_id,
-        "retention_policy": graph_retention_policy(),
+        "retention_policy": graph_retention_policy(conn),
         "snapshots": history,
     }

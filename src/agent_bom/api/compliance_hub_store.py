@@ -24,9 +24,73 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+
+# Defined here (module scope) so ``list`` resolves to the builtin: the store
+# classes below define a ``list`` method that would otherwise shadow it in
+# their ``list_page`` return annotations.
+FindingPage = tuple[list[dict[str, Any]], int]
+
+_SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+
+# Sort keys supported by ``list_page``. ``effective_reach`` is the default and
+# the only one backed by a dedicated index/column; ``cvss`` and ``severity``
+# fall back to JSON-extraction ordering, and ``ordinal`` uses ingest order.
+_LIST_PAGE_SORTS = ("effective_reach", "cvss", "severity", "ordinal")
+
+
+def _severity_rank(payload: dict[str, Any]) -> int:
+    return _SEVERITY_RANK.get(str(payload.get("severity", "")).lower(), 0)
+
+
+def _cvss_value(payload: dict[str, Any]) -> float:
+    try:
+        return float(payload.get("cvss_score") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def compute_effective_reach_score(payload: dict[str, Any]) -> float:
+    """Return the composite effective-reach signal for a finding payload.
+
+    Shared by the API sort path (``routes/scan.py``) and the persistence
+    layer so the ``effective_reach_score`` column materialised on ingest
+    matches the in-memory ranking exactly. Prefers an explicit
+    ``effective_reach_score`` field, then the ``effective_reach.composite``
+    breakdown, defaulting to ``0.0`` when neither is present.
+    """
+    reach = payload.get("effective_reach_score")
+    if reach is None:
+        breakdown = payload.get("effective_reach") or {}
+        if isinstance(breakdown, dict):
+            reach = breakdown.get("composite")
+    try:
+        return float(reach or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _page_signal(row: dict[str, Any], sort: str) -> float:
+    """Return the single descending sort signal for ``list_page``."""
+    if sort == "cvss":
+        return _cvss_value(row)
+    if sort == "severity":
+        return float(_severity_rank(row))
+    return compute_effective_reach_score(row)  # effective_reach default
+
+
+def _page_sort_key(sort: str) -> Callable[[dict[str, Any]], float]:
+    """Return a Python sort key mirroring the SQL ordering of ``list_page``.
+
+    Descending on the requested signal only. Python's stable sort preserves
+    ingest order for ties, which matches the SQL ``ORDER BY <signal> DESC,
+    ordinal ASC`` tiebreak used by the persistent backends.
+    """
+    normalized = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
+    return lambda row: -_page_signal(row, normalized)
 
 
 def _redact_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -61,7 +125,35 @@ class ComplianceHubStore(Protocol):
         ...
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
-        """Return every finding for a tenant in ingest order (oldest first)."""
+        """Return every finding for a tenant in ingest order (oldest first).
+
+        Deprecated for read-path use at scale: loads the full tenant into
+        memory. Prefer :meth:`list_page` for API surfaces that paginate.
+        Retained for posture aggregation and callers that genuinely need
+        the whole tenant.
+        """
+        ...
+
+    def list_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str = "effective_reach",
+        severity: str | None = None,
+        scan_id: str | None = None,
+        origin: str | None = None,
+    ) -> FindingPage:
+        """Return a single page of findings plus the matching total.
+
+        Pushes ``ORDER BY`` / ``LIMIT`` / ``OFFSET`` and the optional
+        ``severity`` / ``scan_id`` / ``origin`` filters into the backend so
+        the read path stays sub-linear at million-row scale. ``sort`` is one
+        of ``effective_reach`` (default, indexed), ``cvss``, ``severity`` or
+        ``ordinal`` (ingest order). Returns ``(rows, total)`` where ``total``
+        counts all findings matching the filters, not just the page.
+        """
         ...
 
     def count(self, tenant_id: str) -> int:
@@ -94,6 +186,35 @@ class InMemoryComplianceHubStore:
         with self._lock:
             return list(self._by_tenant.get(tenant_id, []))
 
+    def list_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str = "effective_reach",
+        severity: str | None = None,
+        scan_id: str | None = None,
+        origin: str | None = None,
+    ) -> FindingPage:
+        with self._lock:
+            rows = list(self._by_tenant.get(tenant_id, []))
+        if origin is not None:
+            rows = [r for r in rows if r.get("origin") == origin]
+        if severity is not None:
+            sev = severity.lower()
+            rows = [r for r in rows if str(r.get("severity", "")).lower() == sev]
+        if scan_id is not None:
+            rows = [r for r in rows if str(r.get("scan_id") or "") == scan_id]
+        total = len(rows)
+        if sort != "ordinal":
+            rows.sort(key=_page_sort_key(sort))
+        if offset:
+            rows = rows[offset:]
+        if limit >= 0:
+            rows = rows[:limit]
+        return rows, total
+
     def count(self, tenant_id: str) -> int:
         with self._lock:
             return len(self._by_tenant.get(tenant_id, []))
@@ -123,6 +244,39 @@ def _now_utc_iso() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _sqlite_order_clause(sort: str) -> str:
+    """ORDER BY clause for the SQLite backend, ordinal-tiebroken to match
+    the in-memory backend's stable sort."""
+    if sort == "ordinal":
+        return "ORDER BY ordinal ASC"
+    if sort == "cvss":
+        return "ORDER BY CAST(json_extract(payload, '$.cvss_score') AS REAL) DESC, ordinal ASC"
+    if sort == "severity":
+        # Map severity band to the same rank used in-memory.
+        return (
+            "ORDER BY CASE LOWER(COALESCE(json_extract(payload, '$.severity'), '')) "
+            "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
+            "ELSE 0 END DESC, ordinal ASC"
+        )
+    # effective_reach (default) — index-backed range scan + limit.
+    return "ORDER BY effective_reach_score DESC, ordinal ASC"
+
+
+def _postgres_order_clause(sort: str) -> str:
+    """ORDER BY clause for the Postgres backend, mirroring SQLite semantics."""
+    if sort == "ordinal":
+        return "ORDER BY ordinal ASC"
+    if sort == "cvss":
+        return "ORDER BY (payload->>'cvss_score')::float8 DESC NULLS LAST, ordinal ASC"
+    if sort == "severity":
+        return (
+            "ORDER BY CASE LOWER(COALESCE(payload->>'severity', '')) "
+            "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
+            "ELSE 0 END DESC, ordinal ASC"
+        )
+    return "ORDER BY effective_reach_score DESC, ordinal ASC"
 
 
 class SQLiteComplianceHubStore:
@@ -160,12 +314,45 @@ class SQLiteComplianceHubStore:
                 applicable_frameworks_csv TEXT NOT NULL DEFAULT '',
                 payload TEXT NOT NULL,
                 ordinal INTEGER NOT NULL,
+                effective_reach_score REAL NOT NULL DEFAULT 0,
+                origin TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (tenant_id, finding_id, ordinal)
             )
             """
         )
+        self._migrate_columns()
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
+        self._ensure_scale_indexes()
         self._conn.commit()
+
+    def _migrate_columns(self) -> None:
+        """Add PR1 read-scale columns to pre-existing tables (idempotent)."""
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(compliance_hub_findings)").fetchall()}
+        if "effective_reach_score" not in cols:
+            self._conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN effective_reach_score REAL NOT NULL DEFAULT 0")
+        if "origin" not in cols:
+            self._conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
+            # Backfill origin from the stored payload so pre-migration rows
+            # remain filterable without a full rewrite on the read path.
+            self._conn.execute(
+                "UPDATE compliance_hub_findings SET origin = COALESCE(json_extract(payload, '$.origin'), '') WHERE origin = ''"
+            )
+
+    def _ensure_scale_indexes(self) -> None:
+        """Install origin-aware read indexes, replacing the pre-origin index.
+
+        ``CREATE INDEX IF NOT EXISTS`` does not update an existing index with
+        the same name, so older SQLite DBs would silently keep
+        ``(tenant_id, effective_reach_score, ordinal)`` and scan every tenant
+        row for ``origin='bulk_ingest'``. Drop/recreate keeps the migration
+        deterministic and idempotent.
+        """
+        self._conn.execute("DROP INDEX IF EXISTS idx_hub_findings_tenant_reach")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_reach "
+            "ON compliance_hub_findings(tenant_id, origin, effective_reach_score DESC, ordinal)"
+        )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin ON compliance_hub_findings(tenant_id, origin)")
 
     def _next_ordinal(self, tenant_id: str) -> int:
         row = self._conn.execute(
@@ -191,13 +378,15 @@ class SQLiteComplianceHubStore:
                     _frameworks_csv(payload),
                     json.dumps(payload, sort_keys=True),
                     next_ord + offset,
+                    compute_effective_reach_score(payload),
+                    str(payload.get("origin") or ""),
                 )
             )
         self._conn.executemany(
             """
             INSERT OR REPLACE INTO compliance_hub_findings
-                (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload, ordinal)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload, ordinal, effective_reach_score, origin)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -210,6 +399,47 @@ class SQLiteComplianceHubStore:
             (tenant_id,),
         ).fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    def list_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str = "effective_reach",
+        severity: str | None = None,
+        scan_id: str | None = None,
+        origin: str | None = None,
+    ) -> FindingPage:
+        where = ["tenant_id = ?"]
+        params: list[Any] = [tenant_id]
+        if origin is not None:
+            where.append("origin = ?")
+            params.append(origin)
+        if severity is not None:
+            where.append("LOWER(json_extract(payload, '$.severity')) = ?")
+            params.append(severity.lower())
+        if scan_id is not None:
+            where.append("CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?")
+            params.append(scan_id)
+        where_sql = " AND ".join(where)
+
+        # ``where_sql`` is assembled only from fixed predicates above; all caller values
+        # stay in ``params`` as sqlite bindings.
+        total_row = self._conn.execute(
+            f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",  # nosec B608
+            params,
+        ).fetchone()
+        total = int(total_row[0]) if total_row else 0
+
+        order_sql = _sqlite_order_clause(sort)
+        page_params = [*params, int(limit), int(offset)]
+        # ``order_sql`` comes from a closed sort allowlist; all caller values stay bound.
+        rows = self._conn.execute(
+            f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT ? OFFSET ?",  # nosec B608
+            page_params,
+        ).fetchall()
+        return [json.loads(row[0]) for row in rows], total
 
     def count(self, tenant_id: str) -> int:
         row = self._conn.execute(

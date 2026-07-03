@@ -32,6 +32,28 @@
     "catalog_path": {
       "type": "string"
     },
+    "policy": {
+      "type": "object",
+      "description": "Present when CI gating (--ci / --fail-on-verdict / --warn-on-verdict / --policy) is active.",
+      "required": ["status", "warnings", "violations", "suppressions_applied"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pass", "warn", "fail"]
+        },
+        "policy_path": { "type": "string" },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/policyDecision" }
+        },
+        "violations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/policyDecision" }
+        },
+        "suppressions_applied": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "summary": {
       "type": "object",
       "required": [
@@ -162,5 +184,24 @@
       }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "policyDecision": {
+      "type": "object",
+      "required": ["action", "reason", "path"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["warn", "fail"]
+        },
+        "reason": { "type": "string" },
+        "path": { "type": "string" },
+        "rule_id": { "type": "string" },
+        "category": { "type": "string" },
+        "severity": { "type": "string" },
+        "fingerprint": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
 }

@@ -166,6 +166,42 @@ def test_discover_cursorrules(tmp_path):
     assert any(p.name == ".cursorrules" for p in found)
 
 
+def test_discover_deeply_nested_skills_and_prompts(tmp_path):
+    """Auto-discovery finds nested skills/ and prompts/ layouts, not only top-level."""
+    nested_skill = tmp_path / "packages" / "svc" / "skills" / "deploy.md"
+    prompt_file = tmp_path / "prompts" / "triage.md"
+    gemini = tmp_path / "GEMINI.md"
+    copilot = tmp_path / ".github" / "instructions" / "python.md"
+    for path in (nested_skill, prompt_file, copilot):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Instruction surface")
+    gemini.write_text("# Gemini")
+
+    found = discover_skill_files(tmp_path)
+    names = {p.name for p in found}
+    assert {"deploy.md", "triage.md", "GEMINI.md", "python.md"} <= names
+
+
+def test_discover_skips_generic_markdown_and_vendored_dirs(tmp_path):
+    """Auto-discovery ignores generic docs and vendored trees."""
+    (tmp_path / "README.md").write_text("# Readme")
+    (tmp_path / "CLAUDE.md").write_text("# Claude")
+    vendored = tmp_path / "node_modules" / "pkg" / "skills" / "evil.md"
+    venv_skill = tmp_path / ".venv" / "lib" / "skills" / "tool.md"
+    docs_skill = tmp_path / "docs" / "skills" / "example.md"
+    for path in (vendored, venv_skill, docs_skill):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Third-party or docs skill")
+
+    found = discover_skill_files(tmp_path)
+    names = {p.name for p in found}
+    assert "CLAUDE.md" in names
+    assert "README.md" not in names
+    assert "evil.md" not in names
+    assert "tool.md" not in names
+    assert "example.md" not in names
+
+
 # ── scan_skill_files tests ──────────────────────────────────────────────────
 
 

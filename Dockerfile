@@ -24,8 +24,9 @@ RUN apk add --no-cache build-base ca-certificates git libffi-dev linux-headers \
 
 COPY pyproject.toml README.md PYPI_README.md LICENSE ./
 COPY src/ ./src/
+COPY deploy/supabase/postgres/ ./deploy/supabase/postgres/
 
-RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake]"
+RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake,postgres]"
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.14.6-alpine3.23@sha256:02da11a8d221ca167aa07de20b3cd7104c1f01227f4b02b1fa13cf6517280a81
@@ -48,6 +49,7 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 # Copy only installed packages from builder (no compiler toolchain or git)
 COPY --from=builder /install /usr/local
 COPY --from=builder /app/LICENSE /app/LICENSE
+COPY --from=builder /app/deploy/supabase/postgres /opt/agent-bom/deploy/supabase/postgres
 
 RUN apk add --no-cache ca-certificates libffi libgcc libstdc++ \
     && apk upgrade --no-cache --available \

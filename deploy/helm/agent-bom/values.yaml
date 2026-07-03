@@ -583,6 +583,27 @@ controlPlane:
       creationPolicy: Owner
     data: []
     secrets: []
+  migrations:
+    enabled: true
+    postgres:
+      enabled: true
+    hooks: pre-upgrade,pre-install
+    hookWeight: "-10"
+    deletePolicy: before-hook-creation,hook-succeeded
+    backoffLimit: 0
+    ttlSecondsAfterFinished: 600
+    alembicConfig: deploy/supabase/postgres/alembic.ini
+    workingDir: /opt/agent-bom
+    env: []
+    # When empty, the hook inherits controlPlane.api.envFrom (Postgres URL secret).
+    envFrom: []
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
   backup:
     enabled: false
     schedule: "0 3 * * *"

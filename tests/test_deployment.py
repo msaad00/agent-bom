@@ -555,9 +555,9 @@ def test_dockerfiles_support_proxy_and_ca_contract():
 
 
 def test_primary_api_image_includes_snowflake_extra_for_snowflake_backend():
-    """The default API image must contain the Snowflake connector for the Snowflake Helm profile."""
+    """The default API image must contain Snowflake and Postgres extras for Helm profiles."""
     content = (ROOT / "Dockerfile").read_text()
-    assert 'pip install --no-cache-dir --prefix=/install ".[api,snowflake]"' in content
+    assert 'pip install --no-cache-dir --prefix=/install ".[api,snowflake,postgres]"' in content
 
 
 def test_runtime_dockerfile_builds_from_repo_source():

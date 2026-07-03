@@ -583,6 +583,7 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
 
     result = job.result if isinstance(job.result, dict) else {}
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else None
+    aggregation = result.get("aggregation") if isinstance(result.get("aggregation"), dict) else None
     scan_run = result.get("scan_run") if isinstance(result.get("scan_run"), dict) else None
     generated_at = result.get("generated_at") or (scan_run or {}).get("generated_at")
     scan_timestamp = result.get("scan_timestamp") or generated_at
@@ -603,6 +604,7 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
         "completed_at": job.completed_at,
         "request": request_payload if isinstance(request_payload, dict) else {},
         "summary": summary,
+        "aggregation": aggregation,
         "scan_timestamp": scan_timestamp,
         "generated_at": generated_at,
         "scan_run": scan_run,
@@ -1165,6 +1167,12 @@ async def list_findings(
     for job in _completed_jobs_for_tenant(tenant_id):
         if scan_id and job.job_id != scan_id:
             continue
+        # Batch parents aggregate their children's evidence; skip them in the
+        # global roll-up so findings are not double-counted against the children
+        # that already contribute. When a caller targets the parent by scan_id
+        # they get the aggregated union instead.
+        if job.child_job_ids and job.job_id != scan_id:
+            continue
         scan_findings.extend(_iter_scan_findings(job))
     if severity:
         normalized = severity.lower()
@@ -1274,6 +1282,10 @@ async def list_inventory(
     agents: list[dict[str, Any]] = []
     jobs: list[dict[str, str]] = []
     for job in _completed_jobs_for_tenant(tenant_id):
+        # Skip batch parents: their aggregated agents duplicate the children
+        # that already contribute to the inventory roll-up.
+        if job.child_job_ids:
+            continue
         result = job.result or {}
         job_agents = [item for item in result.get("agents", []) or [] if isinstance(item, dict)]
         if not job_agents:

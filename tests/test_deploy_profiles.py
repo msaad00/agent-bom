@@ -14,6 +14,7 @@ def test_helm_validation_profiles_reference_existing_chart_assets():
     assert chart_dir.exists()
     profiles = helm_validation_profiles(repo_root)
     assert [profile.name for profile in profiles] == [
+        "scanner-only",
         "sqlite-pilot",
         "focused-pilot",
         "focused-pilot-byo-postgres",

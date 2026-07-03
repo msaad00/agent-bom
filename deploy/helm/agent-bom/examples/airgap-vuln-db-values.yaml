@@ -1,0 +1,40 @@
+# Air-gapped control plane: mount a pre-synced vulns.db and disable network refresh.
+#
+# 1. On a connected bastion: agent-bom db update
+# 2. Bundle: scripts/release/bundle-vuln-db.sh dist/airgap
+# 3. Create a Secret or PVC with dist/airgap/vulns.db on the disconnected cluster
+# 4. helm install/upgrade with -f deploy/helm/agent-bom/examples/airgap-vuln-db-values.yaml
+#
+# See docs/ENTERPRISE_DEPLOYMENT.md and docs/RELEASE_VERIFICATION.md.
+
+controlPlane:
+  enabled: true
+  api:
+    env:
+      - name: AGENT_BOM_DB_PATH
+        value: /var/lib/agent-bom/vulns.db
+      - name: AGENT_BOM_VULN_DB_OFFLINE
+        value: "1"
+    extraVolumes:
+      - name: vuln-db
+        secret:
+          secretName: agent-bom-vuln-db
+    extraVolumeMounts:
+      - name: vuln-db
+        mountPath: /var/lib/agent-bom
+        readOnly: true
+
+scanner:
+  env:
+    - name: AGENT_BOM_DB_PATH
+      value: /var/lib/agent-bom/vulns.db
+    - name: AGENT_BOM_VULN_DB_OFFLINE
+      value: "1"
+  extraVolumes:
+    - name: vuln-db
+      secret:
+        secretName: agent-bom-vuln-db
+  extraVolumeMounts:
+    - name: vuln-db
+      mountPath: /var/lib/agent-bom
+      readOnly: true

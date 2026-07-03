@@ -95,6 +95,56 @@ You can also run `agent-bom` against that SBOM directly:
 agent-bom sbom agent-bom-sbom.cdx.json -f json
 ```
 
+## Release CI image scan gate
+
+After `agentbom/agent-bom:<tag>` is pushed to Docker Hub, release CI pulls the
+published image and runs a Trivy gate before minting the GitHub Release:
+
+| Step | Tool | Default policy |
+|---|---|---|
+| Pre-publish candidate | `agent-bom image` in `container-gate` | fail on fixable `MEDIUM+`, `.image-scan-ignore` allowlist |
+| Post-publish registry image | Trivy in `published-image-scan-gate` | fail on `CRITICAL,HIGH`, `--ignore-unfixed`, same allowlist |
+
+Override the published-image threshold with the repository variable
+`RELEASE_IMAGE_SCAN_FAIL_SEVERITIES` (comma-separated Trivy severities, e.g.
+`CRITICAL` or `CRITICAL,HIGH,MEDIUM`).
+
+Local dry-run against a release candidate image:
+
+```bash
+docker build -t agent-bom:release-test .
+trivy image --severity CRITICAL,HIGH --ignore-unfixed --ignorefile .image-scan-ignore agent-bom:release-test
+```
+
+Trivy SARIF from the release job is uploaded to the GitHub Security tab under
+category `release-published-image-trivy`.
+
+## Air-gap vulnerability database preload
+
+Air-gapped scans use a **pre-synced local SQLite cache** (`vulns.db`), not live
+OSV/GHSA calls. The preload path is:
+
+| Step | Command / artifact | Next step |
+|---|---|---|
+| 1. Sync on a connected bastion | `agent-bom db update` | Produces `~/.agent-bom/db/vulns.db` (~50 MB first run) |
+| 2. Verify freshness | `agent-bom db status` | Confirm OSV/Alpine/Debian/EPSS/KEV rows and sync timestamps |
+| 3. Bundle for transfer | `scripts/release/bundle-vuln-db.sh dist/airgap` | Writes `dist/airgap/vulns.db` + `sha256sums-vulns.db.txt` |
+| 4. Import on disconnected host | `sha256sum -c sha256sums-vulns.db.txt` then copy `vulns.db` | Mount or copy to the runtime DB path |
+| 5. Point runtime at the cache | `AGENT_BOM_DB_PATH=/var/lib/agent-bom/vulns.db` | Same path in Docker, Helm, or bare-metal installs |
+| 6. Disable network refresh | `AGENT_BOM_VULN_DB_OFFLINE=1` or CLI `--offline` | Scans use the bundled cache only; rerun step 1–4 on a schedule |
+| 7. Smoke scan | `agent-bom agents --offline /workspace` | Expect `Vuln data: … local cache (offline — network skipped)` |
+
+Docker pilot compose already wires `AGENT_BOM_DB_PATH` to a named volume —
+preload by copying `vulns.db` into that volume before the first scan. Helm
+operators can start from
+`deploy/helm/agent-bom/examples/airgap-vuln-db-values.yaml` (Secret-mounted
+`vulns.db` + offline env flags).
+
+Image import for disconnected registries remains in
+[`site-docs/deployment/airgapped-image-bundle.md`](../site-docs/deployment/airgapped-image-bundle.md);
+combine that image bundle with the `vulns.db` bundle above for full offline
+scanning.
+
 ## Inspect scanner accuracy evidence
 
 Release candidates also carry a checked-in scanner accuracy baseline:
@@ -124,6 +174,8 @@ pytest tests/test_graph_schema_ui_parity.py tests/test_graph_edge_counts.py test
 - the distribution artifacts were signed by GitHub Actions OIDC via Sigstore
 - the build provenance is available as SLSA attestations
 - the release includes a self-SBOM that can be inspected or rescanned later
+- the published Docker image passed a Trivy gate at the configured severity threshold before the GitHub Release was minted
+- air-gapped operators can preload `vulns.db`, mount it at `AGENT_BOM_DB_PATH`, and run with `AGENT_BOM_VULN_DB_OFFLINE=1`
 - scanner accuracy claims are backed by a versioned local evidence artifact
 - graph readability/trust claims are linked to deterministic, checked-in proof
 

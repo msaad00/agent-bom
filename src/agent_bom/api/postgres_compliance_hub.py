@@ -26,6 +26,46 @@ from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _g
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
+def _migrate_lifecycle_observations_l2_postgres(conn: Any) -> None:
+    """Upgrade L1 observation rows (PK on observed_at) to L2 (PK on scan_id)."""
+    conn.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name = 'hub_findings_current_observations'
+            ) THEN
+                RETURN;
+            END IF;
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'hub_findings_current_observations'
+                  AND column_name = 'scan_id'
+            ) THEN
+                RETURN;
+            END IF;
+            ALTER TABLE hub_findings_current_observations
+                RENAME TO hub_findings_current_observations_l1;
+            CREATE TABLE hub_findings_current_observations (
+                tenant_id TEXT NOT NULL,
+                canonical_id TEXT NOT NULL,
+                scan_id TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                PRIMARY KEY (tenant_id, canonical_id, scan_id)
+            );
+            INSERT INTO hub_findings_current_observations
+                (tenant_id, canonical_id, scan_id, observed_at)
+            SELECT tenant_id, canonical_id, observed_at, observed_at
+            FROM hub_findings_current_observations_l1;
+            DROP TABLE hub_findings_current_observations_l1;
+        END $$;
+        """
+    )
+
+
 class PostgresComplianceHubStore:
     """Shared hub store backing multi-replica self-hosted deployments."""
 
@@ -108,6 +148,7 @@ class PostgresComplianceHubStore:
             from agent_bom.api.finding_lifecycle import _CURRENT_LIFECYCLE_POSTGRES_DDL
 
             conn.execute(_CURRENT_LIFECYCLE_POSTGRES_DDL)
+            _migrate_lifecycle_observations_l2_postgres(conn)
             _ensure_tenant_rls(conn, "hub_findings_current", "tenant_id")
             _ensure_tenant_rls(conn, "hub_findings_current_observations", "tenant_id")
             conn.commit()
@@ -350,11 +391,11 @@ class PostgresComplianceHubStore:
                 inserted = conn.execute(
                     """
                     INSERT INTO hub_findings_current_observations
-                        (tenant_id, canonical_id, observed_at)
-                    VALUES (%s, %s, %s)
+                        (tenant_id, canonical_id, scan_id, observed_at)
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT DO NOTHING
                     """,
-                    (tenant_id, canonical, observed_at),
+                    (tenant_id, canonical, batch_id, observed_at),
                 ).rowcount
                 if not inserted:
                     continue

@@ -1,4 +1,4 @@
-"""Monotone current-state finding lifecycle (#3465 L1)."""
+"""Monotone current-state finding lifecycle (#3465 L1–L2)."""
 
 from __future__ import annotations
 
@@ -58,26 +58,31 @@ def test_monotone_merge_timestamps(hub_store) -> None:
     assert row["scan_count"] == 1
     assert row["status"] == "open"
 
-    hub_store.upsert_current_batch(tenant, [finding], observed_at=MON, batch_id="batch-mon-2")
+    hub_store.upsert_current_batch(tenant, [finding], observed_at=MON, batch_id="batch-mon-1")
     retry = hub_store.get_current(tenant, canonical)
     assert retry is not None
     assert retry["first_seen"] == MON
     assert retry["last_seen"] == MON
     assert retry["scan_count"] == 1
 
+    hub_store.upsert_current_batch(tenant, [finding], observed_at=MON, batch_id="batch-mon-2")
+    same_day_rescan = hub_store.get_current(tenant, canonical)
+    assert same_day_rescan is not None
+    assert same_day_rescan["scan_count"] == 2
+
     hub_store.upsert_current_batch(tenant, [finding], observed_at=TUE, batch_id="batch-tue-1")
     advanced = hub_store.get_current(tenant, canonical)
     assert advanced is not None
     assert advanced["first_seen"] == MON
     assert advanced["last_seen"] == TUE
-    assert advanced["scan_count"] == 2
+    assert advanced["scan_count"] == 3
 
-    hub_store.upsert_current_batch(tenant, [finding], observed_at=TUE, batch_id="batch-tue-2")
+    hub_store.upsert_current_batch(tenant, [finding], observed_at=TUE, batch_id="batch-tue-1")
     retry_tue = hub_store.get_current(tenant, canonical)
     assert retry_tue is not None
     assert retry_tue["first_seen"] == MON
     assert retry_tue["last_seen"] == TUE
-    assert retry_tue["scan_count"] == 2
+    assert retry_tue["scan_count"] == 3
 
 
 def test_bulk_ingest_carries_observed_at() -> None:

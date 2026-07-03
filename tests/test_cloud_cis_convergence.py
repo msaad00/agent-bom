@@ -55,7 +55,7 @@ def test_cis_fails_become_findings_across_providers() -> None:
     assert by_title["CIS 1.7: Root used"].attack_tags == ["T1078"]
     assert "CIS-1.7" in by_title["CIS 1.7: Root used"].compliance_tags
     az = by_title["CIS 3.2: Storage open"]
-    assert az.severity == "CRITICAL"
+    assert az.severity == "critical"
     assert az.asset.identifier == "/sub/x/sa/foo"
 
 

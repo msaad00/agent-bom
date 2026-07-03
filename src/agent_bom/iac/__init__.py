@@ -180,7 +180,7 @@ def scan_iac_with_context(
 
     findings: list[IaCFinding] = []
     files_matched: dict[str, int] = defaultdict(int)
-    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    from agent_bom.graph.severity import severity_worst_first_rank
 
     walk_root = root_path.parent if explicit_file else root_path
     walk_paths = [root_path] if explicit_file else sorted(root_path.rglob("*"))
@@ -249,7 +249,7 @@ def scan_iac_with_context(
         if not finding.atlas_techniques:
             finding.atlas_techniques = get_atlas_techniques(finding.rule_id, message=finding.message)
 
-    findings.sort(key=lambda f: (severity_order.get(f.severity, 9), f.file_path, f.line_number))
+    findings.sort(key=lambda f: (severity_worst_first_rank(f.severity), f.file_path, f.line_number))
 
     # Build verdict table — one entry per canonical scanner ID.
     verdicts: list[ScannerVerdict] = []

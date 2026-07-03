@@ -301,6 +301,13 @@ class Finding:
 
     def __post_init__(self) -> None:
         """Compute stable ID from finding content if not explicitly set."""
+        from agent_bom.graph.severity import normalize_severity
+
+        self.severity = normalize_severity(self.severity)
+        if self.vendor_severity is not None:
+            self.vendor_severity = normalize_severity(self.vendor_severity)
+        if self.cvss_severity is not None:
+            self.cvss_severity = normalize_severity(self.cvss_severity)
         self.controls = _dedupe_control_tags(
             [
                 *(tag if isinstance(tag, ControlTag) else ControlTag.from_dict(tag) for tag in self.controls),
@@ -645,7 +652,7 @@ def secret_dict_to_finding(secret: dict) -> "Finding":
     line = raw_line if isinstance(raw_line, int) else sanitize_text(raw_line, max_len=40) if raw_line is not None else None
     secret_type = sanitize_text(secret.get("type", "secret") or "secret", max_len=120)
     category = sanitize_text(secret.get("category", "secret") or "secret", max_len=120)
-    severity = sanitize_text(secret.get("severity", "medium") or "medium", max_len=40).upper()
+    severity = sanitize_text(secret.get("severity", "medium") or "medium", max_len=40)
     loc = f"{file_path}:{line}" if line else file_path
     return Finding(
         finding_type=FindingType.CREDENTIAL_EXPOSURE,
@@ -686,7 +693,7 @@ def cloud_cis_check_to_finding(check: dict, provider: str) -> "Finding":
 
     check_id = sanitize_text(str(check.get("check_id", "") or "unknown"), max_len=40)
     title = sanitize_text(str(check.get("title", "") or check_id), max_len=300)
-    severity = sanitize_text(str(check.get("severity", "medium") or "medium"), max_len=40).upper()
+    severity = sanitize_text(str(check.get("severity", "medium") or "medium"), max_len=40)
     evidence_text = sanitize_text(str(check.get("evidence", "") or ""), max_len=600)
     recommendation = sanitize_text(str(check.get("recommendation", "") or ""), max_len=600)
     resource_ids = [sanitize_text(str(r), max_len=300) for r in (check.get("resource_ids") or []) if str(r).strip()]
@@ -738,7 +745,7 @@ def snowflake_governance_finding_to_finding(finding: dict, account: str) -> "Fin
     from agent_bom.security import sanitize_text
 
     category = sanitize_text(str(finding.get("category", "") or "access"), max_len=60)
-    severity = sanitize_text(str(finding.get("severity", "medium") or "medium"), max_len=40).upper()
+    severity = sanitize_text(str(finding.get("severity", "medium") or "medium"), max_len=40)
     title = sanitize_text(str(finding.get("title", "") or category), max_len=300)
     description = sanitize_text(str(finding.get("description", "") or ""), max_len=600)
     agent_or_role = sanitize_text(str(finding.get("agent_or_role", "") or ""), max_len=300)

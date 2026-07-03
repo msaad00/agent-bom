@@ -61,6 +61,24 @@ so future agent and SIEM push workflows share one event envelope.
 
 ### Skills CI Gate
 
+Fail the job on suspicious or malicious skills without authoring a policy file
+by setting `skills-ci: true` (equivalent to the CLI `--ci` flag, i.e.
+`fail-on-verdict=suspicious`):
+
+```yaml
+- uses: msaad00/agent-bom@v0.90.0
+  with:
+    scan-type: skills
+    scan-ref: .
+    format: sarif
+    output: agent-bom-skills.sarif
+    upload-sarif: true
+    skills-ci: true
+```
+
+For finer control, replace `skills-ci` with explicit gates and an optional
+policy file:
+
 ```yaml
 - uses: msaad00/agent-bom@v0.90.0
   with:
@@ -70,14 +88,19 @@ so future agent and SIEM push workflows share one event envelope.
     output: agent-bom-skills.sarif
     upload-sarif: true
     policy: skills-policy.yaml
+    fail-on-verdict: suspicious
     warn-on-review-verdict: review
     fail-on-review-verdict: blocked
 ```
 
-Produces skills SARIF with source locations, trust metadata, and policy
-results for GitHub code scanning. Use this lane for instruction files and
-skills; keep package, IaC, and SBOM gates in separate jobs when their policies
-or review owners differ.
+Locally, `agent-bom skills scan . --ci` (or `AGENT_BOM_SKILLS_CI=1`) produces the
+same non-zero exit on suspicious/malicious skills. Both produce skills SARIF
+with source locations, trust metadata, and policy results for GitHub code
+scanning. Discovery covers `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, and
+`*.md`/`*.mdc` under `skills/`, `prompts/`, `.cursor/rules`, and
+`.github/instructions` — vendored trees (`node_modules`, `.venv`, …) are
+skipped. Use this lane for instruction files and skills; keep package, IaC, and
+SBOM gates in separate jobs when their policies or review owners differ.
 
 ### Hosted Gateway Or Proxy Review
 

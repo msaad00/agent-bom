@@ -129,6 +129,26 @@ def test_p1_18_error_envelope_for_validation(fresh_client):
     assert body["error"]["correlation_id"]
 
 
+def test_p1_18_validation_envelope_serializes_model_validator_value_error(fresh_client):
+    """Scan batch cap uses a model_validator ValueError; ctx must stringify."""
+    from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
+
+    resp = fresh_client.post(
+        "/v1/scan",
+        json={
+            "images": [f"repo/img-{idx}:latest" for idx in range(API_MAX_BATCH_SCAN_TARGETS + 1)],
+            "offline": True,
+            "no_scan": True,
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    body = resp.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    details = body["error"]["details"]
+    assert isinstance(details, list)
+    assert any("maximum is" in str(item.get("msg", "")) for item in details)
+
+
 def test_p1_18_correlation_id_round_trips(fresh_client):
     requested = "test-corr-id-1234"
     resp = fresh_client.get("/v1/jobs/missing-job", headers={"x-request-id": requested})

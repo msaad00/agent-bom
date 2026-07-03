@@ -234,3 +234,28 @@ def test_scan_request_accepts_at_batch_target_cap():
 
     req = ScanRequest(images=[f"repo/img-{idx}:latest" for idx in range(API_MAX_BATCH_SCAN_TARGETS)])
     assert len(req.images) == API_MAX_BATCH_SCAN_TARGETS
+
+
+def test_scan_over_batch_target_cap_returns_422_not_500(monkeypatch):
+    """model_validator ValueError must serialize in the 422 envelope (#3474)."""
+    from starlette.testclient import TestClient
+
+    from agent_bom.api.server import app
+    from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
+    from tests.auth_helpers import enable_trusted_proxy_env, proxy_headers
+
+    enable_trusted_proxy_env()
+    monkeypatch.setattr(scan_routes, "submit_scan_job", lambda job: None)
+    _reset_store()
+
+    client = TestClient(app)
+    body = {
+        "images": [f"repo/img-{idx}:latest" for idx in range(API_MAX_BATCH_SCAN_TARGETS + 1)],
+        "offline": True,
+        "no_scan": True,
+    }
+    resp = client.post("/v1/scan", json=body, headers=proxy_headers(role="analyst"))
+    assert resp.status_code == 422, resp.text
+    payload = resp.json()
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
+    assert "maximum is" in str(payload.get("detail") or payload["error"].get("details"))

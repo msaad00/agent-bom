@@ -184,6 +184,27 @@ def test_sqlite_cvss_sort_uses_index(tmp_path) -> None:
     assert "SCAN compliance_hub_findings" not in text, text
 
 
+def test_sqlite_severity_filter_cvss_sort_uses_index(tmp_path) -> None:
+    """severity=critical&sort=cvss must use the severity_rank+cvss composite
+    index instead of json_extract on payload (#3192)."""
+    from agent_bom.graph.severity import severity_policy_rank
+
+    store = SQLiteComplianceHubStore(str(tmp_path / "hub.db"))
+    tenant = "tenant-plan"
+    store.add(tenant, [_finding(i) for i in range(200)])
+    plan = store._conn.execute(  # noqa: SLF001 - inspecting query plan in-test
+        "EXPLAIN QUERY PLAN SELECT payload FROM compliance_hub_findings "
+        "WHERE tenant_id = ? AND origin = ? AND severity_rank = ? "
+        "ORDER BY cvss_score DESC, ordinal LIMIT 10 OFFSET 0",
+        (tenant, "bulk_ingest", severity_policy_rank("critical")),
+    ).fetchall()
+    text = " ".join(str(row[-1]) for row in plan)
+    assert "USING" in text and "INDEX" in text and "severity" in text and "cvss" in text, text
+    assert "json_extract" not in text, text
+    assert "USE TEMP B-TREE FOR ORDER BY" not in text, text
+    assert "SCAN compliance_hub_findings" not in text, text
+
+
 def test_sqlite_migration_backfills_sort_columns(tmp_path) -> None:
     """A pre-#3192 table (no severity/cvss columns) must be migrated in place:
     the columns are added and backfilled from the stored payload so legacy rows

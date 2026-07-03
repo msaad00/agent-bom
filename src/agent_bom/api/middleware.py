@@ -1903,6 +1903,24 @@ def _error_message_for(status_code: int, detail: object) -> str:
     }.get(status_code, "Request failed")
 
 
+def _json_safe_validation_errors(errors: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Make Pydantic validation errors JSON-serializable.
+
+    ``model_validator`` failures embed a live ``ValueError`` in ``ctx['error']``;
+    serializing that verbatim blows up the 422 envelope and surfaces as 500.
+    """
+    safe: list[dict[str, object]] = []
+    for err in errors:
+        item = dict(err)
+        ctx = item.get("ctx")
+        if isinstance(ctx, dict):
+            item["ctx"] = {
+                key: str(value) if isinstance(value, BaseException) else value for key, value in ctx.items()
+            }
+        safe.append(item)
+    return safe
+
+
 def _build_error_envelope(
     *,
     status_code: int,
@@ -1962,7 +1980,7 @@ def install_error_envelope(application: object) -> None:
     async def validation_exception_handler(request: StarletteRequest, exc: RequestValidationError):
         return _build_error_envelope(
             status_code=422,
-            detail=exc.errors(),
+            detail=_json_safe_validation_errors(exc.errors()),
             correlation_id=_correlation_id(request),
         )
 

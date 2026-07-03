@@ -22,6 +22,7 @@ import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { deploymentModeLabel, hasDeploymentSignals } from "@/lib/deployment-context";
+import { useCaptureMode } from "@/lib/use-capture-mode";
 import { buildSecurityGraphHref } from "@/lib/attack-paths";
 import {
   aggregateCompoundIssues,
@@ -78,6 +79,8 @@ export default function Dashboard() {
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [activeTab, setActiveTab] = useState<"command" | "analytics">("command");
   const { counts } = useDeploymentContext();
+  const captureMode = useCaptureMode();
+  const seededEvidence = captureMode || Boolean(counts?.scan_sources?.some((source) => source.includes("demo")));
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -317,8 +320,28 @@ export default function Dashboard() {
   const agentsReady = !agentsLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
-  const criticalCount = detailsReady ? severity.critical : (overview?.headline.critical ?? summaryStats?.critical_findings ?? 0);
-  const highCount = detailsReady ? severity.high : (overview?.headline.high ?? 0);
+  const criticalCount = detailsReady
+    ? (severity.critical || (seededEvidence ? (overview?.headline.critical ?? counts?.critical ?? summaryStats?.critical_findings ?? 0) : severity.critical))
+    : (overview?.headline.critical ?? summaryStats?.critical_findings ?? counts?.critical ?? 0);
+  const highCount = detailsReady
+    ? (severity.high || (seededEvidence ? (overview?.headline.high ?? counts?.high ?? summaryStats?.high_findings ?? 0) : severity.high))
+    : (overview?.headline.high ?? summaryStats?.high_findings ?? counts?.high ?? 0);
+  const fallbackVulnTotal = overview?.headline.critical_high ?? counts?.total ?? summaryStats?.total_vulnerabilities ?? 0;
+  const displayedUniqueCVEs = detailsReady
+    ? (uniqueCVEs > 0 ? uniqueCVEs : (seededEvidence ? fallbackVulnTotal : uniqueCVEs))
+    : (summaryStats?.total_vulnerabilities ?? fallbackVulnTotal);
+  const displayedKevCount = detailsReady
+    ? (kevCount > 0 ? kevCount : (seededEvidence ? (overview?.headline.kev ?? counts?.kev ?? 0) : kevCount))
+    : (overview?.headline.kev ?? counts?.kev ?? 0);
+  const displayedCredentialExposure = detailsReady
+    ? (credentialExposureCount > 0 ? credentialExposureCount : (seededEvidence ? (overview?.headline.credential_exposed ?? 0) : credentialExposureCount))
+    : (overview?.headline.credential_exposed ?? 0);
+  const displayedReachableTools = detailsReady
+    ? (reachableToolCount > 0 ? reachableToolCount : (seededEvidence ? estateSummary.tools : reachableToolCount))
+    : estateSummary.tools;
+  const displayedPackages = detailsReady
+    ? (totalPackages > 0 ? totalPackages : (seededEvidence ? (summaryStats?.total_packages ?? 0) : totalPackages))
+    : (summaryStats?.total_packages ?? 0);
 
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} kind={apiErrorKind} detail={apiErrorDetail} />;
 
@@ -344,7 +367,7 @@ export default function Dashboard() {
               Exposure command center
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
-              Prioritized AI/MCP exposure paths, active services, credentials, packages, and response work across {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""}, {(displayedAgentCount ?? "—")} agent{displayedAgentCount === 1 ? "" : "s"}, {detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)} packages, and {detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)} CVEs.
+              Prioritized AI/MCP exposure paths, active services, credentials, packages, and response work across {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""}, {(displayedAgentCount ?? "—")} agent{displayedAgentCount === 1 ? "" : "s"}, {summaryReady ? displayedPackages : (summaryStats?.total_packages ?? 0)} packages, and {summaryReady ? displayedUniqueCVEs : (summaryStats?.total_vulnerabilities ?? fallbackVulnTotal)} CVEs.
             </p>
             <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
               Active exposure
@@ -352,15 +375,15 @@ export default function Dashboard() {
             <div className="mt-2 flex flex-wrap gap-2">
               <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-red-200/70">Actively exploited</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-red-100">{detailsReady ? kevCount : 0}</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-red-100">{summaryReady ? displayedKevCount : 0}</div>
               </div>
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-amber-200/70">Credential exposed</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-amber-100">{detailsReady ? credentialExposureCount : 0}</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-amber-100">{summaryReady ? displayedCredentialExposure : 0}</div>
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/70">Reachable tools</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-sky-100">{detailsReady ? reachableToolCount : 0}</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-sky-100">{summaryReady ? displayedReachableTools : 0}</div>
               </div>
             </div>
           </div>
@@ -546,8 +569,8 @@ export default function Dashboard() {
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
           <StatCard icon={Server} label="Agents" value={agentsReady ? String(effectiveAgentCount) : "—"} color="blue" href="/agents" />
-          <StatCard icon={Package} label="Packages" value={summaryReady ? String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)) : "—"} color="orange" href="/findings" />
-          <StatCard icon={Bug} label="Unique CVEs" value={summaryReady ? String(detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)) : "—"} color="red" href="/findings" />
+          <StatCard icon={Package} label="Packages" value={summaryReady ? String(displayedPackages) : "—"} color="orange" href="/findings" />
+          <StatCard icon={Bug} label="Unique CVEs" value={summaryReady ? String(displayedUniqueCVEs) : "—"} color="red" href="/findings" />
           <StatCard icon={Zap} label="Critical" value={summaryReady ? String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0)) : "—"} color="red" href="/findings?severity=critical" />
         </div>
       </details>

@@ -218,8 +218,10 @@ Run `agent-bom db update` before `--offline` image or package scans. Guided path
 </p>
 
 <sub>Synthetic seeded evidence for docs proof, captured from the real Next.js
-routes — not a claim these entities came from a buyer environment. Full set and
-capture protocol: <a href="docs/CAPTURE.md">docs/CAPTURE.md</a>.</sub>
+routes with a visible <strong>Demo data — simulated estate</strong> label — not a
+claim these entities came from a buyer environment. Regenerate from the UI package
+with <code>npm run capture:product-proof</code> (see
+<a href="docs/CAPTURE.md">docs/CAPTURE.md</a>).</sub>
 
 </details>
 

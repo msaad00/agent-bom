@@ -30,6 +30,15 @@ from agent_bom.graph.types import EntityType, RelationshipType
 # Severity buckets reported in every roll-up histogram, worst → least.
 _SEVERITY_ORDER: tuple[str, ...] = SEVERITY_BUCKETS_WORST_FIRST
 
+# Estate containment edges: org/account/resource trees use CONTAINS; cloud
+# account→resource lineage may be HOSTS-only on legacy graphs.
+_CONTAINMENT_RELS: frozenset[str] = frozenset({RelationshipType.CONTAINS.value})
+
+# HOSTS is operational hosting (provider→agent, etc.); only account→cloud_resource
+# HOSTS edges participate in estate roll-up alongside CONTAINS.
+_HOSTS_CONTAINMENT_SOURCES: frozenset[str] = frozenset({EntityType.ACCOUNT.value})
+_HOSTS_CONTAINMENT_TARGETS: frozenset[str] = frozenset({EntityType.CLOUD_RESOURCE.value})
+
 # Container entity types form the readable top-level scaffold of the estate.
 # A node of one of these types is a candidate roll-up container; everything else
 # is a leaf that aggregates into its nearest container ancestor.
@@ -173,16 +182,33 @@ class RollupFilters:
         return True
 
 
-def _contains_children(graph: UnifiedGraph) -> dict[str, list[str]]:
-    """Map container_id -> sorted direct CONTAINS children (deterministic).
+def _edge_is_containment(graph: UnifiedGraph, edge: Any) -> bool:
+    rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+    if rel in _CONTAINMENT_RELS:
+        return True
+    if rel != RelationshipType.HOSTS.value:
+        return False
+    source = graph.nodes.get(edge.source)
+    target = graph.nodes.get(edge.target)
+    if source is None or target is None:
+        return False
+    return (
+        _node_type_value(source) in _HOSTS_CONTAINMENT_SOURCES
+        and _node_type_value(target) in _HOSTS_CONTAINMENT_TARGETS
+    )
 
+
+def _contains_children(graph: UnifiedGraph) -> dict[str, list[str]]:
+    """Map container_id -> sorted direct containment children (deterministic).
+
+    Walks ``CONTAINS`` and account→``CLOUD_RESOURCE`` ``HOSTS`` edges so cloud
+    resources roll up under their account even when only ``HOSTS`` is present.
     Self-loops are ignored. Children are de-duplicated and sorted by id so the
     output is stable across runs regardless of edge insertion order.
     """
     children: dict[str, set[str]] = defaultdict(set)
     for edge in graph.edges:
-        rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
-        if rel != RelationshipType.CONTAINS.value:
+        if not _edge_is_containment(graph, edge):
             continue
         if edge.source == edge.target:
             continue

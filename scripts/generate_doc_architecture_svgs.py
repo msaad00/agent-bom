@@ -982,26 +982,26 @@ def architecture(theme_name: str) -> str:
 
 def persona_value(theme: str) -> str:
     t = THEMES[theme]
-    w, h = 960, 400
+    w, h = 980, 430
 
     personas = [
-        ("shield", "AppSec / GRC", "SARIF · compliance · audit", "control"),
-        ("gate", "Platform / SRE", "fleet · Helm · CI gates", "scan"),
-        ("mcp", "Agent builders", "MCP inventory · shield", "intake"),
-        ("graph", "Security engineers", "blast radius · paths", "core"),
+        ("shield", "AppSec / GRC", "SARIF · compliance packs · audit chain", "control"),
+        ("gate", "Platform / SRE", "fleet · Helm · CI gates · SBOM", "scan"),
+        ("mcp", "Agent builders", "MCP inventory · shield SDK · runtime", "intake"),
+        ("graph", "Security engineers", "findings queue · attack paths · graph", "core"),
     ]
     values = [
-        ("bug", "Accurate SCA", "15 ecosystems · distro-aware"),
-        ("image", "Container coverage", "OCI native · Grype opt-in"),
-        ("audit", "Self-hosted evidence", "your VPC · signed audit"),
-        ("api", "Agent-native API", "283 ops · 70 MCP tools"),
+        ("bug", "Accurate SCA", "15 ecosystems · EPSS/KEV · distro-aware"),
+        ("image", "Container coverage", "OCI native · Grype opt-in · CIS posture"),
+        ("audit", "Self-hosted control plane", "your VPC · signed audit · Helm"),
+        ("api", "Agent-native surface", "283 API ops · 70 MCP tools · SARIF"),
     ]
 
-    left_x, right_x = 28, 500
-    col_w = 432
-    row_h = 54
-    row_gap = 14
-    start_y = 108
+    left_x, right_x = 28, 510
+    col_w = 442
+    row_h = 58
+    row_gap = 12
+    start_y = 112
 
     parts = _svg_open(w, h, "agent-bom personas and value")
     parts += [
@@ -1020,7 +1020,7 @@ def persona_value(theme: str) -> str:
         ),
         _text(
             left_x,
-            88,
+            92,
             "PERSONAS",
             **{
                 "font-family": "Inter,system-ui,sans-serif",
@@ -1032,7 +1032,7 @@ def persona_value(theme: str) -> str:
         ),
         _text(
             right_x,
-            88,
+            92,
             "VALUE PROOF",
             **{
                 "font-family": "Inter,system-ui,sans-serif",
@@ -1044,52 +1044,52 @@ def persona_value(theme: str) -> str:
         ),
     ]
 
+    arrow_x1 = left_x + col_w + 10
+    arrow_x2 = right_x - 10
     for i, (icon, title, subtitle, lane) in enumerate(personas):
         y = start_y + i * (row_h + row_gap)
         _, accent, _ = LANE_COLORS[lane]
         parts.append(
             f'<rect x="{left_x}" y="{y}" width="{col_w}" height="{row_h}" rx="10" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
         )
-        parts.append(_icon_box(left_x + 12, y + 14, ICONS[icon], t, accent=True))
+        parts.append(f'<rect x="{left_x}" y="{y + 8}" width="4" height="{row_h - 16}" rx="2" fill="{accent}"/>')
+        parts.append(_icon_box(left_x + 14, y + 16, ICONS[icon], t, accent=True))
         parts.append(
             _text(
-                left_x + 48,
-                y + 24,
+                left_x + 50,
+                y + 26,
                 title,
                 **{"font-family": "Inter,system-ui,sans-serif", "font-size": "11", "font-weight": "700", "fill": t["text"]},
             )
         )
         parts.append(
             _text(
-                left_x + 48,
-                y + 40,
+                left_x + 50,
+                y + 42,
                 subtitle,
-                **{"font-family": "ui-monospace,monospace", "font-size": "8", "font-weight": "600", "fill": accent},
+                **{"font-family": "ui-monospace,monospace", "font-size": "7.5", "font-weight": "600", "fill": accent},
             )
         )
 
-    arrow_x1 = left_x + col_w + 8
-    arrow_x2 = right_x - 8
-    for i, (icon, title, subtitle) in enumerate(values):
-        y = start_y + i * (row_h + row_gap)
+        value_icon, value_title, value_subtitle = values[i]
         parts.append(
             f'<rect x="{right_x}" y="{y}" width="{col_w}" height="{row_h}" rx="10" fill="{t["accent_fill"]}" stroke="{t["accent_stroke"]}"/>'
         )
-        parts.append(_icon_box(right_x + 12, y + 14, ICONS[icon], t, accent=True))
+        parts.append(_icon_box(right_x + 14, y + 16, ICONS[value_icon], t, accent=True))
         parts.append(
             _text(
-                right_x + 48,
-                y + 24,
-                title,
+                right_x + 50,
+                y + 26,
+                value_title,
                 **{"font-family": "Inter,system-ui,sans-serif", "font-size": "11", "font-weight": "700", "fill": t["text"]},
             )
         )
         parts.append(
             _text(
-                right_x + 48,
-                y + 40,
-                subtitle,
-                **{"font-family": "ui-monospace,monospace", "font-size": "8", "font-weight": "600", "fill": t["text_muted"]},
+                right_x + 50,
+                y + 42,
+                value_subtitle,
+                **{"font-family": "ui-monospace,monospace", "font-size": "7.5", "font-weight": "600", "fill": t["text_muted"]},
             )
         )
         parts.append(
@@ -1099,7 +1099,15 @@ def persona_value(theme: str) -> str:
             f'{arrow_x2 - 8},{y + row_h // 2 + 3.5}" fill="{t["arrow_accent"]}"/>'
         )
 
-    parts.append(_trust_footer(w, h, t, "LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph", height=24))
+    parts.append(
+        _trust_footer(
+            w,
+            h,
+            t,
+            "LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph",
+            height=26,
+        )
+    )
     parts.append("</svg>")
     return "\n".join(parts)
 

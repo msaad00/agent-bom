@@ -16,6 +16,10 @@ DEMO_SCAN_CACHE_PATH="$DEMO_DIR/scan_cache.db"
 mkdir -p "$DEMO_DIR" "$DEMO_BIN_DIR"
 cp "$DB_SOURCE" "$DEMO_DB_PATH"
 
+# Keep demo output independent of a developer's active CLI profile (which may pin
+# format=json and hide the compact terminal experience we record for README).
+export AGENT_BOM_CONFIG="${AGENT_BOM_DEMO_CONFIG:-$DEMO_DIR/.no-profile-config}"
+
 if [[ "$DEMO_ENGINE" == "docker" ]]; then
   cat > "$DEMO_BIN_DIR/agent-bom" <<EOF
 #!/usr/bin/env bash

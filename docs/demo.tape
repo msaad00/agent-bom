@@ -1,15 +1,15 @@
-# agent-bom v0.92.0 blast-radius demo
-# Shows: blast radius → package gate
+# agent-bom v0.92.0 terminal demo
+# Shows: posture-led scan → findings queue → fix-first → package gate
 
 Output docs/images/demo-latest.gif
 
 Set Shell "bash"
-Set FontSize 20
-Set Width 1280
-Set Height 1120
+Set FontSize 16
+Set Width 1100
+Set Height 1000
 Set Theme "Dracula"
 Set Padding 20
-Set TypingSpeed 34ms
+Set TypingSpeed 0ms
 Set PlaybackSpeed 1.0
 
 # Hero flow — render_demo.sh handles TERM=xterm-256color for Rich colors

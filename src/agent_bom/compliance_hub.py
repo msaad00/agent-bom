@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from agent_bom.compliance_coverage import normalize_framework_slug
 from agent_bom.finding import FindingSource, FindingType
 
 if TYPE_CHECKING:
@@ -219,7 +220,14 @@ def apply_hub_classification(finding: "Finding", *, include_gov: bool = False) -
         finding_type=finding.finding_type,
         include_gov=include_gov,
     )
-    seen = set(finding.applicable_frameworks)
+    seen: set[str] = set()
+    normalized_frameworks: list[str] = []
+    for slug in finding.applicable_frameworks:
+        canonical = normalize_framework_slug(str(slug))
+        if canonical not in seen:
+            seen.add(canonical)
+            normalized_frameworks.append(canonical)
+    finding.applicable_frameworks = normalized_frameworks
     for slug in selected:
         if slug not in seen:
             finding.applicable_frameworks.append(slug)

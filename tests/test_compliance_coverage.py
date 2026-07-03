@@ -12,6 +12,7 @@ from agent_bom.compliance_coverage import (
     TAG_MAPPED_FRAMEWORKS,
     framework_output_key_by_slug,
     framework_report_labels_by_slug,
+    normalize_framework_slug,
     render_compliance_coverage_table,
 )
 
@@ -51,6 +52,12 @@ def test_api_framework_maps_are_derived_from_metadata() -> None:
     assert output_map == {metadata.slug: metadata.output_key for metadata in TAG_MAPPED_FRAMEWORKS}
     assert report_map == {metadata.slug: (metadata.output_key, metadata.report_label) for metadata in TAG_MAPPED_FRAMEWORKS}
     assert output_map["pci-dss"] == "pci_dss"
+
+
+def test_normalize_framework_slug_accepts_pci_dss_aliases() -> None:
+    assert normalize_framework_slug("pci-dss") == "pci-dss"
+    assert normalize_framework_slug("pci_dss") == "pci-dss"
+    assert normalize_framework_slug("PCI_DSS") == "pci-dss"
 
 
 def test_aisvs_coverage_uses_benchmark_registry() -> None:

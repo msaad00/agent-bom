@@ -274,6 +274,20 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
     ),
 )
 
+# Canonical hyphenated slugs (``TAG_MAPPED_FRAMEWORKS``) vs legacy ingest aliases.
+FRAMEWORK_SLUG_ALIASES: dict[str, str] = {
+    "mitre-attack": "attack",
+    "mitre_attack": "attack",
+    "pci_dss": "pci-dss",
+}
+
+
+def normalize_framework_slug(slug: str) -> str:
+    """Normalize API/ingest framework slugs to canonical hyphenated form."""
+    normalized = slug.strip().lower().replace("_", "-")
+    return FRAMEWORK_SLUG_ALIASES.get(normalized, normalized)
+
+
 AISVS_BENCHMARK = ComplianceBenchmarkMetadata(
     family="OWASP",
     framework="AISVS v1.0",

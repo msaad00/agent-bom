@@ -355,6 +355,11 @@ API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT = _int("AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_P
 API_MAX_RETAINED_JOBS_PER_TENANT = _int("AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT", 500)
 API_MAX_FLEET_AGENTS_PER_TENANT = _int("AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT", 1_000)
 API_MAX_SCHEDULES_PER_TENANT = _int("AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT", 100)
+# Per-request fan-out ceiling: a single POST /v1/scan expands one batchable
+# target field per child job, so an uncapped request could enqueue unbounded
+# work bounded only by the tenant active-scan quota churn. Reject over-cap
+# requests at validation time (HTTP 422).
+API_MAX_BATCH_SCAN_TARGETS = _int("AGENT_BOM_API_MAX_BATCH_SCAN_TARGETS", 100)
 API_ALLOW_UNAUTHENTICATED = _bool("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", False)
 # Slowloris throughput floor (audit-5 PR-C): minimum sustained body
 # bytes/second once a request body crosses the warmup threshold inside

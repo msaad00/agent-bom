@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 
+from agent_bom import http_client
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
@@ -24,16 +25,16 @@ _API_TIMEOUT = 15
 
 
 def _vast_get(path: str, api_key: str) -> dict | list:
-    try:
-        import requests
-    except ImportError as exc:
-        raise CloudDiscoveryError("requests is required for Vast.ai discovery. Install with: pip install requests") from exc
-
-    resp = requests.get(
+    # Route through the shared resilient client so Vast.ai calls get the same
+    # retry/backoff, 429 Retry-After handling, and per-host circuit breaker as
+    # the OSV/NVD paths instead of a raw one-shot request.
+    resp = http_client.sync_get(
         f"{_API_BASE}{path}",
-        headers={"Authorization": f"Bearer {api_key}"},
         timeout=_API_TIMEOUT,
+        headers={"Authorization": f"Bearer {api_key}"},
     )
+    if resp is None:
+        raise CloudDiscoveryError("Vast.ai: request failed after retries")
     if resp.status_code == 401:
         raise CloudDiscoveryError("Vast.ai: invalid API key (HTTP 401)")
     resp.raise_for_status()
@@ -52,11 +53,6 @@ def discover(
     Returns:
         (agents, warnings) tuple.
     """
-    try:
-        import requests  # noqa: F401
-    except ImportError:
-        return [], ["Vast.ai discovery requires 'requests'. Install with: pip install requests"]
-
     resolved_key = api_key or os.environ.get("VASTAI_API_KEY", "")
     if not resolved_key:
         return [], ["VASTAI_API_KEY not set. Provide --vastai-api-key or set the VASTAI_API_KEY env var."]

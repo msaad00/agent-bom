@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from agent_bom.api.models import JobStatus, ScanRequest
 from agent_bom.api.routes import scan as scan_routes
 from agent_bom.api.store import InMemoryJobStore
@@ -216,3 +218,19 @@ def test_single_target_scan_request_keeps_single_job_shape(monkeypatch):
     assert job.parent_job_id is None
     assert job.child_job_ids == []
     assert submitted == [job.job_id]
+
+
+def test_scan_request_rejects_over_batch_target_cap():
+    from pydantic import ValidationError
+
+    from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
+
+    with pytest.raises(ValidationError, match="maximum is"):
+        ScanRequest(images=[f"repo/img-{idx}:latest" for idx in range(API_MAX_BATCH_SCAN_TARGETS + 1)])
+
+
+def test_scan_request_accepts_at_batch_target_cap():
+    from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
+
+    req = ScanRequest(images=[f"repo/img-{idx}:latest" for idx in range(API_MAX_BATCH_SCAN_TARGETS)])
+    assert len(req.images) == API_MAX_BATCH_SCAN_TARGETS

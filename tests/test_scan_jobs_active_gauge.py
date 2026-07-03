@@ -114,9 +114,9 @@ def test_fail_stale_active_jobs_then_reconcile_clears_leaked_gauge() -> None:
     )
 
     assert failed == 2
-    assert store.get("old-pending").status == JobStatus.FAILED
-    assert store.get("old-running").status == JobStatus.FAILED
-    assert store.get("fresh-running").status == JobStatus.RUNNING
+    assert store.get("old-pending", all_tenants=True).status == JobStatus.FAILED
+    assert store.get("old-running", all_tenants=True).status == JobStatus.FAILED
+    assert store.get("fresh-running", all_tenants=True).status == JobStatus.RUNNING
     assert reconcile_scan_jobs_active(store) == 1
     assert metrics.scan_jobs_active() == 1
 
@@ -128,8 +128,8 @@ def test_startup_orphan_cleanup_fails_active_jobs() -> None:
     store.put(_job("done", JobStatus.DONE))
 
     assert fail_orphaned_active_scan_jobs(store) == 2
-    assert store.get("orphan-pending").status == JobStatus.FAILED
-    assert store.get("orphan-running").status == JobStatus.FAILED
-    assert store.get("done").status == JobStatus.DONE
+    assert store.get("orphan-pending", all_tenants=True).status == JobStatus.FAILED
+    assert store.get("orphan-running", all_tenants=True).status == JobStatus.FAILED
+    assert store.get("done", all_tenants=True).status == JobStatus.DONE
     assert reconcile_scan_jobs_active(store) == 0
     assert metrics.scan_jobs_active() == 0

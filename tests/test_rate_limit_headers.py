@@ -1,5 +1,6 @@
 """Tests for rate-limit, version, and request tracing headers."""
 
+import pytest
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse as StarletteJSONResponse
 from starlette.routing import Route
@@ -17,6 +18,10 @@ def _make_app(scan_rpm: int = 10, read_rpm: int = 20):
         routes=[
             Route("/v1/data", dummy),
             Route("/health", dummy),
+            Route("/healthz", dummy),
+            Route("/livez", dummy),
+            Route("/readyz", dummy),
+            Route("/ping", dummy),
             Route("/_next/static/app.js", dummy),
             Route("/missing.js", dummy),
         ]
@@ -237,3 +242,14 @@ def test_non_dashboard_suffix_paths_still_consume_read_rate_limit():
     assert first.status_code == 200
     assert first.headers["x-ratelimit-limit"] == "1"
     assert second.status_code == 429
+
+
+@pytest.mark.parametrize("path", ["/health", "/healthz", "/livez", "/readyz", "/ping"])
+def test_health_probe_paths_exempt_from_read_rate_limit(path: str):
+    """Health/readiness/liveness probes must not self-throttle under probe storms."""
+    client = TestClient(_make_app(read_rpm=1))
+
+    for _ in range(5):
+        resp = client.get(path)
+        assert resp.status_code == 200
+        assert "x-ratelimit-limit" not in resp.headers

@@ -6,7 +6,9 @@ from collections.abc import Iterable
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+
+from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
 
 # ─── Enums ─────────────────────────────────────────────────────────────────
 
@@ -28,6 +30,19 @@ class StepStatus(str, Enum):
 
 
 # ─── Scan Models ───────────────────────────────────────────────────────────
+
+# Fields that fan out one child scan job per element when a request carries more
+# than one explicit target. Mirrors scan_batches.BATCH_*_TARGET_FIELDS (kept
+# local to avoid a models -> scan_batches import cycle).
+_BATCH_LIST_TARGET_FIELDS = (
+    "images",
+    "tf_dirs",
+    "agent_projects",
+    "jupyter_dirs",
+    "connectors",
+    "filesystem_paths",
+)
+_BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom")
 
 
 class _BoundedProgress(list[str]):
@@ -127,6 +142,17 @@ class ScanRequest(BaseModel):
 
     min_severity: str | None = None
     """Minimum severity to include in results (low/medium/high/critical)."""
+
+    @model_validator(mode="after")
+    def _enforce_batch_target_cap(self) -> "ScanRequest":
+        """Bound per-request fan-out so one request cannot enqueue unbounded work."""
+        total = sum(len(getattr(self, name)) for name in _BATCH_LIST_TARGET_FIELDS)
+        total += sum(1 for name in _BATCH_SINGLE_TARGET_FIELDS if getattr(self, name))
+        if self.k8s:
+            total += 1
+        if total > API_MAX_BATCH_SCAN_TARGETS:
+            raise ValueError(f"scan request expands to {total} targets; maximum is {API_MAX_BATCH_SCAN_TARGETS} per request")
+        return self
 
 
 class ScanJob(BaseModel):

@@ -365,7 +365,7 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
             posture_scorecard={"overall_score": 82},
         ),
     )
-    pushed_job = store.get(pushed["job_id"])
+    pushed_job = store.get(pushed["job_id"], all_tenants=True)
     assert pushed_job is not None
     assert pushed_job.tenant_id == "tenant-alpha"
     assert pushed_job.triggered_by == "analyst@example.com:source-a"
@@ -435,7 +435,7 @@ async def test_receive_push_normalizes_report_contract_and_persists_graph(tmp_pa
         ),
     )
 
-    pushed_job = store.get(pushed["job_id"])
+    pushed_job = store.get(pushed["job_id"], all_tenants=True)
     assert pushed_job is not None
     assert pushed_job.result["scan_id"] == pushed["job_id"]
     assert pushed_job.result["blast_radius"][0]["vulnerability_id"] == "CVE-2026-0001"
@@ -542,11 +542,13 @@ async def test_pushed_results_enforce_retained_job_quota(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
+    _jobs.clear()
+
     class _Store:
         def __init__(self) -> None:
             self.get_calls = 0
 
-        def list_summary(self, tenant_id: str | None = None) -> list[dict]:
+        def list_summary(self, tenant_id: str | None = None, **_kwargs) -> list[dict]:
             assert tenant_id == "tenant-alpha"
             return [
                 {
@@ -559,7 +561,8 @@ async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
                 }
             ]
 
-        def get(self, job_id: str) -> ScanJob | None:
+        def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
+            assert tenant_id == "tenant-alpha"
             self.get_calls += 1
             return ScanJob(
                 job_id=job_id,

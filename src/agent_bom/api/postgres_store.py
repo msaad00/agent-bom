@@ -39,6 +39,7 @@ from agent_bom.api.postgres_policy import (  # noqa: F401
 )
 from agent_bom.api.postgres_tenant_quota import PostgresTenantQuotaStore  # noqa: F401
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
+from agent_bom.api.store import _require_tenant_scope
 
 _JOB_TTL_SECONDS = 3600
 
@@ -233,9 +234,10 @@ class PostgresJobStore:
             self._replace_cis_checks(conn, job)
             conn.commit()
 
-    def get(self, job_id: str, tenant_id: str | None = None):
+    def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False):
         from .server import ScanJob
 
+        _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.get()")
         with _tenant_connection(self._pool) as conn:
             if tenant_id is None:
                 row = conn.execute("SELECT data FROM scan_jobs WHERE job_id = %s", (job_id,)).fetchone()
@@ -249,7 +251,8 @@ class PostgresJobStore:
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
             return ScanJob.model_validate_json(raw)
 
-    def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool:
+        _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.delete()")
         with _tenant_connection(self._pool) as conn:
             if tenant_id is None:
                 cursor = conn.execute("DELETE FROM scan_jobs WHERE job_id = %s", (job_id,))
@@ -261,26 +264,31 @@ class PostgresJobStore:
             conn.commit()
             return cursor.rowcount > 0
 
-    def list_all(self, tenant_id: str | None = None) -> list:
+    def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list:
         from .server import ScanJob
 
-        if tenant_id is None:
-            raise ValueError("tenant_id is required for PostgresJobStore.list_all()")
+        _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.list_all()")
 
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(
-                "SELECT data FROM scan_jobs WHERE team_id = %s ORDER BY created_at DESC",
-                (tenant_id,),
-            ).fetchall()
+            if tenant_id is None:
+                rows = conn.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC").fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT data FROM scan_jobs WHERE team_id = %s ORDER BY created_at DESC",
+                    (tenant_id,),
+                ).fetchall()
             return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def list_summary(
         self,
         tenant_id: str | None = None,
         *,
+        all_tenants: bool = False,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
+        _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.list_summary()")
+
         def _json_column(row: tuple, index: int, default: str, expected_type: type) -> object:
             if len(row) <= index:
                 return json.loads(default)

@@ -21,17 +21,31 @@ from .server import JobStatus, ScanJob
 _JOB_TTL_SECONDS = 3600  # 1 hour
 
 
+def _require_tenant_scope(tenant_id: str | None, all_tenants: bool, method: str) -> None:
+    """Fail closed when a request-path read/write omits a tenant scope.
+
+    A bare ``tenant_id=None`` used to mean "match every tenant" for the
+    SQLite/in-memory stores, which silently leaks cross-tenant rows on
+    request-serving paths. Cross-tenant access must now be explicit: legitimate
+    background reconciliation passes ``all_tenants=True``; anything else with a
+    missing tenant is rejected.
+    """
+    if tenant_id is None and not all_tenants:
+        raise ValueError(f"{method} requires a tenant_id; pass all_tenants=True for background reconciliation")
+
+
 class JobStore(Protocol):
     """Protocol for scan job persistence."""
 
     def put(self, job: ScanJob) -> None: ...
-    def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None: ...
-    def delete(self, job_id: str, tenant_id: str | None = None) -> bool: ...
-    def list_all(self, tenant_id: str | None = None) -> list[ScanJob]: ...
+    def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None: ...
+    def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool: ...
+    def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list[ScanJob]: ...
     def list_summary(
         self,
         tenant_id: str | None = None,
         *,
+        all_tenants: bool = False,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]: ...
@@ -65,7 +79,8 @@ class InMemoryJobStore:
         for jid, _job in completed[: len(self._jobs) - self._max_retained_jobs]:
             self._jobs.pop(jid, None)
 
-    def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
+    def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
+        _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.get()")
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
@@ -74,7 +89,8 @@ class InMemoryJobStore:
                 return None
             return job
 
-    def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool:
+        _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.delete()")
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
@@ -83,9 +99,9 @@ class InMemoryJobStore:
                 return False
             del self._jobs[job_id]
             return True
-            return False
 
-    def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
+    def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list[ScanJob]:
+        _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.list_all()")
         with self._lock:
             jobs = list(self._jobs.values())
             if tenant_id is None:
@@ -96,9 +112,11 @@ class InMemoryJobStore:
         self,
         tenant_id: str | None = None,
         *,
+        all_tenants: bool = False,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
+        _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.list_summary()")
         with self._lock:
             rows = [
                 {
@@ -282,7 +300,8 @@ class SQLiteJobStore:
             self._shrink_connection_memory()
             self._close_thread_connection()
 
-    def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
+    def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
+        _require_tenant_scope(tenant_id, all_tenants, "SQLiteJobStore.get()")
         try:
             if tenant_id is None:
                 row = self._conn.execute("SELECT data FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
@@ -298,7 +317,8 @@ class SQLiteJobStore:
             self._shrink_connection_memory()
             self._close_thread_connection()
 
-    def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool:
+        _require_tenant_scope(tenant_id, all_tenants, "SQLiteJobStore.delete()")
         try:
             if tenant_id is None:
                 cursor = self._conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
@@ -313,7 +333,8 @@ class SQLiteJobStore:
             self._shrink_connection_memory()
             self._close_thread_connection()
 
-    def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
+    def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list[ScanJob]:
+        _require_tenant_scope(tenant_id, all_tenants, "SQLiteJobStore.list_all()")
         try:
             if tenant_id is None:
                 rows = self._conn.execute("SELECT data FROM jobs ORDER BY created_at DESC").fetchall()
@@ -331,9 +352,11 @@ class SQLiteJobStore:
         self,
         tenant_id: str | None = None,
         *,
+        all_tenants: bool = False,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
+        _require_tenant_scope(tenant_id, all_tenants, "SQLiteJobStore.list_summary()")
         try:
             base_sql = """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id,
                                  batch_id, parent_job_id, child_job_ids, target, target_index, target_count

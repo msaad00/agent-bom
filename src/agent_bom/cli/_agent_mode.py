@@ -9,6 +9,8 @@ import sys
 from copy import deepcopy
 from typing import Any
 
+from agent_bom.graph.severity import severity_policy_rank
+
 # Keys whose value is credential material and must never appear in the
 # machine-readable envelope, which automation callers routinely capture and log.
 # Matched on the key name only, as a whole token, so reference labels and entity
@@ -41,8 +43,6 @@ def _redact_sensitive(value: Any, *, key_is_sensitive: bool = False) -> Any:
         return _REDACTED
     return value
 
-
-from agent_bom.graph.severity import severity_policy_rank
 
 AGENT_MODE_ENV_VAR = "AGENT_BOM_AGENT_MODE"
 AGENT_MODE_SCHEMA_VERSION = "1"

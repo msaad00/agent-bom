@@ -304,6 +304,10 @@ class Finding:
         from agent_bom.graph.severity import normalize_severity
 
         self.severity = normalize_severity(self.severity)
+        if self.vendor_severity is not None:
+            self.vendor_severity = normalize_severity(self.vendor_severity)
+        if self.cvss_severity is not None:
+            self.cvss_severity = normalize_severity(self.cvss_severity)
         self.controls = _dedupe_control_tags(
             [
                 *(tag if isinstance(tag, ControlTag) else ControlTag.from_dict(tag) for tag in self.controls),

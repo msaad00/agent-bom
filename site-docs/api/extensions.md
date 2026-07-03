@@ -25,7 +25,7 @@ returns built-ins plus trusted entry-point extensions when enabled.
 Three further opt-in groups — `agent_bom.mcp_tools`,
 `agent_bom.advisory_sources`, and `agent_bom.runtime_emitters` — plus the full
 author contract, capability model, and runnable examples are documented in
-[`docs/PLUGIN_ENTRYPOINTS.md`](../../docs/PLUGIN_ENTRYPOINTS.md).
+[`docs/PLUGIN_ENTRYPOINTS.md`](https://github.com/msaad00/agent-bom/blob/main/docs/PLUGIN_ENTRYPOINTS.md).
 
 ## Inventory Parser Example
 

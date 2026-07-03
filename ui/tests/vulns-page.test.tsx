@@ -12,6 +12,7 @@ const { apiMock } = vi.hoisted(() => ({
     listFindingTriage: vi.fn(),
     createException: vi.fn(),
     exportFindingTriageVex: vi.fn(),
+    getPostureCounts: vi.fn(),
   },
 }));
 
@@ -96,6 +97,7 @@ describe("VulnsPage", () => {
     apiMock.listFindingTriage.mockReset();
     apiMock.createException.mockReset();
     apiMock.exportFindingTriageVex.mockReset();
+    apiMock.getPostureCounts.mockReset();
 
     apiMock.listJobs.mockResolvedValue({
       jobs: [
@@ -109,6 +111,15 @@ describe("VulnsPage", () => {
     apiMock.getScan.mockResolvedValue(scanJob());
     apiMock.listFindings.mockResolvedValue({ findings: [], total: 0 });
     apiMock.listFindingTriage.mockResolvedValue({ triage: [] });
+    apiMock.getPostureCounts.mockResolvedValue({
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: 0,
+      kev: 0,
+      compound_issues: 0,
+    });
   });
 
   it("keeps findings as a compact queue and opens evidence in a drawer", async () => {

@@ -28,13 +28,12 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.graph.severity import severity_policy_rank
 
 # Defined here (module scope) so ``list`` resolves to the builtin: the store
 # classes below define a ``list`` method that would otherwise shadow it in
 # their ``list_page`` return annotations.
 FindingPage = tuple[list[dict[str, Any]], int]
-
-_SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
 # Sort keys supported by ``list_page``. ``effective_reach`` is the default and
 # the only one backed by a dedicated index/column; ``cvss`` and ``severity``
@@ -43,7 +42,7 @@ _LIST_PAGE_SORTS = ("effective_reach", "cvss", "severity", "ordinal")
 
 
 def _severity_rank(payload: dict[str, Any]) -> int:
-    return _SEVERITY_RANK.get(str(payload.get("severity", "")).lower(), 0)
+    return severity_policy_rank(str(payload.get("severity", "")))
 
 
 def _cvss_value(payload: dict[str, Any]) -> float:

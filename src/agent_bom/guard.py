@@ -28,19 +28,13 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
+from agent_bom.graph.severity import severity_policy_rank
+
 logger = logging.getLogger(__name__)
 
 # Patterns to extract package names from pip/npm install args
 _PIP_SPEC_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9._-]*)(?:[=<>!~\[].*)?$")
 _NPM_SPEC_RE = re.compile(r"^(@?[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)?)(?:@.*)?$")
-_SEVERITY_RANK = {
-    "unknown": 0,
-    "none": 0,
-    "low": 1,
-    "medium": 2,
-    "high": 3,
-    "critical": 4,
-}
 
 # pip/npm flags that take a value argument (so we skip the next token)
 _PIP_VALUE_FLAGS = frozenset(
@@ -162,13 +156,13 @@ async def _check_package(name: str, ecosystem: str, min_severity: str = "high", 
 
     cve_list = []
     blocked = False
-    min_rank = _SEVERITY_RANK.get(min_severity, _SEVERITY_RANK["high"])
+    min_rank = severity_policy_rank(min_severity)
     for v in getattr(pkg_entry, "vulnerabilities", []):
         severity = _severity_value(getattr(v, "severity", "unknown"))
         cve_id = getattr(v, "id", "unknown")
         is_kev = bool(getattr(v, "is_kev", False))
         cve_list.append({"id": cve_id, "severity": severity, "is_kev": is_kev})
-        if _SEVERITY_RANK.get(severity, 0) >= min_rank or (block_kev and is_kev):
+        if severity_policy_rank(severity) >= min_rank or (block_kev and is_kev):
             blocked = True
 
     return {

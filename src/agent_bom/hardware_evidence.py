@@ -69,6 +69,7 @@ from typing import Any
 
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.graph.node import stable_node_id
+from agent_bom.graph.severity import normalize_severity
 
 SCHEMA_VERSION = "agent-bom.hardware-evidence/v1"
 _SUPPORTED_SCHEMAS = frozenset({SCHEMA_VERSION})
@@ -80,7 +81,6 @@ RESOURCE_KIND_FIRMWARE = "firmware"
 RESOURCE_KIND_GPU = "gpu"
 
 _DATA_SOURCE = "hardware-attestation-ingest"
-_VALID_SEVERITIES = frozenset({"critical", "high", "medium", "low", "info", "unknown"})
 
 
 class HardwareEvidenceError(ValueError):
@@ -148,8 +148,7 @@ def _attestation_tags(attestation: dict[str, Any]) -> tuple[list[str], dict[str,
 
 
 def _normalize_severity(raw: Any) -> str:
-    value = _str(raw).lower()
-    return value if value in _VALID_SEVERITIES else "unknown"
+    return normalize_severity(_str(raw))
 
 
 def build_hardware_graph(

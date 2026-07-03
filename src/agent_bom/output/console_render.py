@@ -10,6 +10,17 @@ from rich.tree import Tree
 
 from agent_bom.models import AgentStatus, AIBOMReport, BlastRadius, Severity
 from agent_bom.output.compact import _coverage_bar, _pct
+from agent_bom.output.finding_views import (
+    active_cve_findings,
+    cve_findings,
+    finding_references,
+    finding_severity,
+    is_actionable_finding,
+    is_package_malicious,
+    package_ecosystem,
+    package_name,
+    package_version,
+)
 from agent_bom.security import sanitize_command_args
 
 console = Console()
@@ -306,15 +317,13 @@ def print_posture_summary(report: AIBOMReport) -> None:
 
     # Vulnerability severity breakdown (excluding VEX-suppressed)
     from agent_bom.finding import FindingType
-    from agent_bom.vex import is_vex_suppressed
 
     sev_counts: Counter[str] = Counter()
-    vex_suppressed_count = 0
-    for br in report.blast_radii:
-        if is_vex_suppressed(br.vulnerability):
-            vex_suppressed_count += 1
-        else:
-            sev_counts[br.vulnerability.severity.value.upper()] += 1
+    all_cve = cve_findings(report)
+    active_findings = active_cve_findings(report)
+    vex_suppressed_count = len(all_cve) - len(active_findings)
+    for finding in active_findings:
+        sev_counts[finding_severity(finding).value.upper()] += 1
 
     # Non-CVE policy/security findings (cloud CIS FAILs, MCP blocklist, toxic
     # combinations, governance) drive the headline too. A cloud scan with HIGH
@@ -421,19 +430,18 @@ def print_posture_summary(report: AIBOMReport) -> None:
             lines.append(f"    [yellow]{cred}[/yellow]  [dim]({loc_str})[/dim]")
 
     # Top impacted packages (when vulns exist)
-    if report.blast_radii:
+    if cve_findings(report):
         lines.append("")
         lines.append("  [bold]Top Impacted Packages[/bold]")
         # Group vulns by package
         pkg_vulns: dict[str, dict] = {}
-        for br in report.blast_radii:
-            key = f"{br.package.name}@{br.package.version}"
+        for finding in all_cve:
+            key = f"{package_name(finding)}@{package_version(finding)}"
             if key not in pkg_vulns:
-                pkg_vulns[key] = {"eco": br.package.ecosystem, "sevs": Counter(), "agents": set(), "kev": False}
-            pkg_vulns[key]["sevs"][br.vulnerability.severity.value.upper()] += 1
-            for a in br.affected_agents:
-                pkg_vulns[key]["agents"].add(a.name)
-            if br.vulnerability.is_kev:
+                pkg_vulns[key] = {"eco": package_ecosystem(finding), "sevs": Counter(), "agents": set(), "kev": False}
+            pkg_vulns[key]["sevs"][finding_severity(finding).value.upper()] += 1
+            pkg_vulns[key]["agents"].update(finding.affected_agents)
+            if finding.is_kev:
                 pkg_vulns[key]["kev"] = True
 
         # Sort by total vuln count descending
@@ -578,7 +586,8 @@ def print_agent_tree(report: AIBOMReport) -> None:
 
 def print_blast_radius(report: AIBOMReport, fixable_only: bool = False) -> None:
     """Print blast radius analysis for vulnerabilities."""
-    if not report.blast_radii:
+    all_cve = cve_findings(report)
+    if not all_cve:
         return
 
     _console().print()
@@ -597,41 +606,42 @@ def print_blast_radius(report: AIBOMReport, fixable_only: bool = False) -> None:
 
     # Filter to actionable findings only — UNKNOWN severity transitive
     # deps with no creds/tools are noise. Users see all with --verbose.
-    actionable = [br for br in report.blast_radii if br.is_actionable]
+    actionable = [finding for finding in all_cve if is_actionable_finding(finding)]
     # --fixable-only: keep only entries that have a fix available
     if fixable_only:
-        actionable = [br for br in actionable if br.vulnerability.fixed_version]
+        actionable = [finding for finding in actionable if finding.fixed_version]
     if not actionable:
         _console().print("  [green]✓ No actionable findings (all transitive/low-severity noise).[/green]")
-        if len(report.blast_radii) > 0:
-            _console().print(f"  [dim]{len(report.blast_radii)} low-priority findings hidden. Use --verbose to see all.[/dim]")
+        if len(all_cve) > 0:
+            _console().print(f"  [dim]{len(all_cve)} low-priority findings hidden. Use --verbose to see all.[/dim]")
         return
 
-    for br in actionable[:25]:  # Top 25 actionable
-        sev_style = SEVERITY_TEXT.get(br.vulnerability.severity, "white")
-        if br.vulnerability.fixed_version:
-            fix = f"[green]✓ {br.vulnerability.fixed_version}[/green]"
+    for finding in actionable[:25]:  # Top 25 actionable
+        sev = finding_severity(finding)
+        sev_style = SEVERITY_TEXT.get(sev, "white")
+        if finding.fixed_version:
+            fix = f"[green]✓ {finding.fixed_version}[/green]"
         else:
             fix = "[red dim]No fix[/red dim]"
 
         # EPSS score display
         epss_display = "—"
-        if br.vulnerability.epss_score is not None:
-            epss_pct = int(br.vulnerability.epss_score * 100)
+        if finding.epss_score is not None:
+            epss_pct = int(finding.epss_score * 100)
             epss_style = "red bold" if epss_pct >= 70 else "yellow" if epss_pct >= 30 else "dim"
             epss_display = f"[{epss_style}]{epss_pct}%[/{epss_style}]"
 
         # KEV indicator
-        kev_display = "[red bold]🔥[/red bold]" if br.vulnerability.is_kev else "—"
+        kev_display = "[red bold]🔥[/red bold]" if finding.is_kev else "—"
 
         # Malicious package indicator
-        if br.package.is_malicious:
+        if is_package_malicious(finding):
             kev_display += " [red bold]☠[/red bold]"
 
         # Blast column: agents/creds compact
         blast_parts = []
-        n_agents = len(br.affected_agents)
-        n_creds = len(br.exposed_credentials)
+        n_agents = len(finding.affected_agents)
+        n_creds = len(finding.exposed_credentials)
         if n_agents:
             blast_parts.append(f"{n_agents}A")
         if n_creds:
@@ -639,60 +649,61 @@ def print_blast_radius(report: AIBOMReport, fixable_only: bool = False) -> None:
         blast_display = "/".join(blast_parts) if blast_parts else "—"
 
         # Vulnerability: ID + package on two lines
-        vuln_display = f"{br.vulnerability.id}\n[dim]{br.package.name}@{br.package.version}[/dim]"
+        vuln_id = finding.cve_id or finding.id
+        vuln_display = f"{vuln_id}\n[dim]{package_name(finding)}@{package_version(finding)}[/dim]"
 
         # Threats column: actual framework tag IDs per finding
         threat_lines = []
-        if br.owasp_tags:
-            tags = sorted(br.owasp_tags)[:3]
-            extra = f" +{len(br.owasp_tags) - 3}" if len(br.owasp_tags) > 3 else ""
+        if finding.owasp_tags:
+            tags = sorted(finding.owasp_tags)[:3]
+            extra = f" +{len(finding.owasp_tags) - 3}" if len(finding.owasp_tags) > 3 else ""
             threat_lines.append(f"[purple]{' '.join(tags)}{extra}[/purple]")
-        if br.atlas_tags:
-            tags = sorted(br.atlas_tags)[:3]
-            extra = f" +{len(br.atlas_tags) - 3}" if len(br.atlas_tags) > 3 else ""
+        if finding.atlas_tags:
+            tags = sorted(finding.atlas_tags)[:3]
+            extra = f" +{len(finding.atlas_tags) - 3}" if len(finding.atlas_tags) > 3 else ""
             threat_lines.append(f"[cyan]{' '.join(tags)}{extra}[/cyan]")
-        if getattr(br, "attack_tags", None):
-            tags = sorted(br.attack_tags)[:3]
-            extra = f" +{len(br.attack_tags) - 3}" if len(br.attack_tags) > 3 else ""
+        if finding.attack_tags:
+            tags = sorted(finding.attack_tags)[:3]
+            extra = f" +{len(finding.attack_tags) - 3}" if len(finding.attack_tags) > 3 else ""
             threat_lines.append(f"[red]{' '.join(tags)}{extra}[/red]")
-        if br.nist_ai_rmf_tags:
-            tags = sorted(br.nist_ai_rmf_tags)[:3]
-            extra = f" +{len(br.nist_ai_rmf_tags) - 3}" if len(br.nist_ai_rmf_tags) > 3 else ""
+        if finding.nist_ai_rmf_tags:
+            tags = sorted(finding.nist_ai_rmf_tags)[:3]
+            extra = f" +{len(finding.nist_ai_rmf_tags) - 3}" if len(finding.nist_ai_rmf_tags) > 3 else ""
             threat_lines.append(f"[green]{' '.join(tags)}{extra}[/green]")
-        if br.owasp_mcp_tags:
-            tags = sorted(br.owasp_mcp_tags)[:3]
-            extra = f" +{len(br.owasp_mcp_tags) - 3}" if len(br.owasp_mcp_tags) > 3 else ""
+        if finding.owasp_mcp_tags:
+            tags = sorted(finding.owasp_mcp_tags)[:3]
+            extra = f" +{len(finding.owasp_mcp_tags) - 3}" if len(finding.owasp_mcp_tags) > 3 else ""
             threat_lines.append(f"[yellow]{' '.join(tags)}{extra}[/yellow]")
-        if br.owasp_agentic_tags:
-            tags = sorted(br.owasp_agentic_tags)[:3]
-            extra = f" +{len(br.owasp_agentic_tags) - 3}" if len(br.owasp_agentic_tags) > 3 else ""
+        if finding.owasp_agentic_tags:
+            tags = sorted(finding.owasp_agentic_tags)[:3]
+            extra = f" +{len(finding.owasp_agentic_tags) - 3}" if len(finding.owasp_agentic_tags) > 3 else ""
             threat_lines.append(f"[magenta]{' '.join(tags)}{extra}[/magenta]")
-        if br.eu_ai_act_tags:
-            tags = sorted(br.eu_ai_act_tags)[:3]
-            extra = f" +{len(br.eu_ai_act_tags) - 3}" if len(br.eu_ai_act_tags) > 3 else ""
+        if finding.eu_ai_act_tags:
+            tags = sorted(finding.eu_ai_act_tags)[:3]
+            extra = f" +{len(finding.eu_ai_act_tags) - 3}" if len(finding.eu_ai_act_tags) > 3 else ""
             threat_lines.append(f"[blue]{' '.join(tags)}{extra}[/blue]")
-        if br.nist_csf_tags:
-            tags = sorted(br.nist_csf_tags)[:3]
-            extra = f" +{len(br.nist_csf_tags) - 3}" if len(br.nist_csf_tags) > 3 else ""
+        if finding.nist_csf_tags:
+            tags = sorted(finding.nist_csf_tags)[:3]
+            extra = f" +{len(finding.nist_csf_tags) - 3}" if len(finding.nist_csf_tags) > 3 else ""
             threat_lines.append(f"[bright_green]{' '.join(tags)}{extra}[/bright_green]")
-        if br.iso_27001_tags:
-            tags = sorted(br.iso_27001_tags)[:3]
-            extra = f" +{len(br.iso_27001_tags) - 3}" if len(br.iso_27001_tags) > 3 else ""
+        if finding.iso_27001_tags:
+            tags = sorted(finding.iso_27001_tags)[:3]
+            extra = f" +{len(finding.iso_27001_tags) - 3}" if len(finding.iso_27001_tags) > 3 else ""
             threat_lines.append(f"[bright_cyan]{' '.join(tags)}{extra}[/bright_cyan]")
-        if br.soc2_tags:
-            tags = sorted(br.soc2_tags)[:3]
-            extra = f" +{len(br.soc2_tags) - 3}" if len(br.soc2_tags) > 3 else ""
+        if finding.soc2_tags:
+            tags = sorted(finding.soc2_tags)[:3]
+            extra = f" +{len(finding.soc2_tags) - 3}" if len(finding.soc2_tags) > 3 else ""
             threat_lines.append(f"[bright_yellow]{' '.join(tags)}{extra}[/bright_yellow]")
-        if br.cis_tags:
-            tags = sorted(br.cis_tags)[:3]
-            extra = f" +{len(br.cis_tags) - 3}" if len(br.cis_tags) > 3 else ""
+        if finding.cis_tags:
+            tags = sorted(finding.cis_tags)[:3]
+            extra = f" +{len(finding.cis_tags) - 3}" if len(finding.cis_tags) > 3 else ""
             threat_lines.append(f"[bright_magenta]{' '.join(tags)}{extra}[/bright_magenta]")
         threats_display = "\n".join(threat_lines) if threat_lines else "—"
 
         table.add_row(
-            f"[{sev_style}]{br.risk_score:.1f}[/{sev_style}]",
+            f"[{sev_style}]{finding.risk_score:.1f}[/{sev_style}]",
             vuln_display,
-            _sev_badge(br.vulnerability.severity),
+            _sev_badge(sev),
             epss_display,
             kev_display,
             blast_display,
@@ -702,19 +713,20 @@ def print_blast_radius(report: AIBOMReport, fixable_only: bool = False) -> None:
 
     _console().print(table)
 
-    if len(report.blast_radii) > 25:
-        _console().print(f"\n  [dim]...and {len(report.blast_radii) - 25} more findings. Use --output to export full report.[/dim]")
+    if len(all_cve) > 25:
+        _console().print(f"\n  [dim]...and {len(all_cve) - 25} more findings. Use --output to export full report.[/dim]")
 
     # Verification sources — one link per unique CVE
     seen_ids: set[str] = set()
     sources: list[tuple[str, str]] = []
-    for br in report.blast_radii:
-        vid = br.vulnerability.id
+    for finding in all_cve:
+        vid = finding.cve_id or finding.id
         if vid in seen_ids:
             continue
         seen_ids.add(vid)
-        if br.vulnerability.references:
-            sources.append((vid, br.vulnerability.references[0]))
+        refs = finding_references(finding)
+        if refs:
+            sources.append((vid, refs[0]))
         elif vid.startswith("CVE-"):
             sources.append((vid, f"https://osv.dev/vulnerability/{vid}"))
         elif vid.startswith("GHSA-"):
@@ -729,7 +741,8 @@ def print_blast_radius(report: AIBOMReport, fixable_only: bool = False) -> None:
 
 def print_attack_flow_tree(report: AIBOMReport) -> None:
     """Print per-CVE blast radius chains as Rich Trees."""
-    if not report.blast_radii:
+    all_cve = cve_findings(report)
+    if not all_cve:
         return
 
     _console().print()
@@ -743,59 +756,60 @@ def print_attack_flow_tree(report: AIBOMReport) -> None:
         Severity.LOW: "dim",
     }
 
-    for br in sorted(report.blast_radii, key=lambda b: b.risk_score, reverse=True)[:15]:
-        sev = br.vulnerability.severity
+    for finding in sorted(all_cve, key=lambda item: item.risk_score, reverse=True)[:15]:
+        sev = finding_severity(finding)
         sev_style = severity_styles.get(sev, "white")
+        vuln_id = finding.cve_id or finding.id
 
         # Root: CVE line
-        root_parts = [f"[{sev_style}]{br.vulnerability.id}[/{sev_style}]"]
+        root_parts = [f"[{sev_style}]{vuln_id}[/{sev_style}]"]
         root_parts.append(f"[{sev_style}]\\[{sev.value}][/{sev_style}]")
-        if br.vulnerability.cvss_score is not None:
-            root_parts.append(f"CVSS {br.vulnerability.cvss_score:.1f}")
-        if br.vulnerability.epss_score is not None:
-            pct = int(br.vulnerability.epss_score * 100)
+        if finding.cvss_score is not None:
+            root_parts.append(f"CVSS {finding.cvss_score:.1f}")
+        if finding.epss_score is not None:
+            pct = int(finding.epss_score * 100)
             root_parts.append(f"EPSS {pct}%")
-        if br.vulnerability.is_kev:
+        if finding.is_kev:
             root_parts.append("[red bold]🔥 KEV[/red bold]")
 
         cve_tree = Tree(" · ".join(root_parts))
 
         # Package node
-        pkg_label = f"{br.package.name}@{br.package.version} ({br.package.ecosystem})"
+        pkg_label = f"{package_name(finding)}@{package_version(finding)} ({package_ecosystem(finding)})"
         pkg_branch = cve_tree.add(f"[dim]{pkg_label}[/dim]")
 
         # Server branches
-        for server in br.affected_servers:
-            srv_branch = pkg_branch.add(f"\U0001f50c [bold cyan]{server.name}[/bold cyan] [dim](MCP Server)[/dim]")
+        for server_name in finding.affected_servers:
+            srv_branch = pkg_branch.add(f"\U0001f50c [bold cyan]{server_name}[/bold cyan] [dim](MCP Server)[/dim]")
 
             # Agents
-            for agent in br.affected_agents:
-                srv_branch.add(f"\U0001f916 [green]{agent.name}[/green] [dim](Agent)[/dim]")
+            for agent_name in finding.affected_agents:
+                srv_branch.add(f"\U0001f916 [green]{agent_name}[/green] [dim](Agent)[/dim]")
 
             # Credentials
-            for cred in br.exposed_credentials:
+            for cred in finding.exposed_credentials:
                 srv_branch.add(f"[yellow]🔑 {cred}[/yellow]")
 
             # Tools (compact, max 5 per line)
-            if br.exposed_tools:
-                tool_names = [t.name for t in br.exposed_tools[:5]]
-                extra = f" +{len(br.exposed_tools) - 5}" if len(br.exposed_tools) > 5 else ""
+            if finding.exposed_tools:
+                tool_names = finding.exposed_tools[:5]
+                extra = f" +{len(finding.exposed_tools) - 5}" if len(finding.exposed_tools) > 5 else ""
                 srv_branch.add(f"[dim]🔧 {', '.join(tool_names)}{extra}[/dim]")
 
         # If no servers, still show agents/creds/tools under package
-        if not br.affected_servers:
-            for agent in br.affected_agents:
-                pkg_branch.add(f"\U0001f916 [green]{agent.name}[/green] [dim](Agent)[/dim]")
-            for cred in br.exposed_credentials:
+        if not finding.affected_servers:
+            for agent_name in finding.affected_agents:
+                pkg_branch.add(f"\U0001f916 [green]{agent_name}[/green] [dim](Agent)[/dim]")
+            for cred in finding.exposed_credentials:
                 pkg_branch.add(f"[yellow]🔑 {cred}[/yellow]")
-            if br.exposed_tools:
-                tool_names = [t.name for t in br.exposed_tools[:5]]
-                extra = f" +{len(br.exposed_tools) - 5}" if len(br.exposed_tools) > 5 else ""
+            if finding.exposed_tools:
+                tool_names = finding.exposed_tools[:5]
+                extra = f" +{len(finding.exposed_tools) - 5}" if len(finding.exposed_tools) > 5 else ""
                 pkg_branch.add(f"[dim]🔧 {', '.join(tool_names)}{extra}[/dim]")
 
         _console().print(cve_tree)
 
-    remaining = len(report.blast_radii) - 15
+    remaining = len(all_cve) - 15
     if remaining > 0:
         _console().print(f"\n  [dim]...and {remaining} more findings. Use --output to export full report.[/dim]")
     _console().print()
@@ -810,7 +824,7 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     from agent_bom.nist_ai_rmf import NIST_AI_RMF
     from agent_bom.owasp import OWASP_LLM_TOP10
 
-    if not report.blast_radii:
+    if not cve_findings(report):
         return
 
     # Aggregate tag counts
@@ -825,28 +839,28 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
     iso_27001_counts: Counter[str] = Counter()
     soc2_counts: Counter[str] = Counter()
     cis_counts: Counter[str] = Counter()
-    for br in report.blast_radii:
-        for tag in br.owasp_tags:
+    for finding in cve_findings(report):
+        for tag in finding.owasp_tags:
             owasp_counts[tag] += 1
-        for tag in br.atlas_tags:
+        for tag in finding.atlas_tags:
             atlas_counts[tag] += 1
-        for tag in getattr(br, "attack_tags", []):
+        for tag in finding.attack_tags:
             attack_counts[tag] += 1
-        for tag in br.nist_ai_rmf_tags:
+        for tag in finding.nist_ai_rmf_tags:
             nist_counts[tag] += 1
-        for tag in br.owasp_mcp_tags:
+        for tag in finding.owasp_mcp_tags:
             owasp_mcp_counts[tag] += 1
-        for tag in br.owasp_agentic_tags:
+        for tag in finding.owasp_agentic_tags:
             owasp_agentic_counts[tag] += 1
-        for tag in br.eu_ai_act_tags:
+        for tag in finding.eu_ai_act_tags:
             eu_ai_act_counts[tag] += 1
-        for tag in br.nist_csf_tags:
+        for tag in finding.nist_csf_tags:
             nist_csf_counts[tag] += 1
-        for tag in br.iso_27001_tags:
+        for tag in finding.iso_27001_tags:
             iso_27001_counts[tag] += 1
-        for tag in br.soc2_tags:
+        for tag in finding.soc2_tags:
             soc2_counts[tag] += 1
-        for tag in br.cis_tags:
+        for tag in finding.cis_tags:
             cis_counts[tag] += 1
 
     if (
@@ -1104,15 +1118,27 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
 # ─── Remediation Plan ───────────────────────────────────────────────────────
 
 
-def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
-    """Group blast radii into a prioritized remediation plan.
+def build_remediation_plan(blast_radii: list[BlastRadius] | list) -> list[dict]:
+    """Group CVE findings into a prioritized remediation plan.
+
+    Accepts legacy ``BlastRadius`` rows or unified ``Finding`` CVE rows. When
+    passed BlastRadius objects, they are projected through ``blast_radius_to_finding``
+    before grouping.
 
     Returns items sorted by grouped blast-radius risk: each item = one upgrade action that clears
     N vulns across M agents and frees exposed credentials.
     """
     from collections import defaultdict
 
+    from agent_bom.finding import Finding, blast_radius_to_finding
     from agent_bom.remediation_commands import build_fix_command, build_verify_command
+
+    if not blast_radii:
+        return []
+    if isinstance(blast_radii[0], Finding):
+        findings: list[Finding] = list(blast_radii)
+    else:
+        findings = [blast_radius_to_finding(br) for br in blast_radii]
 
     groups: dict[tuple, dict] = defaultdict(
         lambda: {
@@ -1177,52 +1203,56 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             detail = ", ".join(reasons[:-1]) + f", and {reasons[-1]}"
         return f"Prioritized as {group['priority']} because {detail}."
 
-    for br in blast_radii:
-        key = (br.package.name, br.package.ecosystem, br.package.version)
+    for finding in findings:
+        pkg_name = package_name(finding)
+        ecosystem = package_ecosystem(finding)
+        current = package_version(finding)
+        key = (pkg_name, ecosystem, current)
         g = groups[key]
-        g["package"] = br.package.name
-        g["ecosystem"] = br.package.ecosystem
-        g["current"] = br.package.version
+        g["package"] = pkg_name
+        g["ecosystem"] = ecosystem
+        g["current"] = current
         # Only accept fixed_version values that are real forward upgrades for
         # the package ecosystem; this avoids downgrade/canary suggestions from
         # multi-branch or pre-release advisories.
-        fv = br.vulnerability.fixed_version
+        fv = finding.fixed_version
         if fv:
             from agent_bom.version_utils import compare_versions, is_prerelease_version
 
-            if is_prerelease_version(fv, br.package.ecosystem):
+            if is_prerelease_version(fv, ecosystem):
                 g["suppressed_prerelease_fixes"].add(fv)
-            elif compare_versions(br.package.version, fv, br.package.ecosystem):
-                if g["fix"] is None or compare_versions(g["fix"], fv, br.package.ecosystem):
+            elif compare_versions(current, fv, ecosystem):
+                if g["fix"] is None or compare_versions(g["fix"], fv, ecosystem):
                     g["fix"] = fv
-        g["vulns"].append(br.vulnerability.id)
-        for a in br.affected_agents:
-            g["agents"].add(a.name)
-        g["creds"].update(br.exposed_credentials)
-        g["tools"].update(t.name for t in br.exposed_tools)
-        g["owasp"].update(br.owasp_tags)
-        g["atlas"].update(br.atlas_tags)
-        g["nist"].update(br.nist_ai_rmf_tags)
-        g["owasp_mcp"].update(br.owasp_mcp_tags)
-        g["owasp_agentic"].update(br.owasp_agentic_tags)
-        g["eu_ai_act"].update(br.eu_ai_act_tags)
-        g["nist_csf"].update(br.nist_csf_tags)
-        g["iso_27001"].update(br.iso_27001_tags)
-        g["soc2"].update(br.soc2_tags)
-        g["cis"].update(br.cis_tags)
-        for ref in br.vulnerability.references:
+        vuln_id = finding.cve_id or finding.id
+        g["vulns"].append(vuln_id)
+        g["agents"].update(finding.affected_agents)
+        g["creds"].update(finding.exposed_credentials)
+        g["tools"].update(finding.exposed_tools)
+        g["owasp"].update(finding.owasp_tags)
+        g["atlas"].update(finding.atlas_tags)
+        g["nist"].update(finding.nist_ai_rmf_tags)
+        g["owasp_mcp"].update(finding.owasp_mcp_tags)
+        g["owasp_agentic"].update(finding.owasp_agentic_tags)
+        g["eu_ai_act"].update(finding.eu_ai_act_tags)
+        g["nist_csf"].update(finding.nist_csf_tags)
+        g["iso_27001"].update(finding.iso_27001_tags)
+        g["soc2"].update(finding.soc2_tags)
+        g["cis"].update(finding.cis_tags)
+        for ref in finding_references(finding):
             g["references"].add(ref)
-        if severity_order.get(br.vulnerability.severity, 0) > severity_order.get(g["max_severity"], 0):
-            g["max_severity"] = br.vulnerability.severity
-        if br.vulnerability.severity == Severity.CRITICAL:
+        sev = finding_severity(finding)
+        if severity_order.get(sev, 0) > severity_order.get(g["max_severity"], 0):
+            g["max_severity"] = sev
+        if sev == Severity.CRITICAL:
             g["critical_count"] += 1
-        elif br.vulnerability.severity == Severity.HIGH:
+        elif sev == Severity.HIGH:
             g["high_count"] += 1
-        if br.vulnerability.is_kev:
+        if finding.is_kev:
             g["has_kev"] = True
-        if br.ai_risk_context:
+        if finding.ai_risk_context:
             g["ai_risk"] = True
-        g["max_risk_score"] = max(g["max_risk_score"], br.risk_score)
+        g["max_risk_score"] = max(g["max_risk_score"], finding.risk_score)
 
     plan = []
     for g in groups.values():
@@ -1305,10 +1335,11 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
 
 def print_remediation_plan(report: AIBOMReport) -> None:
     """Print a prioritized remediation plan with named assets and risk narrative."""
-    if not report.blast_radii:
+    all_cve = cve_findings(report)
+    if not all_cve:
         return
 
-    plan = build_remediation_plan(report.blast_radii)
+    plan = build_remediation_plan(all_cve)
     fixable = [p for p in plan if p["fix"]]
     unfixable = [p for p in plan if not p["fix"]]
 
@@ -1316,9 +1347,9 @@ def print_remediation_plan(report: AIBOMReport) -> None:
     total_agents = report.total_agents or 1
     all_creds: set[str] = set()
     all_tools: set[str] = set()
-    for br in report.blast_radii:
-        all_creds.update(br.exposed_credentials)
-        all_tools.update(t.name for t in br.exposed_tools)
+    for finding in all_cve:
+        all_creds.update(finding.exposed_credentials)
+        all_tools.update(finding.exposed_tools)
     total_creds = len(all_creds) or 1
     total_tools = len(all_tools) or 1
 
@@ -1608,10 +1639,10 @@ def print_export_hint(report: AIBOMReport) -> None:
     iso_27001_hit: set[str] = set()
     soc2_hit: set[str] = set()
     cis_hit: set[str] = set()
-    for br in report.blast_radii:
+    for br in cve_findings(report):
         owasp_hit.update(br.owasp_tags)
         atlas_hit.update(br.atlas_tags)
-        attack_hit.update(getattr(br, "attack_tags", []))
+        attack_hit.update(br.attack_tags)
         nist_hit.update(br.nist_ai_rmf_tags)
         owasp_mcp_hit.update(br.owasp_mcp_tags)
         owasp_agentic_hit.update(br.owasp_agentic_tags)
@@ -1641,7 +1672,7 @@ def print_export_hint(report: AIBOMReport) -> None:
     soc2_total = len(_SOC2_TSC)
     cis_total = len(_CIS_CONTROLS)
 
-    if report.blast_radii:
+    if cve_findings(report):
         lines.append("[bold]AI Threat Framework Coverage[/bold]")
         lines.append("")
 
@@ -1934,12 +1965,13 @@ def print_policy_results(policy_result: dict) -> None:
 
 def print_severity_chart(report: AIBOMReport) -> None:
     """Print an ASCII severity distribution bar chart."""
-    if not report.blast_radii:
+    all_cve = cve_findings(report)
+    if not all_cve:
         return
 
     counts: dict[str, int] = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
-    for br in report.blast_radii:
-        sev = br.vulnerability.severity.value.upper()
+    for finding in all_cve:
+        sev = finding_severity(finding).value.upper()
         if sev in counts:
             counts[sev] += 1
 

@@ -76,16 +76,26 @@ def _page_window(total: int, limit: int, page: int) -> tuple[int, int, int]:
     return safe_page, start, end
 
 
-def _forward_fix_version(br: object) -> str | None:
+def _forward_fix_version(finding) -> str | None:
     """Return a fix version only when it is a forward upgrade for this package."""
-    fixed = getattr(getattr(br, "vulnerability", None), "fixed_version", None)
-    if not fixed:
-        return None
-    package = getattr(br, "package", None)
-    current = str(getattr(package, "version", "") or "")
+    from agent_bom.finding import Finding
+    from agent_bom.output.finding_views import package_ecosystem, package_version
+
+    if isinstance(finding, Finding):
+        fixed = finding.fixed_version
+        if not fixed:
+            return None
+        current = package_version(finding)
+        ecosystem = package_ecosystem(finding)
+    else:
+        fixed = getattr(getattr(finding, "vulnerability", None), "fixed_version", None)
+        if not fixed:
+            return None
+        package = getattr(finding, "package", None)
+        current = str(getattr(package, "version", "") or "")
+        ecosystem = str(getattr(package, "ecosystem", "") or "")
     if current in ("", "unknown", "latest"):
         return str(fixed)
-    ecosystem = str(getattr(package, "ecosystem", "") or "")
     try:
         from agent_bom.version_utils import compare_version_order
 
@@ -144,13 +154,13 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
 
     from agent_bom.finding import FindingType
     from agent_bom.output import _sev_badge, console
+    from agent_bom.output.finding_views import active_cve_findings, finding_severity
     from agent_bom.posture import compute_posture_scorecard
-    from agent_bom.vex import active_blast_radii
 
     sev_counts: Counter[str] = Counter()
-    active_findings = active_blast_radii(report.blast_radii)
-    for br in active_findings:
-        sev_counts[br.vulnerability.severity.value.upper()] += 1
+    active_findings = active_cve_findings(report)
+    for finding in active_findings:
+        sev_counts[finding_severity(finding).value.upper()] += 1
     policy_findings = [finding for finding in report.to_findings() if finding.finding_type != FindingType.CVE]
     for finding in policy_findings:
         sev_counts[str(finding.severity).upper()] += 1
@@ -190,7 +200,7 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
     if coverage_incomplete:
         posture = "[bold black on yellow] PARTIAL COVERAGE [/bold black on yellow]"
         border_style = "yellow"
-    elif report.total_vulnerabilities == 0 and not policy_findings:
+    elif report.total_vulnerabilities == 0 and not active_findings and not policy_findings:
         posture = "[bold white on green] CLEAN [/bold white on green]"
         border_style = "green"
     else:
@@ -372,21 +382,29 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     scan types without agent context (image, check, iac, CI/CD).
     """
     from agent_bom.output import _sev_badge, console
-    from agent_bom.vex import active_blast_radii
+    from agent_bom.output.finding_views import (
+        active_cve_findings,
+        cve_findings,
+        exploit_likelihood_value,
+        finding_severity,
+        is_actionable_finding,
+        is_package_direct,
+        package_name,
+        package_version,
+    )
 
-    if not report.blast_radii:
-        return
-
-    # Filter: show actionable findings by default, count the rest
-    active_findings = active_blast_radii(report.blast_radii)
+    active_findings = active_cve_findings(report)
     if not active_findings:
         return
-    priority = [br for br in active_findings if br.is_actionable]
+
+    priority = [finding for finding in active_findings if is_actionable_finding(finding)]
     rest_count = len(active_findings) - len(priority)
     if fixable_only:
-        priority = [br for br in priority if _forward_fix_version(br)]
+        priority = [finding for finding in priority if _forward_fix_version(finding)]
     if not priority:
-        display_list = [br for br in active_findings if _forward_fix_version(br)] if fixable_only else active_findings
+        display_list = (
+            [finding for finding in active_findings if _forward_fix_version(finding)] if fixable_only else active_findings
+        )
     else:
         display_list = priority
     total = len(display_list)
@@ -394,7 +412,9 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     shown = display_list[start:end]
 
     # Detect if we have blast radius context (agents/servers/credentials)
-    has_blast_context = any(br.affected_agents and (br.affected_servers or br.exposed_credentials) for br in shown)
+    has_blast_context = any(
+        finding.affected_agents and (finding.affected_servers or finding.exposed_credentials) for finding in shown
+    )
 
     console.print()
     shown_n = len(shown)
@@ -426,14 +446,11 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     table.add_column("EPSS", justify="center", no_wrap=True)
     table.add_column("Fix", ratio=1)
 
-    for br in shown:
-        forward_fix = _forward_fix_version(br)
+    for finding in shown:
+        forward_fix = _forward_fix_version(finding)
         fix = f"[green]{forward_fix}[/green]" if forward_fix else "[dim]no fix[/dim]"
-        # Exploit-likelihood (issue #486) — KEV wins; elevated EPSS-only
-        # levels still surface a muted hint so the operator knows why
-        # the row is flagged even when it's not in CISA KEV.
-        _exploit_level = br.vulnerability.exploit_likelihood
-        if br.vulnerability.is_kev:
+        _exploit_level = exploit_likelihood_value(finding)
+        if finding.is_kev:
             kev = " [red bold]KEV[/red bold]"
         elif _exploit_level == "likely_exploited":
             kev = " [#e67e22 bold]EXPL[/#e67e22 bold]"
@@ -443,18 +460,21 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
             kev = ""
 
         epss_display = "[dim]—[/dim]"
-        if br.vulnerability.epss_score is not None:
-            epss_pct = int(br.vulnerability.epss_score * 100)
+        if finding.epss_score is not None:
+            epss_pct = int(finding.epss_score * 100)
             epss_style = "red bold" if epss_pct >= 70 else "yellow" if epss_pct >= 30 else "dim"
             epss_display = f"[{epss_style}]{epss_pct}%[/{epss_style}]"
 
-        pkg_display = f"{br.package.name}@{br.package.version}" + ("" if br.package.is_direct else " [dim]T[/dim]")
+        pkg_display = (
+            f"{package_name(finding)}@{package_version(finding)}"
+            + ("" if is_package_direct(finding) else " [dim]T[/dim]")
+        )
+        vuln_id = finding.cve_id or finding.id
 
         if has_blast_context:
-            # Build single-line blast chain: agent → server → credential
-            agent_names = [a.name for a in br.affected_agents]
-            cred_names = list(br.exposed_credentials)
-            server_names = [s.name for s in br.affected_servers] if br.affected_servers else []
+            agent_names = list(finding.affected_agents)
+            cred_names = list(finding.exposed_credentials)
+            server_names = list(finding.affected_servers)
             chain_parts: list[str] = []
             if agent_names:
                 name = agent_names[0][:16]
@@ -471,8 +491,8 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
                     chain_parts[-1] += f"+{len(cred_names) - 1}"
             blast_display = " → ".join(chain_parts) if chain_parts else "[dim]—[/dim]"
             table.add_row(
-                _sev_badge(br.vulnerability.severity),
-                f"{br.vulnerability.id}{kev}",
+                _sev_badge(finding_severity(finding)),
+                f"{vuln_id}{kev}",
                 pkg_display,
                 blast_display,
                 epss_display,
@@ -480,8 +500,8 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
             )
         else:
             table.add_row(
-                _sev_badge(br.vulnerability.severity),
-                f"{br.vulnerability.id}{kev}",
+                _sev_badge(finding_severity(finding)),
+                f"{vuln_id}{kev}",
                 pkg_display,
                 epss_display,
                 fix,
@@ -508,42 +528,44 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
         console.print(f"  [dim]+ {' · '.join(parts)} — {' · '.join(nav_hints)}[/dim]")
 
     # Critical details section — show description and blast chain for CRIT/HIGH only
-    critical_findings = [br for br in shown if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]
+    critical_findings = [finding for finding in shown if finding_severity(finding) in (Severity.CRITICAL, Severity.HIGH)]
     if critical_findings:
         console.print()
         console.print(Rule(lane_title("analyze", "Critical Details"), style="dim"))
         sev_style_map = {Severity.CRITICAL: "red bold", Severity.HIGH: "#e67e22 bold"}
-        for br in critical_findings[:5]:
-            style = sev_style_map.get(br.vulnerability.severity, "white")
-            summary = br.vulnerability.summary or ""
+        for finding in critical_findings[:5]:
+            sev = finding_severity(finding)
+            style = sev_style_map.get(sev, "white")
+            summary = finding.description or ""
             if len(summary) > 80:
                 summary = summary[:77] + "..."
-            sev_label = br.vulnerability.severity.value.upper()
-            pkg_ref = f"{br.package.name}@{br.package.version}"
-            console.print(f"\n  [{style}]{br.vulnerability.id}[/{style}] · {pkg_ref} · [{style}]{sev_label}[/{style}]")
+            sev_label = sev.value.upper()
+            pkg_ref = f"{package_name(finding)}@{package_version(finding)}"
+            vuln_id = finding.cve_id or finding.id
+            console.print(f"\n  [{style}]{vuln_id}[/{style}] · {pkg_ref} · [{style}]{sev_label}[/{style}]")
             if summary:
                 console.print(f"  {summary}")
-            forward_fix = _forward_fix_version(br)
+            forward_fix = _forward_fix_version(finding)
             if forward_fix:
                 console.print(f"  Fix: [green]upgrade to ≥ {forward_fix}[/green]")
-            if has_blast_context and (br.affected_agents or br.exposed_credentials):
-                agent_str = ", ".join(a.name for a in br.affected_agents[:3])
-                cred_str = ", ".join(br.exposed_credentials[:3])
+            if has_blast_context and (finding.affected_agents or finding.exposed_credentials):
+                agent_str = ", ".join(finding.affected_agents[:3])
+                cred_str = ", ".join(finding.exposed_credentials[:3])
                 blast_parts = []
                 if agent_str:
                     blast_parts.append(agent_str)
-                if br.affected_servers:
-                    blast_parts.append(", ".join(s.name for s in br.affected_servers[:2]))
+                if finding.affected_servers:
+                    blast_parts.append(", ".join(finding.affected_servers[:2]))
                 if cred_str:
                     blast_parts.append(f"[yellow]{cred_str}[/yellow]")
                 if blast_parts:
                     console.print(f"  Blast: {' → '.join(blast_parts)}")
 
-    # Status bar
     console.print()
-    fixable = sum(1 for br in report.blast_radii if _forward_fix_version(br))
-    kev_count = sum(1 for br in report.blast_radii if br.vulnerability.is_kev)
-    unknown_sev = sum(1 for br in report.blast_radii if br.vulnerability.severity == Severity.NONE)
+    all_cve = cve_findings(report)
+    fixable = sum(1 for finding in all_cve if _forward_fix_version(finding))
+    kev_count = sum(1 for finding in all_cve if finding.is_kev)
+    unknown_sev = sum(1 for finding in all_cve if finding_severity(finding) == Severity.NONE)
     hints = ["[dim]--verbose[/dim] full details", "[dim]-f html[/dim] interactive report"]
     if page < total_pages:
         hints.insert(0, f"[dim]--page {page + 1}[/dim] next findings")
@@ -551,7 +573,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
         hints.insert(0, f"[green]{fixable} fixable[/green]")
     if kev_count:
         hints.insert(0, f"[red]{kev_count} KEV[/red]")
-    if unknown_sev > 0 and unknown_sev == len(report.blast_radii):
+    if unknown_sev > 0 and unknown_sev == len(all_cve):
         hints.insert(0, "[yellow]--enrich[/yellow] for severity scores")
     console.print(Rule(style="dim"))
     console.print(f"  {' · '.join(hints)}")
@@ -560,11 +582,13 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
 def print_compact_remediation(report: AIBOMReport, limit: int = 5, page: int = 1) -> None:
     """Top N remediation items, one-liner each."""
     from agent_bom.output import build_remediation_plan, console
+    from agent_bom.output.finding_views import cve_findings
 
-    if not report.blast_radii:
+    cve_rows = cve_findings(report)
+    if not cve_rows:
         return
 
-    plan = build_remediation_plan(report.blast_radii)
+    plan = build_remediation_plan(cve_rows)
     fixable = [p for p in plan if p["fix"]]
     if not fixable:
         return

@@ -16,6 +16,16 @@ def cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = No
     return [finding for finding in report.to_findings() if finding.finding_type == FindingType.CVE]
 
 
+def active_cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
+    """Return CVE findings that remain active after VEX suppression."""
+    from agent_bom.vex import active_blast_radii
+
+    source = blast_radii if blast_radii is not None else report.blast_radii
+    if source:
+        return cve_findings(report, active_blast_radii(source))
+    return [finding for finding in cve_findings(report) if not finding.suppressed]
+
+
 def nested_vulnerabilities(report: AIBOMReport) -> list[Any]:
     """Return package vulnerabilities from the legacy inventory tree."""
     vulns: list[Any] = []
@@ -64,6 +74,66 @@ def package_ecosystem(finding: Finding) -> str:
 
 def severity_value(finding: Finding) -> str:
     return str(finding.effective_severity() or finding.severity or "unknown").lower()
+
+
+def finding_severity(finding: Finding) -> Severity:
+    """Map a unified finding to the legacy Severity enum for console badges."""
+    raw = severity_value(finding)
+    if raw == "none":
+        return Severity.NONE
+    try:
+        return Severity(raw)
+    except ValueError:
+        return Severity.UNKNOWN
+
+
+def is_package_direct(finding: Finding) -> bool:
+    return bool(evidence(finding, "package_is_direct", False))
+
+
+def is_package_malicious(finding: Finding) -> bool:
+    return bool(evidence(finding, "package_is_malicious", False))
+
+
+def is_actionable_finding(finding: Finding) -> bool:
+    """Return whether a CVE finding should surface in default actionable views."""
+    if finding.is_actionable is not None:
+        return bool(finding.is_actionable)
+    if finding.suppressed:
+        return False
+    if finding.is_kev:
+        return True
+    if severity_value(finding) in {"critical", "high"}:
+        return True
+    if finding.exposed_credentials or finding.exposed_tools:
+        return True
+    if is_package_direct(finding) or is_package_malicious(finding):
+        return True
+    return False
+
+
+def exploit_likelihood_value(finding: Finding) -> str:
+    """Graded exploit-likelihood signal derived from unified finding enrichment."""
+    from agent_bom.config import EPSS_ACTIVE_EXPLOITATION_THRESHOLD
+
+    if finding.is_kev:
+        return "actively_exploited"
+    epss = finding.epss_score
+    percentile = evidence(finding, "epss_percentile", None)
+    if epss is not None and epss >= EPSS_ACTIVE_EXPLOITATION_THRESHOLD:
+        return "likely_exploited"
+    if percentile is not None and percentile >= 95:
+        return "likely_exploited"
+    if percentile is not None and percentile >= 80:
+        return "public_exploit"
+    return "theoretical"
+
+
+def finding_references(finding: Finding) -> list[str]:
+    refs = evidence(finding, "references", [])
+    if isinstance(refs, list):
+        return [str(ref) for ref in refs if ref]
+    return []
 
 
 def severity_counts(findings: list[Finding]) -> dict[str, int]:

@@ -714,6 +714,7 @@ export interface FindingsResponse {
   findings: UnifiedFinding[];
   count: number;
   total: number;
+  total_approximate?: boolean | undefined;
   limit: number;
   offset: number;
   sort: string;

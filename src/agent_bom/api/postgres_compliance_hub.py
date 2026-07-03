@@ -118,6 +118,7 @@ class PostgresComplianceHubStore:
         severity: str | None = None,
         scan_id: str | None = None,
         origin: str | None = None,
+        include_total: bool = True,
     ) -> FindingPage:
         where = ["tenant_id = %s"]
         params: list[Any] = [tenant_id]
@@ -134,13 +135,17 @@ class PostgresComplianceHubStore:
         order_sql = _postgres_order_clause(sort)
 
         with _tenant_connection(self._pool) as conn:
-            # ``where_sql`` is assembled only from fixed predicates above; all caller values
-            # stay in ``params`` as psycopg bindings.
-            total_row = conn.execute(
-                f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",  # nosec B608
-                tuple(params),
-            ).fetchone()
-            total = int(total_row[0]) if total_row else 0
+            total: int | None
+            if include_total:
+                # ``where_sql`` is assembled only from fixed predicates above; all caller values
+                # stay in ``params`` as psycopg bindings.
+                total_row = conn.execute(
+                    f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",  # nosec B608
+                    tuple(params),
+                ).fetchone()
+                total = int(total_row[0]) if total_row else 0
+            else:
+                total = None
             # ``order_sql`` comes from a closed sort allowlist; all caller values stay bound.
             rows = conn.execute(
                 f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT %s OFFSET %s",  # nosec B608
@@ -151,6 +156,43 @@ class PostgresComplianceHubStore:
             raw = row[0]
             out.append(raw if isinstance(raw, dict) else json.loads(raw))
         return out, total
+
+    def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                """
+                SELECT LOWER(COALESCE(payload->>'severity', 'unknown')) AS sev, COUNT(*)
+                FROM compliance_hub_findings
+                WHERE tenant_id = %s
+                GROUP BY sev
+                """,
+                (tenant_id,),
+            ).fetchall()
+        counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+        for sev, count in rows:
+            key = str(sev or "unknown").lower()
+            counts[key] = counts.get(key, 0) + int(count)
+        return counts
+
+    def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
+        from agent_bom.compliance_coverage import normalize_framework_slug
+
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                "SELECT applicable_frameworks_csv FROM compliance_hub_findings WHERE tenant_id = %s",
+                (tenant_id,),
+            ).fetchall()
+        counts: dict[str, int] = {}
+        for (csv_value,) in rows:
+            if not csv_value:
+                continue
+            for slug in str(csv_value).split(","):
+                slug = slug.strip()
+                if not slug:
+                    continue
+                canonical = normalize_framework_slug(slug)
+                counts[canonical] = counts.get(canonical, 0) + 1
+        return counts
 
     def count(self, tenant_id: str) -> int:
         with _tenant_connection(self._pool) as conn:
@@ -167,4 +209,9 @@ class PostgresComplianceHubStore:
                 (tenant_id,),
             )
             conn.commit()
-        return cur.rowcount or 0
+        removed = cur.rowcount or 0
+        if removed:
+            from agent_bom.api.findings_count_cache import invalidate_tenant
+
+            invalidate_tenant(tenant_id)
+        return removed

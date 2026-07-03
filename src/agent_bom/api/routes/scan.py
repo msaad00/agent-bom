@@ -1075,11 +1075,16 @@ async def list_jobs(
     """
     tenant_id = _tenant_id(request)
     store = _get_store()
-    summary = store.list_summary(tenant_id=tenant_id)
-    total = len(summary)
-    page = summary[offset : offset + limit]
+    count_summary = getattr(store, "count_summary", None)
+    if callable(count_summary):
+        total = count_summary(tenant_id=tenant_id)
+        summary = store.list_summary(tenant_id=tenant_id, limit=limit, offset=offset)
+    else:
+        summary = store.list_summary(tenant_id=tenant_id)
+        total = len(summary)
+        summary = summary[offset : offset + limit]
     enriched: list[dict[str, Any]] = []
-    for item in page:
+    for item in summary:
         in_mem = _jobs_get(item["job_id"])
         if isinstance(in_mem, ScanJob) and _visible_to_tenant(in_mem, tenant_id):
             enriched.append(_job_summary_payload(in_mem))
@@ -1113,6 +1118,39 @@ async def list_jobs(
 _ALLOWED_FINDING_SORTS = ("effective_reach", "cvss", "severity")
 
 
+def _resolve_bulk_findings_total(
+    *,
+    tenant_id: str,
+    severity: str | None,
+    scan_id: str | None,
+    approximate_total: bool,
+    offset: int,
+    bulk_total: int | None,
+    page_len: int,
+    limit: int,
+) -> tuple[int | None, bool]:
+    """Return ``(total, total_approximate)`` for the bulk-ingest slice."""
+    from agent_bom.api.findings_count_cache import cache_key, get_cached_total, set_cached_total
+
+    if not approximate_total:
+        return bulk_total, False
+
+    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest")
+    if offset == 0 and bulk_total is not None:
+        set_cached_total(key, bulk_total)
+        return bulk_total, False
+
+    cached = get_cached_total(key)
+    if cached is not None:
+        return cached, True
+
+    # Cold cache on a deep page: expose a conservative lower bound so paging
+    # controls stay usable until the client revisits offset=0.
+    if page_len < limit:
+        return offset + page_len, True
+    return offset + limit, True
+
+
 def _finding_sort_key(row: dict[str, Any], sort: str) -> tuple[float, float, float]:
     """Stable sort key — descending order on the requested signal,
     with CVSS + severity-rank tiebreakers so the order is fully
@@ -1144,6 +1182,7 @@ async def list_findings(
     # the historical `min(limit, 1000)` clamp at use-site.
     limit: Annotated[int, Query(ge=1, le=1000)] = 500,
     offset: Annotated[int, Query(ge=0)] = 0,
+    approximate_total: bool = False,
 ) -> dict:
     """List vulnerability findings aggregated from completed scan results.
 
@@ -1151,6 +1190,12 @@ async def list_findings(
     combines CVSS / EPSS / KEV with reachable-tool capability, credential
     visibility and agent breadth.  Pass ``?sort=cvss`` for the legacy
     CVSS-only ordering, or ``?sort=severity`` for severity-band ordering.
+
+    Pass ``?approximate_total=true`` to skip ``COUNT(*)`` on deep pages.
+    The first page (``offset=0``) still computes an exact total and caches it
+    for roughly ``AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS`` (default 60s).
+    Later pages reuse the cached count; when the cache is cold the response
+    carries a conservative lower bound and ``total_approximate: true``.
     """
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
@@ -1158,6 +1203,7 @@ async def list_findings(
     sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
     if sort_key not in _ALLOWED_FINDING_SORTS:
         sort_key = "effective_reach"
+    include_bulk_total = (not approximate_total) or offset == 0
 
     # Scan-job findings live in memory and are typically small; gather + sort
     # them directly. The bulk-ingested hub findings can reach millions of rows,
@@ -1181,6 +1227,7 @@ async def list_findings(
 
     store = get_compliance_hub_store()
     list_page = getattr(store, "list_page", None)
+    total_approximate = False
     if callable(list_page):
         if scan_findings:
             # Bounded merge: pull at most (offset + limit) top bulk rows, merge
@@ -1194,11 +1241,22 @@ async def list_findings(
                 severity=severity,
                 scan_id=scan_id,
                 origin="bulk_ingest",
+                include_total=include_bulk_total,
             )
             combined = scan_findings + bulk_page
             combined.sort(key=lambda row: _finding_sort_key(row, sort_key))
-            total = len(scan_findings) + bulk_total
             page_rows = combined[offset : offset + limit]
+            resolved_bulk, total_approximate = _resolve_bulk_findings_total(
+                tenant_id=tenant_id,
+                severity=severity,
+                scan_id=scan_id,
+                approximate_total=approximate_total,
+                offset=offset,
+                bulk_total=bulk_total,
+                page_len=len(page_rows),
+                limit=limit,
+            )
+            total = None if resolved_bulk is None else len(scan_findings) + resolved_bulk
         else:
             page_rows, bulk_total = list_page(
                 tenant_id,
@@ -1208,8 +1266,18 @@ async def list_findings(
                 severity=severity,
                 scan_id=scan_id,
                 origin="bulk_ingest",
+                include_total=include_bulk_total,
             )
-            total = bulk_total
+            total, total_approximate = _resolve_bulk_findings_total(
+                tenant_id=tenant_id,
+                severity=severity,
+                scan_id=scan_id,
+                approximate_total=approximate_total,
+                offset=offset,
+                bulk_total=bulk_total,
+                page_len=len(page_rows),
+                limit=limit,
+            )
     else:
         # Backward-compatible fallback for stores without pagination support.
         bulk_findings = _bulk_ingested_findings_for_tenant(tenant_id)
@@ -1224,7 +1292,7 @@ async def list_findings(
         page_rows = combined[offset : offset + limit]
 
     page = _redact_finding_page(page_rows)
-    return {
+    response: dict[str, Any] = {
         # emit schema_version so consumers can pin a
         # contract independent of API path.
         "schema_version": "v1",
@@ -1237,6 +1305,9 @@ async def list_findings(
         "scan_id": scan_id,
         "warnings": [],
     }
+    if total_approximate:
+        response["total_approximate"] = True
+    return response
 
 
 @router.post("/v1/findings/bulk", tags=["scan"], status_code=201)

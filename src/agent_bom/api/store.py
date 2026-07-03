@@ -11,7 +11,7 @@ import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS
@@ -28,7 +28,14 @@ class JobStore(Protocol):
     def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None: ...
     def delete(self, job_id: str, tenant_id: str | None = None) -> bool: ...
     def list_all(self, tenant_id: str | None = None) -> list[ScanJob]: ...
-    def list_summary(self, tenant_id: str | None = None) -> list[dict]: ...
+    def list_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]: ...
+    def count_summary(self, tenant_id: str | None = None) -> int: ...
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int: ...
 
 
@@ -85,7 +92,13 @@ class InMemoryJobStore:
                 return jobs
             return [job for job in jobs if job.tenant_id == tenant_id]
 
-    def list_summary(self, tenant_id: str | None = None) -> list[dict]:
+    def list_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
         with self._lock:
             rows = [
                 {
@@ -105,9 +118,20 @@ class InMemoryJobStore:
                 }
                 for j in self._jobs.values()
             ]
+            if tenant_id is not None:
+                rows = [row for row in rows if row["tenant_id"] == tenant_id]
+            rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
+            if offset:
+                rows = rows[offset:]
+            if limit is not None:
+                rows = rows[:limit]
+            return rows
+
+    def count_summary(self, tenant_id: str | None = None) -> int:
+        with self._lock:
             if tenant_id is None:
-                return rows
-            return [row for row in rows if row["tenant_id"] == tenant_id]
+                return len(self._jobs)
+            return sum(1 for job in self._jobs.values() if job.tenant_id == tenant_id)
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         with self._lock:
@@ -303,24 +327,27 @@ class SQLiteJobStore:
             self._shrink_connection_memory()
             self._close_thread_connection()
 
-    def list_summary(self, tenant_id: str | None = None) -> list[dict]:
+    def list_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
         try:
+            base_sql = """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id,
+                                 batch_id, parent_job_id, child_job_ids, target, target_index, target_count
+                          FROM jobs"""
+            params: list[Any] = []
             if tenant_id is None:
-                rows = self._conn.execute(
-                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id,
-                              batch_id, parent_job_id, child_job_ids, target, target_index, target_count
-                       FROM jobs
-                       ORDER BY created_at DESC"""
-                ).fetchall()
+                sql = f"{base_sql} ORDER BY created_at DESC"
             else:
-                rows = self._conn.execute(
-                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by, schedule_id,
-                              batch_id, parent_job_id, child_job_ids, target, target_index, target_count
-                       FROM jobs
-                       WHERE tenant_id = ?
-                       ORDER BY created_at DESC""",
-                    (tenant_id,),
-                ).fetchall()
+                sql = f"{base_sql} WHERE tenant_id = ? ORDER BY created_at DESC"
+                params.append(tenant_id)
+            if limit is not None:
+                sql = f"{sql} LIMIT ? OFFSET ?"
+                params.extend([int(limit), max(0, int(offset))])
+            rows = self._conn.execute(sql, params).fetchall()
             summaries: list[dict] = []
             for row in rows:
                 summaries.append(
@@ -341,6 +368,17 @@ class SQLiteJobStore:
                     }
                 )
             return summaries
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
+
+    def count_summary(self, tenant_id: str | None = None) -> int:
+        try:
+            if tenant_id is None:
+                row = self._conn.execute("SELECT COUNT(*) FROM jobs").fetchone()
+            else:
+                row = self._conn.execute("SELECT COUNT(*) FROM jobs WHERE tenant_id = ?", (tenant_id,)).fetchone()
+            return int(row[0]) if row else 0
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()

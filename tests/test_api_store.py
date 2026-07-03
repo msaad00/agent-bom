@@ -300,9 +300,11 @@ def test_sqlite_list_summary():
         db_path = f.name
     try:
         store = SQLiteJobStore(db_path=db_path)
-        store.put(_make_job("j1", triggered_by="api-user"))
-        summary = store.list_summary()
-        assert len(summary) == 1
+        for idx in range(3):
+            store.put(_make_job(f"j{idx}", triggered_by="api-user"))
+        assert store.count_summary() == 3
+        summary = store.list_summary(limit=2, offset=1)
+        assert len(summary) == 2
         assert summary[0]["job_id"] == "j1"
         assert summary[0]["triggered_by"] == "api-user"
         assert "status" in summary[0]

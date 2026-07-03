@@ -886,13 +886,21 @@ export const api = {
   },
 
   // ── Unified findings ──
-  listFindings: (filters?: { scanId?: string; severity?: string; sort?: string; limit?: number; offset?: number }) => {
+  listFindings: (filters?: {
+    scanId?: string;
+    severity?: string;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+    approximateTotal?: boolean;
+  }) => {
     const params = new URLSearchParams();
     if (filters?.scanId) params.set("scan_id", filters.scanId);
     if (filters?.severity) params.set("severity", filters.severity);
     if (filters?.sort) params.set("sort", filters.sort);
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     if (filters?.offset != null) params.set("offset", String(filters.offset));
+    if (filters?.approximateTotal) params.set("approximate_total", "true");
     const qs = params.toString();
     return get<FindingsResponse>(`/v1/findings${qs ? `?${qs}` : ""}`);
   },

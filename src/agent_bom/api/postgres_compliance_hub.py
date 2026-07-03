@@ -100,6 +100,11 @@ class PostgresComplianceHubStore:
                 "ON compliance_hub_findings(tenant_id, origin, cvss_score DESC, ordinal)"
             )
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
+            from agent_bom.api.finding_lifecycle import _CURRENT_LIFECYCLE_POSTGRES_DDL
+
+            conn.execute(_CURRENT_LIFECYCLE_POSTGRES_DDL)
+            _ensure_tenant_rls(conn, "hub_findings_current", "tenant_id")
+            _ensure_tenant_rls(conn, "hub_findings_current_observations", "tenant_id")
             conn.commit()
 
     @staticmethod
@@ -302,6 +307,8 @@ class PostgresComplianceHubStore:
                 "DELETE FROM compliance_hub_findings WHERE tenant_id = %s",
                 (tenant_id,),
             )
+            conn.execute("DELETE FROM hub_findings_current WHERE tenant_id = %s", (tenant_id,))
+            conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = %s", (tenant_id,))
             conn.commit()
         removed = cur.rowcount or 0
         if removed:
@@ -309,3 +316,146 @@ class PostgresComplianceHubStore:
 
             invalidate_tenant(tenant_id)
         return removed
+
+    def upsert_current_batch(
+        self,
+        tenant_id: str,
+        findings: list[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str = "",
+    ) -> None:
+        from agent_bom.api.finding_lifecycle import (
+            apply_observation_to_current,
+            lifecycle_metrics,
+            resolve_canonical_id,
+        )
+
+        clean = _redact_findings(findings)
+        if not clean:
+            return
+        now = _now_utc_iso()
+        with _tenant_connection(self._pool) as conn:
+            for payload in clean:
+                canonical = resolve_canonical_id(payload, source=source)
+                metrics = lifecycle_metrics(payload)
+                inserted = conn.execute(
+                    """
+                    INSERT INTO hub_findings_current_observations
+                        (tenant_id, canonical_id, observed_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    (tenant_id, canonical, observed_at),
+                ).rowcount
+                if not inserted:
+                    continue
+                existing_row = conn.execute(
+                    """
+                    SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                           cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                           updated_at, payload
+                    FROM hub_findings_current
+                    WHERE tenant_id = %s AND canonical_id = %s
+                    """,
+                    (tenant_id, canonical),
+                ).fetchone()
+                existing: dict[str, Any] | None
+                if existing_row is None:
+                    existing = None
+                else:
+                    raw_payload = existing_row[12]
+                    existing = {
+                        "canonical_id": existing_row[0],
+                        "first_seen": existing_row[1],
+                        "last_seen": existing_row[2],
+                        "status": existing_row[3],
+                        "severity": existing_row[4],
+                        "severity_rank": existing_row[5],
+                        "cvss_score": existing_row[6],
+                        "effective_reach_score": existing_row[7],
+                        "scan_count": existing_row[8],
+                        "resolved_at": existing_row[9],
+                        "reopened_at": existing_row[10],
+                        "updated_at": existing_row[11],
+                        "payload": raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload),
+                    }
+                merged = apply_observation_to_current(
+                    existing,
+                    canonical_id=canonical,
+                    observed_at=observed_at,
+                    metrics=metrics,
+                    payload=payload,
+                    updated_at=now,
+                )
+                conn.execute(
+                    """
+                    INSERT INTO hub_findings_current
+                        (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                         cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                         updated_at, payload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                    ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
+                        first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
+                        last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
+                        status = EXCLUDED.status,
+                        severity = EXCLUDED.severity,
+                        severity_rank = EXCLUDED.severity_rank,
+                        cvss_score = EXCLUDED.cvss_score,
+                        effective_reach_score = EXCLUDED.effective_reach_score,
+                        scan_count = EXCLUDED.scan_count,
+                        resolved_at = EXCLUDED.resolved_at,
+                        reopened_at = EXCLUDED.reopened_at,
+                        updated_at = EXCLUDED.updated_at,
+                        payload = EXCLUDED.payload
+                    """,
+                    (
+                        tenant_id,
+                        canonical,
+                        merged["first_seen"],
+                        merged["last_seen"],
+                        merged["status"],
+                        merged["severity"],
+                        merged["severity_rank"],
+                        merged["cvss_score"],
+                        merged["effective_reach_score"],
+                        merged["scan_count"],
+                        merged["resolved_at"],
+                        merged["reopened_at"],
+                        merged["updated_at"],
+                        json.dumps(merged["payload"], sort_keys=True),
+                    ),
+                )
+            conn.commit()
+
+    def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                """
+                SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                       cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                       updated_at, payload
+                FROM hub_findings_current
+                WHERE tenant_id = %s AND canonical_id = %s
+                """,
+                (tenant_id, canonical_id),
+            ).fetchone()
+        if row is None:
+            return None
+        raw_payload = row[12]
+        return {
+            "canonical_id": row[0],
+            "first_seen": row[1],
+            "last_seen": row[2],
+            "status": row[3],
+            "severity": row[4],
+            "severity_rank": row[5],
+            "cvss_score": row[6],
+            "effective_reach_score": row[7],
+            "scan_count": row[8],
+            "resolved_at": row[9],
+            "reopened_at": row[10],
+            "updated_at": row[11],
+            "payload": raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload),
+        }

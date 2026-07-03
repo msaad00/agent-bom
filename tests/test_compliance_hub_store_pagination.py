@@ -13,6 +13,8 @@ backend shares the same helpers and SQL shape but requires a live database
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from typing import Any
 
 import pytest
@@ -22,6 +24,8 @@ from agent_bom.api.compliance_hub_store import (
     SQLiteComplianceHubStore,
     compute_effective_reach_score,
 )
+
+_SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
 _SEEDED = 1200
 
@@ -132,6 +136,93 @@ def test_list_page_cvss_sort_is_descending(seeded_store) -> None:
     rows, _ = store.list_page(tenant, limit=15, offset=0, sort="cvss")
     scores = [float(r.get("cvss_score") or 0.0) for r in rows]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_list_page_severity_sort_is_rank_descending(seeded_store) -> None:
+    """Severity sort must order by band rank (critical>high>medium>low), not
+    the alphabetical text — the numeric ``severity_rank`` column preserves this
+    after the move off ``json_extract`` (#3192)."""
+    store, tenant = seeded_store
+    rows, _ = store.list_page(tenant, limit=40, offset=0, sort="severity")
+    ranks = [_SEVERITY_RANK.get(str(r.get("severity", "")).lower(), 0) for r in rows]
+    assert ranks == sorted(ranks, reverse=True), "severity sort must be rank DESC"
+    # The seed spreads all four bands; the top page must start at critical.
+    assert rows[0]["severity"] == "critical"
+
+
+def test_sqlite_severity_sort_uses_index(tmp_path) -> None:
+    """Filtered severity sort must ride the composite severity index, not a
+    temp-B-tree filesort over json_extract (#3192)."""
+    store = SQLiteComplianceHubStore(str(tmp_path / "hub.db"))
+    tenant = "tenant-plan"
+    store.add(tenant, [_finding(i) for i in range(200)])
+    plan = store._conn.execute(  # noqa: SLF001 - inspecting query plan in-test
+        "EXPLAIN QUERY PLAN SELECT payload FROM compliance_hub_findings "
+        "WHERE tenant_id = ? AND origin = ? ORDER BY severity_rank DESC, ordinal LIMIT 10 OFFSET 0",
+        (tenant, "bulk_ingest"),
+    ).fetchall()
+    text = " ".join(str(row[-1]) for row in plan)
+    assert "USING" in text and "INDEX" in text and "severity" in text, text
+    assert "USE TEMP B-TREE FOR ORDER BY" not in text, text
+    assert "SCAN compliance_hub_findings" not in text, text
+
+
+def test_sqlite_cvss_sort_uses_index(tmp_path) -> None:
+    """Filtered cvss sort must ride the composite cvss index, not a
+    temp-B-tree filesort over json_extract (#3192)."""
+    store = SQLiteComplianceHubStore(str(tmp_path / "hub.db"))
+    tenant = "tenant-plan"
+    store.add(tenant, [_finding(i) for i in range(200)])
+    plan = store._conn.execute(  # noqa: SLF001 - inspecting query plan in-test
+        "EXPLAIN QUERY PLAN SELECT payload FROM compliance_hub_findings "
+        "WHERE tenant_id = ? AND origin = ? ORDER BY cvss_score DESC, ordinal LIMIT 10 OFFSET 0",
+        (tenant, "bulk_ingest"),
+    ).fetchall()
+    text = " ".join(str(row[-1]) for row in plan)
+    assert "USING" in text and "INDEX" in text and "cvss" in text, text
+    assert "USE TEMP B-TREE FOR ORDER BY" not in text, text
+    assert "SCAN compliance_hub_findings" not in text, text
+
+
+def test_sqlite_migration_backfills_sort_columns(tmp_path) -> None:
+    """A pre-#3192 table (no severity/cvss columns) must be migrated in place:
+    the columns are added and backfilled from the stored payload so legacy rows
+    sort correctly without a rewrite."""
+    db_path = str(tmp_path / "legacy.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE compliance_hub_findings (
+            tenant_id TEXT NOT NULL,
+            finding_id TEXT NOT NULL,
+            ingested_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            applicable_frameworks_csv TEXT NOT NULL DEFAULT '',
+            payload TEXT NOT NULL,
+            ordinal INTEGER NOT NULL,
+            PRIMARY KEY (tenant_id, finding_id, ordinal)
+        )
+        """
+    )
+    payload = {"id": "legacy-1", "severity": "critical", "cvss_score": 9.8, "origin": "bulk_ingest"}
+    conn.execute(
+        "INSERT INTO compliance_hub_findings (tenant_id, finding_id, ingested_at, source, payload, ordinal) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        ("tenant-legacy", "legacy-1", "2026-01-01T00:00:00Z", "sarif", json.dumps(payload), 1),
+    )
+    conn.commit()
+    conn.close()
+
+    # Re-opening through the store must migrate + backfill the new columns.
+    store = SQLiteComplianceHubStore(db_path)
+    row = store._conn.execute(  # noqa: SLF001 - verifying backfilled columns
+        "SELECT severity, severity_rank, cvss_score FROM compliance_hub_findings WHERE finding_id = ?",
+        ("legacy-1",),
+    ).fetchone()
+    assert row == ("critical", 4, 9.8)
+
+    rows, _ = store.list_page("tenant-legacy", limit=5, sort="severity")
+    assert rows[0]["id"] == "legacy-1"
 
 
 def test_sqlite_effective_reach_sort_uses_index(tmp_path) -> None:

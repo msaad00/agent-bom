@@ -13,10 +13,12 @@ from typing import Any
 
 from agent_bom.api.compliance_hub_store import (
     FindingPage,
+    _cvss_value,
     _frameworks_csv,
     _now_utc_iso,
     _postgres_order_clause,
     _redact_findings,
+    _severity_rank,
     compute_effective_reach_score,
 )
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
@@ -45,6 +47,9 @@ class PostgresComplianceHubStore:
                     ordinal BIGSERIAL NOT NULL,
                     effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0,
                     origin TEXT NOT NULL DEFAULT '',
+                    severity TEXT NOT NULL DEFAULT '',
+                    severity_rank INTEGER NOT NULL DEFAULT 0,
+                    cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0,
                     PRIMARY KEY (tenant_id, finding_id, ordinal)
                 )
                 """
@@ -55,6 +60,21 @@ class PostgresComplianceHubStore:
             conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT ''")
             # Backfill origin from the stored payload for pre-migration rows.
             conn.execute("UPDATE compliance_hub_findings SET origin = COALESCE(payload->>'origin', '') WHERE origin = ''")
+            # Materialise severity/cvss sort keys so filtered severity/cvss
+            # sorts ride a composite index rather than a payload-expression
+            # sort (#3192). Backfill extracts from payload for legacy rows.
+            conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT ''")
+            conn.execute("UPDATE compliance_hub_findings SET severity = COALESCE(payload->>'severity', '') WHERE severity = ''")
+            conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS severity_rank INTEGER NOT NULL DEFAULT 0")
+            conn.execute(
+                "UPDATE compliance_hub_findings SET severity_rank = CASE LOWER(COALESCE(payload->>'severity', '')) "
+                "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
+                "ELSE 0 END WHERE severity_rank = 0"
+            )
+            conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0")
+            conn.execute(
+                "UPDATE compliance_hub_findings SET cvss_score = COALESCE((payload->>'cvss_score')::float8, 0) WHERE cvss_score = 0"
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
             conn.execute("DROP INDEX IF EXISTS idx_hub_findings_tenant_reach")
             # Backs the default effective_reach sort scoped by origin: an
@@ -66,6 +86,17 @@ class PostgresComplianceHubStore:
                 "ON compliance_hub_findings(tenant_id, origin, effective_reach_score DESC, ordinal)"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin ON compliance_hub_findings(tenant_id, origin)")
+            # Back the filtered severity/cvss sorts with ordered composite
+            # indexes so ORDER BY is an index range scan, not a sort of the
+            # whole tenant — severity_rank preserves band ordering (#3192).
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_severity "
+                "ON compliance_hub_findings(tenant_id, origin, severity_rank DESC, ordinal)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_cvss "
+                "ON compliance_hub_findings(tenant_id, origin, cvss_score DESC, ordinal)"
+            )
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
             conn.commit()
 
@@ -79,8 +110,9 @@ class PostgresComplianceHubStore:
                 conn.execute(
                     """
                     INSERT INTO compliance_hub_findings
-                        (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload, effective_reach_score, origin)
-                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                        (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
+                         effective_reach_score, origin, severity, severity_rank, cvss_score)
+                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
                     """,
                     (
                         tenant_id,
@@ -91,6 +123,9 @@ class PostgresComplianceHubStore:
                         json.dumps(payload, sort_keys=True),
                         compute_effective_reach_score(payload),
                         str(payload.get("origin") or ""),
+                        str(payload.get("severity") or ""),
+                        _severity_rank(payload),
+                        _cvss_value(payload),
                     ),
                 )
             conn.commit()

@@ -869,12 +869,14 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
     Returns the same structure as GET /v1/compliance/narrative but scoped
     to a single framework's controls.
     """
+    from agent_bom.compliance_coverage import normalize_framework_slug
     from agent_bom.output.compliance_narrative import (
         ALL_FRAMEWORK_SLUGS,
         generate_compliance_narrative,
     )
 
-    if framework.lower() not in ALL_FRAMEWORK_SLUGS:
+    canonical = normalize_framework_slug(framework)
+    if canonical not in ALL_FRAMEWORK_SLUGS:
         raise HTTPException(
             status_code=400,
             detail=(f"Unknown framework '{framework}'. Supported: {', '.join(ALL_FRAMEWORK_SLUGS)}"),
@@ -890,7 +892,7 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
             "generated_at": "",
         }
 
-    narrative: ComplianceNarrative = generate_compliance_narrative(report, framework=framework.lower())
+    narrative: ComplianceNarrative = generate_compliance_narrative(report, framework=canonical)
     return _narrative_to_dict(narrative)
 
 
@@ -998,11 +1000,12 @@ async def get_compliance_by_framework(request: Request, framework: str) -> dict:
 
     full = await get_compliance(request)
 
-    from agent_bom.compliance_coverage import framework_output_key_by_slug
+    from agent_bom.compliance_coverage import framework_output_key_by_slug, normalize_framework_slug
 
     framework_map = framework_output_key_by_slug()
 
-    key = framework_map.get(framework.lower())
+    canonical = normalize_framework_slug(framework)
+    key = framework_map.get(canonical)
     if not key:
         supported = [*framework_map.keys(), "aisvs"]
         raise HTTPException(
@@ -1822,6 +1825,7 @@ async def ingest_compliance_findings(request: Request) -> dict:
     from pathlib import Path
 
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.compliance_coverage import normalize_framework_slug
     from agent_bom.compliance_hub_ingest import ingest_findings
 
     body = await request.json()
@@ -1857,6 +1861,12 @@ async def ingest_compliance_findings(request: Request) -> dict:
         )
 
     payloads = [f.to_dict() for f in findings]
+    for payload in payloads:
+        frameworks = payload.get("applicable_frameworks")
+        if isinstance(frameworks, list):
+            payload["applicable_frameworks"] = [
+                normalize_framework_slug(str(slug)) for slug in frameworks if slug
+            ]
     tenant_id = _tenant_id(request)
     store = get_compliance_hub_store()
     new_total = store.add(tenant_id, payloads)
@@ -1905,7 +1915,7 @@ async def get_hub_posture(request: Request) -> dict:
     single posture story across every entry point.
     """
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
-    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, normalize_framework_slug
 
     tenant_id = _tenant_id(request)
     hub_findings = get_compliance_hub_store().list(tenant_id)
@@ -1937,7 +1947,8 @@ async def get_hub_posture(request: Request) -> dict:
         sev = (f.get("severity") or "unknown").lower()
         hub_severity_counts[sev] = hub_severity_counts.get(sev, 0) + 1
         for slug in f.get("applicable_frameworks") or []:
-            hub_framework_counts[slug] = hub_framework_counts.get(slug, 0) + 1
+            canonical = normalize_framework_slug(str(slug))
+            hub_framework_counts[canonical] = hub_framework_counts.get(canonical, 0) + 1
 
     combined: dict[str, int] = {}
     for slug, count in native_framework_counts.items():

@@ -739,3 +739,38 @@ def test_pilot_and_production_values_narrow_ingress_to_controller_pods_and_ports
         assert source["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"] == "ingress-nginx"
         assert source["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == "controller"
         assert ports == {3000, 8422}
+
+
+def test_helm_migrations_defaults():
+    """Postgres migrations hook ships enabled for control-plane Postgres profiles."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    migrations = doc["controlPlane"]["migrations"]
+    assert migrations["enabled"] is True
+    assert migrations["postgres"]["enabled"] is True
+    assert migrations["backoffLimit"] == 0
+    assert migrations["hooks"] == "pre-upgrade,pre-install"
+    assert migrations["alembicConfig"] == "deploy/supabase/postgres/alembic.ini"
+
+
+def test_alembic_migration_hook_template():
+    """Postgres migrations should run as a fail-loud Helm pre-upgrade hook."""
+    template = (HELM_DIR / "templates" / "controlplane-alembic-migration-job.yaml").read_text()
+    assert "controlPlane.migrations.postgres.enabled" in template
+    assert 'helm.sh/hook: {{ $migrations.hooks | quote }}' in template
+    assert "alembic" in template
+    assert "upgrade" in template
+    assert "head" in template
+    assert "backoffLimit: {{ $migrations.backoffLimit }}" in template
+
+
+def test_scanner_only_cronjob_warning_annotation():
+    """Scanner-only renders should surface an install-time warning annotation."""
+    template = (HELM_DIR / "templates" / "cronjob.yaml").read_text()
+    assert "agent-bom.io/scanner-only-warning" in template
+    assert "controlPlane.enabled=true" in template
+
+
+def test_sqlite_pilot_disables_postgres_migration_hook():
+    """SQLite pilot should not render the Alembic migration hook."""
+    doc = yaml.safe_load((HELM_DIR / "examples" / "eks-control-plane-sqlite-pilot-values.yaml").read_text())
+    assert doc["controlPlane"]["migrations"]["postgres"]["enabled"] is False

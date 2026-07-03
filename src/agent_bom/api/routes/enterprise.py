@@ -995,8 +995,13 @@ async def delete_key(request: Request, key_id: str) -> None:
 @router.get("/v1/auth/saml/metadata", tags=["enterprise"])
 async def saml_metadata() -> PlainTextResponse:
     """Return SP metadata XML for enterprise IdP configuration."""
-    from agent_bom.api.saml import SAMLConfig, SAMLError
+    from agent_bom.api.saml import SAML_INSTALL_HINT, SAMLConfig, SAMLError, saml_runtime_available
 
+    if not saml_runtime_available():
+        raise HTTPException(
+            status_code=503,
+            detail=f"SAML SSO requires the optional [saml] extra. Install with: {SAML_INSTALL_HINT}",
+        )
     try:
         metadata = SAMLConfig.from_env().metadata_xml()
     except SAMLError as exc:
@@ -1020,8 +1025,13 @@ async def saml_login(req: SAMLLoginRequest) -> dict:
     """Verify a SAML assertion and return a short-lived API key."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import Role, create_api_key, get_key_store
-    from agent_bom.api.saml import SAMLConfig, SAMLError
+    from agent_bom.api.saml import SAML_INSTALL_HINT, SAMLConfig, SAMLError, saml_runtime_available
 
+    if not saml_runtime_available():
+        raise HTTPException(
+            status_code=503,
+            detail=f"SAML SSO requires the optional [saml] extra. Install with: {SAML_INSTALL_HINT}",
+        )
     try:
         _consume_saml_relay_state(req.relay_state)
         cfg = SAMLConfig.from_env()

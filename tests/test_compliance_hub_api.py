@@ -255,6 +255,26 @@ def test_hub_posture_with_no_findings_returns_zeros():
     assert body["framework_counts"]["hub"] == {}
 
 
+def test_hub_posture_normalizes_pci_dss_framework_slug():
+    """Regression (#3439): hub ingest/posture must count pci_dss under pci-dss."""
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    get_compliance_hub_store().add(
+        "tenant-alpha",
+        [
+            {
+                "id": "pci-finding-1",
+                "severity": "high",
+                "applicable_frameworks": ["pci_dss"],
+            }
+        ],
+    )
+    body = _client().get("/v1/compliance/hub/posture").json()
+    hub_counts = body["framework_counts"]["hub"]
+    assert hub_counts.get("pci-dss") == 1
+    assert "pci_dss" not in hub_counts
+
+
 def test_hub_posture_native_counts_aggregate_all_15_frameworks():
     """Regression: posture endpoint must aggregate every framework in
     TAG_MAPPED_FRAMEWORKS, not just an inline subset. Previously the

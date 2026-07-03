@@ -38,6 +38,19 @@ class SAMLError(Exception):
     """Raised when SAML configuration or assertion verification fails."""
 
 
+SAML_INSTALL_HINT = "pip install 'agent-bom[saml]'"
+
+
+def saml_runtime_available() -> bool:
+    """Return True when the optional ``[saml]`` extra (python3-saml) is installed."""
+    try:
+        import onelogin.saml2.auth  # noqa: F401
+        import onelogin.saml2.settings  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
 
@@ -50,11 +63,8 @@ def _optional_env_flag(name: str) -> bool | None:
 
 
 def _check_saml_support() -> None:
-    try:
-        import onelogin.saml2.auth  # noqa: F401
-        import onelogin.saml2.settings  # noqa: F401
-    except ImportError as exc:
-        raise SAMLError("SAML support requires python3-saml: pip install 'agent-bom[saml]'") from exc
+    if not saml_runtime_available():
+        raise SAMLError(f"SAML SSO requires the optional [saml] extra. Install with: {SAML_INSTALL_HINT}")
 
 
 def _normalize_saml_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
@@ -271,19 +281,32 @@ class SAMLConfig:
 def describe_saml_posture() -> dict[str, object]:
     """Return operator-facing SAML posture for auth policy surfaces."""
     config = SAMLConfig.from_env()
-    if not config.enabled:
+    common: dict[str, object] = {
+        "supported": True,
+        "runtime_available": saml_runtime_available(),
+        "install_hint": SAML_INSTALL_HINT,
+        "metadata_endpoint": "/v1/auth/saml/metadata",
+        "role_attribute": config.role_attribute,
+        "tenant_attribute": config.tenant_attribute,
+        "require_role_attribute": config.require_role_attribute,
+        "require_tenant_attribute": config.require_tenant_attribute,
+        "allow_default_tenant": config.allow_default_tenant,
+        "session_ttl_seconds": config.session_ttl_seconds,
+    }
+    if not common["runtime_available"]:
         return {
-            "supported": True,
+            **common,
             "configured": False,
-            "metadata_endpoint": "/v1/auth/saml/metadata",
             "acs_path": None,
             "idp_host": None,
-            "role_attribute": config.role_attribute,
-            "tenant_attribute": config.tenant_attribute,
-            "require_role_attribute": config.require_role_attribute,
-            "require_tenant_attribute": config.require_tenant_attribute,
-            "allow_default_tenant": config.allow_default_tenant,
-            "session_ttl_seconds": config.session_ttl_seconds,
+            "message": f"SAML SSO requires the optional [saml] extra. Install with: {SAML_INSTALL_HINT}",
+        }
+    if not config.enabled:
+        return {
+            **common,
+            "configured": False,
+            "acs_path": None,
+            "idp_host": None,
             "message": (
                 "SAML assertion exchange is not configured. When enabled, agent-bom verifies the IdP assertion and mints "
                 "a short-lived session API key for the UI."
@@ -292,16 +315,9 @@ def describe_saml_posture() -> dict[str, object]:
 
     acs = urlparse(config.sp_acs_url)
     return {
-        "supported": True,
+        **common,
         "configured": True,
-        "metadata_endpoint": "/v1/auth/saml/metadata",
         "acs_path": acs.path or "/v1/auth/saml/login",
         "idp_host": urlparse(config.idp_sso_url).netloc or config.idp_sso_url,
-        "role_attribute": config.role_attribute,
-        "tenant_attribute": config.tenant_attribute,
-        "require_role_attribute": config.require_role_attribute,
-        "require_tenant_attribute": config.require_tenant_attribute,
-        "allow_default_tenant": config.allow_default_tenant,
-        "session_ttl_seconds": config.session_ttl_seconds,
         "message": "SAML assertion exchange is enabled and mints short-lived session API keys after IdP verification.",
     }

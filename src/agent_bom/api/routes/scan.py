@@ -583,6 +583,7 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
 
     result = job.result if isinstance(job.result, dict) else {}
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else None
+    aggregation = result.get("aggregation") if isinstance(result.get("aggregation"), dict) else None
     scan_run = result.get("scan_run") if isinstance(result.get("scan_run"), dict) else None
     generated_at = result.get("generated_at") or (scan_run or {}).get("generated_at")
     scan_timestamp = result.get("scan_timestamp") or generated_at
@@ -603,6 +604,7 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
         "completed_at": job.completed_at,
         "request": request_payload if isinstance(request_payload, dict) else {},
         "summary": summary,
+        "aggregation": aggregation,
         "scan_timestamp": scan_timestamp,
         "generated_at": generated_at,
         "scan_run": scan_run,
@@ -1116,14 +1118,11 @@ def _finding_sort_key(row: dict[str, Any], sort: str) -> tuple[float, float, flo
     with CVSS + severity-rank tiebreakers so the order is fully
     deterministic for a given input.
     """
+    from agent_bom.api.compliance_hub_store import compute_effective_reach_score
+
     sev_rank = {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(str(row.get("severity", "")).lower(), 0)
     cvss = float(row.get("cvss_score") or 0.0)
-    reach = row.get("effective_reach_score")
-    if reach is None:
-        breakdown = row.get("effective_reach") or {}
-        if isinstance(breakdown, dict):
-            reach = breakdown.get("composite")
-    reach_val = float(reach or 0.0)
+    reach_val = compute_effective_reach_score(row)
 
     if sort == "cvss":
         primary = cvss
@@ -1153,28 +1152,78 @@ async def list_findings(
     visibility and agent breadth.  Pass ``?sort=cvss`` for the legacy
     CVSS-only ordering, or ``?sort=severity`` for severity-band ordering.
     """
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
     tenant_id = _tenant_id(request)
-    findings: list[dict[str, Any]] = []
-    for job in _completed_jobs_for_tenant(tenant_id):
-        if scan_id and job.job_id != scan_id:
-            continue
-        findings.extend(_iter_scan_findings(job))
-    bulk_findings = _bulk_ingested_findings_for_tenant(tenant_id)
-    if scan_id:
-        bulk_findings = [item for item in bulk_findings if str(item.get("scan_id") or "") == scan_id]
-    findings.extend(bulk_findings)
-
-    if severity:
-        normalized = severity.lower()
-        findings = [item for item in findings if str(item.get("severity", "")).lower() == normalized]
-
     sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
     if sort_key not in _ALLOWED_FINDING_SORTS:
         sort_key = "effective_reach"
-    findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
 
-    total = len(findings)
-    page = _redact_finding_page(findings[offset : offset + limit])
+    # Scan-job findings live in memory and are typically small; gather + sort
+    # them directly. The bulk-ingested hub findings can reach millions of rows,
+    # so those are paginated in the store (SQL LIMIT/OFFSET + ORDER BY) rather
+    # than materialised in Python — this is the O(n) read-path fix (PR1).
+    scan_findings: list[dict[str, Any]] = []
+    for job in _completed_jobs_for_tenant(tenant_id):
+        if scan_id and job.job_id != scan_id:
+            continue
+        # Batch parents aggregate their children's evidence; skip them in the
+        # global roll-up so findings are not double-counted against the children
+        # that already contribute. When a caller targets the parent by scan_id
+        # they get the aggregated union instead.
+        if job.child_job_ids and job.job_id != scan_id:
+            continue
+        scan_findings.extend(_iter_scan_findings(job))
+    if severity:
+        normalized = severity.lower()
+        scan_findings = [item for item in scan_findings if str(item.get("severity", "")).lower() == normalized]
+    scan_findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
+
+    store = get_compliance_hub_store()
+    list_page = getattr(store, "list_page", None)
+    if callable(list_page):
+        if scan_findings:
+            # Bounded merge: pull at most (offset + limit) top bulk rows, merge
+            # with the in-memory scan findings, then slice the requested page.
+            window = offset + limit
+            bulk_page, bulk_total = list_page(
+                tenant_id,
+                limit=window,
+                offset=0,
+                sort=sort_key,
+                severity=severity,
+                scan_id=scan_id,
+                origin="bulk_ingest",
+            )
+            combined = scan_findings + bulk_page
+            combined.sort(key=lambda row: _finding_sort_key(row, sort_key))
+            total = len(scan_findings) + bulk_total
+            page_rows = combined[offset : offset + limit]
+        else:
+            page_rows, bulk_total = list_page(
+                tenant_id,
+                limit=limit,
+                offset=offset,
+                sort=sort_key,
+                severity=severity,
+                scan_id=scan_id,
+                origin="bulk_ingest",
+            )
+            total = bulk_total
+    else:
+        # Backward-compatible fallback for stores without pagination support.
+        bulk_findings = _bulk_ingested_findings_for_tenant(tenant_id)
+        if scan_id:
+            bulk_findings = [item for item in bulk_findings if str(item.get("scan_id") or "") == scan_id]
+        if severity:
+            normalized = severity.lower()
+            bulk_findings = [item for item in bulk_findings if str(item.get("severity", "")).lower() == normalized]
+        combined = scan_findings + bulk_findings
+        combined.sort(key=lambda row: _finding_sort_key(row, sort_key))
+        total = len(combined)
+        page_rows = combined[offset : offset + limit]
+
+    page = _redact_finding_page(page_rows)
     return {
         # emit schema_version so consumers can pin a
         # contract independent of API path.
@@ -1233,6 +1282,10 @@ async def list_inventory(
     agents: list[dict[str, Any]] = []
     jobs: list[dict[str, str]] = []
     for job in _completed_jobs_for_tenant(tenant_id):
+        # Skip batch parents: their aggregated agents duplicate the children
+        # that already contribute to the inventory roll-up.
+        if job.child_job_ids:
+            continue
         result = job.result or {}
         job_agents = [item for item in result.get("agents", []) or [] if isinstance(item, dict)]
         if not job_agents:

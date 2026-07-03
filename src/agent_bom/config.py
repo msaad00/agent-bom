@@ -246,6 +246,22 @@ DSPM_DB_MAX_CELL_CHARS = _int("AGENT_BOM_DSPM_DB_MAX_CELL_CHARS", 4096)
 LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 
 
+# ── Graph Retention ───────────────────────────────────────────────────────
+# Age-based graph snapshot retention for self-hosted graph stores. Per-tenant
+# overrides resolve from ``AGENT_BOM_GRAPH_RETENTION_OVERRIDES`` (JSON map) and
+# the control-plane tenant retention store before this global default.
+
+GRAPH_RETENTION_DAYS = _int("AGENT_BOM_GRAPH_RETENTION_DAYS", 180)
+
+
+# ── Analytics Retention ───────────────────────────────────────────────────
+# Caps local analytics mirrors and runtime observation tables on write. ClickHouse
+# analytics tables carry their own TTL clauses; this knob bounds SQLite/Postgres
+# growth. ``<= 0`` disables pruning.
+
+ANALYTICS_MAX_EVENTS = _int("AGENT_BOM_ANALYTICS_MAX_EVENTS", 50_000)
+
+
 # ── Graph Backend Selection ───────────────────────────────────────────────
 # SQLite is the local default. Postgres remains selected by AGENT_BOM_POSTGRES_URL.
 # Neptune is experimental and requires explicit opt-in plus endpoint config.

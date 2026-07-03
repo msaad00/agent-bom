@@ -24,17 +24,16 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any, Protocol
 
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.graph.severity import severity_policy_rank
 
 # Defined here (module scope) so ``list`` resolves to the builtin: the store
 # classes below define a ``list`` method that would otherwise shadow it in
 # their ``list_page`` return annotations.
-FindingPage = tuple[list[dict[str, Any]], int]
-
-_SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+FindingPage = tuple[list[dict[str, Any]], int | None]
 
 # Sort keys supported by ``list_page``. ``effective_reach`` is the default and
 # the only one backed by a dedicated index/column; ``cvss`` and ``severity``
@@ -43,7 +42,7 @@ _LIST_PAGE_SORTS = ("effective_reach", "cvss", "severity", "ordinal")
 
 
 def _severity_rank(payload: dict[str, Any]) -> int:
-    return _SEVERITY_RANK.get(str(payload.get("severity", "")).lower(), 0)
+    return severity_policy_rank(str(payload.get("severity", "")))
 
 
 def _cvss_value(payload: dict[str, Any]) -> float:
@@ -91,6 +90,42 @@ def _page_sort_key(sort: str) -> Callable[[dict[str, Any]], float]:
     """
     normalized = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
     return lambda row: -_page_signal(row, normalized)
+
+
+def _filter_hub_rows(
+    rows: list[dict[str, Any]],
+    *,
+    severity: str | None,
+    scan_id: str | None,
+    origin: str | None,
+) -> list[dict[str, Any]]:
+    if origin is not None:
+        rows = [r for r in rows if r.get("origin") == origin]
+    if severity is not None:
+        sev = severity.lower()
+        rows = [r for r in rows if str(r.get("severity", "")).lower() == sev]
+    if scan_id is not None:
+        rows = [r for r in rows if str(r.get("scan_id") or "") == scan_id]
+    return rows
+
+
+def _severity_breakdown_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str, int]:
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+    for row in rows:
+        sev = str(row.get("severity") or "unknown").lower()
+        counts[sev] = counts.get(sev, 0) + 1
+    return counts
+
+
+def _framework_slug_counts_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str, int]:
+    from agent_bom.compliance_coverage import normalize_framework_slug
+
+    counts: dict[str, int] = {}
+    for row in rows:
+        for slug in row.get("applicable_frameworks") or []:
+            canonical = normalize_framework_slug(str(slug))
+            counts[canonical] = counts.get(canonical, 0) + 1
+    return counts
 
 
 def _redact_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -144,6 +179,7 @@ class ComplianceHubStore(Protocol):
         severity: str | None = None,
         scan_id: str | None = None,
         origin: str | None = None,
+        include_total: bool = True,
     ) -> FindingPage:
         """Return a single page of findings plus the matching total.
 
@@ -152,12 +188,22 @@ class ComplianceHubStore(Protocol):
         the read path stays sub-linear at million-row scale. ``sort`` is one
         of ``effective_reach`` (default, indexed), ``cvss``, ``severity`` or
         ``ordinal`` (ingest order). Returns ``(rows, total)`` where ``total``
-        counts all findings matching the filters, not just the page.
+        counts all findings matching the filters, not just the page. When
+        ``include_total`` is false the backend skips ``COUNT(*)`` and
+        returns ``None`` for ``total``.
         """
         ...
 
     def count(self, tenant_id: str) -> int:
         """Return the count of findings for a tenant."""
+        ...
+
+    def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
+        """Return per-severity counts for hub findings without loading payloads."""
+        ...
+
+    def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
+        """Return per-framework slug counts from denormalised CSV columns."""
         ...
 
     def clear(self, tenant_id: str) -> int:
@@ -180,7 +226,12 @@ class InMemoryComplianceHubStore:
         with self._lock:
             bucket = self._by_tenant.setdefault(tenant_id, [])
             bucket.extend(clean)
-            return len(bucket)
+            total = len(bucket)
+        if clean:
+            from agent_bom.api.findings_count_cache import invalidate_tenant
+
+            invalidate_tenant(tenant_id)
+        return total
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
         with self._lock:
@@ -196,17 +247,12 @@ class InMemoryComplianceHubStore:
         severity: str | None = None,
         scan_id: str | None = None,
         origin: str | None = None,
+        include_total: bool = True,
     ) -> FindingPage:
         with self._lock:
             rows = list(self._by_tenant.get(tenant_id, []))
-        if origin is not None:
-            rows = [r for r in rows if r.get("origin") == origin]
-        if severity is not None:
-            sev = severity.lower()
-            rows = [r for r in rows if str(r.get("severity", "")).lower() == sev]
-        if scan_id is not None:
-            rows = [r for r in rows if str(r.get("scan_id") or "") == scan_id]
-        total = len(rows)
+        rows = _filter_hub_rows(rows, severity=severity, scan_id=scan_id, origin=origin)
+        total = len(rows) if include_total else None
         if sort != "ordinal":
             rows.sort(key=_page_sort_key(sort))
         if offset:
@@ -214,6 +260,16 @@ class InMemoryComplianceHubStore:
         if limit >= 0:
             rows = rows[:limit]
         return rows, total
+
+    def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
+        with self._lock:
+            rows = list(self._by_tenant.get(tenant_id, []))
+        return _severity_breakdown_from_rows(rows)
+
+    def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
+        with self._lock:
+            rows = list(self._by_tenant.get(tenant_id, []))
+        return _framework_slug_counts_from_rows(rows)
 
     def count(self, tenant_id: str) -> int:
         with self._lock:
@@ -223,7 +279,11 @@ class InMemoryComplianceHubStore:
         with self._lock:
             removed = len(self._by_tenant.get(tenant_id, []))
             self._by_tenant[tenant_id] = []
-            return removed
+        if removed:
+            from agent_bom.api.findings_count_cache import invalidate_tenant
+
+            invalidate_tenant(tenant_id)
+        return removed
 
 
 # ─── SQLite backend ─────────────────────────────────────────────────────────
@@ -391,6 +451,10 @@ class SQLiteComplianceHubStore:
             rows,
         )
         self._conn.commit()
+        if rows:
+            from agent_bom.api.findings_count_cache import invalidate_tenant
+
+            invalidate_tenant(tenant_id)
         return self.count(tenant_id)
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
@@ -410,6 +474,7 @@ class SQLiteComplianceHubStore:
         severity: str | None = None,
         scan_id: str | None = None,
         origin: str | None = None,
+        include_total: bool = True,
     ) -> FindingPage:
         where = ["tenant_id = ?"]
         params: list[Any] = [tenant_id]
@@ -424,13 +489,17 @@ class SQLiteComplianceHubStore:
             params.append(scan_id)
         where_sql = " AND ".join(where)
 
-        # ``where_sql`` is assembled only from fixed predicates above; all caller values
-        # stay in ``params`` as sqlite bindings.
-        total_row = self._conn.execute(
-            f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",  # nosec B608
-            params,
-        ).fetchone()
-        total = int(total_row[0]) if total_row else 0
+        total: int | None
+        if include_total:
+            # ``where_sql`` is assembled only from fixed predicates above; all caller values
+            # stay in ``params`` as sqlite bindings.
+            total_row = self._conn.execute(
+                f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",  # nosec B608
+                params,
+            ).fetchone()
+            total = int(total_row[0]) if total_row else 0
+        else:
+            total = None
 
         order_sql = _sqlite_order_clause(sort)
         page_params = [*params, int(limit), int(offset)]
@@ -440,6 +509,41 @@ class SQLiteComplianceHubStore:
             page_params,
         ).fetchall()
         return [json.loads(row[0]) for row in rows], total
+
+    def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
+        rows = self._conn.execute(
+            """
+            SELECT LOWER(COALESCE(json_extract(payload, '$.severity'), 'unknown')) AS sev, COUNT(*)
+            FROM compliance_hub_findings
+            WHERE tenant_id = ?
+            GROUP BY sev
+            """,
+            (tenant_id,),
+        ).fetchall()
+        counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+        for sev, count in rows:
+            key = str(sev or "unknown").lower()
+            counts[key] = counts.get(key, 0) + int(count)
+        return counts
+
+    def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
+        from agent_bom.compliance_coverage import normalize_framework_slug
+
+        rows = self._conn.execute(
+            "SELECT applicable_frameworks_csv FROM compliance_hub_findings WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchall()
+        counts: dict[str, int] = {}
+        for (csv_value,) in rows:
+            if not csv_value:
+                continue
+            for slug in str(csv_value).split(","):
+                slug = slug.strip()
+                if not slug:
+                    continue
+                canonical = normalize_framework_slug(slug)
+                counts[canonical] = counts.get(canonical, 0) + 1
+        return counts
 
     def count(self, tenant_id: str) -> int:
         row = self._conn.execute(
@@ -454,7 +558,12 @@ class SQLiteComplianceHubStore:
             (tenant_id,),
         )
         self._conn.commit()
-        return cur.rowcount or 0
+        removed = cur.rowcount or 0
+        if removed:
+            from agent_bom.api.findings_count_cache import invalidate_tenant
+
+            invalidate_tenant(tenant_id)
+        return removed
 
 
 # ─── Module-level access (set/reset wired in stores.py) ──────────────────────

@@ -185,7 +185,7 @@ def test_governance_findings_reach_to_findings() -> None:
     findings = report.to_findings()
     gov = [f for f in findings if f.source == FindingSource.CLOUD_CIS and "governance" in f.title.lower()]
     assert len(gov) == 1
-    assert gov[0].severity == "HIGH"
+    assert gov[0].severity == "high"
 
 
 # ── Activity: summary onto account, NO per-query explosion ─────────────────

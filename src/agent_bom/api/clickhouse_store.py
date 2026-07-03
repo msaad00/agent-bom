@@ -655,7 +655,10 @@ class BufferedAnalyticsStore:
     """Buffered wrapper for ClickHouse analytics writes.
 
     Writes are queued and flushed from a background thread so scan and runtime
-    paths do not block on ClickHouse round-trips.
+    paths do not block on ClickHouse round-trips. ClickHouse tables already
+    carry server-side TTL clauses (see ``agent_bom.cloud.clickhouse``); local
+    SQLite/Postgres mirrors and runtime observations are capped separately via
+    ``AGENT_BOM_ANALYTICS_MAX_EVENTS``.
     """
 
     def __init__(self, store: ClickHouseAnalyticsStore, *, max_batch: int = 200, flush_interval: float = 1.0) -> None:

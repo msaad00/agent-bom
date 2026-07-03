@@ -139,6 +139,10 @@ inputs:
     description: 'For scan-type=skills, warn without failing if any scanned file reaches this handling verdict or worse (review, high_risk, blocked).'
     required: false
     default: ''
+  skills-ci:
+    description: 'For scan-type=skills, enable the CI gate: exit non-zero on suspicious or malicious skills without authoring a policy file (equivalent to fail-on-verdict=suspicious). An explicit fail-on-verdict input takes precedence. Ignored for other scan types.'
+    required: false
+    default: 'false'
   gpu-scan:
     description: 'Enable GPU infrastructure scanning (NVIDIA NIM/CUDA containers, DCGM).'
     required: false
@@ -266,6 +270,7 @@ runs:
         INPUT_WARN_ON_VERDICT: ${{ inputs.warn-on-verdict }}
         INPUT_FAIL_ON_REVIEW_VERDICT: ${{ inputs.fail-on-review-verdict }}
         INPUT_WARN_ON_REVIEW_VERDICT: ${{ inputs.warn-on-review-verdict }}
+        INPUT_SKILLS_CI: ${{ inputs.skills-ci }}
         INPUT_GPU_SCAN: ${{ inputs.gpu-scan }}
         INPUT_EXCLUDE_UNFIXABLE: ${{ inputs.exclude-unfixable }}
       run: |
@@ -550,6 +555,19 @@ runs:
         if [ -n "$INPUT_WARN_ON_REVIEW_VERDICT" ]; then
           validate_skill_review_choice "$INPUT_WARN_ON_REVIEW_VERDICT" "warn-on-review-verdict"
           add_skill_arg_or_warn "--warn-on-review-verdict" "$INPUT_WARN_ON_REVIEW_VERDICT"
+        fi
+
+        # Skills CI gate: exit non-zero on suspicious/malicious without a policy
+        # file. An explicit fail-on-verdict already covers this, so only add --ci
+        # when fail-on-verdict was not supplied.
+        if [ "$INPUT_SKILLS_CI" = "true" ]; then
+          if [ "$INPUT_SCAN_TYPE" = "skills" ]; then
+            if [ -z "$INPUT_FAIL_ON_VERDICT" ]; then
+              ARGS+=(--ci)
+            fi
+          else
+            echo "::warning::skills-ci only applies to scan-type=skills and will be ignored"
+          fi
         fi
 
         # GPU infrastructure scanning

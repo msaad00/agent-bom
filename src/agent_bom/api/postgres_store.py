@@ -274,7 +274,13 @@ class PostgresJobStore:
             ).fetchall()
             return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
-    def list_summary(self, tenant_id: str | None = None) -> list[dict]:
+    def list_summary(
+        self,
+        tenant_id: str | None = None,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
         def _json_column(row: tuple, index: int, default: str, expected_type: type) -> object:
             if len(row) <= index:
                 return json.loads(default)
@@ -283,23 +289,21 @@ class PostgresJobStore:
                 return value
             return json.loads(value or default)
 
+        base_sql = """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id,
+                             batch_id, parent_job_id, child_job_ids, target, target_index, target_count
+                      FROM scan_jobs"""
+        params: list[object] = []
+        if tenant_id is None:
+            sql = f"{base_sql} ORDER BY created_at DESC"
+        else:
+            sql = f"{base_sql} WHERE team_id = %s ORDER BY created_at DESC"
+            params.append(tenant_id)
+        if limit is not None:
+            sql = f"{sql} LIMIT %s OFFSET %s"
+            params.extend([max(1, int(limit)), max(0, int(offset))])
+
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                rows = conn.execute(
-                    """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id,
-                              batch_id, parent_job_id, child_job_ids, target, target_index, target_count
-                       FROM scan_jobs
-                       ORDER BY created_at DESC"""
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """SELECT job_id, team_id, status, created_at, completed_at, triggered_by, schedule_id,
-                              batch_id, parent_job_id, child_job_ids, target, target_index, target_count
-                       FROM scan_jobs
-                       WHERE team_id = %s
-                       ORDER BY created_at DESC""",
-                    (tenant_id,),
-                ).fetchall()
+            rows = conn.execute(sql, tuple(params)).fetchall()
             return [
                 {
                     "job_id": row[0],
@@ -318,6 +322,14 @@ class PostgresJobStore:
                 }
                 for row in rows
             ]
+
+    def count_summary(self, tenant_id: str | None = None) -> int:
+        with _tenant_connection(self._pool) as conn:
+            if tenant_id is None:
+                row = conn.execute("SELECT COUNT(*) FROM scan_jobs").fetchone()
+            else:
+                row = conn.execute("SELECT COUNT(*) FROM scan_jobs WHERE team_id = %s", (tenant_id,)).fetchone()
+        return int(row[0]) if row else 0
 
     def query_cis_benchmark_checks(
         self,

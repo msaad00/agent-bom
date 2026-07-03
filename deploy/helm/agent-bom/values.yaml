@@ -464,6 +464,16 @@ controlPlane:
     env:
       - name: AGENT_BOM_API_LOCAL_PATH_SCANS
         value: "disabled"
+      # Retention knobs (global default, optional per-tenant JSON overrides, analytics cap).
+      # Per-tenant overrides can also be persisted via the control-plane tenant retention store.
+      # - name: AGENT_BOM_GRAPH_RETENTION_DAYS
+      #   value: "180"
+      # - name: AGENT_BOM_GRAPH_RETENTION_OVERRIDES
+      #   value: '{"tenant-a": 30, "tenant-b": 90}'
+      # - name: AGENT_BOM_HISTORY_MAX_REPORTS
+      #   value: "500"
+      # - name: AGENT_BOM_ANALYTICS_MAX_EVENTS
+      #   value: "50000"
     envFrom: []
     extraVolumes: []
     extraVolumeMounts: []

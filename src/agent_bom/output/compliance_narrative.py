@@ -138,7 +138,9 @@ class ComplianceNarrative:
 
 
 def _severity_order(sev: str) -> int:
-    return {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(sev.lower(), 4)
+    from agent_bom.graph.severity import severity_worst_first_rank
+
+    return severity_worst_first_rank(sev)
 
 
 def _control_status(sev_breakdown: dict[str, int]) -> str:

@@ -212,7 +212,7 @@ def test_finding_effective_severity_vendor_wins():
         vendor_severity="HIGH",
         cvss_severity="LOW",
     )
-    assert finding.effective_severity() == "HIGH"
+    assert finding.effective_severity() == "high"
 
 
 def test_finding_effective_severity_cvss_fallback():
@@ -224,7 +224,7 @@ def test_finding_effective_severity_cvss_fallback():
         vendor_severity=None,
         cvss_severity="LOW",
     )
-    assert finding.effective_severity() == "LOW"
+    assert finding.effective_severity() == "low"
 
 
 def test_finding_effective_severity_base_fallback():
@@ -234,7 +234,7 @@ def test_finding_effective_severity_base_fallback():
         asset=Asset(name="pkg", asset_type="package"),
         severity="HIGH",
     )
-    assert finding.effective_severity() == "HIGH"
+    assert finding.effective_severity() == "high"
 
 
 def test_finding_all_compliance_tags_deduplicates():

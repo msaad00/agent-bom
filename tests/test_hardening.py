@@ -277,7 +277,8 @@ def test_list_jobs_pagination():
 
     mock_store = MagicMock()
     # Return 10 summary items
-    mock_store.list_summary.return_value = [{"job_id": f"j-{i}"} for i in range(10)]
+    mock_store.count_summary.return_value = 10
+    mock_store.list_summary.return_value = [{"job_id": f"j-{i}"} for i in range(2, 5)]
 
     with patch("agent_bom.api.routes.scan._get_store", return_value=mock_store):
         client = TestClient(app)

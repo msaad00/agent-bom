@@ -30,6 +30,8 @@ import {
   type SeverityFilter,
   type SortKey,
   uniqueStrings,
+  serverFindingsSort,
+  formatFindingsTotal,
 } from "@/lib/findings-view";
 import { severityRank } from "@/lib/severity";
 import { Bug, Download, Layers, Loader2, Package, Server, ClipboardCheck } from "lucide-react";
@@ -48,13 +50,6 @@ function downloadJson(data: unknown, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-
-
-function serverFindingsSort(sortKey: SortKey): string {
-  if (sortKey === "cvss") return "cvss";
-  if (sortKey === "severity") return "severity";
-  return "effective_reach";
-}
 
 
 function toRemediationSummary(item: RemediationItem): RemediationSummary {
@@ -276,6 +271,7 @@ function VulnsPage() {
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
   });
   const [findingsTotal, setFindingsTotal] = useState(0);
+  const [findingsTotalApproximate, setFindingsTotalApproximate] = useState(false);
   const PAGE_SIZE = 25;
   const useServerPaging = groupBy === "none" && !search.trim();
 
@@ -541,16 +537,19 @@ function VulnsPage() {
           if (findings.findings.length > 0) {
             setVulns(collectUnifiedFindings(findings.findings));
             setFindingsTotal(findings.total);
+            setFindingsTotalApproximate(false);
             return;
           }
           const graph = await api.getGraph({ scanId: paramScan, limit: 2500 });
           setVulns(collectGraphVulns(graph));
           setFindingsTotal(graph.nodes.filter((node) => graphNodeKind(node) === "vulnerability").length);
+          setFindingsTotalApproximate(false);
           return;
         } catch {
           const selectedJob = await api.getScan(paramScan);
           setVulns(collectVulns([selectedJob]));
           setFindingsTotal(collectVulns([selectedJob]).length);
+          setFindingsTotalApproximate(false);
           return;
         }
       }
@@ -558,6 +557,7 @@ function VulnsPage() {
       if (jobs.length === 0) {
         setVulns([]);
         setFindingsTotal(0);
+        setFindingsTotalApproximate(false);
         return;
       }
 
@@ -566,6 +566,7 @@ function VulnsPage() {
         const collected = collectVulns([latestJob]);
         setVulns(collected);
         setFindingsTotal(collected.length);
+        setFindingsTotalApproximate(false);
         return;
       }
 
@@ -573,6 +574,7 @@ function VulnsPage() {
       const collected = collectVulns(fullJobs.filter((job): job is ScanJob => Boolean(job)));
       setVulns(collected);
       setFindingsTotal(collected.length);
+      setFindingsTotalApproximate(false);
     }
 
     async function loadDetails() {
@@ -590,10 +592,12 @@ function VulnsPage() {
             sort: serverFindingsSort(sortKey),
             limit: PAGE_SIZE,
             offset: (page - 1) * PAGE_SIZE,
+            approximateTotal: true,
           });
           if (response.total > 0 || response.findings.length > 0) {
             setVulns(collectUnifiedFindings(response.findings));
             setFindingsTotal(response.total);
+            setFindingsTotalApproximate(Boolean(response.total_approximate));
             return;
           }
         }
@@ -716,10 +720,15 @@ function VulnsPage() {
     return c;
   }, [vulns]);
 
+  const findingsTotalLabel = formatFindingsTotal(
+    findingsTotal,
+    useServerPaging && findingsTotalApproximate,
+  );
+
   const FILTERS: { key: SeverityFilter; label: string; color: string }[] = [
     {
       key: "all",
-      label: `All (${useServerPaging ? findingsTotal : vulns.length})`,
+      label: `All (${useServerPaging ? findingsTotalLabel : vulns.length})`,
       color: "text-zinc-300",
     },
     { key: "critical", label: `Critical${useServerPaging ? "" : ` (${counts.critical})`}`, color: "text-red-400" },
@@ -743,9 +752,10 @@ function VulnsPage() {
           <p className="text-zinc-400 text-sm mt-1">
             {scope === "latest"
               ? paramScan
-                ? `${useServerPaging ? findingsTotal : vulns.length} findings from scan ${paramScan.slice(0, 8)}.`
-                : `${useServerPaging ? findingsTotal : vulns.length} findings from the latest completed scan.`
-              : `${useServerPaging ? findingsTotal : vulns.length} findings aggregated across all completed scans.`}{" "}
+                ? `${useServerPaging ? findingsTotalLabel : vulns.length} findings from scan ${paramScan.slice(0, 8)}.`
+                : `${useServerPaging ? findingsTotalLabel : vulns.length} findings from the latest completed scan.`
+              : `${useServerPaging ? findingsTotalLabel : vulns.length} findings aggregated across all completed scans.`}{" "}
+            {useServerPaging && findingsTotalApproximate ? "Total is cached from the first page and may be a lower bound on deep pages. " : ""}
             CVSS and EPSS appear for advisory-backed vulnerabilities; cloud and governance findings use source evidence and policy severity.
           </p>
         </div>
@@ -963,7 +973,7 @@ function VulnsPage() {
               page={page}
               totalPages={totalPages}
               totalItems={useServerPaging ? findingsTotal : displayed.length}
-              itemLabel="findings"
+              itemLabel={useServerPaging && findingsTotalApproximate ? "findings (approx.)" : "findings"}
               onPrevious={() => setPage((p) => Math.max(1, p - 1))}
               onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
             />

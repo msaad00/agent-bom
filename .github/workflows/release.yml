@@ -587,13 +587,17 @@ jobs:
           subject-digest: ${{ steps.build-ui-image.outputs.digest }}
           push-to-registry: true
 
-  published-image-self-scan:
-    name: Self-scan published image
+  published-image-scan-gate:
+    name: Published image scan gate
     needs: docker-publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
+      security-events: write
+    env:
+      # Repository variable override, e.g. CRITICAL or CRITICAL,HIGH,MEDIUM
+      RELEASE_IMAGE_SCAN_FAIL_SEVERITIES: ${{ vars.RELEASE_IMAGE_SCAN_FAIL_SEVERITIES != '' && vars.RELEASE_IMAGE_SCAN_FAIL_SEVERITIES || 'CRITICAL,HIGH' }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -610,14 +614,66 @@ jobs:
       - name: Pull published API image
         run: docker pull agentbom/agent-bom:${{ steps.meta.outputs.version }}
 
-      - name: Scan published API image with agent-bom
+      - name: Install Trivy
+        run: |
+          set -euo pipefail
+          TRIVY_VERSION="0.72.0"
+          TRIVY_SHA256="bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea"
+          TRIVY_ARCHIVE="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSL -o "/tmp/${TRIVY_ARCHIVE}" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TRIVY_ARCHIVE}"
+          echo "${TRIVY_SHA256}  /tmp/${TRIVY_ARCHIVE}" | sha256sum -c -
+          tar -xzf "/tmp/${TRIVY_ARCHIVE}" -C /tmp trivy
+          sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
+          trivy --version
+
+      - name: Trivy scan gate (published image)
+        # Cross-check the Docker Hub image after push. Severity threshold is
+        # configurable via the RELEASE_IMAGE_SCAN_FAIL_SEVERITIES repository
+        # variable (default CRITICAL,HIGH). Unfixable OS/package CVEs listed in
+        # .image-scan-ignore are excluded from the gate.
+        run: |
+          set -euo pipefail
+          IMAGE="agentbom/agent-bom:${{ steps.meta.outputs.version }}"
+          trivy image "$IMAGE" \
+            --severity "${RELEASE_IMAGE_SCAN_FAIL_SEVERITIES}" \
+            --ignore-unfixed \
+            --ignorefile .image-scan-ignore \
+            --exit-code 1 \
+            --format table
+          trivy image "$IMAGE" \
+            --severity "${RELEASE_IMAGE_SCAN_FAIL_SEVERITIES}" \
+            --ignore-unfixed \
+            --ignorefile .image-scan-ignore \
+            --format json \
+            -o trivy-published-image.json
+          trivy image "$IMAGE" \
+            --severity "${RELEASE_IMAGE_SCAN_FAIL_SEVERITIES}" \
+            --ignore-unfixed \
+            --ignorefile .image-scan-ignore \
+            --format sarif \
+            -o trivy-published-image.sarif
+
+      - name: Upload Trivy SARIF to GitHub Security tab
+        if: always() && hashFiles('trivy-published-image.sarif') != ''
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        with:
+          sarif_file: trivy-published-image.sarif
+          category: release-published-image-trivy
+
+      - name: Scan published API image with agent-bom (evidence)
         run: uv run agent-bom image agentbom/agent-bom:${{ steps.meta.outputs.version }} --format json --output published-image-self-scan.json
 
-      - name: Upload published image self-scan artifact
+      - name: Upload published image scan artifacts
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: published-image-self-scan
-          path: published-image-self-scan.json
+          name: published-image-scan
+          path: |
+            trivy-published-image.json
+            trivy-published-image.sarif
+            published-image-self-scan.json
+          if-no-files-found: warn
 
   helm-publish:
     name: Publish Helm chart to OCI
@@ -1001,9 +1057,10 @@ jobs:
 
   github-release:
     name: Create GitHub Release
-    # Keep the post-publish image self-scan running, but do not let a slow
-    # registry scan delay minting the GitHub Release after artifacts are out.
-    needs: [pypi-publish, docker-publish, docker-publish-ui, sign, provenance, sbom, helm-publish]
+    # Block the GitHub Release until the published-image Trivy gate passes.
+    # PyPI/Docker Hub artifacts may already be live; the gate still prevents
+    # minting signed release assets when the pushed image crosses the threshold.
+    needs: [pypi-publish, docker-publish, docker-publish-ui, sign, provenance, sbom, helm-publish, published-image-scan-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

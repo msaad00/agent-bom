@@ -17,7 +17,7 @@ def test_secret_dict_to_finding_redacted_no_value():
     f = secret_dict_to_finding(_SECRET)
     assert f.finding_type == FindingType.CREDENTIAL_EXPOSURE
     assert f.source == FindingSource.SECRET_SCAN
-    assert f.severity == "CRITICAL"
+    assert f.severity == "critical"
     assert f.asset.location == "config/app.py"
     # The redacted preview is carried; no raw secret bytes anywhere.
     blob = str(f.to_dict())

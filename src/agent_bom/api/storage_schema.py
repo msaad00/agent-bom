@@ -52,6 +52,7 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     # Runtime session/observation timeline is durable by default (same tiering).
     StorageSchemaComponent("runtime_sessions", "sqlite/postgres", ("runtime_observations", "runtime_sessions")),
     StorageSchemaComponent("tenant_quotas", "sqlite/postgres", ("tenant_quota_overrides",)),
+    StorageSchemaComponent("tenant_graph_retention", "sqlite/postgres", ("tenant_graph_retention_overrides",)),
     StorageSchemaComponent("sources", "sqlite/postgres", ("sources", "control_plane_sources")),
     StorageSchemaComponent("schedules", "sqlite/postgres", ("scan_schedules",)),
     StorageSchemaComponent("exceptions", "sqlite/postgres", ("vuln_exceptions",)),

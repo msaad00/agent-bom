@@ -82,3 +82,8 @@ python scripts/install_helm_profile.py production \
 - Treat `mesh-hardening` and `snowflake-backend` as overlays, not separate products.
 - Treat `snowflake-backend` as a warehouse-native deployment mode with explicit parity boundaries, not the default production path.
 - Gateway remains an optional runtime surface layered onto the control plane, not a mandatory chokepoint.
+- Graph snapshot retention defaults to ``AGENT_BOM_GRAPH_RETENTION_DAYS`` (180). Per-tenant
+  windows can be set with ``AGENT_BOM_GRAPH_RETENTION_OVERRIDES`` JSON on the API deployment or
+  persisted in the control-plane tenant retention store. Local analytics and runtime observations
+  are capped on write with ``AGENT_BOM_ANALYTICS_MAX_EVENTS``; on-disk CLI history uses
+  ``AGENT_BOM_HISTORY_MAX_REPORTS``.

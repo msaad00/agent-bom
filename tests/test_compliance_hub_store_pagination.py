@@ -61,6 +61,21 @@ def test_list_page_limits_rows_and_reports_total(seeded_store) -> None:
     assert total == _SEEDED, "total must count all matching rows, not just the page"
 
 
+def test_list_page_can_skip_total_count(seeded_store) -> None:
+    store, tenant = seeded_store
+    rows, total = store.list_page(tenant, limit=10, offset=5, include_total=False)
+    assert len(rows) == 10
+    assert total is None
+
+
+def test_severity_breakdown_and_framework_counts(seeded_store) -> None:
+    store, tenant = seeded_store
+    breakdown = store.severity_breakdown(tenant)
+    assert sum(breakdown.values()) == _SEEDED
+    framework_counts = store.framework_slug_counts(tenant)
+    assert framework_counts == {}
+
+
 def test_list_page_effective_reach_sort_is_descending(seeded_store) -> None:
     store, tenant = seeded_store
     rows, total = store.list_page(tenant, limit=25, offset=0, sort="effective_reach")

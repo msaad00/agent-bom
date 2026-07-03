@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -14,6 +15,32 @@ from rich.table import Table
 from agent_bom.cli._grouped_help import SuggestingGroup
 from agent_bom.skills_policy import SkillsPolicyError, evaluate_skills_policy, load_skills_policy
 from agent_bom.skills_service import rescan_skill_catalog, scan_skill_targets, verify_skill_targets
+
+_CI_DEFAULT_FAIL_VERDICT = "suspicious"
+
+
+def _env_flag(name: str) -> bool:
+    """Return True when an environment variable is set to a truthy value."""
+    value = os.environ.get(name)
+    return value is not None and value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_ci_fail_verdict(ci: bool, fail_on_verdict: str | None) -> str | None:
+    """Resolve the effective content fail threshold for CI-friendly gating.
+
+    Precedence: an explicit ``--fail-on-verdict`` always wins. Otherwise ``--ci``
+    or the ``AGENT_BOM_SKILLS_CI`` env var enables a default ``suspicious`` gate so
+    CI can block on suspicious/malicious skills without authoring a policy file.
+    ``AGENT_BOM_SKILLS_FAIL_ON_VERDICT`` may override the default level.
+    """
+    if fail_on_verdict:
+        return fail_on_verdict
+    env_level = os.environ.get("AGENT_BOM_SKILLS_FAIL_ON_VERDICT")
+    if env_level and env_level.strip().lower() in {"suspicious", "malicious"}:
+        return env_level.strip().lower()
+    if ci or _env_flag("AGENT_BOM_SKILLS_CI"):
+        return _CI_DEFAULT_FAIL_VERDICT
+    return None
 
 
 def _display_path(path: str) -> str:
@@ -41,6 +68,12 @@ def skills_group(ctx: click.Context) -> None:
 @click.argument("paths", nargs=-1, type=click.Path(exists=True, path_type=Path))
 @click.option("-f", "--format", "output_format", type=click.Choice(["console", "json", "sarif"]), default="console", show_default=True)
 @click.option("-o", "--output", "output_path", type=click.Path(path_type=Path), help="Write output to this file")
+@click.option(
+    "--ci",
+    is_flag=True,
+    help="CI-friendly gate: exit 1 on suspicious/malicious skills without needing a policy file "
+    "(equivalent to --fail-on-verdict suspicious; also enabled via AGENT_BOM_SKILLS_CI=1)",
+)
 @click.option(
     "--fail-on-verdict",
     type=click.Choice(["suspicious", "malicious"]),
@@ -83,6 +116,7 @@ def skills_scan_cmd(
     paths: tuple[Path, ...],
     output_format: str,
     output_path: Path | None,
+    ci: bool,
     fail_on_verdict: str | None,
     warn_on_verdict: str | None,
     fail_on_review_verdict: str | None,
@@ -102,11 +136,15 @@ def skills_scan_cmd(
     Examples:
       agent-bom skills scan
       agent-bom skills scan CLAUDE.md .cursor/rules
+      agent-bom skills scan . --ci -f json
       agent-bom skills scan . --fail-on-verdict suspicious -f json
     """
     from agent_bom.logging_config import setup_logging
 
     setup_logging(level="ERROR" if quiet else "INFO", json_output=log_json, log_file=str(log_file) if log_file else None)
+
+    effective_fail_on_verdict = _resolve_ci_fail_verdict(ci, fail_on_verdict)
+
     report = scan_skill_targets(paths, intel_source=intel_source, catalog_path=catalog_path)
     payload = report.to_dict()
     try:
@@ -115,14 +153,14 @@ def skills_scan_cmd(
             report,
             policy=policy,
             policy_path=policy_path,
-            fail_on_verdict=fail_on_verdict,
+            fail_on_verdict=effective_fail_on_verdict,
             warn_on_verdict=warn_on_verdict,
             fail_on_review_verdict=fail_on_review_verdict,
             warn_on_review_verdict=warn_on_review_verdict,
         )
     except SkillsPolicyError as exc:
         raise click.ClickException(str(exc)) from exc
-    if policy or warn_on_verdict or fail_on_review_verdict or warn_on_review_verdict or fail_on_verdict:
+    if policy or warn_on_verdict or fail_on_review_verdict or warn_on_review_verdict or effective_fail_on_verdict:
         payload["policy"] = policy_result.to_dict()
 
     if output_format in {"json", "sarif"}:

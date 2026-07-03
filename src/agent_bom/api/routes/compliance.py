@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1867,7 +1868,18 @@ async def ingest_compliance_findings(request: Request) -> dict:
             payload["applicable_frameworks"] = [normalize_framework_slug(str(slug)) for slug in frameworks if slug]
     tenant_id = _tenant_id(request)
     store = get_compliance_hub_store()
+    from agent_bom.api.finding_lifecycle import normalize_observed_at
+
+    observed_at = normalize_observed_at(body.get("observed_at"))
+    batch_id = str(uuid.uuid4())
     new_total = store.add(tenant_id, payloads)
+    store.upsert_current_batch(
+        tenant_id,
+        payloads,
+        observed_at=observed_at,
+        batch_id=batch_id,
+        source=fmt,
+    )
 
     framework_counts: dict[str, int] = {}
     for payload in payloads:
@@ -1878,6 +1890,7 @@ async def ingest_compliance_findings(request: Request) -> dict:
         "ingested": len(payloads),
         "tenant_total": new_total,
         "format": fmt,
+        "observed_at": observed_at,
         "framework_hits": dict(sorted(framework_counts.items())),
     }
 

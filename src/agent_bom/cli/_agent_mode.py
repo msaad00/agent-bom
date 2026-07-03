@@ -9,6 +9,8 @@ import sys
 from copy import deepcopy
 from typing import Any
 
+from agent_bom.graph.severity import severity_policy_rank
+
 # Keys whose value is credential material and must never appear in the
 # machine-readable envelope, which automation callers routinely capture and log.
 # Matched on the key name only, as a whole token, so reference labels and entity
@@ -48,8 +50,6 @@ AGENT_MODE_SCHEMA_VERSION = "1"
 # Number of top-ranked findings / exposure paths kept in the summarized scan
 # payload that agent mode emits by default.
 SCAN_SUMMARY_TOP_N = 10
-
-_SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "unknown": 0}
 
 
 def agent_mode_requested(argv: list[str] | None = None) -> bool:
@@ -157,7 +157,7 @@ def _risk_sort_key(item: Any) -> tuple[float, int]:
     except (TypeError, ValueError):
         score = 0.0
     severity = str(item.get("effective_severity") or item.get("severity") or "unknown").lower()
-    return (score, _SEVERITY_RANK.get(severity, 0))
+    return (score, severity_policy_rank(severity))
 
 
 def _compact_finding(item: dict[str, Any]) -> dict[str, Any]:

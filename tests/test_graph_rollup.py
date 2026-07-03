@@ -27,6 +27,10 @@ def _contains(graph: UnifiedGraph, parent: str, child: str) -> None:
     graph.add_edge(UnifiedEdge(source=parent, target=child, relationship=RelationshipType.CONTAINS))
 
 
+def _hosts(graph: UnifiedGraph, parent: str, child: str) -> None:
+    graph.add_edge(UnifiedEdge(source=parent, target=child, relationship=RelationshipType.HOSTS))
+
+
 def _deep_estate() -> UnifiedGraph:
     """org -> account -> app -> {server, server} -> {package(crit), package(low)}."""
     g = UnifiedGraph(scan_id="estate-scan", tenant_id="default")
@@ -83,6 +87,29 @@ def _large_estate(accounts: int = 10, apps: int = 10, pkgs: int = 12) -> Unified
 
 
 # ── Roll-up ──────────────────────────────────────────────────────────────
+
+
+def test_rollup_treats_hosts_as_containment_for_cloud_account_resources() -> None:
+    """Legacy or HOSTS-only account→resource edges must roll up like CONTAINS."""
+    g = UnifiedGraph(scan_id="hosts-scan", tenant_id="default")
+    g.add_node(UnifiedNode(id="account:aws:1", entity_type=EntityType.ACCOUNT, label="prod"))
+    g.add_node(
+        UnifiedNode(
+            id="cloud_resource:aws:s3:bucket",
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label="public-bucket",
+            severity="high",
+        )
+    )
+    _hosts(g, "account:aws:1", "cloud_resource:aws:s3:bucket")
+
+    view = rollup_view(g)
+    assert view["summary"]["top_level_count"] == 1
+    top = view["top_level"][0]
+    assert top["id"] == "account:aws:1"
+    assert top["aggregate"]["descendant_count"] == 1
+    assert top["aggregate"]["by_type"]["cloud_resource"] == 1
+    assert top["aggregate"]["worst_severity"] == "high"
 
 
 def test_rollup_collapses_deep_contains_tree_with_aggregate_counts() -> None:

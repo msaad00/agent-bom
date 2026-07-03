@@ -27,6 +27,7 @@ from typing import Any, Iterable
 
 from agent_bom.compliance_hub import apply_hub_classification
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+from agent_bom.graph.severity import normalize_severity
 
 # SARIF level → severity. SARIF only defines four levels; we map none/note
 # down to "info" so they don't masquerade as low-severity bugs.
@@ -357,17 +358,17 @@ def _resolve_csv_field(row: dict[str, str], candidates: tuple[str, ...]) -> str:
 
 def _normalise_csv_severity(value: str) -> str:
     lowered = value.lower().strip()
-    if lowered in ("critical", "crit"):
-        return "critical"
-    if lowered in ("high", "h"):
-        return "high"
-    if lowered in ("medium", "med", "moderate", "m"):
-        return "medium"
-    if lowered in ("low", "l"):
-        return "low"
-    if lowered in ("info", "informational", "note"):
-        return "info"
-    return lowered or "unknown"
+    aliases = {
+        "crit": "critical",
+        "h": "high",
+        "med": "medium",
+        "moderate": "medium",
+        "m": "medium",
+        "l": "low",
+        "note": "info",
+        "informational": "info",
+    }
+    return normalize_severity(aliases.get(lowered, lowered) if lowered else None)
 
 
 def ingest_csv_findings(path: str | Path) -> list[Finding]:

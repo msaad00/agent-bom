@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from agent_bom.api.schedule_store import ScheduleStore
     from agent_bom.api.scim_store import SCIMStore
     from agent_bom.api.source_store import SourceStore
+    from agent_bom.api.tenant_graph_retention_store import TenantGraphRetentionStore
     from agent_bom.api.tenant_quota_store import TenantQuotaStore
 
 # ── Shared lock (protects lazy init of all stores) ───────────────────────────
@@ -284,6 +285,37 @@ def set_tenant_quota_store(store: TenantQuotaStore) -> None:
     """Switch the tenant quota override store backend."""
     global _tenant_quota_store
     _tenant_quota_store = store
+
+
+# ─── Tenant graph retention override store (pluggable) ─────────────────────
+_tenant_graph_retention_store: TenantGraphRetentionStore | None = None
+
+
+def _get_tenant_graph_retention_store() -> TenantGraphRetentionStore:
+    """Get the active tenant graph retention override store."""
+    global _tenant_graph_retention_store
+    if _tenant_graph_retention_store is None:
+        with _store_lock:
+            if _tenant_graph_retention_store is None:
+                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                    from agent_bom.api.postgres_tenant_graph_retention import PostgresTenantGraphRetentionStore
+
+                    _tenant_graph_retention_store = PostgresTenantGraphRetentionStore()
+                elif os.environ.get("AGENT_BOM_DB"):
+                    from agent_bom.api.tenant_graph_retention_store import SQLiteTenantGraphRetentionStore
+
+                    _tenant_graph_retention_store = SQLiteTenantGraphRetentionStore(os.environ["AGENT_BOM_DB"])
+                else:
+                    from agent_bom.api.tenant_graph_retention_store import InMemoryTenantGraphRetentionStore
+
+                    _tenant_graph_retention_store = InMemoryTenantGraphRetentionStore()
+    return _tenant_graph_retention_store
+
+
+def set_tenant_graph_retention_store(store: TenantGraphRetentionStore) -> None:
+    """Switch the tenant graph retention override store backend."""
+    global _tenant_graph_retention_store
+    _tenant_graph_retention_store = store
 
 
 # ─── SCIM lifecycle store (enterprise identity) ────────────────────────────

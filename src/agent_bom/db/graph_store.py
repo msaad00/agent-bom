@@ -364,20 +364,34 @@ def _parse_iso_timestamp(value: object) -> datetime | None:
     return parsed
 
 
-def graph_retention_policy(conn: sqlite3.Connection | None = None) -> dict[str, Any]:
+def graph_retention_policy(
+    conn: sqlite3.Connection | None = None,
+    *,
+    tenant_id: str | None = None,
+) -> dict[str, Any]:
     """Describe the active graph retention policy.
 
     When a connection is supplied, the response reflects real enforcement state
     (``last_purge_at`` / ``last_purged_count``) recorded by
     :func:`purge_expired_graph_snapshots`, rather than metadata alone.
+
+    Pass ``tenant_id`` to resolve the effective retention window for one tenant
+    (store override, env JSON map, then global default).
     """
+    from agent_bom.api.tenant_graph_retention import graph_retention_overrides_snapshot, resolve_graph_retention_days
+
+    normalized_tenant = normalize_graph_tenant_id(tenant_id) if tenant_id is not None else None
     policy: dict[str, Any] = {
-        "retention_days": _graph_retention_days(),
+        "retention_days": resolve_graph_retention_days(normalized_tenant),
+        "default_retention_days": _graph_retention_days(),
         "mode": "queryable_snapshot_history",
         "deletion_state": "active",
         "enforcement": "age_based_purge_on_save",
         "legal_hold": False,
+        **graph_retention_overrides_snapshot(),
     }
+    if normalized_tenant is not None:
+        policy["tenant_id"] = normalized_tenant
     if conn is not None:
         last_purge_at, last_purged_count = _read_purge_state(conn)
         policy["last_purge_at"] = last_purge_at
@@ -403,11 +417,12 @@ def purge_expired_graph_snapshots(
     ``attack_paths`` and ``interaction_risks`` for the same ``(scan_id,
     tenant_id)`` pair, plus the API search index when present.
     """
-    days = _graph_retention_days() if retention_days is None else max(1, int(retention_days))
+    from agent_bom.api.tenant_graph_retention import resolve_graph_retention_days
+
+    fixed_days = None if retention_days is None else max(1, int(retention_days))
     now_dt = now or datetime.now(timezone.utc)
     if now_dt.tzinfo is None:
         now_dt = now_dt.replace(tzinfo=timezone.utc)
-    cutoff = now_dt - timedelta(days=days)
 
     query = "SELECT scan_id, tenant_id, created_at FROM graph_snapshots"
     params: list[Any] = []
@@ -417,10 +432,14 @@ def purge_expired_graph_snapshots(
     rows = conn.execute(query, params).fetchall()
 
     expired: list[tuple[str, str]] = []
+    resolved_days: dict[str, int] = {}
     for row in rows:
+        tid = str(row[1])
+        days = fixed_days if fixed_days is not None else resolved_days.setdefault(tid, resolve_graph_retention_days(tid))
+        cutoff = now_dt - timedelta(days=days)
         created = _parse_iso_timestamp(row[2])
         if created is not None and created < cutoff:
-            expired.append((str(row[0]), str(row[1])))
+            expired.append((str(row[0]), tid))
 
     if expired:
         for table in _GRAPH_PURGEABLE_TABLES:
@@ -438,9 +457,11 @@ def purge_expired_graph_snapshots(
     _record_purge_state(conn, purged_count=len(expired), purged_at=purged_at)
     conn.commit()
 
+    effective_days = fixed_days if fixed_days is not None else _graph_retention_days()
     return {
-        "retention_days": days,
-        "cutoff": cutoff.isoformat(),
+        "retention_days": effective_days,
+        "per_tenant_retention_days": dict(resolved_days) if fixed_days is None and resolved_days else None,
+        "cutoff": (now_dt - timedelta(days=effective_days)).isoformat(),
         "purged_count": len(expired),
         "last_purge_at": purged_at,
         "purged_snapshots": [{"scan_id": scan_id, "tenant_id": tid} for scan_id, tid in expired],

@@ -45,7 +45,10 @@ def teardown_module() -> None:
 
 
 def setup_function() -> None:
+    from agent_bom.api.findings_count_cache import reset_findings_count_cache
+
     set_compliance_hub_store(InMemoryComplianceHubStore())
+    reset_findings_count_cache()
 
 
 def test_findings_list_page_under_500ms_at_2k_rows() -> None:
@@ -72,3 +75,35 @@ def test_findings_list_page_under_500ms_at_2k_rows() -> None:
     assert body["count"] == _PAGE_LIMIT
     assert len(body["findings"]) == _PAGE_LIMIT
     assert elapsed_ms < _MAX_ELAPSED_MS, f"GET /v1/findings took {elapsed_ms:.1f}ms (limit {_MAX_ELAPSED_MS}ms)"
+
+
+def test_findings_approximate_total_skips_count_on_deep_page() -> None:
+    tenant_id = f"findings-approx-{uuid.uuid4().hex}"
+    batch_id = f"batch-{uuid.uuid4().hex}"
+    store = InMemoryComplianceHubStore()
+    set_compliance_hub_store(store)
+    store.add(tenant_id, _synthetic_findings(_FINDINGS_COUNT, batch_id=batch_id))
+
+    client = TestClient(app)
+    headers = proxy_headers(role="viewer", tenant=tenant_id)
+
+    first = client.get(
+        "/v1/findings",
+        params={"limit": _PAGE_LIMIT, "offset": 0, "approximate_total": "true"},
+        headers=headers,
+    )
+    assert first.status_code == 200, first.text
+    first_body = first.json()
+    assert first_body["total"] == _FINDINGS_COUNT
+    assert first_body.get("total_approximate") is not True
+
+    deep = client.get(
+        "/v1/findings",
+        params={"limit": _PAGE_LIMIT, "offset": _PAGE_LIMIT, "approximate_total": "true"},
+        headers=headers,
+    )
+    assert deep.status_code == 200, deep.text
+    deep_body = deep.json()
+    assert deep_body["total"] == _FINDINGS_COUNT
+    assert deep_body.get("total_approximate") is True
+    assert len(deep_body["findings"]) == _PAGE_LIMIT

@@ -133,6 +133,11 @@ def severity_at_or_above(candidate: str | None, threshold: str | None) -> bool:
     return severity_policy_rank(candidate) >= severity_policy_rank(threshold)
 
 
+def severity_worst_first_rank(sev: str | None) -> int:
+    """Ascending sort rank where more severe findings sort earlier."""
+    return -severity_policy_rank(sev)
+
+
 def severity_to_ocsf(sev: str) -> int:
     """Convert severity string to OCSF severity_id."""
     return SEVERITY_TO_OCSF.get(sev.lower() if sev else "", OCSFSeverity.UNKNOWN)

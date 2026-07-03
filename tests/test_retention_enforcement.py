@@ -6,10 +6,15 @@ Covers P1-B PR1:
 - ``save_graph`` runs the purge on its post-save lifecycle hook and records
   real enforcement state in ``graph_retention_policy``.
 - ``history.save_report`` caps on-disk reports and prunes the oldest.
+
+Covers P1-B PR2:
+- Per-tenant graph retention via env JSON map and API config store.
+- Analytics cap for local analytics mirrors and runtime observations.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -87,6 +92,49 @@ class TestGraphSnapshotPurge:
         assert result["purged_count"] == 1
         remaining = {row[0] for row in db.execute("SELECT scan_id FROM graph_snapshots")}
         assert remaining == {"b"}
+
+
+class TestPerTenantGraphRetention:
+    def test_purge_applies_different_windows_per_tenant_via_env(self, db, monkeypatch):
+        from agent_bom.api.stores import set_tenant_graph_retention_store
+        from agent_bom.api.tenant_graph_retention_store import InMemoryTenantGraphRetentionStore
+        from agent_bom.db.graph_store import purge_expired_graph_snapshots
+
+        set_tenant_graph_retention_store(InMemoryTenantGraphRetentionStore())
+        monkeypatch.setenv("AGENT_BOM_GRAPH_RETENTION_OVERRIDES", json.dumps({"tenant-a": 30, "tenant-b": 90}))
+
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        _insert_snapshot(db, "a-old", (now - timedelta(days=45)).isoformat(), tenant="tenant-a")
+        _insert_snapshot(db, "a-recent", (now - timedelta(days=10)).isoformat(), tenant="tenant-a")
+        _insert_snapshot(db, "b-old", (now - timedelta(days=45)).isoformat(), tenant="tenant-b")
+        _insert_snapshot(db, "b-recent", (now - timedelta(days=10)).isoformat(), tenant="tenant-b")
+
+        result = purge_expired_graph_snapshots(db, now=now)
+
+        assert result["purged_count"] == 1
+        assert result["purged_snapshots"] == [{"scan_id": "a-old", "tenant_id": "tenant-a"}]
+        remaining = {row[0] for row in db.execute("SELECT scan_id FROM graph_snapshots")}
+        assert remaining == {"a-recent", "b-old", "b-recent"}
+
+    def test_purge_prefers_store_override_over_env(self, db, monkeypatch):
+        from agent_bom.api.stores import set_tenant_graph_retention_store
+        from agent_bom.api.tenant_graph_retention import set_tenant_graph_retention_override
+        from agent_bom.api.tenant_graph_retention_store import InMemoryTenantGraphRetentionStore
+        from agent_bom.db.graph_store import graph_retention_policy, purge_expired_graph_snapshots
+
+        set_tenant_graph_retention_store(InMemoryTenantGraphRetentionStore())
+        monkeypatch.setenv("AGENT_BOM_GRAPH_RETENTION_OVERRIDES", json.dumps({"tenant-a": 30}))
+        set_tenant_graph_retention_override("tenant-a", 90)
+
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        _insert_snapshot(db, "a-borderline", (now - timedelta(days=45)).isoformat(), tenant="tenant-a")
+
+        result = purge_expired_graph_snapshots(db, now=now)
+        assert result["purged_count"] == 0
+
+        policy = graph_retention_policy(db, tenant_id="tenant-a")
+        assert policy["retention_days"] == 90
+        assert policy["tenant_id"] == "tenant-a"
 
 
 class TestSaveGraphRetentionHook:
@@ -167,3 +215,54 @@ class TestHistoryCap:
 
         assert history.prune_history(max_reports=2) == 2
         assert len(history.list_reports()) == 2
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Analytics growth cap
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestAnalyticsCap:
+    def test_local_analytics_prunes_oldest_scan_runs(self, monkeypatch, tmp_path):
+        from agent_bom.db.local_analytics import LocalAnalyticsStore
+
+        db_path = tmp_path / "analytics.sqlite"
+        monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_EVENTS", "2")
+
+        store = LocalAnalyticsStore(db_path)
+        for index in range(4):
+            store.record_scan_report(
+                {
+                    "scan_id": f"scan-{index}",
+                    "generated_at": f"2026-01-0{index + 1}T00:00:00+00:00",
+                    "summary": {},
+                },
+                source="test",
+            )
+
+        runs = store.list_scan_runs(limit=10)
+        assert len(runs) == 2
+        assert {row["scan_id"] for row in runs} == {"scan-2", "scan-3"}
+
+    def test_runtime_observations_prune_oldest_per_tenant(self, monkeypatch):
+        from agent_bom.api.runtime_event_store import InMemoryRuntimeEventStore, RuntimeObservationRecord
+
+        monkeypatch.setenv("AGENT_BOM_ANALYTICS_MAX_EVENTS", "2")
+        store = InMemoryRuntimeEventStore()
+        for index in range(4):
+            store.put_observation(
+                RuntimeObservationRecord(
+                    tenant_id="tenant-a",
+                    observation_id=f"obs-{index}",
+                    session_id="sess-1",
+                    observed_at=f"2026-01-0{index + 1}T00:00:00+00:00",
+                    event_type="tool_call",
+                    verdict="allow",
+                    severity="info",
+                    tool_name="read",
+                )
+            )
+
+        observations = store.list_observations("tenant-a", limit=10)
+        assert len(observations) == 2
+        assert {row.observation_id for row in observations} == {"obs-2", "obs-3"}

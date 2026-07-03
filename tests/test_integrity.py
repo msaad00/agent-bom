@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from agent_bom.integrity import (
+    _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP,
+    _DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER,
+    _try_cosign_verify,
     check_npm_provenance,
     check_pypi_provenance,
+    verify_instruction_file,
     verify_npm_integrity,
     verify_package_integrity,
     verify_pypi_integrity,
@@ -235,3 +240,63 @@ def test_check_pypi_provenance_partial_release_is_not_verified():
     assert result["status"] == "partial"
     assert result["attestation_count"] == 1
     assert result["missing_files"] == ["pkg-1.0.0.tar.gz"]
+
+
+# ---------------------------------------------------------------------------
+# Cosign defaults + no-cosign fallback
+# ---------------------------------------------------------------------------
+
+
+def test_cosign_defaults_pin_release_workflow_identity():
+    assert _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP == (
+        r"https://github\.com/msaad00/agent-bom/\.github/workflows/release\.yml@.*"
+    )
+    assert _DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER == "https://token.actions.githubusercontent.com"
+
+
+def test_instruction_file_digest_match_without_cosign_is_not_verified(tmp_path):
+    from agent_bom.integrity import _compute_sha256
+
+    f = tmp_path / "SKILL.md"
+    f.write_text("# Skill file content", encoding="utf-8")
+    sha = _compute_sha256(f)
+    bundle_data = {
+        "dsseEnvelope": {
+            "payload": __import__("base64").b64encode(
+                json.dumps({"subject": [{"digest": {"sha256": sha}}]}).encode("utf-8")
+            ).decode("ascii")
+        }
+    }
+    (tmp_path / "SKILL.md.sigstore").write_text(json.dumps(bundle_data), encoding="utf-8")
+
+    with patch("agent_bom.integrity._try_cosign_verify", return_value=False):
+        result = verify_instruction_file(f)
+
+    assert result.bundle_valid is True
+    assert result.verified is False
+    assert result.reason == "cosign_verification_failed"
+
+
+def test_try_cosign_verify_uses_release_identity_by_default(tmp_path, monkeypatch):
+    f = tmp_path / "SKILL.md"
+    f.write_text("# Signed skill", encoding="utf-8")
+    bundle = tmp_path / "SKILL.md.sigstore"
+    bundle.write_text("{}", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    class _Proc:
+        returncode = 0
+
+    def _run(cmd, **kwargs):
+        calls.append(cmd)
+        return _Proc()
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/cosign" if name == "cosign" else None)
+    monkeypatch.setattr("subprocess.run", _run)
+    monkeypatch.delenv("AGENT_BOM_COSIGN_CERTIFICATE_IDENTITY_REGEXP", raising=False)
+    monkeypatch.delenv("AGENT_BOM_COSIGN_CERTIFICATE_OIDC_ISSUER", raising=False)
+
+    assert _try_cosign_verify(f, bundle) is True
+    cmd = calls[0]
+    assert cmd[cmd.index("--certificate-identity-regexp") + 1] == _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP
+    assert cmd[cmd.index("--certificate-oidc-issuer") + 1] == _DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER

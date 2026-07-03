@@ -1864,9 +1864,7 @@ async def ingest_compliance_findings(request: Request) -> dict:
     for payload in payloads:
         frameworks = payload.get("applicable_frameworks")
         if isinstance(frameworks, list):
-            payload["applicable_frameworks"] = [
-                normalize_framework_slug(str(slug)) for slug in frameworks if slug
-            ]
+            payload["applicable_frameworks"] = [normalize_framework_slug(str(slug)) for slug in frameworks if slug]
     tenant_id = _tenant_id(request)
     store = get_compliance_hub_store()
     new_total = store.add(tenant_id, payloads)
@@ -1893,16 +1891,32 @@ async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0)
     """
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
-    findings = get_compliance_hub_store().list(_tenant_id(request)) + _native_hub_findings(request)
-    limit = max(1, min(limit, 1000))
-    offset = max(0, offset)
-    page = findings[offset : offset + limit]
+    tenant_id = _tenant_id(request)
+    safe_limit = max(1, min(limit, 1000))
+    safe_offset = max(0, offset)
+    native = _native_hub_findings(request)
+    store = get_compliance_hub_store()
+    list_page = getattr(store, "list_page", None)
+    if callable(list_page):
+        if native:
+            window = safe_offset + safe_limit
+            hub_rows, hub_total = list_page(tenant_id, limit=window, offset=0)
+            combined = native + hub_rows
+            page = combined[safe_offset : safe_offset + safe_limit]
+            total = len(native) + (hub_total or 0)
+        else:
+            page, total = list_page(tenant_id, limit=safe_limit, offset=safe_offset)
+            total = total or 0
+    else:
+        findings = store.list(tenant_id) + native
+        page = findings[safe_offset : safe_offset + safe_limit]
+        total = len(findings)
     return {
         "findings": page,
         "count": len(page),
-        "total": len(findings),
-        "limit": limit,
-        "offset": offset,
+        "total": total,
+        "limit": safe_limit,
+        "offset": safe_offset,
     }
 
 
@@ -1918,7 +1932,24 @@ async def get_hub_posture(request: Request) -> dict:
     from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, normalize_framework_slug
 
     tenant_id = _tenant_id(request)
-    hub_findings = get_compliance_hub_store().list(tenant_id)
+    store = get_compliance_hub_store()
+    severity_breakdown = getattr(store, "severity_breakdown", None)
+    framework_counts_fn = getattr(store, "framework_slug_counts", None)
+    if callable(severity_breakdown) and callable(framework_counts_fn):
+        hub_severity_counts = severity_breakdown(tenant_id)
+        hub_framework_counts = framework_counts_fn(tenant_id)
+        hub_total = store.count(tenant_id)
+    else:
+        hub_findings = store.list(tenant_id)
+        hub_total = len(hub_findings)
+        hub_severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+        hub_framework_counts = {}
+        for f in hub_findings:
+            sev = (f.get("severity") or "unknown").lower()
+            hub_severity_counts[sev] = hub_severity_counts.get(sev, 0) + 1
+            for slug in f.get("applicable_frameworks") or []:
+                canonical = normalize_framework_slug(str(slug))
+                hub_framework_counts[canonical] = hub_framework_counts.get(canonical, 0) + 1
 
     # Native sources: count blast radii from completed scan jobs as a
     # proxy for "native finding count per framework" using their tag fields.
@@ -1941,15 +1972,6 @@ async def get_hub_posture(request: Request) -> dict:
                 if br.get(field):
                     native_framework_counts[slug] = native_framework_counts.get(slug, 0) + 1
 
-    hub_framework_counts: dict[str, int] = {}
-    hub_severity_counts: dict[str, int] = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
-    for f in hub_findings:
-        sev = (f.get("severity") or "unknown").lower()
-        hub_severity_counts[sev] = hub_severity_counts.get(sev, 0) + 1
-        for slug in f.get("applicable_frameworks") or []:
-            canonical = normalize_framework_slug(str(slug))
-            hub_framework_counts[canonical] = hub_framework_counts.get(canonical, 0) + 1
-
     combined: dict[str, int] = {}
     for slug, count in native_framework_counts.items():
         combined[slug] = combined.get(slug, 0) + count
@@ -1959,8 +1981,8 @@ async def get_hub_posture(request: Request) -> dict:
     return {
         "totals": {
             "native": native_total,
-            "hub": len(hub_findings),
-            "combined": native_total + len(hub_findings),
+            "hub": hub_total,
+            "combined": native_total + hub_total,
         },
         "framework_counts": {
             "native": dict(sorted(native_framework_counts.items())),

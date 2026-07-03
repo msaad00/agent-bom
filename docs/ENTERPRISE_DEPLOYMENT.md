@@ -508,6 +508,26 @@ Multi-arch: `linux/amd64` + `linux/arm64`. Non-root container. SHA-pinned base i
 - Air-gapped environments with a pre-synced local vulnerability DB.
 - Reproducible image scans across developer laptops and build runners.
 
+#### Air-gapped vulnerability database preload
+
+Disconnected estates need a **transferred `vulns.db`** plus offline runtime
+flags. The product does not phone home for advisories when
+`AGENT_BOM_VULN_DB_OFFLINE=1` or `--offline` is set; it reads whatever cache
+you mount at `AGENT_BOM_DB_PATH` (default `~/.agent-bom/db/vulns.db`).
+
+| Step | First command → artifact | Next step |
+|---|---|---|
+| Sync (connected bastion) | `agent-bom db update` → `~/.agent-bom/db/vulns.db` | `agent-bom db status` to confirm source freshness |
+| Bundle | `scripts/release/bundle-vuln-db.sh dist/airgap` → `vulns.db` + checksum | Transfer through your approved file path |
+| Docker runtime | `docker run -v /path/to/vulns.db:/var/lib/agent-bom/vulns.db:ro -e AGENT_BOM_DB_PATH=/var/lib/agent-bom/vulns.db -e AGENT_BOM_VULN_DB_OFFLINE=1 …` | `agent-bom agents --offline /workspace` smoke |
+| Helm control plane | `kubectl create secret generic agent-bom-vuln-db --from-file=vulns.db=dist/airgap/vulns.db` then `-f deploy/helm/agent-bom/examples/airgap-vuln-db-values.yaml` | Roll API + scanner pods; rescans use the mounted cache only |
+| Refresh cadence | Repeat sync + bundle on a connected host | Replace the mounted `vulns.db` on your maintenance window |
+
+`deploy/docker-compose.pilot.yml` already sets `AGENT_BOM_DB_PATH` on the API
+service volume — seed that volume with a pre-synced `vulns.db` before bringing
+the stack up. Image import for disconnected registries is documented in
+[`site-docs/deployment/airgapped-image-bundle.md`](../site-docs/deployment/airgapped-image-bundle.md).
+
 ## Output Integration
 
 | Target | Command | Format |

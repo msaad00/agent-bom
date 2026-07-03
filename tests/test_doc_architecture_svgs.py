@@ -30,7 +30,9 @@ def test_architecture_includes_core_surfaces() -> None:
 def test_persona_value_renders_buyer_lanes() -> None:
     svg = persona_value("dark")
     assert "AppSec / GRC" in svg
-    assert "283 ops" in svg
+    assert "findings queue" in svg
+    assert "283 API ops" in svg
+    assert "Self-hosted control plane" in svg
 
 
 def test_blast_radius_text_is_clipped_in_cards() -> None:

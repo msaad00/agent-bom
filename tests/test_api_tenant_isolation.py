@@ -376,7 +376,7 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
     listed = await scan_routes.list_jobs(req)
     pushed_summary = next(job for job in listed["jobs"] if job["job_id"] == pushed["job_id"])
     assert "summary" not in pushed_summary
-    assert listed["jobs"][0]["request"] == {}
+    assert "request" not in pushed_summary
 
     hydrated = await scan_routes.list_jobs(req, include_details=True)
     pushed_hydrated = next(job for job in hydrated["jobs"] if job["job_id"] == pushed["job_id"])

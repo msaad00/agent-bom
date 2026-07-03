@@ -413,3 +413,5 @@ AGENT_BOM_VULN_DB_OFFLINE  # airgap toggle that forces existing-cache-only fresh
 AGENT_BOM_GLOBAL_IP_RATE_LIMIT_RPM
 # Trusted reverse-proxy hop count for X-Forwarded-For parsing; resolved at call-time in routes/enterprise._trusted_proxy_hops().
 AGENT_BOM_TRUSTED_PROXY_HOPS
+
+AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS

@@ -1864,9 +1864,7 @@ async def ingest_compliance_findings(request: Request) -> dict:
     for payload in payloads:
         frameworks = payload.get("applicable_frameworks")
         if isinstance(frameworks, list):
-            payload["applicable_frameworks"] = [
-                normalize_framework_slug(str(slug)) for slug in frameworks if slug
-            ]
+            payload["applicable_frameworks"] = [normalize_framework_slug(str(slug)) for slug in frameworks if slug]
     tenant_id = _tenant_id(request)
     store = get_compliance_hub_store()
     new_total = store.add(tenant_id, payloads)
@@ -1945,7 +1943,7 @@ async def get_hub_posture(request: Request) -> dict:
         hub_findings = store.list(tenant_id)
         hub_total = len(hub_findings)
         hub_severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
-        hub_framework_counts: dict[str, int] = {}
+        hub_framework_counts = {}
         for f in hub_findings:
             sev = (f.get("severity") or "unknown").lower()
             hub_severity_counts[sev] = hub_severity_counts.get(sev, 0) + 1

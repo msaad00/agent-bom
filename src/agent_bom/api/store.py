@@ -120,7 +120,7 @@ class InMemoryJobStore:
             ]
             if tenant_id is not None:
                 rows = [row for row in rows if row["tenant_id"] == tenant_id]
-            rows.sort(key=lambda row: row["created_at"], reverse=True)
+            rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
             if offset:
                 rows = rows[offset:]
             if limit is not None:

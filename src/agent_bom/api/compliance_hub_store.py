@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Protocol
 
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
@@ -129,7 +129,7 @@ def _framework_slug_counts_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str
     return counts
 
 
-def _redact_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _redact_findings(findings: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drop tier-B fields before any compliance-hub finding is stored.
 
     The hub is a tier-A sink — findings are exported, queried by auditors,
@@ -211,6 +211,134 @@ class ComplianceHubStore(Protocol):
         """Remove all findings for a tenant. Returns the number removed."""
         ...
 
+    def upsert_current_batch(
+        self,
+        tenant_id: str,
+        findings: Sequence[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str = "",
+    ) -> None:
+        """Merge findings into the current-state lifecycle table (#3465 L1)."""
+        ...
+
+    def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
+        """Return one current-state lifecycle row for tests and diagnostics."""
+        ...
+
+
+def _upsert_current_finding_sqlite(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    payload: dict[str, Any],
+    observed_at: str,
+    source: str,
+) -> None:
+    from agent_bom.api.finding_lifecycle import (
+        apply_observation_to_current,
+        lifecycle_metrics,
+        resolve_canonical_id,
+    )
+
+    canonical = resolve_canonical_id(payload, source=source)
+    metrics = lifecycle_metrics(payload)
+    now = _now_utc_iso()
+    payload_json = json.dumps(payload, sort_keys=True)
+    inserted = conn.execute(
+        """
+        INSERT OR IGNORE INTO hub_findings_current_observations
+            (tenant_id, canonical_id, observed_at)
+        VALUES (?, ?, ?)
+        """,
+        (tenant_id, canonical, observed_at),
+    ).rowcount
+    if not inserted:
+        return
+
+    existing_row = conn.execute(
+        """
+        SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
+               cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+               updated_at, payload
+        FROM hub_findings_current
+        WHERE tenant_id = ? AND canonical_id = ?
+        """,
+        (tenant_id, canonical),
+    ).fetchone()
+    existing: dict[str, Any] | None
+    if existing_row is None:
+        existing = None
+    else:
+        existing = {
+            "canonical_id": existing_row[0],
+            "first_seen": existing_row[1],
+            "last_seen": existing_row[2],
+            "status": existing_row[3],
+            "severity": existing_row[4],
+            "severity_rank": existing_row[5],
+            "cvss_score": existing_row[6],
+            "effective_reach_score": existing_row[7],
+            "scan_count": existing_row[8],
+            "resolved_at": existing_row[9],
+            "reopened_at": existing_row[10],
+            "updated_at": existing_row[11],
+            "payload": json.loads(existing_row[12]),
+        }
+    merged = apply_observation_to_current(
+        existing,
+        canonical_id=canonical,
+        observed_at=observed_at,
+        metrics=metrics,
+        payload=payload,
+        updated_at=now,
+    )
+    conn.execute(
+        """
+        INSERT INTO hub_findings_current
+            (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
+             cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+             updated_at, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
+            first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
+            last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
+            status = excluded.status,
+            severity = excluded.severity,
+            severity_rank = excluded.severity_rank,
+            cvss_score = excluded.cvss_score,
+            effective_reach_score = excluded.effective_reach_score,
+            scan_count = excluded.scan_count,
+            resolved_at = excluded.resolved_at,
+            reopened_at = excluded.reopened_at,
+            updated_at = excluded.updated_at,
+            payload = excluded.payload
+        """,
+        (
+            tenant_id,
+            canonical,
+            merged["first_seen"],
+            merged["last_seen"],
+            merged["status"],
+            merged["severity"],
+            merged["severity_rank"],
+            merged["cvss_score"],
+            merged["effective_reach_score"],
+            merged["scan_count"],
+            merged["resolved_at"],
+            merged["reopened_at"],
+            merged["updated_at"],
+            payload_json,
+        ),
+    )
+
+
+def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
+    from agent_bom.api.finding_lifecycle import _CURRENT_LIFECYCLE_SQLITE_DDL
+
+    conn.executescript(_CURRENT_LIFECYCLE_SQLITE_DDL)
+
 
 # ─── In-memory backend ──────────────────────────────────────────────────────
 
@@ -224,6 +352,8 @@ class InMemoryComplianceHubStore:
         # (tenant_id, finding_id) refreshes its row in place instead of
         # appending a duplicate (idempotent ingest, mirrors the SQL backends).
         self._slots: dict[str, dict[str, int]] = {}
+        self._current: dict[str, dict[str, dict[str, Any]]] = {}
+        self._current_observations: dict[str, set[tuple[str, str]]] = {}
         self._lock = threading.Lock()
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
@@ -294,11 +424,54 @@ class InMemoryComplianceHubStore:
             removed = len(self._by_tenant.get(tenant_id, []))
             self._by_tenant[tenant_id] = []
             self._slots[tenant_id] = {}
+            self._current.pop(tenant_id, None)
+            self._current_observations.pop(tenant_id, None)
         if removed:
             from agent_bom.api.findings_count_cache import invalidate_tenant
 
             invalidate_tenant(tenant_id)
         return removed
+
+    def upsert_current_batch(
+        self,
+        tenant_id: str,
+        findings: Sequence[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str = "",
+    ) -> None:
+        from agent_bom.api.finding_lifecycle import (
+            apply_observation_to_current,
+            lifecycle_metrics,
+            resolve_canonical_id,
+        )
+
+        clean = _redact_findings(findings)
+        now = _now_utc_iso()
+        with self._lock:
+            current = self._current.setdefault(tenant_id, {})
+            observations = self._current_observations.setdefault(tenant_id, set())
+            for payload in clean:
+                canonical = resolve_canonical_id(payload, source=source)
+                obs_key = (canonical, observed_at)
+                if obs_key in observations:
+                    continue
+                observations.add(obs_key)
+                merged = apply_observation_to_current(
+                    current.get(canonical),
+                    canonical_id=canonical,
+                    observed_at=observed_at,
+                    metrics=lifecycle_metrics(payload),
+                    payload=payload,
+                    updated_at=now,
+                )
+                current[canonical] = merged
+
+    def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._current.get(tenant_id, {}).get(canonical_id)
+            return dict(row) if row else None
 
 
 # ─── SQLite backend ─────────────────────────────────────────────────────────
@@ -404,6 +577,7 @@ class SQLiteComplianceHubStore:
         self._migrate_primary_key()
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
         self._ensure_scale_indexes()
+        _ensure_current_lifecycle_sqlite(self._conn)
         self._conn.commit()
 
     def _migrate_columns(self) -> None:
@@ -679,6 +853,8 @@ class SQLiteComplianceHubStore:
             "DELETE FROM compliance_hub_findings WHERE tenant_id = ?",
             (tenant_id,),
         )
+        self._conn.execute("DELETE FROM hub_findings_current WHERE tenant_id = ?", (tenant_id,))
+        self._conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = ?", (tenant_id,))
         self._conn.commit()
         removed = cur.rowcount or 0
         if removed:
@@ -686,6 +862,57 @@ class SQLiteComplianceHubStore:
 
             invalidate_tenant(tenant_id)
         return removed
+
+    def upsert_current_batch(
+        self,
+        tenant_id: str,
+        findings: Sequence[dict[str, Any]],
+        *,
+        observed_at: str,
+        batch_id: str,
+        source: str = "",
+    ) -> None:
+        clean = _redact_findings(findings)
+        if not clean:
+            return
+        for payload in clean:
+            _upsert_current_finding_sqlite(
+                self._conn,
+                tenant_id=tenant_id,
+                payload=payload,
+                observed_at=observed_at,
+                source=source,
+            )
+        self._conn.commit()
+
+    def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            """
+            SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                   cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                   updated_at, payload
+            FROM hub_findings_current
+            WHERE tenant_id = ? AND canonical_id = ?
+            """,
+            (tenant_id, canonical_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "canonical_id": row[0],
+            "first_seen": row[1],
+            "last_seen": row[2],
+            "status": row[3],
+            "severity": row[4],
+            "severity_rank": row[5],
+            "cvss_score": row[6],
+            "effective_reach_score": row[7],
+            "scan_count": row[8],
+            "resolved_at": row[9],
+            "reopened_at": row[10],
+            "updated_at": row[11],
+            "payload": json.loads(row[12]),
+        }
 
 
 # ─── Module-level access (set/reset wired in stores.py) ──────────────────────

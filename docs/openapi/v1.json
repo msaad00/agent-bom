@@ -119,6 +119,18 @@
             "title": "Metadata",
             "type": "object"
           },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Observation timestamp from scan completion; defaults to ingest time when omitted.",
+            "title": "Observed At"
+          },
           "schema_version": {
             "default": "v1",
             "maxLength": 32,

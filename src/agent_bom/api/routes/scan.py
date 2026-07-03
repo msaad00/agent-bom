@@ -255,6 +255,10 @@ class BulkFindingsRequest(BaseModel):
     schema_version: str = Field(default="v1", min_length=1, max_length=32)
     metadata: dict[str, Any] = Field(default_factory=dict)
     tenant_id: str | None = Field(default=None, description="Deprecated compatibility field; request tenant scope is authoritative.")
+    observed_at: str | None = Field(
+        default=None,
+        description="Observation timestamp from scan completion; defaults to ingest time when omitted.",
+    )
 
     @field_validator("findings")
     @classmethod
@@ -1419,7 +1423,18 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     payloads = [
         _normalized_bulk_finding(row, source=body.source, batch_id=batch_id, ordinal=idx) for idx, row in enumerate(body.findings, start=1)
     ]
-    new_total = get_compliance_hub_store().add(tenant_id, payloads)
+    from agent_bom.api.finding_lifecycle import normalize_observed_at
+
+    observed_at = normalize_observed_at(body.observed_at or body.metadata.get("observed_at"))
+    hub_store = get_compliance_hub_store()
+    new_total = hub_store.add(tenant_id, payloads)
+    hub_store.upsert_current_batch(
+        tenant_id,
+        payloads,
+        observed_at=observed_at,
+        batch_id=batch_id,
+        source=body.source,
+    )
     warnings = ["tenant_id in body ignored; request tenant scope is authoritative"] if ignored_body_tenant else []
     response = {
         "schema_version": "v1",
@@ -1428,6 +1443,7 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
         "tenant_total": new_total,
         "tenant_id": tenant_id,
         "source": body.source,
+        "observed_at": observed_at,
         "warnings": warnings,
     }
     if idem_key:

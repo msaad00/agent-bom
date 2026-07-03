@@ -13,6 +13,32 @@ class _ObservationCapConnection(Protocol):
     def execute(self, query: str, params: Any = ()) -> Any: ...
 
 
+def _runtime_observation_queries(placeholder: str) -> tuple[str, str, str]:
+    if placeholder == "%s":
+        return (
+            "SELECT COUNT(*) FROM runtime_observations WHERE tenant_id = %s",
+            """
+            SELECT observation_id FROM runtime_observations
+            WHERE tenant_id = %s
+            ORDER BY observed_at ASC
+            LIMIT %s
+            """,
+            "DELETE FROM runtime_observations WHERE tenant_id = %s AND observation_id = %s",
+        )
+    if placeholder == "?":
+        return (
+            "SELECT COUNT(*) FROM runtime_observations WHERE tenant_id = ?",
+            """
+            SELECT observation_id FROM runtime_observations
+            WHERE tenant_id = ?
+            ORDER BY observed_at ASC
+            LIMIT ?
+            """,
+            "DELETE FROM runtime_observations WHERE tenant_id = ? AND observation_id = ?",
+        )
+    raise ValueError("unsupported SQL placeholder")
+
+
 def analytics_max_events() -> int:
     """Return the retained analytics event cap. ``<= 0`` disables pruning."""
     raw = os.environ.get("AGENT_BOM_ANALYTICS_MAX_EVENTS")
@@ -60,8 +86,9 @@ def prune_runtime_observations_for_tenant(
     cap = analytics_max_events() if max_events is None else max_events
     if cap <= 0:
         return 0
+    count_query, stale_query, delete_query = _runtime_observation_queries(placeholder)
     count_row = conn.execute(
-        f"SELECT COUNT(*) FROM runtime_observations WHERE tenant_id = {placeholder}",
+        count_query,
         (tenant_id,),
     ).fetchone()
     count = int(count_row[0])
@@ -69,19 +96,12 @@ def prune_runtime_observations_for_tenant(
         return 0
     excess = count - cap
     stale = conn.execute(
-        f"""
-        SELECT observation_id FROM runtime_observations
-        WHERE tenant_id = {placeholder}
-        ORDER BY observed_at ASC
-        LIMIT {placeholder}
-        """,
+        stale_query,
         (tenant_id, excess),
     ).fetchall()
     if not stale:
         return 0
     observation_ids = [str(row[0]) for row in stale]
-    conn.executemany(
-        f"DELETE FROM runtime_observations WHERE tenant_id = {placeholder} AND observation_id = {placeholder}",
-        [(tenant_id, observation_id) for observation_id in observation_ids],
-    )
+    for observation_id in observation_ids:
+        conn.execute(delete_query, (tenant_id, observation_id))
     return len(observation_ids)

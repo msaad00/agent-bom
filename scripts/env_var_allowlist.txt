@@ -217,13 +217,11 @@ AGENT_BOM_GRAPH_DELTA_WEBHOOK_SIGNING_SECRET
 # Graph delta generic webhook private-network opt-in; deploy-time egress boundary.
 AGENT_BOM_GRAPH_DELTA_WEBHOOK_ALLOW_PRIVATE_NETWORKS
 # Graph evidence manifest retention horizon; read by graph_store.py for local/self-hosted history metadata.
-AGENT_BOM_GRAPH_RETENTION_DAYS
 # Deploy-time JSON map of tenant_id -> retention_days for graph snapshots.
 AGENT_BOM_GRAPH_RETENTION_OVERRIDES
 # Local CLI scan-history retained report cap; read by history.py so workstations/CI caches do not grow unbounded.
 AGENT_BOM_HISTORY_MAX_REPORTS
 # Cap for local analytics mirrors and runtime observation tables on write.
-AGENT_BOM_ANALYTICS_MAX_EVENTS
 AGENT_BOM_GRAPH_WRITE_BATCH_SIZE
 AGENT_BOM_HSTS_MAX_AGE_SECONDS
 AGENT_BOM_HSTS_PRELOAD

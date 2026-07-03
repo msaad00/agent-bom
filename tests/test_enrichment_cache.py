@@ -21,6 +21,7 @@ def _reset_enrichment_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(enrichment, "_KEV_CACHE_FILE", tmp_path / "kev_cache.json")
     monkeypatch.setattr(enrichment, "_kev_cache", None)
     monkeypatch.setattr(enrichment, "_kev_cache_time", None)
+    monkeypatch.setattr(enrichment, "_offline_bundle_epss_loaded", False)
 
 
 class TestNVDCache:
@@ -152,3 +153,66 @@ async def test_offline_enrichment_joins_epss_and_kev_caches(tmp_path, monkeypatc
     assert vuln.is_kev is True
     assert vuln.kev_date_added == "2026-05-01"
     assert vuln.kev_due_date == "2026-05-22"
+
+
+def test_offline_kev_loads_from_bundled_path(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "airgap"
+    bundle_dir.mkdir()
+    (bundle_dir / "vulns.db").write_bytes(b"sqlite-placeholder")
+    (bundle_dir / "known_exploited_vulnerabilities.json").write_text(
+        json.dumps(
+            {
+                "vulnerabilities": [
+                    {
+                        "cveID": "CVE-2025-4242",
+                        "dateAdded": "2026-06-01",
+                        "dueDate": "2026-06-22",
+                        "shortDescription": "bundled kev entry",
+                    }
+                ]
+            }
+        )
+    )
+
+    monkeypatch.setenv("AGENT_BOM_VULN_DB_OFFLINE", "1")
+    monkeypatch.setenv("AGENT_BOM_DB_PATH", str(bundle_dir / "vulns.db"))
+
+    catalog = enrichment._cached_kev_catalog(allow_stale=True, offline=True)
+
+    assert catalog["CVE-2025-4242"]["date_added"] == "2026-06-01"
+    assert catalog["CVE-2025-4242"]["due_date"] == "2026-06-22"
+
+
+@pytest.mark.asyncio
+async def test_offline_enrichment_uses_bundled_kev_without_state_cache(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "airgap"
+    bundle_dir.mkdir()
+    (bundle_dir / "vulns.db").write_bytes(b"sqlite-placeholder")
+    (bundle_dir / "known_exploited_vulnerabilities.json").write_text(
+        json.dumps(
+            {
+                "vulnerabilities": [
+                    {
+                        "cveID": "CVE-2025-7777",
+                        "dateAdded": "2026-06-10",
+                        "dueDate": "2026-07-01",
+                    }
+                ]
+            }
+        )
+    )
+
+    monkeypatch.setenv("AGENT_BOM_VULN_DB_OFFLINE", "1")
+    monkeypatch.setenv("AGENT_BOM_DB_PATH", str(bundle_dir / "vulns.db"))
+
+    async def _no_network(*_args, **_kwargs):
+        raise AssertionError("offline bundled KEV must not perform network requests")
+
+    monkeypatch.setattr(enrichment, "request_with_retry", _no_network)
+
+    vuln = Vulnerability(id="CVE-2025-7777", summary="bundled kev", severity=Severity.HIGH)
+    enriched = await enrichment.enrich_vulnerabilities([vuln])
+
+    assert enriched == 1
+    assert vuln.is_kev is True
+    assert vuln.kev_date_added == "2026-06-10"

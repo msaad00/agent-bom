@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import httpx
+
 from agent_bom.models import MCPServer, Package
 
 logger = logging.getLogger(__name__)
@@ -125,7 +127,7 @@ def verify_go_checksums(
             from agent_bom.http_client import fetch_bytes
 
             body = fetch_bytes(lookup_url, timeout=timeout).decode("utf-8", errors="replace")
-        except (OSError, ValueError, ConnectionError) as exc:
+        except (OSError, ValueError, ConnectionError, RuntimeError, httpx.HTTPError) as exc:
             logger.warning(
                 "go.sum verification skipped for %s — checksum DB unreachable: %s",
                 key,

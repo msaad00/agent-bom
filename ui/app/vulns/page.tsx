@@ -16,12 +16,15 @@ import {
   type UnifiedGraphResponse,
 } from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { FindingDrawer } from "@/components/finding-drawer";
 import { FindingsQueueTable } from "@/components/findings-queue";
 import { PaginationBar } from "@/components/pagination-bar";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { FIRST_SCAN_ACTIONS } from "@/lib/empty-state-actions";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import {
   type EnrichedVuln,
   type GroupKey,
@@ -239,6 +242,7 @@ function VulnsPage() {
   const paramGroup = searchParams.get("group");
   const paramPage = searchParams.get("page");
   const paramScan = searchParams.get("scan") ?? searchParams.get("scan_id");
+  const { counts: deploymentCounts } = useDeploymentContext();
 
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [vulns, setVulns] = useState<EnrichedVuln[]>([]);
@@ -809,21 +813,24 @@ function VulnsPage() {
         />
       )}
 
-      {!loading && !error && vulns.length === 0 && (
-        <PageEmptyState
-          title="No findings found"
-          detail="Run a scan or connect a cloud account to populate CVE, cloud posture, graph, and remediation evidence."
-          icon={Bug}
-          suggestions={[
-            "Start with the offline demo if you want predictable sample data.",
-            "Run a project scan with graph output to connect findings to packages and agents.",
-            "Use all completed scans when you need aggregate evidence across jobs.",
-          ]}
-          command="agent-bom agents --demo --offline"
-          actions={FIRST_SCAN_ACTIONS}
-          data-testid="findings-empty-state"
-        />
-      )}
+      {!loading && !error && vulns.length === 0 &&
+        (deploymentCounts && !isDeploymentSurfaceAvailable("agents", deploymentCounts) && !deploymentCounts.has_fleet_ingest ? (
+          <DeploymentSurfaceRequiredState surface="agents" counts={deploymentCounts} />
+        ) : (
+          <PageEmptyState
+            title="No findings found"
+            detail="Run a scan or connect a cloud account to populate CVE, cloud posture, graph, and remediation evidence."
+            icon={Bug}
+            suggestions={[
+              "Start with the offline demo if you want predictable sample data.",
+              "Run a project scan with graph output to connect findings to packages and agents.",
+              "Use all completed scans when you need aggregate evidence across jobs.",
+            ]}
+            command="agent-bom agents --demo --offline"
+            actions={FIRST_SCAN_ACTIONS}
+            data-testid="findings-empty-state"
+          />
+        ))}
 
       {!error && vulns.length > 0 && (
         <>

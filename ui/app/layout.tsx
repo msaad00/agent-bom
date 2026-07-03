@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
+import { DemoEstateLabel } from "@/components/demo-estate-label";
 import { Nav } from "@/components/nav";
 // Theme bootstrap script lives in lib/csp-source.ts so its sha256 stays in
 // sync with the script-src hash that lib/security-headers.ts emits in CSP.
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {THEME_BOOTSTRAP_SCRIPT}
         </Script>
         <AuthProvider>
+          <DemoEstateLabel />
           <Nav />
           {/* Main content — offset by sidebar width on desktop, offset by top bar on mobile */}
           <AuthGate>

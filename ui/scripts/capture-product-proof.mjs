@@ -291,8 +291,8 @@ function contextGraph() {
   };
 }
 
-function scanAgents() {
-  const vuln = (id, severity, cvss, epss, fixedVersion, isKev = false) => ({
+function vuln(id, severity, cvss, epss, fixedVersion, isKev = false) {
+  return {
     id,
     severity,
     summary: `${id} reachable from an MCP-backed runtime path`,
@@ -305,7 +305,207 @@ function scanAgents() {
     cisa_kev: isKev,
     fixed_version: fixedVersion,
     confidence: 0.98,
-  });
+  };
+}
+
+const DEMO_AGENT_SPECS = [
+  { name: "data-pipeline-agent", agent_type: "etl", owner: "data-platform", environment: "prod-analytics", server: "warehouse MCP", pkg: "pandas", version: "2.2.3", ecosystem: "pypi", cve: ["CVE-2026-44102", "high", 7.9, 0.44, "2.2.4"] },
+  { name: "customer-support-bot", agent_type: "support", owner: "cx-ops", environment: "prod-support", server: "zendesk MCP", pkg: "requests", version: "2.32.3", ecosystem: "pypi", cve: ["CVE-2026-11880", "medium", 6.4, 0.21, "2.32.4"] },
+  { name: "legal-review-agent", agent_type: "review", owner: "legal", environment: "prod-legal", server: "docusign MCP", pkg: "cryptography", version: "43.0.3", ecosystem: "pypi", cve: ["CVE-2026-55210", "high", 8.2, 0.36, "44.0.1"] },
+  { name: "hr-onboarding-agent", agent_type: "hr", owner: "people-ops", environment: "prod-hr", server: "workday MCP", pkg: "pillow", version: "11.1.0", ecosystem: "pypi", cve: null },
+  { name: "marketing-copilot", agent_type: "marketing", owner: "growth", environment: "staging", server: "hubspot MCP", pkg: "react", version: "19.0.0", ecosystem: "npm", cve: ["CVE-2026-33011", "high", 8.0, 0.39, "19.0.1"] },
+  { name: "incident-commander", agent_type: "runbook", owner: "sre", environment: "prod-ai-control-plane", server: "pagerduty MCP", pkg: "aiohttp", version: "3.11.12", ecosystem: "pypi", cve: ["CVE-2026-77881", "critical", 9.1, 0.67, "3.11.14"] },
+  { name: "platform-ops-agent", agent_type: "ops", owner: "platform", environment: "prod-ai-control-plane", server: "kubernetes MCP", pkg: "kubernetes", version: "32.0.0", ecosystem: "pypi", cve: ["CVE-2026-90221", "high", 7.6, 0.33, "32.0.2"] },
+  { name: "ml-training-agent", agent_type: "ml", owner: "ml-platform", environment: "prod-ml", server: "wandb MCP", pkg: "torch", version: "2.6.0", ecosystem: "pypi", cve: ["CVE-2026-66110", "high", 8.4, 0.48, "2.6.1"] },
+  { name: "code-review-bot", agent_type: "ide", owner: "engineering", environment: "prod-ai-control-plane", server: "gitlab MCP", pkg: "eslint", version: "9.21.0", ecosystem: "npm", cve: null },
+  { name: "compliance-auditor", agent_type: "audit", owner: "grc", environment: "prod-grc", server: "grc MCP", pkg: "pydantic", version: "2.10.6", ecosystem: "pypi", cve: ["CVE-2026-22001", "medium", 5.9, 0.18, "2.10.7"] },
+  { name: "vendor-risk-agent", agent_type: "risk", owner: "security", environment: "staging", server: "vendor MCP", pkg: "starlette", version: "0.45.3", ecosystem: "pypi", cve: ["CVE-2026-44190", "high", 7.8, 0.29, "0.46.0"] },
+  { name: "research-assistant", agent_type: "rag", owner: "research", environment: "staging", server: "arxiv MCP", pkg: "transformers", version: "4.49.0", ecosystem: "pypi", cve: ["CVE-2026-99120", "medium", 6.1, 0.16, "4.49.2"] },
+  { name: "sales-enablement-bot", agent_type: "sales", owner: "revenue", environment: "prod-sales", server: "salesforce MCP", pkg: "simple-salesforce", version: "1.12.6", ecosystem: "pypi", cve: null },
+  { name: "devops-release-agent", agent_type: "release", owner: "devops", environment: "prod-ai-control-plane", server: "argocd MCP", pkg: "helm", version: "3.17.0", ecosystem: "pypi", cve: ["CVE-2026-55001", "high", 7.5, 0.31, "3.17.1"] },
+  { name: "shadow-copilot", agent_type: "shadow", owner: "unknown", environment: "unmanaged", server: "openai MCP", pkg: "openai", version: "1.66.3", ecosystem: "pypi", cve: ["CVE-2026-88001", "critical", 9.0, 0.71, "1.66.5"] },
+];
+
+function demoScanAgent(spec) {
+  const vulnerabilities = spec.cve
+    ? [vuln(spec.cve[0], spec.cve[1], spec.cve[2], spec.cve[3], spec.cve[4], spec.cve[1] === "critical" && spec.cve[2] >= 9)]
+    : [];
+  return {
+    name: spec.name,
+    agent_type: spec.agent_type,
+    owner: spec.owner,
+    environment: spec.environment,
+    tags: ["simulated", spec.environment.startsWith("prod") ? "prod" : "staging"],
+    mcp_servers: [
+      {
+        name: spec.server,
+        transport: "sse",
+        config_path: `/workspace/${spec.name}/mcp.json`,
+        has_credentials: spec.name !== "code-review-bot",
+        credential_env_vars: spec.name !== "code-review-bot" ? [`${spec.name.toUpperCase().replace(/-/g, "_")}_TOKEN`] : [],
+        tools: [{ name: "query" }, { name: "read_context" }],
+        packages: [
+          {
+            name: spec.pkg,
+            version: spec.version,
+            ecosystem: spec.ecosystem,
+            purl: `pkg:${spec.ecosystem}/${spec.pkg}@${spec.version}`,
+            vulnerabilities,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildBlastRadius() {
+  const entries = [
+    {
+      vulnerability_id: "CVE-2026-21441",
+      severity: "critical",
+      package: "next",
+      ecosystem: "npm",
+      affected_agents: ["developer-copilot"],
+      affected_servers: ["github-enterprise MCP"],
+      exposed_credentials: ["GITHUB_FINE_GRAINED_TOKEN"],
+      reachable_tools: ["create_pull_request"],
+      blast_score: 98,
+      risk_score: 9.8,
+      cvss_score: 9.8,
+      epss_score: 0.82,
+      is_kev: true,
+      cisa_kev: true,
+      fixed_version: "16.2.7",
+    },
+    {
+      vulnerability_id: "CVE-2026-32597",
+      severity: "high",
+      package: "urllib3",
+      ecosystem: "pypi",
+      affected_agents: ["sre-runbook-agent", "developer-copilot"],
+      affected_servers: ["filesystem MCP"],
+      exposed_credentials: ["AWS_ROLE_SESSION"],
+      reachable_tools: ["execute_command"],
+      blast_score: 89,
+      risk_score: 8.9,
+      cvss_score: 8.8,
+      epss_score: 0.51,
+      fixed_version: "2.5.1",
+    },
+    {
+      vulnerability_id: "CVE-2026-0994",
+      severity: "high",
+      package: "protobuf",
+      ecosystem: "pypi",
+      affected_agents: ["finance-rag-agent"],
+      affected_servers: ["snowflake-rag MCP"],
+      exposed_credentials: ["SNOWFLAKE_PROD_KEY"],
+      reachable_tools: ["run_sql"],
+      blast_score: 81,
+      risk_score: 8.1,
+      cvss_score: 8.1,
+      epss_score: 0.38,
+      fixed_version: "6.33.4",
+    },
+    {
+      vulnerability_id: "CVE-2026-77881",
+      severity: "critical",
+      package: "aiohttp",
+      ecosystem: "pypi",
+      affected_agents: ["incident-commander"],
+      affected_servers: ["pagerduty MCP"],
+      exposed_credentials: ["INCIDENT_COMMANDER_TOKEN"],
+      reachable_tools: ["query"],
+      blast_score: 91,
+      risk_score: 9.1,
+      cvss_score: 9.1,
+      epss_score: 0.67,
+      fixed_version: "3.11.14",
+    },
+    {
+      vulnerability_id: "CVE-2026-88001",
+      severity: "critical",
+      package: "openai",
+      ecosystem: "pypi",
+      affected_agents: ["shadow-copilot"],
+      affected_servers: ["openai MCP"],
+      exposed_credentials: ["SHADOW_COPILOT_TOKEN"],
+      reachable_tools: ["query"],
+      blast_score: 90,
+      risk_score: 9.0,
+      cvss_score: 9.0,
+      epss_score: 0.71,
+      fixed_version: "1.66.5",
+    },
+  ];
+  for (const spec of DEMO_AGENT_SPECS) {
+    if (!spec.cve) continue;
+    const [id, severity, cvss, epss, fixedVersion] = spec.cve;
+    entries.push({
+      vulnerability_id: id,
+      severity,
+      package: spec.pkg,
+      ecosystem: spec.ecosystem,
+      affected_agents: [spec.name],
+      affected_servers: [spec.server],
+      exposed_credentials: [`${spec.name.toUpperCase().replace(/-/g, "_")}_TOKEN`],
+      reachable_tools: ["query"],
+      blast_score: Math.round(cvss * 10),
+      risk_score: cvss,
+      cvss_score: cvss,
+      epss_score: epss,
+      is_kev: severity === "critical" && cvss >= 9,
+      cisa_kev: severity === "critical" && cvss >= 9,
+      fixed_version: fixedVersion,
+    });
+  }
+  return entries;
+}
+
+function buildFindings() {
+  return buildBlastRadius().map((item, index) => ({
+    id: `finding-${index + 1}`,
+    canonical_id: item.vulnerability_id,
+    finding_type: "vulnerability",
+    source: "nvd",
+    severity: item.severity,
+    effective_severity: item.severity,
+    title: `Reachable ${item.severity} package on ${item.affected_servers?.[0] ?? "MCP path"}`,
+    description: `${item.vulnerability_id} is reachable from ${item.affected_agents.join(", ")} through simulated MCP tooling.`,
+    cve_id: item.vulnerability_id,
+    cvss_score: item.cvss_score,
+    cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    attack_vector: "network",
+    epss_score: item.epss_score,
+    is_kev: Boolean(item.is_kev),
+    fixed_version: item.fixed_version,
+    remediation_guidance: `Upgrade ${item.package} to ${item.fixed_version} and rerun the graph scan.`,
+    compliance_tags: ["OWASP-LLM05", "ATLAS-AML.T0051"],
+    risk_score: item.risk_score,
+    impact_category: item.severity === "critical" ? "RCE" : "Exposure",
+    affected_servers: item.affected_servers ?? [],
+    affected_agents: item.affected_agents,
+    exposed_credentials: item.exposed_credentials,
+    exposed_tools: item.reachable_tools,
+    scan_id: SCAN_ID,
+    scan_sources: ["demo-scan"],
+  }));
+}
+
+function scanSummary(agentCount) {
+  return {
+    total_agents: agentCount,
+    total_servers: 22,
+    total_packages: 148,
+    total_vulnerabilities: 26,
+    critical_findings: 9,
+    high_findings: 13,
+    medium_findings: 4,
+    low_findings: 0,
+  };
+}
+
+function scanAgents() {
   return [
     {
       name: "developer-copilot",
@@ -409,10 +609,12 @@ function scanAgents() {
         },
       ],
     },
+    ...DEMO_AGENT_SPECS.map(demoScanAgent),
   ];
 }
 
 function scanJob() {
+  const agents = scanAgents();
   const remediationPlan = [
     {
       package: "next",
@@ -471,103 +673,50 @@ function scanJob() {
     created_at: CREATED_AT,
     request: {},
     progress: [],
+    summary: scanSummary(agents.length),
     result: {
-      agents: [
-        ...scanAgents(),
-      ],
-      blast_radius: [],
+      agents,
+      blast_radius: buildBlastRadius(),
       remediation_plan: remediationPlan,
       scan_sources: ["demo-scan", "fleet-sync", "gateway-runtime"],
     },
   };
 }
 
-const fleetAgents = [
-  {
-    agent_id: "agent:developer-copilot",
-    name: "developer-copilot",
-    agent_type: "ide",
-    config_path: "/workspace/prod/.cursor/mcp.json",
-    lifecycle_state: "quarantined",
-    owner: "platform-security",
-    environment: "prod-ai-control-plane",
-    tags: ["prod", "repo-write", "jit-review"],
-    trust_score: 38,
-    trust_factors: { critical_findings: 4, exposed_credentials: 2, unverified_tools: 1, runtime_policy_hits: 7 },
-    server_count: 2,
-    package_count: 48,
-    credential_count: 2,
-    vuln_count: 9,
+function fleetAgentFromScan(agent, index) {
+  const lifecycleStates = ["quarantined", "pending_review", "approved", "approved", "discovered"];
+  const lifecycle_state = agent.name === "developer-copilot"
+    ? "quarantined"
+    : agent.name === "sre-runbook-agent"
+      ? "pending_review"
+      : agent.name === "shadow-copilot"
+        ? "quarantined"
+        : lifecycleStates[index % lifecycleStates.length];
+  const vulnCount = agent.mcp_servers.flatMap((srv) => srv.packages).flatMap((pkg) => pkg.vulnerabilities ?? []).length;
+  return {
+    agent_id: `agent:${agent.name}`,
+    name: agent.name,
+    agent_type: agent.agent_type,
+    config_path: agent.mcp_servers[0]?.config_path ?? `/workspace/${agent.name}/mcp.json`,
+    lifecycle_state,
+    owner: agent.owner,
+    environment: agent.environment,
+    tags: agent.tags,
+    trust_score: Math.max(28, 92 - vulnCount * 6 - (lifecycle_state === "quarantined" ? 18 : 0)),
+    trust_factors: { simulated: 1, findings: vulnCount },
+    server_count: agent.mcp_servers.length,
+    package_count: agent.mcp_servers.reduce((sum, srv) => sum + srv.packages.length, 0) + 8,
+    credential_count: agent.mcp_servers.filter((srv) => srv.has_credentials).length,
+    vuln_count: vulnCount,
     last_discovery: CREATED_AT,
     last_scan: CREATED_AT,
     created_at: CREATED_AT,
     updated_at: CREATED_AT,
-    notes: "Auto-quarantined after JIT identity path reached repo-write MCP tooling.",
-  },
-  {
-    agent_id: "agent:sre-runbook",
-    name: "sre-runbook-agent",
-    agent_type: "runbook",
-    config_path: "/ops/runbooks/mcp.json",
-    lifecycle_state: "pending_review",
-    owner: "sre",
-    environment: "prod-ai-control-plane",
-    tags: ["prod", "command-tooling"],
-    trust_score: 54,
-    trust_factors: { command_tools: 2, shared_servers: 1, high_findings: 3 },
-    server_count: 2,
-    package_count: 35,
-    credential_count: 1,
-    vuln_count: 5,
-    last_discovery: CREATED_AT,
-    last_scan: CREATED_AT,
-    created_at: CREATED_AT,
-    updated_at: CREATED_AT,
-    notes: "Needs command scope review before approval.",
-  },
-  {
-    agent_id: "agent:finance-rag",
-    name: "finance-rag-agent",
-    agent_type: "rag",
-    config_path: "/finance/rag/mcp.json",
-    lifecycle_state: "approved",
-    owner: "finance-data",
-    environment: "prod-finance",
-    tags: ["prod", "rag", "confidential-data"],
-    trust_score: 74,
-    trust_factors: { data_access: 3, credential_refs: 1, approved_owner: 1 },
-    server_count: 2,
-    package_count: 41,
-    credential_count: 1,
-    vuln_count: 3,
-    last_discovery: CREATED_AT,
-    last_scan: CREATED_AT,
-    created_at: CREATED_AT,
-    updated_at: CREATED_AT,
-    notes: "Approved with Snowflake read-only policy.",
-  },
-  {
-    agent_id: "agent:security-analyst",
-    name: "security-analyst-agent",
-    agent_type: "analyst",
-    config_path: "/security/mcp.json",
-    lifecycle_state: "approved",
-    owner: "security",
-    environment: "staging",
-    tags: ["staging", "read-only"],
-    trust_score: 86,
-    trust_factors: { read_only_tools: 5, no_credentials: 1 },
-    server_count: 1,
-    package_count: 14,
-    credential_count: 0,
-    vuln_count: 1,
-    last_discovery: CREATED_AT,
-    last_scan: CREATED_AT,
-    created_at: CREATED_AT,
-    updated_at: CREATED_AT,
-    notes: "Approved read-only analyst surface.",
-  },
-];
+    notes: "Simulated fleet record for docs proof.",
+  };
+}
+
+const fleetAgents = scanAgents().map(fleetAgentFromScan);
 
 function fixFirstView() {
   const cards = graph.attack_paths.map((pathItem, index) => ({
@@ -1033,10 +1182,11 @@ async function installRoutes(page) {
     has_agent_context: true,
     has_local_scan: true,
     has_fleet_ingest: true,
+    has_mesh: true,
     has_gateway: true,
     has_traces: true,
     scan_count: 3,
-    scan_sources: ["local", "fleet-sync", "gateway-runtime"],
+    scan_sources: ["demo-scan", "local", "fleet-sync", "gateway-runtime"],
   }));
   await page.route("**/v1/posture", (route) => fulfill(route, {
     grade: "D",
@@ -1054,7 +1204,17 @@ async function installRoutes(page) {
     count: scanJob().result.agents.length,
     warnings: [],
   }));
-  await page.route("**/v1/jobs**", (route) => fulfill(route, { jobs: [scanJob()], count: 1, total: 1, limit: 50, offset: 0, has_more: false }));
+  await page.route("**/v1/jobs**", (route) => {
+    const job = scanJob();
+    return fulfill(route, {
+      jobs: [{ ...job, summary: job.summary }],
+      count: 1,
+      total: 1,
+      limit: 50,
+      offset: 0,
+      has_more: false,
+    });
+  });
   await page.route(`**/v1/scan/${SCAN_ID}`, (route) => fulfill(route, scanJob()));
   await page.route(`**/v1/scan/${SCAN_ID}/context-graph**`, (route) => fulfill(route, contextGraph()));
   await page.route("**/v1/graph/snapshots?**", (route) => fulfill(route, [
@@ -1104,51 +1264,32 @@ async function installRoutes(page) {
     });
   });
   await page.route("**/v1/graph?**", (route) => fulfill(route, graphResponseWithPagination()));
-  await page.route("**/v1/findings?**", (route) => fulfill(route, {
-    schema_version: "findings.v1",
-    findings: [
-      {
-        id: "finding-cve-next",
-        canonical_id: "CVE-2026-21441",
-        finding_type: "vulnerability",
-        source: "nvd",
-        severity: "critical",
-        effective_severity: "critical",
-        title: "Reachable critical package on repo-write MCP path",
-        description: "A critical advisory is reachable from developer-copilot through GitHub MCP tooling.",
-        cve_id: "CVE-2026-21441",
-        cvss_score: 9.8,
-        cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-        attack_vector: "network",
-        epss_score: 0.82,
-        is_kev: true,
-        fixed_version: "16.2.7",
-        remediation_guidance: "Upgrade next to 16.2.7 and rerun the graph scan.",
-        compliance_tags: ["OWASP-LLM05", "ATLAS-AML.T0051"],
-        risk_score: 9.8,
-        impact_category: "RCE",
-        affected_servers: ["github-enterprise MCP"],
-        affected_agents: ["developer-copilot"],
-        exposed_credentials: ["GITHUB_FINE_GRAINED_TOKEN"],
-        exposed_tools: ["create_pull_request"],
-        scan_id: SCAN_ID,
-        scan_sources: ["demo-scan"],
-      },
-    ],
-    count: 1,
-    total: 1,
-    limit: 50,
-    offset: 0,
-    sort: "risk",
-    scan_id: SCAN_ID,
-    warnings: [],
-  }));
+  await page.route("**/v1/findings?**", (route) => {
+    const findings = buildFindings();
+    return fulfill(route, {
+      schema_version: "findings.v1",
+      findings,
+      count: findings.length,
+      total: findings.length,
+      limit: 50,
+      offset: 0,
+      sort: "risk",
+      scan_id: SCAN_ID,
+      warnings: [],
+    });
+  });
   await page.route("**/v1/fleet/stats", (route) => fulfill(route, {
     total: fleetAgents.length,
-    by_state: { discovered: 0, pending_review: 1, approved: 2, quarantined: 1, decommissioned: 0 },
-    by_environment: { "prod-ai-control-plane": 2, "prod-finance": 1, staging: 1 },
-    avg_trust_score: 63,
-    low_trust_count: 2,
+    by_state: fleetAgents.reduce((acc, item) => {
+      acc[item.lifecycle_state] = (acc[item.lifecycle_state] ?? 0) + 1;
+      return acc;
+    }, {}),
+    by_environment: fleetAgents.reduce((acc, item) => {
+      acc[item.environment] = (acc[item.environment] ?? 0) + 1;
+      return acc;
+    }, {}),
+    avg_trust_score: Math.round(fleetAgents.reduce((sum, item) => sum + item.trust_score, 0) / fleetAgents.length),
+    low_trust_count: fleetAgents.filter((item) => item.trust_score < 60).length,
   }));
   await page.route("**/v1/fleet?**", (route) => fulfill(route, {
     agents: fleetAgents,
@@ -1292,11 +1433,41 @@ function startServerIfNeeded() {
   return child;
 }
 
+async function stampDemoLabel(page) {
+  await page.evaluate(() => {
+    const existing = document.getElementById("demo-estate-watermark");
+    if (existing) existing.remove();
+    const el = document.createElement("div");
+    el.id = "demo-estate-watermark";
+    el.textContent = "Demo data — simulated estate";
+    el.setAttribute("aria-hidden", "true");
+    Object.assign(el.style, {
+      position: "fixed",
+      bottom: "14px",
+      right: "16px",
+      zIndex: "99999",
+      padding: "6px 12px",
+      borderRadius: "999px",
+      border: "1px solid rgba(16,185,129,0.35)",
+      background: "rgba(9,9,11,0.92)",
+      color: "rgba(167,243,208,0.95)",
+      fontSize: "11px",
+      fontWeight: "600",
+      letterSpacing: "0.12em",
+      textTransform: "uppercase",
+      pointerEvents: "none",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    });
+    document.body.appendChild(el);
+  });
+}
+
 async function capture(page, urlPath, filename, beforeShot) {
   await page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("load");
   await page.waitForTimeout(400);
   if (beforeShot) await beforeShot(page);
+  await stampDemoLabel(page);
   await page.screenshot({ path: path.join(IMAGE_DIR, filename), fullPage: false });
   console.log(`captured ${filename}`);
 }
@@ -1363,7 +1534,7 @@ async function writeScreenshotManifest() {
     release_version: RELEASE_VERSION,
     captured_at: new Date().toISOString(),
     capture_note:
-      "Captured from real Next.js dashboard routes in capture mode. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
+      "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — simulated estate label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
     screenshots,
   };
   await fs.writeFile(SCREENSHOT_MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);

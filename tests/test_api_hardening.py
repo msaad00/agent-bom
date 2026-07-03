@@ -228,6 +228,52 @@ def test_browser_session_cookies_use_strict_samesite(monkeypatch):
     assert any(CSRF_COOKIE_NAME in value for value in set_cookie_values)
 
 
+def test_browser_session_cookie_secure_defaults_on_in_production(monkeypatch):
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+    monkeypatch.setenv("AGENT_BOM_ENV", "production")
+    monkeypatch.delenv("AGENT_BOM_SESSION_COOKIE_SECURE", raising=False)
+    request = SimpleNamespace(headers={}, url=SimpleNamespace(scheme="http"))
+    response = Response()
+
+    enterprise._set_browser_session_cookie(
+        response,
+        request,
+        subject="dashboard-user",
+        role="admin",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session_static_api_key",
+    )
+
+    set_cookie_values = [value.decode("latin-1") for key, value in response.raw_headers if key.lower() == b"set-cookie"]
+    assert all("Secure" in value for value in set_cookie_values)
+
+
+def test_browser_session_cookie_secure_off_on_local_http(monkeypatch):
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+    monkeypatch.delenv("AGENT_BOM_ENV", raising=False)
+    monkeypatch.delenv("AGENT_BOM_DEPLOYMENT_ENV", raising=False)
+    monkeypatch.delenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SESSION_COOKIE_SECURE", raising=False)
+    request = SimpleNamespace(headers={}, url=SimpleNamespace(scheme="http"))
+    response = Response()
+
+    enterprise._set_browser_session_cookie(
+        response,
+        request,
+        subject="dashboard-user",
+        role="admin",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session_static_api_key",
+    )
+
+    set_cookie_values = [value.decode("latin-1") for key, value in response.raw_headers if key.lower() == b"set-cookie"]
+    assert all("Secure" not in value for value in set_cookie_values)
+
+
 def test_browser_session_requires_persistent_key_when_clustered(monkeypatch):
     monkeypatch.delenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", raising=False)
     monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")

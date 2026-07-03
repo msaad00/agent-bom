@@ -9,6 +9,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
+from agent_bom.analytics_retention import prune_runtime_observations_for_tenant
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
@@ -164,6 +165,7 @@ class InMemoryRuntimeEventStore:
                 return
             self._observations[key] = record
             self._sessions[session_key] = _merge_session(self._sessions.get(session_key), record)
+            _enforce_in_memory_observation_cap(self._observations, record.tenant_id)
 
     def list_sessions(self, tenant_id: str, *, limit: int = 100, offset: int = 0) -> list[RuntimeSessionRecord]:
         with self._lock:
@@ -268,6 +270,7 @@ class SQLiteRuntimeEventStore:
             """,
             (session.tenant_id, session.session_id, session.last_seen, json.dumps(session.to_dict(), sort_keys=True)),
         )
+        prune_runtime_observations_for_tenant(self._conn, record.tenant_id)
         self._conn.commit()
 
     def list_sessions(self, tenant_id: str, *, limit: int = 100, offset: int = 0) -> list[RuntimeSessionRecord]:
@@ -406,3 +409,26 @@ def set_runtime_event_store(store: RuntimeEventStore | None) -> None:
 
 def reset_runtime_event_store() -> None:
     set_runtime_event_store(None)
+
+
+def _enforce_in_memory_observation_cap(
+    observations: dict[tuple[str, str], RuntimeObservationRecord],
+    tenant_id: str,
+) -> None:
+    """Drop oldest in-memory observations for one tenant when over the cap."""
+    from agent_bom.analytics_retention import analytics_max_events
+
+    cap = analytics_max_events()
+    if cap <= 0:
+        return
+    tenant_rows = [
+        (key, row)
+        for key, row in observations.items()
+        if key[0] == tenant_id
+    ]
+    if len(tenant_rows) <= cap:
+        return
+    tenant_rows.sort(key=lambda item: item[1].observed_at)
+    for key, _row in tenant_rows[: len(tenant_rows) - cap]:
+        observations.pop(key, None)
+

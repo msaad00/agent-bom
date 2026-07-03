@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 
+from agent_bom.analytics_retention import prune_runtime_observations_for_tenant
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.runtime_event_store import (
     RuntimeObservationRecord,
@@ -103,6 +104,7 @@ class PostgresRuntimeEventStore:
                 """,
                 (session.tenant_id, session.session_id, session.last_seen, json.dumps(session.to_dict(), sort_keys=True)),
             )
+            prune_runtime_observations_for_tenant(conn, record.tenant_id, placeholder="%s")
             conn.commit()
 
     def list_sessions(self, tenant_id: str, *, limit: int = 100, offset: int = 0) -> list[RuntimeSessionRecord]:

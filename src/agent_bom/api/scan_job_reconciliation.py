@@ -15,7 +15,13 @@ def is_active_scan_job(job: ScanJob) -> bool:
 
 
 def active_scan_job_count(store: Any, tenant_id: str | None = None) -> int:
-    return sum(1 for job in store.list_all(tenant_id=tenant_id) if is_active_scan_job(job))
+    # A missing tenant means "count active jobs across every tenant" for the
+    # global gauge — an explicit cross-tenant reconciliation, not a leak.
+    if tenant_id is None:
+        jobs = store.list_all(all_tenants=True)
+    else:
+        jobs = store.list_all(tenant_id=tenant_id)
+    return sum(1 for job in jobs if is_active_scan_job(job))
 
 
 def reconcile_scan_jobs_active(store: Any, tenant_id: str | None = None) -> int:
@@ -46,7 +52,7 @@ def fail_stale_active_scan_jobs(
     """Mark active jobs older than timeout_seconds as failed."""
     current = now or datetime.now(timezone.utc)
     failed = 0
-    for job in store.list_all():
+    for job in store.list_all(all_tenants=True):
         if not is_active_scan_job(job):
             continue
         created = _parse_created_at(job)
@@ -75,7 +81,7 @@ def fail_orphaned_active_scan_jobs(
     """
     now = datetime.now(timezone.utc)
     failed = 0
-    for job in store.list_all():
+    for job in store.list_all(all_tenants=True):
         if not is_active_scan_job(job):
             continue
         job.status = JobStatus.FAILED

@@ -1096,7 +1096,7 @@ async def list_jobs(
             # asks for details and the job is not already in memory.
             try:
                 get_job = getattr(store, "get", None)
-                full_job = get_job(item["job_id"]) if callable(get_job) else None
+                full_job = get_job(item["job_id"], tenant_id=tenant_id) if callable(get_job) else None
             except Exception:
                 full_job = None
             enriched.append(_job_summary_payload(full_job) if isinstance(full_job, ScanJob) else item)

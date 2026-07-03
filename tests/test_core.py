@@ -2593,7 +2593,7 @@ def test_api_skill_audit_endpoint():
         assert len(body["findings"]) == 1
         assert body["findings"][0]["category"] == "shell_access"
     finally:
-        _get_store().delete("skill-audit-test")
+        _get_store().delete("skill-audit-test", all_tenants=True)
 
 
 def test_api_skill_audit_empty():
@@ -2620,7 +2620,7 @@ def test_api_skill_audit_empty():
         assert body["passed"] is True
         assert body["findings"] == []
     finally:
-        _get_store().delete("no-skill-audit-test")
+        _get_store().delete("no-skill-audit-test", all_tenants=True)
 
 
 # ── Resilient HTTP client tests ──────────────────────────────────────

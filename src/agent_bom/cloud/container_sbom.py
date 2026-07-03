@@ -17,6 +17,12 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache
+from typing import TYPE_CHECKING
+
+from agent_bom import http_client
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -134,68 +140,53 @@ def _parse_image_ref(image_ref: str) -> tuple[str, str, str, str]:
     return registry, org, repo, tag
 
 
+def _registry_get(url: str, *, headers: dict | None = None, params: dict | None = None) -> httpx.Response | None:
+    """Resilient GET for registry metadata.
+
+    Routes through the shared resilient client so Docker Hub calls get the same
+    retry/backoff, 429 Retry-After handling, and per-host circuit breaker as the
+    OSV/NVD paths. Best-effort: returns ``None`` on any failure (offline mode,
+    exhausted retries, network error) so callers fall back gracefully.
+    """
+    try:
+        with http_client.create_sync_client(timeout=_API_TIMEOUT) as client:
+            return http_client.sync_request_with_retry(client, "GET", url, headers=headers or {}, params=params or {})
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _dockerhub_token(org: str, repo: str) -> str | None:
     """Fetch an anonymous Docker Hub pull token for public images."""
-    try:
-        import requests
-    except ImportError:
-        return None
-    try:
-        resp = requests.get(
-            _DOCKERHUB_TOKEN_URL,
-            params={"service": "registry.docker.io", "scope": f"repository:{org}/{repo}:pull"},
-            timeout=_API_TIMEOUT,
-        )
-        if resp.status_code == 200:
-            return resp.json().get("token")
-    except Exception:  # noqa: BLE001
-        pass
+    resp = _registry_get(
+        _DOCKERHUB_TOKEN_URL,
+        params={"service": "registry.docker.io", "scope": f"repository:{org}/{repo}:pull"},
+    )
+    if resp is not None and resp.status_code == 200:
+        return resp.json().get("token")
     return None
 
 
 def _fetch_manifest(org: str, repo: str, tag: str, token: str) -> dict | None:
     """Fetch the image manifest from Docker Hub registry API v2."""
-    try:
-        import requests
-    except ImportError:
-        return None
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": ("application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json"),
     }
-    try:
-        resp = requests.get(
-            f"{_DOCKERHUB_REGISTRY_URL}/{org}/{repo}/manifests/{tag}",
-            headers=headers,
-            timeout=_API_TIMEOUT,
-        )
-        if resp.status_code == 200:
-            return {"manifest": resp.json(), "digest": resp.headers.get("Docker-Content-Digest")}
-    except Exception:  # noqa: BLE001
-        pass
+    resp = _registry_get(f"{_DOCKERHUB_REGISTRY_URL}/{org}/{repo}/manifests/{tag}", headers=headers)
+    if resp is not None and resp.status_code == 200:
+        return {"manifest": resp.json(), "digest": resp.headers.get("Docker-Content-Digest")}
     return None
 
 
 def _fetch_config(org: str, repo: str, config_digest: str, token: str) -> dict | None:
     """Fetch the image config blob (contains OS, arch, creation time, labels)."""
-    try:
-        import requests
-    except ImportError:
-        return None
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.docker.container.image.v1+json",
     }
-    try:
-        resp = requests.get(
-            f"{_DOCKERHUB_REGISTRY_URL}/{org}/{repo}/blobs/{config_digest}",
-            headers=headers,
-            timeout=_API_TIMEOUT,
-        )
-        if resp.status_code == 200:
-            return resp.json()
-    except Exception:  # noqa: BLE001
-        pass
+    resp = _registry_get(f"{_DOCKERHUB_REGISTRY_URL}/{org}/{repo}/blobs/{config_digest}", headers=headers)
+    if resp is not None and resp.status_code == 200:
+        return resp.json()
     return None
 
 

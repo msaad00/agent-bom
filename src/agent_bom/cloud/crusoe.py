@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 
+from agent_bom import http_client
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
@@ -24,16 +25,16 @@ _API_TIMEOUT = 15
 
 
 def _crusoe_get(path: str, api_key: str) -> dict | list:
-    try:
-        import requests
-    except ImportError as exc:
-        raise CloudDiscoveryError("requests is required for Crusoe discovery. Install with: pip install requests") from exc
-
-    resp = requests.get(
+    # Route through the shared resilient client so Crusoe calls get the same
+    # retry/backoff, 429 Retry-After handling, and per-host circuit breaker as
+    # the OSV/NVD paths instead of a raw one-shot request.
+    resp = http_client.sync_get(
         f"{_API_BASE}{path}",
-        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
         timeout=_API_TIMEOUT,
+        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
     )
+    if resp is None:
+        raise CloudDiscoveryError("Crusoe: request failed after retries")
     if resp.status_code == 401:
         raise CloudDiscoveryError("Crusoe: invalid API key (HTTP 401)")
     resp.raise_for_status()
@@ -54,11 +55,6 @@ def discover(
     Returns:
         (agents, warnings) tuple.
     """
-    try:
-        import requests  # noqa: F401
-    except ImportError:
-        return [], ["Crusoe discovery requires 'requests'. Install with: pip install requests"]
-
     resolved_key = api_key or os.environ.get("CRUSOE_API_KEY", "")
     resolved_project = project_id or os.environ.get("CRUSOE_PROJECT_ID", "")
 

@@ -533,7 +533,7 @@ def test_get_scan_redacts_result_findings_replay_only_fields():
         "package_version": "10.0.0",
         "severity": "high",
     }
-    assert store.get("job-finding-redaction").result["findings"][0]["description"] == "Copied workspace details"
+    assert store.get("job-finding-redaction", all_tenants=True).result["findings"][0]["description"] == "Copied workspace details"
 
 
 # ---------------------------------------------------------------------------

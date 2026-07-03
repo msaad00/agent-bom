@@ -352,7 +352,7 @@ def test_job_store_put_get(mock_pool):
         job.model_dump_json(),
     )
 
-    retrieved = store.get("j-1")
+    retrieved = store.get("j-1", all_tenants=True)
     assert retrieved is not None
     assert retrieved.job_id == "j-1"
 
@@ -384,7 +384,7 @@ def test_job_store_get_nonexistent(mock_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
     store = PostgresJobStore(pool=mock_pool)
-    assert store.get("nonexistent") is None
+    assert store.get("nonexistent", all_tenants=True) is None
 
 
 def test_job_store_delete(mock_pool):
@@ -392,14 +392,14 @@ def test_job_store_delete(mock_pool):
 
     store = PostgresJobStore(pool=mock_pool)
     mock_pool._conn._store.setdefault("scan_jobs", {})["j-1"] = ("j-1", "done", "", None, "{}")
-    assert store.delete("j-1") is True
+    assert store.delete("j-1", all_tenants=True) is True
 
 
 def test_job_store_delete_nonexistent(mock_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
     store = PostgresJobStore(pool=mock_pool)
-    assert store.delete("nonexistent") is False
+    assert store.delete("nonexistent", all_tenants=True) is False
 
 
 def test_job_store_list_summary(mock_pool):
@@ -407,7 +407,7 @@ def test_job_store_list_summary(mock_pool):
 
     store = PostgresJobStore(pool=mock_pool)
     # list_summary returns dicts from column-based query
-    result = store.list_summary()
+    result = store.list_summary(all_tenants=True)
     assert isinstance(result, list)
 
 
@@ -415,7 +415,7 @@ def test_job_store_list_all_requires_tenant_id(mock_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
     store = PostgresJobStore(pool=mock_pool)
-    with pytest.raises(ValueError, match="tenant_id is required"):
+    with pytest.raises(ValueError, match="requires a tenant_id"):
         store.list_all()
 
 
@@ -433,7 +433,7 @@ def test_job_store_list_summary_includes_tenant(mock_pool):
         "sched-alpha",
         "{}",
     )
-    result = store.list_summary()
+    result = store.list_summary(all_tenants=True)
     assert result[0]["tenant_id"] == "tenant-alpha"
     assert result[0]["triggered_by"] == "scheduler"
     assert result[0]["schedule_id"] == "sched-alpha"

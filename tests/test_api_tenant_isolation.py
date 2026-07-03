@@ -365,7 +365,7 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
             posture_scorecard={"overall_score": 82},
         ),
     )
-    pushed_job = store.get(pushed["job_id"])
+    pushed_job = store.get(pushed["job_id"], all_tenants=True)
     assert pushed_job is not None
     assert pushed_job.tenant_id == "tenant-alpha"
     assert pushed_job.triggered_by == "analyst@example.com:source-a"
@@ -435,7 +435,7 @@ async def test_receive_push_normalizes_report_contract_and_persists_graph(tmp_pa
         ),
     )
 
-    pushed_job = store.get(pushed["job_id"])
+    pushed_job = store.get(pushed["job_id"], all_tenants=True)
     assert pushed_job is not None
     assert pushed_job.result["scan_id"] == pushed["job_id"]
     assert pushed_job.result["blast_radius"][0]["vulnerability_id"] == "CVE-2026-0001"

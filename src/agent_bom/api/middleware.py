@@ -1420,6 +1420,22 @@ def _validate_rate_limit(name: str, value: int, *, max_rpm: int) -> int:
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Tenant-aware sliding window rate limiter with bounded memory."""
 
+    # Health/readiness/liveness probes must never self-throttle: orchestrators
+    # (k8s, ELB, uptime monitors) hit these on short intervals and a probe storm
+    # would otherwise consume the per-tenant/IP read budget and 429 the probes.
+    # These stay behind the OUTERMOST GlobalRateLimitMiddleware flood cap, so an
+    # anonymous flood is still bounded pre-auth — this only removes the finer
+    # per-tenant/IP read limiter for liveness endpoints.
+    _HEALTH_EXEMPT_PATHS = frozenset(
+        {
+            "/health",
+            "/healthz",
+            "/livez",
+            "/readyz",
+            "/ping",
+        }
+    )
+
     def __init__(
         self,
         app: ASGIApp,
@@ -1473,6 +1489,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: StarletteRequest, call_next):
         if self._is_dashboard_static_asset(request.url.path, request.method):
+            return await call_next(request)
+
+        if request.url.path in self._HEALTH_EXEMPT_PATHS:
             return await call_next(request)
 
         now = time.time()

@@ -12525,7 +12525,14 @@ paths:
     post:
       description: 'Start a scan. Returns immediately with a job_id.
 
-        Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.'
+        Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
+
+
+        Retry-safe: repeating the request with the same ``Idempotency-Key`` header
+
+        returns the first job instead of minting a new job_id per attempt; reusing
+
+        the key with a different body is a 409 conflict.'
       operationId: create_scan_v1_scan_post
       requestBody:
         content:

@@ -220,13 +220,26 @@ class InMemoryComplianceHubStore:
 
     def __init__(self) -> None:
         self._by_tenant: dict[str, list[dict[str, Any]]] = {}
+        # Maps finding_id -> ingest-order slot so a resend of the same
+        # (tenant_id, finding_id) refreshes its row in place instead of
+        # appending a duplicate (idempotent ingest, mirrors the SQL backends).
+        self._slots: dict[str, dict[str, int]] = {}
         self._lock = threading.Lock()
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         clean = _redact_findings(findings)
         with self._lock:
             bucket = self._by_tenant.setdefault(tenant_id, [])
-            bucket.extend(clean)
+            slots = self._slots.setdefault(tenant_id, {})
+            for payload in clean:
+                finding_id = str(payload.get("id") or "")
+                if finding_id and finding_id in slots:
+                    # Refresh payload, keep original ingest position.
+                    bucket[slots[finding_id]] = payload
+                    continue
+                if finding_id:
+                    slots[finding_id] = len(bucket)
+                bucket.append(payload)
             total = len(bucket)
         if clean:
             from agent_bom.api.findings_count_cache import invalidate_tenant
@@ -280,6 +293,7 @@ class InMemoryComplianceHubStore:
         with self._lock:
             removed = len(self._by_tenant.get(tenant_id, []))
             self._by_tenant[tenant_id] = []
+            self._slots[tenant_id] = {}
         if removed:
             from agent_bom.api.findings_count_cache import invalidate_tenant
 
@@ -382,11 +396,12 @@ class SQLiteComplianceHubStore:
                 severity TEXT NOT NULL DEFAULT '',
                 severity_rank INTEGER NOT NULL DEFAULT 0,
                 cvss_score REAL NOT NULL DEFAULT 0,
-                PRIMARY KEY (tenant_id, finding_id, ordinal)
+                PRIMARY KEY (tenant_id, finding_id)
             )
             """
         )
         self._migrate_columns()
+        self._migrate_primary_key()
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
         self._ensure_scale_indexes()
         self._conn.commit()
@@ -425,6 +440,57 @@ class SQLiteComplianceHubStore:
                 "UPDATE compliance_hub_findings SET cvss_score = "
                 "CAST(COALESCE(json_extract(payload, '$.cvss_score'), 0) AS REAL) WHERE cvss_score = 0"
             )
+
+    def _migrate_primary_key(self) -> None:
+        """Collapse the primary key to ``(tenant_id, finding_id)`` (idempotent).
+
+        Pre-idempotency tables keyed on ``(tenant_id, finding_id, ordinal)`` so
+        every resend of the same finding minted a new row. SQLite cannot ALTER a
+        primary key in place, so we rebuild: dedup existing duplicates keeping
+        the lowest ordinal (the original ingest), then swap in the new-schema
+        table. A no-op when the table already carries the collapsed key.
+        """
+        pk_cols = [row[1] for row in self._conn.execute("PRAGMA table_info(compliance_hub_findings)").fetchall() if row[5]]
+        if "ordinal" not in pk_cols:
+            return  # already migrated to (tenant_id, finding_id)
+
+        self._conn.execute(
+            """
+            CREATE TABLE compliance_hub_findings_v2 (
+                tenant_id TEXT NOT NULL,
+                finding_id TEXT NOT NULL,
+                ingested_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                applicable_frameworks_csv TEXT NOT NULL DEFAULT '',
+                payload TEXT NOT NULL,
+                ordinal INTEGER NOT NULL,
+                effective_reach_score REAL NOT NULL DEFAULT 0,
+                origin TEXT NOT NULL DEFAULT '',
+                severity TEXT NOT NULL DEFAULT '',
+                severity_rank INTEGER NOT NULL DEFAULT 0,
+                cvss_score REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (tenant_id, finding_id)
+            )
+            """
+        )
+        # Keep the lowest-ordinal row for each (tenant_id, finding_id) so the
+        # rebuild is deterministic and preserves the original ingest order.
+        self._conn.execute(
+            """
+            INSERT INTO compliance_hub_findings_v2
+                (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
+                 ordinal, effective_reach_score, origin, severity, severity_rank, cvss_score)
+            SELECT f.tenant_id, f.finding_id, f.ingested_at, f.source, f.applicable_frameworks_csv,
+                   f.payload, f.ordinal, f.effective_reach_score, f.origin, f.severity, f.severity_rank, f.cvss_score
+            FROM compliance_hub_findings f
+            WHERE f.ordinal = (
+                SELECT MIN(s.ordinal) FROM compliance_hub_findings s
+                WHERE s.tenant_id = f.tenant_id AND s.finding_id = f.finding_id
+            )
+            """
+        )
+        self._conn.execute("DROP TABLE compliance_hub_findings")
+        self._conn.execute("ALTER TABLE compliance_hub_findings_v2 RENAME TO compliance_hub_findings")
 
     def _ensure_scale_indexes(self) -> None:
         """Install origin-aware read indexes, replacing the pre-origin index.
@@ -484,12 +550,25 @@ class SQLiteComplianceHubStore:
                     _cvss_value(payload),
                 )
             )
+        # Idempotent ingest: a repeat of the same (tenant_id, finding_id)
+        # refreshes the stored payload/metadata in place and keeps the original
+        # ``ordinal`` (ingest order) instead of appending a duplicate row.
         self._conn.executemany(
             """
-            INSERT OR REPLACE INTO compliance_hub_findings
+            INSERT INTO compliance_hub_findings
                 (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
                  ordinal, effective_reach_score, origin, severity, severity_rank, cvss_score)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tenant_id, finding_id) DO UPDATE SET
+                ingested_at = excluded.ingested_at,
+                source = excluded.source,
+                applicable_frameworks_csv = excluded.applicable_frameworks_csv,
+                payload = excluded.payload,
+                effective_reach_score = excluded.effective_reach_score,
+                origin = excluded.origin,
+                severity = excluded.severity,
+                severity_rank = excluded.severity_rank,
+                cvss_score = excluded.cvss_score
             """,
             rows,
         )

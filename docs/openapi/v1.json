@@ -19353,7 +19353,7 @@
     },
     "/v1/scan": {
       "post": {
-        "description": "Start a scan. Returns immediately with a job_id.\nPoll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.",
+        "description": "Start a scan. Returns immediately with a job_id.\nPoll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.\n\nRetry-safe: repeating the request with the same ``Idempotency-Key`` header\nreturns the first job instead of minting a new job_id per attempt; reusing\nthe key with a different body is a 409 conflict.",
         "operationId": "create_scan_v1_scan_post",
         "requestBody": {
           "content": {

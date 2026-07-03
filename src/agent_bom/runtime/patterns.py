@@ -58,6 +58,28 @@ CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("PagerDuty API Key", re.compile(r"\b[A-Za-z0-9+/]{20}-us\b")),
 ]
 
+# A hardcoded secret is a literal — a quoted string or a bare token. Source
+# code frequently *derives* a secret-named variable from a function or method
+# call instead (``access_token = self.signing_key.sign(claims)`` mints an OAuth
+# token; it is not an exposed credential). This regex distinguishes an
+# assignment whose value is a function/method call from a literal secret so
+# file scanners can suppress those false positives. It matches
+# ``<secret-name> = <ident-chain>(`` where the value is an (optionally awaited)
+# identifier/attribute chain that is immediately called — never a quoted or
+# bare literal.
+CODE_CALL_ASSIGNMENT = re.compile(
+    r"""(?ix)
+    \b(?:secret|token|password|passwd|pwd|apikey|api[_-]?key|
+       access[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?secret|
+       client[_-]?secret|auth[_-]?token|credential|private[_-]?key|
+       bearer|signing[_-]?key)\w*
+    \s* [=:] \s*
+    (?:await\s+|new\s+)?
+    [A-Za-z_][\w.]*          # identifier / attribute chain (self.signing_key.sign)
+    \s* \(                   # ...immediately called → an expression, not a literal
+    """
+)
+
 # ─── PII patterns ────────────────────────────────────────────────────────────
 
 # Personal Identifiable Information patterns for detection and redaction

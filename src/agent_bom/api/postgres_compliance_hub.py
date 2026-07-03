@@ -134,13 +134,16 @@ class PostgresComplianceHubStore:
         order_sql = _postgres_order_clause(sort)
 
         with _tenant_connection(self._pool) as conn:
+            # ``where_sql`` is assembled only from fixed predicates above; all caller values
+            # stay in ``params`` as psycopg bindings.
             total_row = conn.execute(
-                f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",
+                f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",  # nosec B608
                 tuple(params),
             ).fetchone()
             total = int(total_row[0]) if total_row else 0
+            # ``order_sql`` comes from a closed sort allowlist; all caller values stay bound.
             rows = conn.execute(
-                f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT %s OFFSET %s",
+                f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT %s OFFSET %s",  # nosec B608
                 (*params, int(limit), int(offset)),
             ).fetchall()
         out: list[dict[str, Any]] = []

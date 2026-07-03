@@ -424,16 +424,19 @@ class SQLiteComplianceHubStore:
             params.append(scan_id)
         where_sql = " AND ".join(where)
 
+        # ``where_sql`` is assembled only from fixed predicates above; all caller values
+        # stay in ``params`` as sqlite bindings.
         total_row = self._conn.execute(
-            f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",
+            f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",  # nosec B608
             params,
         ).fetchone()
         total = int(total_row[0]) if total_row else 0
 
         order_sql = _sqlite_order_clause(sort)
         page_params = [*params, int(limit), int(offset)]
+        # ``order_sql`` comes from a closed sort allowlist; all caller values stay bound.
         rows = self._conn.execute(
-            f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT ? OFFSET ?",
+            f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT ? OFFSET ?",  # nosec B608
             page_params,
         ).fetchall()
         return [json.loads(row[0]) for row in rows], total

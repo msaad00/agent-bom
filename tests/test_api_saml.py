@@ -9,7 +9,14 @@ from fastapi import HTTPException
 from agent_bom.api.auth import KeyStore, get_key_store, set_key_store
 from agent_bom.api.models import SAMLLoginRequest
 from agent_bom.api.routes import enterprise
-from agent_bom.api.saml import SAMLConfig, SAMLError, saml_attributes_to_role, saml_attributes_to_tenant
+from agent_bom.api.saml import (
+    SAML_INSTALL_HINT,
+    SAMLConfig,
+    SAMLError,
+    describe_saml_posture,
+    saml_attributes_to_role,
+    saml_attributes_to_tenant,
+)
 from agent_bom.api.shared_auth_state import reset_auth_state_for_tests
 
 
@@ -305,3 +312,36 @@ async def test_saml_login_rejects_invalid_assertion(isolated_key_store, monkeypa
 
     assert error.value.status_code == 401
     assert error.value.detail == "bad saml"
+
+
+def test_describe_saml_posture_reports_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("agent_bom.api.saml.saml_runtime_available", lambda: False)
+
+    posture = describe_saml_posture()
+
+    assert posture["runtime_available"] is False
+    assert posture["install_hint"] == SAML_INSTALL_HINT
+    assert posture["configured"] is False
+    assert SAML_INSTALL_HINT in str(posture["message"])
+
+
+@pytest.mark.asyncio
+async def test_saml_metadata_returns_install_hint_when_extra_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("agent_bom.api.saml.saml_runtime_available", lambda: False)
+
+    with pytest.raises(HTTPException) as error:
+        await enterprise.saml_metadata()
+
+    assert error.value.status_code == 503
+    assert SAML_INSTALL_HINT in error.value.detail
+
+
+@pytest.mark.asyncio
+async def test_saml_login_returns_install_hint_when_extra_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("agent_bom.api.saml.saml_runtime_available", lambda: False)
+
+    with pytest.raises(HTTPException) as error:
+        await enterprise.saml_login(SAMLLoginRequest(saml_response="assertion", relay_state="nonce"))
+
+    assert error.value.status_code == 503
+    assert SAML_INSTALL_HINT in error.value.detail

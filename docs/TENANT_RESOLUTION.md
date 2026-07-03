@@ -16,7 +16,7 @@ Source of truth: authenticated identity at the request boundary.
 | API key (RBAC) | `KeyStore.verify(raw_key).tenant_id` — bound at key-create time |
 | OIDC bearer | `AGENT_BOM_OIDC_TENANT_CLAIM` (default `tenant_id`) extracted from the JWT |
 | OIDC tenant providers | The matching tenant from `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON` issuer match |
-| SAML | `Tenant ID` SAML attribute from the assertion |
+| SAML | `Tenant ID` SAML attribute from the assertion (requires `pip install 'agent-bom[saml]'`) |
 | Trusted proxy | `X-Agent-Bom-Tenant-ID` header — only honoured when `AGENT_BOM_TRUST_PROXY_AUTH_SECRET` matches |
 | SCIM | `AGENT_BOM_SCIM_TENANT_ID` for the legacy single token, or `AGENT_BOM_SCIM_BEARER_TOKENS_JSON` for per-tenant bearer tokens (server-side, never from request payload) |
 

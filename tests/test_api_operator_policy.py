@@ -721,6 +721,7 @@ def test_auth_policy_reports_identity_provider_posture(monkeypatch: pytest.Monke
     monkeypatch.setenv("AGENT_BOM_SAML_SP_ENTITY_ID", "https://agent-bom.example.com/saml/metadata")
     monkeypatch.setenv("AGENT_BOM_SAML_SP_ACS_URL", "https://agent-bom.example.com/v1/auth/saml/login")
     monkeypatch.setenv("AGENT_BOM_SAML_SESSION_TTL_SECONDS", "1800")
+    monkeypatch.setattr("agent_bom.api.saml.saml_runtime_available", lambda: True)
 
     client = TestClient(app)
     body = client.get("/v1/auth/policy").json()

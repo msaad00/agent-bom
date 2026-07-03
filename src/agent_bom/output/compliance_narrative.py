@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
 
+from agent_bom.compliance_coverage import FRAMEWORK_SLUG_ALIASES, normalize_framework_slug
+
 # ─── Catalogue lookups ────────────────────────────────────────────────────────
 # Imported lazily where needed to keep top-level import cost low.
 
@@ -77,16 +79,7 @@ def _all_framework_slugs() -> list[str]:
 
 
 ALL_FRAMEWORK_SLUGS: list[str] = _all_framework_slugs()
-FRAMEWORK_SLUG_ALIASES: dict[str, str] = {
-    "mitre-attack": "attack",
-    "mitre_attack": "attack",
-}
 ACCEPTED_FRAMEWORK_SLUGS: list[str] = [*ALL_FRAMEWORK_SLUGS, *FRAMEWORK_SLUG_ALIASES]
-
-
-def normalize_framework_slug(slug: str) -> str:
-    normalized = slug.strip().lower()
-    return FRAMEWORK_SLUG_ALIASES.get(normalized, normalized)
 
 
 # ─── Dataclasses ─────────────────────────────────────────────────────────────

@@ -30,9 +30,22 @@ export interface RemediationSummary {
 }
 
 export type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
-export type SortKey = "severity" | "cvss" | "epss" | "id";
+export type SortKey = "severity" | "cvss" | "epss" | "effective_reach" | "id";
 export type GroupKey = "none" | "package" | "agent" | "severity";
 export type ScanScope = "latest" | "all";
+
+/** Map dashboard sort keys to the server-side ``GET /v1/findings`` contract. */
+export function serverFindingsSort(sortKey: SortKey): string {
+  if (sortKey === "cvss") return "cvss";
+  if (sortKey === "severity") return "severity";
+  return "effective_reach";
+}
+
+/** Human label for totals that may be cached or lower-bounded. */
+export function formatFindingsTotal(total: number, approximate?: boolean): string {
+  if (!approximate) return String(total);
+  return `~${total}`;
+}
 
 export function uniqueStrings(items: Array<string | null | undefined>) {
   return [...new Set(items.filter((item): item is string => Boolean(item && item.trim())).map((item) => item.trim()))];

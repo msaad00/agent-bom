@@ -36,9 +36,10 @@ FindingPage = tuple[list[dict[str, Any]], int]
 
 _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
-# Sort keys supported by ``list_page``. ``effective_reach`` is the default and
-# the only one backed by a dedicated index/column; ``cvss`` and ``severity``
-# fall back to JSON-extraction ordering, and ``ordinal`` uses ingest order.
+# Sort keys supported by ``list_page``. ``effective_reach`` (default),
+# ``cvss`` and ``severity`` are each backed by a materialised column +
+# composite ``(tenant_id, origin, <col> DESC, ordinal)`` index; ``ordinal``
+# uses ingest order.
 _LIST_PAGE_SORTS = ("effective_reach", "cvss", "severity", "ordinal")
 
 
@@ -248,34 +249,36 @@ def _now_utc_iso() -> str:
 
 def _sqlite_order_clause(sort: str) -> str:
     """ORDER BY clause for the SQLite backend, ordinal-tiebroken to match
-    the in-memory backend's stable sort."""
+    the in-memory backend's stable sort.
+
+    ``cvss``/``severity`` order by the materialised ``cvss_score`` /
+    ``severity_rank`` columns (not ``json_extract``) so the composite
+    ``(tenant_id, origin, <col> DESC, ordinal)`` indexes back the sort with
+    an ordered range scan instead of a temp-B-tree filesort (#3192).
+    """
     if sort == "ordinal":
         return "ORDER BY ordinal ASC"
     if sort == "cvss":
-        return "ORDER BY CAST(json_extract(payload, '$.cvss_score') AS REAL) DESC, ordinal ASC"
+        return "ORDER BY cvss_score DESC, ordinal ASC"
     if sort == "severity":
-        # Map severity band to the same rank used in-memory.
-        return (
-            "ORDER BY CASE LOWER(COALESCE(json_extract(payload, '$.severity'), '')) "
-            "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
-            "ELSE 0 END DESC, ordinal ASC"
-        )
+        return "ORDER BY severity_rank DESC, ordinal ASC"
     # effective_reach (default) — index-backed range scan + limit.
     return "ORDER BY effective_reach_score DESC, ordinal ASC"
 
 
 def _postgres_order_clause(sort: str) -> str:
-    """ORDER BY clause for the Postgres backend, mirroring SQLite semantics."""
+    """ORDER BY clause for the Postgres backend, mirroring SQLite semantics.
+
+    ``cvss``/``severity`` order by the materialised ``cvss_score`` /
+    ``severity_rank`` columns backed by the composite
+    ``(tenant_id, origin, <col> DESC, ordinal)`` indexes (#3192).
+    """
     if sort == "ordinal":
         return "ORDER BY ordinal ASC"
     if sort == "cvss":
-        return "ORDER BY (payload->>'cvss_score')::float8 DESC NULLS LAST, ordinal ASC"
+        return "ORDER BY cvss_score DESC, ordinal ASC"
     if sort == "severity":
-        return (
-            "ORDER BY CASE LOWER(COALESCE(payload->>'severity', '')) "
-            "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
-            "ELSE 0 END DESC, ordinal ASC"
-        )
+        return "ORDER BY severity_rank DESC, ordinal ASC"
     return "ORDER BY effective_reach_score DESC, ordinal ASC"
 
 
@@ -316,6 +319,9 @@ class SQLiteComplianceHubStore:
                 ordinal INTEGER NOT NULL,
                 effective_reach_score REAL NOT NULL DEFAULT 0,
                 origin TEXT NOT NULL DEFAULT '',
+                severity TEXT NOT NULL DEFAULT '',
+                severity_rank INTEGER NOT NULL DEFAULT 0,
+                cvss_score REAL NOT NULL DEFAULT 0,
                 PRIMARY KEY (tenant_id, finding_id, ordinal)
             )
             """
@@ -337,6 +343,28 @@ class SQLiteComplianceHubStore:
             self._conn.execute(
                 "UPDATE compliance_hub_findings SET origin = COALESCE(json_extract(payload, '$.origin'), '') WHERE origin = ''"
             )
+        # Materialise severity/cvss sort keys so the filtered severity/cvss
+        # sorts ride a composite index instead of a json_extract filesort
+        # (#3192). Backfill extracts from the stored payload for legacy rows.
+        if "severity" not in cols:
+            self._conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN severity TEXT NOT NULL DEFAULT ''")
+            self._conn.execute(
+                "UPDATE compliance_hub_findings SET severity = COALESCE(json_extract(payload, '$.severity'), '') WHERE severity = ''"
+            )
+        if "severity_rank" not in cols:
+            self._conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN severity_rank INTEGER NOT NULL DEFAULT 0")
+            self._conn.execute(
+                "UPDATE compliance_hub_findings SET severity_rank = CASE "
+                "LOWER(COALESCE(json_extract(payload, '$.severity'), '')) "
+                "WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 "
+                "ELSE 0 END WHERE severity_rank = 0"
+            )
+        if "cvss_score" not in cols:
+            self._conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN cvss_score REAL NOT NULL DEFAULT 0")
+            self._conn.execute(
+                "UPDATE compliance_hub_findings SET cvss_score = "
+                "CAST(COALESCE(json_extract(payload, '$.cvss_score'), 0) AS REAL) WHERE cvss_score = 0"
+            )
 
     def _ensure_scale_indexes(self) -> None:
         """Install origin-aware read indexes, replacing the pre-origin index.
@@ -353,6 +381,17 @@ class SQLiteComplianceHubStore:
             "ON compliance_hub_findings(tenant_id, origin, effective_reach_score DESC, ordinal)"
         )
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin ON compliance_hub_findings(tenant_id, origin)")
+        # Back the filtered severity/cvss sorts with ordered composite indexes
+        # so ORDER BY rides an index range scan (no temp B-tree filesort) — the
+        # numeric severity_rank keeps critical>high>medium>low ordering (#3192).
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_severity "
+            "ON compliance_hub_findings(tenant_id, origin, severity_rank DESC, ordinal)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_cvss "
+            "ON compliance_hub_findings(tenant_id, origin, cvss_score DESC, ordinal)"
+        )
 
     def _next_ordinal(self, tenant_id: str) -> int:
         row = self._conn.execute(
@@ -380,13 +419,17 @@ class SQLiteComplianceHubStore:
                     next_ord + offset,
                     compute_effective_reach_score(payload),
                     str(payload.get("origin") or ""),
+                    str(payload.get("severity") or ""),
+                    _severity_rank(payload),
+                    _cvss_value(payload),
                 )
             )
         self._conn.executemany(
             """
             INSERT OR REPLACE INTO compliance_hub_findings
-                (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload, ordinal, effective_reach_score, origin)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
+                 ordinal, effective_reach_score, origin, severity, severity_rank, cvss_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

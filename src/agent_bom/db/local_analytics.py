@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from agent_bom.analytics_retention import prune_local_scan_runs
 from agent_bom.canonical_ids import canonical_package_id
 from agent_bom.config import LOCAL_ANALYTICS_DB
 
@@ -275,6 +276,7 @@ class LocalAnalyticsStore:
                 """,
                 [_package_row(run_id, scan_id, package_row) for package_row in package_rows],
             )
+            prune_local_scan_runs(conn)
             conn.commit()
         return scan_id
 

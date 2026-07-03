@@ -80,6 +80,39 @@ def test_scan_secrets_keeps_ipv4_pii_in_code_config_and_secret_contexts(tmp_path
     }
 
 
+def test_scan_secrets_ignores_oauth_token_minting_assignments(tmp_path: Path):
+    # Regression for #3437: minting a token from a method call is not a
+    # hardcoded credential and must not raise a CRITICAL finding.
+    (tmp_path / "oauth_as.py").write_text(
+        "def issue(self, claims):\n"
+        "    access_token = self.signing_key.sign(claims)\n"
+        "    refresh_token = self.signing_key.sign(refresh_claims)\n"
+        "    api_key = build_api_key(user)\n"
+        "    return access_token\n",
+        encoding="utf-8",
+    )
+
+    result = scan_secrets(tmp_path)
+
+    assert result.critical_count == 0
+    assert not any(finding.category == "credential" for finding in result.findings)
+
+
+def test_scan_secrets_still_flags_literal_token_passed_to_a_call(tmp_path: Path):
+    # The call-assignment suppression must not hide a real literal secret that
+    # merely happens to be passed as a function argument.
+    (tmp_path / "loader.py").write_text(
+        'aws_key = load("AKIAIOSFODNN7EXAMPLE")\n',
+        encoding="utf-8",
+    )
+
+    result = scan_secrets(tmp_path)
+
+    assert any(
+        finding.secret_type == "AWS Access Key" and finding.severity == "critical" for finding in result.findings
+    )
+
+
 def test_scan_secrets_warns_on_non_directory(tmp_path: Path):
     target = tmp_path / "not-a-dir.txt"
     target.write_text("hello", encoding="utf-8")

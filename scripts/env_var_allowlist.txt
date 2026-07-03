@@ -218,6 +218,8 @@ AGENT_BOM_GRAPH_DELTA_WEBHOOK_SIGNING_SECRET
 AGENT_BOM_GRAPH_DELTA_WEBHOOK_ALLOW_PRIVATE_NETWORKS
 # Graph evidence manifest retention horizon; read by graph_store.py for local/self-hosted history metadata.
 AGENT_BOM_GRAPH_RETENTION_DAYS
+# Local CLI scan-history retained report cap; read by history.py so workstations/CI caches do not grow unbounded.
+AGENT_BOM_HISTORY_MAX_REPORTS
 AGENT_BOM_GRAPH_WRITE_BATCH_SIZE
 AGENT_BOM_HSTS_MAX_AGE_SECONDS
 AGENT_BOM_HSTS_PRELOAD

@@ -33,13 +33,11 @@ def db():
 
 def _insert_snapshot(conn: sqlite3.Connection, scan_id: str, created_at: str, tenant: str = "default") -> None:
     conn.execute(
-        "INSERT INTO graph_snapshots (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO graph_snapshots (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary) VALUES (?, ?, ?, ?, ?, ?)",
         (scan_id, tenant, created_at, 1, 0, "{}"),
     )
     conn.execute(
-        "INSERT INTO graph_nodes (id, entity_type, label, first_seen, last_seen, scan_id, tenant_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO graph_nodes (id, entity_type, label, first_seen, last_seen, scan_id, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (f"node-{scan_id}", "agent", "n", created_at, created_at, scan_id, tenant),
     )
     conn.commit()

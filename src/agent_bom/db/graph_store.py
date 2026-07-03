@@ -330,9 +330,7 @@ def _read_purge_state(conn: sqlite3.Connection) -> tuple[str | None, int]:
     if not _table_exists(conn, "graph_retention_state"):
         return None, 0
     try:
-        row = conn.execute(
-            "SELECT last_purge_at, last_purged_count FROM graph_retention_state WHERE id = 1"
-        ).fetchone()
+        row = conn.execute("SELECT last_purge_at, last_purged_count FROM graph_retention_state WHERE id = 1").fetchone()
     except sqlite3.Error:
         return None, 0
     if row is None:

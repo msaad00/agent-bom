@@ -692,6 +692,10 @@ class SQLiteComplianceHubStore:
             "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_cvss "
             "ON compliance_hub_findings(tenant_id, origin, cvss_score DESC, ordinal)"
         )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_severity_cvss "
+            "ON compliance_hub_findings(tenant_id, origin, severity_rank, cvss_score DESC, ordinal)"
+        )
 
     def _next_ordinal(self, tenant_id: str) -> int:
         row = self._conn.execute(
@@ -778,8 +782,8 @@ class SQLiteComplianceHubStore:
             where.append("origin = ?")
             params.append(origin)
         if severity is not None:
-            where.append("LOWER(json_extract(payload, '$.severity')) = ?")
-            params.append(severity.lower())
+            where.append("severity_rank = ?")
+            params.append(severity_policy_rank(severity))
         if scan_id is not None:
             where.append("CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?")
             params.append(scan_id)

@@ -100,6 +100,10 @@ class PostgresComplianceHubStore:
                 "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_cvss "
                 "ON compliance_hub_findings(tenant_id, origin, cvss_score DESC, ordinal)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_severity_cvss "
+                "ON compliance_hub_findings(tenant_id, origin, severity_rank, cvss_score DESC, ordinal)"
+            )
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
             from agent_bom.api.finding_lifecycle import _CURRENT_LIFECYCLE_POSTGRES_DDL
 
@@ -226,8 +230,10 @@ class PostgresComplianceHubStore:
             where.append("origin = %s")
             params.append(origin)
         if severity is not None:
-            where.append("LOWER(payload->>'severity') = %s")
-            params.append(severity.lower())
+            from agent_bom.graph.severity import severity_policy_rank
+
+            where.append("severity_rank = %s")
+            params.append(severity_policy_rank(severity))
         if scan_id is not None:
             where.append("payload->>'scan_id' = %s")
             params.append(scan_id)

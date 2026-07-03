@@ -364,6 +364,10 @@ def _session_cookie_secure(request: Request) -> bool:
         return True
     if raw in {"0", "false", "no", "off"}:
         return False
+    from agent_bom.api.middleware import _production_or_clustered_control_plane
+
+    if _production_or_clustered_control_plane():
+        return True
     trusted_proxy = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
     forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower() if trusted_proxy else ""
     return request.url.scheme == "https" or forwarded_proto == "https"

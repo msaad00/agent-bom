@@ -14,6 +14,7 @@ venv/
 .pytest_cache/
 .demo-bin/
 agent-bom-report.json
+gateway-baseline-policy.json
 agent-bom.cdx.json
 agent-bom-badge.json
 agent-bom-diagram.mmd
@@ -34,6 +35,7 @@ ui/out/
 ui/.next/
 .coverage
 .claude/worktrees/
+.codex/
 AUDIT_*.md
 ui/.claude/
 # macOS / iCloud duplicate conflict files — keep them out of git even if they

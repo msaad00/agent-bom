@@ -128,11 +128,11 @@ OSV/GHSA calls. The preload path is:
 |---|---|---|
 | 1. Sync on a connected bastion | `agent-bom db update` | Produces `~/.agent-bom/db/vulns.db` (~50 MB first run) |
 | 2. Verify freshness | `agent-bom db status` | Confirm OSV/Alpine/Debian/EPSS/KEV rows and sync timestamps |
-| 3. Bundle for transfer | `scripts/release/bundle-vuln-db.sh dist/airgap` | Writes `dist/airgap/vulns.db` + `sha256sums-vulns.db.txt` |
-| 4. Import on disconnected host | `sha256sum -c sha256sums-vulns.db.txt` then copy `vulns.db` | Mount or copy to the runtime DB path |
-| 5. Point runtime at the cache | `AGENT_BOM_DB_PATH=/var/lib/agent-bom/vulns.db` | Same path in Docker, Helm, or bare-metal installs |
+| 3. Bundle for transfer | `scripts/release/bundle-vuln-db.sh dist/airgap` | Writes `vulns.db`, `known_exploited_vulnerabilities.json`, `epss_scores-current.csv.gz`, and `sha256sums.txt` |
+| 4. Import on disconnected host | `cd dist/airgap && sha256sum -c sha256sums.txt` then copy the bundle directory | Mount or copy to the runtime DB path (same directory for sidecar KEV/EPSS feeds) |
+| 5. Point runtime at the cache | `AGENT_BOM_DB_PATH=/var/lib/agent-bom/vulns.db` | Sidecar feeds resolve from the DB parent dir, or set `AGENT_BOM_VULN_DB_BUNDLE_DIR` explicitly |
 | 6. Disable network refresh | `AGENT_BOM_VULN_DB_OFFLINE=1` or CLI `--offline` | Scans use the bundled cache only; rerun step 1–4 on a schedule |
-| 7. Smoke scan | `agent-bom agents --offline /workspace` | Expect `Vuln data: … local cache (offline — network skipped)` |
+| 7. Smoke scan | `agent-bom agents --offline /workspace` | Expect `Vuln data: … local cache (offline — network skipped)` and KEV/EPSS enrichment from the bundle |
 
 Docker pilot compose already wires `AGENT_BOM_DB_PATH` to a named volume —
 preload by copying `vulns.db` into that volume before the first scan. Helm
@@ -144,6 +144,19 @@ Image import for disconnected registries remains in
 [`site-docs/deployment/airgapped-image-bundle.md`](../site-docs/deployment/airgapped-image-bundle.md);
 combine that image bundle with the `vulns.db` bundle above for full offline
 scanning.
+
+Verify the air-gap vuln-DB bundle on a connected bastion before transfer:
+
+```bash
+scripts/release/bundle-vuln-db.sh dist/airgap
+cd dist/airgap
+sha256sum -c sha256sums.txt
+AGENT_BOM_DB_PATH="$PWD/vulns.db" AGENT_BOM_VULN_DB_OFFLINE=1 \
+  uv run pytest -q tests/test_enrichment_cache.py::test_offline_kev_loads_from_bundled_path
+```
+
+On the disconnected host, mount the whole `dist/airgap` directory (not only
+`vulns.db`) so KEV/EPSS sidecar feeds resolve next to the DB path.
 
 ## Inspect scanner accuracy evidence
 

@@ -38,6 +38,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
+from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.models import (
     BrowserExtensionsRequest,
     DatasetCardsRequest,
@@ -53,6 +54,7 @@ from agent_bom.api.pipeline import _now, submit_scan_job
 from agent_bom.api.scan_batches import child_request_for_target, refresh_batch_parent, scan_request_targets
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 from agent_bom.api.stores import (
+    _get_idempotency_store,
     _get_store,
     _job_lock,
     _jobs_get,
@@ -62,7 +64,9 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
+from agent_bom.canonical_ids import canonical_finding_id
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.security import sanitize_error
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -218,6 +222,13 @@ def _dataclass_to_dict(obj: object) -> object:
     return obj
 
 
+def _request_header(request: Request, key: str) -> str:
+    headers = getattr(request, "headers", None)
+    if headers is None:
+        return ""
+    return str(headers.get(key, "") or "")
+
+
 def _tenant_id(request: Request) -> str:
     return require_request_tenant_id(request)
 
@@ -268,9 +279,29 @@ def _bulk_ingested_findings_for_tenant(tenant_id: str) -> list[dict[str, Any]]:
     return [item for item in get_compliance_hub_store().list(tenant_id) if isinstance(item, dict) and item.get("origin") == "bulk_ingest"]
 
 
+def _derive_bulk_finding_id(row: dict[str, Any], *, source: str) -> str:
+    """Return a deterministic identity key for a bulk finding lacking an ``id``.
+
+    Idempotency requires the identity key to be a pure function of finding
+    content — never the per-attempt ``batch_id`` or wall clock. We fold in the
+    stable discriminators (source, rule/vuln, location, package) via the shared
+    ``uuid5`` canonicaliser so a resent identical batch collapses onto the same
+    rows instead of appending duplicates.
+    """
+    raw_asset = row.get("asset")
+    asset = raw_asset if isinstance(raw_asset, dict) else {}
+    rule = row.get("vulnerability_id") or row.get("cve_id") or row.get("rule_id") or row.get("title") or ""
+    location = row.get("location") or row.get("file_path") or asset.get("location") or ""
+    package = row.get("package") or row.get("package_name") or asset.get("name") or asset.get("identifier") or ""
+    return canonical_finding_id(source, str(rule), str(location), str(package))
+
+
 def _normalized_bulk_finding(row: dict[str, Any], *, source: str, batch_id: str, ordinal: int) -> dict[str, Any]:
     payload = dict(row)
-    payload.setdefault("id", f"{batch_id}:{ordinal}")
+    client_id = row.get("id")
+    # Client-stable ids win; otherwise derive a content-deterministic id so
+    # resends collapse (idempotent) rather than mint a fresh batch_id:ordinal.
+    payload["id"] = str(client_id) if client_id else _derive_bulk_finding_id(row, source=source)
     payload.setdefault("source", source)
     payload.setdefault("severity", "unknown")
     payload["origin"] = "bulk_ingest"
@@ -777,12 +808,49 @@ def enqueue_scan_job(
 async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     """Start a scan. Returns immediately with a job_id.
     Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
+
+    Retry-safe: repeating the request with the same ``Idempotency-Key`` header
+    returns the first job instead of minting a new job_id per attempt; reusing
+    the key with a different body is a 409 conflict.
     """
-    return enqueue_scan_job(
-        tenant_id=_tenant_id(request),
+    tenant_id = _tenant_id(request)
+    idem_key = _request_header(request, "Idempotency-Key")
+    idem_source = _request_header(request, "X-Agent-Bom-Source-Id") or "scan"
+    request_hash = idempotency_request_fingerprint(body)
+    if idem_key:
+        try:
+            cached = _get_idempotency_store().get(
+                "/v1/scan",
+                tenant_id,
+                idem_source,
+                idem_key,
+                request_hash=request_hash,
+            )
+        except IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
+        if cached is not None:
+            cached_job_id = str(cached.get("job_id") or "")
+            existing = _jobs_get(cached_job_id) if cached_job_id else None
+            if existing is None and cached_job_id:
+                existing = _get_store().get(cached_job_id, tenant_id=tenant_id)
+            if existing is not None:
+                return _job_response_payload(existing)
+
+    job = enqueue_scan_job(
+        tenant_id=tenant_id,
         triggered_by=_triggered_by(request),
         request_body=body,
     )
+    if idem_key:
+        _get_idempotency_store().put(
+            "/v1/scan",
+            tenant_id,
+            idem_source,
+            idem_key,
+            {"job_id": job.job_id},
+            request_hash=request_hash,
+        )
+    return job
 
 
 @router.get("/v1/scan/drivers", tags=["scan"])
@@ -1324,13 +1392,36 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
 
     tenant_id = _tenant_id(request)
     ignored_body_tenant = bool(body.tenant_id and body.tenant_id != tenant_id)
+
+    # Batch-level replay safety: an identical retry under the same
+    # Idempotency-Key returns the first cached response (same batch_id and
+    # counts); a reused key with a different body is a 409 conflict. This is
+    # additive to the row-level (tenant_id, finding_id) collapse below.
+    idem_key = _request_header(request, "Idempotency-Key")
+    idem_source = _request_header(request, "X-Agent-Bom-Source-Id") or "bulk-ingest"
+    request_hash = idempotency_request_fingerprint(body)
+    if idem_key:
+        try:
+            cached = _get_idempotency_store().get(
+                "/v1/findings/bulk",
+                tenant_id,
+                idem_source,
+                idem_key,
+                request_hash=request_hash,
+            )
+        except IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail=sanitize_error(exc)) from exc
+        if cached is not None:
+            cached["idempotent_replay"] = True
+            return cached
+
     batch_id = str(uuid.uuid4())
     payloads = [
         _normalized_bulk_finding(row, source=body.source, batch_id=batch_id, ordinal=idx) for idx, row in enumerate(body.findings, start=1)
     ]
     new_total = get_compliance_hub_store().add(tenant_id, payloads)
     warnings = ["tenant_id in body ignored; request tenant scope is authoritative"] if ignored_body_tenant else []
-    return {
+    response = {
         "schema_version": "v1",
         "batch_id": batch_id,
         "ingested": len(payloads),
@@ -1339,6 +1430,16 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
         "source": body.source,
         "warnings": warnings,
     }
+    if idem_key:
+        _get_idempotency_store().put(
+            "/v1/findings/bulk",
+            tenant_id,
+            idem_source,
+            idem_key,
+            response,
+            request_hash=request_hash,
+        )
+    return response
 
 
 @router.get("/v1/inventory", tags=["scan"])

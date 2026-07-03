@@ -234,6 +234,7 @@ def _upsert_current_finding_sqlite(
     tenant_id: str,
     payload: dict[str, Any],
     observed_at: str,
+    scan_id: str,
     source: str,
 ) -> None:
     from agent_bom.api.finding_lifecycle import (
@@ -249,10 +250,10 @@ def _upsert_current_finding_sqlite(
     inserted = conn.execute(
         """
         INSERT OR IGNORE INTO hub_findings_current_observations
-            (tenant_id, canonical_id, observed_at)
-        VALUES (?, ?, ?)
+            (tenant_id, canonical_id, scan_id, observed_at)
+        VALUES (?, ?, ?, ?)
         """,
-        (tenant_id, canonical, observed_at),
+        (tenant_id, canonical, scan_id, observed_at),
     ).rowcount
     if not inserted:
         return
@@ -338,6 +339,39 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
     from agent_bom.api.finding_lifecycle import _CURRENT_LIFECYCLE_SQLITE_DDL
 
     conn.executescript(_CURRENT_LIFECYCLE_SQLITE_DDL)
+    _migrate_lifecycle_observations_l2_sqlite(conn)
+
+
+def _migrate_lifecycle_observations_l2_sqlite(conn: sqlite3.Connection) -> None:
+    """Upgrade L1 observation rows (PK on observed_at) to L2 (PK on scan_id)."""
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='hub_findings_current_observations'"
+    ).fetchall()
+    if not rows:
+        return
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current_observations)").fetchall()}
+    if "scan_id" in cols:
+        return
+    conn.execute("ALTER TABLE hub_findings_current_observations RENAME TO hub_findings_current_observations_l1")
+    conn.execute(
+        """
+        CREATE TABLE hub_findings_current_observations (
+            tenant_id TEXT NOT NULL,
+            canonical_id TEXT NOT NULL,
+            scan_id TEXT NOT NULL,
+            observed_at TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, canonical_id, scan_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO hub_findings_current_observations (tenant_id, canonical_id, scan_id, observed_at)
+        SELECT tenant_id, canonical_id, observed_at, observed_at
+        FROM hub_findings_current_observations_l1
+        """
+    )
+    conn.execute("DROP TABLE hub_findings_current_observations_l1")
 
 
 # ─── In-memory backend ──────────────────────────────────────────────────────
@@ -454,7 +488,7 @@ class InMemoryComplianceHubStore:
             observations = self._current_observations.setdefault(tenant_id, set())
             for payload in clean:
                 canonical = resolve_canonical_id(payload, source=source)
-                obs_key = (canonical, observed_at)
+                obs_key = (canonical, batch_id)
                 if obs_key in observations:
                     continue
                 observations.add(obs_key)
@@ -885,6 +919,7 @@ class SQLiteComplianceHubStore:
                 tenant_id=tenant_id,
                 payload=payload,
                 observed_at=observed_at,
+                scan_id=batch_id,
                 source=source,
             )
         self._conn.commit()

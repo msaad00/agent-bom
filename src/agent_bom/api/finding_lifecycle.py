@@ -1,9 +1,9 @@
-"""Monotone current-state merge for hub findings (#3465 L1).
+"""Monotone current-state merge for hub findings (#3465).
 
 One row per ``(tenant_id, canonical_id)`` with ``first_seen`` / ``last_seen``
-driven by ``observed_at``. Duplicate observations — same canonical id and
-``observed_at`` — are no-ops for lifecycle fields; ``scan_count`` advances only
-when a new observation timestamp is recorded (L2 will gate on occurrence log).
+driven by ``observed_at``. The occurrence log dedups on
+``(tenant_id, canonical_id, scan_id)``; ``scan_count`` advances only when a new
+scan sighting inserts into the log (L2).
 """
 
 from __future__ import annotations
@@ -163,8 +163,9 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
 CREATE TABLE IF NOT EXISTS hub_findings_current_observations (
     tenant_id TEXT NOT NULL,
     canonical_id TEXT NOT NULL,
+    scan_id TEXT NOT NULL,
     observed_at TEXT NOT NULL,
-    PRIMARY KEY (tenant_id, canonical_id, observed_at)
+    PRIMARY KEY (tenant_id, canonical_id, scan_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_last_seen
@@ -194,8 +195,9 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
 CREATE TABLE IF NOT EXISTS hub_findings_current_observations (
     tenant_id TEXT NOT NULL,
     canonical_id TEXT NOT NULL,
+    scan_id TEXT NOT NULL,
     observed_at TEXT NOT NULL,
-    PRIMARY KEY (tenant_id, canonical_id, observed_at)
+    PRIMARY KEY (tenant_id, canonical_id, scan_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_last_seen

@@ -27,7 +27,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agent_bom.runtime.patterns import CREDENTIAL_PATTERNS, PII_PATTERNS
+from agent_bom.runtime.patterns import CODE_CALL_ASSIGNMENT, CREDENTIAL_PATTERNS, PII_PATTERNS
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
@@ -316,7 +316,19 @@ def _scan_file(file_path: Path, rel_path: str, *, detect_entropy: bool = False) 
 
         # Credential patterns (CRITICAL)
         for name, pattern in CREDENTIAL_PATTERNS:
-            if pattern.search(line):
+            match = pattern.search(line)
+            if match:
+                # A secret-named variable assigned to a function/method call
+                # (e.g. OAuth token minting:
+                # `access_token = self.signing_key.sign(claims)`) is derived
+                # code, not a hardcoded literal. The generic patterns capture
+                # the value as an identifier/attribute chain; if it is
+                # immediately called, suppress the false positive. A real
+                # literal passed as a call argument (e.g. `k = load("AKIA...")`)
+                # still matches on the literal itself, whose match is not
+                # call-shaped here, so it is preserved.
+                if line[match.end() :].lstrip().startswith("(") and CODE_CALL_ASSIGNMENT.search(line):
+                    break
                 findings.append(
                     SecretFinding(
                         file_path=rel_path,

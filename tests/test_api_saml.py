@@ -74,6 +74,12 @@ def isolated_key_store():
         reset_auth_state_for_tests()
 
 
+@pytest.fixture
+def saml_runtime_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route tests mock SAMLConfig; opt in to the optional [saml] extra gate."""
+    monkeypatch.setattr("agent_bom.api.saml.saml_runtime_available", lambda: True)
+
+
 def test_saml_config_disabled_when_env_missing():
     with patch.dict(os.environ, {}, clear=True):
         cfg = SAMLConfig.from_env()
@@ -178,7 +184,7 @@ def test_saml_verify_rejects_reserved_tenant_attribute():
 
 
 @pytest.mark.asyncio
-async def test_saml_metadata_route_returns_xml(monkeypatch):
+async def test_saml_metadata_route_returns_xml(monkeypatch, saml_runtime_enabled):
     monkeypatch.setattr("agent_bom.api.saml.SAMLConfig.metadata_xml", lambda self: "<EntityDescriptor />")
 
     response = await enterprise.saml_metadata()
@@ -188,7 +194,7 @@ async def test_saml_metadata_route_returns_xml(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_saml_login_mints_short_lived_api_key(isolated_key_store, monkeypatch):
+async def test_saml_login_mints_short_lived_api_key(isolated_key_store, monkeypatch, saml_runtime_enabled):
     relay = await enterprise.saml_relay_state()
     monkeypatch.setattr(
         "agent_bom.api.saml.SAMLConfig.verify_response",
@@ -215,7 +221,7 @@ async def test_saml_login_mints_short_lived_api_key(isolated_key_store, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_saml_login_rejects_missing_relay_state_by_default(isolated_key_store, monkeypatch):
+async def test_saml_login_rejects_missing_relay_state_by_default(isolated_key_store, monkeypatch, saml_runtime_enabled):
     monkeypatch.setattr(
         "agent_bom.api.saml.SAMLConfig.verify_response",
         lambda self, saml_response, relay_state=None: None,
@@ -229,7 +235,7 @@ async def test_saml_login_rejects_missing_relay_state_by_default(isolated_key_st
 
 
 @pytest.mark.asyncio
-async def test_saml_login_rejects_unissued_relay_state(isolated_key_store, monkeypatch):
+async def test_saml_login_rejects_unissued_relay_state(isolated_key_store, monkeypatch, saml_runtime_enabled):
     monkeypatch.setattr(
         "agent_bom.api.saml.SAMLConfig.verify_response",
         lambda self, saml_response, relay_state=None: None,
@@ -243,7 +249,7 @@ async def test_saml_login_rejects_unissued_relay_state(isolated_key_store, monke
 
 
 @pytest.mark.asyncio
-async def test_saml_relay_state_is_one_time(isolated_key_store, monkeypatch):
+async def test_saml_relay_state_is_one_time(isolated_key_store, monkeypatch, saml_runtime_enabled):
     relay = await enterprise.saml_relay_state()
 
     monkeypatch.setattr(
@@ -270,7 +276,7 @@ async def test_saml_relay_state_is_one_time(isolated_key_store, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_saml_login_rejects_replayed_assertion_with_fresh_relay(isolated_key_store, monkeypatch):
+async def test_saml_login_rejects_replayed_assertion_with_fresh_relay(isolated_key_store, monkeypatch, saml_runtime_enabled):
     first_relay = await enterprise.saml_relay_state()
     second_relay = await enterprise.saml_relay_state()
 
@@ -299,7 +305,7 @@ async def test_saml_login_rejects_replayed_assertion_with_fresh_relay(isolated_k
 
 
 @pytest.mark.asyncio
-async def test_saml_login_rejects_invalid_assertion(isolated_key_store, monkeypatch):
+async def test_saml_login_rejects_invalid_assertion(isolated_key_store, monkeypatch, saml_runtime_enabled):
     relay = await enterprise.saml_relay_state()
 
     def _raise_bad_saml(self, saml_response, relay_state=None):

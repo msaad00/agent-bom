@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Protocol
 
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
@@ -129,7 +129,7 @@ def _framework_slug_counts_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str
     return counts
 
 
-def _redact_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _redact_findings(findings: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drop tier-B fields before any compliance-hub finding is stored.
 
     The hub is a tier-A sink — findings are exported, queried by auditors,
@@ -214,7 +214,7 @@ class ComplianceHubStore(Protocol):
     def upsert_current_batch(
         self,
         tenant_id: str,
-        findings: list[dict[str, Any]],
+        findings: Sequence[dict[str, Any]],
         *,
         observed_at: str,
         batch_id: str,
@@ -435,7 +435,7 @@ class InMemoryComplianceHubStore:
     def upsert_current_batch(
         self,
         tenant_id: str,
-        findings: list[dict[str, Any]],
+        findings: Sequence[dict[str, Any]],
         *,
         observed_at: str,
         batch_id: str,
@@ -866,7 +866,7 @@ class SQLiteComplianceHubStore:
     def upsert_current_batch(
         self,
         tenant_id: str,
-        findings: list[dict[str, Any]],
+        findings: Sequence[dict[str, Any]],
         *,
         observed_at: str,
         batch_id: str,

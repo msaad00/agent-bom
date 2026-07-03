@@ -9,6 +9,7 @@ share ingested findings across replicas.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any
 
 from agent_bom.api.compliance_hub_store import (
@@ -320,7 +321,7 @@ class PostgresComplianceHubStore:
     def upsert_current_batch(
         self,
         tenant_id: str,
-        findings: list[dict[str, Any]],
+        findings: Sequence[dict[str, Any]],
         *,
         observed_at: str,
         batch_id: str,

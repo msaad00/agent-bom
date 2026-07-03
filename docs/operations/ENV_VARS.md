@@ -59,6 +59,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_A2A_AUTH_REQUIRE_SIGNED_TOKENS` | `bool` | `True` | — |
 | `AGENT_BOM_A2A_AUTH_SHARED_TOKEN_MIN_AGENTS` | `int` | `2` | — |
 
+## Analytics Retention
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_ANALYTICS_MAX_EVENTS` | `int` | `50000` | Caps local analytics mirrors and runtime observation tables on write. ClickHouse analytics tables carry their own TTL clauses; this knob bounds SQLite/Postgres growth. ``<= 0`` disables pruning. |
+
 ## Blast Radius Risk Scoring
 | Env var | Type | Default | Description |
 |---|---|---|---|
@@ -126,6 +131,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_GRAPH_BACKEND` | `str` | `''` | SQLite is the local default. Postgres remains selected by AGENT_BOM_POSTGRES_URL. Neptune is experimental and requires explicit opt-in plus endpoint config. SQLite and Postgres remain the supported graph backends. |
 | `AGENT_BOM_NEPTUNE_ENDPOINT` | `str` | `''` | — |
 | `AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE` | `str` | `'g'` | — |
+
+## Graph Retention
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_GRAPH_RETENTION_DAYS` | `int` | `180` | Age-based graph snapshot retention for self-hosted graph stores. Per-tenant overrides resolve from ``AGENT_BOM_GRAPH_RETENTION_OVERRIDES`` (JSON map) and the control-plane tenant retention store before this global default. |
 
 ## HTTP Client
 | Env var | Type | Default | Description |

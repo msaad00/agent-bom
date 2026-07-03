@@ -11,7 +11,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from agent_bom.api.compliance_hub_store import _frameworks_csv, _now_utc_iso, _redact_findings
+from agent_bom.api.compliance_hub_store import (
+    FindingPage,
+    _frameworks_csv,
+    _now_utc_iso,
+    _postgres_order_clause,
+    _redact_findings,
+    compute_effective_reach_score,
+)
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
@@ -36,11 +43,29 @@ class PostgresComplianceHubStore:
                     applicable_frameworks_csv TEXT NOT NULL DEFAULT '',
                     payload JSONB NOT NULL,
                     ordinal BIGSERIAL NOT NULL,
+                    effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    origin TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (tenant_id, finding_id, ordinal)
                 )
                 """
             )
+            conn.execute(
+                "ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0"
+            )
+            conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT ''")
+            # Backfill origin from the stored payload for pre-migration rows.
+            conn.execute("UPDATE compliance_hub_findings SET origin = COALESCE(payload->>'origin', '') WHERE origin = ''")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
+            conn.execute("DROP INDEX IF EXISTS idx_hub_findings_tenant_reach")
+            # Backs the default effective_reach sort scoped by origin: an
+            # index-ordered range scan + LIMIT (and a covering COUNT on the
+            # (tenant_id, origin) prefix) instead of a full-tenant load +
+            # Python sort (PR1 read-scale). See scripts/bench_findings_read.
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin_reach "
+                "ON compliance_hub_findings(tenant_id, origin, effective_reach_score DESC, ordinal)"
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_origin ON compliance_hub_findings(tenant_id, origin)")
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
             conn.commit()
 
@@ -54,8 +79,8 @@ class PostgresComplianceHubStore:
                 conn.execute(
                     """
                     INSERT INTO compliance_hub_findings
-                        (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload)
-                    VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                        (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload, effective_reach_score, origin)
+                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s)
                     """,
                     (
                         tenant_id,
@@ -64,6 +89,8 @@ class PostgresComplianceHubStore:
                         str(payload.get("source") or ""),
                         _frameworks_csv(payload),
                         json.dumps(payload, sort_keys=True),
+                        compute_effective_reach_score(payload),
+                        str(payload.get("origin") or ""),
                     ),
                 )
             conn.commit()
@@ -80,6 +107,47 @@ class PostgresComplianceHubStore:
             raw = row[0]
             out.append(raw if isinstance(raw, dict) else json.loads(raw))
         return out
+
+    def list_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str = "effective_reach",
+        severity: str | None = None,
+        scan_id: str | None = None,
+        origin: str | None = None,
+    ) -> FindingPage:
+        where = ["tenant_id = %s"]
+        params: list[Any] = [tenant_id]
+        if origin is not None:
+            where.append("origin = %s")
+            params.append(origin)
+        if severity is not None:
+            where.append("LOWER(payload->>'severity') = %s")
+            params.append(severity.lower())
+        if scan_id is not None:
+            where.append("payload->>'scan_id' = %s")
+            params.append(scan_id)
+        where_sql = " AND ".join(where)
+        order_sql = _postgres_order_clause(sort)
+
+        with _tenant_connection(self._pool) as conn:
+            total_row = conn.execute(
+                f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",
+                tuple(params),
+            ).fetchone()
+            total = int(total_row[0]) if total_row else 0
+            rows = conn.execute(
+                f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT %s OFFSET %s",
+                (*params, int(limit), int(offset)),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            raw = row[0]
+            out.append(raw if isinstance(raw, dict) else json.loads(raw))
+        return out, total
 
     def count(self, tenant_id: str) -> int:
         with _tenant_connection(self._pool) as conn:

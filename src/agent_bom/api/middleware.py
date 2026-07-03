@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import Sequence
 from functools import lru_cache
 from typing import TYPE_CHECKING, cast
 
@@ -1903,7 +1904,7 @@ def _error_message_for(status_code: int, detail: object) -> str:
     }.get(status_code, "Request failed")
 
 
-def _json_safe_validation_errors(errors: list[dict[str, object]]) -> list[dict[str, object]]:
+def _json_safe_validation_errors(errors: Sequence[object]) -> list[dict[str, object]]:
     """Make Pydantic validation errors JSON-serializable.
 
     ``model_validator`` failures embed a live ``ValueError`` in ``ctx['error']``;
@@ -1911,12 +1912,13 @@ def _json_safe_validation_errors(errors: list[dict[str, object]]) -> list[dict[s
     """
     safe: list[dict[str, object]] = []
     for err in errors:
+        if not isinstance(err, dict):
+            safe.append({"error": str(err)})
+            continue
         item = dict(err)
         ctx = item.get("ctx")
         if isinstance(ctx, dict):
-            item["ctx"] = {
-                key: str(value) if isinstance(value, BaseException) else value for key, value in ctx.items()
-            }
+            item["ctx"] = {key: str(value) if isinstance(value, BaseException) else value for key, value in ctx.items()}
         safe.append(item)
     return safe
 

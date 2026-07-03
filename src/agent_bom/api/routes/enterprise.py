@@ -34,7 +34,6 @@ import json
 import logging
 import os
 import secrets
-import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -80,8 +79,6 @@ class AuditExportVerifyRequest(BaseModel):
     signature: str = Field(..., min_length=64, max_length=128, description="X-Agent-Bom-Audit-Export-Signature value")
 
 
-_SAML_RELAY_STATES: dict[str, float] = {}
-_SAML_RELAY_LOCK = threading.Lock()
 _FEEDBACK_PREFIX = "[finding_feedback:"
 _TRIAGE_PREFIX = "[finding_triage]"
 _LEGACY_FALSE_POSITIVE_PREFIX = "[false_positive]"
@@ -168,22 +165,22 @@ def _saml_idp_initiated_allowed() -> bool:
     return os.environ.get("AGENT_BOM_SAML_ALLOW_IDP_INITIATED", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _saml_relay_nonce(relay_state: str) -> str:
+    return f"saml-relay:{_relay_state_digest(relay_state)}"
+
+
 def _new_saml_relay_state() -> tuple[str, str]:
-    # Sweep expired entries on issue too, not only on consume — otherwise
-    # an attacker who issues many relay-state nonces but never completes
-    # the SAML round trip can grow the in-memory map unbounded. The
-    # cleanup is O(n) on the active set, which is small in practice
-    # (single-tenant pilot or reverse-proxy SSO; broader deployments
-    # should pin this map in shared storage).
-    relay_state = secrets.token_urlsafe(32)
-    now_monotonic = time.monotonic()
-    expires_at = now_monotonic + _saml_relay_ttl_seconds()
-    with _SAML_RELAY_LOCK:
-        expired = [key for key, exp in _SAML_RELAY_STATES.items() if exp < now_monotonic]
-        for key in expired:
-            _SAML_RELAY_STATES.pop(key, None)
-        _SAML_RELAY_STATES[_relay_state_digest(relay_state)] = expires_at
-    return relay_state, (datetime.now(timezone.utc) + timedelta(seconds=_saml_relay_ttl_seconds())).isoformat()
+    from agent_bom.api.shared_auth_state import get_auth_state
+
+    backend = get_auth_state()
+    ttl = _saml_relay_ttl_seconds()
+    now = int(time.time())
+    expires_at = now + ttl
+    for _ in range(3):
+        relay_state = secrets.token_urlsafe(32)
+        if backend.register_one_time_nonce(_saml_relay_nonce(relay_state), expires_at, now=now):
+            return relay_state, (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
+    raise HTTPException(status_code=503, detail="SAML relay_state issuance unavailable")
 
 
 def _consume_saml_relay_state(relay_state: str | None) -> None:
@@ -191,14 +188,11 @@ def _consume_saml_relay_state(relay_state: str | None) -> None:
         if _saml_idp_initiated_allowed():
             return
         raise HTTPException(status_code=401, detail="SAML relay_state required")
-    now = time.monotonic()
-    digest = _relay_state_digest(relay_state)
-    with _SAML_RELAY_LOCK:
-        expired = [key for key, expires_at in _SAML_RELAY_STATES.items() if expires_at < now]
-        for key in expired:
-            _SAML_RELAY_STATES.pop(key, None)
-        expires_at = _SAML_RELAY_STATES.pop(digest, None)
-    if expires_at is None or expires_at < now:
+    from agent_bom.api.shared_auth_state import get_auth_state
+
+    backend = get_auth_state()
+    now = int(time.time())
+    if not backend.redeem_one_time_nonce(_saml_relay_nonce(relay_state), now=now):
         raise HTTPException(status_code=401, detail="Invalid or expired SAML relay_state")
 
 

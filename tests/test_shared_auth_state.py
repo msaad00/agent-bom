@@ -134,6 +134,27 @@ class TestInMemoryRevocation:
         assert backend.is_nonce_revoked("saml-response:shared") is True
 
 
+class TestInMemoryOneTimeNonce:
+    def test_register_and_redeem_once(self) -> None:
+        backend = InMemoryAuthState()
+        expires_at = int(time.time()) + 300
+        assert backend.register_one_time_nonce("saml-relay:abc", expires_at) is True
+        assert backend.redeem_one_time_nonce("saml-relay:abc") is True
+        assert backend.redeem_one_time_nonce("saml-relay:abc") is False
+
+    def test_register_rejects_duplicate_live_nonce(self) -> None:
+        backend = InMemoryAuthState()
+        expires_at = int(time.time()) + 300
+        assert backend.register_one_time_nonce("saml-relay:abc", expires_at) is True
+        assert backend.register_one_time_nonce("saml-relay:abc", expires_at) is False
+
+    def test_redeem_expired_nonce_fails(self) -> None:
+        backend = InMemoryAuthState()
+        past = int(time.time()) - 1
+        assert backend.register_one_time_nonce("saml-relay:expired", past) is True
+        assert backend.redeem_one_time_nonce("saml-relay:expired") is False
+
+
 class TestInMemoryCleanup:
     def test_cleanup_keeps_live_revocations_and_drops_expired(self) -> None:
         backend = InMemoryAuthState()

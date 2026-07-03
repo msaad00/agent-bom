@@ -13,7 +13,12 @@ from typing import Iterable
 
 from agent_bom.integrity import verify_instruction_file
 from agent_bom.parsers.skill_audit import SkillAuditResult, audit_skill_result
-from agent_bom.parsers.skills import SkillScanResult, discover_skill_files, parse_skill_file
+from agent_bom.parsers.skills import (
+    SkillScanResult,
+    discover_skill_files,
+    looks_like_instruction_surface,
+    parse_skill_file,
+)
 from agent_bom.parsers.trust_assessment import ProvenanceVerdict, TrustAssessmentResult, Verdict, assess_trust
 from agent_bom.security import sanitize_command_args
 from agent_bom.skill_bundles import SkillBundle, build_skill_bundle
@@ -22,7 +27,6 @@ from agent_bom.skills_catalog import catalog_scan_timestamp, load_skills_catalog
 
 logger = logging.getLogger(__name__)
 
-_SKILL_DISCOVERY_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__"}
 _SKILLS_SCAN_CONCURRENCY = max(1, int(os.environ.get("AGENT_BOM_SKILLS_SCAN_CONCURRENCY", "8")))
 _SKILLS_SCAN_SCHEMA_VERSION = "1"
 _SKILLS_SCAN_SCHEMA_ID = "https://agent-bom.github.io/schemas/skills-scan/v1"
@@ -185,36 +189,6 @@ class SkillsRescanReport:
         }
 
 
-def _looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = False) -> bool:
-    """Return True when a file path looks like a real skill/instruction surface."""
-    if any(part in _SKILL_DISCOVERY_SKIP_DIRS for part in path.parts):
-        return False
-    if not allow_docs_skills and "docs" in path.parts and "skills" in path.parts:
-        return False
-
-    name = path.name
-
-    if name in {"CLAUDE.md", "AGENTS.md", "SKILL.md", "skill.md", ".cursorrules", ".windsurfrules"}:
-        return True
-
-    if name == "copilot-instructions.md" and any(parent.name == ".github" for parent in path.parents):
-        return True
-
-    if path.suffix.lower() not in {".md", ".mdc"}:
-        return False
-
-    if any(parent.name == "skills" for parent in path.parents):
-        return True
-
-    if any(parent.name == "prompts" for parent in path.parents):
-        return True
-
-    if any(parent.name == "rules" and parent.parent.name == ".cursor" for parent in path.parents if parent.parent != parent):
-        return True
-
-    return False
-
-
 def _discover_explicit_skill_files(directory: Path) -> list[Path]:
     """Discover skill-like files inside a directory explicitly requested by the user."""
     found: list[Path] = []
@@ -223,7 +197,7 @@ def _discover_explicit_skill_files(directory: Path) -> list[Path]:
     for path in sorted(directory.rglob("*")):
         if not path.is_file():
             continue
-        if not _looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills):
+        if not looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills):
             continue
         resolved = path.resolve()
         if resolved not in seen:

@@ -462,31 +462,115 @@ def _is_credential_name(name: str) -> bool:
 
 # ─── Discovery ───────────────────────────────────────────────────────────────
 
+# Vendored / generated directories are never treated as first-party instruction
+# surfaces, so discovery stays bounded instead of walking an entire monorepo.
+SKILL_DISCOVERY_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        "site-packages",
+        ".next",
+    }
+)
 
-def _is_supported_skill_file(path: Path) -> bool:
+# Well-known instruction filenames recognised anywhere in the tree.
+_INSTRUCTION_FILE_NAMES: frozenset[str] = frozenset(
+    {
+        "CLAUDE.md",
+        "AGENTS.md",
+        "GEMINI.md",
+        "SKILL.md",
+        "skill.md",
+        ".cursorrules",
+        ".windsurfrules",
+        ".clinerules",
+    }
+)
+
+# Directory names whose ``*.md`` / ``*.mdc`` descendants are instruction surfaces.
+_INSTRUCTION_DIR_NAMES: frozenset[str] = frozenset({"skills", "prompts"})
+_INSTRUCTION_SUFFIXES: frozenset[str] = frozenset({".md", ".mdc"})
+
+
+def looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = False) -> bool:
+    """Return True when a file path looks like a real skill/instruction surface.
+
+    The heuristic is intentionally bounded: it recognises well-known instruction
+    filenames anywhere, plus ``*.md`` / ``*.mdc`` files nested under recognised
+    instruction directories (``skills/``, ``prompts/``, ``.cursor/rules``,
+    ``.github/instructions``). Generic repository markdown (READMEs, PR
+    templates, changelogs) and vendored trees are excluded so discovery does not
+    scan an entire monorepo blindly.
+    """
+    if any(part in SKILL_DISCOVERY_SKIP_DIRS for part in path.parts):
+        return False
+    if not allow_docs_skills and "docs" in path.parts and "skills" in path.parts:
+        return False
+
     name = path.name
-    if name in {"CLAUDE.md", "AGENTS.md", "SKILL.md", "skill.md", ".cursorrules", ".windsurfrules", "copilot-instructions.md"}:
+
+    if name in _INSTRUCTION_FILE_NAMES:
         return True
-    if path.suffix.lower() in {".md", ".mdc"}:
+
+    if name == "copilot-instructions.md" and any(parent.name == ".github" for parent in path.parents):
         return True
+
+    if path.suffix.lower() not in _INSTRUCTION_SUFFIXES:
+        return False
+
+    parents = list(path.parents)
+
+    if any(parent.name in _INSTRUCTION_DIR_NAMES for parent in parents):
+        return True
+
+    # .cursor/rules/*.mdc (Cursor project rules) and .github/instructions/*.md
+    # (GitHub Copilot path-scoped instructions).
+    for parent in parents:
+        grandparent = parent.parent
+        if grandparent == parent:
+            continue
+        if parent.name == "rules" and grandparent.name == ".cursor":
+            return True
+        if parent.name == "instructions" and grandparent.name == ".github":
+            return True
+
     return False
 
 
 def discover_skill_files(project_dir: Path) -> list[Path]:
-    """Auto-discover common skill/instruction files in a project directory.
+    """Auto-discover skill/instruction files under a project directory.
 
-    Searches for CLAUDE.md, .cursorrules, skill.md, skills/*.md, etc.
+    Performs a single bounded walk (skipping vendored/generated directories) and
+    keeps only paths that :func:`looks_like_instruction_surface` recognises:
+    named instruction files (``CLAUDE.md``, ``AGENTS.md``, ``.cursorrules`` …)
+    plus ``*.md`` / ``*.mdc`` files nested under ``skills/``, ``prompts/``,
+    ``.cursor/rules``, and ``.github/instructions`` at any depth.
     """
-    found: list[Path] = []
+    if not project_dir.is_dir():
+        return []
 
-    for name in SKILL_FILE_NAMES:
-        candidate = project_dir / name
-        if candidate.is_file():
-            found.append(candidate)
-        elif candidate.is_dir():
-            for skill_file in sorted(candidate.rglob("*")):
-                if skill_file.is_file() and _is_supported_skill_file(skill_file):
-                    found.append(skill_file)
+    allow_docs_skills = "docs" in project_dir.parts and "skills" in project_dir.parts
+    found: list[Path] = []
+    seen: set[Path] = set()
+
+    for path in sorted(project_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        if not looks_like_instruction_surface(path, allow_docs_skills=allow_docs_skills):
+            continue
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            found.append(path)
 
     return found
 

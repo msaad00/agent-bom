@@ -13,6 +13,7 @@ from __future__ import annotations
 import textwrap
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from agent_bom.parsers.compiled_parsers import (
@@ -192,6 +193,21 @@ class TestVerifyGoChecksumsNetworkFailure:
         modules = [("github.com/gin-gonic/gin", "v1.9.1")]
 
         with patch("agent_bom.http_client.fetch_bytes", side_effect=OSError("timeout")):
+            result = verify_go_checksums(go_sum, modules)
+
+        assert "github.com/gin-gonic/gin@v1.9.1" not in result
+
+    def test_http_status_error_returns_gracefully(self, tmp_path):
+        go_sum = tmp_path / "go.sum"
+        go_sum.write_text(GO_SUM_CONTENT)
+        modules = [("github.com/gin-gonic/gin", "v1.9.1")]
+        request = httpx.Request("GET", "https://sum.golang.org/lookup/github.com/gin-gonic/gin@v1.9.1")
+        response = httpx.Response(400, request=request)
+
+        with patch(
+            "agent_bom.http_client.fetch_bytes",
+            side_effect=httpx.HTTPStatusError("bad checksum lookup", request=request, response=response),
+        ):
             result = verify_go_checksums(go_sum, modules)
 
         assert "github.com/gin-gonic/gin@v1.9.1" not in result

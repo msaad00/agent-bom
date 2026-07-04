@@ -173,6 +173,15 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_last_seen
     ON hub_findings_current(tenant_id, last_seen DESC);
 """
 
+_CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE = """
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_reach
+    ON hub_findings_current(tenant_id, effective_reach_score DESC, last_seen DESC, canonical_id ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_cvss
+    ON hub_findings_current(tenant_id, cvss_score DESC, last_seen DESC, canonical_id ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity
+    ON hub_findings_current(tenant_id, severity_rank DESC, last_seen DESC, canonical_id ASC);
+"""
+
 
 def collect_present_canonical_ids(
     findings: Sequence[dict[str, Any]],
@@ -229,4 +238,10 @@ CREATE TABLE IF NOT EXISTS hub_findings_current_observations (
 
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_last_seen
     ON hub_findings_current(tenant_id, last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_reach
+    ON hub_findings_current(tenant_id, effective_reach_score DESC, last_seen DESC, canonical_id ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_cvss
+    ON hub_findings_current(tenant_id, cvss_score DESC, last_seen DESC, canonical_id ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity
+    ON hub_findings_current(tenant_id, severity_rank DESC, last_seen DESC, canonical_id ASC);
 """

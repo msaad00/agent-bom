@@ -28,6 +28,7 @@ from typing import Any, Protocol
 
 from agent_bom.api.finding_cursor import (
     cursor_from_current_row,
+    cvss_sort_value,
     decode_finding_cursor,
     row_is_after_cursor,
     sqlite_keyset_clause,
@@ -493,6 +494,7 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
     conn.executescript(_CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE)
     _migrate_lifecycle_observations_l2_sqlite(conn)
     _migrate_current_ledger_ref_sqlite(conn)
+    conn.execute("UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL")
 
 
 def _migrate_lifecycle_observations_l2_sqlite(conn: sqlite3.Connection) -> None:
@@ -811,7 +813,7 @@ def _sqlite_current_order_clause(sort: str) -> str:
     if sort == "ordinal":
         return "ORDER BY last_seen ASC, canonical_id ASC"
     if sort == "cvss":
-        return "ORDER BY cvss_score DESC, last_seen DESC, canonical_id ASC"
+        return "ORDER BY COALESCE(cvss_score, 0) DESC, last_seen DESC, canonical_id ASC"
     if sort == "severity":
         return "ORDER BY severity_rank DESC, last_seen DESC, canonical_id ASC"
     return "ORDER BY effective_reach_score DESC, last_seen DESC, canonical_id ASC"
@@ -832,7 +834,7 @@ def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], tuple[float 
         if normalized == "ordinal":
             return (tie, canonical, "")
         if normalized == "cvss":
-            primary = float(row.get("cvss_score") or 0.0)
+            primary = cvss_sort_value(row.get("cvss_score"))
         elif normalized == "severity":
             primary = float(row.get("severity_rank") or 0)
         else:

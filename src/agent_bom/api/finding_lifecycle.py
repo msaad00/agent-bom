@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
 
-from agent_bom.api.compliance_hub_store import _severity_rank, compute_effective_reach_score
+from agent_bom.api.compliance_hub_store import _cvss_value, _severity_rank, compute_effective_reach_score
 from agent_bom.canonical_ids import canonical_finding_id, canonical_id
 
 FindingLifecycleMetrics = dict[str, Any]
@@ -69,16 +69,10 @@ def resolve_canonical_id(payload: dict[str, Any], *, source: str = "") -> str:
 def lifecycle_metrics(payload: dict[str, Any]) -> FindingLifecycleMetrics:
     """Extract denormalised lifecycle columns from a finding payload."""
     severity = str(payload.get("severity") or "unknown").lower()
-    cvss_raw = payload.get("cvss_score")
-    cvss_score: float | None
-    try:
-        cvss_score = float(cvss_raw) if cvss_raw is not None else None
-    except (TypeError, ValueError):
-        cvss_score = None
     return {
         "severity": severity,
         "severity_rank": _severity_rank(payload),
-        "cvss_score": cvss_score,
+        "cvss_score": _cvss_value(payload),
         "effective_reach_score": compute_effective_reach_score(payload),
     }
 

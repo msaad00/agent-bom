@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -84,6 +85,14 @@ def test_publish_s3_requires_boto3(tmp_path: Path, monkeypatch) -> None:
     artifact = tmp_path / "job.ndjson.gz"
     artifact.write_bytes(b"payload")
     monkeypatch.delitem(sys.modules, "boto3", raising=False)
+    real_import = builtins.__import__
+
+    def _blocked_import(name: str, *args, **kwargs):
+        if name == "boto3":
+            raise ImportError("blocked boto3 for test")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _blocked_import)
 
     with pytest.raises(RuntimeError, match="boto3"):
         publish_report_artifact(artifact, tenant_id="tenant-a", job_id="job-1")

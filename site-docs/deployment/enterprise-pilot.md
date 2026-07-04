@@ -87,27 +87,31 @@ For concrete sizing, autoscaling, and load-test guidance, use
 
 ## Required rollout steps
 
-1. Run Postgres migrations.
-2. Install the Helm control plane with the focused pilot values.
-3. Label the namespace for Pod Security Admission `restricted`.
-4. Start endpoint fleet scan-and-push on employee workstations.
-5. Add proxy sidecars only to the MCP workloads you want inline enforcement on.
+1. Install the Helm control plane with the focused pilot values (Postgres
+   migrations run automatically via the chart's pre-upgrade hook).
+2. Label the namespace for Pod Security Admission `restricted`.
+3. Start endpoint fleet scan-and-push on employee workstations.
+4. Add proxy sidecars only to the MCP workloads you want inline enforcement on.
 
 ## Migration contract
 
-Long-lived control-plane databases now have an Alembic baseline:
-
-```bash
-alembic -c deploy/supabase/postgres/alembic.ini upgrade head
-```
+Long-lived control-plane databases have an Alembic baseline, and the Helm chart
+applies migrations automatically: the `pre-install,pre-upgrade` hook
+(`controlPlane.migrations.enabled`, on by default) runs `alembic upgrade head`
+before the new API pods roll. A `helm upgrade` needs no manual migration step.
 
 If a database was already initialized from
 [deploy/supabase/postgres/init.sql](https://github.com/msaad00/agent-bom/blob/main/deploy/supabase/postgres/init.sql),
-stamp it once before future changes:
+stamp it once so the auto-hook has a revision to upgrade from:
 
 ```bash
 alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01
 ```
 
-Use `init.sql` for disposable bootstrap paths and local compose; use Alembic as
-the authoritative migration path for long-lived enterprise control planes.
+Use `init.sql` for disposable bootstrap paths and local compose. For non-Helm or
+externally managed databases, disable the hook with
+`controlPlane.migrations.enabled=false` and run `upgrade head` yourself:
+
+```bash
+alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+```

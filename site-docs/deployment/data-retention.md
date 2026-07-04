@@ -23,7 +23,7 @@ This page defines the recommended retention model for a self-hosted deployment.
 |---|---|---|---|---|
 | Control-plane state | tenants, policies, schedules, API keys, source registry, fleet state, graph state | `Postgres` / `Supabase` | keep current state + short operational history | transactional truth, not a data lake |
 | Scan jobs and results | submitted scans, summaries, attached result payloads | `Postgres` / `Supabase` | 14-90 days in the control plane | enough for operator review without turning the API DB into an archive |
-| Runtime operational evidence | proxy audit ingest, traces, OCSF ingest, gateway activity | `Postgres` for recent operational views, optional `ClickHouse` for longer history | 7-30 days in control plane, 30-365+ days in analytics | recent ops stay fast; history moves to analytics |
+| Runtime operational evidence | proxy audit ingest, traces, OCSF ingest, gateway activity | `Postgres` for recent operational views, optional `ClickHouse` for longer history (canonical analytics rows — OCSF is normalized on ingest, not stored as OCSF in ClickHouse) | 7-30 days in control plane, 30-365+ days in analytics | recent ops stay fast; history moves to analytics |
 | Compliance evidence | signed evidence bundles, exported reports, review packets | `S3` or customer archive store | match framework policy | this is evidence, not dashboard cache |
 | Security-lake / warehouse mirrors | analytics projections, governance joins, long-range history | `ClickHouse`, `Snowflake`, future `Databricks` target | customer-defined | lake and warehouse retention should be explicit and owned by the operator |
 
@@ -126,7 +126,7 @@ data deletion.
 For the self-hosted EKS shape, the practical answer is:
 
 - keep the packaged control plane on `Postgres`
-- use `ClickHouse` only if retained runtime or trend analytics becomes heavy
+- use `ClickHouse` only if retained runtime or trend analytics becomes heavy (OSS self-hosted in your cluster/VPC, or optional ClickHouse Cloud — not a managed prerequisite)
 - archive signed evidence bundles and longer-lived exports to `S3`
 - mirror to `Snowflake` when governance or warehouse-native joins matter
 

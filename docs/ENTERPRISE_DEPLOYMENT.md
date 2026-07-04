@@ -346,6 +346,10 @@ as prerequisites before ingesting real findings:
 - **In transit** — TLS is always verified on outbound calls; terminate ingress
   TLS and prefer the delegated mTLS posture below for the proxy/gateway seam.
 
+The published site mirror of this prerequisite lives in
+[Enterprise MCP / Endpoint Pilot — Security properties](../site-docs/deployment/enterprise-pilot.md#security-properties)
+and [Own-Infra EKS](../site-docs/deployment/own-infra-eks.md#finding-and-scan-payload-encryption-at-rest).
+
 If a threat model requires application-layer (pre-storage) encryption of finding
 payloads, that is not provided today; scope it explicitly rather than assuming it.
 

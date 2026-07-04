@@ -381,6 +381,18 @@ To manage migrations with external tooling instead, disable the hook
 alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 ```
 
+## Finding and scan payload encryption at rest
+
+Finding, scan, and graph payloads are **not** application-layer encrypted in
+the control plane. This is intentional: search, indexing, and graph queries
+stay operable across SQLite and Postgres without a product-managed payload key.
+Treat **database volume encryption** (RDS/KMS, LUKS/EBS), **encrypted
+export/backup buckets**, **VPC-private access**, and **Postgres RLS** as
+deployment prerequisites before ingesting production findings. Selected fields
+still get app-layer protection (hashed API tokens, HMAC audit chain, signed
+sessions, envelope-encrypted cloud-connection secrets). Full buyer checklist:
+[`docs/ENTERPRISE_DEPLOYMENT.md`](https://github.com/msaad00/agent-bom/blob/main/docs/ENTERPRISE_DEPLOYMENT.md#finding-and-scan-payload-encryption-at-rest-deployment-prerequisite).
+
 ## What You Still Own
 
 This is a real self-hosted packaging path, but not every enterprise primitive

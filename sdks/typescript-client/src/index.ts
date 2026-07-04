@@ -71,6 +71,9 @@ export interface BulkFindingIngestRequest {
   schemaVersion?: string;
   metadata?: Record<string, JsonValue>;
   tenantId?: string;
+  observedAt?: string;
+  reconcileAbsent?: boolean;
+  idempotencyKey?: string;
 }
 
 export interface DatasetVersionCreateRequest {
@@ -108,6 +111,8 @@ export interface BulkFindingIngestResponse {
   tenant_total: number;
   tenant_id: string;
   source: string;
+  observed_at?: string;
+  reconciled?: number;
   warnings?: string[];
   [key: string]: JsonValue | undefined;
 }
@@ -296,13 +301,24 @@ export class AgentBomClient {
   ingestFindings(
     request: BulkFindingIngestRequest,
   ): Promise<BulkFindingIngestResponse> {
-    return this.request<BulkFindingIngestResponse>("POST", "/v1/findings/bulk", {
-      findings: request.findings,
-      source: request.source,
-      schema_version: request.schemaVersion,
-      metadata: request.metadata,
-      tenant_id: request.tenantId ?? this.tenantId,
-    });
+    const extraHeaders: Record<string, string> = {};
+    if (request.idempotencyKey) {
+      extraHeaders["Idempotency-Key"] = request.idempotencyKey;
+    }
+    return this.request<BulkFindingIngestResponse>(
+      "POST",
+      "/v1/findings/bulk",
+      {
+        findings: request.findings,
+        source: request.source,
+        schema_version: request.schemaVersion,
+        metadata: request.metadata,
+        tenant_id: request.tenantId ?? this.tenantId,
+        observed_at: request.observedAt,
+        reconcile_absent: request.reconcileAbsent,
+      },
+      extraHeaders,
+    );
   }
 
   registerDatasetVersion(
@@ -507,10 +523,11 @@ export class AgentBomClient {
     method: string,
     path: string,
     body?: Record<string, JsonValue | undefined>,
+    extraHeaders: Record<string, string> = {},
   ): Promise<T> {
     const init: RequestInit = {
       method,
-      headers: this.headers(body !== undefined),
+      headers: { ...this.headers(body !== undefined), ...extraHeaders },
     };
     if (body !== undefined) {
       init.body = JSON.stringify(stripUndefined(body));

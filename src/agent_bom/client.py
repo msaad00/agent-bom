@@ -230,8 +230,15 @@ class AgentBomClient:
         schema_version: str | None = None,
         metadata: Mapping[str, JsonValue] | None = None,
         tenant_id: str | None = None,
+        observed_at: str | None = None,
+        reconcile_absent: bool = False,
+        idempotency_key: str | None = None,
     ) -> JsonObject:
         """Post normalized findings directly into the control plane."""
+
+        extra_headers: dict[str, str] = {}
+        if idempotency_key:
+            extra_headers["Idempotency-Key"] = idempotency_key
 
         return self._request(
             "POST",
@@ -243,8 +250,11 @@ class AgentBomClient:
                     "schema_version": schema_version,
                     "metadata": dict(metadata) if metadata is not None else None,
                     "tenant_id": tenant_id or self.tenant_id,
+                    "observed_at": observed_at,
+                    "reconcile_absent": reconcile_absent or None,
                 }
             ),
+            extra_headers=extra_headers or None,
         )
 
     def register_dataset_version(
@@ -489,8 +499,12 @@ class AgentBomClient:
         *,
         params: Mapping[str, QueryValue] | None = None,
         json: Mapping[str, JsonValue] | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ) -> JsonObject:
-        response = self._client.request(method, self._url(path), params=params, json=json, headers=self._headers(json is not None))
+        headers = self._headers(json is not None)
+        if extra_headers:
+            headers.update(extra_headers)
+        response = self._client.request(method, self._url(path), params=params, json=json, headers=headers)
         text = response.text
         if response.status_code < 200 or response.status_code >= 300:
             raise AgentBomApiError(

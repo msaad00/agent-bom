@@ -334,9 +334,9 @@ def describe_scim_posture() -> dict[str, object]:
         "auth_authority": "api_key_oidc_saml_trusted_proxy_with_scim_role_overlay",
         "runtime_auth_enforced": configured,
         "deprovisioning_boundary": (
-            "SCIM deactivate/delete updates provisioned lifecycle state and constrains runtime OIDC, SAML, "
-            "browser, and trusted reverse-proxy roles when the authenticated subject matches a tenant-local SCIM user. "
-            "Long-lived service API keys remain governed by API-key lifecycle controls."
+            "SCIM deactivate/delete updates provisioned lifecycle state, constrains runtime OIDC, SAML, "
+            "browser, and trusted reverse-proxy roles when the authenticated subject matches a tenant-local "
+            "SCIM user, and revokes API keys whose name matches the SCIM userName, id, or externalId."
         ),
         "groups_required": groups_required,
         "verified_idp_templates": [
@@ -381,3 +381,41 @@ def describe_scim_posture() -> dict[str, object]:
             )
         ),
     }
+
+
+SCIM_ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error"
+
+
+def scim_error_body(*, status_code: int, detail: str) -> dict[str, Any]:
+    """RFC 7644 Error response body for non-bulk SCIM failures."""
+    return {
+        "schemas": [SCIM_ERROR_SCHEMA],
+        "status": str(status_code),
+        "detail": detail,
+    }
+
+
+def revoke_credentials_for_scim_user(tenant_id: str, user: Any) -> int:
+    """Revoke tenant API keys whose display name matches a deprovisioned SCIM user."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.auth import get_key_store
+
+    store = get_key_store()
+    subjects = {str(user.user_name), str(user.user_id)}
+    external_id = getattr(user, "external_id", None)
+    if external_id:
+        subjects.add(str(external_id))
+    subjects_lower = {entry.lower() for entry in subjects if entry}
+    revoked = 0
+    for key in store.list_keys(tenant_id):
+        if key.name in subjects or key.name.lower() in subjects_lower:
+            store.remove(key.key_id)
+            revoked += 1
+            log_action(
+                "scim.api_key_revoked",
+                actor="scim-provisioner",
+                resource=f"key/{key.key_id}",
+                tenant_id=tenant_id,
+                user_name=user.user_name,
+            )
+    return revoked

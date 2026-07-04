@@ -14,7 +14,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AlertTriangle, Loader2, Route, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Loader2, Radar, Route, ShieldAlert } from "lucide-react";
 
 import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphEvaluationSummary } from "@/components/graph-evaluation-summary";
@@ -595,6 +595,21 @@ function queryResponseToGraphResponse(
  * page would have to thread the LOD band through props or duplicate
  * `<ReactFlow>` ancestry.
  */
+/**
+ * Blast-radius overlay state (audit/#3192). Populated from `/v1/graph/impact`
+ * (reverse-BFS "what depends on this node"), it drives an on-canvas highlight of
+ * every impacted node + edge so operators can see the real downstream cost of a
+ * finding instead of only a count in the side panel.
+ */
+type BlastRadiusState = {
+  rootId: string;
+  rootLabel: string;
+  nodeIds: Set<string>;
+  countsByType: Record<string, number>;
+  affectedCount: number;
+  maxDepthReached: number;
+};
+
 export default function GraphPageClient() {
   return (
     <ReactFlowProvider>
@@ -633,6 +648,9 @@ function GraphPageInner() {
   const [reachabilityError, setReachabilityError] = useState<string | null>(
     null,
   );
+  const [blastRadius, setBlastRadius] = useState<BlastRadiusState | null>(null);
+  const [loadingBlast, setLoadingBlast] = useState(false);
+  const [blastError, setBlastError] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
   const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(
@@ -1137,6 +1155,22 @@ function GraphPageInner() {
 
   const lineageLayoutNodes = layoutNodes as Node<LineageNodeData>[];
   const displayNodes = useMemo<Node<LineageNodeData>[]>(() => {
+    if (blastRadius) {
+      return lineageLayoutNodes.map((node) => {
+        const inBlast = blastRadius.nodeIds.has(node.id);
+        const isRoot = node.id === blastRadius.rootId;
+        return {
+          ...node,
+          className: composeFocusClass(node.className, isRoot, !inBlast),
+          data: {
+            ...node.data,
+            renderBand: effectiveLodBand,
+            dimmed: !inBlast,
+            highlighted: inBlast,
+          },
+        };
+      });
+    }
     if (attackPathNodeIds) {
       return lineageLayoutNodes
         .filter((node) => attackPathNodeIds.has(node.id))
@@ -1205,6 +1239,7 @@ function GraphPageInner() {
     attackPathNodeIds,
     attackPathNodeOrder,
     reachabilitySummary,
+    blastRadius,
     activeFocusId,
     effectiveLodBand,
   ]);
@@ -1263,6 +1298,32 @@ function GraphPageInner() {
           };
         });
     }
+    if (blastRadius) {
+      return layoutEdges.map((edge): Edge => {
+        const inBlast =
+          blastRadius.nodeIds.has(edge.source) &&
+          blastRadius.nodeIds.has(edge.target);
+        return {
+          ...edge,
+          animated: captureMode ? false : Boolean(inBlast || edge.animated),
+          style: {
+            ...edge.style,
+            opacity: inBlast ? 0.95 : 0.06,
+            strokeWidth: inBlast
+              ? Math.max(
+                  typeof edge.style?.strokeWidth === "number"
+                    ? edge.style.strokeWidth
+                    : 2,
+                  3,
+                )
+              : 1,
+            ...(inBlast
+              ? { filter: "drop-shadow(0 0 6px rgba(139,92,246,0.55))" }
+              : {}),
+          },
+        };
+      });
+    }
     if (reachabilitySummary) {
       return layoutEdges.map((edge): Edge => {
         const inReach =
@@ -1300,6 +1361,7 @@ function GraphPageInner() {
     localNeighborhoodIds,
     attackPathEdgeKeys,
     reachabilitySummary,
+    blastRadius,
     graphLayoutKind,
     captureMode,
   ]);
@@ -1585,7 +1647,50 @@ function GraphPageInner() {
     setAutoPathDismissed(false);
     setReachabilitySummary(null);
     setReachabilityError(null);
+    setBlastRadius(null);
+    setBlastError(null);
   }, []);
+
+  const clearBlastRadius = useCallback(() => {
+    setBlastRadius(null);
+    setBlastError(null);
+  }, []);
+
+  const loadBlastRadius = useCallback(
+    async (nodeId: string, nodeLabel: string) => {
+      if (!nodeId) return;
+      // Blast radius takes over the canvas; drop any competing overlays so the
+      // impacted set is the only thing highlighted.
+      setSelectedAttackPathKey(null);
+      setReachabilitySummary(null);
+      setReachabilityError(null);
+      setLoadingBlast(true);
+      setBlastError(null);
+      try {
+        const impact = await api.getGraphImpact(
+          nodeId,
+          selectedScanId || undefined,
+          4,
+        );
+        setBlastRadius({
+          rootId: impact.node_id,
+          rootLabel: nodeLabel || impact.node_id,
+          nodeIds: new Set<string>([impact.node_id, ...impact.affected_nodes]),
+          countsByType: impact.affected_by_type,
+          affectedCount: impact.affected_count,
+          maxDepthReached: impact.max_depth_reached,
+        });
+      } catch (e) {
+        setBlastRadius(null);
+        setBlastError(
+          e instanceof Error ? e.message : "Failed to compute blast radius",
+        );
+      } finally {
+        setLoadingBlast(false);
+      }
+    },
+    [selectedScanId],
+  );
 
   const pageStart =
     graphData && graphData.pagination.total > 0
@@ -1874,6 +1979,15 @@ function GraphPageInner() {
                 setReachabilitySummary(null);
                 setReachabilityError(null);
               }}
+            />
+          )}
+
+          {(blastRadius || loadingBlast || blastError) && (
+            <BlastRadiusPanel
+              summary={blastRadius}
+              loading={loadingBlast}
+              error={blastError}
+              onClear={clearBlastRadius}
             />
           )}
 
@@ -2328,6 +2442,8 @@ function GraphPageInner() {
                 setPinnedFocusId(null);
                 setReachabilitySummary(null);
                 setReachabilityError(null);
+                setBlastRadius(null);
+                setBlastError(null);
               }}
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
@@ -2357,6 +2473,17 @@ function GraphPageInner() {
                 setSelectedNode(null);
                 setSelectedNodeId(null);
               }}
+              blastRadiusActive={blastRadius?.rootId === selectedNodeId}
+              blastRadiusLoading={loadingBlast}
+              onShowBlastRadius={
+                selectedNodeId
+                  ? () =>
+                      void loadBlastRadius(
+                        selectedNodeId,
+                        selectedNode.label ?? selectedNodeId,
+                      )
+                  : undefined
+              }
             />
           )}
         </div>
@@ -2510,6 +2637,86 @@ function ReachabilityDrillInPanel({
             )}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function BlastRadiusPanel({
+  summary,
+  loading,
+  error,
+  onClear,
+}: {
+  summary: BlastRadiusState | null;
+  loading: boolean;
+  error: string | null;
+  onClear: () => void;
+}) {
+  return (
+    <div className="mt-3 rounded-2xl border border-violet-500/30 bg-violet-500/10 p-3 text-xs text-violet-100">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2">
+          <Radar className="mt-0.5 h-4 w-4 text-violet-300" />
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-violet-300">
+              Blast radius
+            </p>
+            <p className="mt-1 text-sm font-medium text-violet-50">
+              {summary
+                ? `${summary.affectedCount} asset${summary.affectedCount === 1 ? "" : "s"} impacted if ${summary.rootLabel} is compromised`
+                : "Computing blast radius"}
+            </p>
+            {summary && (
+              <p className="mt-1 text-[11px] text-violet-200/80">
+                Reverse-dependency reach · up to {summary.maxDepthReached} hop
+                {summary.maxDepthReached === 1 ? "" : "s"}
+              </p>
+            )}
+            {error && (
+              <p className="mt-1 text-[11px] text-amber-200">{error}</p>
+            )}
+            {loading && (
+              <p className="mt-1 flex items-center gap-1 text-[11px] text-violet-200">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Tracing downstream dependents
+              </p>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-lg border border-violet-400/30 bg-violet-950/60 px-2.5 py-1 text-violet-100 transition hover:border-violet-300"
+        >
+          Clear blast radius
+        </button>
+      </div>
+
+      {summary && Object.keys(summary.countsByType).length > 0 && (
+        <div className="mt-3 rounded-xl border border-violet-400/20 bg-zinc-950/45 p-2">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-violet-300">
+            Impacted by type
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {Object.entries(summary.countsByType)
+              .sort((left, right) => right[1] - left[1])
+              .map(([type, count]) => (
+                <span
+                  key={type}
+                  className="rounded border border-violet-400/20 bg-violet-950/60 px-1.5 py-0.5 text-[10px] text-violet-100"
+                >
+                  {prettifyReachabilityType(type)}: {count}
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {summary && summary.affectedCount === 0 && (
+        <p className="mt-2 text-zinc-400">
+          Nothing downstream depends on this node in the current snapshot.
+        </p>
       )}
     </div>
   );

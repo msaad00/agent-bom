@@ -15,7 +15,9 @@ import {
   Hourglass,
   KeyRound,
   Lock,
+  Loader2,
   Package,
+  Radar,
   Server,
   ShieldAlert,
   ShieldOff,
@@ -144,9 +146,15 @@ const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
 export function LineageDetailPanel({
   data,
   onClose,
+  onShowBlastRadius,
+  blastRadiusActive = false,
+  blastRadiusLoading = false,
 }: {
   data: LineageNodeData;
   onClose: () => void;
+  onShowBlastRadius?: (() => void) | undefined;
+  blastRadiusActive?: boolean;
+  blastRadiusLoading?: boolean;
 }) {
   const Icon = TYPE_ICON[data.nodeType];
   const osvUrl =
@@ -541,6 +549,27 @@ export function LineageDetailPanel({
               <Row label="Impact depth" value={data.maxImpactDepth} />
             )}
           </div>
+        )}
+
+        {onShowBlastRadius && (
+          <button
+            type="button"
+            onClick={onShowBlastRadius}
+            disabled={blastRadiusLoading}
+            aria-pressed={blastRadiusActive}
+            className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+              blastRadiusActive
+                ? "border-violet-400/50 bg-violet-500/20 text-violet-100"
+                : "border-violet-500/30 bg-violet-500/10 text-violet-200 hover:border-violet-400/60 hover:bg-violet-500/20"
+            }`}
+          >
+            {blastRadiusLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Radar className="h-3.5 w-3.5" />
+            )}
+            {blastRadiusActive ? "Blast radius shown" : "Show blast radius"}
+          </button>
         )}
 
         {data.impactByType && Object.keys(data.impactByType).length > 0 && (

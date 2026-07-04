@@ -6094,6 +6094,64 @@ paths:
       summary: Check Entitlement
       tags:
       - enterprise
+  /v1/estate/correlations:
+    get:
+      description: "Return local\u2194cloud agent correlation matches for a completed\
+        \ scan."
+      operationId: get_estate_correlations_v1_estate_correlations_get
+      parameters:
+      - description: Scan job ID; latest completed scan if omitted
+        in: query
+        name: scan_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Scan job ID; latest completed scan if omitted
+          title: Scan Id
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Get Estate Correlations V1 Estate Correlations Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Estate Correlations
+      tags:
+      - estate
   /v1/evaluations:
     get:
       operationId: list_evaluation_runs_v1_evaluations_get

@@ -756,7 +756,7 @@ function ScorecardStrip({
             return (
               <Link
                 key={domain.href}
-                href={domain.href}
+                href={domain.graph_href ?? domain.href}
                 className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5 transition-colors hover:border-zinc-600"
               >
                 <div className="min-w-0">

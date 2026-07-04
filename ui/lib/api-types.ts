@@ -2111,6 +2111,7 @@ export type OverviewDomainStatus = "ok" | "warn" | "critical" | "idle";
 export interface OverviewDomain {
   label: string;
   href: string;
+  graph_href?: string | undefined;
   metric: number;
   metric_label: string;
   status: OverviewDomainStatus;

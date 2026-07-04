@@ -23,6 +23,12 @@ from agent_bom.api.compliance_hub_store import (
     _severity_rank,
     compute_effective_reach_score,
 )
+from agent_bom.api.hub_current_payload import (
+    batch_ledger_payloads,
+    current_state_overlay,
+    hydrate_current_payload,
+    resolve_ledger_finding_id,
+)
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
@@ -65,6 +71,98 @@ def _migrate_lifecycle_observations_l2_postgres(conn: Any) -> None:
         END $$;
         """
     )
+
+
+def _migrate_current_ledger_ref_postgres(conn: Any) -> None:
+    conn.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'hub_findings_current'
+                  AND column_name = 'ledger_finding_id'
+            ) THEN
+                ALTER TABLE hub_findings_current ADD COLUMN ledger_finding_id TEXT;
+            END IF;
+        END $$;
+        """
+    )
+
+
+def _fetch_ledger_payloads_postgres(
+    conn: Any,
+    tenant_id: str,
+    finding_ids: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    if not finding_ids:
+        return {}
+    rows = conn.execute(
+        """
+        SELECT finding_id, payload
+        FROM compliance_hub_findings
+        WHERE tenant_id = %s AND finding_id = ANY(%s)
+        """,
+        (tenant_id, list(finding_ids)),
+    ).fetchall()
+    out: dict[str, dict[str, Any]] = {}
+    for finding_id, raw_payload in rows:
+        out[str(finding_id)] = raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload)
+    return out
+
+
+def _postgres_current_row_from_db(row: tuple[Any, ...], *, has_ledger_col: bool) -> dict[str, Any]:
+    raw_payload = row[12]
+    current_row = {
+        "canonical_id": row[0],
+        "first_seen": row[1],
+        "last_seen": row[2],
+        "status": row[3],
+        "severity": row[4],
+        "severity_rank": row[5],
+        "cvss_score": row[6],
+        "effective_reach_score": row[7],
+        "scan_count": row[8],
+        "resolved_at": row[9],
+        "reopened_at": row[10],
+        "updated_at": row[11],
+        "payload": raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload),
+    }
+    if has_ledger_col:
+        current_row["ledger_finding_id"] = row[13]
+    return current_row
+
+
+def _hydrate_postgres_current_rows(
+    conn: Any,
+    tenant_id: str,
+    current_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    ledger_map = batch_ledger_payloads(
+        lambda ids: _fetch_ledger_payloads_postgres(conn, tenant_id, ids),
+        [str(row.get("ledger_finding_id") or "") for row in current_rows],
+    )
+    hydrated: list[dict[str, Any]] = []
+    for row in current_rows:
+        hydrated_row = dict(row)
+        hydrated_row["payload"] = hydrate_current_payload(row, ledger_payloads=ledger_map)
+        hydrated.append(hydrated_row)
+    return hydrated
+
+
+def _postgres_current_has_ledger_col(conn: Any) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'hub_findings_current'
+          AND column_name = 'ledger_finding_id'
+        LIMIT 1
+        """
+    ).fetchone()
+    return row is not None
 
 
 class PostgresComplianceHubStore:
@@ -150,6 +248,7 @@ class PostgresComplianceHubStore:
 
             conn.execute(_CURRENT_LIFECYCLE_POSTGRES_DDL)
             _migrate_lifecycle_observations_l2_postgres(conn)
+            _migrate_current_ledger_ref_postgres(conn)
             _ensure_tenant_rls(conn, "hub_findings_current", "tenant_id")
             _ensure_tenant_rls(conn, "hub_findings_current_observations", "tenant_id")
             conn.commit()
@@ -389,6 +488,8 @@ class PostgresComplianceHubStore:
             for payload in clean:
                 canonical = resolve_canonical_id(payload, source=source)
                 metrics = lifecycle_metrics(payload)
+                ledger_finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
+                overlay = current_state_overlay(payload) if ledger_finding_id else dict(payload)
                 inserted = conn.execute(
                     """
                     INSERT INTO hub_findings_current_observations
@@ -400,36 +501,24 @@ class PostgresComplianceHubStore:
                 ).rowcount
                 if not inserted:
                     continue
+                has_ledger_col = _postgres_current_has_ledger_col(conn)
+                payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
                 existing_row = conn.execute(
-                    """
+                    f"""
                     SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
                            cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                           updated_at, payload
+                           updated_at, {payload_select}
                     FROM hub_findings_current
                     WHERE tenant_id = %s AND canonical_id = %s
-                    """,
+                    """,  # nosec B608
                     (tenant_id, canonical),
                 ).fetchone()
                 existing: dict[str, Any] | None
                 if existing_row is None:
                     existing = None
                 else:
-                    raw_payload = existing_row[12]
-                    existing = {
-                        "canonical_id": existing_row[0],
-                        "first_seen": existing_row[1],
-                        "last_seen": existing_row[2],
-                        "status": existing_row[3],
-                        "severity": existing_row[4],
-                        "severity_rank": existing_row[5],
-                        "cvss_score": existing_row[6],
-                        "effective_reach_score": existing_row[7],
-                        "scan_count": existing_row[8],
-                        "resolved_at": existing_row[9],
-                        "reopened_at": existing_row[10],
-                        "updated_at": existing_row[11],
-                        "payload": raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload),
-                    }
+                    existing = _postgres_current_row_from_db(existing_row, has_ledger_col=has_ledger_col)
+                    existing = _hydrate_postgres_current_rows(conn, tenant_id, [existing])[0]
                 merged = apply_observation_to_current(
                     existing,
                     canonical_id=canonical,
@@ -438,76 +527,106 @@ class PostgresComplianceHubStore:
                     payload=payload,
                     updated_at=now,
                 )
-                conn.execute(
-                    """
-                    INSERT INTO hub_findings_current
-                        (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                         cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                         updated_at, payload)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                    ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
-                        first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
-                        last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
-                        status = EXCLUDED.status,
-                        severity = EXCLUDED.severity,
-                        severity_rank = EXCLUDED.severity_rank,
-                        cvss_score = EXCLUDED.cvss_score,
-                        effective_reach_score = EXCLUDED.effective_reach_score,
-                        scan_count = EXCLUDED.scan_count,
-                        resolved_at = EXCLUDED.resolved_at,
-                        reopened_at = EXCLUDED.reopened_at,
-                        updated_at = EXCLUDED.updated_at,
-                        payload = EXCLUDED.payload
-                    """,
-                    (
-                        tenant_id,
-                        canonical,
-                        merged["first_seen"],
-                        merged["last_seen"],
-                        merged["status"],
-                        merged["severity"],
-                        merged["severity_rank"],
-                        merged["cvss_score"],
-                        merged["effective_reach_score"],
-                        merged["scan_count"],
-                        merged["resolved_at"],
-                        merged["reopened_at"],
-                        merged["updated_at"],
-                        json.dumps(merged["payload"], sort_keys=True),
-                    ),
-                )
+                if has_ledger_col:
+                    conn.execute(
+                        """
+                        INSERT INTO hub_findings_current
+                            (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                             cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                             updated_at, payload, ledger_finding_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                        ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
+                            first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
+                            last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
+                            status = EXCLUDED.status,
+                            severity = EXCLUDED.severity,
+                            severity_rank = EXCLUDED.severity_rank,
+                            cvss_score = EXCLUDED.cvss_score,
+                            effective_reach_score = EXCLUDED.effective_reach_score,
+                            scan_count = EXCLUDED.scan_count,
+                            resolved_at = EXCLUDED.resolved_at,
+                            reopened_at = EXCLUDED.reopened_at,
+                            updated_at = EXCLUDED.updated_at,
+                            payload = EXCLUDED.payload,
+                            ledger_finding_id = EXCLUDED.ledger_finding_id
+                        """,
+                        (
+                            tenant_id,
+                            canonical,
+                            merged["first_seen"],
+                            merged["last_seen"],
+                            merged["status"],
+                            merged["severity"],
+                            merged["severity_rank"],
+                            merged["cvss_score"],
+                            merged["effective_reach_score"],
+                            merged["scan_count"],
+                            merged["resolved_at"],
+                            merged["reopened_at"],
+                            merged["updated_at"],
+                            json.dumps(overlay, sort_keys=True),
+                            ledger_finding_id or None,
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        INSERT INTO hub_findings_current
+                            (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                             cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                             updated_at, payload)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                        ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
+                            first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
+                            last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
+                            status = EXCLUDED.status,
+                            severity = EXCLUDED.severity,
+                            severity_rank = EXCLUDED.severity_rank,
+                            cvss_score = EXCLUDED.cvss_score,
+                            effective_reach_score = EXCLUDED.effective_reach_score,
+                            scan_count = EXCLUDED.scan_count,
+                            resolved_at = EXCLUDED.resolved_at,
+                            reopened_at = EXCLUDED.reopened_at,
+                            updated_at = EXCLUDED.updated_at,
+                            payload = EXCLUDED.payload
+                        """,
+                        (
+                            tenant_id,
+                            canonical,
+                            merged["first_seen"],
+                            merged["last_seen"],
+                            merged["status"],
+                            merged["severity"],
+                            merged["severity_rank"],
+                            merged["cvss_score"],
+                            merged["effective_reach_score"],
+                            merged["scan_count"],
+                            merged["resolved_at"],
+                            merged["reopened_at"],
+                            merged["updated_at"],
+                            json.dumps(overlay, sort_keys=True),
+                        ),
+                    )
             conn.commit()
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
         with _tenant_connection(self._pool) as conn:
+            has_ledger_col = _postgres_current_has_ledger_col(conn)
+            payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
             row = conn.execute(
-                """
+                f"""
                 SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
                        cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                       updated_at, payload
+                       updated_at, {payload_select}
                 FROM hub_findings_current
                 WHERE tenant_id = %s AND canonical_id = %s
-                """,
+                """,  # nosec B608
                 (tenant_id, canonical_id),
             ).fetchone()
-        if row is None:
-            return None
-        raw_payload = row[12]
-        return {
-            "canonical_id": row[0],
-            "first_seen": row[1],
-            "last_seen": row[2],
-            "status": row[3],
-            "severity": row[4],
-            "severity_rank": row[5],
-            "cvss_score": row[6],
-            "effective_reach_score": row[7],
-            "scan_count": row[8],
-            "resolved_at": row[9],
-            "reopened_at": row[10],
-            "updated_at": row[11],
-            "payload": raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload),
-        }
+            if row is None:
+                return None
+            current_row = _postgres_current_row_from_db(row, has_ledger_col=has_ledger_col)
+            return _hydrate_postgres_current_rows(conn, tenant_id, [current_row])[0]
 
     def list_current_page(
         self,
@@ -548,34 +667,22 @@ class PostgresComplianceHubStore:
                 total = int(total_row[0]) if total_row else 0
             else:
                 total = None
+            has_ledger_col = _postgres_current_has_ledger_col(conn)
+            payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
             rows = conn.execute(
                 f"""
                 SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
                        cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                       updated_at, payload
+                       updated_at, {payload_select}
                 FROM hub_findings_current
                 WHERE {where_sql} {order_sql} LIMIT %s OFFSET %s
                 """,  # nosec B608
                 (*params, int(limit), int(offset)),
             ).fetchall()
+            current_rows = [_postgres_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
+            hydrated_rows = _hydrate_postgres_current_rows(conn, tenant_id, current_rows)
         out: list[dict[str, Any]] = []
-        for row in rows:
-            raw_payload = row[12]
-            current_row = {
-                "canonical_id": row[0],
-                "first_seen": row[1],
-                "last_seen": row[2],
-                "status": row[3],
-                "severity": row[4],
-                "severity_rank": row[5],
-                "cvss_score": row[6],
-                "effective_reach_score": row[7],
-                "scan_count": row[8],
-                "resolved_at": row[9],
-                "reopened_at": row[10],
-                "updated_at": row[11],
-                "payload": raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload),
-            }
+        for current_row in hydrated_rows:
             out.append(enriched_finding_payload(current_row))
         return out, total
 

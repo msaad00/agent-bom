@@ -158,6 +158,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     reopened_at TEXT,
     updated_at TEXT NOT NULL,
     payload TEXT NOT NULL,
+    ledger_finding_id TEXT,
     PRIMARY KEY (tenant_id, canonical_id)
 );
 
@@ -225,6 +226,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     reopened_at TEXT,
     updated_at TEXT NOT NULL,
     payload JSONB NOT NULL,
+    ledger_finding_id TEXT,
     PRIMARY KEY (tenant_id, canonical_id)
 );
 

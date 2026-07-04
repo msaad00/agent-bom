@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from agent_bom.api.compliance_hub_store import (
+    FindingCursorPage,
     FindingPage,
     _cvss_value,
     _frameworks_csv,
@@ -22,6 +23,10 @@ from agent_bom.api.compliance_hub_store import (
     _redact_findings,
     _severity_rank,
     compute_effective_reach_score,
+)
+from agent_bom.api.finding_cursor import (
+    cursor_from_current_row,
+    postgres_keyset_clause,
 )
 from agent_bom.api.hub_current_payload import (
     batch_ledger_payloads,
@@ -639,10 +644,12 @@ class PostgresComplianceHubStore:
         scan_id: str | None = None,
         origin: str | None = None,
         include_total: bool = True,
-    ) -> FindingPage:
+        cursor: str | None = None,
+    ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
         from agent_bom.graph.severity import severity_policy_rank
 
+        normalized_sort = sort if sort in ("effective_reach", "cvss", "severity", "ordinal") else "effective_reach"
         where = ["tenant_id = %s"]
         params: list[Any] = [tenant_id]
         if origin is not None:
@@ -654,12 +661,18 @@ class PostgresComplianceHubStore:
         if scan_id is not None:
             where.append("(payload->>'batch_id' = %s OR payload->>'scan_id' = %s)")
             params.extend([scan_id, scan_id])
+        if cursor:
+            keyset_sql, keyset_params = postgres_keyset_clause(normalized_sort, cursor)
+            where.append(keyset_sql.removeprefix(" AND "))
+            params.extend(keyset_params)
         where_sql = " AND ".join(where)
-        order_sql = _postgres_current_order_clause(sort)
+        order_sql = _postgres_current_order_clause(normalized_sort)
+        page_limit = max(0, int(limit))
+        fetch_limit = page_limit + 1 if page_limit >= 0 else page_limit
 
         with _tenant_connection(self._pool) as conn:
             total: int | None
-            if include_total:
+            if include_total and not cursor:
                 total_row = conn.execute(
                     f"SELECT COUNT(*) FROM hub_findings_current WHERE {where_sql}",  # nosec B608
                     tuple(params),
@@ -669,22 +682,34 @@ class PostgresComplianceHubStore:
                 total = None
             has_ledger_col = _postgres_current_has_ledger_col(conn)
             payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
+            if cursor:
+                query_params: tuple[Any, ...] = (*params, fetch_limit)
+                limit_sql = "LIMIT %s"
+            else:
+                query_params = (*params, fetch_limit, int(offset))
+                limit_sql = "LIMIT %s OFFSET %s"
             rows = conn.execute(
                 f"""
                 SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
                        cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
                        updated_at, {payload_select}
                 FROM hub_findings_current
-                WHERE {where_sql} {order_sql} LIMIT %s OFFSET %s
+                WHERE {where_sql} {order_sql} {limit_sql}
                 """,  # nosec B608
-                (*params, int(limit), int(offset)),
+                query_params,
             ).fetchall()
             current_rows = [_postgres_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
+            has_more = page_limit >= 0 and len(current_rows) > page_limit
+            if has_more:
+                current_rows = current_rows[:page_limit]
             hydrated_rows = _hydrate_postgres_current_rows(conn, tenant_id, current_rows)
         out: list[dict[str, Any]] = []
         for current_row in hydrated_rows:
             out.append(enriched_finding_payload(current_row))
-        return out, total
+        next_cursor = None
+        if has_more and hydrated_rows:
+            next_cursor = cursor_from_current_row(hydrated_rows[-1], sort=normalized_sort)
+        return out, total, next_cursor
 
     def reconcile_current_absent(
         self,
@@ -709,7 +734,7 @@ class PostgresComplianceHubStore:
                 f"""
                 UPDATE hub_findings_current
                 SET status = 'resolved', resolved_at = %s, updated_at = %s
-                WHERE {' AND '.join(where)}
+                WHERE {" AND ".join(where)}
                 """,  # nosec B608
                 tuple(params),
             )

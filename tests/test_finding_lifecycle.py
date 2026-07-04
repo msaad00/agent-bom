@@ -226,7 +226,7 @@ def test_list_current_page_enriches_lifecycle_fields(hub_store) -> None:
     finding = _sample_finding()
     hub_store.upsert_current_batch(tenant, [finding], observed_at=MON, batch_id="batch-list")
 
-    rows, total = hub_store.list_current_page(tenant, limit=10, offset=0, origin="bulk_ingest")
+    rows, total, _next = hub_store.list_current_page(tenant, limit=10, offset=0, origin="bulk_ingest")
     assert total == 1
     assert len(rows) == 1
     assert rows[0]["first_seen"] == MON

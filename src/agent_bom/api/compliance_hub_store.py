@@ -27,6 +27,12 @@ import threading
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Protocol
 
+from agent_bom.api.finding_cursor import (
+    cursor_from_current_row,
+    decode_finding_cursor,
+    row_is_after_cursor,
+    sqlite_keyset_clause,
+)
 from agent_bom.api.hub_current_payload import (
     batch_ledger_payloads,
     current_state_overlay,
@@ -40,6 +46,7 @@ from agent_bom.graph.severity import severity_policy_rank
 # classes below define a ``list`` method that would otherwise shadow it in
 # their ``list_page`` return annotations.
 FindingPage = tuple[list[dict[str, Any]], int | None]
+FindingCursorPage = tuple[list[dict[str, Any]], int | None, str | None]
 _HubFindingRows = list[dict[str, Any]]
 
 # Sort keys supported by ``list_page``. ``effective_reach`` (default),
@@ -245,7 +252,8 @@ class ComplianceHubStore(Protocol):
         scan_id: str | None = None,
         origin: str | None = None,
         include_total: bool = True,
-    ) -> FindingPage:
+        cursor: str | None = None,
+    ) -> FindingCursorPage:
         """Return a page from ``hub_findings_current`` with lifecycle fields merged."""
         ...
 
@@ -690,20 +698,45 @@ class InMemoryComplianceHubStore:
         scan_id: str | None = None,
         origin: str | None = None,
         include_total: bool = True,
-    ) -> FindingPage:
+        cursor: str | None = None,
+    ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
+        normalized_sort = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
         with self._lock:
             rows = list(self._current.get(tenant_id, {}).values())
         rows = _filter_current_rows(rows, severity=severity, scan_id=scan_id, origin=origin)
         total = len(rows) if include_total else None
-        rows.sort(key=_current_page_sort_key(sort))
-        if offset:
+        rows.sort(key=_current_page_sort_key(normalized_sort))
+        if cursor:
+            primary, last_seen, canonical_id = decode_finding_cursor(cursor, expected_sort=normalized_sort)
+            rows = [
+                row
+                for row in rows
+                if row_is_after_cursor(
+                    row,
+                    sort=normalized_sort,
+                    primary=primary,
+                    last_seen=last_seen,
+                    canonical_id=canonical_id,
+                )
+            ]
+        elif offset:
             rows = rows[offset:]
-        if limit >= 0:
-            rows = rows[:limit]
+        page_limit = max(0, int(limit))
+        fetch_limit = page_limit + 1 if page_limit >= 0 else page_limit
+        if page_limit >= 0:
+            chunk = rows[:fetch_limit]
+            has_more = len(chunk) > page_limit
+            rows = chunk[:page_limit]
+        else:
+            has_more = False
         rows = self._hydrate_current_rows(tenant_id, [dict(row) for row in rows])
-        return [enriched_finding_payload(row) for row in rows], total
+        enriched = [enriched_finding_payload(row) for row in rows]
+        next_cursor = None
+        if has_more and rows:
+            next_cursor = cursor_from_current_row(rows[-1], sort=normalized_sort)
+        return enriched, total, next_cursor
 
     def reconcile_current_absent(
         self,
@@ -1234,9 +1267,11 @@ class SQLiteComplianceHubStore:
         scan_id: str | None = None,
         origin: str | None = None,
         include_total: bool = True,
-    ) -> FindingPage:
+        cursor: str | None = None,
+    ) -> FindingCursorPage:
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
+        normalized_sort = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
         where = ["tenant_id = ?"]
         params: list[Any] = [tenant_id]
         if origin is not None:
@@ -1248,10 +1283,14 @@ class SQLiteComplianceHubStore:
         if scan_id is not None:
             where.append("(CAST(json_extract(payload, '$.batch_id') AS TEXT) = ? OR CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?)")
             params.extend([scan_id, scan_id])
+        if cursor:
+            keyset_sql, keyset_params = sqlite_keyset_clause(normalized_sort, cursor)
+            where.append(keyset_sql.removeprefix(" AND "))
+            params.extend(keyset_params)
         where_sql = " AND ".join(where)
 
         total: int | None
-        if include_total:
+        if include_total and not cursor:
             total_row = self._conn.execute(
                 f"SELECT COUNT(*) FROM hub_findings_current WHERE {where_sql}",  # nosec B608
                 params,
@@ -1260,8 +1299,15 @@ class SQLiteComplianceHubStore:
         else:
             total = None
 
-        order_sql = _sqlite_current_order_clause(sort)
-        page_params = [*params, int(limit), int(offset)]
+        order_sql = _sqlite_current_order_clause(normalized_sort)
+        page_limit = max(0, int(limit))
+        fetch_limit = page_limit + 1 if page_limit >= 0 else page_limit
+        if cursor:
+            page_params = [*params, fetch_limit]
+            limit_sql = "LIMIT ?"
+        else:
+            page_params = [*params, fetch_limit, int(offset)]
+            limit_sql = "LIMIT ? OFFSET ?"
         has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)
         payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
         rows = self._conn.execute(
@@ -1270,16 +1316,22 @@ class SQLiteComplianceHubStore:
                    cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
                    updated_at, {payload_select}
             FROM hub_findings_current
-            WHERE {where_sql} {order_sql} LIMIT ? OFFSET ?
+            WHERE {where_sql} {order_sql} {limit_sql}
             """,  # nosec B608
             page_params,
         ).fetchall()
         current_rows = [_sqlite_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
+        has_more = page_limit >= 0 and len(current_rows) > page_limit
+        if has_more:
+            current_rows = current_rows[:page_limit]
         hydrated_rows = _hydrate_sqlite_current_rows(self._conn, tenant_id, current_rows)
         out: list[dict[str, Any]] = []
         for current_row in hydrated_rows:
             out.append(enriched_finding_payload(current_row))
-        return out, total
+        next_cursor = None
+        if has_more and hydrated_rows:
+            next_cursor = cursor_from_current_row(hydrated_rows[-1], sort=normalized_sort)
+        return out, total, next_cursor
 
     def reconcile_current_absent(
         self,

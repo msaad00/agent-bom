@@ -73,7 +73,7 @@ def test_current_state_stores_overlay_and_hydrates_from_ledger(
         ).fetchone()[0]
         assert len(row[0]) < len(ledger_payload)
 
-    listed, total = store.list_current_page(tenant, limit=10)
+    listed, total, _next = store.list_current_page(tenant, limit=10)
     assert total == 1
     assert listed[0]["title"] == finding["title"]
     assert listed[0]["severity"] == finding["severity"]

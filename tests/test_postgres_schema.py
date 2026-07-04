@@ -173,7 +173,8 @@ def test_graph_edges_versioning_migration_exists():
 
 def test_schema_summary_comment_is_current():
     assert "--  Schema (21+ tables):" in SQL
-    assert "--   api_rate_limits    — shared API rate-limiter buckets" in SQL
+    assert "--   api_rate_limits      — legacy fixed-window buckets (deprecated)" in SQL
+    assert "--   api_rate_limit_hits  — shared sliding-window API rate-limiter events" in SQL
     assert "--   audit_log          — signed API/security audit trail" in SQL
     assert "--   trend_history      — persisted posture/vulnerability history" in SQL
     assert "--   attack_paths       — persisted fix-first attack-path projections" in SQL

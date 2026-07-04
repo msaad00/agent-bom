@@ -8,7 +8,6 @@ share ingested findings across replicas.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -34,6 +33,7 @@ from agent_bom.api.hub_current_payload import (
     hydrate_current_payload,
     resolve_ledger_finding_id,
 )
+from agent_bom.api.hub_payload_codec import decode_hub_payload, encode_hub_payload
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
@@ -113,7 +113,7 @@ def _fetch_ledger_payloads_postgres(
     ).fetchall()
     out: dict[str, dict[str, Any]] = {}
     for finding_id, raw_payload in rows:
-        out[str(finding_id)] = raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload)
+        out[str(finding_id)] = decode_hub_payload(raw_payload)
     return out
 
 
@@ -132,7 +132,7 @@ def _postgres_current_row_from_db(row: tuple[Any, ...], *, has_ledger_col: bool)
         "resolved_at": row[9],
         "reopened_at": row[10],
         "updated_at": row[11],
-        "payload": raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload),
+        "payload": decode_hub_payload(raw_payload),
     }
     if has_ledger_col:
         current_row["ledger_finding_id"] = row[13]
@@ -335,7 +335,7 @@ class PostgresComplianceHubStore:
                         now,
                         str(payload.get("source") or ""),
                         _frameworks_csv(payload),
-                        json.dumps(payload, sort_keys=True),
+                        encode_hub_payload(payload),
                         compute_effective_reach_score(payload),
                         str(payload.get("origin") or ""),
                         str(payload.get("severity") or ""),
@@ -355,7 +355,7 @@ class PostgresComplianceHubStore:
         out: list[dict[str, Any]] = []
         for row in rows:
             raw = row[0]
-            out.append(raw if isinstance(raw, dict) else json.loads(raw))
+            out.append(decode_hub_payload(raw))
         return out
 
     def list_page(
@@ -406,7 +406,7 @@ class PostgresComplianceHubStore:
         out: list[dict[str, Any]] = []
         for row in rows:
             raw = row[0]
-            out.append(raw if isinstance(raw, dict) else json.loads(raw))
+            out.append(decode_hub_payload(raw))
         return out, total
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
@@ -569,7 +569,7 @@ class PostgresComplianceHubStore:
                             merged["resolved_at"],
                             merged["reopened_at"],
                             merged["updated_at"],
-                            json.dumps(overlay, sort_keys=True),
+                            encode_hub_payload(overlay),
                             ledger_finding_id or None,
                         ),
                     )
@@ -609,7 +609,7 @@ class PostgresComplianceHubStore:
                             merged["resolved_at"],
                             merged["reopened_at"],
                             merged["updated_at"],
-                            json.dumps(overlay, sort_keys=True),
+                            encode_hub_payload(overlay),
                         ),
                     )
             conn.commit()

@@ -330,7 +330,9 @@ The rollout order should normally be:
 ## Recommended Production Defaults
 
 - use Postgres, not SQLite, for the control plane
-- use Alembic for long-lived Postgres-backed deployments
+- migrations are applied automatically by the chart's pre-upgrade Helm hook
+  (`controlPlane.migrations.enabled`, on by default) for long-lived
+  Postgres-backed deployments
 - keep the proxy and API internal to your VPC unless exposure is intentional
 - attach discovery jobs to IRSA instead of static cloud keys
 - keep discovery roles read-only unless a specific workflow truly requires write access
@@ -360,17 +362,23 @@ That split is what makes the deployment:
 - **manageable**: each surface can roll out on its own lifecycle
 - **accurate**: one shared graph and policy model keeps outputs consistent across surfaces
 
-Run database migrations explicitly:
-
-```bash
-alembic -c deploy/supabase/postgres/alembic.ini upgrade head
-```
+Database migrations run automatically. The Helm chart's `pre-install,pre-upgrade`
+hook (`controlPlane.migrations.enabled`, on by default) runs `alembic upgrade
+head` before the new API pods roll, so `helm upgrade` needs no manual migration
+step.
 
 If the database was previously bootstrapped from `init.sql`, stamp the baseline
-once before future upgrades:
+once so the auto-hook has a revision to upgrade from:
 
 ```bash
 alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01
+```
+
+To manage migrations with external tooling instead, disable the hook
+(`controlPlane.migrations.enabled=false`) and run it yourself:
+
+```bash
+alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 ```
 
 ## What You Still Own

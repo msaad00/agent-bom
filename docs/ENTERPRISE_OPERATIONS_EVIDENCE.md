@@ -89,9 +89,10 @@ topology, and disaster-recovery approval process.
 | Rollback action | `helm rollback`, database restore if schema changes require it, restart API/UI/gateway workers |
 | Post-rollback | repeated smoke test, audit export, incident record, root-cause link |
 
-For long-lived Postgres control planes, run migrations explicitly and keep the
-pre-upgrade backup URI in the change ticket. Do not treat image rollback as a
-database rollback when schema changes were applied.
+For long-lived Postgres control planes, Helm applies migrations automatically
+via the chart's `pre-install,pre-upgrade` hook (`controlPlane.migrations.enabled`,
+on by default). Keep the pre-upgrade backup URI in the change ticket. Do not
+treat image rollback as a database rollback when schema changes were applied.
 
 ## Air-Gap Evidence
 

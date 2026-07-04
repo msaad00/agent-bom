@@ -75,6 +75,35 @@ flowchart LR
     H --> M
 ```
 
+### Scan push session (compact)
+
+Who can send scan evidence, where the API enforces it, and what lands in the
+control-plane store. See `src/agent_bom/api/routes/scan.py` and
+`ScanPipeline` for the code path.
+
+```mermaid
+flowchart TB
+    subgraph Who["Who can push a scan"]
+        CLI["CLI · agent-bom agents --push-url"]
+        CI["GitHub Action · artifact upload"]
+        Coll["Collector · in-cluster push"]
+    end
+
+    subgraph Enforced["Where it is enforced"]
+        Auth["API key · tenant RBAC · quotas"]
+        Pipe["POST /v1/scan · ScanPipeline"]
+    end
+
+    subgraph Lands["What lands"]
+        PG["Postgres: job · findings · graph snapshot"]
+    end
+
+    CLI --> Auth
+    CI --> Auth
+    Coll --> Auth
+    Auth --> Pipe --> PG
+```
+
 ## What comes in
 
 `agent-bom` supports four intake modes.

@@ -320,6 +320,35 @@ Production deployments must keep cryptographic keys separated by purpose:
 
 Do not reuse the API key or audit HMAC key as a rate-limit, browser-session, or proxy-attestation secret. Set `AGENT_BOM_TRUST_PROXY_AUTH_ISSUER` when the upstream proxy can inject a stable issuer identifier; the API will then reject trusted-proxy requests from any other issuer.
 
+#### Finding and scan payload encryption at rest (deployment prerequisite)
+
+Finding, scan, and graph payloads are **not** application-layer encrypted. This
+is by design: confidentiality at rest is delegated to the storage layer so the
+control plane stays operable across SQLite, Postgres/RDS, and object storage
+without managing a payload-encryption key or breaking search, indexing, and
+graph queries. Selected fields still get app-layer protection — API tokens are
+stored as SHA-256 hashes, the audit chain is HMAC-signed, browser sessions are
+signed, and stored cloud-connection secrets use envelope encryption — but the
+finding bodies themselves rely on encryption-at-rest from the backend.
+
+For any buyer with a data-classification or regulatory requirement, treat these
+as prerequisites before ingesting real findings:
+
+- **Database at rest** — enable encryption on the Postgres/RDS instance (e.g. RDS
+  storage encryption with a customer-managed KMS key) or the underlying volume
+  (LUKS/EBS encryption) that backs SQLite.
+- **Object storage at rest** — enable bucket/default encryption (SSE-KMS or
+  equivalent) for any S3/GCS/Azure Blob destinations used for exports, backups,
+  or air-gapped DB snapshots.
+- **Access controls** — keep the database and object storage private to the VPC,
+  enforce least-privilege IAM/DB roles, and rely on tenant `FORCE ROW LEVEL
+  SECURITY` (Postgres) for multi-tenant isolation.
+- **In transit** — TLS is always verified on outbound calls; terminate ingress
+  TLS and prefer the delegated mTLS posture below for the proxy/gateway seam.
+
+If a threat model requires application-layer (pre-storage) encryption of finding
+payloads, that is not provided today; scope it explicitly rather than assuming it.
+
 ### Proxy-to-control-plane mTLS posture
 
 The recommended production pattern is delegated mTLS: terminate TLS and verify

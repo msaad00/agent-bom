@@ -17,6 +17,18 @@ The backend strategy should stay simple:
 
 This page explains how those stores fit together in a self-hosted deployment.
 
+### Hosting model per tier
+
+The self-hosted story does not depend on a managed cloud warehouse. `Postgres`
+and `ClickHouse` both ship open-source servers you can run inside your own VPC,
+Kubernetes cluster, or bare metal — the `deploy/` compose and Helm paths target
+exactly these OSS builds. `ClickHouse` also offers a managed **ClickHouse Cloud**
+service; that hosted option is optional — many deployments run the OSS server
+self-hosted. `Snowflake` is warehouse SaaS only — choose it when
+warehouse-native governance is the goal, not as a prerequisite for analytics
+scale-out. A typical fully self-hostable stack is `Postgres` + OSS `ClickHouse`
++ optional `S3`-compatible object storage.
+
 ## The product contract
 
 `agent-bom` should not require operators to choose between:

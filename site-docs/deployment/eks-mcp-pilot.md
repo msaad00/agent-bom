@@ -105,8 +105,7 @@ That gives the team a clean story:
 
 ## Required platform hardening
 
-Before calling this pilot production-like, apply the namespace labels and run
-the control-plane migrations explicitly:
+Before calling this pilot production-like, apply the namespace labels:
 
 ```bash
 kubectl label namespace agent-bom \
@@ -114,17 +113,23 @@ kubectl label namespace agent-bom \
   pod-security.kubernetes.io/audit=restricted \
   pod-security.kubernetes.io/warn=restricted \
   --overwrite
-
-alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 ```
+
+Control-plane migrations run automatically. The chart's
+`pre-install,pre-upgrade` Helm hook (`controlPlane.migrations.enabled`, on by
+default) runs `alembic upgrade head` before the new API pods roll, so no manual
+migration step is required for `helm upgrade`.
 
 If the database was already bootstrapped from
 [deploy/supabase/postgres/init.sql](https://github.com/msaad00/agent-bom/blob/main/deploy/supabase/postgres/init.sql),
-stamp the baseline once before future upgrades:
+stamp the baseline once so the auto-hook has a revision to upgrade from:
 
 ```bash
 alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01
 ```
+
+To manage migrations with your own tooling, disable the hook with
+`controlPlane.migrations.enabled=false` and run `upgrade head` in your pipeline.
 
 The focused pilot values also set `networkPolicy.restrictIngress=true` and only
 allow ingress from:

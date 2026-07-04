@@ -254,6 +254,7 @@ class PostgresComplianceHubStore:
             conn.execute(_CURRENT_LIFECYCLE_POSTGRES_DDL)
             _migrate_lifecycle_observations_l2_postgres(conn)
             _migrate_current_ledger_ref_postgres(conn)
+            conn.execute("UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL")
             _ensure_tenant_rls(conn, "hub_findings_current", "tenant_id")
             _ensure_tenant_rls(conn, "hub_findings_current_observations", "tenant_id")
             conn.commit()

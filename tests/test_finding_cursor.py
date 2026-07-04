@@ -134,6 +134,70 @@ def test_findings_api_keyset_pagination() -> None:
     assert {row["id"] for row in body["findings"]}.isdisjoint({row["id"] for row in body2["findings"]})
 
 
+def test_sqlite_cvss_keyset_walks_all_rows_without_cvss_column_populated() -> None:
+    """NULL/omitted cvss_score must not truncate CVSS-sorted cursor walks."""
+    import tempfile
+
+    tenant = f"cvss-keyset-{uuid4().hex}"
+    count = 25
+    with tempfile.TemporaryDirectory() as tmp:
+        store = SQLiteComplianceHubStore(f"{tmp}/cvss-keyset.db")
+        findings = [
+            {
+                "id": f"finding-{idx}",
+                "title": f"Finding {idx}",
+                "severity": "high",
+                "effective_reach_score": float(idx),
+                "origin": "bulk_ingest",
+                "source": "test",
+                "batch_id": "batch-cvss-keyset",
+            }
+            for idx in range(count)
+        ]
+        store.add(tenant, findings)
+        store.upsert_current_batch(
+            tenant,
+            findings,
+            observed_at="2026-07-04T00:00:00Z",
+            batch_id="batch-cvss-keyset",
+            source="test",
+        )
+
+        null_rows = store._conn.execute(
+            "SELECT COUNT(*) FROM hub_findings_current WHERE tenant_id = ? AND cvss_score IS NULL",
+            (tenant,),
+        ).fetchone()[0]
+        assert null_rows == 0
+
+        seen: set[str] = set()
+        cursor: str | None = None
+        while True:
+            page, total, next_cursor = store.list_current_page(
+                tenant,
+                limit=5,
+                sort="cvss",
+                origin="bulk_ingest",
+                cursor=cursor,
+                include_total=cursor is None,
+            )
+            if cursor is None:
+                assert total == count
+            for row in page:
+                seen.add(str(row["id"]))
+            if not next_cursor:
+                break
+            cursor = next_cursor
+
+        assert len(seen) == count
+
+
+def test_lifecycle_metrics_defaults_cvss_score_to_zero() -> None:
+    from agent_bom.api.finding_lifecycle import lifecycle_metrics
+
+    metrics = lifecycle_metrics({"severity": "high"})
+    assert metrics["cvss_score"] == 0.0
+
+
 def test_findings_api_rejects_cursor_with_offset() -> None:
     client = TestClient(app)
     headers = proxy_headers(tenant="default")

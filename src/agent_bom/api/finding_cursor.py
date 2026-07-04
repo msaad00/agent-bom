@@ -8,6 +8,19 @@ from typing import Any
 
 _ALLOWED_SORTS = frozenset({"effective_reach", "cvss", "severity", "ordinal"})
 
+# Legacy rows may have NULL ``cvss_score``; treat as 0 for DESC keyset walks so
+# SQL comparisons stay three-valued-logic safe (#3511 / audit 2026-07-04).
+_CVSS_NULL_SORT_VALUE = 0.0
+
+
+def cvss_sort_value(raw: Any) -> float:
+    if raw is None:
+        return _CVSS_NULL_SORT_VALUE
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return _CVSS_NULL_SORT_VALUE
+
 
 def encode_finding_cursor(
     *,
@@ -46,7 +59,7 @@ def cursor_from_current_row(row: dict[str, Any], *, sort: str) -> str:
     if normalized == "ordinal":
         primary = 0.0
     elif normalized == "cvss":
-        primary = float(row.get("cvss_score") or 0.0)
+        primary = cvss_sort_value(row.get("cvss_score"))
     elif normalized == "severity":
         primary = float(row.get("severity_rank") or 0.0)
     else:
@@ -59,6 +72,10 @@ def cursor_from_current_row(row: dict[str, Any], *, sort: str) -> str:
     )
 
 
+def _cvss_keyset_expr() -> str:
+    return "COALESCE(cvss_score, 0)"
+
+
 def sqlite_keyset_clause(sort: str, cursor: str) -> tuple[str, list[Any]]:
     """Return extra WHERE SQL + params for keyset pagination after ``cursor``."""
     normalized = sort if sort in _ALLOWED_SORTS else "effective_reach"
@@ -69,7 +86,7 @@ def sqlite_keyset_clause(sort: str, cursor: str) -> tuple[str, list[Any]]:
             [last_seen, last_seen, canonical_id],
         )
     if normalized == "cvss":
-        col = "cvss_score"
+        col = _cvss_keyset_expr()
     elif normalized == "severity":
         col = "severity_rank"
     else:
@@ -100,7 +117,7 @@ def row_is_after_cursor(
     if normalized == "ordinal":
         return (row_last, row_canonical) > (last_seen, canonical_id)
     if normalized == "cvss":
-        row_primary = float(row.get("cvss_score") or 0.0)
+        row_primary = cvss_sort_value(row.get("cvss_score"))
     elif normalized == "severity":
         row_primary = float(row.get("severity_rank") or 0.0)
     else:

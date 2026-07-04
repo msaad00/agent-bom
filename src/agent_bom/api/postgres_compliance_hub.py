@@ -17,6 +17,7 @@ from agent_bom.api.compliance_hub_store import (
     _cvss_value,
     _frameworks_csv,
     _now_utc_iso,
+    _postgres_current_order_clause,
     _postgres_order_clause,
     _redact_findings,
     _severity_rank,
@@ -507,3 +508,103 @@ class PostgresComplianceHubStore:
             "updated_at": row[11],
             "payload": raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload),
         }
+
+    def list_current_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str = "effective_reach",
+        severity: str | None = None,
+        scan_id: str | None = None,
+        origin: str | None = None,
+        include_total: bool = True,
+    ) -> FindingPage:
+        from agent_bom.api.finding_lifecycle import enriched_finding_payload
+        from agent_bom.graph.severity import severity_policy_rank
+
+        where = ["tenant_id = %s"]
+        params: list[Any] = [tenant_id]
+        if origin is not None:
+            where.append("payload->>'origin' = %s")
+            params.append(origin)
+        if severity is not None:
+            where.append("severity_rank = %s")
+            params.append(severity_policy_rank(severity))
+        if scan_id is not None:
+            where.append("(payload->>'batch_id' = %s OR payload->>'scan_id' = %s)")
+            params.extend([scan_id, scan_id])
+        where_sql = " AND ".join(where)
+        order_sql = _postgres_current_order_clause(sort)
+
+        with _tenant_connection(self._pool) as conn:
+            total: int | None
+            if include_total:
+                total_row = conn.execute(
+                    f"SELECT COUNT(*) FROM hub_findings_current WHERE {where_sql}",  # nosec B608
+                    tuple(params),
+                ).fetchone()
+                total = int(total_row[0]) if total_row else 0
+            else:
+                total = None
+            rows = conn.execute(
+                f"""
+                SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                       cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                       updated_at, payload
+                FROM hub_findings_current
+                WHERE {where_sql} {order_sql} LIMIT %s OFFSET %s
+                """,  # nosec B608
+                (*params, int(limit), int(offset)),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            raw_payload = row[12]
+            current_row = {
+                "canonical_id": row[0],
+                "first_seen": row[1],
+                "last_seen": row[2],
+                "status": row[3],
+                "severity": row[4],
+                "severity_rank": row[5],
+                "cvss_score": row[6],
+                "effective_reach_score": row[7],
+                "scan_count": row[8],
+                "resolved_at": row[9],
+                "reopened_at": row[10],
+                "updated_at": row[11],
+                "payload": raw_payload if isinstance(raw_payload, dict) else json.loads(raw_payload),
+            }
+            out.append(enriched_finding_payload(current_row))
+        return out, total
+
+    def reconcile_current_absent(
+        self,
+        tenant_id: str,
+        *,
+        present_canonical_ids: set[str],
+        observed_at: str,
+        scope_source: str | None = None,
+    ) -> int:
+        now = _now_utc_iso()
+        where = ["tenant_id = %s", "status IN ('open', 'reopened')"]
+        params: list[Any] = [observed_at, now, tenant_id]
+        if scope_source is not None:
+            where.append("payload->>'source' = %s")
+            params.append(scope_source)
+        if present_canonical_ids:
+            placeholders = ",".join("%s" for _ in present_canonical_ids)
+            where.append(f"canonical_id NOT IN ({placeholders})")
+            params.extend(sorted(present_canonical_ids))
+        with _tenant_connection(self._pool) as conn:
+            cur = conn.execute(
+                f"""
+                UPDATE hub_findings_current
+                SET status = 'resolved', resolved_at = %s, updated_at = %s
+                WHERE {' AND '.join(where)}
+                """,  # nosec B608
+                tuple(params),
+            )
+            conn.commit()
+        return int(cur.rowcount or 0)

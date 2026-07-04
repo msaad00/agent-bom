@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import gzip
 import json
+import sys
 import time
 from pathlib import Path
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -108,3 +110,54 @@ def test_report_job_is_tenant_scoped(tmp_path: Path) -> None:
     assert created.status_code == 202
     job_id = created.json()["job_id"]
     assert client_b.get(f"/v1/reports/{job_id}").status_code == 404
+
+
+def test_report_job_returns_s3_presigned_url(monkeypatch, tmp_path: Path) -> None:
+    tenant_id = f"report-s3-{uuid4().hex}"
+    monkeypatch.setenv("AGENT_BOM_REPORT_ARTIFACT_DIR", str(tmp_path))
+    monkeypatch.setenv("AGENT_BOM_REPORT_S3_BUCKET", "customer-reports")
+    monkeypatch.setattr("agent_bom.api.routes.reports.submit_report_job", _run_report_job_sync)
+
+    mock_client = MagicMock()
+    mock_client.generate_presigned_url.return_value = "https://s3.example/presigned"
+    fake_boto3 = MagicMock()
+    fake_boto3.client.return_value = mock_client
+    monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
+
+    _seed_hub(tmp_path, tenant_id, count=2)
+    client = _client(tenant=tenant_id)
+
+    created = client.post("/v1/reports", json={"format": "ndjson"})
+    assert created.status_code == 202
+    job_id = created.json()["job_id"]
+
+    deadline = time.time() + 5
+    body = {}
+    while time.time() < deadline:
+        polled = client.get(f"/v1/reports/{job_id}")
+        assert polled.status_code == 200
+        body = polled.json()
+        if body["status"] == "done":
+            break
+        time.sleep(0.05)
+
+    assert body["status"] == "done"
+    assert body["artifact_backend"] == "s3"
+    assert body["artifact_uri"].startswith("s3://customer-reports/")
+    assert body["download_url"] == "https://s3.example/presigned"
+    mock_client.upload_file.assert_called_once()
+
+
+def test_report_job_active_quota(monkeypatch, tmp_path: Path) -> None:
+    tenant_id = f"report-quota-{uuid4().hex}"
+    monkeypatch.setenv("AGENT_BOM_API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT", "1")
+    monkeypatch.setattr("agent_bom.api.routes.reports.submit_report_job", lambda *_args, **_kwargs: None)
+    _seed_hub(tmp_path, tenant_id, count=1)
+    client = _client(tenant=tenant_id)
+
+    first = client.post("/v1/reports", json={})
+    assert first.status_code == 202
+
+    second = client.post("/v1/reports", json={})
+    assert second.status_code == 429
+    assert "limit" in second.json()["detail"].lower()

@@ -426,6 +426,14 @@ RUNTIME_FEEDBACK_PATH = _str("AGENT_BOM_RUNTIME_FEEDBACK_PATH", "")
 # default ~/.agent-bom/report-artifacts. The worker re-reads the env var at
 # runtime so tests and short-lived self-hosted processes can override it safely.
 REPORT_ARTIFACT_DIR = _str("AGENT_BOM_REPORT_ARTIFACT_DIR", "")
+# When REPORT_S3_BUCKET is set, completed exports are uploaded to customer S3
+# and job status returns a presigned GET URL. Credentials follow the standard
+# AWS SDK chain (IRSA, instance profile, env keys). Requires boto3 (``[aws]`` extra).
+REPORT_S3_BUCKET = _str("AGENT_BOM_REPORT_S3_BUCKET", "")
+REPORT_S3_PREFIX = _str("AGENT_BOM_REPORT_S3_PREFIX", "report-artifacts")
+REPORT_S3_REGION = _str("AGENT_BOM_REPORT_S3_REGION", "")
+REPORT_S3_PRESIGN_SECONDS = _int("AGENT_BOM_REPORT_S3_PRESIGN_SECONDS", 3_600)
+API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT = _int("AGENT_BOM_API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT", 5)
 
 
 # ── Agent-to-Agent (A2A) auth posture ────────────────────────────────────

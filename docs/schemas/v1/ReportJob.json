@@ -22,6 +22,34 @@
   },
   "description": "Async findings export job backed by streamed hub reads.",
   "properties": {
+    "artifact_backend": {
+      "anyOf": [
+        {
+          "enum": [
+            "local",
+            "s3"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifact Backend"
+    },
+    "artifact_uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifact Uri"
+    },
     "byte_count": {
       "anyOf": [
         {
@@ -81,6 +109,18 @@
     "job_id": {
       "title": "Job Id",
       "type": "string"
+    },
+    "presigned_download_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Presigned Download Url"
     },
     "row_count": {
       "anyOf": [

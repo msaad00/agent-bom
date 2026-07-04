@@ -368,8 +368,8 @@ def test_cyclonedx_no_vulnerabilities_section_returns_empty(tmp_path: Path):
 
 
 def test_csv_findings_with_cve_classified_as_supply_chain(tmp_path: Path):
-    """Row with a CVE id -> CVE finding, EXTERNAL source. EXTERNAL pulls
-    every framework, but the asset_type=package keeps things sensible."""
+    """Row with a CVE id -> CVE finding, EXTERNAL source. Package CVEs
+    should not inherit AI-only framework slugs by default."""
     target = tmp_path / "vulns.csv"
     target.write_text(
         "Title,Severity,Description,File,CVE\n"
@@ -383,6 +383,8 @@ def test_csv_findings_with_cve_classified_as_supply_chain(tmp_path: Path):
     assert cve_finding.cve_id == "CVE-2021-23337"
     assert cve_finding.finding_type == FindingType.CVE
     assert cve_finding.severity == "high"
+    assert FRAMEWORK_OWASP_MCP not in cve_finding.applicable_frameworks
+    assert FRAMEWORK_OWASP_LLM not in cve_finding.applicable_frameworks
     sast_finding = next(f for f in findings if not f.cve_id)
     assert sast_finding.finding_type == FindingType.SAST
     assert sast_finding.asset.location == "src/app.py"

@@ -201,6 +201,8 @@ def _normalize_ocsf_event(event: dict, *, tenant_id: str) -> dict:
         product = source_meta.get("product")
         if isinstance(product, dict):
             source_id = str(product.get("name", "")).strip()
+            if not source_id:
+                source_id = str(product.get("vendor_name", "")).strip()
         if not source_id:
             source_id = str(source_meta.get("log_name", "")).strip()
         metadata_uid = str(source_meta.get("uid", "")).strip()

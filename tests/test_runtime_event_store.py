@@ -174,6 +174,37 @@ async def test_ocsf_idless_event_dedups_across_retries():
     assert observations["count"] == 1
 
 
+@pytest.mark.asyncio
+async def test_ocsf_ingest_surfaces_product_attribution_in_sources():
+    req = _request("tenant-alpha")
+    payload = {
+        "events": [
+            {
+                "class_uid": 4001,
+                "class_name": "Network Activity",
+                "severity": "Low",
+                "time": 1_746_033_601_000,
+                "message": "Outbound MCP request observed",
+                "metadata": {"product": {"name": "datadog", "vendor_name": "Datadog"}},
+            }
+        ]
+    }
+
+    class _Analytics:
+        def record_events(self, events, *, tenant_id: str = "default"):
+            return None
+
+    with patch("agent_bom.api.routes.observability._get_analytics_store", return_value=_Analytics()):
+        response = await observability_routes.ingest_ocsf(req, payload)
+
+    assert response["sources"] == ["datadog"]
+    normalized = observability_routes._normalize_ocsf_event(
+        payload["events"][0],
+        tenant_id="tenant-alpha",
+    )
+    assert normalized["source_id"] == "datadog"
+
+
 def test_sqlite_runtime_event_store_batch_persists_in_one_transaction(tmp_path):
     store = SQLiteRuntimeEventStore(str(tmp_path / "runtime-batch.db"))
     from agent_bom.api.runtime_event_store import RuntimeObservationRecord

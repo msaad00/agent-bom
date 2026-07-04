@@ -1869,11 +1869,18 @@ async def ingest_compliance_findings(request: Request) -> dict:
     tenant_id = _tenant_id(request)
     store = get_compliance_hub_store()
     from agent_bom.api.finding_lifecycle import collect_present_canonical_ids, normalize_observed_at
-    from agent_bom.delta_stream import capture_hub_snapshots, emit_hub_finding_deltas_if_enabled, resolved_canonical_ids
+    from agent_bom.delta_stream import (
+        capture_hub_snapshots,
+        emit_hub_finding_deltas_if_enabled,
+        needs_hub_prior_snapshots,
+        resolved_canonical_ids,
+    )
 
     observed_at = normalize_observed_at(body.get("observed_at"))
     batch_id = str(uuid.uuid4())
-    prior_snapshots = capture_hub_snapshots(store, tenant_id, source=fmt)
+    prior_snapshots: dict[str, Any] = {}
+    if needs_hub_prior_snapshots(reconcile_absent=bool(body.get("reconcile_absent"))):
+        prior_snapshots = capture_hub_snapshots(store, tenant_id, source=fmt)
     new_total = store.add(tenant_id, payloads)
     store.upsert_current_batch(
         tenant_id,

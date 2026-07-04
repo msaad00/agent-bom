@@ -152,6 +152,49 @@ def test_bulk_findings_requires_analyst_role() -> None:
     assert resp.status_code == 403
 
 
+def test_bulk_findings_skips_prior_snapshot_when_delta_disabled(monkeypatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_DELTA_STREAM_ENABLED", raising=False)
+    calls: list[tuple[str, str]] = []
+
+    def _capture(store: object, tenant_id: str, *, source: str) -> dict[str, object]:
+        calls.append((tenant_id, source))
+        return {}
+
+    monkeypatch.setattr("agent_bom.delta_stream.capture_hub_snapshots", _capture)
+    tenant_id = f"bulk-skip-snap-{uuid4().hex}"
+    resp = _client(tenant=tenant_id).post(
+        "/v1/findings/bulk",
+        json={
+            "source": "agent-runtime",
+            "findings": [{"id": "agent-runtime:finding-1", "severity": "low"}],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert calls == []
+
+
+def test_bulk_findings_captures_prior_snapshot_when_reconcile_absent(monkeypatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_DELTA_STREAM_ENABLED", raising=False)
+    calls: list[tuple[str, str]] = []
+
+    def _capture(store: object, tenant_id: str, *, source: str) -> dict[str, object]:
+        calls.append((tenant_id, source))
+        return {}
+
+    monkeypatch.setattr("agent_bom.delta_stream.capture_hub_snapshots", _capture)
+    tenant_id = f"bulk-reconcile-{uuid4().hex}"
+    resp = _client(tenant=tenant_id).post(
+        "/v1/findings/bulk",
+        json={
+            "source": "agent-runtime",
+            "reconcile_absent": True,
+            "findings": [{"id": "agent-runtime:finding-1", "severity": "low"}],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert calls == [(tenant_id, "agent-runtime")]
+
+
 def test_sqlite_store_replaces_pre_origin_scale_index(tmp_path) -> None:
     """Existing SQLite DBs must not keep the pre-origin read-scale index.
 

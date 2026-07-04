@@ -334,6 +334,7 @@ def _upsert_current_finding_sqlite(
     observed_at: str,
     scan_id: str,
     source: str,
+    has_ledger_col: bool | None = None,
 ) -> None:
     from agent_bom.api.finding_lifecycle import (
         apply_observation_to_current,
@@ -358,7 +359,8 @@ def _upsert_current_finding_sqlite(
     if not inserted:
         return
 
-    has_ledger_col = _hub_findings_current_has_ledger_col(conn)
+    if has_ledger_col is None:
+        has_ledger_col = _hub_findings_current_has_ledger_col(conn)
     payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
     existing_row = conn.execute(
         f"""
@@ -911,7 +913,13 @@ class SQLiteComplianceHubStore:
     def __init__(self, db_path: str = "agent_bom.db") -> None:
         self._db_path = db_path
         self._local = threading.local()
+        self._current_has_ledger_col: bool | None = None
         self._init_db()
+
+    def _ensure_current_has_ledger_col(self) -> bool:
+        if self._current_has_ledger_col is None:
+            self._current_has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)
+        return self._current_has_ledger_col
 
     @property
     def _conn(self) -> sqlite3.Connection:
@@ -1257,6 +1265,7 @@ class SQLiteComplianceHubStore:
         clean = _redact_findings(findings)
         if not clean:
             return
+        has_ledger_col = self._ensure_current_has_ledger_col()
         for payload in clean:
             _upsert_current_finding_sqlite(
                 self._conn,
@@ -1265,6 +1274,7 @@ class SQLiteComplianceHubStore:
                 observed_at=observed_at,
                 scan_id=batch_id,
                 source=source,
+                has_ledger_col=has_ledger_col,
             )
         self._conn.commit()
 

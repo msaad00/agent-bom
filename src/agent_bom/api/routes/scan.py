@@ -1456,9 +1456,16 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
 
     observed_at = normalize_observed_at(body.observed_at or body.metadata.get("observed_at"))
     hub_store = get_compliance_hub_store()
-    from agent_bom.delta_stream import capture_hub_snapshots, emit_hub_finding_deltas_if_enabled, resolved_canonical_ids
+    from agent_bom.delta_stream import (
+        capture_hub_snapshots,
+        emit_hub_finding_deltas_if_enabled,
+        needs_hub_prior_snapshots,
+        resolved_canonical_ids,
+    )
 
-    prior_snapshots = capture_hub_snapshots(hub_store, tenant_id, source=body.source)
+    prior_snapshots: dict[str, Any] = {}
+    if needs_hub_prior_snapshots(reconcile_absent=body.reconcile_absent):
+        prior_snapshots = capture_hub_snapshots(hub_store, tenant_id, source=body.source)
     new_total = hub_store.add(tenant_id, payloads)
     hub_store.upsert_current_batch(
         tenant_id,

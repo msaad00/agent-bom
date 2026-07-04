@@ -72,6 +72,19 @@ These are legitimate follow-ups if and when a SIEM / XDR / Security
 Lake integration needs them. Until then they are speculative work and
 should stay off the roadmap.
 
+## ClickHouse analytics persistence
+
+ClickHouse stores **canonical product rows** built by
+`analytics_contract.py` and `clickhouse_store.py` — scan findings,
+runtime events, posture snapshots, and compliance measurements. OCSF is
+not written to ClickHouse directly; SIEM export remains a separate
+projection at the wire boundary (see above).
+
+Buffered flushes and scan retries derive stable dedup keys
+(`finding_key`, `event_id`, `entry_id`, etc.) so repeated inserts of
+the same canonical row collapse under `ReplacingMergeTree` instead of
+inflating trend queries (#3484).
+
 ## Why keep OCSF at all
 
 AWS Security Lake, Google Chronicle, and Microsoft Sentinel all

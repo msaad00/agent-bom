@@ -62,6 +62,17 @@ def _deterministic_event_id(*parts: Any) -> str:
     return canonical_id("analytics_event", *parts)
 
 
+def _deterministic_row_key(kind: str, *parts: Any) -> str:
+    """Return a stable dedup key for canonical analytics rows (#3484)."""
+    from agent_bom.canonical_ids import canonical_id
+
+    return canonical_id(f"analytics_{kind}", *parts)
+
+
+def _insert_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 # ------------------------------------------------------------------
 # Protocol
 # ------------------------------------------------------------------
@@ -317,6 +328,16 @@ class ClickHouseAnalyticsStore:
             {
                 "scan_id": scan_id,
                 "tenant_id": str(v.get("tenant_id") or tenant_id or "default"),
+                "finding_key": _deterministic_row_key(
+                    "finding",
+                    str(v.get("tenant_id") or tenant_id or "default"),
+                    scan_id,
+                    agent_name,
+                    v.get("cve_id", v.get("id", "")),
+                    _split_package(v)[0],
+                    _split_package(v)[1],
+                ),
+                "updated_at": _insert_timestamp(),
                 "package_name": _split_package(v)[0],
                 "package_version": _split_package(v)[1],
                 "ecosystem": v.get("ecosystem", ""),
@@ -364,6 +385,7 @@ class ClickHouseAnalyticsStore:
         return {
             "event_id": event_id,
             "event_timestamp": event_timestamp,
+            "updated_at": _insert_timestamp(),
             "tenant_id": resolved_tenant,
             "event_type": event_type,
             "detector": detector,
@@ -393,6 +415,7 @@ class ClickHouseAnalyticsStore:
         return {
             "tenant_id": str(snapshot.get("tenant_id") or tenant_id or "default"),
             "agent_name": agent_name,
+            "updated_at": _insert_timestamp(),
             "total_packages": int(snapshot.get("total_packages", 0)),
             "critical_vulns": int(snapshot.get("critical", 0)),
             "high_vulns": int(snapshot.get("high", 0)),
@@ -431,12 +454,18 @@ class ClickHouseAnalyticsStore:
             self._client.insert_json("cis_benchmark_checks", rows)
 
     def _compliance_row(self, control: dict, *, tenant_id: str = "default") -> dict[str, Any]:
+        resolved_tenant = str(control.get("tenant_id") or tenant_id or "default")
+        scan_id = control.get("scan_id", "")
+        framework = control.get("framework", "")
+        control_id = control.get("control_id", "")
         return {
             "measured_at": control.get("measured_at"),
-            "scan_id": control.get("scan_id", ""),
-            "tenant_id": str(control.get("tenant_id") or tenant_id or "default"),
-            "framework": control.get("framework", ""),
-            "control_id": control.get("control_id", ""),
+            "scan_id": scan_id,
+            "tenant_id": resolved_tenant,
+            "control_key": _deterministic_row_key("control", resolved_tenant, scan_id, framework, control_id),
+            "updated_at": _insert_timestamp(),
+            "framework": framework,
+            "control_id": control_id,
             "control_name": control.get("control_name", ""),
             "status": control.get("status", "unknown"),
             "finding_count": int(control.get("finding_count", 0)),
@@ -444,12 +473,18 @@ class ClickHouseAnalyticsStore:
         }
 
     def _cis_check_row(self, check: dict, *, tenant_id: str = "default") -> dict[str, Any]:
+        resolved_tenant = str(check.get("tenant_id") or tenant_id or "default")
+        scan_id = check.get("scan_id", "")
+        cloud = check.get("cloud", "")
+        check_id = check.get("check_id", "")
         return {
             "measured_at": _coerce_clickhouse_timestamp(check.get("measured_at")),
-            "scan_id": check.get("scan_id", ""),
-            "tenant_id": str(check.get("tenant_id") or tenant_id or "default"),
-            "cloud": check.get("cloud", ""),
-            "check_id": check.get("check_id", ""),
+            "scan_id": scan_id,
+            "tenant_id": resolved_tenant,
+            "check_key": _deterministic_row_key("cis_check", resolved_tenant, scan_id, cloud, check_id),
+            "updated_at": _insert_timestamp(),
+            "cloud": cloud,
+            "check_id": check_id,
             "title": check.get("title", ""),
             "status": check.get("status", "unknown"),
             "severity": check.get("severity", "unknown"),
@@ -469,13 +504,28 @@ class ClickHouseAnalyticsStore:
         self._client.insert_json("audit_events", [self._audit_row(event)])
 
     def _audit_row(self, event: dict) -> dict[str, Any]:
+        tenant_id = str(event.get("tenant_id", "default"))
+        event_timestamp = _coerce_clickhouse_timestamp(event.get("event_timestamp") or event.get("timestamp"))
+        entry_id = str(event.get("entry_id") or "").strip()
+        if not entry_id:
+            entry_id = _deterministic_event_id(
+                tenant_id,
+                event.get("action", ""),
+                event.get("actor", ""),
+                event.get("resource", ""),
+                str(event_timestamp or ""),
+                str(event.get("session_id", "") or ""),
+                str(event.get("trace_id", "") or ""),
+                str(event.get("request_id", "") or ""),
+            )
         return {
-            "event_timestamp": _coerce_clickhouse_timestamp(event.get("event_timestamp") or event.get("timestamp")),
-            "entry_id": event.get("entry_id", str(uuid.uuid4())),
+            "event_timestamp": event_timestamp,
+            "entry_id": entry_id,
+            "updated_at": _insert_timestamp(),
             "action": event.get("action", ""),
             "actor": event.get("actor", ""),
             "resource": event.get("resource", ""),
-            "tenant_id": event.get("tenant_id", "default"),
+            "tenant_id": tenant_id,
             "session_id": str(event.get("session_id", "") or ""),
             "trace_id": str(event.get("trace_id", "") or ""),
             "request_id": str(event.get("request_id", "") or ""),
@@ -497,7 +547,9 @@ class ClickHouseAnalyticsStore:
         if tenant_id is not None:
             where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
-            f"SELECT toDate(scan_timestamp) AS day, severity, count() AS cnt "  # nosec B608
+            f"SELECT toDate(scan_timestamp) AS day, severity, "  # nosec B608
+            f"uniqExact(if(finding_key != '', finding_key, "
+            f"concat(tenant_id, ':', scan_id, ':', agent_name, ':', cve_id, ':', package_name, ':', package_version))) AS cnt "
             f"FROM vulnerability_scans WHERE {where} "
             f"GROUP BY day, severity ORDER BY day"
         )
@@ -509,7 +561,10 @@ class ClickHouseAnalyticsStore:
         if tenant_id is not None:
             where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
-            f"SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss "  # nosec B608
+            f"SELECT cve_id, "  # nosec B608
+            f"uniqExact(if(finding_key != '', finding_key, "
+            f"concat(tenant_id, ':', scan_id, ':', agent_name, ':', cve_id, ':', package_name, ':', package_version))) AS cnt, "
+            f"max(cvss_score) AS max_cvss "
             f"FROM vulnerability_scans WHERE {where} "
             f"GROUP BY cve_id ORDER BY cnt DESC LIMIT {int(limit)}"
         )
@@ -542,7 +597,7 @@ class ClickHouseAnalyticsStore:
         if tenant_id is not None:
             where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
-            f"SELECT event_type, severity, count() AS cnt "  # nosec B608
+            f"SELECT event_type, severity, uniqExact(event_id) AS cnt "  # nosec B608
             f"FROM runtime_events "
             f"WHERE {where} "
             f"GROUP BY event_type, severity ORDER BY cnt DESC"
@@ -664,9 +719,12 @@ class ClickHouseAnalyticsStore:
         )
 
     def _metadata_row(self, metadata: dict, *, tenant_id: str = "default") -> dict[str, Any]:
+        resolved_tenant = str(metadata.get("tenant_id") or tenant_id or "default")
+        scan_id = metadata.get("scan_id", str(uuid.uuid4()))
         return {
-            "scan_id": metadata.get("scan_id", str(uuid.uuid4())),
-            "tenant_id": str(metadata.get("tenant_id") or tenant_id or "default"),
+            "scan_id": scan_id,
+            "tenant_id": resolved_tenant,
+            "updated_at": _insert_timestamp(),
             "agent_count": int(metadata.get("agent_count", 0)),
             "package_count": int(metadata.get("package_count", 0)),
             "vuln_count": int(metadata.get("vuln_count", 0)),
@@ -898,7 +956,9 @@ class BufferedAnalyticsStore:
             if audit_rows:
                 self._store._client.insert_json("audit_events", audit_rows)
         except Exception:
-            logger.warning("Buffered ClickHouse flush failed", exc_info=True)
+            logger.warning("Buffered ClickHouse flush failed; re-queuing batch", exc_info=True)
+            for item in drained:
+                self._queue.put(item)
 
     @property
     def flush_interval(self) -> float:

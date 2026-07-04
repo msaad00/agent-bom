@@ -309,8 +309,9 @@ list/put plus session-scoped `app.current_tenant` for RLS.
 
 ### ClickHouse — `src/agent_bom/cloud/clickhouse.py`
 
-OLAP-only. Append-only analytics for trends, runtime events, posture.
-This is not a transactional control-plane replacement.
+OLAP-only. Canonical analytics rows for trends, runtime events, posture.
+Idempotent sink semantics via `ReplacingMergeTree` dedup keys on fresh
+deployments (#3484); not a transactional control-plane replacement.
 
 | Table | Source dataclass | tenant_id |
 |---|---|---|

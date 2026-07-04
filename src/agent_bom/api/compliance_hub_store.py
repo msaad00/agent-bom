@@ -21,7 +21,6 @@ with ``ingested_at`` so future expiry / TTL work has a key.
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import threading
 from collections.abc import Callable, Iterable, Sequence
@@ -39,6 +38,7 @@ from agent_bom.api.hub_current_payload import (
     hydrate_current_payload,
     resolve_ledger_finding_id,
 )
+from agent_bom.api.hub_payload_codec import decode_hub_payload, encode_hub_payload
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.graph.severity import severity_policy_rank
 
@@ -285,7 +285,7 @@ def _fetch_ledger_payloads_sqlite(
         """,  # nosec B608
         (tenant_id, *finding_ids),
     ).fetchall()
-    return {str(row[0]): json.loads(row[1]) for row in rows}
+    return {str(row[0]): decode_hub_payload(row[1]) for row in rows}
 
 
 def _sqlite_current_row_from_db(row: tuple[Any, ...], *, has_ledger_col: bool) -> dict[str, Any]:
@@ -302,7 +302,7 @@ def _sqlite_current_row_from_db(row: tuple[Any, ...], *, has_ledger_col: bool) -
         "resolved_at": row[9],
         "reopened_at": row[10],
         "updated_at": row[11],
-        "payload": json.loads(row[12]),
+        "payload": decode_hub_payload(row[12]),
     }
     if has_ledger_col:
         current_row["ledger_finding_id"] = row[13]
@@ -329,7 +329,7 @@ def _upsert_current_finding_sqlite(
     now = _now_utc_iso()
     ledger_finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
     overlay = current_state_overlay(payload) if ledger_finding_id else dict(payload)
-    payload_json = json.dumps(overlay, sort_keys=True)
+    payload_json = encode_hub_payload(overlay)
     inserted = conn.execute(
         """
         INSERT OR IGNORE INTO hub_findings_current_observations
@@ -1067,7 +1067,7 @@ class SQLiteComplianceHubStore:
                     now,
                     str(payload.get("source") or ""),
                     _frameworks_csv(payload),
-                    json.dumps(payload, sort_keys=True),
+                    encode_hub_payload(payload),
                     next_ord + offset,
                     compute_effective_reach_score(payload),
                     str(payload.get("origin") or ""),
@@ -1110,7 +1110,7 @@ class SQLiteComplianceHubStore:
             "SELECT payload FROM compliance_hub_findings WHERE tenant_id = ? ORDER BY ordinal ASC",
             (tenant_id,),
         ).fetchall()
-        return [json.loads(row[0]) for row in rows]
+        return [decode_hub_payload(row[0]) for row in rows]
 
     def list_page(
         self,
@@ -1156,7 +1156,7 @@ class SQLiteComplianceHubStore:
             f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT ? OFFSET ?",  # nosec B608
             page_params,
         ).fetchall()
-        return [json.loads(row[0]) for row in rows], total
+        return [decode_hub_payload(row[0]) for row in rows], total
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
         rows = self._conn.execute(

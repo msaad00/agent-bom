@@ -6,8 +6,9 @@ stage pulled from the scanner, enricher, and matcher registries.
 
 This is a READ MODEL only. It does NOT execute anything and does NOT replace the
 existing execution path (`ScanPipeline` / `_run_scan_sync` in
-``agent_bom.api.pipeline``), which remains the de-facto orchestrator. A later PR
-in this series will execute against this model; importing it changes no behavior.
+``agent_bom.api.pipeline``), which remains the de-facto orchestrator. Scanner
+driver execution for registry-backed ``run_attr`` dispatch lives in
+``agent_bom.scanners.executor`` and honors each driver's ``failure_mode``.
 
 The ``graph`` and ``findings`` stages exist in the real pipeline but have no
 component registry yet, so they are surfaced as ordered, non-registry-backed

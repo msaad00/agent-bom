@@ -8,6 +8,7 @@ scan sighting inserts into the log (L2).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
 
@@ -171,6 +172,32 @@ CREATE TABLE IF NOT EXISTS hub_findings_current_observations (
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_last_seen
     ON hub_findings_current(tenant_id, last_seen DESC);
 """
+
+
+def collect_present_canonical_ids(
+    findings: Sequence[dict[str, Any]],
+    *,
+    source: str = "",
+) -> set[str]:
+    """Return canonical ids observed in a scan batch for resolve-reconcile."""
+    return {resolve_canonical_id(payload, source=source) for payload in findings}
+
+
+def enriched_finding_payload(current_row: dict[str, Any]) -> dict[str, Any]:
+    """Merge lifecycle fields from a current-state row into the API payload."""
+    payload = dict(current_row.get("payload") or {})
+    payload["status"] = current_row.get("status")
+    payload["first_seen"] = current_row.get("first_seen")
+    payload["last_seen"] = current_row.get("last_seen")
+    payload["scan_count"] = current_row.get("scan_count")
+    canonical = current_row.get("canonical_id")
+    if canonical:
+        payload["canonical_id"] = canonical
+    if current_row.get("resolved_at"):
+        payload["resolved_at"] = current_row["resolved_at"]
+    if current_row.get("reopened_at"):
+        payload["reopened_at"] = current_row["reopened_at"]
+    return payload
 
 
 _CURRENT_LIFECYCLE_POSTGRES_DDL = """

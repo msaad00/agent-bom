@@ -1868,7 +1868,7 @@ async def ingest_compliance_findings(request: Request) -> dict:
             payload["applicable_frameworks"] = [normalize_framework_slug(str(slug)) for slug in frameworks if slug]
     tenant_id = _tenant_id(request)
     store = get_compliance_hub_store()
-    from agent_bom.api.finding_lifecycle import normalize_observed_at
+    from agent_bom.api.finding_lifecycle import collect_present_canonical_ids, normalize_observed_at
 
     observed_at = normalize_observed_at(body.get("observed_at"))
     batch_id = str(uuid.uuid4())
@@ -1880,19 +1880,31 @@ async def ingest_compliance_findings(request: Request) -> dict:
         batch_id=batch_id,
         source=fmt,
     )
+    reconciled = 0
+    if body.get("reconcile_absent"):
+        present = collect_present_canonical_ids(payloads, source=fmt)
+        reconciled = store.reconcile_current_absent(
+            tenant_id,
+            present_canonical_ids=present,
+            observed_at=observed_at,
+            scope_source=fmt,
+        )
 
     framework_counts: dict[str, int] = {}
     for payload in payloads:
         for slug in payload.get("applicable_frameworks") or []:
             framework_counts[slug] = framework_counts.get(slug, 0) + 1
 
-    return {
+    response = {
         "ingested": len(payloads),
         "tenant_total": new_total,
         "format": fmt,
         "observed_at": observed_at,
         "framework_hits": dict(sorted(framework_counts.items())),
     }
+    if body.get("reconcile_absent"):
+        response["reconciled"] = reconciled
+    return response
 
 
 @router.get("/v1/compliance/hub/findings", tags=["compliance"])

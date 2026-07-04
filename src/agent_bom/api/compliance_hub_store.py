@@ -40,6 +40,13 @@ from agent_bom.api.hub_current_payload import (
     resolve_ledger_finding_id,
 )
 from agent_bom.api.hub_payload_codec import decode_hub_payload, encode_hub_payload
+from agent_bom.api.hub_reference_store import (
+    ensure_sqlite_reference_tables,
+    hydrate_finding_payloads_memory,
+    hydrate_finding_payloads_sqlite,
+    normalize_finding_payload_for_store,
+    persist_finding_references_sqlite,
+)
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.graph.severity import severity_policy_rank
 
@@ -144,6 +151,20 @@ def _framework_slug_counts_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str
     return counts
 
 
+def _redact_finding(payload: dict[str, Any]) -> dict[str, Any]:
+    """Redact one hub finding payload for persistence."""
+    redacted = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
+    clean: dict[str, Any] = redacted if isinstance(redacted, dict) else {}
+    if "id" not in clean and "id" in payload:
+        clean["id"] = str(payload["id"])
+    if "source" not in clean and "source" in payload:
+        clean["source"] = str(payload["source"])
+    for key in ("origin", "batch_id", "bulk_ordinal", "intel_ref", "framework_ref"):
+        if key not in clean and key in payload:
+            clean[key] = payload[key]
+    return clean
+
+
 def _redact_findings(findings: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drop tier-B fields before any compliance-hub finding is stored.
 
@@ -154,17 +175,7 @@ def _redact_findings(findings: Iterable[dict[str, Any]]) -> list[dict[str, Any]]
     for payload in findings:
         if not isinstance(payload, dict):
             continue
-        clean = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
-        # Preserve identity fields the store keys on, even if the redactor
-        # didn't recognise them by exact name (e.g. legacy "id" alias).
-        if "id" not in clean and "id" in payload:
-            clean["id"] = str(payload["id"])
-        if "source" not in clean and "source" in payload:
-            clean["source"] = str(payload["source"])
-        for key in ("origin", "batch_id", "bulk_ordinal"):
-            if key not in clean and key in payload:
-                clean[key] = payload[key]
-        redacted.append(clean)
+        redacted.append(_redact_finding(payload))
     return redacted
 
 
@@ -286,7 +297,12 @@ def _fetch_ledger_payloads_sqlite(
         """,  # nosec B608
         (tenant_id, *finding_ids),
     ).fetchall()
-    return {str(row[0]): decode_hub_payload(row[1]) for row in rows}
+    if not rows:
+        return {}
+    ordered_ids = [str(row[0]) for row in rows]
+    payloads = [decode_hub_payload(row[1]) for row in rows]
+    hydrated = hydrate_finding_payloads_sqlite(conn, tenant_id, payloads)
+    return dict(zip(ordered_ids, hydrated))
 
 
 def _sqlite_current_row_from_db(row: tuple[Any, ...], *, has_ledger_col: bool) -> dict[str, Any]:
@@ -544,21 +560,24 @@ class InMemoryComplianceHubStore:
         self._lock = threading.Lock()
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
-        clean = _redact_findings(findings)
         with self._lock:
             bucket = self._by_tenant.setdefault(tenant_id, [])
             slots = self._slots.setdefault(tenant_id, {})
-            for payload in clean:
-                finding_id = str(payload.get("id") or "")
+            for payload in findings:
+                if not isinstance(payload, dict):
+                    continue
+                slim = normalize_finding_payload_for_store(tenant_id, payload)
+                stored = _redact_finding(slim)
+                finding_id = str(stored.get("id") or "")
                 if finding_id and finding_id in slots:
                     # Refresh payload, keep original ingest position.
-                    bucket[slots[finding_id]] = payload
+                    bucket[slots[finding_id]] = stored
                     continue
                 if finding_id:
                     slots[finding_id] = len(bucket)
-                bucket.append(payload)
+                bucket.append(stored)
             total = len(bucket)
-        if clean:
+        if findings:
             from agent_bom.api.findings_count_cache import invalidate_tenant
 
             invalidate_tenant(tenant_id)
@@ -566,7 +585,8 @@ class InMemoryComplianceHubStore:
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
         with self._lock:
-            return list(self._by_tenant.get(tenant_id, []))
+            rows = list(self._by_tenant.get(tenant_id, []))
+        return hydrate_finding_payloads_memory(tenant_id, rows)
 
     def list_page(
         self,
@@ -590,7 +610,7 @@ class InMemoryComplianceHubStore:
             rows = rows[offset:]
         if limit >= 0:
             rows = rows[:limit]
-        return rows, total
+        return hydrate_finding_payloads_memory(tenant_id, rows), total
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
         with self._lock:
@@ -600,6 +620,7 @@ class InMemoryComplianceHubStore:
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
         with self._lock:
             rows = list(self._by_tenant.get(tenant_id, []))
+        rows = hydrate_finding_payloads_memory(tenant_id, rows)
         return _framework_slug_counts_from_rows(rows)
 
     def count(self, tenant_id: str) -> int:
@@ -666,7 +687,7 @@ class InMemoryComplianceHubStore:
         for finding_id in finding_ids:
             idx = slots.get(finding_id)
             if idx is not None and 0 <= idx < len(bucket):
-                out[finding_id] = dict(bucket[idx])
+                out[finding_id] = hydrate_finding_payloads_memory(tenant_id, [bucket[idx]])[0]
         return out
 
     def _hydrate_current_rows(self, tenant_id: str, rows: _HubFindingRows) -> _HubFindingRows:
@@ -928,6 +949,7 @@ class SQLiteComplianceHubStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
         self._ensure_scale_indexes()
         _ensure_current_lifecycle_sqlite(self._conn)
+        ensure_sqlite_reference_tables(self._conn)
         self._conn.commit()
 
     def _migrate_columns(self) -> None:
@@ -1055,20 +1077,24 @@ class SQLiteComplianceHubStore:
         return int(row[0]) + 1 if row else 1
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
-        findings = _redact_findings(findings)
         if not findings:
             return self.count(tenant_id)
         now = _now_utc_iso()
         next_ord = self._next_ordinal(tenant_id)
         rows = []
-        for offset, payload in enumerate(findings):
+        for offset, original in enumerate(findings):
+            if not isinstance(original, dict):
+                continue
+            frameworks_csv = _frameworks_csv(original)
+            slim = persist_finding_references_sqlite(self._conn, tenant_id, original)
+            payload = _redact_finding(slim)
             rows.append(
                 (
                     tenant_id,
                     str(payload.get("id") or f"hub-{next_ord + offset}"),
                     now,
                     str(payload.get("source") or ""),
-                    _frameworks_csv(payload),
+                    frameworks_csv,
                     encode_hub_payload(payload),
                     next_ord + offset,
                     compute_effective_reach_score(payload),
@@ -1112,7 +1138,8 @@ class SQLiteComplianceHubStore:
             "SELECT payload FROM compliance_hub_findings WHERE tenant_id = ? ORDER BY ordinal ASC",
             (tenant_id,),
         ).fetchall()
-        return [decode_hub_payload(row[0]) for row in rows]
+        payloads = [decode_hub_payload(row[0]) for row in rows]
+        return hydrate_finding_payloads_sqlite(self._conn, tenant_id, payloads)
 
     def list_page(
         self,
@@ -1158,7 +1185,8 @@ class SQLiteComplianceHubStore:
             f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT ? OFFSET ?",  # nosec B608
             page_params,
         ).fetchall()
-        return [decode_hub_payload(row[0]) for row in rows], total
+        payloads = [decode_hub_payload(row[0]) for row in rows]
+        return hydrate_finding_payloads_sqlite(self._conn, tenant_id, payloads), total
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
         rows = self._conn.execute(

@@ -382,6 +382,11 @@ POSTGRES_CONNECT_TIMEOUT_SECONDS = _int("AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECO
 POSTGRES_STATEMENT_TIMEOUT_MS = _int("AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS", 15_000)
 POSTGRES_GRAPH_SEARCH_TIMEOUT_MS = _int("AGENT_BOM_POSTGRES_GRAPH_SEARCH_TIMEOUT_MS", 3_000)
 
+# Compliance hub reference-table normalization (#3513). When enabled, repeated
+# CVE/framework blobs are stored once per tenant and ledger rows keep join keys.
+# Set to 0 to disable new extractions (reads still hydrate existing refs).
+HUB_REFERENCE_NORMALIZE = _bool("AGENT_BOM_HUB_REFERENCE_NORMALIZE", True)
+
 
 # ── Rate-limit fingerprint key rotation policy ──────────────────────────
 # Operators rotate AGENT_BOM_RATE_LIMIT_KEY periodically and record the

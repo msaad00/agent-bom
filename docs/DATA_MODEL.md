@@ -328,6 +328,21 @@ Every `query_*` method on the analytics store accepts `tenant_id` and
 injects a `WHERE tenant_id = '<scope>'` predicate. Absent `tenant_id`
 is deliberately cross-tenant and reserved for admin surfaces.
 
+### Hub reference tables — `hub_cve_intel`, `hub_framework_refs`
+
+Compliance hub ledger rows can store join keys (`intel_ref`,
+`framework_ref`) instead of repeating CVE enrichment and framework tag
+maps on every finding (#3513). Reference blobs live in tenant-scoped
+tables; list/current read paths hydrate before API responses.
+
+| Control | Purpose |
+|---|---|
+| `AGENT_BOM_HUB_REFERENCE_NORMALIZE=1` (default) | Extract shared blobs on ingest |
+| `AGENT_BOM_HUB_REFERENCE_NORMALIZE=0` | Rollback: stop new extractions; reads still hydrate existing refs |
+
+Legacy inline payloads continue to work without migration. SQLite and
+Postgres profiles create reference tables on store init.
+
 ### Snowflake — `src/agent_bom/api/snowflake_store.py`
 
 Warehouse-native deployment for governance-heavy customers. Today it

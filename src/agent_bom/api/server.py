@@ -100,6 +100,7 @@ try:
     from fastapi.responses import JSONResponse, RedirectResponse
     from pydantic import BaseModel  # noqa: F401 — presence check for [api] extra
     from starlette.middleware import Middleware
+    from starlette.middleware.gzip import GZipMiddleware
 except ImportError as exc:  # pragma: no cover
     raise ImportError(_api_extra_import_error_message(exc)) from exc
 
@@ -698,6 +699,7 @@ _apply_cors_middleware(_cors_origins)
 
 
 app.add_middleware(TrustHeadersMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # wrap FastAPI's bare ``{"detail": ...}`` errors in the
 # structured ``{error: {code, message, correlation_id, details}}`` envelope.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from uuid import uuid4
 
 from starlette.testclient import TestClient
@@ -193,6 +194,20 @@ def test_bulk_findings_captures_prior_snapshot_when_reconcile_absent(monkeypatch
     )
     assert resp.status_code == 201, resp.text
     assert calls == [(tenant_id, "agent-runtime")]
+
+
+def test_sqlite_add_increments_cached_tenant_total(tmp_path: Path) -> None:
+    store = SQLiteComplianceHubStore(str(tmp_path / "hub.db"))
+    tenant_id = "tenant-ingest-cache"
+    first_batch = [{"id": f"finding-{idx}", "severity": "low"} for idx in range(5)]
+    assert store.add(tenant_id, first_batch) == 5
+
+    second_batch = [{"id": f"finding-{idx}", "severity": "medium"} for idx in range(5, 10)]
+    assert store.add(tenant_id, second_batch) == 10
+
+    repeat_batch = [{"id": "finding-0", "severity": "high"}]
+    assert store.add(tenant_id, repeat_batch) == 10
+    assert store.count(tenant_id) == 10
 
 
 def test_sqlite_store_replaces_pre_origin_scale_index(tmp_path) -> None:

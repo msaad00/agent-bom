@@ -914,6 +914,9 @@ class SQLiteComplianceHubStore:
         self._db_path = db_path
         self._local = threading.local()
         self._current_has_ledger_col: bool | None = None
+        self._ingest_stats_lock = threading.Lock()
+        self._next_ordinal_by_tenant: dict[str, int] = {}
+        self._finding_count_by_tenant: dict[str, int] = {}
         self._init_db()
 
     def _ensure_current_has_ledger_col(self) -> bool:
@@ -1077,29 +1080,72 @@ class SQLiteComplianceHubStore:
             "ON compliance_hub_findings(tenant_id, origin, severity_rank, cvss_score DESC, ordinal)"
         )
 
-    def _next_ordinal(self, tenant_id: str) -> int:
-        row = self._conn.execute(
+    def _reset_ingest_stats(self, tenant_id: str) -> None:
+        with self._ingest_stats_lock:
+            self._next_ordinal_by_tenant.pop(tenant_id, None)
+            self._finding_count_by_tenant.pop(tenant_id, None)
+
+    def _bootstrap_ingest_stats(self, tenant_id: str) -> None:
+        with self._ingest_stats_lock:
+            if tenant_id in self._finding_count_by_tenant:
+                return
+        count_row = self._conn.execute(
+            "SELECT COUNT(*) FROM compliance_hub_findings WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchone()
+        max_row = self._conn.execute(
             "SELECT COALESCE(MAX(ordinal), 0) FROM compliance_hub_findings WHERE tenant_id = ?",
             (tenant_id,),
         ).fetchone()
-        return int(row[0]) + 1 if row else 1
+        with self._ingest_stats_lock:
+            if tenant_id in self._finding_count_by_tenant:
+                return
+            self._finding_count_by_tenant[tenant_id] = int(count_row[0]) if count_row else 0
+            self._next_ordinal_by_tenant[tenant_id] = int(max_row[0]) + 1 if max_row else 1
+
+    def _existing_finding_ids(self, tenant_id: str, finding_ids: list[str]) -> set[str]:
+        if not finding_ids:
+            return set()
+        existing: set[str] = set()
+        chunk_size = 500
+        for offset in range(0, len(finding_ids), chunk_size):
+            chunk = finding_ids[offset : offset + chunk_size]
+            placeholders = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                f"SELECT finding_id FROM compliance_hub_findings WHERE tenant_id = ? AND finding_id IN ({placeholders})",  # nosec B608
+                [tenant_id, *chunk],
+            ).fetchall()
+            existing.update(str(row[0]) for row in rows)
+        return existing
+
+    def _next_ordinal(self, tenant_id: str) -> int:
+        self._bootstrap_ingest_stats(tenant_id)
+        with self._ingest_stats_lock:
+            return self._next_ordinal_by_tenant[tenant_id]
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         if not findings:
+            self._bootstrap_ingest_stats(tenant_id)
+            with self._ingest_stats_lock:
+                if tenant_id in self._finding_count_by_tenant:
+                    return self._finding_count_by_tenant[tenant_id]
             return self.count(tenant_id)
         now = _now_utc_iso()
         next_ord = self._next_ordinal(tenant_id)
-        rows = []
+        rows: list[tuple[Any, ...]] = []
+        finding_ids: list[str] = []
         for offset, original in enumerate(findings):
             if not isinstance(original, dict):
                 continue
             frameworks_csv = _frameworks_csv(original)
             slim = persist_finding_references_sqlite(self._conn, tenant_id, original)
             payload = _redact_finding(slim)
+            finding_id = str(payload.get("id") or f"hub-{next_ord + offset}")
+            finding_ids.append(finding_id)
             rows.append(
                 (
                     tenant_id,
-                    str(payload.get("id") or f"hub-{next_ord + offset}"),
+                    finding_id,
                     now,
                     str(payload.get("source") or ""),
                     frameworks_csv,
@@ -1112,6 +1158,8 @@ class SQLiteComplianceHubStore:
                     _cvss_value(payload),
                 )
             )
+        existing_ids = self._existing_finding_ids(tenant_id, finding_ids)
+        new_rows = sum(1 for row in rows if str(row[1]) not in existing_ids)
         # Idempotent ingest: a repeat of the same (tenant_id, finding_id)
         # refreshes the stored payload/metadata in place and keeps the original
         # ``ordinal`` (ingest order) instead of appending a duplicate row.
@@ -1139,7 +1187,10 @@ class SQLiteComplianceHubStore:
             from agent_bom.api.findings_count_cache import invalidate_tenant
 
             invalidate_tenant(tenant_id)
-        return self.count(tenant_id)
+        with self._ingest_stats_lock:
+            self._next_ordinal_by_tenant[tenant_id] = next_ord + len(rows)
+            self._finding_count_by_tenant[tenant_id] += new_rows
+            return self._finding_count_by_tenant[tenant_id]
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
@@ -1247,6 +1298,7 @@ class SQLiteComplianceHubStore:
         self._conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = ?", (tenant_id,))
         self._conn.commit()
         removed = cur.rowcount or 0
+        self._reset_ingest_stats(tenant_id)
         if removed:
             from agent_bom.api.findings_count_cache import invalidate_tenant
 

@@ -474,6 +474,13 @@ controlPlane:
       #   value: "500"
       # - name: AGENT_BOM_ANALYTICS_MAX_EVENTS
       #   value: "50000"
+      # Async findings exports: upload completed artifacts to customer S3 (IRSA recommended).
+      # - name: AGENT_BOM_REPORT_S3_BUCKET
+      #   value: "my-org-agent-bom-reports"
+      # - name: AGENT_BOM_REPORT_S3_PREFIX
+      #   value: "report-artifacts"
+      # - name: AGENT_BOM_REPORT_S3_PRESIGN_SECONDS
+      #   value: "3600"
     envFrom: []
     extraVolumes: []
     extraVolumeMounts: []

@@ -13,6 +13,7 @@ from pathlib import Path
 from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 from agent_bom.api.models import JobStatus, ReportJob
 from agent_bom.api.pipeline import get_executor
+from agent_bom.api.report_artifact_store import publish_report_artifact
 from agent_bom.api.report_job_store import get_report_job_store
 from agent_bom.security import sanitize_error, sanitize_text
 
@@ -52,7 +53,8 @@ def _run_report_job_sync(job_id: str, tenant_id: str) -> None:
     store.update(job)
 
     try:
-        row_count, byte_count, download_token = _write_findings_artifact(job)
+        row_count, byte_count, download_token, artifact_path = _write_findings_artifact(job)
+        published = publish_report_artifact(artifact_path, tenant_id=tenant_id, job_id=job_id)
     except Exception as exc:  # noqa: BLE001
         safe = sanitize_error(exc)
         _logger.warning("Report job %s failed: %s", job_id, sanitize_text(safe))
@@ -84,6 +86,9 @@ def _run_report_job_sync(job_id: str, tenant_id: str) -> None:
     done.row_count = row_count
     done.byte_count = byte_count
     done.download_token = download_token
+    done.artifact_backend = published.backend
+    done.artifact_uri = published.artifact_uri
+    done.presigned_download_url = published.presigned_download_url
     store.update(done)
     try:
         from agent_bom.api.audit_log import log_action
@@ -92,13 +97,20 @@ def _run_report_job_sync(job_id: str, tenant_id: str) -> None:
             "report.export_completed",
             actor="system",
             tenant_id=tenant_id,
-            details={"job_id": job_id, "row_count": row_count, "byte_count": byte_count, "format": done.format.value},
+            details={
+                "job_id": job_id,
+                "row_count": row_count,
+                "byte_count": byte_count,
+                "format": done.format.value,
+                "artifact_backend": published.backend,
+                "artifact_uri": published.artifact_uri,
+            },
         )
     except Exception:  # noqa: BLE001
         pass
 
 
-def _write_findings_artifact(job: ReportJob) -> tuple[int, int, str]:
+def _write_findings_artifact(job: ReportJob) -> tuple[int, int, str, Path]:
     hub = get_compliance_hub_store()
     list_page = getattr(hub, "list_current_page", None)
     if not callable(list_page):
@@ -128,7 +140,7 @@ def _write_findings_artifact(job: ReportJob) -> tuple[int, int, str]:
             cursor = next_cursor
 
     byte_count = path.stat().st_size
-    return row_count, byte_count, secrets.token_urlsafe(32)
+    return row_count, byte_count, secrets.token_urlsafe(32), path
 
 
 def resolve_report_artifact(job: ReportJob) -> Path | None:

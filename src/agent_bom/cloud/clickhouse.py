@@ -139,12 +139,14 @@ CREATE TABLE IF NOT EXISTS control_plane_schema_versions (
     updated_at DateTime DEFAULT now()
 ) ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY component""",
-    # 1. Vulnerability scan results (append-only)
+    # 1. Vulnerability scan results (idempotent via finding_key)
     """\
 CREATE TABLE IF NOT EXISTS vulnerability_scans (
     scan_id String,
     scan_timestamp DateTime DEFAULT now(),
     tenant_id String DEFAULT 'default',
+    finding_key String DEFAULT '',
+    updated_at DateTime DEFAULT now(),
     package_name String,
     package_version String,
     ecosystem LowCardinality(String),
@@ -156,14 +158,15 @@ CREATE TABLE IF NOT EXISTS vulnerability_scans (
     agent_name String,
     environment LowCardinality(String),
     cmmc_tags Array(String)
-) ENGINE = MergeTree()
-ORDER BY (scan_timestamp, severity, agent_name)
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (tenant_id, scan_id, finding_key)
 PARTITION BY toYYYYMM(scan_timestamp)""",
     # 2. Runtime protection events (append-only)
     """\
 CREATE TABLE IF NOT EXISTS runtime_events (
     event_id String,
     event_timestamp DateTime DEFAULT now(),
+    updated_at DateTime DEFAULT now(),
     tenant_id String DEFAULT 'default',
     event_type LowCardinality(String),
     detector LowCardinality(String),
@@ -175,8 +178,8 @@ CREATE TABLE IF NOT EXISTS runtime_events (
     trace_id String DEFAULT '',
     request_id String DEFAULT '',
     source_id String DEFAULT ''
-) ENGINE = ReplacingMergeTree()
-ORDER BY (event_timestamp, event_type, agent_name, event_id)
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (tenant_id, event_id)
 PARTITION BY toYYYYMM(event_timestamp)""",
     # 3. Posture scores (periodic snapshots)
     """\
@@ -195,12 +198,13 @@ CREATE TABLE IF NOT EXISTS posture_scores (
 ORDER BY (measured_at, agent_name)
 PARTITION BY toYYYYMM(measured_at)
 TTL measured_at + INTERVAL 2 YEAR""",
-    # 4. Scan metadata (one row per scan run)
+    # 4. Scan metadata (one row per scan run; idempotent on scan_id)
     """\
 CREATE TABLE IF NOT EXISTS scan_metadata (
     scan_id String,
     scan_timestamp DateTime DEFAULT now(),
     tenant_id String DEFAULT 'default',
+    updated_at DateTime DEFAULT now(),
     agent_count UInt32,
     package_count UInt32,
     vuln_count UInt32,
@@ -211,8 +215,8 @@ CREATE TABLE IF NOT EXISTS scan_metadata (
     source LowCardinality(String),
     aisvs_score Float32 DEFAULT 0.0,
     has_runtime_correlation UInt8 DEFAULT 0
-) ENGINE = MergeTree()
-ORDER BY (scan_timestamp, scan_id)
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (tenant_id, scan_id)
 PARTITION BY toYYYYMM(scan_timestamp)
 TTL scan_timestamp + INTERVAL 2 YEAR""",
     # 5. Fleet agent snapshots (trust/lifecycle over time)
@@ -238,14 +242,16 @@ CREATE TABLE IF NOT EXISTS compliance_controls (
     measured_at DateTime DEFAULT now(),
     scan_id String,
     tenant_id String DEFAULT 'default',
+    control_key String DEFAULT '',
+    updated_at DateTime DEFAULT now(),
     framework LowCardinality(String),
     control_id String,
     control_name String,
     status LowCardinality(String),
     finding_count UInt32,
     score Float32
-) ENGINE = MergeTree()
-ORDER BY (measured_at, framework, control_id)
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (tenant_id, scan_id, control_key)
 PARTITION BY toYYYYMM(measured_at)
 TTL measured_at + INTERVAL 2 YEAR""",
     # 7. Audit events for trend/forensics dashboards
@@ -253,6 +259,7 @@ TTL measured_at + INTERVAL 2 YEAR""",
 CREATE TABLE IF NOT EXISTS audit_events (
     event_timestamp DateTime DEFAULT now(),
     entry_id String,
+    updated_at DateTime DEFAULT now(),
     action LowCardinality(String),
     actor String,
     resource String,
@@ -260,8 +267,8 @@ CREATE TABLE IF NOT EXISTS audit_events (
     session_id String DEFAULT '',
     trace_id String DEFAULT '',
     request_id String DEFAULT ''
-) ENGINE = MergeTree()
-ORDER BY (event_timestamp, tenant_id, action)
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (tenant_id, entry_id)
 PARTITION BY toYYYYMM(event_timestamp)
 TTL event_timestamp + INTERVAL 2 YEAR""",
     # 8. CIS benchmark check observations with remediation fields indexed
@@ -270,6 +277,8 @@ CREATE TABLE IF NOT EXISTS cis_benchmark_checks (
     measured_at DateTime DEFAULT now(),
     scan_id String,
     tenant_id String DEFAULT 'default',
+    check_key String DEFAULT '',
+    updated_at DateTime DEFAULT now(),
     cloud LowCardinality(String),
     check_id String,
     title String,
@@ -285,8 +294,8 @@ CREATE TABLE IF NOT EXISTS cis_benchmark_checks (
     priority UInt8,
     guardrails Array(String),
     requires_human_review UInt8
-) ENGINE = MergeTree()
-ORDER BY (measured_at, tenant_id, cloud, status, priority, check_id)
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (tenant_id, scan_id, check_key)
 PARTITION BY toYYYYMM(measured_at)
 TTL measured_at + INTERVAL 2 YEAR""",
 ]
@@ -311,4 +320,15 @@ _TABLE_MIGRATIONS: list[str] = [
     "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS request_id String DEFAULT ''",
     "ALTER TABLE cis_benchmark_checks ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
     "ALTER TABLE cis_benchmark_checks ADD COLUMN IF NOT EXISTS remediation String DEFAULT '{}'",
+    # #3484 — idempotent sink keys for canonical analytics rows (new columns only;
+    # engine/ORDER BY changes apply on fresh CREATE TABLE above).
+    "ALTER TABLE vulnerability_scans ADD COLUMN IF NOT EXISTS finding_key String DEFAULT ''",
+    "ALTER TABLE vulnerability_scans ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()",
+    "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()",
+    "ALTER TABLE scan_metadata ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()",
+    "ALTER TABLE compliance_controls ADD COLUMN IF NOT EXISTS control_key String DEFAULT ''",
+    "ALTER TABLE compliance_controls ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()",
+    "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()",
+    "ALTER TABLE cis_benchmark_checks ADD COLUMN IF NOT EXISTS check_key String DEFAULT ''",
+    "ALTER TABLE cis_benchmark_checks ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()",
 ]

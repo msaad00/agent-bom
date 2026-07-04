@@ -498,6 +498,85 @@ class TestClickHouseAnalyticsStore:
         assert audit_row["trace_id"] == "trace-1"
         assert audit_row["request_id"] == "req-1"
 
+    def test_scan_finding_key_stable_on_retry(self):
+        from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+        rows: list[dict] = []
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, batch):
+                rows.extend(batch)
+
+        vuln = {
+            "package": "requests@2.33.0",
+            "ecosystem": "pypi",
+            "cve_id": "CVE-2026-0001",
+            "severity": "high",
+        }
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            store.record_scan("scan-dedup", "agent-1", [vuln], tenant_id="tenant-alpha")
+            store.record_scan("scan-dedup", "agent-1", [vuln], tenant_id="tenant-alpha")
+
+        assert len(rows) == 2
+        assert rows[0]["finding_key"]
+        assert rows[0]["finding_key"] == rows[1]["finding_key"]
+        assert rows[0]["updated_at"]
+
+    def test_audit_row_derives_deterministic_entry_id(self):
+        from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+        rows: list[dict] = []
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, batch):
+                rows.extend(batch)
+
+        event = {
+            "action": "auth.key_created",
+            "actor": "system",
+            "resource": "api_key",
+            "timestamp": "2026-04-20T12:00:02Z",
+            "tenant_id": "tenant-alpha",
+        }
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            store.record_audit_event(dict(event))
+            store.record_audit_event(dict(event))
+
+        assert len(rows) == 2
+        assert rows[0]["entry_id"] == rows[1]["entry_id"]
+
+    def test_buffered_flush_requeues_on_insert_failure(self):
+        from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
+
+        attempts = {"count": 0}
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                attempts["count"] += 1
+                if attempts["count"] == 1:
+                    raise RuntimeError("transient clickhouse outage")
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            buffered = BufferedAnalyticsStore(store, max_batch=10, flush_interval=60.0)
+            buffered.record_event({"event_type": "tool_blocked", "severity": "high", "event_id": "evt-retry-1"})
+            buffered._flush_pending()
+            assert attempts["count"] == 1
+            buffered._flush_pending()
+            assert attempts["count"] == 2
+            buffered.close()
+
 
 def test_clickhouse_escape_strips_control_chars_and_quotes():
     from agent_bom.api.clickhouse_store import _escape

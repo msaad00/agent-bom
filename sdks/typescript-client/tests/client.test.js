@@ -104,6 +104,47 @@ test("posts normalized bulk findings", async () => {
   });
 });
 
+test("posts bulk findings with lifecycle fields and idempotency header", async () => {
+  let payload;
+  let headers;
+  const client = new AgentBomClient({
+    baseUrl: "https://agent-bom.example.com",
+    tenantId: "tenant-d",
+    fetch: async (_url, init) => {
+      payload = JSON.parse(init.body);
+      headers = init.headers;
+      return jsonResponse({
+        schema_version: "v1",
+        batch_id: "batch-1",
+        ingested: 1,
+        tenant_total: 1,
+        tenant_id: "tenant-d",
+        source: "agent-runtime",
+        observed_at: "2026-07-08T12:00:00Z",
+        reconciled: 2,
+      });
+    },
+  });
+
+  const response = await client.ingestFindings({
+    source: "agent-runtime",
+    findings: [{ id: "finding-1", severity: "high" }],
+    observedAt: "2026-07-08T12:00:00Z",
+    reconcileAbsent: true,
+    idempotencyKey: "scan-batch-42",
+  });
+
+  assert.equal(response.reconciled, 2);
+  assert.equal(headers["Idempotency-Key"], "scan-batch-42");
+  assert.deepEqual(payload, {
+    findings: [{ id: "finding-1", severity: "high" }],
+    source: "agent-runtime",
+    tenant_id: "tenant-d",
+    observed_at: "2026-07-08T12:00:00Z",
+    reconcile_absent: true,
+  });
+});
+
 test("registers dataset versions", async () => {
   let seenUrl = "";
   let payload;

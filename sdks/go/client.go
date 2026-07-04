@@ -146,22 +146,34 @@ func (c *Client) ListFindings(ctx context.Context, query FindingQuery) (JSON, er
 
 // IngestFindingsRequest posts normalized findings directly into the control plane.
 type IngestFindingsRequest struct {
-	Findings      []JSON
-	Source        string
-	SchemaVersion string
-	Metadata      JSON
-	TenantID      string
+	Findings         []JSON
+	Source           string
+	SchemaVersion    string
+	Metadata         JSON
+	TenantID         string
+	ObservedAt       string
+	ReconcileAbsent  bool
+	IdempotencyKey   string
 }
 
 // IngestFindings posts normalized findings directly into the control plane.
 func (c *Client) IngestFindings(ctx context.Context, req IngestFindingsRequest) (JSON, error) {
-	return c.request(ctx, http.MethodPost, "/v1/findings/bulk", nil, compact(JSON{
+	body := compact(JSON{
 		"findings":       req.Findings,
 		"source":         req.Source,
 		"schema_version": req.SchemaVersion,
 		"metadata":       req.Metadata,
 		"tenant_id":      firstNonEmpty(req.TenantID, c.tenantID),
-	}))
+		"observed_at":    req.ObservedAt,
+	})
+	if req.ReconcileAbsent {
+		body["reconcile_absent"] = true
+	}
+	extra := map[string]string{}
+	if req.IdempotencyKey != "" {
+		extra["Idempotency-Key"] = req.IdempotencyKey
+	}
+	return c.request(ctx, http.MethodPost, "/v1/findings/bulk", nil, body, extra)
 }
 
 // DatasetVersionRequest registers one dataset version artifact.
@@ -407,7 +419,7 @@ func (c *Client) IntelSources(ctx context.Context) (JSON, error) {
 	return c.request(ctx, http.MethodGet, "/v1/intel/sources", nil, nil)
 }
 
-func (c *Client) request(ctx context.Context, method string, path string, values url.Values, body JSON) (JSON, error) {
+func (c *Client) request(ctx context.Context, method string, path string, values url.Values, body JSON, extraHeaders ...map[string]string) (JSON, error) {
 	endpoint := c.url(path)
 	if len(values) > 0 {
 		endpoint += "?" + values.Encode()
@@ -441,6 +453,11 @@ func (c *Client) request(ctx context.Context, method string, path string, values
 	}
 	if c.tenantID != "" {
 		request.Header.Set("X-Agent-Bom-Tenant-ID", c.tenantID)
+	}
+	if len(extraHeaders) > 0 {
+		for key, value := range extraHeaders[0] {
+			request.Header.Set(key, value)
+		}
 	}
 
 	response, err := c.httpClient.Do(request)

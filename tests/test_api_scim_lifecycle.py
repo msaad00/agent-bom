@@ -58,6 +58,84 @@ def test_scim_discovery_endpoints(scim_client: TestClient) -> None:
     assert resource_types.status_code == 200
     assert {resource["id"] for resource in resource_types.json()["Resources"]} == {"User", "Group"}
 
+    user_schema = scim_client.get(
+        "/scim/v2/Schemas/urn:ietf:params:scim:schemas:core:2.0:User",
+        headers=_headers(),
+    )
+    assert user_schema.status_code == 200
+    assert user_schema.json()["name"] == "User"
+
+    user_resource_type = scim_client.get("/scim/v2/ResourceTypes/User", headers=_headers())
+    assert user_resource_type.status_code == 200
+    assert user_resource_type.json()["endpoint"] == "/Users"
+
+    missing_schema = scim_client.get("/scim/v2/Schemas/urn:example:missing", headers=_headers())
+    assert missing_schema.status_code == 404
+
+
+def test_scim_put_replaces_user_without_merging_existing_fields(scim_client: TestClient) -> None:
+    created = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={
+            "userName": "replace@example.com",
+            "displayName": "Replace Me",
+            "externalId": "emp-replace",
+            "active": True,
+            "emails": [{"value": "replace@example.com", "primary": True}],
+            "roles": [{"value": "admin", "display": "admin", "type": "agent_bom"}],
+        },
+    )
+    assert created.status_code == 201
+    user_id = created.json()["id"]
+    assert created.json()["emails"]
+    assert created.json()["roles"] == [{"value": "admin", "display": "admin", "type": "agent_bom"}]
+
+    replaced = scim_client.put(
+        f"/scim/v2/Users/{user_id}",
+        headers=_headers(),
+        json={
+            "userName": "replace@example.com",
+            "displayName": "Replaced User",
+            "active": True,
+        },
+    )
+    assert replaced.status_code == 200
+    body = replaced.json()
+    assert body["displayName"] == "Replaced User"
+    assert body["emails"] == []
+    assert body["externalId"] is None
+    assert body["roles"] == [{"value": "viewer", "display": "viewer", "type": "agent_bom"}]
+
+
+def test_scim_put_replaces_group_members_when_omitted(scim_client: TestClient) -> None:
+    user = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={"userName": "member@example.com", "displayName": "Member"},
+    ).json()
+    created = scim_client.post(
+        "/scim/v2/Groups",
+        headers=_headers(),
+        json={
+            "displayName": "Operators",
+            "externalId": "grp-ops",
+            "members": [{"value": user["id"], "display": "member@example.com"}],
+        },
+    )
+    assert created.status_code == 201
+    group_id = created.json()["id"]
+    assert created.json()["members"]
+
+    replaced = scim_client.put(
+        f"/scim/v2/Groups/{group_id}",
+        headers=_headers(),
+        json={"displayName": "Operators"},
+    )
+    assert replaced.status_code == 200
+    assert replaced.json()["members"] == []
+    assert replaced.json()["externalId"] is None
+
 
 def test_scim_user_create_list_patch_and_deactivate(scim_client: TestClient) -> None:
     created = scim_client.post(

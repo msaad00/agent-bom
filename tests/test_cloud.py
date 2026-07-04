@@ -1243,21 +1243,6 @@ def test_aws_eks_reuses_k8s():
 # ─── Nebius Provider Tests ──────────────────────────────────────────────────
 
 
-def test_nebius_missing_requests():
-    """Helpful error when requests is not installed."""
-    with patch.dict(sys.modules, {"requests": None}):
-        import agent_bom.cloud.nebius as nb_mod
-
-        try:
-            importlib.reload(nb_mod)
-        except Exception:
-            pass
-        with pytest.raises(CloudDiscoveryError, match="requests is required"):
-            from agent_bom.cloud.nebius import discover
-
-            discover()
-
-
 def test_nebius_ai_studio_discovery():
     """Nebius AI Studio models are discovered as agents."""
     from agent_bom.cloud.nebius import discover
@@ -1272,7 +1257,7 @@ def test_nebius_ai_studio_discovery():
     }
     mock_response.raise_for_status = MagicMock()
 
-    with patch("requests.get", return_value=mock_response):
+    with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_response):
         agents, warnings = discover(api_key="fake-key", project_id="proj-123")
 
     ai_agents = [a for a in agents if a.source == "nebius-ai-studio"]
@@ -1291,9 +1276,10 @@ def test_nebius_gpu_instance_discovery():
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
 
-    def side_effect(url, **kwargs):
+    def side_effect(client, method, url, **kwargs):
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
+        resp.status_code = 200
         if "compute.api" in url:
             resp.json.return_value = {
                 "instances": [
@@ -1319,7 +1305,7 @@ def test_nebius_gpu_instance_discovery():
             resp.json.return_value = {}
         return resp
 
-    with patch("requests.get", side_effect=side_effect):
+    with patch("agent_bom.http_client.sync_request_with_retry", side_effect=side_effect):
         agents, warnings = discover(api_key="fake-key", project_id="proj-123")
 
     gpu_agents = [a for a in agents if a.source == "nebius-gpu"]

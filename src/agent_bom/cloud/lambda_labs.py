@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 
+from agent_bom import http_client
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
@@ -37,13 +38,13 @@ _GPU_FAMILIES: dict[str, str] = {
 
 
 def _lambda_get(path: str, api_key: str) -> dict | list:
-    try:
-        import requests
-    except ImportError as exc:
-        raise CloudDiscoveryError("requests is required for Lambda Labs discovery. Install with: pip install requests") from exc
-
-    headers = {"Authorization": f"Bearer {api_key}"}
-    resp = requests.get(f"{_API_BASE}{path}", headers=headers, timeout=_API_TIMEOUT)
+    resp = http_client.sync_get(
+        f"{_API_BASE}{path}",
+        timeout=_API_TIMEOUT,
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    if resp is None:
+        raise CloudDiscoveryError("Lambda Labs: request failed after retries")
     if resp.status_code == 401:
         raise CloudDiscoveryError("Lambda Labs: invalid API key (HTTP 401)")
     resp.raise_for_status()
@@ -62,11 +63,6 @@ def discover(
     Returns:
         (agents, warnings) tuple.
     """
-    try:
-        import requests  # noqa: F401
-    except ImportError:
-        return [], ["Lambda Labs discovery requires 'requests'. Install with: pip install requests"]
-
     resolved_key = api_key or os.environ.get("LAMBDA_API_KEY", "")
     if not resolved_key:
         return [], ["LAMBDA_API_KEY not set. Provide --lambda-api-key or set the LAMBDA_API_KEY env var."]

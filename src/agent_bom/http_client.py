@@ -448,10 +448,15 @@ def sync_request_with_retry(
     return None
 
 
-def sync_get(url: str, timeout: float | None = None, headers: dict | None = None) -> httpx.Response | None:
+def sync_get(
+    url: str,
+    timeout: float | None = None,
+    headers: dict | None = None,
+    params: dict | None = None,
+) -> httpx.Response | None:
     """Convenience: single GET request with retry. Manages its own client."""
     with create_sync_client(timeout=timeout) as client:
-        return sync_request_with_retry(client, "GET", url, headers=headers or {})
+        return sync_request_with_retry(client, "GET", url, headers=headers or {}, params=params or {})
 
 
 def fetch_bytes(url: str, *, timeout: float = 30, headers: dict | None = None) -> bytes:

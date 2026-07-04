@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 
+from agent_bom import http_client
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
@@ -60,13 +61,16 @@ query {
 
 
 def _graphql(query: str, api_key: str) -> dict:
-    try:
-        import requests
-    except ImportError as exc:
-        raise CloudDiscoveryError("requests is required for RunPod discovery. Install with: pip install requests") from exc
-
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-    resp = requests.post(_GRAPHQL_URL, json={"query": query}, headers=headers, timeout=_API_TIMEOUT)
+    with http_client.create_sync_client(timeout=_API_TIMEOUT) as client:
+        resp = http_client.sync_request_with_retry(
+            client,
+            "POST",
+            _GRAPHQL_URL,
+            json={"query": query},
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+        )
+    if resp is None:
+        raise CloudDiscoveryError("RunPod: request failed after retries")
     if resp.status_code == 401:
         raise CloudDiscoveryError("RunPod: invalid API key (HTTP 401)")
     resp.raise_for_status()
@@ -88,11 +92,6 @@ def discover(
     Returns:
         (agents, warnings) tuple.
     """
-    try:
-        import requests  # noqa: F401
-    except ImportError:
-        return [], ["RunPod discovery requires 'requests'. Install with: pip install requests"]
-
     resolved_key = api_key or os.environ.get("RUNPOD_API_KEY", "")
     if not resolved_key:
         return [], ["RUNPOD_API_KEY not set. Provide --runpod-api-key or set the RUNPOD_API_KEY env var."]

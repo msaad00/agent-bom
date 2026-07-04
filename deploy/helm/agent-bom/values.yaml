@@ -717,10 +717,14 @@ networkPolicy:
   restrictIngress: true
   ingress: []
   allowDns: true
-  allowWeb: true
+  # Kubernetes NetworkPolicy cannot portably express FQDNs from upstream URLs.
+  # Translate Postgres, ClickHouse, IdP/OIDC, and cloud API endpoints into
+  # ipBlock/pod/namespace selectors via egress/additionalEgress below.
+  allowWeb: false
   webPorts:
     - 80
     - 443
+  egress: []
   additionalEgress: []
 
 pdb:

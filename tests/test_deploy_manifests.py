@@ -557,8 +557,9 @@ def test_helm_network_policy_defaults_are_explicit():
     assert policy["enabled"] is True
     assert policy["restrictIngress"] is True
     assert policy["allowDns"] is True
-    assert policy["allowWeb"] is True
+    assert policy["allowWeb"] is False
     assert policy["webPorts"] == [80, 443]
+    assert policy["egress"] == []
     assert policy["additionalEgress"] == []
 
 

@@ -123,6 +123,56 @@ def test_overview_aggregates_findings() -> None:
     assert len(data["top_risks"]) == 2
 
 
+def test_overview_reads_compacted_scan_summary() -> None:
+    """Hot-cache compaction must not zero out posture/CVE tiles on /v1/overview."""
+    from agent_bom.api.server import ScanJob, ScanRequest
+    from agent_bom.api.stores import _compact_terminal_job
+
+    _clear_jobs()
+    job = ScanJob(
+        job_id="compact-job",
+        tenant_id="default",
+        created_at="2026-02-22T10:00:00Z",
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.completed_at = "2026-02-22T10:05:00Z"
+    job.result = {
+        "summary": {
+            "total_vulnerabilities": 87,
+            "critical_unified_findings": 3,
+            "high_unified_findings": 12,
+            "unique_packages": 9,
+        },
+        "posture_scorecard": {
+            "grade": "F",
+            "score": 42.0,
+            "summary": "Poor posture",
+            "dimensions": {},
+        },
+        "scan_sources": ["agent_discovery"],
+        "blast_radius": [
+            {
+                "vulnerability_id": "CVE-IGNORED",
+                "severity": "critical",
+                "risk_score": 10,
+            }
+        ],
+    }
+    _get_store().put(_compact_terminal_job(job))
+
+    client = TestClient(app)
+    resp = client.get("/v1/overview", headers=_AUTH_HEADERS)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["posture"]["grade"] == "F"
+    assert data["posture"]["score"] == 42.0
+    assert data["headline"]["critical"] == 3
+    assert data["headline"]["high"] == 12
+    assert data["domains"]["cloud"]["metric"] == 87
+
+
 def test_overview_requires_auth() -> None:
     """Endpoint is read-only but still behind the standard viewer gate."""
     _clear_jobs()

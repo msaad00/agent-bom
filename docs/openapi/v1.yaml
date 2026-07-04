@@ -2664,6 +2664,35 @@ paths:
       summary: Scim Resource Types
       tags:
       - scim
+  /scim/v2/ResourceTypes/{resource_type_id}:
+    get:
+      operationId: scim_get_resource_type_scim_v2_ResourceTypes__resource_type_id__get
+      parameters:
+      - in: path
+        name: resource_type_id
+        required: true
+        schema:
+          title: Resource Type Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Scim Get Resource Type Scim V2 Resourcetypes  Resource
+                  Type Id  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Scim Get Resource Type
+      tags:
+      - scim
   /scim/v2/Schemas:
     get:
       operationId: scim_schemas_scim_v2_Schemas_get
@@ -2677,6 +2706,34 @@ paths:
                 type: object
           description: Successful Response
       summary: Scim Schemas
+      tags:
+      - scim
+  /scim/v2/Schemas/{schema_id}:
+    get:
+      operationId: scim_get_schema_scim_v2_Schemas__schema_id__get
+      parameters:
+      - in: path
+        name: schema_id
+        required: true
+        schema:
+          title: Schema Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Scim Get Schema Scim V2 Schemas  Schema Id  Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Scim Get Schema
       tags:
       - scim
   /scim/v2/ServiceProviderConfig:

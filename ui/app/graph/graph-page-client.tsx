@@ -14,7 +14,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AlertTriangle, Loader2, Radar, Route, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Layers, Loader2, Radar, Route, ShieldAlert } from "lucide-react";
 
 import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphEvaluationSummary } from "@/components/graph-evaluation-summary";
@@ -95,6 +95,8 @@ import {
   type GraphSnapshot,
   type UnifiedGraphResponse,
 } from "@/lib/api";
+import type { GraphRollupResponse } from "@/lib/api-types";
+import { buildRollupFlowGraph } from "@/lib/graph-rollup-view";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import {
   LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
@@ -610,6 +612,11 @@ type BlastRadiusState = {
   maxDepthReached: number;
 };
 
+type RollupBreadcrumb = {
+  id: string;
+  label: string;
+};
+
 export default function GraphPageClient() {
   return (
     <ReactFlowProvider>
@@ -651,6 +658,11 @@ function GraphPageInner() {
   const [blastRadius, setBlastRadius] = useState<BlastRadiusState | null>(null);
   const [loadingBlast, setLoadingBlast] = useState(false);
   const [blastError, setBlastError] = useState<string | null>(null);
+  const [rollupView, setRollupView] = useState<GraphRollupResponse | null>(null);
+  const [rollupStack, setRollupStack] = useState<RollupBreadcrumb[]>([]);
+  const [rollupDismissed, setRollupDismissed] = useState(false);
+  const [loadingRollup, setLoadingRollup] = useState(false);
+  const [rollupError, setRollupError] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
   const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(
@@ -758,6 +770,10 @@ function GraphPageInner() {
     setInvestigationMode(null);
     setReachabilitySummary(null);
     setReachabilityError(null);
+    setRollupView(null);
+    setRollupStack([]);
+    setRollupDismissed(false);
+    setRollupError(null);
     if (firstScanSelectionRef.current) {
       firstScanSelectionRef.current = false;
       if (seededFromUrlRef.current) {
@@ -929,7 +945,78 @@ function GraphPageInner() {
     }
   }, [attackPaths, selectedAttackPathKey]);
 
+  const estateNodeCount =
+    activeSnapshot?.node_count ??
+    rollupView?.summary.total_nodes ??
+    graphData?.nodes.length ??
+    0;
+
+  const rollupEligible =
+    estateNodeCount >= LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD &&
+    !investigationMode &&
+    !selectedAttackPath &&
+    !reachabilitySummary &&
+    !blastRadius;
+
+  const rollupNavigationActive =
+    rollupEligible && !rollupDismissed && rollupView !== null;
+
+  useEffect(() => {
+    if (!selectedScanId || !rollupEligible || rollupDismissed) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingRollup(true);
+    setRollupError(null);
+    const drillNode = rollupStack.at(-1)?.id;
+
+    api
+      .getGraphRollup(selectedScanId, {
+        ...(drillNode ? { node: drillNode } : {}),
+        ...(filters.severity ? { minSeverity: filters.severity } : {}),
+      })
+      .then((result) => {
+        if (cancelled) return;
+        setRollupView(result);
+        setRollupError(null);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setRollupError(e.message);
+        setRollupView(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRollup(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedScanId,
+    rollupEligible,
+    rollupDismissed,
+    rollupStack,
+    filters.severity,
+  ]);
+
   const flow = useMemo(() => {
+    if (rollupNavigationActive && rollupView) {
+      const items =
+        rollupView.mode === "drilldown"
+          ? (rollupView.children ?? [])
+          : (rollupView.top_level ?? []);
+      const rollupFlow = buildRollupFlowGraph(items);
+      return {
+        nodes: rollupFlow.nodes,
+        edges: rollupFlow.edges,
+        agentNames: [] as string[],
+        legend: [] as ReturnType<typeof buildUnifiedFlowGraph>["legend"],
+        summary: null as
+          null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
+      };
+    }
     if (!graphData) {
       return {
         nodes: [],
@@ -941,7 +1028,12 @@ function GraphPageInner() {
       };
     }
     return buildUnifiedFlowGraph(graphData, filters);
-  }, [graphData, filters]);
+  }, [
+    graphData,
+    filters,
+    rollupNavigationActive,
+    rollupView,
+  ]);
 
   useEffect(() => {
     if (initializedFocus || flow.agentNames.length === 0) return;
@@ -1029,12 +1121,33 @@ function GraphPageInner() {
       : EXPANDED_AGGREGATION_THRESHOLD;
 
   const aggregated = useMemo(
-    () =>
-      aggregateSiblings(flow.nodes, flow.edges, {
+    () => {
+      if (rollupNavigationActive) {
+        return {
+          nodes: flow.nodes,
+          edges: flow.edges,
+          clusters: new Map<
+            string,
+            {
+              parentId: string;
+              childType: LineageNodeType;
+              members: string[];
+            }
+          >(),
+        };
+      }
+      return aggregateSiblings(flow.nodes, flow.edges, {
         thresholdN: aggregationThreshold,
         expandedClusterIds: expandedClusterIds,
-      }),
-    [flow.nodes, flow.edges, aggregationThreshold, expandedClusterIds],
+      });
+    },
+    [
+      flow.nodes,
+      flow.edges,
+      aggregationThreshold,
+      expandedClusterIds,
+      rollupNavigationActive,
+    ],
   );
   const aggregatedClusterNodes = useMemo(
     () =>
@@ -1154,9 +1267,12 @@ function GraphPageInner() {
   });
 
   const lineageLayoutNodes = layoutNodes as Node<LineageNodeData>[];
+  const canvasLayoutNodes = rollupNavigationActive
+    ? (aggregated.nodes as Node<LineageNodeData>[])
+    : lineageLayoutNodes;
   const displayNodes = useMemo<Node<LineageNodeData>[]>(() => {
     if (blastRadius) {
-      return lineageLayoutNodes.map((node) => {
+      return canvasLayoutNodes.map((node) => {
         const inBlast = blastRadius.nodeIds.has(node.id);
         const isRoot = node.id === blastRadius.rootId;
         return {
@@ -1172,7 +1288,7 @@ function GraphPageInner() {
       });
     }
     if (attackPathNodeIds) {
-      return lineageLayoutNodes
+      return canvasLayoutNodes
         .filter((node) => attackPathNodeIds.has(node.id))
         .map((node) => {
           const inPath = attackPathNodeIds.has(node.id);
@@ -1194,7 +1310,7 @@ function GraphPageInner() {
         });
     }
     if (reachabilitySummary) {
-      return lineageLayoutNodes.map((node) => {
+      return canvasLayoutNodes.map((node) => {
         const inReach = reachabilitySummary.nodeIds.has(node.id);
         const isRoot = node.id === reachabilitySummary.rootId;
         return {
@@ -1210,7 +1326,7 @@ function GraphPageInner() {
       });
     }
     if (!localNeighborhoodIds) {
-      return lineageLayoutNodes.map((node) => ({
+      return canvasLayoutNodes.map((node) => ({
         ...node,
         data: {
           ...node.data,
@@ -1218,7 +1334,7 @@ function GraphPageInner() {
         },
       }));
     }
-    return lineageLayoutNodes.map((node) => {
+    return canvasLayoutNodes.map((node) => {
       const isFocused = node.id === activeFocusId;
       const isConnected = localNeighborhoodIds.has(node.id);
       const dimmed = !isConnected;
@@ -1234,7 +1350,7 @@ function GraphPageInner() {
       };
     });
   }, [
-    lineageLayoutNodes,
+    canvasLayoutNodes,
     localNeighborhoodIds,
     attackPathNodeIds,
     attackPathNodeOrder,
@@ -1245,7 +1361,9 @@ function GraphPageInner() {
   ]);
 
   const compressedGroupCount = aggregatedClusterNodes.length;
-  const sourceNodeCount = graphData?.nodes.length ?? flow.nodes.length;
+  const sourceNodeCount = rollupNavigationActive
+    ? (rollupView?.summary.total_nodes ?? estateNodeCount)
+    : (graphData?.nodes.length ?? flow.nodes.length);
   const renderedNodeCount = displayNodes.length;
 
   const displayEdges = useMemo(() => {
@@ -1425,6 +1543,7 @@ function GraphPageInner() {
     captureMode,
     selectedAttackPath: Boolean(selectedAttackPath),
     reachabilityActive: Boolean(reachabilitySummary),
+    rollupActive: rollupNavigationActive,
     graphOnlyFindings,
     webglEnabled: webglGraphEnabled,
   });
@@ -1443,36 +1562,46 @@ function GraphPageInner() {
     [displayNodes],
   );
 
-  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
-    // Cluster-pill click → restore the absorbed siblings in place. We
-    // never open the detail panel for a synthetic cluster node.
-    if (isClusterPillNode(node as Node<LineageNodeData>)) {
-      const id = node.id;
-      setExpandedClusterIds((current) => {
-        const next = new Set(current);
-        next.add(id);
-        return next;
-      });
-      return;
-    }
+  const onNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      // Cluster-pill click → restore the absorbed siblings in place. We
+      // never open the detail panel for a synthetic cluster node.
+      if (isClusterPillNode(node as Node<LineageNodeData>)) {
+        const id = node.id;
+        setExpandedClusterIds((current) => {
+          const next = new Set(current);
+          next.add(id);
+          return next;
+        });
+        return;
+      }
 
-    const data = node.data as LineageNodeData;
-    setSelectedNode({
-      ...data,
-      attributes: {
-        ...(data.attributes ?? {}),
-        node_id: node.id,
-      },
-    });
-    setSelectedNodeId(node.id);
-    setSelectedAttackPathKey(null);
-    setAutoPathDismissed(true);
-    // Click pin (#2257): toggle a "pinned focus" on the clicked node.
-    // Re-clicking the same node clears the pin. Hover state is reset
-    // because the pin replaces hover as the focus source.
-    setPinnedFocusId((current) => (current === node.id ? null : node.id));
-    setHoveredNodeId(null);
-  }, []);
+      const data = node.data as LineageNodeData;
+      if (rollupNavigationActive && data.attributes?.rollup_has_children === true) {
+        setRollupStack((current) => {
+          if (current.at(-1)?.id === node.id) return current;
+          return [...current, { id: node.id, label: data.label }];
+        });
+      }
+
+      setSelectedNode({
+        ...data,
+        attributes: {
+          ...(data.attributes ?? {}),
+          node_id: node.id,
+        },
+      });
+      setSelectedNodeId(node.id);
+      setSelectedAttackPathKey(null);
+      setAutoPathDismissed(true);
+      // Click pin (#2257): toggle a "pinned focus" on the clicked node.
+      // Re-clicking the same node clears the pin. Hover state is reset
+      // because the pin replaces hover as the focus source.
+      setPinnedFocusId((current) => (current === node.id ? null : node.id));
+      setHoveredNodeId(null);
+    },
+    [rollupNavigationActive],
+  );
 
   const onLargeGraphNodeSelect = useCallback(
     (nodeId: string) => {
@@ -1654,6 +1783,20 @@ function GraphPageInner() {
   const clearBlastRadius = useCallback(() => {
     setBlastRadius(null);
     setBlastError(null);
+  }, []);
+
+  const dismissRollup = useCallback(() => {
+    setRollupDismissed(true);
+    setRollupStack([]);
+    setRollupError(null);
+  }, []);
+
+  const navigateRollupBreadcrumb = useCallback((index: number) => {
+    setRollupStack((current) => current.slice(0, index + 1));
+  }, []);
+
+  const resetRollupToRoot = useCallback(() => {
+    setRollupStack([]);
   }, []);
 
   const loadBlastRadius = useCallback(
@@ -1990,6 +2133,21 @@ function GraphPageInner() {
               onClear={clearBlastRadius}
             />
           )}
+
+          {(rollupEligible || loadingRollup || rollupError) &&
+            !rollupDismissed && (
+              <RollupNavigationPanel
+                summary={rollupView}
+                estateNodeCount={estateNodeCount}
+                breadcrumbs={rollupStack}
+                loading={loadingRollup}
+                error={rollupError}
+                active={rollupNavigationActive}
+                onDismiss={dismissRollup}
+                onReset={resetRollupToRoot}
+                onBreadcrumb={navigateRollupBreadcrumb}
+              />
+            )}
 
           {searchResults.length > 0 && (
             <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2">
@@ -2721,6 +2879,102 @@ function BlastRadiusPanel({
         <p className="mt-2 text-zinc-400">
           Nothing downstream depends on this node in the current snapshot.
         </p>
+      )}
+    </div>
+  );
+}
+
+function RollupNavigationPanel({
+  summary,
+  estateNodeCount,
+  breadcrumbs,
+  loading,
+  error,
+  active,
+  onDismiss,
+  onReset,
+  onBreadcrumb,
+}: {
+  summary: GraphRollupResponse | null;
+  estateNodeCount: number;
+  breadcrumbs: RollupBreadcrumb[];
+  loading: boolean;
+  error: string | null;
+  active: boolean;
+  onDismiss: () => void;
+  onReset: () => void;
+  onBreadcrumb: (index: number) => void;
+}) {
+  const visibleCount =
+    summary?.mode === "drilldown"
+      ? (summary.children?.length ?? 0)
+      : (summary?.top_level?.length ?? 0);
+
+  return (
+    <div className="mt-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2">
+          <Layers className="mt-0.5 h-4 w-4 text-emerald-300" />
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-emerald-300">
+              Estate roll-up
+            </p>
+            <p className="mt-1 text-sm font-medium text-emerald-50">
+              {active
+                ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot`
+                : `Large estate (${estateNodeCount} nodes) — loading roll-up view`}
+            </p>
+            {active && (
+              <p className="mt-1 text-[11px] text-emerald-200/80">
+                Click a container with descendants to drill down one CONTAINS
+                level. Severity filters apply to rolled-up aggregates.
+              </p>
+            )}
+            {error && (
+              <p className="mt-1 text-[11px] text-amber-200">{error}</p>
+            )}
+            {loading && (
+              <p className="mt-1 flex items-center gap-1 text-[11px] text-emerald-200">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Collapsing containment hierarchy
+              </p>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-lg border border-emerald-400/30 bg-emerald-950/60 px-2.5 py-1 text-emerald-100 transition hover:border-emerald-300"
+        >
+          Show full graph
+        </button>
+      </div>
+
+      {breadcrumbs.length > 0 && (
+        <nav
+          aria-label="Roll-up breadcrumb"
+          className="mt-3 flex flex-wrap items-center gap-1 text-[11px] text-emerald-100"
+        >
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded border border-emerald-400/20 bg-emerald-950/50 px-2 py-0.5 transition hover:border-emerald-300"
+          >
+            Estate root
+          </button>
+          {breadcrumbs.map((crumb, index) => (
+            <span key={crumb.id} className="flex items-center gap-1">
+              <span className="text-emerald-400/70">/</span>
+              <button
+                type="button"
+                onClick={() => onBreadcrumb(index)}
+                className="max-w-[12rem] truncate rounded border border-emerald-400/20 bg-emerald-950/50 px-2 py-0.5 transition hover:border-emerald-300"
+              >
+                {crumb.label}
+              </button>
+            </span>
+          ))}
+        </nav>
       )}
     </div>
   );

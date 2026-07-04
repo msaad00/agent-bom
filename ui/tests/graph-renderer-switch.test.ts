@@ -28,6 +28,11 @@ describe("graph renderer switch", () => {
       reason: "reachability-drill-in",
       supportsInvestigation: true,
     });
+    expect(decideGraphRenderer({ ...broadGraph, rollupActive: true })).toMatchObject({
+      kind: "react-flow",
+      reason: "estate-rollup-navigation",
+      supportsInvestigation: true,
+    });
     expect(decideGraphRenderer({ ...broadGraph, graphOnlyFindings: true })).toMatchObject({
       kind: "react-flow",
       reason: "findings-only-fallback",

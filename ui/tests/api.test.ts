@@ -217,6 +217,56 @@ describe('api.getGraphImpact', () => {
   })
 })
 
+describe('api.getGraphRollup', () => {
+  it('requests the estate roll-up endpoint with scan and drill params', async () => {
+    const payload = {
+      scan_id: 'scan-1',
+      tenant_id: 'default',
+      created_at: '2026-01-01T00:00:00Z',
+      mode: 'drilldown',
+      filters: {},
+      children: [],
+      summary: { direct_child_count: 2, returned_child_count: 2 },
+    }
+    const fetchMock = mockFetch(payload)
+    global.fetch = fetchMock
+
+    const result = await api.getGraphRollup('scan-1', {
+      node: 'account:prod',
+      minSeverity: 'high',
+      exposed: true,
+      toxic: true,
+      mode: 'attack_path',
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/graph/rollup?scan_id=scan-1&node=account%3Aprod&min_severity=high&exposed=true&toxic=true&mode=attack_path',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    expect(result.mode).toBe('drilldown')
+  })
+
+  it('omits optional params when not provided', async () => {
+    const fetchMock = mockFetch({
+      scan_id: 'scan-1',
+      tenant_id: 'default',
+      created_at: '2026-01-01T00:00:00Z',
+      mode: 'rollup',
+      filters: {},
+      top_level: [],
+      summary: { top_level_count: 0 },
+    })
+    global.fetch = fetchMock
+
+    await api.getGraphRollup()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/graph/rollup',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+})
+
 describe('api.getScan', () => {
   it('returns expected shape', async () => {
     const payload = {

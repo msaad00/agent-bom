@@ -300,6 +300,56 @@ export interface GraphNodeDetailResponse {
   impact: GraphImpactResponse;
 }
 
+export interface GraphRollupAggregate {
+  descendant_count: number;
+  by_type: Record<string, number>;
+  severity_counts: Record<string, number>;
+  worst_severity: string;
+  worst_severity_rank: number;
+  internet_exposed: boolean;
+  toxic_combo: boolean;
+  exposed_count: number;
+  toxic_count: number;
+}
+
+export interface GraphRollupContainer {
+  id: string;
+  label: string;
+  entity_type: string;
+  severity: string;
+  is_container: boolean;
+  has_children: boolean;
+  direct_child_count: number;
+  aggregate: GraphRollupAggregate;
+}
+
+export interface GraphRollupSummary {
+  total_nodes?: number;
+  total_edges?: number;
+  top_level_count?: number;
+  container_count?: number;
+  orphan_count?: number;
+  direct_child_count?: number;
+  returned_child_count?: number;
+}
+
+export interface GraphRollupResponse {
+  scan_id: string;
+  tenant_id: string;
+  created_at: string;
+  mode: "rollup" | "drilldown" | "attack_path";
+  filters: Record<string, unknown>;
+  top_level?: GraphRollupContainer[];
+  children?: GraphRollupContainer[];
+  node?: {
+    id: string;
+    label: string;
+    entity_type: string;
+    severity: string;
+  } | null;
+  summary: GraphRollupSummary;
+}
+
 export interface GraphSearchResponse {
   query: string;
   results: UnifiedNode[];

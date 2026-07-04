@@ -23,6 +23,7 @@ material. The index below groups the canonical docs by audience.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — layered stack, data flow, scan pipeline, blast radius, compliance tagging (mermaid)
 - [`CLI_MAP.md`](CLI_MAP.md) — all 50 top-level commands grouped by domain + intentional aliases
 - [`DATA_SOURCES.md`](DATA_SOURCES.md) — intake diagram → mechanism → permission boundary
+- [`SESSION_FLOWS.md`](SESSION_FLOWS.md) — compact who → enforced → lands diagrams for scan push, ingest, MCP, Helm, fleet sync, and API keys
 
 ## Security engineers (scan · gate · export)
 

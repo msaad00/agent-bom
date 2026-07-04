@@ -50,6 +50,18 @@ def _coerce_clickhouse_timestamp(value: Any) -> str | None:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _deterministic_event_id(*parts: Any) -> str:
+    """Return a stable content-derived event id for id-less analytics events.
+
+    Mirrors the runtime observation store fallback so an event retried without
+    a caller-supplied id collapses under ``runtime_events`` ReplacingMergeTree
+    dedup instead of appending a new row each time (audit item J).
+    """
+    from agent_bom.canonical_ids import canonical_id
+
+    return canonical_id("analytics_event", *parts)
+
+
 # ------------------------------------------------------------------
 # Protocol
 # ------------------------------------------------------------------
@@ -329,15 +341,35 @@ class ClickHouseAnalyticsStore:
             self._client.insert_json("runtime_events", rows)
 
     def _event_row(self, event: dict, *, tenant_id: str = "default") -> dict[str, Any]:
+        resolved_tenant = str(event.get("tenant_id") or tenant_id or "default")
+        event_timestamp = _coerce_clickhouse_timestamp(event.get("event_timestamp") or event.get("timestamp") or event.get("ts"))
+        event_type = event.get("event_type", event.get("type", ""))
+        detector = event.get("detector", "")
+        tool_name = event.get("tool_name", event.get("tool", ""))
+        message = event.get("message", "")
+        event_id = str(event.get("event_id") or "").strip()
+        if not event_id:
+            # Deterministic content-derived ID so retries collapse under the
+            # runtime_events ReplacingMergeTree instead of double-counting on a
+            # fresh uuid4 (audit item J).
+            event_id = _deterministic_event_id(
+                resolved_tenant,
+                str(event.get("source_id") or ""),
+                str(event_timestamp or ""),
+                event_type,
+                detector,
+                tool_name,
+                message,
+            )
         return {
-            "event_id": event.get("event_id", str(uuid.uuid4())),
-            "event_timestamp": _coerce_clickhouse_timestamp(event.get("event_timestamp") or event.get("timestamp") or event.get("ts")),
-            "tenant_id": str(event.get("tenant_id") or tenant_id or "default"),
-            "event_type": event.get("event_type", event.get("type", "")),
-            "detector": event.get("detector", ""),
+            "event_id": event_id,
+            "event_timestamp": event_timestamp,
+            "tenant_id": resolved_tenant,
+            "event_type": event_type,
+            "detector": detector,
             "severity": event.get("severity", "INFO"),
-            "tool_name": event.get("tool_name", event.get("tool", "")),
-            "message": event.get("message", ""),
+            "tool_name": tool_name,
+            "message": message,
             "agent_name": event.get("agent_name", ""),
             "session_id": str(event.get("session_id", "") or ""),
             "trace_id": str(event.get("trace_id", "") or ""),

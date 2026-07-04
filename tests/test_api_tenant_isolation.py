@@ -1104,6 +1104,59 @@ async def test_ocsf_ingest_rejects_non_event_payload():
 
 
 @pytest.mark.asyncio
+async def test_ocsf_ingest_rejects_over_cap(monkeypatch):
+    monkeypatch.setattr("agent_bom.api.routes.observability.API_MAX_OCSF_INGEST_EVENTS", 2)
+    req = _request("tenant-alpha")
+    payload = {
+        "events": [
+            {"class_uid": 1, "class_name": "Detection Finding", "time": 1_746_033_600_000},
+            {"class_uid": 2, "class_name": "Network Activity", "time": 1_746_033_601_000},
+            {"class_uid": 3, "class_name": "Process Activity", "time": 1_746_033_602_000},
+        ]
+    }
+
+    with pytest.raises(HTTPException) as exc:
+        await observability_routes.ingest_ocsf(req, payload)
+
+    assert exc.value.status_code == 422
+    assert "at most 2 events" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_ocsf_ingest_offloads_sync_persistence(monkeypatch):
+    req = _request("tenant-alpha")
+    offloaded: list[str] = []
+
+    async def _fake_to_thread(fn, /, *args, **kwargs):
+        offloaded.append(fn.__name__)
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr("agent_bom.api.routes.observability.asyncio.to_thread", _fake_to_thread)
+
+    class _Analytics:
+        def record_events(self, events, *, tenant_id: str = "default"):
+            return None
+
+    payload = {
+        "events": [
+            {
+                "class_uid": 2004,
+                "class_name": "Detection Finding",
+                "severity_id": 2,
+                "time": 1_746_033_600_000,
+                "finding_info": {"uid": "finding-offload"},
+            }
+        ]
+    }
+
+    with patch("agent_bom.api.routes.observability._get_analytics_store", return_value=_Analytics()):
+        result = await observability_routes.ingest_ocsf(req, payload)
+
+    assert result["ingested"] == 1
+    assert offloaded == ["_finish_ocsf_ingest"]
+
+
+@pytest.mark.asyncio
 async def test_posture_counts_include_deployment_context_by_tenant():
     job_store = InMemoryJobStore()
     fleet_store = InMemoryFleetStore()

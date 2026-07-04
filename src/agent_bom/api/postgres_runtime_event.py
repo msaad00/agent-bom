@@ -19,9 +19,11 @@ import json
 from agent_bom.analytics_retention import prune_runtime_observations_for_tenant
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.runtime_event_store import (
+    _BATCH_LOOKUP_CHUNK,
     RuntimeObservationRecord,
     RuntimeSessionRecord,
-    _merge_session,
+    _dedupe_observation_records,
+    _merge_sessions_for_batch,
     _observation_from_json,
     _session_from_json,
 )
@@ -72,40 +74,75 @@ class PostgresRuntimeEventStore:
             conn.commit()
 
     def put_observation(self, record: RuntimeObservationRecord) -> None:
+        self.put_observations_batch([record])
+
+    def put_observations_batch(self, records: list[RuntimeObservationRecord]) -> int:
+        unique_records = _dedupe_observation_records(records)
+        if not unique_records:
+            return 0
+        tenant_id = unique_records[0].tenant_id
         with _tenant_connection(self._pool) as conn:
-            existing = conn.execute(
-                "SELECT 1 FROM runtime_observations WHERE tenant_id = %s AND observation_id = %s",
-                (record.tenant_id, record.observation_id),
-            ).fetchone()
-            if existing:
-                return
-            session = _merge_session(self.get_session(record.tenant_id, record.session_id), record)
-            conn.execute(
-                """
+            existing_ids: set[str] = set()
+            observation_ids = [record.observation_id for record in unique_records]
+            for offset in range(0, len(observation_ids), _BATCH_LOOKUP_CHUNK):
+                chunk = observation_ids[offset : offset + _BATCH_LOOKUP_CHUNK]
+                placeholders = ",".join("%s" for _ in chunk)
+                rows = conn.execute(
+                    f"SELECT observation_id FROM runtime_observations WHERE tenant_id = %s AND observation_id IN ({placeholders})",  # nosec B608
+                    (tenant_id, *chunk),
+                ).fetchall()
+                existing_ids.update(row[0] for row in rows)
+            new_records = [record for record in unique_records if record.observation_id not in existing_ids]
+            if not new_records:
+                return 0
+            session_ids = sorted({record.session_id for record in new_records})
+            existing_sessions: dict[str, RuntimeSessionRecord] = {}
+            for offset in range(0, len(session_ids), _BATCH_LOOKUP_CHUNK):
+                chunk = session_ids[offset : offset + _BATCH_LOOKUP_CHUNK]
+                placeholders = ",".join("%s" for _ in chunk)
+                rows = conn.execute(
+                    f"SELECT session_id, data FROM runtime_sessions WHERE tenant_id = %s AND session_id IN ({placeholders})",  # nosec B608
+                    (tenant_id, *chunk),
+                ).fetchall()
+                for session_id, data in rows:
+                    existing_sessions[session_id] = _session_from_json(data)
+            merged_sessions = _merge_sessions_for_batch(existing_sessions, new_records)
+            observation_sql = """
                 INSERT INTO runtime_observations (tenant_id, observation_id, session_id, observed_at, data)
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, observation_id) DO NOTHING
-                """,
-                (
-                    record.tenant_id,
-                    record.observation_id,
-                    record.session_id,
-                    record.observed_at,
-                    json.dumps(record.to_dict(), sort_keys=True),
-                ),
-            )
-            conn.execute(
-                """
+            """
+            for record in new_records:
+                conn.execute(
+                    observation_sql,
+                    (
+                        record.tenant_id,
+                        record.observation_id,
+                        record.session_id,
+                        record.observed_at,
+                        json.dumps(record.to_dict(), sort_keys=True),
+                    ),
+                )
+            session_sql = """
                 INSERT INTO runtime_sessions (tenant_id, session_id, last_seen, data)
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (tenant_id, session_id) DO UPDATE SET
                     last_seen = EXCLUDED.last_seen,
                     data = EXCLUDED.data
-                """,
-                (session.tenant_id, session.session_id, session.last_seen, json.dumps(session.to_dict(), sort_keys=True)),
-            )
-            prune_runtime_observations_for_tenant(conn, record.tenant_id, placeholder="%s")
+            """
+            for session in merged_sessions.values():
+                conn.execute(
+                    session_sql,
+                    (
+                        session.tenant_id,
+                        session.session_id,
+                        session.last_seen,
+                        json.dumps(session.to_dict(), sort_keys=True),
+                    ),
+                )
+            prune_runtime_observations_for_tenant(conn, tenant_id, placeholder="%s")
             conn.commit()
+            return len(new_records)
 
     def list_sessions(self, tenant_id: str, *, limit: int = 100, offset: int = 0) -> list[RuntimeSessionRecord]:
         with _tenant_connection(self._pool) as conn:

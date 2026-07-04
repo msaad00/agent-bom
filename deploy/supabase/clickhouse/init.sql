@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS agent_bom.runtime_events (
     trace_id String DEFAULT '',
     request_id String DEFAULT '',
     source_id String DEFAULT ''
-) ENGINE = MergeTree()
-ORDER BY (event_timestamp, event_type, agent_name)
+) ENGINE = ReplacingMergeTree()
+ORDER BY (event_timestamp, event_type, agent_name, event_id)
 PARTITION BY toYYYYMM(event_timestamp);
 
 -- 3. Posture scores (periodic snapshots)
@@ -163,6 +163,12 @@ TTL measured_at + INTERVAL 2 YEAR;
 
 -- Forward-compatible migrations for deployments created from older init.sql
 -- revisions. These mirror the runtime ClickHouse client migrations.
+--
+-- Note: runtime_events now uses ReplacingMergeTree ORDER BY (..., event_id) so
+-- retried OCSF/runtime events collapse instead of double-counting. ClickHouse
+-- cannot ALTER a table's engine in place; deployments whose runtime_events
+-- predates this revision keep the append-only MergeTree until the table is
+-- recreated. New deployments get dedup automatically.
 ALTER TABLE agent_bom.vulnerability_scans ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default';
 ALTER TABLE agent_bom.runtime_events ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default';
 ALTER TABLE agent_bom.runtime_events ADD COLUMN IF NOT EXISTS session_id String DEFAULT '';

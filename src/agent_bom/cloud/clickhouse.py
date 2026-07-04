@@ -175,8 +175,8 @@ CREATE TABLE IF NOT EXISTS runtime_events (
     trace_id String DEFAULT '',
     request_id String DEFAULT '',
     source_id String DEFAULT ''
-) ENGINE = MergeTree()
-ORDER BY (event_timestamp, event_type, agent_name)
+) ENGINE = ReplacingMergeTree()
+ORDER BY (event_timestamp, event_type, agent_name, event_id)
 PARTITION BY toYYYYMM(event_timestamp)""",
     # 3. Posture scores (periodic snapshots)
     """\

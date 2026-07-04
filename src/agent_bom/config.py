@@ -406,6 +406,14 @@ RATE_LIMIT_KEY_LAST_ROTATED = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROT
 RUNTIME_FEEDBACK_PATH = _str("AGENT_BOM_RUNTIME_FEEDBACK_PATH", "")
 
 
+# ── Report export artifacts ──────────────────────────────────────────────
+# Async findings report exports are written to a local artifact directory and
+# downloaded through job-scoped tokens. Empty string means use the per-user
+# default ~/.agent-bom/report-artifacts. The worker re-reads the env var at
+# runtime so tests and short-lived self-hosted processes can override it safely.
+REPORT_ARTIFACT_DIR = _str("AGENT_BOM_REPORT_ARTIFACT_DIR", "")
+
+
 # ── Agent-to-Agent (A2A) auth posture ────────────────────────────────────
 # Governance thresholds for the A2A auth posture evaluator
 # (agent_bom.a2a_auth_posture). agent-bom does not broker A2A auth; it scans

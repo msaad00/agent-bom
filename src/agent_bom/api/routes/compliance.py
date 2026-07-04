@@ -1869,9 +1869,11 @@ async def ingest_compliance_findings(request: Request) -> dict:
     tenant_id = _tenant_id(request)
     store = get_compliance_hub_store()
     from agent_bom.api.finding_lifecycle import collect_present_canonical_ids, normalize_observed_at
+    from agent_bom.delta_stream import capture_hub_snapshots, emit_hub_finding_deltas_if_enabled, resolved_canonical_ids
 
     observed_at = normalize_observed_at(body.get("observed_at"))
     batch_id = str(uuid.uuid4())
+    prior_snapshots = capture_hub_snapshots(store, tenant_id, source=fmt)
     new_total = store.add(tenant_id, payloads)
     store.upsert_current_batch(
         tenant_id,
@@ -1881,14 +1883,26 @@ async def ingest_compliance_findings(request: Request) -> dict:
         source=fmt,
     )
     reconciled = 0
+    resolved_ids: set[str] = set()
     if body.get("reconcile_absent"):
         present = collect_present_canonical_ids(payloads, source=fmt)
+        resolved_ids = resolved_canonical_ids(prior_snapshots, present)
         reconciled = store.reconcile_current_absent(
             tenant_id,
             present_canonical_ids=present,
             observed_at=observed_at,
             scope_source=fmt,
         )
+    delta_results = emit_hub_finding_deltas_if_enabled(
+        tenant_id=tenant_id,
+        hub_store=store,
+        prior=prior_snapshots,
+        batch_findings=payloads,
+        resolved_canonical_ids=resolved_ids,
+        observed_at=observed_at,
+        batch_id=batch_id,
+        source=fmt,
+    )
 
     framework_counts: dict[str, int] = {}
     for payload in payloads:
@@ -1904,6 +1918,13 @@ async def ingest_compliance_findings(request: Request) -> dict:
     }
     if body.get("reconcile_absent"):
         response["reconciled"] = reconciled
+    if delta_results:
+        delivered = sum(
+            1
+            for result in delta_results
+            if (result.get("status") == "delivered" if isinstance(result, dict) else getattr(result, "delivered", False))
+        )
+        response["delta_stream"] = {"emitted_batches": len(delta_results), "delivered": delivered}
     return response
 
 

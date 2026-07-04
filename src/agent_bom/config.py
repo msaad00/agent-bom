@@ -387,6 +387,15 @@ POSTGRES_GRAPH_SEARCH_TIMEOUT_MS = _int("AGENT_BOM_POSTGRES_GRAPH_SEARCH_TIMEOUT
 # Set to 0 to disable new extractions (reads still hydrate existing refs).
 HUB_REFERENCE_NORMALIZE = _bool("AGENT_BOM_HUB_REFERENCE_NORMALIZE", True)
 
+# Finding delta-stream export to SIEM / data-lake sinks (#3514).
+DELTA_STREAM_ENABLED = _bool("AGENT_BOM_DELTA_STREAM_ENABLED", False)
+DELTA_STREAM_URL = _str("AGENT_BOM_DELTA_STREAM_URL", "")
+DELTA_STREAM_DESTINATION_ID = _str("AGENT_BOM_DELTA_STREAM_DESTINATION_ID", "delta-stream-default")
+DELTA_STREAM_FORMAT = _str("AGENT_BOM_DELTA_STREAM_FORMAT", "ndjson")
+DELTA_STREAM_AUTH_SCHEME = _str("AGENT_BOM_DELTA_STREAM_AUTH_SCHEME", "")
+DELTA_STREAM_AUTH_TOKEN = _str("AGENT_BOM_DELTA_STREAM_AUTH_TOKEN", "")
+DELTA_STREAM_SIGNING_SECRET = _str("AGENT_BOM_DELTA_STREAM_SIGNING_SECRET", "")
+
 
 # ── Rate-limit fingerprint key rotation policy ──────────────────────────
 # Operators rotate AGENT_BOM_RATE_LIMIT_KEY periodically and record the

@@ -209,6 +209,17 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS` | `int` | `90` | — |
 | `AGENT_BOM_RATE_LIMIT_KEY_ROTATION_DAYS` | `int` | `30` | Operators rotate AGENT_BOM_RATE_LIMIT_KEY periodically and record the rotation timestamp in AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED (ISO-8601 with timezone). The control plane warns when the configured key age approaches the rotation interval |
 
+## Delta stream export (SIEM / data lake)
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_DELTA_STREAM_ENABLED` | `bool` | `False` | Enable finding delta export on hub ingest (#3514). When enabled, each bulk/compliance ingest emits **new**, **changed**, and **resolved** events since the last watermark via the hardened delivery client. |
+| `AGENT_BOM_DELTA_STREAM_URL` | `str` | `''` | HTTPS webhook or object-store pre-signed URL target for delta batches. Required when delta export is enabled (unless tests inject an in-memory sink). |
+| `AGENT_BOM_DELTA_STREAM_DESTINATION_ID` | `str` | `'delta-stream-default'` | Stable destination id for delivery logs, DLQ routing, and per-tenant watermarks. |
+| `AGENT_BOM_DELTA_STREAM_FORMAT` | `str` | `'ndjson'` | Payload shape: `ndjson` (canonical finding_delta.v1 events) or `ocsf` (OCSF Detection Finding projection). |
+| `AGENT_BOM_DELTA_STREAM_AUTH_SCHEME` | `str` | `''` | Optional Authorization scheme forwarded to the delivery client (e.g. `Bearer`). |
+| `AGENT_BOM_DELTA_STREAM_AUTH_TOKEN` | `str` | `''` | Optional bearer/API token for the delta-stream destination. |
+| `AGENT_BOM_DELTA_STREAM_SIGNING_SECRET` | `str` | `''` | Optional HMAC signing secret for webhook verification at the sink. |
+
 ## Report export artifacts
 | Env var | Type | Default | Description |
 |---|---|---|---|

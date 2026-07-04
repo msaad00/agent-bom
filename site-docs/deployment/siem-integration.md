@@ -143,3 +143,38 @@ This avoids lock-in in both directions:
 
 - customers are not forced into OCSF to use the product
 - customers who want OCSF still get a clean interoperability path
+
+## Finding delta-stream export (control plane)
+
+When the compliance hub ingests findings (`POST /v1/findings/bulk` or
+compliance format ingest), operators can push **only what changed** to a SIEM
+or data-lake sink instead of re-listing the full hub on every poll.
+
+Enable on the control plane:
+
+```bash
+export AGENT_BOM_DELTA_STREAM_ENABLED=1
+export AGENT_BOM_DELTA_STREAM_URL=https://siem.example.com/hooks/agent-bom-deltas
+export AGENT_BOM_DELTA_STREAM_FORMAT=ndjson   # or ocsf
+export AGENT_BOM_DELTA_STREAM_AUTH_SCHEME=Bearer
+export AGENT_BOM_DELTA_STREAM_AUTH_TOKEN="$SIEM_TOKEN"
+```
+
+Each ingest batch emits a delta payload with:
+
+- `new` — canonical id first seen in current state for the ingest source
+- `changed` — severity, CVSS, reach score, or status materially changed
+- `resolved` — open finding absent from a reconcile-absent batch
+
+Watermarks are stored per `(tenant_id, destination_id)` so retries and
+multi-replica control planes do not double-send the same batch. Delivery rides
+the hardened `agent_bom.delivery` client (retries, DLQ, circuit breaker,
+idempotency keys).
+
+First command → artifact → next step:
+
+1. Enable the env vars above and restart the control plane.
+2. POST a bulk ingest with `reconcile_absent: true` when you want resolved events.
+3. Inspect delivery logs / your sink for `finding_delta_batch` payloads tagged
+   with `batch_id` and `observed_at`.
+4. See `docs/operations/ENV_VARS.md` for the full variable reference.

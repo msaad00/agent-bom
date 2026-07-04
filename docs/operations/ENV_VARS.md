@@ -189,6 +189,13 @@ so they cannot regress silently, but they are not part of this reference.
 ## PostgreSQL Control Plane Tuning
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_DELTA_STREAM_AUTH_SCHEME` | `str` | `''` | — |
+| `AGENT_BOM_DELTA_STREAM_AUTH_TOKEN` | `str` | `''` | — |
+| `AGENT_BOM_DELTA_STREAM_DESTINATION_ID` | `str` | `'delta-stream-default'` | — |
+| `AGENT_BOM_DELTA_STREAM_ENABLED` | `bool` | `False` | Finding delta-stream export to SIEM / data-lake sinks (#3514). |
+| `AGENT_BOM_DELTA_STREAM_FORMAT` | `str` | `'ndjson'` | — |
+| `AGENT_BOM_DELTA_STREAM_SIGNING_SECRET` | `str` | `''` | — |
+| `AGENT_BOM_DELTA_STREAM_URL` | `str` | `''` | — |
 | `AGENT_BOM_HUB_REFERENCE_NORMALIZE` | `bool` | `True` | Compliance hub reference-table normalization (#3513). When enabled, repeated CVE/framework blobs are stored once per tenant and ledger rows keep join keys. Set to 0 to disable new extractions (reads still hydrate existing refs). |
 | `AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS` | `int` | `5` | — |
 | `AGENT_BOM_POSTGRES_GRAPH_SEARCH_TIMEOUT_MS` | `int` | `3000` | — |

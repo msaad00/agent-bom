@@ -33,6 +33,7 @@ _ALLOWED_OCSF_CONSUMERS = {
     "siem/sentinel.py",
     "siem/chronicle.py",
     "siem/security_lake.py",
+    "siem/delta_stream.py",
     # output/ocsf.py is the MCP tool's OCSF serializer.
     "output/ocsf.py",
 }

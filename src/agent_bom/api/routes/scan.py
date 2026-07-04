@@ -1456,6 +1456,9 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
 
     observed_at = normalize_observed_at(body.observed_at or body.metadata.get("observed_at"))
     hub_store = get_compliance_hub_store()
+    from agent_bom.delta_stream import capture_hub_snapshots, emit_hub_finding_deltas_if_enabled, resolved_canonical_ids
+
+    prior_snapshots = capture_hub_snapshots(hub_store, tenant_id, source=body.source)
     new_total = hub_store.add(tenant_id, payloads)
     hub_store.upsert_current_batch(
         tenant_id,
@@ -1465,14 +1468,26 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
         source=body.source,
     )
     reconciled = 0
+    resolved_ids: set[str] = set()
     if body.reconcile_absent:
         present = collect_present_canonical_ids(payloads, source=body.source)
+        resolved_ids = resolved_canonical_ids(prior_snapshots, present)
         reconciled = hub_store.reconcile_current_absent(
             tenant_id,
             present_canonical_ids=present,
             observed_at=observed_at,
             scope_source=body.source,
         )
+    delta_results = emit_hub_finding_deltas_if_enabled(
+        tenant_id=tenant_id,
+        hub_store=hub_store,
+        prior=prior_snapshots,
+        batch_findings=payloads,
+        resolved_canonical_ids=resolved_ids,
+        observed_at=observed_at,
+        batch_id=batch_id,
+        source=body.source,
+    )
     warnings = ["tenant_id in body ignored; request tenant scope is authoritative"] if ignored_body_tenant else []
     response = {
         "schema_version": "v1",
@@ -1486,6 +1501,13 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     }
     if body.reconcile_absent:
         response["reconciled"] = reconciled
+    if delta_results:
+        delivered = sum(
+            1
+            for result in delta_results
+            if (result.get("status") == "delivered" if isinstance(result, dict) else getattr(result, "delivered", False))
+        )
+        response["delta_stream"] = {"emitted_batches": len(delta_results), "delivered": delivered}
     if idem_key:
         _get_idempotency_store().put(
             "/v1/findings/bulk",

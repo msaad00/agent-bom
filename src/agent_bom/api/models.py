@@ -212,6 +212,42 @@ class ScanJob(BaseModel):
         return sanitized if isinstance(sanitized, list) else []
 
 
+class ReportFormat(str, Enum):
+    """Supported async report artifact formats."""
+
+    NDJSON = "ndjson"
+
+
+class ReportJobRequest(BaseModel):
+    """Request body for ``POST /v1/reports``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    format: ReportFormat = ReportFormat.NDJSON
+    sort: Literal["effective_reach", "cvss", "severity", "ordinal"] = "effective_reach"
+    severity: str | None = Field(default=None, max_length=32)
+
+
+class ReportJob(BaseModel):
+    """Async findings export job backed by streamed hub reads."""
+
+    job_id: str
+    tenant_id: str = "default"
+    status: JobStatus = JobStatus.PENDING
+    format: ReportFormat = ReportFormat.NDJSON
+    sort: str = "effective_reach"
+    severity: str | None = None
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    row_count: int | None = None
+    byte_count: int | None = None
+    download_token: str | None = None
+    error: str | None = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
 # ─── Meta Models ───────────────────────────────────────────────────────────
 
 

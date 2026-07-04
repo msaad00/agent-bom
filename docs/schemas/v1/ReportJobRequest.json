@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "ReportFormat": {
+      "description": "Supported async report artifact formats.",
+      "enum": [
+        "ndjson"
+      ],
+      "title": "ReportFormat",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Request body for ``POST /v1/reports``.",
+  "properties": {
+    "format": {
+      "$ref": "#/$defs/ReportFormat",
+      "default": "ndjson"
+    },
+    "severity": {
+      "anyOf": [
+        {
+          "maxLength": 32,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Severity"
+    },
+    "sort": {
+      "default": "effective_reach",
+      "enum": [
+        "effective_reach",
+        "cvss",
+        "severity",
+        "ordinal"
+      ],
+      "title": "Sort",
+      "type": "string"
+    }
+  },
+  "title": "ReportJobRequest",
+  "type": "object"
+}

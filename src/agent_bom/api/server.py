@@ -846,6 +846,7 @@ from agent_bom.api.routes.plugins import router as _plugins_router  # noqa: E402
 from agent_bom.api.routes.posture_streaming import router as _posture_streaming_router  # noqa: E402
 from agent_bom.api.routes.privacy import router as _privacy_router  # noqa: E402
 from agent_bom.api.routes.proxy import router as _proxy_router  # noqa: E402
+from agent_bom.api.routes.reports import router as _reports_router  # noqa: E402
 from agent_bom.api.routes.runtime_blueprints import router as _runtime_blueprints_router  # noqa: E402
 from agent_bom.api.routes.scan import router as _scan_router  # noqa: E402
 from agent_bom.api.routes.schedules import router as _schedules_router  # noqa: E402
@@ -880,6 +881,7 @@ app.include_router(_plugins_router)
 app.include_router(_posture_streaming_router)
 app.include_router(_privacy_router)
 app.include_router(_proxy_router)
+app.include_router(_reports_router)
 app.include_router(_runtime_blueprints_router)
 app.include_router(_scan_router)
 app.include_router(_schedules_router)

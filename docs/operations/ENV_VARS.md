@@ -208,6 +208,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS` | `int` | `90` | — |
 | `AGENT_BOM_RATE_LIMIT_KEY_ROTATION_DAYS` | `int` | `30` | Operators rotate AGENT_BOM_RATE_LIMIT_KEY periodically and record the rotation timestamp in AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED (ISO-8601 with timezone). The control plane warns when the configured key age approaches the rotation interval |
 
+## Report export artifacts
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_REPORT_ARTIFACT_DIR` | `str` | `''` | Async findings report exports are written to a local artifact directory and downloaded through job-scoped tokens. Empty string means use the per-user default ~/.agent-bom/report-artifacts. The worker re-reads the env var at runtime so tests |
+
 ## Runtime → graph incident feedback
 | Env var | Type | Default | Description |
 |---|---|---|---|

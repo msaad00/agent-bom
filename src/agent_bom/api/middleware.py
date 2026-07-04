@@ -833,6 +833,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/exceptions", "analyst"),
         ("POST", "/v1/findings/jira", "analyst"),
         ("POST", "/v1/findings/bulk", "analyst"),
+        ("POST", "/v1/reports", "analyst"),
+        ("GET", "/v1/reports/", "analyst"),
         ("POST", "/v1/findings/false-positive", "analyst"),
         ("POST", "/v1/findings/feedback", "analyst"),
         ("DELETE", "/v1/findings/false-positive/", "analyst"),

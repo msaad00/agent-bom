@@ -2491,6 +2491,49 @@
         "title": "PushPayload",
         "type": "object"
       },
+      "ReportFormat": {
+        "description": "Supported async report artifact formats.",
+        "enum": [
+          "ndjson"
+        ],
+        "title": "ReportFormat",
+        "type": "string"
+      },
+      "ReportJobRequest": {
+        "additionalProperties": false,
+        "description": "Request body for ``POST /v1/reports``.",
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ReportFormat",
+            "default": "ndjson"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "sort": {
+            "default": "effective_reach",
+            "enum": [
+              "effective_reach",
+              "cvss",
+              "severity",
+              "ordinal"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        "title": "ReportJobRequest",
+        "type": "object"
+      },
       "RotateKeyRequest": {
         "additionalProperties": false,
         "properties": {
@@ -18496,6 +18539,147 @@
         "summary": "Get Registry Server",
         "tags": [
           "registry"
+        ]
+      }
+    },
+    "/v1/reports": {
+      "post": {
+        "description": "Enqueue an async findings export (gzipped NDJSON) instead of a synchronous body.",
+        "operationId": "create_report_job_v1_reports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Report Job V1 Reports Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Report Job",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/reports/{job_id}": {
+      "get": {
+        "description": "Return async report job status and download URL when complete.",
+        "operationId": "get_report_job_v1_reports__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Report Job V1 Reports  Job Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Report Job",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/reports/{job_id}/download": {
+      "get": {
+        "description": "Download a completed report artifact using the job-scoped token.",
+        "operationId": "download_report_artifact_v1_reports__job_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 8,
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Report Artifact",
+        "tags": [
+          "reports"
         ]
       }
     },

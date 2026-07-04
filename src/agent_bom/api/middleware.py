@@ -515,39 +515,41 @@ class PostgresRateLimitStore:
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS api_rate_limits (
-                    bucket_key      TEXT NOT NULL,
-                    window_started  INTEGER NOT NULL,
-                    hits            INTEGER NOT NULL DEFAULT 0,
-                    updated_at      TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-                    PRIMARY KEY (bucket_key, window_started)
+                CREATE TABLE IF NOT EXISTS api_rate_limit_hits (
+                    bucket_key TEXT NOT NULL,
+                    hit_at DOUBLE PRECISION NOT NULL
                 )
             """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_rate_limits_updated ON api_rate_limits(updated_at)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_api_rate_limit_hits_bucket_hit_at "
+                "ON api_rate_limit_hits (bucket_key, hit_at)"
+            )
 
     def hit(self, key: str, now: float) -> tuple[int, int]:
         """Record a request and return (hit_count, reset_epoch)."""
-        window_started = int(now // self._window) * self._window
-        reset_at = window_started + self._window
+        window_start = now - self._window
         with self._pool.connection() as conn:
-            # Trim stale windows opportunistically to keep the table bounded.
+            # Trim stale hits opportunistically to keep the table bounded.
             conn.execute(
-                "DELETE FROM api_rate_limits WHERE window_started < %s",
-                (window_started - (self._window * 2),),
+                "DELETE FROM api_rate_limit_hits WHERE hit_at < %s",
+                (window_start,),
+            )
+            conn.execute(
+                "INSERT INTO api_rate_limit_hits (bucket_key, hit_at) VALUES (%s, %s)",
+                (key, now),
             )
             row = conn.execute(
                 """
-                INSERT INTO api_rate_limits (bucket_key, window_started, hits)
-                VALUES (%s, %s, 1)
-                ON CONFLICT (bucket_key, window_started)
-                DO UPDATE SET hits = api_rate_limits.hits + 1,
-                              updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-                RETURNING hits
+                SELECT COUNT(*), MIN(hit_at)
+                FROM api_rate_limit_hits
+                WHERE bucket_key = %s AND hit_at >= %s
                 """,
-                (key, window_started),
+                (key, window_start),
             ).fetchone()
-        count = int(row[0]) if row else 1
-        return count, int(reset_at)
+        count = int(row[0]) if row and row[0] is not None else 1
+        oldest = float(row[1]) if row and row[1] is not None else now
+        reset_at = int(oldest + self._window)
+        return count, reset_at
 
 
 class TrustHeadersMiddleware(BaseHTTPMiddleware):

@@ -660,8 +660,8 @@ CREATE INDEX IF NOT EXISTS idx_jobq_team       ON job_queue(team_id);
 CREATE INDEX IF NOT EXISTS idx_jobq_type       ON job_queue(job_type);
 
 -- ── Table: api_rate_limits ───────────────────────────────────────────────────
--- Shared API rate limiter buckets. Infrastructure-only table used to keep
--- request throttling consistent across horizontally scaled API replicas.
+-- Legacy fixed-window buckets (superseded by api_rate_limit_hits). Kept so
+-- existing deployments that already created the table do not fail migrations.
 
 CREATE TABLE IF NOT EXISTS api_rate_limits (
     bucket_key      TEXT NOT NULL,
@@ -672,6 +672,17 @@ CREATE TABLE IF NOT EXISTS api_rate_limits (
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_rate_limits_updated ON api_rate_limits(updated_at);
+
+-- ── Table: api_rate_limit_hits ───────────────────────────────────────────────
+-- Per-request timestamps for true sliding-window throttling across replicas.
+
+CREATE TABLE IF NOT EXISTS api_rate_limit_hits (
+    bucket_key TEXT NOT NULL,
+    hit_at DOUBLE PRECISION NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_rate_limit_hits_bucket_hit_at
+    ON api_rate_limit_hits (bucket_key, hit_at);
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- TENANT RLS HELPERS + POLICIES
@@ -1197,7 +1208,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 --   policy_results     — per-scan policy evaluation outcomes
 --   api_keys           — persistent RBAC API key store (scrypt KDF)
 --   job_queue          — background async task queue
---   api_rate_limits    — shared API rate-limiter buckets
+--   api_rate_limits      — legacy fixed-window buckets (deprecated)
+--   api_rate_limit_hits  — shared sliding-window API rate-limiter events
 --   fleet_agents       — governed agent lifecycle (long-lived)
 --   gateway_policies   — runtime MCP enforcement policies
 --   policy_audit_log   — runtime policy audit trail (HMAC-verified)

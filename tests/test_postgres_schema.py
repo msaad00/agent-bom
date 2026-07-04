@@ -173,7 +173,8 @@ def test_graph_edges_versioning_migration_exists():
 
 def test_schema_summary_comment_is_current():
     assert "--  Schema (21+ tables):" in SQL
-    assert "--   api_rate_limits    — shared API rate-limiter buckets" in SQL
+    assert "--   api_rate_limits      — legacy fixed-window buckets (deprecated)" in SQL
+    assert "--   api_rate_limit_hits  — shared sliding-window API rate-limiter events" in SQL
     assert "--   audit_log          — signed API/security audit trail" in SQL
     assert "--   trend_history      — persisted posture/vulnerability history" in SQL
     assert "--   attack_paths       — persisted fix-first attack-path projections" in SQL
@@ -217,6 +218,13 @@ def test_api_rate_limits_table_exists():
     for col in ("bucket_key", "window_started", "hits", "updated_at"):
         assert col in cols, f"api_rate_limits missing column: {col}"
     assert "idx_api_rate_limits_updated" in _indexes()
+
+
+def test_api_rate_limit_hits_table_exists():
+    cols = _columns_for("api_rate_limit_hits")
+    for col in ("bucket_key", "hit_at"):
+        assert col in cols, f"api_rate_limit_hits missing column: {col}"
+    assert "idx_api_rate_limit_hits_bucket_hit_at" in _indexes()
 
 
 # ── teams table ───────────────────────────────────────────────────────────────

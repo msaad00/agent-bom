@@ -58,7 +58,7 @@ This pilot page stays focused on the narrower pilot contract:
 | Proxy audit push | Yes | SOC sees blocks and warnings centrally |
 | Same-origin UI | Yes | One ingress, one internal control plane |
 | Postgres | Yes | Primary transactional backend for multi-replica pilots |
-| ClickHouse | Optional | Bring it in once pilot event volume justifies it |
+| ClickHouse | Optional | OSS server in your VPC or optional ClickHouse Cloud; canonical analytics rows only (not OCSF storage). Bring it in once pilot event volume justifies it |
 | Snowflake backend | No | Not part of the focused pilot contract |
 | Managed endpoint agent | No | Still roadmap, not current product contract |
 | MDM integration | No | Still roadmap |
@@ -74,12 +74,21 @@ This pilot page stays focused on the narrower pilot contract:
 - the EKS pilot path assumes Pod Security Admission `restricted`
 - focused pilot values lock ingress down instead of leaving it wide open
 
+Finding, scan, and graph payloads are **not** application-layer encrypted.
+Confidentiality at rest is delegated to Postgres/RDS volume encryption, optional
+object-store encryption for exports/backups, and tenant RLS — not to an
+in-control-plane payload cipher. API tokens are hashed, audit chains are
+HMAC-signed, and cloud-connection secrets use envelope encryption; finding
+bodies rely on your storage encryption. See
+[`docs/ENTERPRISE_DEPLOYMENT.md`](https://github.com/msaad00/agent-bom/blob/main/docs/ENTERPRISE_DEPLOYMENT.md#finding-and-scan-payload-encryption-at-rest-deployment-prerequisite)
+for the full buyer checklist.
+
 ## Scale properties
 
 - API is horizontally scalable behind Postgres-backed state
 - scheduler leader election uses Postgres advisory locking
 - endpoint fleet is batch-driven and scales to pilot size without a managed agent
-- ClickHouse is available when pilot volume grows beyond what Postgres should carry for analytics
+- ClickHouse is available when pilot volume grows beyond what Postgres should carry for analytics (OSS self-hosted or optional ClickHouse Cloud; see [Backend and Security-Lake Strategy](backend-and-security-lakes.md))
 - sidecar proxy rollout stays workload-by-workload instead of forcing universal inline routing
 
 For concrete sizing, autoscaling, and load-test guidance, use

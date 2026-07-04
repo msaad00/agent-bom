@@ -113,6 +113,13 @@ EKS, AKS, GKE, BYO-Postgres, SQLite pilots, collector-only workloads, and more.
 On AWS you can still run `aws/baseline` on its own for RDS/IRSA/S3/Secrets and
 feed its `helm_values_hint` output into your values file.
 
+**Schema migrations:** for Helm installs against Postgres, the chart's
+`pre-install,pre-upgrade` hook runs Alembic automatically
+(`controlPlane.migrations.enabled`, on by default). A normal `helm upgrade`
+does not require a manual `alembic upgrade head`. See
+[Control-Plane Helm — migration contract](../site-docs/deployment/control-plane-helm.md)
+for the one-time `init.sql` stamp path and the non-Helm override.
+
 ---
 
 ## Tier 3 — Operator-hosted / gated POC

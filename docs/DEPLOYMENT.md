@@ -311,6 +311,12 @@ spec:
 
 For the maintained Helm chart in `deploy/helm/agent-bom/`, the runtime monitor DaemonSet now includes liveness, readiness, and startup probes by default when enabled, can optionally expose a Prometheus Operator `ServiceMonitor` for `/metrics`, can optionally create an `Ingress` and `PodDisruptionBudget` for the monitor service, and ships with an explicit `NetworkPolicy` egress baseline for DNS plus outbound web traffic instead of `allow-all` egress.
 
+Postgres schema migrations for the control plane run automatically on Helm
+`pre-install` / `pre-upgrade` when `controlPlane.migrations.enabled` is true
+(the default). Operators do not run Alembic manually before routine chart
+upgrades; see [`DEPLOY_PLATFORM.md`](DEPLOY_PLATFORM.md) and
+[`site-docs/deployment/control-plane-helm.md`](../site-docs/deployment/control-plane-helm.md).
+
 ---
 
 ## ❄️ Snowflake Integration

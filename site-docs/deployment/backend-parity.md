@@ -16,6 +16,13 @@ The product contract is:
 - `Snowflake`: warehouse-native and governance-oriented backend where parity is explicitly implemented
 - `Neptune`: design-only enterprise graph-store candidate; not wired today
 
+**ClickHouse hosting and data shape:** analytics uses the OSS ClickHouse server
+in your VPC/Kubernetes cluster, or optionally **ClickHouse Cloud** — neither is
+required for the control plane. The sink stores **canonical product rows**
+(findings, runtime events, posture snapshots), not raw OCSF events; OCSF remains
+an export projection at the SIEM boundary (`docs/OCSF_BOUNDARY.md`). See
+[Backend and Security-Lake Strategy](backend-and-security-lakes.md).
+
 This page documents what is wired today, not what might exist as a class on disk.
 
 ## Current API Backend Matrix

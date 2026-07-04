@@ -192,11 +192,7 @@ class InMemoryRuntimeEventStore:
         if not unique_records:
             return 0
         with self._lock:
-            new_records = [
-                record
-                for record in unique_records
-                if (record.tenant_id, record.observation_id) not in self._observations
-            ]
+            new_records = [record for record in unique_records if (record.tenant_id, record.observation_id) not in self._observations]
             if not new_records:
                 return 0
             existing_sessions: dict[str, RuntimeSessionRecord] = {
@@ -511,14 +507,9 @@ def _enforce_in_memory_observation_cap(
     cap = analytics_max_events()
     if cap <= 0:
         return
-    tenant_rows = [
-        (key, row)
-        for key, row in observations.items()
-        if key[0] == tenant_id
-    ]
+    tenant_rows = [(key, row) for key, row in observations.items() if key[0] == tenant_id]
     if len(tenant_rows) <= cap:
         return
     tenant_rows.sort(key=lambda item: item[1].observed_at)
     for key, _row in tenant_rows[: len(tenant_rows) - cap]:
         observations.pop(key, None)
-

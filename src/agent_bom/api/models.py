@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
@@ -44,6 +44,17 @@ _BATCH_LIST_TARGET_FIELDS = (
 )
 _BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom")
 
+_SCAN_PATH_MAX_LENGTH = 4096
+_SCAN_IMAGE_REF_MAX_LENGTH = 512
+_SCAN_CONNECTOR_MAX_LENGTH = 128
+_SCAN_GLOB_MAX_LENGTH = 256
+
+ScanPathEntry = Annotated[str, Field(max_length=_SCAN_PATH_MAX_LENGTH)]
+ScanImageRef = Annotated[str, Field(max_length=_SCAN_IMAGE_REF_MAX_LENGTH)]
+ScanConnectorName = Annotated[str, Field(max_length=_SCAN_CONNECTOR_MAX_LENGTH)]
+ScanGlobPattern = Annotated[str, Field(max_length=_SCAN_GLOB_MAX_LENGTH)]
+ScanSinglePath = Annotated[str, Field(max_length=_SCAN_PATH_MAX_LENGTH)]
+
 
 class _BoundedProgress(list[str]):
     """List that keeps only the latest configured API progress events."""
@@ -68,10 +79,10 @@ class ScanRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    inventory: str | None = None
+    inventory: ScanSinglePath | None = None
     """Path to agents.json inventory file."""
 
-    images: list[str] = Field(default_factory=list)
+    images: list[ScanImageRef] = Field(default_factory=list)
     """Docker image references to scan (e.g. ['myapp:latest', 'redis:7'])."""
 
     k8s: bool = False
@@ -80,19 +91,19 @@ class ScanRequest(BaseModel):
     k8s_namespace: str | None = None
     """Kubernetes namespace (None = all)."""
 
-    tf_dirs: list[str] = Field(default_factory=list)
+    tf_dirs: list[ScanPathEntry] = Field(default_factory=list)
     """Terraform directories to scan."""
 
-    gha_path: str | None = None
+    gha_path: ScanSinglePath | None = None
     """Path to a Git repo to scan GitHub Actions workflows."""
 
-    agent_projects: list[str] = Field(default_factory=list)
+    agent_projects: list[ScanPathEntry] = Field(default_factory=list)
     """Python project directories using AI agent frameworks."""
 
-    jupyter_dirs: list[str] = Field(default_factory=list)
+    jupyter_dirs: list[ScanPathEntry] = Field(default_factory=list)
     """Directories to scan for Jupyter notebooks (.ipynb) with AI library usage."""
 
-    sbom: str | None = None
+    sbom: ScanSinglePath | None = None
     """Path to an existing CycloneDX / SPDX SBOM file."""
 
     enrich: bool = False
@@ -113,10 +124,10 @@ class ScanRequest(BaseModel):
     db_sources: str | None = None
     """Comma-separated vulnerability DB sources to refresh when auto_update_db is enabled."""
 
-    connectors: list[str] = Field(default_factory=list)
+    connectors: list[ScanConnectorName] = Field(default_factory=list)
     """SaaS connectors to discover from (e.g. ['jira', 'servicenow', 'slack'])."""
 
-    filesystem_paths: list[str] = Field(default_factory=list)
+    filesystem_paths: list[ScanPathEntry] = Field(default_factory=list)
     """Filesystem directories or tar archives to scan via Syft."""
 
     format: str = "json"
@@ -128,16 +139,16 @@ class ScanRequest(BaseModel):
     dynamic_max_depth: int = 4
     """Max directory depth for dynamic discovery."""
 
-    scope_agents: list[str] = Field(default_factory=list)
+    scope_agents: list[ScanGlobPattern] = Field(default_factory=list)
     """Filter discovered agents by name (glob patterns, e.g. ['claude-*', 'cursor'])."""
 
-    scope_servers: list[str] = Field(default_factory=list)
+    scope_servers: list[ScanGlobPattern] = Field(default_factory=list)
     """Filter discovered MCP servers by name (glob patterns)."""
 
-    exclude_agents: list[str] = Field(default_factory=list)
+    exclude_agents: list[ScanGlobPattern] = Field(default_factory=list)
     """Exclude agents matching these name patterns."""
 
-    exclude_servers: list[str] = Field(default_factory=list)
+    exclude_servers: list[ScanGlobPattern] = Field(default_factory=list)
     """Exclude MCP servers matching these name patterns."""
 
     min_severity: str | None = None

@@ -272,9 +272,15 @@ You still own:
 
 - keep `controlPlane.api.replicas` and `controlPlane.ui.replicas` at `2+`
 - use `Postgres`, not SQLite
-- run Alembic for long-lived Postgres control planes:
-  - `alembic -c deploy/supabase/postgres/alembic.ini upgrade head`
-  - existing `init.sql` databases should be stamped once with `20260416_01`
+- database migrations run automatically: the chart ships a `pre-install,pre-upgrade`
+  Helm hook (`controlPlane.migrations.enabled`, on by default) that runs
+  `alembic -c deploy/supabase/postgres/alembic.ini upgrade head` before the new
+  API pods roll. No manual Alembic step is required for Helm upgrades.
+  - databases first bootstrapped from `init.sql` should be stamped once with the
+    baseline so the auto-hook has a revision to upgrade from:
+    `alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01`
+  - to manage migrations yourself (non-Helm or external DB tooling), set
+    `controlPlane.migrations.enabled=false` and run `upgrade head` in your pipeline
 - enable the control-plane HPAs before higher-volume rollout
 - use anti-affinity and a control-plane `PriorityClass` when you expect node pressure
 - enable topology spread when you run multi-AZ EKS

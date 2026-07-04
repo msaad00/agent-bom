@@ -4,6 +4,7 @@
   "properties": {
     "agent_projects": {
       "items": {
+        "maxLength": 4096,
         "type": "string"
       },
       "title": "Agent Projects",
@@ -16,6 +17,7 @@
     },
     "connectors": {
       "items": {
+        "maxLength": 128,
         "type": "string"
       },
       "title": "Connectors",
@@ -55,6 +57,7 @@
     },
     "exclude_agents": {
       "items": {
+        "maxLength": 256,
         "type": "string"
       },
       "title": "Exclude Agents",
@@ -62,6 +65,7 @@
     },
     "exclude_servers": {
       "items": {
+        "maxLength": 256,
         "type": "string"
       },
       "title": "Exclude Servers",
@@ -69,6 +73,7 @@
     },
     "filesystem_paths": {
       "items": {
+        "maxLength": 4096,
         "type": "string"
       },
       "title": "Filesystem Paths",
@@ -82,6 +87,7 @@
     "gha_path": {
       "anyOf": [
         {
+          "maxLength": 4096,
           "type": "string"
         },
         {
@@ -93,6 +99,7 @@
     },
     "images": {
       "items": {
+        "maxLength": 512,
         "type": "string"
       },
       "title": "Images",
@@ -101,6 +108,7 @@
     "inventory": {
       "anyOf": [
         {
+          "maxLength": 4096,
           "type": "string"
         },
         {
@@ -112,6 +120,7 @@
     },
     "jupyter_dirs": {
       "items": {
+        "maxLength": 4096,
         "type": "string"
       },
       "title": "Jupyter Dirs",
@@ -159,6 +168,7 @@
     "sbom": {
       "anyOf": [
         {
+          "maxLength": 4096,
           "type": "string"
         },
         {
@@ -170,6 +180,7 @@
     },
     "scope_agents": {
       "items": {
+        "maxLength": 256,
         "type": "string"
       },
       "title": "Scope Agents",
@@ -177,6 +188,7 @@
     },
     "scope_servers": {
       "items": {
+        "maxLength": 256,
         "type": "string"
       },
       "title": "Scope Servers",
@@ -184,6 +196,7 @@
     },
     "tf_dirs": {
       "items": {
+        "maxLength": 4096,
         "type": "string"
       },
       "title": "Tf Dirs",

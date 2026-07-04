@@ -301,20 +301,9 @@ def resolved_canonical_ids(prior: dict[str, FindingSnapshot], present: set[str])
 def _format_delta_payload(events: list[FindingDeltaEvent], *, fmt: DeltaFormat) -> dict[str, Any]:
     raw_events = [event.to_dict() for event in events]
     if fmt == "ocsf":
-        from agent_bom.siem.ocsf import to_ocsf_detection_finding
+        from agent_bom.siem.delta_stream import delta_events_to_ocsf
 
-        ocsf_events = []
-        for event in raw_events:
-            raw_finding = event.get("finding")
-            finding = raw_finding if isinstance(raw_finding, dict) else {}
-            alert = {
-                "severity": finding.get("severity", "medium"),
-                "message": finding.get("title") or finding.get("id") or event.get("canonical_id"),
-                "detector": f"finding_delta_{event.get('event_type', 'new')}",
-                "details": event,
-            }
-            ocsf_events.append(to_ocsf_detection_finding(alert))
-        return {"format": "ocsf", "events": ocsf_events}
+        return {"format": "ocsf", "events": delta_events_to_ocsf(raw_events)}
     return {"format": "ndjson", "events": raw_events}
 
 

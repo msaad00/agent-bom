@@ -27,10 +27,11 @@ wire-protocol for SIEM interop**, not agent-bom's internal data model.
    AWS-→-OCSF-→-internal double hop. OCSF only appears on the way out to
    a SIEM.
 4. **OCSF emission is one-way, at the wire boundary.** Translators live
-   in `siem/ocsf.py` (SIEM push, Detection Finding, `class_uid=2004`)
-   and `output/ocsf.py` (MCP tool output, Security Finding,
-   `class_uid=2001`). Runtime alerts are the only source currently
-   translated; CIS / skills / CVE findings stay in internal JSON today.
+   in `siem/ocsf.py` (SIEM push, Detection Finding, `class_uid=2004`),
+   `siem/delta_stream.py` (finding delta-stream projection), and
+   `output/ocsf.py` (MCP tool output, Security Finding, `class_uid=2001`).
+   Runtime alerts and finding-delta export batches are translated at the
+   boundary; CIS / skills / CVE findings stay in internal JSON otherwise.
 
 ## What is allowed to depend on OCSF
 

@@ -640,26 +640,22 @@ def _postgres_current_order_clause(sort: str) -> str:
     return _sqlite_current_order_clause(sort)
 
 
-def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], tuple[Any, str, str]]:
+def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], tuple[float | str, str, str]]:
     """Sort key for in-memory current-state pages (descending primary signal)."""
     normalized = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
 
-    def _key(row: dict[str, Any]) -> tuple[Any, str, str]:
+    def _key(row: dict[str, Any]) -> tuple[float | str, str, str]:
+        tie = str(row.get("last_seen") or "")
+        canonical = str(row.get("canonical_id") or "")
         if normalized == "ordinal":
-            primary = 0.0
-            tie = str(row.get("last_seen") or "")
-        elif normalized == "cvss":
+            return (tie, canonical, "")
+        if normalized == "cvss":
             primary = float(row.get("cvss_score") or 0.0)
-            tie = str(row.get("last_seen") or "")
         elif normalized == "severity":
             primary = float(row.get("severity_rank") or 0)
-            tie = str(row.get("last_seen") or "")
         else:
             primary = float(row.get("effective_reach_score") or 0.0)
-            tie = str(row.get("last_seen") or "")
-        if normalized == "ordinal":
-            return (tie, str(row.get("canonical_id") or ""), "")
-        return (-primary, tie, str(row.get("canonical_id") or ""))
+        return (-primary, tie, canonical)
 
     return _key
 

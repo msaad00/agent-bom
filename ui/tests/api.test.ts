@@ -176,6 +176,47 @@ describe('api.listJobs', () => {
   })
 })
 
+describe('api.getGraphImpact', () => {
+  it('requests the blast-radius endpoint with node, scan, and depth', async () => {
+    const payload = {
+      node_id: 'server:github-mcp',
+      affected_nodes: ['agent:coder', 'tool:read_file'],
+      affected_by_type: { agent: 1, tool: 1 },
+      affected_count: 2,
+      max_depth_reached: 2,
+    }
+    const fetchMock = mockFetch(payload)
+    global.fetch = fetchMock
+
+    const result = await api.getGraphImpact('server:github-mcp', 'scan-1', 4)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/graph/impact?node=server%3Agithub-mcp&scan_id=scan-1&max_depth=4',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    expect(result.affected_count).toBe(2)
+    expect(result.affected_nodes).toContain('agent:coder')
+  })
+
+  it('omits optional params when not provided', async () => {
+    const fetchMock = mockFetch({
+      node_id: 'n1',
+      affected_nodes: [],
+      affected_by_type: {},
+      affected_count: 0,
+      max_depth_reached: 0,
+    })
+    global.fetch = fetchMock
+
+    await api.getGraphImpact('n1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/graph/impact?node=n1',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+})
+
 describe('api.getScan', () => {
   it('returns expected shape', async () => {
     const payload = {

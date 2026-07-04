@@ -16,6 +16,7 @@ import type {
   GraphQueryRequest,
   GraphQueryResponse,
   GraphNodeDetailResponse,
+  GraphImpactResponse,
   GraphSearchResponse,
   GraphSemanticClustersResponse,
   GraphAgentsResponse,
@@ -706,6 +707,15 @@ export const api = {
     if (scanId) params.set("scan_id", scanId);
     const qs = params.toString();
     return get<GraphNodeDetailResponse>(`/v1/graph/node/${encodeURIComponent(nodeId)}${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Compute the blast radius (reverse-BFS impact) of a node */
+  getGraphImpact: (nodeId: string, scanId?: string, maxDepth?: number) => {
+    const params = new URLSearchParams();
+    params.set("node", nodeId);
+    if (scanId) params.set("scan_id", scanId);
+    if (maxDepth != null) params.set("max_depth", String(maxDepth));
+    return get<GraphImpactResponse>(`/v1/graph/impact?${params.toString()}`);
   },
 
   /** Connect to SSE stream for real-time progress */

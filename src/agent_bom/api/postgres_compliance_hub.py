@@ -19,6 +19,7 @@ from agent_bom.api.compliance_hub_store import (
     _now_utc_iso,
     _postgres_current_order_clause,
     _postgres_order_clause,
+    _redact_finding,
     _redact_findings,
     _severity_rank,
     compute_effective_reach_score,
@@ -34,6 +35,11 @@ from agent_bom.api.hub_current_payload import (
     resolve_ledger_finding_id,
 )
 from agent_bom.api.hub_payload_codec import decode_hub_payload, encode_hub_payload
+from agent_bom.api.hub_reference_store import (
+    ensure_postgres_reference_tables,
+    hydrate_finding_payloads_postgres,
+    persist_finding_references_postgres,
+)
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
@@ -111,10 +117,12 @@ def _fetch_ledger_payloads_postgres(
         """,
         (tenant_id, list(finding_ids)),
     ).fetchall()
-    out: dict[str, dict[str, Any]] = {}
-    for finding_id, raw_payload in rows:
-        out[str(finding_id)] = decode_hub_payload(raw_payload)
-    return out
+    if not rows:
+        return {}
+    ordered_ids = [str(finding_id) for finding_id, _raw in rows]
+    payloads = [decode_hub_payload(raw) for _finding_id, raw in rows]
+    hydrated = hydrate_finding_payloads_postgres(conn, tenant_id, payloads)
+    return dict(zip(ordered_ids, hydrated))
 
 
 def _postgres_current_row_from_db(row: tuple[Any, ...], *, has_ledger_col: bool) -> dict[str, Any]:
@@ -256,6 +264,9 @@ class PostgresComplianceHubStore:
             _migrate_current_ledger_ref_postgres(conn)
             _ensure_tenant_rls(conn, "hub_findings_current", "tenant_id")
             _ensure_tenant_rls(conn, "hub_findings_current_observations", "tenant_id")
+            ensure_postgres_reference_tables(conn)
+            _ensure_tenant_rls(conn, "hub_cve_intel", "tenant_id")
+            _ensure_tenant_rls(conn, "hub_framework_refs", "tenant_id")
             conn.commit()
 
     @staticmethod
@@ -303,12 +314,15 @@ class PostgresComplianceHubStore:
         )
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
-        findings = _redact_findings(findings)
         if not findings:
             return self.count(tenant_id)
         now = _now_utc_iso()
         with _tenant_connection(self._pool) as conn:
-            for payload in findings:
+            for original in findings:
+                if not isinstance(original, dict):
+                    continue
+                slim = persist_finding_references_postgres(conn, tenant_id, original)
+                payload = _redact_finding(slim)
                 # Idempotent ingest: a resend of the same (tenant_id, finding_id)
                 # refreshes payload/metadata and keeps the original ``ordinal``
                 # (the BIGSERIAL default only advances on genuine inserts).
@@ -331,7 +345,7 @@ class PostgresComplianceHubStore:
                     """,
                     (
                         tenant_id,
-                        str(payload.get("id") or f"hub-{now}-{id(payload)}"),
+                        str(payload.get("id") or f"hub-{now}-{id(original)}"),
                         now,
                         str(payload.get("source") or ""),
                         _frameworks_csv(payload),
@@ -352,11 +366,8 @@ class PostgresComplianceHubStore:
                 "SELECT payload FROM compliance_hub_findings WHERE tenant_id = %s ORDER BY ordinal ASC",
                 (tenant_id,),
             ).fetchall()
-        out: list[dict[str, Any]] = []
-        for row in rows:
-            raw = row[0]
-            out.append(decode_hub_payload(raw))
-        return out
+            payloads = [decode_hub_payload(row[0]) for row in rows]
+            return hydrate_finding_payloads_postgres(conn, tenant_id, payloads)
 
     def list_page(
         self,
@@ -403,10 +414,8 @@ class PostgresComplianceHubStore:
                 f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT %s OFFSET %s",  # nosec B608
                 (*params, int(limit), int(offset)),
             ).fetchall()
-        out: list[dict[str, Any]] = []
-        for row in rows:
-            raw = row[0]
-            out.append(decode_hub_payload(raw))
+            payloads = [decode_hub_payload(row[0]) for row in rows]
+            out = hydrate_finding_payloads_postgres(conn, tenant_id, payloads)
         return out, total
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:

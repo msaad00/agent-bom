@@ -370,9 +370,7 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
 
 def _migrate_lifecycle_observations_l2_sqlite(conn: sqlite3.Connection) -> None:
     """Upgrade L1 observation rows (PK on observed_at) to L2 (PK on scan_id)."""
-    rows = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='hub_findings_current_observations'"
-    ).fetchall()
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='hub_findings_current_observations'").fetchall()
     if not rows:
         return
     cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current_observations)").fetchall()}
@@ -642,11 +640,11 @@ def _postgres_current_order_clause(sort: str) -> str:
     return _sqlite_current_order_clause(sort)
 
 
-def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], tuple[float, str, str]]:
+def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], tuple[Any, str, str]]:
     """Sort key for in-memory current-state pages (descending primary signal)."""
     normalized = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
 
-    def _key(row: dict[str, Any]) -> tuple[float, str, str]:
+    def _key(row: dict[str, Any]) -> tuple[Any, str, str]:
         if normalized == "ordinal":
             primary = 0.0
             tie = str(row.get("last_seen") or "")
@@ -680,9 +678,7 @@ def _filter_current_rows(
         rows = [r for r in rows if str(r.get("severity") or (r.get("payload") or {}).get("severity", "")).lower() == sev]
     if scan_id is not None:
         rows = [
-            r
-            for r in rows
-            if str((r.get("payload") or {}).get("batch_id") or (r.get("payload") or {}).get("scan_id") or "") == scan_id
+            r for r in rows if str((r.get("payload") or {}).get("batch_id") or (r.get("payload") or {}).get("scan_id") or "") == scan_id
         ]
     return rows
 
@@ -1116,10 +1112,7 @@ class SQLiteComplianceHubStore:
             where.append("severity_rank = ?")
             params.append(severity_policy_rank(severity))
         if scan_id is not None:
-            where.append(
-                "(CAST(json_extract(payload, '$.batch_id') AS TEXT) = ?"
-                " OR CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?)"
-            )
+            where.append("(CAST(json_extract(payload, '$.batch_id') AS TEXT) = ? OR CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?)")
             params.extend([scan_id, scan_id])
         where_sql = " AND ".join(where)
 
@@ -1187,7 +1180,7 @@ class SQLiteComplianceHubStore:
             f"""
             UPDATE hub_findings_current
             SET status = 'resolved', resolved_at = ?, updated_at = ?
-            WHERE {' AND '.join(where)}
+            WHERE {" AND ".join(where)}
             """,  # nosec B608
             params,
         )

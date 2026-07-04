@@ -93,6 +93,12 @@ components:
           description: Observation timestamp from scan completion; defaults to ingest
             time when omitted.
           title: Observed At
+        reconcile_absent:
+          default: false
+          description: When true, mark open findings in the same source scope that
+            are absent from this batch as resolved at observed_at.
+          title: Reconcile Absent
+          type: boolean
         schema_version:
           default: v1
           maxLength: 32

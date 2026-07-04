@@ -31,6 +31,7 @@ _FILTER_RE = re.compile(r'^\s*(userName|displayName|externalId|id)\s+eq\s+"([^"]
 # accepts an optional quoted form so SCIM clients that always quote literals
 # still work.
 _ACTIVE_FILTER_RE = re.compile(r'^\s*active\s+eq\s+"?(true|false)"?\s*$', re.IGNORECASE)
+_MEMBER_FILTER_RE = re.compile(r'^members\[value\s+eq\s+"([^"]{1,512})"\]\s*$', re.IGNORECASE)
 
 
 def _tenant_id(request: Request) -> str:
@@ -95,7 +96,7 @@ def _user_from_payload(tenant_id: str, body: dict[str, Any], *, existing: SCIMUs
         external_id = existing.external_id
     return SCIMUser(
         tenant_id=tenant_id,
-        user_id=existing.user_id if existing else str(body.get("id") or uuid.uuid4()),
+        user_id=existing.user_id if existing else str(uuid.uuid4()),
         external_id=external_id,
         user_name=user_name,
         display_name=display_name,
@@ -121,7 +122,7 @@ def _group_from_payload(tenant_id: str, body: dict[str, Any], *, existing: SCIMG
         external_id = existing.external_id
     return SCIMGroup(
         tenant_id=tenant_id,
-        group_id=existing.group_id if existing else str(body.get("id") or uuid.uuid4()),
+        group_id=existing.group_id if existing else str(uuid.uuid4()),
         external_id=external_id,
         display_name=display_name,
         members=[entry for entry in members if isinstance(entry, dict)],
@@ -226,6 +227,50 @@ def _apply_user_patch(user: SCIMUser, body: dict[str, Any]) -> SCIMUser:
     return user
 
 
+def _member_value(entry: dict[str, Any]) -> str:
+    return str(entry.get("value") or "").strip()
+
+
+def _dedupe_members(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for entry in members:
+        if not isinstance(entry, dict):
+            continue
+        key = _member_value(entry)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entry)
+    return deduped
+
+
+def _parse_member_filter_path(path: str) -> str | None:
+    match = _MEMBER_FILTER_RE.match(path.strip())
+    return match.group(1) if match else None
+
+
+def _member_entries_from_value(value: object) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [entry for entry in value if isinstance(entry, dict)]
+    if isinstance(value, dict):
+        return [value]
+    return []
+
+
+def _maybe_revoke_scim_credentials(user: SCIMUser, *, previously_active: bool) -> None:
+    if previously_active and not user.active:
+        from agent_bom.api.scim import revoke_credentials_for_scim_user
+
+        revoke_credentials_for_scim_user(user.tenant_id, user)
+
+
+def _save_scim_user(store: Any, user: SCIMUser, *, previously_active: bool) -> SCIMUser:
+    saved = store.put_user(user)
+    _maybe_revoke_scim_credentials(saved, previously_active=previously_active)
+    return saved
+
+
 def _apply_group_patch(group: SCIMGroup, body: dict[str, Any]) -> SCIMGroup:
     operations = body.get("Operations", [])
     if not isinstance(operations, list):
@@ -238,17 +283,26 @@ def _apply_group_patch(group: SCIMGroup, body: dict[str, Any]) -> SCIMGroup:
         value = operation.get("value")
         if op not in {"add", "replace", "remove"}:
             raise HTTPException(status_code=400, detail="Only add, replace, and remove patch operations are supported")
-        if op == "remove" and path.startswith("members"):
-            group.members = []
-        elif path == "displayName":
+        member_id = _parse_member_filter_path(path)
+        if op == "remove":
+            if member_id is not None:
+                group.members = [entry for entry in group.members if _member_value(entry) != member_id]
+                continue
+            if path == "members" or path.startswith("members"):
+                group.members = []
+                continue
+        if op == "add" and path == "members":
+            group.members = _dedupe_members([*group.members, *_member_entries_from_value(value)])
+            continue
+        if path == "displayName":
             group.display_name = str(value or "").strip()
         elif path == "members" and isinstance(value, list):
-            group.members = [entry for entry in value if isinstance(entry, dict)]
+            group.members = _dedupe_members([entry for entry in value if isinstance(entry, dict)])
         elif isinstance(value, dict) and not path:
             if "displayName" in value:
                 group.display_name = str(value["displayName"]).strip()
             if "members" in value and isinstance(value["members"], list):
-                group.members = [entry for entry in value["members"] if isinstance(entry, dict)]
+                group.members = _dedupe_members([entry for entry in value["members"] if isinstance(entry, dict)])
         else:
             raise HTTPException(status_code=400, detail="Unsupported group patch path")
     if not group.display_name:
@@ -258,11 +312,10 @@ def _apply_group_patch(group: SCIMGroup, body: dict[str, Any]) -> SCIMGroup:
 
 
 def _scim_error_response(exc: HTTPException) -> dict[str, Any]:
-    return {
-        "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
-        "status": str(exc.status_code),
-        "detail": str(exc.detail),
-    }
+    from agent_bom.api.scim import scim_error_body
+
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return scim_error_body(status_code=exc.status_code, detail=detail)
 
 
 def _bulk_status(
@@ -343,16 +396,20 @@ def _bulk_modify_user(request: Request, method: str, user_id: str | None, body: 
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     if method == "PATCH":
-        saved = store.put_user(_apply_user_patch(user, body))
+        previously_active = user.active
+        saved = _save_scim_user(store, _apply_user_patch(user, body), previously_active=previously_active)
         action = "scim.user_patched"
     elif method == "PUT":
-        saved = store.put_user(_user_from_payload(tenant_id, body, existing=user))
+        previously_active = user.active
+        saved = _save_scim_user(store, _user_from_payload(tenant_id, body, existing=user), previously_active=previously_active)
         action = "scim.user_replaced"
     elif method == "DELETE":
+        previously_active = user.active
         deactivated = store.deactivate_user(tenant_id, user_id)
         if deactivated is None:
             raise HTTPException(status_code=404, detail="User not found")
         saved = deactivated
+        _maybe_revoke_scim_credentials(saved, previously_active=previously_active)
         action = "scim.user_deactivated"
     else:
         raise HTTPException(status_code=400, detail="Unsupported SCIM bulk method")
@@ -607,7 +664,8 @@ async def patch_user(request: Request, user_id: str, body: dict[str, Any]) -> di
     user = store.get_user(tenant_id, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    saved = store.put_user(_apply_user_patch(user, body))
+    previously_active = user.active
+    saved = _save_scim_user(store, _apply_user_patch(user, body), previously_active=previously_active)
     log_action(
         "scim.user_patched",
         actor=_actor(request),
@@ -626,7 +684,8 @@ async def replace_user(request: Request, user_id: str, body: dict[str, Any]) -> 
     existing = store.get_user(tenant_id, user_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="User not found")
-    saved = store.put_user(_user_from_payload(tenant_id, body, existing=existing))
+    previously_active = existing.active
+    saved = _save_scim_user(store, _user_from_payload(tenant_id, body, existing=existing), previously_active=previously_active)
     log_action(
         "scim.user_replaced",
         actor=_actor(request),
@@ -641,9 +700,15 @@ async def replace_user(request: Request, user_id: str, body: dict[str, Any]) -> 
 async def delete_user(request: Request, user_id: str) -> Response:
     _require_scim(request)
     tenant_id = _tenant_id(request)
-    user = _get_scim_store().deactivate_user(tenant_id, user_id)
+    store = _get_scim_store()
+    existing = store.get_user(tenant_id, user_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    previously_active = existing.active
+    user = store.deactivate_user(tenant_id, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    _maybe_revoke_scim_credentials(user, previously_active=previously_active)
     log_action(
         "scim.user_deactivated",
         actor=_actor(request),

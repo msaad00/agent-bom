@@ -1968,6 +1968,20 @@ def install_error_envelope(application: object) -> None:
         return getattr(request.state, "request_id", "") or request.headers.get("x-request-id") or str(uuid.uuid4())
 
     async def http_exception_handler(request: StarletteRequest, exc: HTTPException):
+        if request.url.path.startswith("/scim/"):
+            from agent_bom.api.scim import scim_error_body
+
+            correlation_id = _correlation_id(request)
+            detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+            payload = scim_error_body(status_code=exc.status_code, detail=detail)
+            response_headers = dict(getattr(exc, "headers", None) or {})
+            response_headers.setdefault("X-Request-ID", correlation_id)
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=payload,
+                media_type="application/scim+json",
+                headers=response_headers,
+            )
         return _build_error_envelope(
             status_code=exc.status_code,
             detail=exc.detail,

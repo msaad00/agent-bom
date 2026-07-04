@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
@@ -108,6 +109,69 @@ async def test_runtime_observation_queries_are_tenant_scoped_and_paginated():
     with pytest.raises(HTTPException) as exc:
         await observability_routes.list_runtime_session_observations(alpha, "sess-beta")
     assert exc.value.status_code == 404
+
+
+def test_normalize_ocsf_event_idless_id_is_deterministic():
+    event = {
+        "class_uid": 4001,
+        "class_name": "Network Activity",
+        "severity": "Low",
+        "time": 1_746_033_601_000,
+        "message": "Outbound MCP request observed",
+        "resources": [{"name": "proxy-relay"}],
+        "metadata": {"product": {"name": "datadog"}},
+    }
+    first = observability_routes._normalize_ocsf_event(dict(event), tenant_id="tenant-alpha")
+    second = observability_routes._normalize_ocsf_event(dict(event), tenant_id="tenant-alpha")
+    other_tenant = observability_routes._normalize_ocsf_event(dict(event), tenant_id="tenant-beta")
+
+    assert first["event_id"]
+    assert first["event_id"] == second["event_id"]
+    assert first["event_id"] != other_tenant["event_id"]
+
+
+def test_runtime_observation_idless_id_is_deterministic():
+    event = {
+        "session_id": "sess-1",
+        "observed_at": "2026-01-01T00:00:00Z",
+        "event_type": "tool_call",
+        "tool_name": "read_file",
+        "message": "flagged",
+    }
+    first = observability_routes._runtime_observation_from_event(dict(event), tenant_id="tenant-alpha")
+    second = observability_routes._runtime_observation_from_event(dict(event), tenant_id="tenant-alpha")
+
+    assert first.observation_id
+    assert first.observation_id == second.observation_id
+
+
+@pytest.mark.asyncio
+async def test_ocsf_idless_event_dedups_across_retries():
+    req = _request("tenant-alpha")
+    payload = {
+        "events": [
+            {
+                "class_uid": 4001,
+                "class_name": "Network Activity",
+                "severity": "Low",
+                "time": 1_746_033_601_000,
+                "message": "Outbound MCP request observed",
+                "resources": [{"name": "proxy-relay"}],
+                "metadata": {"product": {"name": "datadog"}},
+            }
+        ]
+    }
+
+    class _Analytics:
+        def record_events(self, events, *, tenant_id: str = "default"):
+            return None
+
+    with patch("agent_bom.api.routes.observability._get_analytics_store", return_value=_Analytics()):
+        await observability_routes.ingest_ocsf(req, payload)
+        await observability_routes.ingest_ocsf(req, payload)
+
+    observations = await observability_routes.list_runtime_observations(req)
+    assert observations["count"] == 1
 
 
 def test_sqlite_runtime_event_store_batch_persists_in_one_transaction(tmp_path):

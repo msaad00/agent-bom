@@ -424,6 +424,34 @@ class TestClickHouseAnalyticsStore:
         assert len(inserted["rows"]) == 2
         assert inserted["rows"][0]["event_type"] == "vulnerable_tool_call"
 
+    def test_event_row_derives_deterministic_id_for_idless_events(self):
+        from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+        rows: list[dict] = []
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, batch):
+                rows.extend(batch)
+
+        event = {
+            "event_type": "ocsf_network_activity",
+            "severity": "low",
+            "tool_name": "proxy-relay",
+            "message": "Outbound MCP request observed",
+            "source_id": "datadog",
+            "event_timestamp": "2026-04-20T12:00:01Z",
+        }
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            store.record_event(dict(event), tenant_id="tenant-alpha")
+            store.record_event(dict(event), tenant_id="tenant-alpha")
+
+        assert rows[0]["event_id"]
+        assert rows[0]["event_id"] == rows[1]["event_id"]
+
     def test_audit_and_runtime_rows_preserve_correlation_fields(self):
         from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
 

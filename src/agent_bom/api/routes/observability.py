@@ -28,6 +28,7 @@ from agent_bom.api.runtime_event_store import (
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota_guard
+from agent_bom.canonical_ids import canonical_id
 from agent_bom.config import API_MAX_OCSF_INGEST_EVENTS
 from agent_bom.graph.severity import ocsf_to_severity
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
@@ -208,22 +209,41 @@ def _normalize_ocsf_event(event: dict, *, tenant_id: str) -> dict:
     if isinstance(finding_info, dict):
         event_id = str(finding_info.get("uid", "")).strip()
     if not event_id:
-        event_id = metadata_uid or str(uuid.uuid4())
+        event_id = metadata_uid
     severity = str(event.get("severity", "")).strip().lower()
     if not severity:
         try:
             severity = ocsf_to_severity(int(event.get("severity_id", 0)))
         except Exception:
             severity = "unknown"
+    event_timestamp = _ocsf_timestamp(event.get("time") or event.get("start_time") or event.get("event_time"))
+    detector = _ocsf_finding_detector(event)
+    tool_name = _resource_name(event)
+    message = _ocsf_finding_message(event)
+    if not event_id:
+        # Deterministic content-derived ID so retries of an id-less OCSF event
+        # collapse on the runtime observation PK (tenant_id, observation_id)
+        # instead of leaking a fresh uuid4 per ingest (audit item J).
+        event_id = canonical_id(
+            "ocsf_event",
+            tenant_id,
+            source_id,
+            event_timestamp,
+            class_uid,
+            class_name,
+            detector,
+            tool_name,
+            message,
+        )
     normalized = {
         "event_id": event_id,
-        "event_timestamp": _ocsf_timestamp(event.get("time") or event.get("start_time") or event.get("event_time")),
+        "event_timestamp": event_timestamp,
         "tenant_id": tenant_id,
         "event_type": f"ocsf_{class_slug}",
-        "detector": _ocsf_finding_detector(event),
+        "detector": detector,
         "severity": severity or "unknown",
-        "tool_name": _resource_name(event),
-        "message": _ocsf_finding_message(event),
+        "tool_name": tool_name,
+        "message": message,
         "agent_name": "",
         "session_id": "",
         "trace_id": "",
@@ -257,7 +277,20 @@ def _event_session_id(payload: dict[str, Any]) -> str:
 
 def _runtime_observation_from_event(event: dict[str, Any], *, tenant_id: str, source: str = "api") -> RuntimeObservationRecord:
     observed_at = str(event.get("event_timestamp") or event.get("observed_at") or event.get("timestamp") or _now())
-    event_id = str(event.get("event_id") or event.get("observation_id") or "").strip() or str(uuid.uuid4())
+    event_id = str(event.get("event_id") or event.get("observation_id") or "").strip()
+    if not event_id:
+        # Deterministic content-derived ID so a retried id-less runtime event
+        # dedups on the observation PK instead of leaking uuid4 (audit item J).
+        event_id = canonical_id(
+            "runtime_event",
+            tenant_id,
+            event.get("source_id") or event.get("source") or source,
+            event.get("session_id") or event.get("trace_id") or event.get("request_id") or "",
+            observed_at,
+            event.get("event_type") or event.get("type") or "runtime_event",
+            event.get("tool_name") or event.get("tool") or "",
+            event.get("message") or event.get("reason") or event.get("decision") or "",
+        )
     summary: dict[str, Any] = {}
     for key in ("message", "reason", "decision", "risk", "policy", "blocked"):
         if key in event:

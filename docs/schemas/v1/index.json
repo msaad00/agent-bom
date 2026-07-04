@@ -162,6 +162,16 @@
       "schema": "PushPayload.json"
     },
     {
+      "doc": "Async findings export job backed by streamed hub reads.",
+      "name": "ReportJob",
+      "schema": "ReportJob.json"
+    },
+    {
+      "doc": "Request body for ``POST /v1/reports``.",
+      "name": "ReportJobRequest",
+      "schema": "ReportJobRequest.json"
+    },
+    {
       "doc": "",
       "name": "RotateKeyRequest",
       "schema": "RotateKeyRequest.json"

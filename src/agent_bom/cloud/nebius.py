@@ -1,11 +1,8 @@
 """Nebius cloud discovery — GPU cloud AI workloads, AI Studio, compute instances, and InfiniBand training.
 
-Requires ``requests``.  Install with::
-
-    pip install 'agent-bom[nebius]'
-
 Authentication uses Nebius credentials (NEBIUS_API_KEY + NEBIUS_PROJECT_ID env vars).
-Nebius does not have an official Python SDK, so all API calls use REST via requests.
+Nebius does not have an official Python SDK, so all API calls use REST via the shared
+``http_client`` (retry, timeout, SSRF guards).
 """
 
 from __future__ import annotations
@@ -16,6 +13,7 @@ import os
 import shutil
 import subprocess
 
+from agent_bom import http_client
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
@@ -32,10 +30,14 @@ _API_TIMEOUT = 15
 
 def _nebius_get(url: str, api_key: str, params: dict | None = None) -> dict:
     """Make an authenticated GET request to a Nebius REST API endpoint."""
-    import requests
-
-    headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
-    resp = requests.get(url, headers=headers, params=params, timeout=_API_TIMEOUT)
+    resp = http_client.sync_get(
+        url,
+        timeout=_API_TIMEOUT,
+        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+        params=params,
+    )
+    if resp is None:
+        raise CloudDiscoveryError("Nebius: request failed after retries")
     resp.raise_for_status()
     return resp.json()
 
@@ -52,26 +54,33 @@ def _nebius_get_all(url: str, api_key: str, items_key: str, params: dict | None 
         items_key: Top-level key containing the list (e.g. ``"models"``, ``"instances"``).
         params: Additional query parameters.
     """
-    import requests
-
-    headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
     all_items: list = []
     page_params = dict(params or {})
     _max_pages = 50  # safety cap — prevents infinite loops on malformed responses
 
-    for _ in range(_max_pages):
-        resp = requests.get(url, headers=headers, params=page_params, timeout=_API_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
+    with http_client.create_sync_client(timeout=_API_TIMEOUT) as client:
+        headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+        for _ in range(_max_pages):
+            resp = http_client.sync_request_with_retry(
+                client,
+                "GET",
+                url,
+                headers=headers,
+                params=page_params,
+            )
+            if resp is None:
+                raise CloudDiscoveryError("Nebius: request failed after retries")
+            resp.raise_for_status()
+            data = resp.json()
 
-        # Nebius API uses both "models"/"instances" keys and a generic "data" fallback
-        items = data.get(items_key, data.get("data", []))
-        all_items.extend(items if isinstance(items, list) else [])
+            # Nebius API uses both "models"/"instances" keys and a generic "data" fallback
+            items = data.get(items_key, data.get("data", []))
+            all_items.extend(items if isinstance(items, list) else [])
 
-        next_token = data.get("nextPageToken") or data.get("next_page_token", "")
-        if not next_token:
-            break
-        page_params["pageToken"] = next_token
+            next_token = data.get("nextPageToken") or data.get("next_page_token", "")
+            if not next_token:
+                break
+            page_params["pageToken"] = next_token
 
     return all_items
 
@@ -89,13 +98,8 @@ def discover(
         (agents, warnings) — discovered agents and non-fatal warnings.
 
     Raises:
-        CloudDiscoveryError: if ``requests`` is not installed.
+        CloudDiscoveryError: on unrecoverable API errors.
     """
-    try:
-        import requests  # noqa: F401
-    except ImportError:
-        raise CloudDiscoveryError("requests is required for Nebius discovery. Install with: pip install 'agent-bom[nebius]'")
-
     agents: list[Agent] = []
     warnings: list[str] = []
 

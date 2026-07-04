@@ -1,4 +1,6 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- $egress := .Values.networkPolicy.egress | default list }}
+{{- $additionalEgress := .Values.networkPolicy.additionalEgress | default list }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -31,6 +33,9 @@ spec:
         - protocol: TCP
           port: 53
     {{- end }}
+    {{- with $egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
     {{- if .Values.networkPolicy.allowWeb }}
     - to:
         - ipBlock:
@@ -41,7 +46,7 @@ spec:
           port: {{ . }}
         {{- end }}
     {{- end }}
-    {{- with .Values.networkPolicy.additionalEgress }}
+    {{- with $additionalEgress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 {{- end }}

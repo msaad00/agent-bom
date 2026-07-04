@@ -28,7 +28,7 @@ def test_nebius_get_success():
     mock_resp.json.return_value = {"data": [1, 2, 3]}
     mock_resp.status_code = 200
 
-    with patch("requests.get", return_value=mock_resp):
+    with patch("agent_bom.http_client.sync_get", return_value=mock_resp):
         result = _nebius_get("https://api.example.com/v1/test", "api-key-123")
         assert result == {"data": [1, 2, 3]}
 
@@ -36,21 +36,6 @@ def test_nebius_get_success():
 # ---------------------------------------------------------------------------
 # discover (top level)
 # ---------------------------------------------------------------------------
-
-
-def test_discover_no_requests():
-    import builtins
-
-    original = builtins.__import__
-
-    def mock_import(name, *args, **kwargs):
-        if name == "requests":
-            raise ImportError("mocked")
-        return original(name, *args, **kwargs)
-
-    with patch("builtins.__import__", side_effect=mock_import):
-        with pytest.raises(CloudDiscoveryError, match="requests"):
-            discover()
 
 
 def test_discover_no_api_key():
@@ -115,15 +100,16 @@ def test_ai_studio_success():
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"models": [{"id": "m1", "name": "llama-70b", "version": "1.0", "status": "ACTIVE"}]}
     mock_resp.status_code = 200
+    mock_resp.raise_for_status = MagicMock()
 
-    with patch("requests.get", return_value=mock_resp):
+    with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
         agents, warnings = _discover_ai_studio("key", "proj")
         assert len(agents) == 1
         assert "llama-70b" in agents[0].name
 
 
 def test_ai_studio_error():
-    with patch("requests.get", side_effect=RuntimeError("network error")):
+    with patch("agent_bom.http_client.sync_request_with_retry", side_effect=RuntimeError("network error")):
         agents, warnings = _discover_ai_studio("key", "proj")
         assert len(agents) == 0
         assert len(warnings) == 1
@@ -149,8 +135,9 @@ def test_gpu_instances_found():
         ]
     }
     mock_resp.status_code = 200
+    mock_resp.raise_for_status = MagicMock()
 
-    with patch("requests.get", return_value=mock_resp):
+    with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
         agents, warnings = _discover_gpu_instances("key", "proj")
         assert len(agents) == 1
         assert "gpu-node-1" in agents[0].name
@@ -172,8 +159,9 @@ def test_gpu_instances_non_gpu_filtered():
         ]
     }
     mock_resp.status_code = 200
+    mock_resp.raise_for_status = MagicMock()
 
-    with patch("requests.get", return_value=mock_resp):
+    with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
         agents, warnings = _discover_gpu_instances("key", "proj")
         assert len(agents) == 0
 
@@ -251,8 +239,9 @@ def test_container_services_with_image():
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"containers": [{"id": "c1", "name": "web-svc", "image": "nginx:latest"}]}
     mock_resp.status_code = 200
+    mock_resp.raise_for_status = MagicMock()
 
-    with patch("requests.get", return_value=mock_resp):
+    with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
         agents, warnings = _discover_container_services("key", "proj")
         assert len(agents) == 1
 
@@ -261,14 +250,15 @@ def test_container_services_no_image():
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"containers": [{"id": "c1", "name": "svc-no-img", "image": ""}]}
     mock_resp.status_code = 200
+    mock_resp.raise_for_status = MagicMock()
 
-    with patch("requests.get", return_value=mock_resp):
+    with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
         agents, warnings = _discover_container_services("key", "proj")
         assert len(agents) == 1  # Still created, just with UNKNOWN transport
 
 
 def test_container_services_error():
-    with patch("requests.get", side_effect=RuntimeError("fail")):
+    with patch("agent_bom.http_client.sync_request_with_retry", side_effect=RuntimeError("fail")):
         agents, warnings = _discover_container_services("key", "proj")
         assert len(agents) == 0
         assert len(warnings) == 1

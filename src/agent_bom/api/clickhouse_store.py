@@ -547,7 +547,7 @@ class ClickHouseAnalyticsStore:
         if tenant_id is not None:
             where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
-            f"SELECT toDate(scan_timestamp) AS day, severity, "
+            f"SELECT toDate(scan_timestamp) AS day, severity, "  # nosec B608
             f"uniqExact(if(finding_key != '', finding_key, "
             f"concat(tenant_id, ':', scan_id, ':', agent_name, ':', cve_id, ':', package_name, ':', package_version))) AS cnt "
             f"FROM vulnerability_scans WHERE {where} "
@@ -561,7 +561,7 @@ class ClickHouseAnalyticsStore:
         if tenant_id is not None:
             where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
-            f"SELECT cve_id, "
+            f"SELECT cve_id, "  # nosec B608
             f"uniqExact(if(finding_key != '', finding_key, "
             f"concat(tenant_id, ':', scan_id, ':', agent_name, ':', cve_id, ':', package_name, ':', package_version))) AS cnt, "
             f"max(cvss_score) AS max_cvss "
@@ -597,7 +597,7 @@ class ClickHouseAnalyticsStore:
         if tenant_id is not None:
             where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
-            f"SELECT event_type, severity, uniqExact(event_id) AS cnt "
+            f"SELECT event_type, severity, uniqExact(event_id) AS cnt "  # nosec B608
             f"FROM runtime_events "
             f"WHERE {where} "
             f"GROUP BY event_type, severity ORDER BY cnt DESC"

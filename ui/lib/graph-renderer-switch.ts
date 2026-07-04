@@ -11,6 +11,7 @@ export interface GraphRendererDecisionInput {
   captureMode?: boolean | undefined;
   selectedAttackPath?: boolean | undefined;
   reachabilityActive?: boolean | undefined;
+  rollupActive?: boolean | undefined;
   graphOnlyFindings?: boolean | undefined;
   webglEnabled?: boolean | undefined;
 }
@@ -28,6 +29,7 @@ export function decideGraphRenderer({
   captureMode = false,
   selectedAttackPath = false,
   reachabilityActive = false,
+  rollupActive = false,
   graphOnlyFindings = false,
   webglEnabled = false,
 }: GraphRendererDecisionInput): GraphRendererDecision {
@@ -51,6 +53,14 @@ export function decideGraphRenderer({
     return {
       kind: "react-flow",
       reason: "reachability-drill-in",
+      interactive: true,
+      supportsInvestigation: true,
+    };
+  }
+  if (rollupActive) {
+    return {
+      kind: "react-flow",
+      reason: "estate-rollup-navigation",
       interactive: true,
       supportsInvestigation: true,
     };

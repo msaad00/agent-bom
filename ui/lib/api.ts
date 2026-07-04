@@ -17,6 +17,7 @@ import type {
   GraphQueryResponse,
   GraphNodeDetailResponse,
   GraphImpactResponse,
+  GraphRollupResponse,
   GraphSearchResponse,
   GraphSemanticClustersResponse,
   GraphAgentsResponse,
@@ -716,6 +717,28 @@ export const api = {
     if (scanId) params.set("scan_id", scanId);
     if (maxDepth != null) params.set("max_depth", String(maxDepth));
     return get<GraphImpactResponse>(`/v1/graph/impact?${params.toString()}`);
+  },
+
+  /** Estate-scale CONTAINS roll-up with optional one-level drill-down */
+  getGraphRollup: (
+    scanId?: string,
+    options?: {
+      node?: string;
+      minSeverity?: string;
+      exposed?: boolean;
+      toxic?: boolean;
+      mode?: "rollup" | "attack_path";
+    },
+  ) => {
+    const params = new URLSearchParams();
+    if (scanId) params.set("scan_id", scanId);
+    if (options?.node) params.set("node", options.node);
+    if (options?.minSeverity) params.set("min_severity", options.minSeverity);
+    if (options?.exposed) params.set("exposed", "true");
+    if (options?.toxic) params.set("toxic", "true");
+    if (options?.mode) params.set("mode", options.mode);
+    const qs = params.toString();
+    return get<GraphRollupResponse>(`/v1/graph/rollup${qs ? `?${qs}` : ""}`);
   },
 
   /** Connect to SSE stream for real-time progress */

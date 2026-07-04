@@ -27,6 +27,12 @@ import threading
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Protocol
 
+from agent_bom.api.hub_current_payload import (
+    batch_ledger_payloads,
+    current_state_overlay,
+    hydrate_current_payload,
+    resolve_ledger_finding_id,
+)
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.graph.severity import severity_policy_rank
 
@@ -34,6 +40,7 @@ from agent_bom.graph.severity import severity_policy_rank
 # classes below define a ``list`` method that would otherwise shadow it in
 # their ``list_page`` return annotations.
 FindingPage = tuple[list[dict[str, Any]], int | None]
+_HubFindingRows = list[dict[str, Any]]
 
 # Sort keys supported by ``list_page``. ``effective_reach`` (default),
 # ``cvss`` and ``severity`` are each backed by a materialised column +
@@ -254,6 +261,46 @@ class ComplianceHubStore(Protocol):
         ...
 
 
+def _fetch_ledger_payloads_sqlite(
+    conn: sqlite3.Connection,
+    tenant_id: str,
+    finding_ids: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    if not finding_ids:
+        return {}
+    placeholders = ",".join("?" * len(finding_ids))
+    rows = conn.execute(
+        f"""
+        SELECT finding_id, payload
+        FROM compliance_hub_findings
+        WHERE tenant_id = ? AND finding_id IN ({placeholders})
+        """,  # nosec B608
+        (tenant_id, *finding_ids),
+    ).fetchall()
+    return {str(row[0]): json.loads(row[1]) for row in rows}
+
+
+def _sqlite_current_row_from_db(row: tuple[Any, ...], *, has_ledger_col: bool) -> dict[str, Any]:
+    current_row = {
+        "canonical_id": row[0],
+        "first_seen": row[1],
+        "last_seen": row[2],
+        "status": row[3],
+        "severity": row[4],
+        "severity_rank": row[5],
+        "cvss_score": row[6],
+        "effective_reach_score": row[7],
+        "scan_count": row[8],
+        "resolved_at": row[9],
+        "reopened_at": row[10],
+        "updated_at": row[11],
+        "payload": json.loads(row[12]),
+    }
+    if has_ledger_col:
+        current_row["ledger_finding_id"] = row[13]
+    return current_row
+
+
 def _upsert_current_finding_sqlite(
     conn: sqlite3.Connection,
     *,
@@ -272,7 +319,9 @@ def _upsert_current_finding_sqlite(
     canonical = resolve_canonical_id(payload, source=source)
     metrics = lifecycle_metrics(payload)
     now = _now_utc_iso()
-    payload_json = json.dumps(payload, sort_keys=True)
+    ledger_finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
+    overlay = current_state_overlay(payload) if ledger_finding_id else dict(payload)
+    payload_json = json.dumps(overlay, sort_keys=True)
     inserted = conn.execute(
         """
         INSERT OR IGNORE INTO hub_findings_current_observations
@@ -284,35 +333,30 @@ def _upsert_current_finding_sqlite(
     if not inserted:
         return
 
+    has_ledger_col = _hub_findings_current_has_ledger_col(conn)
+    payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
     existing_row = conn.execute(
-        """
+        f"""
         SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
                cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-               updated_at, payload
+               updated_at, {payload_select}
         FROM hub_findings_current
         WHERE tenant_id = ? AND canonical_id = ?
-        """,
+        """,  # nosec B608
         (tenant_id, canonical),
     ).fetchone()
     existing: dict[str, Any] | None
     if existing_row is None:
         existing = None
     else:
-        existing = {
-            "canonical_id": existing_row[0],
-            "first_seen": existing_row[1],
-            "last_seen": existing_row[2],
-            "status": existing_row[3],
-            "severity": existing_row[4],
-            "severity_rank": existing_row[5],
-            "cvss_score": existing_row[6],
-            "effective_reach_score": existing_row[7],
-            "scan_count": existing_row[8],
-            "resolved_at": existing_row[9],
-            "reopened_at": existing_row[10],
-            "updated_at": existing_row[11],
-            "payload": json.loads(existing_row[12]),
-        }
+        existing = _sqlite_current_row_from_db(existing_row, has_ledger_col=has_ledger_col)
+        if has_ledger_col:
+            ledger_map = _fetch_ledger_payloads_sqlite(
+                conn,
+                tenant_id,
+                [str(existing.get("ledger_finding_id") or "")],
+            )
+            existing["payload"] = hydrate_current_payload(existing, ledger_payloads=ledger_map)
     merged = apply_observation_to_current(
         existing,
         canonical_id=canonical,
@@ -321,44 +365,114 @@ def _upsert_current_finding_sqlite(
         payload=payload,
         updated_at=now,
     )
-    conn.execute(
-        """
-        INSERT INTO hub_findings_current
-            (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
-             cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-             updated_at, payload)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
-            first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
-            last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
-            status = excluded.status,
-            severity = excluded.severity,
-            severity_rank = excluded.severity_rank,
-            cvss_score = excluded.cvss_score,
-            effective_reach_score = excluded.effective_reach_score,
-            scan_count = excluded.scan_count,
-            resolved_at = excluded.resolved_at,
-            reopened_at = excluded.reopened_at,
-            updated_at = excluded.updated_at,
-            payload = excluded.payload
-        """,
-        (
-            tenant_id,
-            canonical,
-            merged["first_seen"],
-            merged["last_seen"],
-            merged["status"],
-            merged["severity"],
-            merged["severity_rank"],
-            merged["cvss_score"],
-            merged["effective_reach_score"],
-            merged["scan_count"],
-            merged["resolved_at"],
-            merged["reopened_at"],
-            merged["updated_at"],
-            payload_json,
-        ),
+    if has_ledger_col:
+        conn.execute(
+            """
+            INSERT INTO hub_findings_current
+                (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                 cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                 updated_at, payload, ledger_finding_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
+                first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
+                last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
+                status = excluded.status,
+                severity = excluded.severity,
+                severity_rank = excluded.severity_rank,
+                cvss_score = excluded.cvss_score,
+                effective_reach_score = excluded.effective_reach_score,
+                scan_count = excluded.scan_count,
+                resolved_at = excluded.resolved_at,
+                reopened_at = excluded.reopened_at,
+                updated_at = excluded.updated_at,
+                payload = excluded.payload,
+                ledger_finding_id = excluded.ledger_finding_id
+            """,
+            (
+                tenant_id,
+                canonical,
+                merged["first_seen"],
+                merged["last_seen"],
+                merged["status"],
+                merged["severity"],
+                merged["severity_rank"],
+                merged["cvss_score"],
+                merged["effective_reach_score"],
+                merged["scan_count"],
+                merged["resolved_at"],
+                merged["reopened_at"],
+                merged["updated_at"],
+                payload_json,
+                ledger_finding_id or None,
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO hub_findings_current
+                (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                 cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                 updated_at, payload)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
+                first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
+                last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
+                status = excluded.status,
+                severity = excluded.severity,
+                severity_rank = excluded.severity_rank,
+                cvss_score = excluded.cvss_score,
+                effective_reach_score = excluded.effective_reach_score,
+                scan_count = excluded.scan_count,
+                resolved_at = excluded.resolved_at,
+                reopened_at = excluded.reopened_at,
+                updated_at = excluded.updated_at,
+                payload = excluded.payload
+            """,
+            (
+                tenant_id,
+                canonical,
+                merged["first_seen"],
+                merged["last_seen"],
+                merged["status"],
+                merged["severity"],
+                merged["severity_rank"],
+                merged["cvss_score"],
+                merged["effective_reach_score"],
+                merged["scan_count"],
+                merged["resolved_at"],
+                merged["reopened_at"],
+                merged["updated_at"],
+                payload_json,
+            ),
+        )
+
+
+def _hydrate_sqlite_current_rows(
+    conn: sqlite3.Connection,
+    tenant_id: str,
+    current_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    ledger_map = batch_ledger_payloads(
+        lambda ids: _fetch_ledger_payloads_sqlite(conn, tenant_id, ids),
+        [str(row.get("ledger_finding_id") or "") for row in current_rows],
     )
+    hydrated: list[dict[str, Any]] = []
+    for row in current_rows:
+        hydrated_row = dict(row)
+        hydrated_row["payload"] = hydrate_current_payload(row, ledger_payloads=ledger_map)
+        hydrated.append(hydrated_row)
+    return hydrated
+
+
+def _hub_findings_current_has_ledger_col(conn: sqlite3.Connection) -> bool:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current)").fetchall()}
+    return "ledger_finding_id" in cols
+
+
+def _migrate_current_ledger_ref_sqlite(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current)").fetchall()}
+    if "ledger_finding_id" not in cols:
+        conn.execute("ALTER TABLE hub_findings_current ADD COLUMN ledger_finding_id TEXT")
 
 
 def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
@@ -366,6 +480,7 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
 
     conn.executescript(_CURRENT_LIFECYCLE_SQLITE_DDL)
     _migrate_lifecycle_observations_l2_sqlite(conn)
+    _migrate_current_ledger_ref_sqlite(conn)
 
 
 def _migrate_lifecycle_observations_l2_sqlite(conn: sqlite3.Connection) -> None:
@@ -524,12 +639,41 @@ class InMemoryComplianceHubStore:
                     payload=payload,
                     updated_at=now,
                 )
+                finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
+                if finding_id:
+                    merged["ledger_finding_id"] = finding_id
+                    merged["payload"] = current_state_overlay(payload)
                 current[canonical] = merged
+
+    def _ledger_payload_map(self, tenant_id: str, finding_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+        slots = self._slots.get(tenant_id, {})
+        bucket = self._by_tenant.get(tenant_id, [])
+        out: dict[str, dict[str, Any]] = {}
+        for finding_id in finding_ids:
+            idx = slots.get(finding_id)
+            if idx is not None and 0 <= idx < len(bucket):
+                out[finding_id] = dict(bucket[idx])
+        return out
+
+    def _hydrate_current_rows(self, tenant_id: str, rows: _HubFindingRows) -> _HubFindingRows:
+        ledger_map = batch_ledger_payloads(
+            lambda ids: self._ledger_payload_map(tenant_id, ids),
+            [str(row.get("ledger_finding_id") or "") for row in rows],
+        )
+        hydrated: list[dict[str, Any]] = []
+        for row in rows:
+            hydrated_row = dict(row)
+            hydrated_row["payload"] = hydrate_current_payload(row, ledger_payloads=ledger_map)
+            hydrated.append(hydrated_row)
+        return hydrated
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._current.get(tenant_id, {}).get(canonical_id)
-            return dict(row) if row else None
+            if not row:
+                return None
+            hydrated = self._hydrate_current_rows(tenant_id, [dict(row)])
+            return hydrated[0]
 
     def list_current_page(
         self,
@@ -554,6 +698,7 @@ class InMemoryComplianceHubStore:
             rows = rows[offset:]
         if limit >= 0:
             rows = rows[:limit]
+        rows = self._hydrate_current_rows(tenant_id, [dict(row) for row in rows])
         return [enriched_finding_payload(row) for row in rows], total
 
     def reconcile_current_absent(
@@ -1057,33 +1202,22 @@ class SQLiteComplianceHubStore:
         self._conn.commit()
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
+        has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)
+        payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
         row = self._conn.execute(
-            """
+            f"""
             SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
                    cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                   updated_at, payload
+                   updated_at, {payload_select}
             FROM hub_findings_current
             WHERE tenant_id = ? AND canonical_id = ?
-            """,
+            """,  # nosec B608
             (tenant_id, canonical_id),
         ).fetchone()
         if row is None:
             return None
-        return {
-            "canonical_id": row[0],
-            "first_seen": row[1],
-            "last_seen": row[2],
-            "status": row[3],
-            "severity": row[4],
-            "severity_rank": row[5],
-            "cvss_score": row[6],
-            "effective_reach_score": row[7],
-            "scan_count": row[8],
-            "resolved_at": row[9],
-            "reopened_at": row[10],
-            "updated_at": row[11],
-            "payload": json.loads(row[12]),
-        }
+        current_row = _sqlite_current_row_from_db(row, has_ledger_col=has_ledger_col)
+        return _hydrate_sqlite_current_rows(self._conn, tenant_id, [current_row])[0]
 
     def list_current_page(
         self,
@@ -1124,33 +1258,22 @@ class SQLiteComplianceHubStore:
 
         order_sql = _sqlite_current_order_clause(sort)
         page_params = [*params, int(limit), int(offset)]
+        has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)
+        payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
         rows = self._conn.execute(
             f"""
             SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
                    cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                   updated_at, payload
+                   updated_at, {payload_select}
             FROM hub_findings_current
             WHERE {where_sql} {order_sql} LIMIT ? OFFSET ?
             """,  # nosec B608
             page_params,
         ).fetchall()
+        current_rows = [_sqlite_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
+        hydrated_rows = _hydrate_sqlite_current_rows(self._conn, tenant_id, current_rows)
         out: list[dict[str, Any]] = []
-        for row in rows:
-            current_row = {
-                "canonical_id": row[0],
-                "first_seen": row[1],
-                "last_seen": row[2],
-                "status": row[3],
-                "severity": row[4],
-                "severity_rank": row[5],
-                "cvss_score": row[6],
-                "effective_reach_score": row[7],
-                "scan_count": row[8],
-                "resolved_at": row[9],
-                "reopened_at": row[10],
-                "updated_at": row[11],
-                "payload": json.loads(row[12]),
-            }
+        for current_row in hydrated_rows:
             out.append(enriched_finding_payload(current_row))
         return out, total
 

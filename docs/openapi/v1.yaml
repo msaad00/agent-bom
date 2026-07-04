@@ -1814,6 +1814,7 @@ components:
       properties:
         agent_projects:
           items:
+            maxLength: 4096
             type: string
           title: Agent Projects
           type: array
@@ -1823,6 +1824,7 @@ components:
           type: boolean
         connectors:
           items:
+            maxLength: 128
             type: string
           title: Connectors
           type: array
@@ -1849,16 +1851,19 @@ components:
           type: boolean
         exclude_agents:
           items:
+            maxLength: 256
             type: string
           title: Exclude Agents
           type: array
         exclude_servers:
           items:
+            maxLength: 256
             type: string
           title: Exclude Servers
           type: array
         filesystem_paths:
           items:
+            maxLength: 4096
             type: string
           title: Filesystem Paths
           type: array
@@ -1868,21 +1873,25 @@ components:
           type: string
         gha_path:
           anyOf:
-          - type: string
+          - maxLength: 4096
+            type: string
           - type: 'null'
           title: Gha Path
         images:
           items:
+            maxLength: 512
             type: string
           title: Images
           type: array
         inventory:
           anyOf:
-          - type: string
+          - maxLength: 4096
+            type: string
           - type: 'null'
           title: Inventory
         jupyter_dirs:
           items:
+            maxLength: 4096
             type: string
           title: Jupyter Dirs
           type: array
@@ -1910,21 +1919,25 @@ components:
           type: boolean
         sbom:
           anyOf:
-          - type: string
+          - maxLength: 4096
+            type: string
           - type: 'null'
           title: Sbom
         scope_agents:
           items:
+            maxLength: 256
             type: string
           title: Scope Agents
           type: array
         scope_servers:
           items:
+            maxLength: 256
             type: string
           title: Scope Servers
           type: array
         tf_dirs:
           items:
+            maxLength: 4096
             type: string
           title: Tf Dirs
           type: array

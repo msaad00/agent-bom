@@ -236,6 +236,22 @@ def test_scan_request_accepts_at_batch_target_cap():
     assert len(req.images) == API_MAX_BATCH_SCAN_TARGETS
 
 
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("images", "x" * 513),
+        ("tf_dirs", "x" * 4097),
+        ("connectors", "x" * 129),
+        ("scope_agents", "x" * 257),
+    ],
+)
+def test_scan_request_rejects_oversized_list_elements(field_name, value):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ScanRequest(**{field_name: [value]})
+
+
 def test_scan_over_batch_target_cap_returns_422_not_500(monkeypatch):
     """model_validator ValueError must serialize in the 422 envelope (#3474)."""
     from starlette.testclient import TestClient

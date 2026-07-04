@@ -399,7 +399,10 @@ def ingest_csv_findings(path: str | Path) -> list[Finding]:
         description = _resolve_csv_field(row, _CSV_DEFAULT_MAPPING["description"])
         asset_name = _resolve_csv_field(row, _CSV_DEFAULT_MAPPING["asset_name"]) or title or cve_id
 
-        finding_type = FindingType.CVE if cve_id and cve_id.upper().startswith(("CVE-", "GHSA-")) else FindingType.SAST
+        if cve_id and cve_id.upper().startswith(("CVE-", "GHSA-")):
+            finding_type = FindingType.CVE
+        else:
+            finding_type = _pick_finding_type(title, [], description or title)
         asset_type = "package" if finding_type == FindingType.CVE else "file"
 
         finding = Finding(

@@ -158,14 +158,24 @@ def test_cis_fail_pulls_in_cis_even_when_source_does_not() -> None:
 # ─── External imports — auto-detect / catch-all ─────────────────────────────
 
 
-def test_external_source_selects_every_framework() -> None:
-    """SARIF / CycloneDX / CSV imports may carry findings whose source
-    can't be inferred. The hub returns every framework so the importer
-    can prune based on actual finding metadata in PR B."""
+def test_external_source_avoids_ai_frameworks_by_default() -> None:
+    """Generic external imports (SARIF/CSV) should not inherit AI-only slugs
+    unless asset_type or finding_type signals warrant them."""
     selected = set(select_frameworks(FindingSource.EXTERNAL))
-    expected = {meta.slug for meta in TAG_MAPPED_FRAMEWORKS} - {"aisvs"}  # benchmark slug, not tag-mapped
-    missing = expected - selected
-    assert not missing, f"EXTERNAL must offer every tag-mapped framework; missing {sorted(missing)}"
+    assert FRAMEWORK_OWASP_LLM not in selected
+    assert FRAMEWORK_OWASP_MCP not in selected
+    assert FRAMEWORK_OWASP_AGENTIC not in selected
+    assert FRAMEWORK_ATLAS not in selected
+    assert FRAMEWORK_EU_AI_ACT not in selected
+    assert FRAMEWORK_NIST_CSF in selected
+    assert FRAMEWORK_SOC2 in selected
+
+
+def test_external_source_adds_ai_frameworks_for_agent_assets() -> None:
+    selected = set(select_frameworks(FindingSource.EXTERNAL, asset_type="agent"))
+    assert FRAMEWORK_OWASP_LLM in selected
+    assert FRAMEWORK_OWASP_MCP in selected
+    assert FRAMEWORK_ATLAS in selected
 
 
 # ─── Government overlay — opt-in ─────────────────────────────────────────────

@@ -102,6 +102,17 @@ _CLOUD_POSTURE_FRAMEWORKS: tuple[str, ...] = (
     FRAMEWORK_NIST_800_53,
 )
 
+# External SARIF/CSV/JSON imports without AI asset signals should not inherit
+# the full AI framework set — those slugs are added via asset_type / finding_type
+# refinements (agent, mcp_server, INJECTION, etc.).
+_EXTERNAL_BASELINE: tuple[str, ...] = (
+    FRAMEWORK_NIST_CSF,
+    FRAMEWORK_SOC2,
+    FRAMEWORK_ISO_27001,
+    FRAMEWORK_CIS,
+    FRAMEWORK_PCI_DSS,
+)
+
 
 # ─── Source → framework selection table (the source of truth) ───────────────
 # Issue #1044 specifies this mapping. Each source carries a baseline list of
@@ -135,7 +146,7 @@ _SOURCE_BASELINE: dict[FindingSource, tuple[str, ...]] = {
         FRAMEWORK_CIS,
         FRAMEWORK_SOC2,
     ),
-    FindingSource.EXTERNAL: ALL_FRAMEWORKS,
+    FindingSource.EXTERNAL: _EXTERNAL_BASELINE,
 }
 
 

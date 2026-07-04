@@ -1,4 +1,4 @@
-"""Monotone current-state finding lifecycle (#3465 L1–L2)."""
+"""Monotone current-state finding lifecycle (#3465 L1–L4)."""
 
 from __future__ import annotations
 
@@ -151,3 +151,122 @@ def test_reopen_on_resolved_observation(hub_store) -> None:
     assert reopened["status"] == "reopened"
     assert reopened["reopened_at"] == TUE
     assert reopened["last_seen"] == TUE
+
+
+def _finding_with_id(finding_id: str) -> dict:
+    payload = _sample_finding()
+    payload["id"] = finding_id
+    return payload
+
+
+def test_reconcile_absent_resolves_open_not_in_batch(hub_store) -> None:
+    tenant = f"reconcile-{uuid4().hex}"
+    kept = _finding_with_id("finding-kept")
+    dropped = _finding_with_id("finding-dropped")
+    kept_canonical = resolve_canonical_id(kept)
+    dropped_canonical = resolve_canonical_id(dropped)
+
+    hub_store.upsert_current_batch(
+        tenant,
+        [kept, dropped],
+        observed_at=MON,
+        batch_id="batch-initial",
+        source="agent-runtime",
+    )
+    hub_store.reconcile_current_absent(
+        tenant,
+        present_canonical_ids={kept_canonical},
+        observed_at=TUE,
+        scope_source="agent-runtime",
+    )
+
+    kept_row = hub_store.get_current(tenant, kept_canonical)
+    dropped_row = hub_store.get_current(tenant, dropped_canonical)
+    assert kept_row is not None
+    assert dropped_row is not None
+    assert kept_row["status"] == "open"
+    assert dropped_row["status"] == "resolved"
+    assert dropped_row["resolved_at"] == TUE
+
+    # Idempotent: a second reconcile at the same observed_at is a no-op.
+    again = hub_store.reconcile_current_absent(
+        tenant,
+        present_canonical_ids={kept_canonical},
+        observed_at=TUE,
+        scope_source="agent-runtime",
+    )
+    assert again == 0
+
+
+def test_reconcile_absent_scoped_by_source(hub_store) -> None:
+    tenant = f"reconcile-scope-{uuid4().hex}"
+    runtime = _finding_with_id("finding-runtime")
+    runtime["source"] = "agent-runtime"
+    other = _finding_with_id("finding-other")
+    other["source"] = "external-scanner"
+
+    hub_store.upsert_current_batch(tenant, [runtime, other], observed_at=MON, batch_id="batch-a")
+    hub_store.reconcile_current_absent(
+        tenant,
+        present_canonical_ids=set(),
+        observed_at=TUE,
+        scope_source="agent-runtime",
+    )
+
+    runtime_row = hub_store.get_current(tenant, resolve_canonical_id(runtime))
+    other_row = hub_store.get_current(tenant, resolve_canonical_id(other))
+    assert runtime_row is not None
+    assert other_row is not None
+    assert runtime_row["status"] == "resolved"
+    assert other_row["status"] == "open"
+
+
+def test_list_current_page_enriches_lifecycle_fields(hub_store) -> None:
+    tenant = f"list-current-{uuid4().hex}"
+    finding = _sample_finding()
+    hub_store.upsert_current_batch(tenant, [finding], observed_at=MON, batch_id="batch-list")
+
+    rows, total = hub_store.list_current_page(tenant, limit=10, offset=0, origin="bulk_ingest")
+    assert total == 1
+    assert len(rows) == 1
+    assert rows[0]["first_seen"] == MON
+    assert rows[0]["last_seen"] == MON
+    assert rows[0]["status"] == "open"
+    assert rows[0]["scan_count"] == 1
+
+
+def test_bulk_reconcile_absent_api() -> None:
+    from starlette.testclient import TestClient
+
+    tenant = f"bulk-reconcile-{uuid4().hex}"
+    store = InMemoryComplianceHubStore()
+    set_compliance_hub_store(store)
+    client = TestClient(app)
+    client.headers.update(proxy_headers(role="analyst", tenant=tenant))
+
+    kept = _finding_with_id("finding-kept-api")
+    dropped = _finding_with_id("finding-dropped-api")
+    client.post(
+        "/v1/findings/bulk",
+        json={"source": "agent-runtime", "observed_at": MON, "findings": [kept, dropped]},
+    )
+
+    resp = client.post(
+        "/v1/findings/bulk",
+        json={
+            "source": "agent-runtime",
+            "observed_at": TUE,
+            "reconcile_absent": True,
+            "findings": [kept],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["reconciled"] == 1
+
+    listed = client.get("/v1/findings", params={"limit": 50}).json()
+    by_id = {item["id"]: item for item in listed["findings"]}
+    assert by_id["finding-kept-api"]["status"] == "open"
+    assert by_id["finding-dropped-api"]["status"] == "resolved"
+    assert by_id["finding-dropped-api"]["resolved_at"] == TUE
+
+    reset_compliance_hub_store()

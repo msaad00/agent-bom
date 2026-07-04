@@ -259,6 +259,13 @@ class BulkFindingsRequest(BaseModel):
         default=None,
         description="Observation timestamp from scan completion; defaults to ingest time when omitted.",
     )
+    reconcile_absent: bool = Field(
+        default=False,
+        description=(
+            "When true, mark open findings in the same source scope that are absent "
+            "from this batch as resolved at observed_at."
+        ),
+    )
 
     @field_validator("findings")
     @classmethod
@@ -314,6 +321,20 @@ def _normalized_bulk_finding(row: dict[str, Any], *, source: str, batch_id: str,
     return payload
 
 
+_LIFECYCLE_RESPONSE_KEYS = (
+    "origin",
+    "batch_id",
+    "bulk_ordinal",
+    "status",
+    "first_seen",
+    "last_seen",
+    "resolved_at",
+    "reopened_at",
+    "scan_count",
+    "canonical_id",
+)
+
+
 def _redact_finding_page(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     redacted = redact_for_persistence(rows, EvidenceTier.SAFE_TO_STORE)
     if not isinstance(redacted, list):
@@ -322,7 +343,7 @@ def _redact_finding_page(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for clean, raw in zip(redacted, rows):
         if not isinstance(clean, dict):
             continue
-        for key in ("origin", "batch_id", "bulk_ordinal"):
+        for key in _LIFECYCLE_RESPONSE_KEYS:
             if key not in clean and key in raw:
                 clean[key] = raw[key]
         page.append(clean)
@@ -1298,14 +1319,14 @@ async def list_findings(
     scan_findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
 
     store = get_compliance_hub_store()
-    list_page = getattr(store, "list_page", None)
+    bulk_list = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
     total_approximate = False
-    if callable(list_page):
+    if callable(bulk_list):
         if scan_findings:
             # Bounded merge: pull at most (offset + limit) top bulk rows, merge
             # with the in-memory scan findings, then slice the requested page.
             window = offset + limit
-            bulk_page, bulk_total = list_page(
+            bulk_page, bulk_total = bulk_list(
                 tenant_id,
                 limit=window,
                 offset=0,
@@ -1330,7 +1351,7 @@ async def list_findings(
             )
             total = None if resolved_bulk is None else len(scan_findings) + resolved_bulk
         else:
-            page_rows, bulk_total = list_page(
+            page_rows, bulk_total = bulk_list(
                 tenant_id,
                 limit=limit,
                 offset=offset,
@@ -1423,7 +1444,7 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
     payloads = [
         _normalized_bulk_finding(row, source=body.source, batch_id=batch_id, ordinal=idx) for idx, row in enumerate(body.findings, start=1)
     ]
-    from agent_bom.api.finding_lifecycle import normalize_observed_at
+    from agent_bom.api.finding_lifecycle import collect_present_canonical_ids, normalize_observed_at
 
     observed_at = normalize_observed_at(body.observed_at or body.metadata.get("observed_at"))
     hub_store = get_compliance_hub_store()
@@ -1435,6 +1456,15 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
         batch_id=batch_id,
         source=body.source,
     )
+    reconciled = 0
+    if body.reconcile_absent:
+        present = collect_present_canonical_ids(payloads, source=body.source)
+        reconciled = hub_store.reconcile_current_absent(
+            tenant_id,
+            present_canonical_ids=present,
+            observed_at=observed_at,
+            scope_source=body.source,
+        )
     warnings = ["tenant_id in body ignored; request tenant scope is authoritative"] if ignored_body_tenant else []
     response = {
         "schema_version": "v1",
@@ -1446,6 +1476,8 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
         "observed_at": observed_at,
         "warnings": warnings,
     }
+    if body.reconcile_absent:
+        response["reconciled"] = reconciled
     if idem_key:
         _get_idempotency_store().put(
             "/v1/findings/bulk",

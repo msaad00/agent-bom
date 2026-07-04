@@ -56,7 +56,15 @@ def test_findings_list_page_under_500ms_at_2k_rows() -> None:
     batch_id = f"batch-{uuid.uuid4().hex}"
     store = InMemoryComplianceHubStore()
     set_compliance_hub_store(store)
-    store.add(tenant_id, _synthetic_findings(_FINDINGS_COUNT, batch_id=batch_id))
+    findings = _synthetic_findings(_FINDINGS_COUNT, batch_id=batch_id)
+    store.add(tenant_id, findings)
+    store.upsert_current_batch(
+        tenant_id,
+        findings,
+        observed_at="2026-07-03T12:00:00Z",
+        batch_id=batch_id,
+        source="test_findings_read_scale",
+    )
 
     client = TestClient(app)
     headers = proxy_headers(role="viewer", tenant=tenant_id)
@@ -82,7 +90,15 @@ def test_findings_approximate_total_skips_count_on_deep_page() -> None:
     batch_id = f"batch-{uuid.uuid4().hex}"
     store = InMemoryComplianceHubStore()
     set_compliance_hub_store(store)
-    store.add(tenant_id, _synthetic_findings(_FINDINGS_COUNT, batch_id=batch_id))
+    findings = _synthetic_findings(_FINDINGS_COUNT, batch_id=batch_id)
+    store.add(tenant_id, findings)
+    store.upsert_current_batch(
+        tenant_id,
+        findings,
+        observed_at="2026-07-03T12:00:00Z",
+        batch_id=batch_id,
+        source="test_findings_read_scale",
+    )
 
     client = TestClient(app)
     headers = proxy_headers(role="viewer", tenant=tenant_id)

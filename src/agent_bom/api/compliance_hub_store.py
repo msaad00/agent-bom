@@ -227,6 +227,32 @@ class ComplianceHubStore(Protocol):
         """Return one current-state lifecycle row for tests and diagnostics."""
         ...
 
+    def list_current_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str = "effective_reach",
+        severity: str | None = None,
+        scan_id: str | None = None,
+        origin: str | None = None,
+        include_total: bool = True,
+    ) -> FindingPage:
+        """Return a page from ``hub_findings_current`` with lifecycle fields merged."""
+        ...
+
+    def reconcile_current_absent(
+        self,
+        tenant_id: str,
+        *,
+        present_canonical_ids: set[str],
+        observed_at: str,
+        scope_source: str | None = None,
+    ) -> int:
+        """Mark open findings absent from a scan batch as resolved at ``observed_at``."""
+        ...
+
 
 def _upsert_current_finding_sqlite(
     conn: sqlite3.Connection,
@@ -344,9 +370,7 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
 
 def _migrate_lifecycle_observations_l2_sqlite(conn: sqlite3.Connection) -> None:
     """Upgrade L1 observation rows (PK on observed_at) to L2 (PK on scan_id)."""
-    rows = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='hub_findings_current_observations'"
-    ).fetchall()
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='hub_findings_current_observations'").fetchall()
     if not rows:
         return
     cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current_observations)").fetchall()}
@@ -507,6 +531,59 @@ class InMemoryComplianceHubStore:
             row = self._current.get(tenant_id, {}).get(canonical_id)
             return dict(row) if row else None
 
+    def list_current_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str = "effective_reach",
+        severity: str | None = None,
+        scan_id: str | None = None,
+        origin: str | None = None,
+        include_total: bool = True,
+    ) -> FindingPage:
+        from agent_bom.api.finding_lifecycle import enriched_finding_payload
+
+        with self._lock:
+            rows = list(self._current.get(tenant_id, {}).values())
+        rows = _filter_current_rows(rows, severity=severity, scan_id=scan_id, origin=origin)
+        total = len(rows) if include_total else None
+        rows.sort(key=_current_page_sort_key(sort))
+        if offset:
+            rows = rows[offset:]
+        if limit >= 0:
+            rows = rows[:limit]
+        return [enriched_finding_payload(row) for row in rows], total
+
+    def reconcile_current_absent(
+        self,
+        tenant_id: str,
+        *,
+        present_canonical_ids: set[str],
+        observed_at: str,
+        scope_source: str | None = None,
+    ) -> int:
+        now = _now_utc_iso()
+        updated = 0
+        with self._lock:
+            current = self._current.setdefault(tenant_id, {})
+            for canonical_id, row in list(current.items()):
+                if str(row.get("status") or "") not in ("open", "reopened"):
+                    continue
+                if canonical_id in present_canonical_ids:
+                    continue
+                payload = row.get("payload") or {}
+                if scope_source is not None and str(payload.get("source") or "") != scope_source:
+                    continue
+                merged = dict(row)
+                merged["status"] = "resolved"
+                merged["resolved_at"] = observed_at
+                merged["updated_at"] = now
+                current[canonical_id] = merged
+                updated += 1
+        return updated
+
 
 # ─── SQLite backend ─────────────────────────────────────────────────────────
 
@@ -545,6 +622,61 @@ def _sqlite_order_clause(sort: str) -> str:
         return "ORDER BY severity_rank DESC, ordinal ASC"
     # effective_reach (default) — index-backed range scan + limit.
     return "ORDER BY effective_reach_score DESC, ordinal ASC"
+
+
+def _sqlite_current_order_clause(sort: str) -> str:
+    """ORDER BY for ``hub_findings_current`` (no ingest ``ordinal`` column)."""
+    if sort == "ordinal":
+        return "ORDER BY last_seen ASC, canonical_id ASC"
+    if sort == "cvss":
+        return "ORDER BY cvss_score DESC, last_seen DESC, canonical_id ASC"
+    if sort == "severity":
+        return "ORDER BY severity_rank DESC, last_seen DESC, canonical_id ASC"
+    return "ORDER BY effective_reach_score DESC, last_seen DESC, canonical_id ASC"
+
+
+def _postgres_current_order_clause(sort: str) -> str:
+    """Postgres ORDER BY for ``hub_findings_current``."""
+    return _sqlite_current_order_clause(sort)
+
+
+def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], tuple[float | str, str, str]]:
+    """Sort key for in-memory current-state pages (descending primary signal)."""
+    normalized = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
+
+    def _key(row: dict[str, Any]) -> tuple[float | str, str, str]:
+        tie = str(row.get("last_seen") or "")
+        canonical = str(row.get("canonical_id") or "")
+        if normalized == "ordinal":
+            return (tie, canonical, "")
+        if normalized == "cvss":
+            primary = float(row.get("cvss_score") or 0.0)
+        elif normalized == "severity":
+            primary = float(row.get("severity_rank") or 0)
+        else:
+            primary = float(row.get("effective_reach_score") or 0.0)
+        return (-primary, tie, canonical)
+
+    return _key
+
+
+def _filter_current_rows(
+    rows: list[dict[str, Any]],
+    *,
+    severity: str | None,
+    scan_id: str | None,
+    origin: str | None,
+) -> list[dict[str, Any]]:
+    if origin is not None:
+        rows = [r for r in rows if (r.get("payload") or {}).get("origin") == origin]
+    if severity is not None:
+        sev = severity.lower()
+        rows = [r for r in rows if str(r.get("severity") or (r.get("payload") or {}).get("severity", "")).lower() == sev]
+    if scan_id is not None:
+        rows = [
+            r for r in rows if str((r.get("payload") or {}).get("batch_id") or (r.get("payload") or {}).get("scan_id") or "") == scan_id
+        ]
+    return rows
 
 
 def _postgres_order_clause(sort: str) -> str:
@@ -952,6 +1084,104 @@ class SQLiteComplianceHubStore:
             "updated_at": row[11],
             "payload": json.loads(row[12]),
         }
+
+    def list_current_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str = "effective_reach",
+        severity: str | None = None,
+        scan_id: str | None = None,
+        origin: str | None = None,
+        include_total: bool = True,
+    ) -> FindingPage:
+        from agent_bom.api.finding_lifecycle import enriched_finding_payload
+
+        where = ["tenant_id = ?"]
+        params: list[Any] = [tenant_id]
+        if origin is not None:
+            where.append("json_extract(payload, '$.origin') = ?")
+            params.append(origin)
+        if severity is not None:
+            where.append("severity_rank = ?")
+            params.append(severity_policy_rank(severity))
+        if scan_id is not None:
+            where.append("(CAST(json_extract(payload, '$.batch_id') AS TEXT) = ? OR CAST(json_extract(payload, '$.scan_id') AS TEXT) = ?)")
+            params.extend([scan_id, scan_id])
+        where_sql = " AND ".join(where)
+
+        total: int | None
+        if include_total:
+            total_row = self._conn.execute(
+                f"SELECT COUNT(*) FROM hub_findings_current WHERE {where_sql}",  # nosec B608
+                params,
+            ).fetchone()
+            total = int(total_row[0]) if total_row else 0
+        else:
+            total = None
+
+        order_sql = _sqlite_current_order_clause(sort)
+        page_params = [*params, int(limit), int(offset)]
+        rows = self._conn.execute(
+            f"""
+            SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
+                   cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
+                   updated_at, payload
+            FROM hub_findings_current
+            WHERE {where_sql} {order_sql} LIMIT ? OFFSET ?
+            """,  # nosec B608
+            page_params,
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            current_row = {
+                "canonical_id": row[0],
+                "first_seen": row[1],
+                "last_seen": row[2],
+                "status": row[3],
+                "severity": row[4],
+                "severity_rank": row[5],
+                "cvss_score": row[6],
+                "effective_reach_score": row[7],
+                "scan_count": row[8],
+                "resolved_at": row[9],
+                "reopened_at": row[10],
+                "updated_at": row[11],
+                "payload": json.loads(row[12]),
+            }
+            out.append(enriched_finding_payload(current_row))
+        return out, total
+
+    def reconcile_current_absent(
+        self,
+        tenant_id: str,
+        *,
+        present_canonical_ids: set[str],
+        observed_at: str,
+        scope_source: str | None = None,
+    ) -> int:
+        now = _now_utc_iso()
+        where = ["tenant_id = ?", "status IN ('open', 'reopened')"]
+        params: list[Any] = [observed_at, now, tenant_id]
+        if scope_source is not None:
+            where.append("json_extract(payload, '$.source') = ?")
+            params.append(scope_source)
+        if present_canonical_ids:
+            placeholders = ",".join("?" * len(present_canonical_ids))
+            where.append(f"canonical_id NOT IN ({placeholders})")
+            params.extend(sorted(present_canonical_ids))
+        cur = self._conn.execute(
+            f"""
+            UPDATE hub_findings_current
+            SET status = 'resolved', resolved_at = ?, updated_at = ?
+            WHERE {" AND ".join(where)}
+            """,  # nosec B608
+            params,
+        )
+        self._conn.commit()
+        return int(cur.rowcount or 0)
 
 
 # ─── Module-level access (set/reset wired in stores.py) ──────────────────────

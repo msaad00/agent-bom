@@ -219,6 +219,13 @@ def test_api_rate_limits_table_exists():
     assert "idx_api_rate_limits_updated" in _indexes()
 
 
+def test_api_rate_limit_hits_table_exists():
+    cols = _columns_for("api_rate_limit_hits")
+    for col in ("bucket_key", "hit_at"):
+        assert col in cols, f"api_rate_limit_hits missing column: {col}"
+    assert "idx_api_rate_limit_hits_bucket_hit_at" in _indexes()
+
+
 # ── teams table ───────────────────────────────────────────────────────────────
 
 

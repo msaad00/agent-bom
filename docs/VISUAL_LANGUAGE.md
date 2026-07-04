@@ -153,3 +153,8 @@ flowchart TB
 Ship one compact diagram per workflow page; link to code paths in prose below
 the fence. Regenerate wide `flowchart LR` inventory diagrams only when the
 buyer deck needs the full estate map — use compact TB for session truth.
+
+The shipped rollout of this pattern lives in
+[`SESSION_FLOWS.md`](SESSION_FLOWS.md): scan push, OCSF/runtime ingest, MCP tool
+call, Helm upgrade, fleet sync, and API-key lifecycle, each linked to its owning
+route, scope, and store.

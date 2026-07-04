@@ -74,6 +74,8 @@ def test_overview_empty_shape() -> None:
     for domain in data["domains"].values():
         assert {"label", "href", "metric", "metric_label", "status", "detail"} <= set(domain)
         assert domain["href"].startswith("/")
+        if "graph_href" in domain:
+            assert str(domain["graph_href"]).startswith("/graph")
 
 
 def test_overview_aggregates_findings() -> None:

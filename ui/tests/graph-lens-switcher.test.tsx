@@ -16,6 +16,15 @@ describe("GraphLensSwitcher", () => {
     push.mockClear();
   });
 
+  it("renders the compact lens bar without overlay marketing copy", () => {
+    render(<GraphLensSwitcher variant="compact" />);
+
+    expect(screen.queryByTestId("graph-lens-floating-bar")).not.toBeInTheDocument();
+    expect(screen.queryByText("Security Graph Lens")).not.toBeInTheDocument();
+    expect(screen.getByText("Lens")).toBeInTheDocument();
+    expect(screen.getByText("Lineage")).toBeInTheDocument();
+  });
+
   it("renders the floating lens bar for full-canvas graph pages", () => {
     render(<GraphLensSwitcher variant="floating" />);
 

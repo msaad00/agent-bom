@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, cast
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 
@@ -39,6 +40,35 @@ def _tenant_id(request: Request) -> str:
 
 def _empty_severity() -> dict[str, int]:
     return {key: 0 for key in _SEVERITY_KEYS}
+
+
+def _graph_drill_href(
+    *,
+    rollup: bool = True,
+    severity: str | None = None,
+    relationships: str | None = None,
+    layers: str | None = None,
+) -> str:
+    """Build a /graph deep-link for overview domain tiles."""
+    params: dict[str, str] = {}
+    if rollup:
+        params["rollup"] = "1"
+    if severity:
+        params["severity"] = severity
+    if relationships:
+        params["relationships"] = relationships
+    if layers:
+        params["layers"] = layers
+    query = urlencode(params)
+    return f"/graph?{query}" if query else "/graph"
+
+
+def _cloud_graph_href(severity: dict[str, int]) -> str:
+    if severity["critical"] > 0:
+        return _graph_drill_href(severity="critical")
+    if severity["high"] > 0:
+        return _graph_drill_href(severity="high")
+    return _graph_drill_href()
 
 
 def _severity_from_summary(
@@ -334,6 +364,7 @@ async def get_overview(request: Request) -> dict[str, Any]:
         "cloud": {
             "label": "Cloud / CNAPP",
             "href": "/findings",
+            "graph_href": _cloud_graph_href(scan["severity"]),
             "metric": scan["unique_cves"],
             "metric_label": "open CVEs",
             "status": _status_for(scan["severity"]["critical"], scan["severity"]["high"]),
@@ -347,6 +378,7 @@ async def get_overview(request: Request) -> dict[str, Any]:
         "runtime": {
             "label": "Runtime",
             "href": "/gateway",
+            "graph_href": _graph_drill_href(relationships="runtime"),
             "metric": runtime["active_surfaces"],
             "metric_label": "active surfaces",
             "status": "ok" if runtime["active_surfaces"] > 0 else "idle",
@@ -363,6 +395,7 @@ async def get_overview(request: Request) -> dict[str, Any]:
         "identity": {
             "label": "NHI / Identity",
             "href": "/identity",
+            "graph_href": _graph_drill_href(layers="agent,user,role,policy", relationships="governance"),
             "metric": identity["managed_identities"] + identity["fleet_agents"],
             "metric_label": "identities + agents",
             "status": _identity_status(identity),

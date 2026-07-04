@@ -701,6 +701,10 @@ function GraphPageInner() {
         )
       : null,
   );
+  const requestedRollupRef = useRef<boolean>(
+    typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("rollup") === "1",
+  );
   const firstScanSelectionRef = useRef(true);
   // Last URL the filter→URL sync effect wrote, used to break an infinite
   // router.replace loop (see the sync effect below for the full rationale).
@@ -952,7 +956,8 @@ function GraphPageInner() {
     0;
 
   const rollupEligible =
-    estateNodeCount >= LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD &&
+    (estateNodeCount >= LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD ||
+      requestedRollupRef.current) &&
     !investigationMode &&
     !selectedAttackPath &&
     !reachabilitySummary &&

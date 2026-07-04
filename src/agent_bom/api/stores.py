@@ -80,6 +80,14 @@ def _compact_terminal_job(job: ScanJob) -> ScanJob:
                 compact_result[key] = job.result[key]
         if "scan_timestamp" not in compact_result and "generated_at" in compact_result:
             compact_result["scan_timestamp"] = compact_result["generated_at"]
+        scorecard = job.result.get("posture_scorecard")
+        if isinstance(scorecard, dict):
+            compact_result["posture_scorecard"] = {
+                key: scorecard[key] for key in ("grade", "score", "summary") if key in scorecard
+            }
+        scan_sources = job.result.get("scan_sources")
+        if isinstance(scan_sources, list):
+            compact_result["scan_sources"] = scan_sources
     return job.model_copy(update={"result": compact_result})
 
 

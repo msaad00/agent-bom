@@ -41,12 +41,94 @@ def _empty_severity() -> dict[str, int]:
     return {key: 0 for key in _SEVERITY_KEYS}
 
 
-def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
-    """Aggregate severity counts, sources, scans, and top-risk findings.
+def _severity_from_summary(
+    summary: dict[str, Any],
+    finding_summary: dict[str, Any] | None = None,
+) -> dict[str, int]:
+    """Rebuild severity histogram from compact scan ``summary`` metadata."""
+    severity = _empty_severity()
+    by_sev = (finding_summary or {}).get("by_severity") or {}
+    if isinstance(by_sev, dict) and by_sev:
+        for key in _SEVERITY_KEYS:
+            severity[key] = int(by_sev.get(key) or 0)
+        return severity
+    severity["critical"] = int(
+        summary.get("critical_unified_findings") or summary.get("critical_findings") or 0
+    )
+    severity["high"] = int(summary.get("high_unified_findings") or 0)
+    total = int(summary.get("total_vulnerabilities") or summary.get("total_findings") or 0)
+    remainder = max(0, total - severity["critical"] - severity["high"])
+    if remainder:
+        severity["medium"] = remainder
+    return severity
 
-    Drives the Cloud/CNAPP, Ops, and top-risks strip from the same scan-job
-    store the dashboard and ``/v1/posture/counts`` already read.
-    """
+
+def _rollup_from_blast_radius(blast_radius: list[dict[str, Any]]) -> dict[str, Any]:
+    severity = _empty_severity()
+    kev = 0
+    credential_exposed = 0
+    seen_ids: set[str] = set()
+    top_risks: list[dict[str, Any]] = []
+
+    for b in blast_radius:
+        vid = b.get("vulnerability_id", "")
+        if vid and vid in seen_ids:
+            continue
+        if vid:
+            seen_ids.add(vid)
+        sev = (b.get("severity") or "").lower()
+        if sev in severity:
+            severity[sev] += 1
+        is_kev = bool(b.get("cisa_kev") or b.get("is_kev"))
+        if is_kev:
+            kev += 1
+        creds = b.get("exposed_credentials") or []
+        if creds:
+            credential_exposed += 1
+        risk = b.get("risk_score")
+        if risk is None:
+            risk = (b.get("blast_score") or 0) / 10
+        top_risks.append(
+            {
+                "vulnerability_id": vid,
+                "package": b.get("package"),
+                "severity": sev or "low",
+                "risk_score": round(float(risk or 0), 1),
+                "is_kev": is_kev,
+                "cvss_score": b.get("cvss_score"),
+                "epss_score": b.get("epss_score"),
+                "affected_agents": list(b.get("affected_agents") or []),
+            }
+        )
+
+    top_risks.sort(key=lambda r: r["risk_score"], reverse=True)
+    return {
+        "severity": severity,
+        "kev": kev,
+        "credential_exposed": credential_exposed,
+        "unique_cves": len(seen_ids),
+        "top_risks": top_risks[:10],
+    }
+
+
+def _rollup_from_summary(result: dict[str, Any]) -> dict[str, Any]:
+    summary = cast(dict[str, Any], result.get("summary") or {})
+    finding_summary = cast(dict[str, Any], result.get("finding_summary") or {})
+    severity = _severity_from_summary(summary, finding_summary)
+    total_vulns = int(summary.get("total_vulnerabilities") or summary.get("total_findings") or 0)
+    unique_cves = total_vulns if total_vulns else sum(severity.values())
+    return {
+        "severity": severity,
+        "kev": 0,
+        "credential_exposed": 0,
+        "unique_cves": unique_cves,
+        "unique_packages": int(summary.get("unique_packages") or summary.get("total_packages") or 0),
+        "top_risks": [],
+    }
+
+
+def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
+    """Aggregate severity counts, sources, scans, and top-risk findings."""
     severity = _empty_severity()
     sources: set[str] = set()
     scan_count = 0
@@ -55,8 +137,8 @@ def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
     running_count = 0
     kev = 0
     credential_exposed = 0
-    seen_ids: set[str] = set()
-    unique_packages: set[str] = set()
+    unique_cves = 0
+    unique_packages = 0
     top_risks: list[dict[str, Any]] = []
     latest_scan_at: str | None = None
 
@@ -81,44 +163,30 @@ def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
             if src:
                 sources.add(str(src))
 
-        for agent in result.get("agents", []) or []:
-            for server in agent.get("mcp_servers", []) or []:
-                for pkg in server.get("packages", []) or []:
-                    name = pkg.get("name")
-                    version = pkg.get("version")
-                    if name:
-                        unique_packages.add(f"{name}@{version}")
-
-        for b in result.get("blast_radius", []) or []:
-            vid = b.get("vulnerability_id", "")
-            if vid and vid in seen_ids:
-                continue
-            if vid:
-                seen_ids.add(vid)
-            sev = (b.get("severity") or "").lower()
-            if sev in severity:
-                severity[sev] += 1
-            is_kev = bool(b.get("cisa_kev") or b.get("is_kev"))
-            if is_kev:
-                kev += 1
-            creds = b.get("exposed_credentials") or []
-            if creds:
-                credential_exposed += 1
-            risk = b.get("risk_score")
-            if risk is None:
-                risk = (b.get("blast_score") or 0) / 10
-            top_risks.append(
-                {
-                    "vulnerability_id": vid,
-                    "package": b.get("package"),
-                    "severity": sev or "low",
-                    "risk_score": round(float(risk or 0), 1),
-                    "is_kev": is_kev,
-                    "cvss_score": b.get("cvss_score"),
-                    "epss_score": b.get("epss_score"),
-                    "affected_agents": list(b.get("affected_agents") or []),
-                }
-            )
+        blast_radius = result.get("blast_radius") or []
+        if blast_radius:
+            partial = _rollup_from_blast_radius(cast(list[dict[str, Any]], blast_radius))
+            for key in _SEVERITY_KEYS:
+                severity[key] += partial["severity"][key]
+            kev += partial["kev"]
+            credential_exposed += partial["credential_exposed"]
+            unique_cves += partial["unique_cves"]
+            top_risks.extend(partial["top_risks"])
+            for agent in result.get("agents", []) or []:
+                for server in agent.get("mcp_servers", []) or []:
+                    for pkg in server.get("packages", []) or []:
+                        name = pkg.get("name")
+                        if name:
+                            unique_packages += 1
+        else:
+            partial = _rollup_from_summary(result)
+            for key in _SEVERITY_KEYS:
+                severity[key] += partial["severity"][key]
+            kev += partial["kev"]
+            credential_exposed += partial["credential_exposed"]
+            unique_cves += partial["unique_cves"]
+            unique_packages = max(unique_packages, partial["unique_packages"])
+            top_risks.extend(partial["top_risks"])
 
     top_risks.sort(key=lambda r: r["risk_score"], reverse=True)
 
@@ -131,8 +199,8 @@ def _scan_rollup(jobs: list[Any]) -> dict[str, Any]:
         "running_count": running_count,
         "kev": kev,
         "credential_exposed": credential_exposed,
-        "unique_cves": len(seen_ids),
-        "unique_packages": len(unique_packages),
+        "unique_cves": unique_cves,
+        "unique_packages": unique_packages,
         "top_risks": top_risks[:10],
         "latest_scan_at": latest_scan_at,
     }
@@ -143,12 +211,31 @@ def _posture_snapshot(jobs: list[Any]) -> dict[str, Any]:
     for job in jobs:
         if job.status != JobStatus.DONE or not job.result:
             continue
-        scorecard = cast(dict[str, Any], job.result).get("posture_scorecard")
-        if scorecard:
+        result = cast(dict[str, Any], job.result)
+        scorecard = result.get("posture_scorecard")
+        if isinstance(scorecard, dict) and scorecard:
             return {
                 "grade": scorecard.get("grade", "N/A"),
                 "score": scorecard.get("score", 0),
                 "summary": scorecard.get("summary", ""),
+            }
+        summary = result.get("summary")
+        if isinstance(summary, dict) and (
+            summary.get("total_vulnerabilities") or summary.get("total_findings")
+        ):
+            from agent_bom.posture import _score_to_grade
+
+            critical = int(
+                summary.get("critical_unified_findings") or summary.get("critical_findings") or 0
+            )
+            high = int(summary.get("high_unified_findings") or 0)
+            total = int(summary.get("total_vulnerabilities") or summary.get("total_findings") or 0)
+            penalty = min(100.0, critical * 12.0 + high * 6.0 + max(0, total - critical - high) * 1.5)
+            score = max(0.0, round(100.0 - penalty, 1))
+            return {
+                "grade": _score_to_grade(score),
+                "score": score,
+                "summary": f"{total} finding(s) from latest completed scan",
             }
         break
     return {"grade": "N/A", "score": 0, "summary": "No completed scans available"}

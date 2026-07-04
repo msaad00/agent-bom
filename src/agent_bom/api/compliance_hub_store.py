@@ -362,9 +362,13 @@ def _upsert_current_finding_sqlite(
 
 
 def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
-    from agent_bom.api.finding_lifecycle import _CURRENT_LIFECYCLE_SQLITE_DDL
+    from agent_bom.api.finding_lifecycle import (
+        _CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE,
+        _CURRENT_LIFECYCLE_SQLITE_DDL,
+    )
 
     conn.executescript(_CURRENT_LIFECYCLE_SQLITE_DDL)
+    conn.executescript(_CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE)
     _migrate_lifecycle_observations_l2_sqlite(conn)
 
 

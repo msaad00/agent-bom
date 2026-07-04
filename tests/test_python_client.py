@@ -191,6 +191,37 @@ def test_client_accepts_positional_findings_payload() -> None:
     }
 
 
+def test_client_ingest_findings_lifecycle_fields() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode("utf-8"))
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(201, json={"ingested": 1, "reconciled": 1})
+
+    client = _client(handler)
+
+    result = client.ingest_findings(
+        [{"id": "finding-1", "severity": "high"}],
+        source="sdk-test",
+        observed_at="2026-07-08T12:00:00Z",
+        reconcile_absent=True,
+        idempotency_key="scan-batch-42",
+    )
+
+    assert result["reconciled"] == 1
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["idempotency-key"] == "scan-batch-42"
+    assert captured["body"] == {
+        "findings": [{"id": "finding-1", "severity": "high"}],
+        "source": "sdk-test",
+        "tenant_id": "tenant-a",
+        "observed_at": "2026-07-08T12:00:00Z",
+        "reconcile_absent": True,
+    }
+
+
 def test_client_rejects_ambiguous_auth() -> None:
     with pytest.raises(ValueError, match="either api_key or bearer_token"):
         AgentBomClient(base_url="https://agent-bom.example.com", api_key="a", bearer_token="b")

@@ -10,6 +10,7 @@ product split.
 |---|---|---|
 | `sqlite-pilot` | `eks-control-plane-sqlite-pilot-values.yaml` | Single-node packaged demo or short-lived pilot where Postgres is not ready yet |
 | `focused-pilot` | `eks-mcp-pilot-values.yaml` | Narrow EKS pilot with control plane, scanner, and tightened ingress |
+| `enterprise-demo` | `eks-mcp-pilot-values.yaml` + `eks-enterprise-demo-overlay.yaml` | Focused pilot plus scheduled AWS estate inventory (IRSA, `AGENT_BOM_AWS_INVENTORY=1`) |
 | `byo-postgres` | `byo-postgres-values.yaml` | Overlay for operator-owned Postgres-compatible databases, including Snowflake Postgres candidates |
 | `production` | `eks-production-values.yaml` | Postgres-backed production EKS rollout with autoscaling, backup, and ExternalSecrets |
 | `keda-autoscaling` | `eks-production-values.yaml` + `eks-keda-values.yaml` + `gateway-upstreams.example.yaml` | Production overlay with KEDA-backed API and gateway autoscaling |

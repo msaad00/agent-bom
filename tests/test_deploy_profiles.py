@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import yaml
+
 from agent_bom.deploy_profiles import build_helm_profile_command, helm_chart_dir, helm_validation_profiles
 
 
@@ -17,6 +19,7 @@ def test_helm_validation_profiles_reference_existing_chart_assets():
         "scanner-only",
         "sqlite-pilot",
         "focused-pilot",
+        "enterprise-demo",
         "focused-pilot-byo-postgres",
         "production",
         "keda-autoscaling",
@@ -95,6 +98,20 @@ def test_byo_postgres_profile_layers_focused_pilot_with_database_overlay():
     cmd = build_helm_profile_command(repo_root, "focused-pilot-byo-postgres")
     assert str(repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "eks-mcp-pilot-values.yaml") in cmd
     assert str(repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "byo-postgres-values.yaml") in cmd
+
+
+def test_enterprise_demo_profile_layers_pilot_with_aws_inventory_overlay():
+    repo_root = Path(__file__).resolve().parent.parent
+    profiles = {profile.name: profile for profile in helm_validation_profiles(repo_root)}
+    demo = profiles["enterprise-demo"]
+    example_dir = repo_root / "deploy" / "helm" / "agent-bom" / "examples"
+    assert demo.values_files == (
+        example_dir / "eks-mcp-pilot-values.yaml",
+        example_dir / "eks-enterprise-demo-overlay.yaml",
+    )
+    overlay = yaml.safe_load((example_dir / "eks-enterprise-demo-overlay.yaml").read_text())
+    assert overlay["scanner"]["cloud"]["enabled"] is True
+    assert overlay["scanner"]["cloud"]["aws"]["inventory"] is True
 
 
 def test_install_helm_profile_script_prints_packaged_command():

@@ -45,6 +45,14 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
             values_files=(examples / "eks-mcp-pilot-values.yaml",),
         ),
         HelmValidationProfile(
+            name="enterprise-demo",
+            description="Focused EKS pilot with scheduled AWS estate inventory via IRSA.",
+            values_files=(
+                examples / "eks-mcp-pilot-values.yaml",
+                examples / "eks-enterprise-demo-overlay.yaml",
+            ),
+        ),
+        HelmValidationProfile(
             name="focused-pilot-byo-postgres",
             description="Focused EKS pilot plus operator-owned Postgres-compatible control-plane database.",
             values_files=(

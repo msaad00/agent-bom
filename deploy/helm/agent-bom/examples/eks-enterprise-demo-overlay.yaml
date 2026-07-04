@@ -1,0 +1,24 @@
+# Overlay for the enterprise-demo Helm profile.
+#
+# Layers on top of eks-mcp-pilot-values.yaml to turn on scheduled estate scans
+# with read-only AWS inventory enrichment (AGENT_BOM_AWS_INVENTORY=1 via IRSA).
+# Replace the IRSA role ARN in eks-mcp-pilot-values.yaml before install.
+#
+# Install:
+#   python scripts/install_helm_profile.py enterprise-demo
+#
+# Or manually:
+#   helm upgrade --install agent-bom deploy/helm/agent-bom \
+#     -n agent-bom --create-namespace \
+#     -f deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml \
+#     -f deploy/helm/agent-bom/examples/eks-enterprise-demo-overlay.yaml
+
+scanner:
+  enabled: true
+  schedule: "0 */6 * * *"
+  cloud:
+    enabled: true
+    aws:
+      inventory: true
+      allRegions: false
+      regions: "us-east-1,us-west-2"

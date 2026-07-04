@@ -104,3 +104,52 @@ If the diagram is going to be referenced by an enterprise buyer's procurement
 deck, ship SVG. If it's going to drift faster than the next release, ship
 Mermaid. If a junior engineer would type it into a terminal, ship ASCII inside
 a fenced code block.
+
+## Layered session / enforcement flows (compact TB)
+
+Use this pattern when explaining **who can do what, where it is enforced, and
+what gets persisted** — auth scopes, scan push, OCSF ingest, MCP tool calls,
+Helm upgrade hooks, fleet sync. The goal matches a readable chat or doc card:
+**nothing too wide to pan, nothing so tall it needs endless scroll.**
+
+### Layout rules
+
+1. **Direction `TB` only** — three stacked bands, not `LR` meshes.
+2. **Three bands max:** `Who / sources` → `Where enforced` → `What persisted`.
+3. **≤3 nodes per band** — overflow becomes a bullet list under the diagram.
+4. **One enforcement spine** — a single vertical chain through the middle band
+   (`require_scope` → route → store), not parallel crossing edges.
+5. **Narrow subgraph titles** — short labels (`Who can push`, `Enforced at`,
+   `Lands in`), not paragraph subtitles inside nodes.
+6. **Repo and docs only** — these diagrams belong in README, `docs/`, and
+   `site-docs/`; the dashboard stays operator chrome (no floating workflow
+   banners on graph canvases).
+
+### Template
+
+```mermaid
+flowchart TB
+    subgraph Who["Who can push evidence"]
+        CLI["CLI scan + --push-url"]
+        CI["GitHub Action upload"]
+        Fleet["In-cluster collector"]
+    end
+
+    subgraph Enforced["Where it is enforced"]
+        Auth["API key · tenant RBAC"]
+        Route["POST /v1/scan · ScanPipeline"]
+    end
+
+    subgraph Lands["What lands"]
+        Store["Postgres: job · findings · graph snapshot"]
+    end
+
+    CLI --> Auth
+    CI --> Auth
+    Fleet --> Auth
+    Auth --> Route --> Store
+```
+
+Ship one compact diagram per workflow page; link to code paths in prose below
+the fence. Regenerate wide `flowchart LR` inventory diagrams only when the
+buyer deck needs the full estate map — use compact TB for session truth.

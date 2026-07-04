@@ -88,7 +88,7 @@ class PostgresRuntimeEventStore:
                 chunk = observation_ids[offset : offset + _BATCH_LOOKUP_CHUNK]
                 placeholders = ",".join("%s" for _ in chunk)
                 rows = conn.execute(
-                    f"SELECT observation_id FROM runtime_observations WHERE tenant_id = %s AND observation_id IN ({placeholders})",
+                    f"SELECT observation_id FROM runtime_observations WHERE tenant_id = %s AND observation_id IN ({placeholders})",  # nosec B608
                     (tenant_id, *chunk),
                 ).fetchall()
                 existing_ids.update(row[0] for row in rows)
@@ -101,7 +101,7 @@ class PostgresRuntimeEventStore:
                 chunk = session_ids[offset : offset + _BATCH_LOOKUP_CHUNK]
                 placeholders = ",".join("%s" for _ in chunk)
                 rows = conn.execute(
-                    f"SELECT session_id, data FROM runtime_sessions WHERE tenant_id = %s AND session_id IN ({placeholders})",
+                    f"SELECT session_id, data FROM runtime_sessions WHERE tenant_id = %s AND session_id IN ({placeholders})",  # nosec B608
                     (tenant_id, *chunk),
                 ).fetchall()
                 for session_id, data in rows:

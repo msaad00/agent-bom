@@ -360,6 +360,7 @@ API_MAX_SCHEDULES_PER_TENANT = _int("AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT", 10
 # work bounded only by the tenant active-scan quota churn. Reject over-cap
 # requests at validation time (HTTP 422).
 API_MAX_BATCH_SCAN_TARGETS = _int("AGENT_BOM_API_MAX_BATCH_SCAN_TARGETS", 100)
+API_MAX_OCSF_INGEST_EVENTS = _int("AGENT_BOM_API_MAX_OCSF_INGEST_EVENTS", 1_000)
 API_ALLOW_UNAUTHENTICATED = _bool("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", False)
 # Slowloris throughput floor (audit-5 PR-C): minimum sustained body
 # bytes/second once a request body crosses the warmup threshold inside

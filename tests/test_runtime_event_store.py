@@ -110,6 +110,29 @@ async def test_runtime_observation_queries_are_tenant_scoped_and_paginated():
     assert exc.value.status_code == 404
 
 
+def test_sqlite_runtime_event_store_batch_persists_in_one_transaction(tmp_path):
+    store = SQLiteRuntimeEventStore(str(tmp_path / "runtime-batch.db"))
+    from agent_bom.api.runtime_event_store import RuntimeObservationRecord
+
+    records = [
+        RuntimeObservationRecord(
+            tenant_id="tenant-alpha",
+            observation_id=f"evt-{index}",
+            session_id="sess-1",
+            observed_at=f"2026-01-01T00:00:{index:02d}Z",
+            event_type="tool_call",
+            verdict="allowed",
+            tool_name="search",
+        )
+        for index in range(25)
+    ]
+    assert store.put_observations_batch(records) == 25
+    session = store.get_session("tenant-alpha", "sess-1")
+    assert session is not None
+    assert session.observation_count == 25
+    assert store.put_observations_batch(records) == 0
+
+
 def test_sqlite_runtime_event_store_persists_session_summaries(tmp_path):
     store = SQLiteRuntimeEventStore(str(tmp_path / "runtime.db"))
     set_runtime_event_store(store)

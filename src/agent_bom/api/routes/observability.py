@@ -8,6 +8,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections import defaultdict
@@ -27,6 +28,7 @@ from agent_bom.api.runtime_event_store import (
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota_guard
+from agent_bom.config import API_MAX_OCSF_INGEST_EVENTS
 from agent_bom.graph.severity import ocsf_to_severity
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.rbac import require_authenticated_permission
@@ -282,12 +284,20 @@ def _runtime_observation_from_event(event: dict[str, Any], *, tenant_id: str, so
 
 
 def _persist_runtime_observations(events: list[dict[str, Any]], *, tenant_id: str, source: str = "api") -> int:
+    if not events:
+        return 0
     store = get_runtime_event_store()
-    count = 0
-    for event in events:
-        store.put_observation(_runtime_observation_from_event(event, tenant_id=tenant_id, source=source))
-        count += 1
-    return count
+    records = [_runtime_observation_from_event(event, tenant_id=tenant_id, source=source) for event in events]
+    return store.put_observations_batch(records)
+
+
+def _finish_ocsf_ingest(normalized_events: list[dict[str, Any]], *, tenant_id: str) -> None:
+    try:
+        if normalized_events:
+            _get_analytics_store().record_events(normalized_events, tenant_id=tenant_id)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("OCSF analytics ingest skipped: %s", sanitize_text(exc))
+    _persist_runtime_observations(normalized_events, tenant_id=tenant_id, source="ocsf")
 
 
 # OTel attribute keys carrying the chargeback/showback allocation (#2925).
@@ -542,17 +552,18 @@ async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
 
+    if len(ocsf_events) > API_MAX_OCSF_INGEST_EVENTS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"OCSF ingest accepts at most {API_MAX_OCSF_INGEST_EVENTS} events per request",
+        )
+
     normalized_events = [_normalize_ocsf_event(event, tenant_id=tenant_id) for event in ocsf_events]
     class_counts: dict[str, int] = defaultdict(int)
     for event in normalized_events:
         class_counts[str(event.get("ocsf_class_uid", "unknown"))] += 1
 
-    try:
-        if normalized_events:
-            _get_analytics_store().record_events(normalized_events, tenant_id=tenant_id)
-    except Exception as exc:  # noqa: BLE001
-        _logger.warning("OCSF analytics ingest skipped: %s", sanitize_text(exc))
-    _persist_runtime_observations(normalized_events, tenant_id=tenant_id, source="ocsf")
+    await asyncio.to_thread(_finish_ocsf_ingest, normalized_events, tenant_id=tenant_id)
 
     source_ids = sorted({str(event.get("source_id", "")).strip() for event in normalized_events if str(event.get("source_id", "")).strip()})
     log_action(

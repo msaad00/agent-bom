@@ -79,8 +79,35 @@ class RuntimeSessionRecord:
         return asdict(self)
 
 
+_BATCH_LOOKUP_CHUNK = 500
+
+
+def _dedupe_observation_records(records: list[RuntimeObservationRecord]) -> list[RuntimeObservationRecord]:
+    seen: set[tuple[str, str]] = set()
+    unique: list[RuntimeObservationRecord] = []
+    for record in records:
+        key = (record.tenant_id, record.observation_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(record)
+    return unique
+
+
+def _merge_sessions_for_batch(
+    existing_sessions: dict[str, RuntimeSessionRecord],
+    new_records: list[RuntimeObservationRecord],
+) -> dict[str, RuntimeSessionRecord]:
+    sessions = dict(existing_sessions)
+    for record in new_records:
+        sessions[record.session_id] = _merge_session(sessions.get(record.session_id), record)
+    return sessions
+
+
 class RuntimeEventStore(Protocol):
     def put_observation(self, record: RuntimeObservationRecord) -> None: ...
+
+    def put_observations_batch(self, records: list[RuntimeObservationRecord]) -> int: ...
 
     def list_sessions(self, tenant_id: str, *, limit: int = 100, offset: int = 0) -> list[RuntimeSessionRecord]: ...
 
@@ -158,14 +185,33 @@ class InMemoryRuntimeEventStore:
         :class:`agent_bom.storage.base.TenantScopedStore` contract."""
 
     def put_observation(self, record: RuntimeObservationRecord) -> None:
-        key = (record.tenant_id, record.observation_id)
-        session_key = (record.tenant_id, record.session_id)
+        self.put_observations_batch([record])
+
+    def put_observations_batch(self, records: list[RuntimeObservationRecord]) -> int:
+        unique_records = _dedupe_observation_records(records)
+        if not unique_records:
+            return 0
         with self._lock:
-            if key in self._observations:
-                return
-            self._observations[key] = record
-            self._sessions[session_key] = _merge_session(self._sessions.get(session_key), record)
-            _enforce_in_memory_observation_cap(self._observations, record.tenant_id)
+            new_records = [
+                record
+                for record in unique_records
+                if (record.tenant_id, record.observation_id) not in self._observations
+            ]
+            if not new_records:
+                return 0
+            existing_sessions: dict[str, RuntimeSessionRecord] = {
+                record.session_id: session
+                for record in new_records
+                if (session := self._sessions.get((record.tenant_id, record.session_id))) is not None
+            }
+            merged_sessions = _merge_sessions_for_batch(existing_sessions, new_records)
+            for record in new_records:
+                self._observations[(record.tenant_id, record.observation_id)] = record
+            for session_id, session in merged_sessions.items():
+                self._sessions[(session.tenant_id, session_id)] = session
+            for tenant_id in {record.tenant_id for record in new_records}:
+                _enforce_in_memory_observation_cap(self._observations, tenant_id)
+            return len(new_records)
 
     def list_sessions(self, tenant_id: str, *, limit: int = 100, offset: int = 0) -> list[RuntimeSessionRecord]:
         with self._lock:
@@ -247,31 +293,75 @@ class SQLiteRuntimeEventStore:
         self._conn.commit()
 
     def put_observation(self, record: RuntimeObservationRecord) -> None:
-        existing = self._conn.execute(
-            "SELECT 1 FROM runtime_observations WHERE tenant_id = ? AND observation_id = ?",
-            (record.tenant_id, record.observation_id),
-        ).fetchone()
-        if existing:
-            return
-        session = _merge_session(self.get_session(record.tenant_id, record.session_id), record)
-        self._conn.execute(
+        self.put_observations_batch([record])
+
+    def put_observations_batch(self, records: list[RuntimeObservationRecord]) -> int:
+        unique_records = _dedupe_observation_records(records)
+        if not unique_records:
+            return 0
+        tenant_id = unique_records[0].tenant_id
+        conn = self._conn
+        existing_ids: set[str] = set()
+        observation_ids = [record.observation_id for record in unique_records]
+        for offset in range(0, len(observation_ids), _BATCH_LOOKUP_CHUNK):
+            chunk = observation_ids[offset : offset + _BATCH_LOOKUP_CHUNK]
+            placeholders = ",".join("?" * len(chunk))
+            rows = conn.execute(
+                f"SELECT observation_id FROM runtime_observations WHERE tenant_id = ? AND observation_id IN ({placeholders})",
+                (tenant_id, *chunk),
+            ).fetchall()
+            existing_ids.update(row[0] for row in rows)
+        new_records = [record for record in unique_records if record.observation_id not in existing_ids]
+        if not new_records:
+            return 0
+        session_ids = sorted({record.session_id for record in new_records})
+        existing_sessions: dict[str, RuntimeSessionRecord] = {}
+        for offset in range(0, len(session_ids), _BATCH_LOOKUP_CHUNK):
+            chunk = session_ids[offset : offset + _BATCH_LOOKUP_CHUNK]
+            placeholders = ",".join("?" * len(chunk))
+            rows = conn.execute(
+                f"SELECT session_id, data FROM runtime_sessions WHERE tenant_id = ? AND session_id IN ({placeholders})",
+                (tenant_id, *chunk),
+            ).fetchall()
+            for session_id, data in rows:
+                existing_sessions[session_id] = _session_from_json(data)
+        merged_sessions = _merge_sessions_for_batch(existing_sessions, new_records)
+        conn.executemany(
             """
             INSERT INTO runtime_observations
                 (tenant_id, observation_id, session_id, observed_at, data)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (record.tenant_id, record.observation_id, record.session_id, record.observed_at, json.dumps(record.to_dict(), sort_keys=True)),
+            [
+                (
+                    record.tenant_id,
+                    record.observation_id,
+                    record.session_id,
+                    record.observed_at,
+                    json.dumps(record.to_dict(), sort_keys=True),
+                )
+                for record in new_records
+            ],
         )
-        self._conn.execute(
+        conn.executemany(
             """
             INSERT OR REPLACE INTO runtime_sessions
                 (tenant_id, session_id, last_seen, data)
             VALUES (?, ?, ?, ?)
             """,
-            (session.tenant_id, session.session_id, session.last_seen, json.dumps(session.to_dict(), sort_keys=True)),
+            [
+                (
+                    session.tenant_id,
+                    session.session_id,
+                    session.last_seen,
+                    json.dumps(session.to_dict(), sort_keys=True),
+                )
+                for session in merged_sessions.values()
+            ],
         )
-        prune_runtime_observations_for_tenant(self._conn, record.tenant_id)
-        self._conn.commit()
+        prune_runtime_observations_for_tenant(conn, tenant_id)
+        conn.commit()
+        return len(new_records)
 
     def list_sessions(self, tenant_id: str, *, limit: int = 100, offset: int = 0) -> list[RuntimeSessionRecord]:
         rows = self._conn.execute(

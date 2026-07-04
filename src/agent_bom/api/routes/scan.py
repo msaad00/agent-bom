@@ -261,10 +261,7 @@ class BulkFindingsRequest(BaseModel):
     )
     reconcile_absent: bool = Field(
         default=False,
-        description=(
-            "When true, mark open findings in the same source scope that are absent "
-            "from this batch as resolved at observed_at."
-        ),
+        description=("When true, mark open findings in the same source scope that are absent from this batch as resolved at observed_at."),
     )
 
     @field_validator("findings")
@@ -1271,10 +1268,9 @@ async def list_findings(
     severity: str | None = None,
     scan_id: Annotated[str | None, Query(max_length=128)] = None,
     sort: str = "effective_reach",
-    # enforce limit cap server-side instead of trusting
-    # the historical `min(limit, 1000)` clamp at use-site.
     limit: Annotated[int, Query(ge=1, le=1000)] = 500,
     offset: Annotated[int, Query(ge=0)] = 0,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
     approximate_total: bool = False,
 ) -> dict:
     """List vulnerability findings aggregated from completed scan results.
@@ -1289,27 +1285,31 @@ async def list_findings(
     for roughly ``AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS`` (default 60s).
     Later pages reuse the cached count; when the cache is cold the response
     carries a conservative lower bound and ``total_approximate: true``.
+
+    Pass ``?cursor=`` with the ``next_cursor`` from a prior response for
+    keyset pagination through bulk-ingested hub findings (avoids deep
+    ``OFFSET`` cost). ``cursor`` and non-zero ``offset`` cannot be combined.
     """
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.api.finding_cursor import decode_finding_cursor
 
     tenant_id = _tenant_id(request)
     sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
     if sort_key not in _ALLOWED_FINDING_SORTS:
         sort_key = "effective_reach"
-    include_bulk_total = (not approximate_total) or offset == 0
+    if cursor and offset:
+        raise HTTPException(status_code=400, detail="cursor and offset are mutually exclusive")
+    if cursor:
+        try:
+            decode_finding_cursor(cursor, expected_sort=sort_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+    include_bulk_total = (not approximate_total and not cursor) or (offset == 0 and not cursor)
 
-    # Scan-job findings live in memory and are typically small; gather + sort
-    # them directly. The bulk-ingested hub findings can reach millions of rows,
-    # so those are paginated in the store (SQL LIMIT/OFFSET + ORDER BY) rather
-    # than materialised in Python — this is the O(n) read-path fix (PR1).
     scan_findings: list[dict[str, Any]] = []
     for job in _completed_jobs_for_tenant(tenant_id):
         if scan_id and job.job_id != scan_id:
             continue
-        # Batch parents aggregate their children's evidence; skip them in the
-        # global roll-up so findings are not double-counted against the children
-        # that already contribute. When a caller targets the parent by scan_id
-        # they get the aggregated union instead.
         if job.child_job_ids and job.job_id != scan_id:
             continue
         scan_findings.extend(_iter_scan_findings(job))
@@ -1321,12 +1321,14 @@ async def list_findings(
     store = get_compliance_hub_store()
     bulk_list = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
     total_approximate = False
+    next_cursor: str | None = None
+    warnings: list[str] = []
+    if cursor and scan_findings:
+        warnings.append("cursor pagination applies to bulk-ingested findings only; in-memory scan findings appear on the first page")
     if callable(bulk_list):
-        if scan_findings:
-            # Bounded merge: pull at most (offset + limit) top bulk rows, merge
-            # with the in-memory scan findings, then slice the requested page.
+        if scan_findings and not cursor:
             window = offset + limit
-            bulk_page, bulk_total = bulk_list(
+            bulk_result = bulk_list(
                 tenant_id,
                 limit=window,
                 offset=0,
@@ -1336,6 +1338,8 @@ async def list_findings(
                 origin="bulk_ingest",
                 include_total=include_bulk_total,
             )
+            bulk_page = bulk_result[0]
+            bulk_total = bulk_result[1]
             combined = scan_findings + bulk_page
             combined.sort(key=lambda row: _finding_sort_key(row, sort_key))
             page_rows = combined[offset : offset + limit]
@@ -1351,28 +1355,31 @@ async def list_findings(
             )
             total = None if resolved_bulk is None else len(scan_findings) + resolved_bulk
         else:
-            page_rows, bulk_total = bulk_list(
+            bulk_result = bulk_list(
                 tenant_id,
                 limit=limit,
-                offset=offset,
+                offset=0 if cursor else offset,
                 sort=sort_key,
                 severity=severity,
                 scan_id=scan_id,
                 origin="bulk_ingest",
                 include_total=include_bulk_total,
+                cursor=cursor,
             )
+            page_rows = bulk_result[0]
+            bulk_total = bulk_result[1]
+            next_cursor = bulk_result[2] if len(bulk_result) > 2 else None
             total, total_approximate = _resolve_bulk_findings_total(
                 tenant_id=tenant_id,
                 severity=severity,
                 scan_id=scan_id,
                 approximate_total=approximate_total,
-                offset=offset,
+                offset=0 if cursor else offset,
                 bulk_total=bulk_total,
                 page_len=len(page_rows),
                 limit=limit,
             )
     else:
-        # Backward-compatible fallback for stores without pagination support.
         bulk_findings = _bulk_ingested_findings_for_tenant(tenant_id)
         if scan_id:
             bulk_findings = [item for item in bulk_findings if str(item.get("scan_id") or "") == scan_id]
@@ -1386,17 +1393,18 @@ async def list_findings(
 
     page = _redact_finding_page(page_rows)
     response: dict[str, Any] = {
-        # emit schema_version so consumers can pin a
-        # contract independent of API path.
         "schema_version": "v1",
         "findings": page,
         "count": len(page),
         "total": total,
         "limit": limit,
-        "offset": offset,
+        "offset": 0 if cursor else offset,
         "sort": sort_key,
         "scan_id": scan_id,
-        "warnings": [],
+        "cursor": cursor or "",
+        "next_cursor": next_cursor or "",
+        "has_more": bool(next_cursor),
+        "warnings": warnings,
     }
     if total_approximate:
         response["total_approximate"] = True

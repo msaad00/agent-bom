@@ -6397,7 +6397,9 @@ paths:
         \ computes an exact total and caches it\nfor roughly ``AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS``\
         \ (default 60s).\nLater pages reuse the cached count; when the cache is cold\
         \ the response\ncarries a conservative lower bound and ``total_approximate:\
-        \ true``."
+        \ true``.\n\nPass ``?cursor=`` with the ``next_cursor`` from a prior response\
+        \ for\nkeyset pagination through bulk-ingested hub findings (avoids deep\n\
+        ``OFFSET`` cost). ``cursor`` and non-zero ``offset`` cannot be combined."
       operationId: list_findings_v1_findings_get
       parameters:
       - in: query
@@ -6441,6 +6443,15 @@ paths:
           minimum: 0
           title: Offset
           type: integer
+      - in: query
+        name: cursor
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 512
+            type: string
+          - type: 'null'
+          title: Cursor
       - in: query
         name: approximate_total
         required: false

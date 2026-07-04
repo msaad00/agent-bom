@@ -391,15 +391,16 @@ def sync_request_with_retry(
                 wait = backoff
 
             if attempt < max_retries:
+                jittered_wait = _jittered_wait(wait)
                 logger.info(
                     "HTTP %d from %s — retry %d/%d in %.1fs",
                     response.status_code,
                     log_url,
                     attempt + 1,
                     max_retries,
-                    wait,
+                    jittered_wait,
                 )
-                time.sleep(wait)
+                time.sleep(jittered_wait)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
                 logger.warning(
@@ -412,14 +413,15 @@ def sync_request_with_retry(
 
         except httpx.TimeoutException:
             if attempt < max_retries:
+                jittered_wait = _jittered_wait(backoff)
                 logger.info(
                     "Timeout on %s — retry %d/%d in %.1fs",
                     log_url,
                     attempt + 1,
                     max_retries,
-                    backoff,
+                    jittered_wait,
                 )
-                time.sleep(backoff)
+                time.sleep(jittered_wait)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
                 logger.warning("Timeout on %s — exhausted %d retries", log_url, max_retries)
@@ -428,15 +430,16 @@ def sync_request_with_retry(
         except httpx.HTTPError as e:
             safe_err = _sanitize_for_log(e)
             if attempt < max_retries:
+                jittered_wait = _jittered_wait(backoff)
                 logger.info(
                     "HTTP error on %s: %s — retry %d/%d in %.1fs",
                     log_url,
                     safe_err,
                     attempt + 1,
                     max_retries,
-                    backoff,
+                    jittered_wait,
                 )
-                time.sleep(backoff)
+                time.sleep(jittered_wait)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
                 logger.warning("HTTP error on %s: %s — exhausted %d retries", log_url, safe_err, max_retries)

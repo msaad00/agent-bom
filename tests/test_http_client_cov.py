@@ -221,3 +221,25 @@ def test_sync_github_advisory_429_fails_fast_without_retry(monkeypatch):
     assert result.status_code == 429
     assert client.request.call_count == 1
     sleep.assert_not_called()
+
+
+def test_sync_retry_wait_uses_jitter(monkeypatch):
+    mock_503 = MagicMock()
+    mock_503.status_code = 503
+    mock_503.headers = {}
+    mock_200 = MagicMock()
+    mock_200.status_code = 200
+    client = MagicMock()
+    client.request.side_effect = [mock_503, mock_200]
+    sleep_calls: list[float] = []
+
+    def _fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr("agent_bom.http_client.random.uniform", lambda lo, hi: 0.05)
+    monkeypatch.setattr("agent_bom.http_client.time.sleep", _fake_sleep)
+
+    result = sync_request_with_retry(client, "GET", "https://example.com/data", max_retries=2)
+
+    assert result.status_code == 200
+    assert sleep_calls == [1.05]

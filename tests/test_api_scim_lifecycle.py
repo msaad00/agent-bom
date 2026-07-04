@@ -231,6 +231,23 @@ def test_scim_per_tenant_bearer_mapping_binds_tokens_to_server_side_tenants(monk
     assert [resource["id"] for resource in alpha_list.json()["Resources"]] == [alpha_user["id"]]
     assert [resource["id"] for resource in beta_list.json()["Resources"]] == [beta_user["id"]]
     assert client.get(f"/scim/v2/Users/{alpha_user['id']}", headers=_headers("beta-scim-secret")).status_code == 404
+    assert (
+        client.patch(
+            f"/scim/v2/Users/{alpha_user['id']}",
+            headers=_headers("beta-scim-secret"),
+            json={"Operations": [{"op": "replace", "path": "active", "value": False}]},
+        ).status_code
+        == 404
+    )
+    assert client.delete(f"/scim/v2/Users/{alpha_user['id']}", headers=_headers("beta-scim-secret")).status_code == 404
+    assert (
+        client.put(
+            f"/scim/v2/Users/{alpha_user['id']}",
+            headers=_headers("beta-scim-secret"),
+            json={"userName": "hijack@example.com", "displayName": "Hijack"},
+        ).status_code
+        == 404
+    )
 
     posture = describe_scim_posture()
     assert posture["token_binding_mode"] == "multi_tenant"
@@ -401,6 +418,55 @@ def test_scim_user_lifecycle_accepts_common_idp_payloads(
     assert listed.json()["totalResults"] == 1
 
 
+def test_scim_group_member_add_and_remove_are_incremental(scim_client: TestClient) -> None:
+    user_a = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={"userName": "member-a@example.com", "externalId": "member-a"},
+    ).json()
+    user_b = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={"userName": "member-b@example.com", "externalId": "member-b"},
+    ).json()
+    user_c = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={"userName": "member-c@example.com", "externalId": "member-c"},
+    ).json()
+    created = scim_client.post(
+        "/scim/v2/Groups",
+        headers=_headers(),
+        json={
+            "displayName": "Incremental Group",
+            "members": [
+                {"value": user_a["id"], "display": "member-a@example.com"},
+                {"value": user_b["id"], "display": "member-b@example.com"},
+            ],
+        },
+    )
+    assert created.status_code == 201
+    group_id = created.json()["id"]
+
+    added = scim_client.patch(
+        f"/scim/v2/Groups/{group_id}",
+        headers=_headers(),
+        json={"Operations": [{"op": "add", "path": "members", "value": [{"value": user_c["id"]}]}]},
+    )
+    assert added.status_code == 200
+    member_ids = {entry["value"] for entry in added.json()["members"]}
+    assert member_ids == {user_a["id"], user_b["id"], user_c["id"]}
+
+    removed = scim_client.patch(
+        f"/scim/v2/Groups/{group_id}",
+        headers=_headers(),
+        json={"Operations": [{"op": "remove", "path": f'members[value eq "{user_a["id"]}"]'}]},
+    )
+    assert removed.status_code == 200
+    member_ids = {entry["value"] for entry in removed.json()["members"]}
+    assert member_ids == {user_b["id"], user_c["id"]}
+
+
 def test_scim_group_lifecycle_accepts_common_idp_members(scim_client: TestClient) -> None:
     user = scim_client.post(
         "/scim/v2/Users",
@@ -428,6 +494,64 @@ def test_scim_group_lifecycle_accepts_common_idp_members(scim_client: TestClient
     )
     assert patched.status_code == 200
     assert patched.json()["members"] == []
+
+
+def test_scim_create_ignores_client_supplied_id(scim_client: TestClient) -> None:
+    victim = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={"userName": "victim@example.com", "displayName": "Victim"},
+    ).json()
+    attacker = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={"userName": "attacker@example.com", "id": victim["id"], "displayName": "Attacker"},
+    )
+    assert attacker.status_code == 201
+    assert attacker.json()["id"] != victim["id"]
+    fetched = scim_client.get(f"/scim/v2/Users/{victim['id']}", headers=_headers()).json()
+    assert fetched["userName"] == "victim@example.com"
+
+
+def test_scim_errors_use_scim_envelope(scim_client: TestClient) -> None:
+    response = scim_client.post("/scim/v2/Users", headers=_headers(), json={"displayName": "Missing userName"})
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/scim+json")
+    body = response.json()
+    assert body["schemas"] == ["urn:ietf:params:scim:api:messages:2.0:Error"]
+    assert body["status"] == "400"
+    assert body["detail"] == "userName is required"
+
+
+def test_scim_deactivate_revokes_matching_api_key(scim_client: TestClient) -> None:
+    from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
+
+    store = KeyStore()
+    set_key_store(store)
+    raw_key, record = create_api_key(name="alice@example.com", role=Role.VIEWER, tenant_id="tenant-alpha")
+    store.add(record)
+
+    created = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={"userName": "alice@example.com", "displayName": "Alice"},
+    )
+    assert created.status_code == 201
+    user_id = created.json()["id"]
+
+    patched = scim_client.patch(
+        f"/scim/v2/Users/{user_id}",
+        headers=_headers(),
+        json={"Operations": [{"op": "replace", "path": "active", "value": False}]},
+    )
+    assert patched.status_code == 200
+
+    revoked = get_key_store().get(record.key_id)
+    assert revoked is not None
+    assert revoked.is_revoked()
+    api_client = TestClient(app)
+    api_client.headers.update({"Authorization": f"Bearer {raw_key}", "X-Tenant-ID": "tenant-alpha"})
+    assert api_client.get("/v1/auth/me").status_code == 401
 
 
 def test_scim_bulk_create_patch_and_delete_users_and_groups(scim_client: TestClient) -> None:

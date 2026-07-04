@@ -2362,8 +2362,11 @@ function GraphPageInner() {
       </div>
 
       <div className="flex-1 flex relative min-h-[68vh]">
-        <div className="flex-1 relative min-h-[60vh]">
-          <GraphLensSwitcher variant="floating" />
+        <div className="flex-1 relative min-h-[60vh] flex flex-col">
+          <div className="mb-2 shrink-0 px-1">
+            <GraphLensSwitcher variant="compact" />
+          </div>
+          <div className="relative min-h-0 flex-1">
           {loadingGraph && !graphData ? (
             <GraphPanelSkeleton
               title="Loading graph window"
@@ -2486,6 +2489,7 @@ function GraphPageInner() {
               }
             />
           )}
+          </div>
         </div>
       </div>
     </div>

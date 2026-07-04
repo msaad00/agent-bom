@@ -551,8 +551,11 @@ export default function MeshPage() {
       />
 
       {/* Graph */}
-      <div className="flex-1 relative">
-        <GraphLensSwitcher variant="floating" />
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="mb-2 shrink-0 px-1">
+          <GraphLensSwitcher variant="compact" />
+        </div>
+        <div className="relative min-h-0 flex-1">
         {detailLoading && activeResult && (
           <GraphRefreshOverlay label="Updating agent mesh" />
         )}
@@ -607,6 +610,7 @@ export default function MeshPage() {
             onClose={() => setSelectedNode(null)}
           />
         )}
+        </div>
       </div>
     </div>
   );

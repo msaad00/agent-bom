@@ -618,6 +618,7 @@ class InMemoryComplianceHubStore:
     def framework_slug_counts(self, tenant_id: str) -> dict[str, int]:
         with self._lock:
             rows = list(self._by_tenant.get(tenant_id, []))
+        rows = hydrate_finding_payloads_memory(tenant_id, rows)
         return _framework_slug_counts_from_rows(rows)
 
     def count(self, tenant_id: str) -> int:
@@ -1082,6 +1083,7 @@ class SQLiteComplianceHubStore:
         for offset, original in enumerate(findings):
             if not isinstance(original, dict):
                 continue
+            frameworks_csv = _frameworks_csv(original)
             slim = persist_finding_references_sqlite(self._conn, tenant_id, original)
             payload = _redact_finding(slim)
             rows.append(
@@ -1090,7 +1092,7 @@ class SQLiteComplianceHubStore:
                     str(payload.get("id") or f"hub-{next_ord + offset}"),
                     now,
                     str(payload.get("source") or ""),
-                    _frameworks_csv(payload),
+                    frameworks_csv,
                     encode_hub_payload(payload),
                     next_ord + offset,
                     compute_effective_reach_score(payload),

@@ -321,6 +321,7 @@ class PostgresComplianceHubStore:
             for original in findings:
                 if not isinstance(original, dict):
                     continue
+                frameworks_csv = _frameworks_csv(original)
                 slim = persist_finding_references_postgres(conn, tenant_id, original)
                 payload = _redact_finding(slim)
                 # Idempotent ingest: a resend of the same (tenant_id, finding_id)
@@ -348,7 +349,7 @@ class PostgresComplianceHubStore:
                         str(payload.get("id") or f"hub-{now}-{id(original)}"),
                         now,
                         str(payload.get("source") or ""),
-                        _frameworks_csv(payload),
+                        frameworks_csv,
                         encode_hub_payload(payload),
                         compute_effective_reach_score(payload),
                         str(payload.get("origin") or ""),

@@ -152,7 +152,8 @@ def _framework_slug_counts_from_rows(rows: Iterable[dict[str, Any]]) -> dict[str
 
 def _redact_finding(payload: dict[str, Any]) -> dict[str, Any]:
     """Redact one hub finding payload for persistence."""
-    clean = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
+    redacted = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
+    clean: dict[str, Any] = redacted if isinstance(redacted, dict) else {}
     if "id" not in clean and "id" in payload:
         clean["id"] = str(payload["id"])
     if "source" not in clean and "source" in payload:

@@ -47,7 +47,7 @@ const GRAPH_LENSES: GraphLens[] = [
 ];
 
 interface GraphLensSwitcherProps {
-  variant?: "inline" | "floating";
+  variant?: "inline" | "floating" | "compact";
 }
 
 export function GraphLensSwitcher({
@@ -74,21 +74,30 @@ export function GraphLensSwitcher({
       className={
         variant === "floating"
           ? "pointer-events-auto flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-zinc-700/80 bg-zinc-950/85 px-3 py-2 shadow-2xl shadow-black/40 backdrop-blur"
-          : "flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3"
+          : variant === "compact"
+            ? "flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2"
+            : "flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3"
       }
     >
-      <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-tertiary)]">
-          {variant === "floating" ? "Security Graph Lens" : "Security Graph"}
+      {variant !== "compact" && (
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-tertiary)]">
+            {variant === "floating" ? "Security Graph Lens" : "Security Graph"}
+          </p>
+          <p
+            className={`mt-0.5 text-xs text-[color:var(--text-secondary)] ${
+              variant === "floating" ? "hidden sm:block" : ""
+            }`}
+          >
+            One graph, multiple lenses — switch how you read the same estate.
+          </p>
+        </div>
+      )}
+      {variant === "compact" && (
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+          Lens
         </p>
-        <p
-          className={`mt-0.5 text-xs text-[color:var(--text-secondary)] ${
-            variant === "floating" ? "hidden sm:block" : ""
-          }`}
-        >
-          One graph, multiple lenses — switch how you read the same estate.
-        </p>
-      </div>
+      )}
       <InsightLayerToggle layers={layers} onToggle={onToggle} />
     </div>
   );

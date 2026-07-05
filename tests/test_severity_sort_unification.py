@@ -41,3 +41,11 @@ def test_html_cis_section_sorts_critical_before_medium() -> None:
     report.cis_benchmark_data = bundle
     html = _cis_benchmark_section(report)
     assert html.index("crit-1") < html.index("med-1")
+
+
+def test_console_cis_sort_key_orders_critical_before_medium() -> None:
+    from agent_bom.output.console_render import _cis_check_sort_key
+
+    medium = {"check_id": "med-1", "severity": "medium", "remediation": {"priority": 1}}
+    critical = {"check_id": "crit-1", "severity": "critical", "remediation": {"priority": 3}}
+    assert _cis_check_sort_key(critical) < _cis_check_sort_key(medium)

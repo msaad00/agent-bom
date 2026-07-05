@@ -410,6 +410,11 @@ def main() -> int:
     glama_text = GLAMA_SERVER.read_text()
     if f'"version": "{version}"' not in glama_text:
         _fail(f"integrations/glama/server.json must be aligned to {version}")
+    if '"dockerfile": "integrations/glama/Dockerfile"' not in glama_text:
+        _fail("integrations/glama/server.json must point at integrations/glama/Dockerfile")
+    glama_root = (ROOT / "glama.json").read_text()
+    if '"dockerfile": "integrations/glama/Dockerfile"' not in glama_root:
+        _fail("glama.json must point at integrations/glama/Dockerfile")
     if f"`{version}` | Current stable version (pinned)" not in DOCKER_README.read_text():
         _fail(f"DOCKER_HUB_README.md must mark {version} as the current stable version")
     if f"ARG VERSION={version}" not in TOP_DOCKERFILE.read_text():

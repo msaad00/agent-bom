@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -17,6 +18,23 @@ ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
 README = ROOT / "README.md"
 DEFAULT_URL = "https://glama.ai/mcp/servers/msaad00/agent-bom"
+GLAMA_DOCKERFILE = "integrations/glama/Dockerfile"
+GLAMA_MANIFESTS = (ROOT / "glama.json", ROOT / "integrations" / "glama" / "server.json")
+
+
+def _read_repo_file(relative_path: str, *, git_ref: str | None = None) -> str:
+    if not git_ref:
+        return (ROOT / relative_path).read_text(encoding="utf-8")
+    try:
+        return subprocess.check_output(
+            ["git", "show", f"{git_ref}:{relative_path}"],
+            cwd=ROOT,
+            text=True,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or "").strip()
+        raise FileNotFoundError(f"{relative_path} at {git_ref}: {detail}") from exc
 
 
 def _load_version() -> str:
@@ -33,6 +51,45 @@ def _load_readme_tool_count() -> str:
     if not match:
         raise SystemExit("README.md MCP tool count sentence not found")
     return match.group(1)
+
+
+def verify_build_manifest(git_ref: str | None = None) -> list[str]:
+    """Ensure Glama manifests point at the curated Dockerfile before rebuild."""
+
+    failures: list[str] = []
+    try:
+        dockerfile_text = _read_repo_file(GLAMA_DOCKERFILE, git_ref=git_ref)
+    except FileNotFoundError:
+        location = f" at {git_ref}" if git_ref else ""
+        failures.append(f"missing Glama Dockerfile at {GLAMA_DOCKERFILE}{location}")
+    else:
+        run_lines = [
+            line
+            for line in dockerfile_text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        if any("uv sync" in line for line in run_lines):
+            failures.append(f"{GLAMA_DOCKERFILE} must not use uv sync (mcp-proxy PATH issue)")
+        if 'ENTRYPOINT ["agent-bom", "mcp", "server"]' not in dockerfile_text:
+            failures.append(f"{GLAMA_DOCKERFILE} must ENTRYPOINT agent-bom mcp server")
+        if 'pip install --no-cache-dir --prefix=/install ".[mcp-server]"' not in dockerfile_text:
+            failures.append(f"{GLAMA_DOCKERFILE} must pip install agent-bom onto system PATH")
+
+    for manifest in GLAMA_MANIFESTS:
+        manifest_path = str(manifest.relative_to(ROOT))
+        try:
+            manifest_text = _read_repo_file(manifest_path, git_ref=git_ref)
+        except FileNotFoundError:
+            location = f" at {git_ref}" if git_ref else ""
+            failures.append(f"missing Glama manifest: {manifest_path}{location}")
+            continue
+        data = json.loads(manifest_text)
+        if data.get("dockerfile") != GLAMA_DOCKERFILE:
+            failures.append(
+                f"{manifest_path} dockerfile must be {GLAMA_DOCKERFILE!r}, "
+                f"found {data.get('dockerfile')!r}"
+            )
+    return failures
 
 
 def _fetch(url: str, timeout: int) -> str:
@@ -52,6 +109,8 @@ def _check(page: str, version: str, tool_count: str) -> list[str]:
         r"uses:\s*msaad00/agent-bom@v0\.88\.4",
         r"MCP server mode advertises\s+55\s+MCP tools",
         r"18 tools for CVE scanning",
+        r"98c3e543",  # pre-0.92.0 pinned Glama build ref from audit #3472
+        r"git checkout 98c3e543",
     ]
     failures.extend(f"stale Glama listing pattern still present: {pattern}" for pattern in stale_patterns if re.search(pattern, page))
     return failures
@@ -79,7 +138,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=int, default=20)
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--delay-seconds", type=int, default=30)
+    parser.add_argument(
+        "--verify-manifest",
+        action="store_true",
+        help="Validate glama.json/server.json and integrations/glama/Dockerfile, then exit.",
+    )
+    parser.add_argument(
+        "--git-ref",
+        default=None,
+        help="Read manifest files from this git ref/SHA while running trusted checker code.",
+    )
     args = parser.parse_args(argv)
+
+    if args.verify_manifest:
+        failures = verify_build_manifest(args.git_ref)
+        if failures:
+            print("ERROR: Glama build manifest check failed:", file=sys.stderr)
+            for failure in failures:
+                print(f"- {failure}", file=sys.stderr)
+            return 1
+        suffix = f" at {args.git_ref}" if args.git_ref else ""
+        print(f"Glama build manifest is valid ({GLAMA_DOCKERFILE}{suffix})")
+        return 0
 
     version = (args.expected or _load_version()).lstrip("v").strip()
     tool_count = _load_readme_tool_count()

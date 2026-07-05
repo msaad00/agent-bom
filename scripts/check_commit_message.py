@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Reject LLM/tool co-author attribution in git commit messages.
 
-Commit trailers like ``Co-authored-by: Cursor <cursoragent@cursor.com>`` and
-``Made with [Cursor](...)`` belong in neither product source nor git history.
+Tool-generated co-author trailers and marketing footers belong in neither
+product source nor git history.
 Used as a pre-commit ``commit-msg`` hook.
 """
 

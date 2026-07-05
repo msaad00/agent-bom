@@ -229,5 +229,8 @@ def push_results(push_url: str, results: dict, api_key: str | None = None) -> bo
 
 def push_json(push_url: str, results: dict, api_key: str | None = None) -> dict | None:
     """POST sanitized JSON and return the parsed response body on success."""
-    ok, body = asyncio.run(_push_async(push_url, results, api_key, return_body=True))
+    pushed = asyncio.run(_push_async(push_url, results, api_key, return_body=True))
+    if not isinstance(pushed, tuple):
+        return None
+    ok, body = pushed
     return body if ok else None

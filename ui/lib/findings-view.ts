@@ -15,6 +15,12 @@ export interface EnrichedVuln extends Vulnerability {
   remediation_items: RemediationSummary[];
   graph_reachable?: boolean | null | undefined;
   graph_min_hop_distance?: number | null | undefined;
+  lifecycle_status?: string | undefined;
+  first_seen?: string | undefined;
+  last_seen?: string | undefined;
+  resolved_at?: string | undefined;
+  reopened_at?: string | undefined;
+  scan_count?: number | undefined;
 }
 
 export interface RemediationSummary {
@@ -45,6 +51,51 @@ export function serverFindingsSort(sortKey: SortKey): string {
 export function formatFindingsTotal(total: number, approximate?: boolean): string {
   if (!approximate) return String(total);
   return `~${total}`;
+}
+
+export function formatFindingTimestamp(value: string | undefined | null): string {
+  if (!value || !value.trim()) return "—";
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return value;
+  return new Date(parsed).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function findingStatusLabel(status: string | undefined): string {
+  const normalized = (status ?? "").trim().toLowerCase();
+  if (normalized === "open" || normalized === "resolved" || normalized === "reopened") {
+    return normalized;
+  }
+  return normalized || "—";
+}
+
+export function findingStatusClass(status: string | undefined): string {
+  const normalized = (status ?? "").trim().toLowerCase();
+  if (normalized === "open") {
+    return "bg-amber-950 border-amber-800 text-amber-300";
+  }
+  if (normalized === "resolved") {
+    return "bg-emerald-950 border-emerald-800 text-emerald-300";
+  }
+  if (normalized === "reopened") {
+    return "bg-orange-950 border-orange-800 text-orange-300";
+  }
+  return "bg-zinc-900 border-zinc-700 text-zinc-500";
+}
+
+export function hasLifecycleMetadata(rows: EnrichedVuln[]): boolean {
+  return rows.some(
+    (row) =>
+      Boolean(row.lifecycle_status?.trim()) ||
+      Boolean(row.first_seen?.trim()) ||
+      Boolean(row.last_seen?.trim()) ||
+      Boolean(row.resolved_at?.trim()),
+  );
 }
 
 export function uniqueStrings(items: Array<string | null | undefined>) {

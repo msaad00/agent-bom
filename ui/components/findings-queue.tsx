@@ -4,6 +4,11 @@ import { ChevronDown, ChevronRight, ChevronUp, ExternalLink, ShieldOff } from "l
 
 import { severityColor, severityDot } from "@/lib/api";
 import type { EnrichedVuln, SortKey } from "@/lib/findings-view";
+import {
+  findingStatusClass,
+  findingStatusLabel,
+  formatFindingTimestamp,
+} from "@/lib/findings-view";
 
 function ReachabilityBadge({
   reachable,
@@ -104,6 +109,7 @@ export function FindingsQueueTable({
   onMarkFP,
   selectedId,
   onSelect,
+  showLifecycle = false,
 }: {
   vulns: EnrichedVuln[];
   sortKey: SortKey;
@@ -113,6 +119,7 @@ export function FindingsQueueTable({
   onMarkFP: (vulnId: string, packageName: string) => void;
   selectedId: string | null;
   onSelect: (vulnId: string | null) => void;
+  showLifecycle?: boolean;
 }) {
   return (
     <div className="border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
@@ -125,6 +132,12 @@ export function FindingsQueueTable({
             <th className="text-left px-4 py-3">
               <SortButton label="Severity" field="severity" current={sortKey} dir={sortDir} onClick={handleSort} />
             </th>
+            {showLifecycle ? (
+              <>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Last seen</th>
+              </>
+            ) : null}
             <th className="text-left px-4 py-3">
               <SortButton label="CVSS" field="cvss" current={sortKey} dir={sortDir} onClick={handleSort} />
             </th>
@@ -201,6 +214,20 @@ export function FindingsQueueTable({
                       {v.severity}
                     </span>
                   </td>
+                  {showLifecycle ? (
+                    <>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`text-xs font-medium px-2 py-0.5 rounded border ${findingStatusClass(v.lifecycle_status)}`}
+                        >
+                          {findingStatusLabel(v.lifecycle_status)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                        {formatFindingTimestamp(v.last_seen ?? v.first_seen)}
+                      </td>
+                    </>
+                  ) : null}
                   <td className="px-4 py-3 text-xs font-mono text-zinc-400">
                     {renderScoreValue(v.cvss_score, "CVSS not published by the current advisory")}
                   </td>

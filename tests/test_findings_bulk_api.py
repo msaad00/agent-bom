@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from uuid import uuid4
 
 from starlette.testclient import TestClient
@@ -150,6 +151,63 @@ def test_bulk_findings_requires_analyst_role() -> None:
     )
 
     assert resp.status_code == 403
+
+
+def test_bulk_findings_skips_prior_snapshot_when_delta_disabled(monkeypatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_DELTA_STREAM_ENABLED", raising=False)
+    calls: list[tuple[str, str]] = []
+
+    def _capture(store: object, tenant_id: str, *, source: str) -> dict[str, object]:
+        calls.append((tenant_id, source))
+        return {}
+
+    monkeypatch.setattr("agent_bom.delta_stream.capture_hub_snapshots", _capture)
+    tenant_id = f"bulk-skip-snap-{uuid4().hex}"
+    resp = _client(tenant=tenant_id).post(
+        "/v1/findings/bulk",
+        json={
+            "source": "agent-runtime",
+            "findings": [{"id": "agent-runtime:finding-1", "severity": "low"}],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert calls == []
+
+
+def test_bulk_findings_captures_prior_snapshot_when_reconcile_absent(monkeypatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_DELTA_STREAM_ENABLED", raising=False)
+    calls: list[tuple[str, str]] = []
+
+    def _capture(store: object, tenant_id: str, *, source: str) -> dict[str, object]:
+        calls.append((tenant_id, source))
+        return {}
+
+    monkeypatch.setattr("agent_bom.delta_stream.capture_hub_snapshots", _capture)
+    tenant_id = f"bulk-reconcile-{uuid4().hex}"
+    resp = _client(tenant=tenant_id).post(
+        "/v1/findings/bulk",
+        json={
+            "source": "agent-runtime",
+            "reconcile_absent": True,
+            "findings": [{"id": "agent-runtime:finding-1", "severity": "low"}],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert calls == [(tenant_id, "agent-runtime")]
+
+
+def test_sqlite_add_increments_cached_tenant_total(tmp_path: Path) -> None:
+    store = SQLiteComplianceHubStore(str(tmp_path / "hub.db"))
+    tenant_id = "tenant-ingest-cache"
+    first_batch = [{"id": f"finding-{idx}", "severity": "low"} for idx in range(5)]
+    assert store.add(tenant_id, first_batch) == 5
+
+    second_batch = [{"id": f"finding-{idx}", "severity": "medium"} for idx in range(5, 10)]
+    assert store.add(tenant_id, second_batch) == 10
+
+    repeat_batch = [{"id": "finding-0", "severity": "high"}]
+    assert store.add(tenant_id, repeat_batch) == 10
+    assert store.count(tenant_id) == 10
 
 
 def test_sqlite_store_replaces_pre_origin_scale_index(tmp_path) -> None:

@@ -8,6 +8,7 @@ share ingested findings across replicas.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Sequence
 from typing import Any
 
@@ -183,7 +184,36 @@ class PostgresComplianceHubStore:
 
     def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
+        self._ingest_stats_lock = threading.Lock()
+        self._finding_count_by_tenant: dict[str, int] = {}
         self._init_tables()
+
+    def _reset_ingest_stats(self, tenant_id: str) -> None:
+        with self._ingest_stats_lock:
+            self._finding_count_by_tenant.pop(tenant_id, None)
+
+    def _bootstrap_ingest_stats(self, conn: Any, tenant_id: str) -> None:
+        with self._ingest_stats_lock:
+            if tenant_id in self._finding_count_by_tenant:
+                return
+        row = conn.execute(
+            "SELECT COUNT(*) FROM compliance_hub_findings WHERE tenant_id = %s",
+            (tenant_id,),
+        ).fetchone()
+        with self._ingest_stats_lock:
+            if tenant_id in self._finding_count_by_tenant:
+                return
+            self._finding_count_by_tenant[tenant_id] = int(row[0]) if row else 0
+
+    @staticmethod
+    def _existing_finding_ids(conn: Any, tenant_id: str, finding_ids: list[str]) -> set[str]:
+        if not finding_ids:
+            return set()
+        rows = conn.execute(
+            "SELECT finding_id FROM compliance_hub_findings WHERE tenant_id = %s AND finding_id = ANY(%s)",
+            (tenant_id, finding_ids),
+        ).fetchall()
+        return {str(row[0]) for row in rows}
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
@@ -316,15 +346,27 @@ class PostgresComplianceHubStore:
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         if not findings:
+            with _tenant_connection(self._pool) as conn:
+                self._bootstrap_ingest_stats(conn, tenant_id)
+            with self._ingest_stats_lock:
+                if tenant_id in self._finding_count_by_tenant:
+                    return self._finding_count_by_tenant[tenant_id]
             return self.count(tenant_id)
         now = _now_utc_iso()
+        rows_to_insert: list[tuple[str, str, dict[str, Any]]] = []
         with _tenant_connection(self._pool) as conn:
+            self._bootstrap_ingest_stats(conn, tenant_id)
             for original in findings:
                 if not isinstance(original, dict):
                     continue
                 frameworks_csv = _frameworks_csv(original)
                 slim = persist_finding_references_postgres(conn, tenant_id, original)
                 payload = _redact_finding(slim)
+                finding_id = str(payload.get("id") or f"hub-{now}-{id(original)}")
+                rows_to_insert.append((finding_id, frameworks_csv, payload))
+            existing_ids = self._existing_finding_ids(conn, tenant_id, [row[0] for row in rows_to_insert])
+            new_rows = sum(1 for finding_id, _, _ in rows_to_insert if finding_id not in existing_ids)
+            for finding_id, frameworks_csv, payload in rows_to_insert:
                 # Idempotent ingest: a resend of the same (tenant_id, finding_id)
                 # refreshes payload/metadata and keeps the original ``ordinal``
                 # (the BIGSERIAL default only advances on genuine inserts).
@@ -347,7 +389,7 @@ class PostgresComplianceHubStore:
                     """,
                     (
                         tenant_id,
-                        str(payload.get("id") or f"hub-{now}-{id(original)}"),
+                        finding_id,
                         now,
                         str(payload.get("source") or ""),
                         frameworks_csv,
@@ -360,7 +402,9 @@ class PostgresComplianceHubStore:
                     ),
                 )
             conn.commit()
-        return self.count(tenant_id)
+        with self._ingest_stats_lock:
+            self._finding_count_by_tenant[tenant_id] += new_rows
+            return self._finding_count_by_tenant[tenant_id]
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
         with _tenant_connection(self._pool) as conn:
@@ -475,6 +519,7 @@ class PostgresComplianceHubStore:
             conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = %s", (tenant_id,))
             conn.commit()
         removed = cur.rowcount or 0
+        self._reset_ingest_stats(tenant_id)
         if removed:
             from agent_bom.api.findings_count_cache import invalidate_tenant
 

@@ -39,12 +39,32 @@ import logging
 import os
 from typing import Final
 
+from agent_bom.platform_invariants import (
+    RESERVED_TENANT_IDS,
+    ReservedTenantIdError,
+    is_reserved_tenant_id,
+    normalize_tenant_id,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TENANT_ID: Final = "default"
 TENANT_ENV_VAR: Final = "AGENT_BOM_TENANT_ID"
 _REQUIRE_BOUNDARY_ENV: Final = "AGENT_BOM_REQUIRE_TENANT_BOUNDARY"
 _REPLICAS_ENV: Final = "AGENT_BOM_CONTROL_PLANE_REPLICAS"
+
+
+def _canonicalize_resolved_tenant_id(value: str) -> str:
+    """Normalize a resolved tenant id and reject reserved role/system names."""
+
+    tenant_id = normalize_tenant_id(value)
+    if is_reserved_tenant_id(tenant_id):
+        raise ReservedTenantIdError(
+            f"tenant id {tenant_id!r} is reserved by agent-bom and cannot "
+            f"be used as a customer identifier. Reserved names: "
+            f"{sorted(RESERVED_TENANT_IDS)}."
+        )
+    return tenant_id
 
 
 def _multi_tenant_signals_present() -> bool:
@@ -69,10 +89,10 @@ def resolve_cli_tenant_id(explicit: str | None = None) -> str:
     the silent assumption in the build log.
     """
     if explicit and explicit.strip():
-        return explicit.strip()
+        return _canonicalize_resolved_tenant_id(explicit)
     env_value = (os.environ.get(TENANT_ENV_VAR) or "").strip()
     if env_value:
-        return env_value
+        return _canonicalize_resolved_tenant_id(env_value)
     if _multi_tenant_signals_present():
         logger.warning(
             "agent-bom CLI is using tenant_id=%r as a fallback but the deployment looks multi-tenant. Set %s explicitly or pass --tenant.",
@@ -89,10 +109,10 @@ def resolve_cli_tenant_id_strict(explicit: str | None = None) -> str:
     would mean cross-tenant data contamination.
     """
     if explicit and explicit.strip():
-        return explicit.strip()
+        return _canonicalize_resolved_tenant_id(explicit)
     env_value = (os.environ.get(TENANT_ENV_VAR) or "").strip()
     if env_value:
-        return env_value
+        return _canonicalize_resolved_tenant_id(env_value)
     if _multi_tenant_signals_present():
         raise RuntimeError(
             "agent-bom CLI refuses to default to tenant_id='default' against a multi-tenant "

@@ -27,6 +27,7 @@ from agent_bom.cli._tenant import (
     resolve_cli_tenant_id_strict,
 )
 from agent_bom.mcp_tenant import MCP_TENANT_ENV_VAR, resolve_mcp_tenant_id
+from agent_bom.platform_invariants import ReservedTenantIdError
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI_TENANT_MODULE = ROOT / "src" / "agent_bom" / "cli" / "_tenant.py"
@@ -78,6 +79,14 @@ def test_cli_strict_passes_with_explicit_against_multi_tenant(monkeypatch: pytes
     assert resolve_cli_tenant_id_strict("tenant-a") == "tenant-a"
 
 
+def test_cli_rejects_reserved_tenant_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ReservedTenantIdError, match="reserved"):
+        resolve_cli_tenant_id("admin")
+    monkeypatch.setenv(TENANT_ENV_VAR, "system")
+    with pytest.raises(ReservedTenantIdError, match="reserved"):
+        resolve_cli_tenant_id()
+
+
 # ── MCP ─────────────────────────────────────────────────────────────────────
 
 
@@ -94,6 +103,12 @@ def test_mcp_falls_back_to_shared_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_mcp_falls_back_to_default() -> None:
     assert resolve_mcp_tenant_id() == DEFAULT_TENANT_ID
+
+
+def test_mcp_rejects_reserved_tenant_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(MCP_TENANT_ENV_VAR, "viewer")
+    with pytest.raises(ReservedTenantIdError, match="reserved"):
+        resolve_mcp_tenant_id()
 
 
 # ── Static guardrail: no ad-hoc readers ─────────────────────────────────────

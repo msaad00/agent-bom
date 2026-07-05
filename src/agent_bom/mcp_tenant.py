@@ -21,6 +21,7 @@ from typing import Final
 from agent_bom.cli._tenant import (
     DEFAULT_TENANT_ID,
     TENANT_ENV_VAR,
+    _canonicalize_resolved_tenant_id,
     _multi_tenant_signals_present,
 )
 
@@ -40,10 +41,10 @@ def resolve_mcp_tenant_id() -> str:
     """
     mcp_specific = (os.environ.get(MCP_TENANT_ENV_VAR) or "").strip()
     if mcp_specific:
-        return mcp_specific
+        return _canonicalize_resolved_tenant_id(mcp_specific)
     shared = (os.environ.get(TENANT_ENV_VAR) or "").strip()
     if shared:
-        return shared
+        return _canonicalize_resolved_tenant_id(shared)
     if _multi_tenant_signals_present():
         logger.warning(
             "agent-bom MCP server is using tenant_id=%r as a fallback but the deployment looks multi-tenant. "

@@ -6,6 +6,7 @@ name: Publish to Registries
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
 # Optional vars:
 #   SMITHERY_MCP_URL    — Explicit public, unauthenticated MCP endpoint for Smithery
+#   GLAMA_WEBHOOK_URL   — Glama rebuild webhook (POST JSON: ref, commit, version, dockerfile)
 
 on:
   workflow_run:
@@ -171,22 +172,77 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      actions: read
       contents: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      - name: Extract release metadata
+        id: meta
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            REF="${GITHUB_REF_NAME#v}"
+            if echo "$REF" | grep -qE '^[0-9]+\.[0-9]+'; then
+              VERSION="$REF"
+            else
+              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+            fi
+            RELEASE_REF="refs/tags/v${VERSION}"
+            RELEASE_SHA=$(git rev-parse HEAD)
+          else
+            VERSION="${HEAD_BRANCH#v}"
+            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+              VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+            fi
+            if [ -n "${HEAD_BRANCH:-}" ]; then
+              RELEASE_REF="refs/tags/${HEAD_BRANCH}"
+            else
+              RELEASE_REF="refs/tags/v${VERSION}"
+            fi
+            RELEASE_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_ref=$RELEASE_REF" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch release commit for manifest verification
+        env:
+          RELEASE_SHA: ${{ steps.meta.outputs.release_sha }}
+        run: git fetch --no-tags --depth=1 origin "$RELEASE_SHA"
+
+      - name: Verify Glama build manifest
+        run: python scripts/check_glama_listing.py --verify-manifest --git-ref "${{ steps.meta.outputs.release_sha }}"
+
       - name: Trigger Glama rebuild
         env:
           GLAMA_WEBHOOK_URL: ${{ vars.GLAMA_WEBHOOK_URL }}
+          RELEASE_REF: ${{ steps.meta.outputs.release_ref }}
+          RELEASE_SHA: ${{ steps.meta.outputs.release_sha }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          GLAMA_DOCKERFILE: integrations/glama/Dockerfile
         run: |
           if [ -z "$GLAMA_WEBHOOK_URL" ]; then
-            echo "::warning::GLAMA_WEBHOOK_URL not configured — verifying Glama auto-sync freshness instead"
+            echo "::warning::GLAMA_WEBHOOK_URL not configured — skipping webhook trigger"
+            echo "Release pin for Glama: ${RELEASE_REF} (${RELEASE_SHA:0:7}) dockerfile=${GLAMA_DOCKERFILE}"
             echo "To enable instant rebuild, set GLAMA_WEBHOOK_URL in repo variables"
             exit 0
           fi
+          PAYLOAD=$(jq -n \
+            --arg ref "$RELEASE_REF" \
+            --arg commit "$RELEASE_SHA" \
+            --arg version "$VERSION" \
+            --arg dockerfile "$GLAMA_DOCKERFILE" \
+            '{ref: $ref, commit: $commit, version: $version, dockerfile: $dockerfile}')
+          echo "Triggering Glama rebuild for ${RELEASE_REF} (${RELEASE_SHA:0:7}) using ${GLAMA_DOCKERFILE}"
           HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
             -o /dev/null -w "%{http_code}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
             -X POST "$GLAMA_WEBHOOK_URL")
           if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
             echo "Glama rebuild triggered successfully"
@@ -200,8 +256,10 @@ jobs:
       # publish; the listing self-resolves once Glama re-crawls.
       - name: Verify Glama listing freshness
         continue-on-error: true
+        env:
+          EXPECTED_VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          if ! python scripts/check_glama_listing.py --retries 6 --delay-seconds 30; then
+          if ! python scripts/check_glama_listing.py --expected "$EXPECTED_VERSION" --retries 6 --delay-seconds 30; then
             echo "::warning::Glama listing not yet refreshed to the new version. Glama re-crawls asynchronously (can take hours); the rebuild was already triggered, so this self-resolves. Listing: https://glama.ai/mcp/servers/msaad00/agent-bom"
           fi
 

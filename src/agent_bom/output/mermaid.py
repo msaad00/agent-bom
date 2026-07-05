@@ -20,6 +20,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from agent_bom.graph.severity import severity_rank
+
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
 
@@ -200,7 +202,7 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
                 if pkg.vulnerabilities:
                     sev = max(
                         (v.severity.value.lower() for v in pkg.vulnerabilities),
-                        key=lambda s: {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(s, 0),
+                        key=severity_rank,
                         default="low",
                     )
                     vuln_count = len(pkg.vulnerabilities)

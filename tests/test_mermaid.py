@@ -97,6 +97,33 @@ def test_mermaid_supply_chain_uses_short_ids_with_descriptive_labels():
     assert "express@4.17.1" in result
 
 
+def test_mermaid_supply_chain_uses_canonical_severity_rank() -> None:
+    """Supply-chain package styling picks the worst vuln via severity_rank()."""
+    crit = Vulnerability(id="CVE-CRIT", severity=Severity.CRITICAL, summary="critical pkg vuln")
+    low = Vulnerability(id="CVE-LOW", severity=Severity.LOW, summary="low pkg vuln")
+    pkg = Package(
+        name="lodash",
+        version="4.17.20",
+        ecosystem="npm",
+        vulnerabilities=[low, crit],
+    )
+    server = MCPServer(
+        name="pkg-server",
+        command="npx",
+        args=["-y", "@test/server"],
+        transport=TransportType.STDIO,
+        packages=[pkg],
+    )
+    agent = Agent(
+        name="desktop",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/config.json",
+        mcp_servers=[server],
+    )
+    result = to_mermaid_supply_chain(AIBOMReport(agents=[agent]))
+    assert "fill:#d32f2f" in result
+
+
 def test_mermaid_credential_exposure():
     """Mermaid output shows exposed credentials."""
     report, brs = _make_report_and_blast_radii()

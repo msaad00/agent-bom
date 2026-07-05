@@ -301,6 +301,9 @@ def plugin_registry_status() -> dict[str, Any]:
     ``AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS``.
     """
 
+    from agent_bom.plugin_activation import activation_flags
+
+    activation = activation_flags()
     warnings: list[str] = []
     builtin_counts = _builtin_registry_counts()
     groups: list[dict[str, Any]] = []
@@ -318,6 +321,7 @@ def plugin_registry_status() -> dict[str, Any]:
                 "builtin_count": builtin_count,
                 "declared_entrypoint_count": len(entry_points),
                 "declared_entrypoints": entry_points,
+                "activation_enabled": bool(activation.get(group_name, False)),
             }
         )
     return {
@@ -325,6 +329,7 @@ def plugin_registry_status() -> dict[str, Any]:
         "entrypoints_enabled": entrypoint_extensions_enabled(),
         "metadata_only": True,
         "activation_env": "AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS",
+        "activation": {group: bool(enabled) for group, enabled in activation.items()},
         "totals": {
             "groups": len(groups),
             "builtin_registrations": total_builtin,

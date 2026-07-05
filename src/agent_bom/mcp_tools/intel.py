@@ -19,7 +19,15 @@ async def intel_lookup_impl(*, advisory_id: str, _truncate_response=lambda value
         advisory = (advisory_id or "").strip()
         if not advisory:
             return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "advisory_id is required", details={"argument": "advisory_id"})
-        return _truncate_response(json.dumps(lookup_advisory(advisory), indent=2, default=str))
+        result = lookup_advisory(advisory)
+        # Opt-in operator advisory source plugins augment the local record with
+        # provenance-tagged metadata (off by default; see plugin_activation).
+        from agent_bom.plugin_activation import advisory_source_lookup
+
+        operator_sources = advisory_source_lookup(advisory)
+        if operator_sources and isinstance(result, dict):
+            result = {**result, "operator_advisory_sources": operator_sources}
+        return _truncate_response(json.dumps(result, indent=2, default=str))
     except ValueError as exc:
         return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, sanitize_error(exc), details={"argument": "advisory_id"})
     except Exception as exc:  # pragma: no cover - defensive redaction

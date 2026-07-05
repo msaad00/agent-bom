@@ -48,10 +48,8 @@ agent-bom fleet sync \
   --push-api-key "$AGENT_BOM_PUSH_API_KEY"
 ```
 
-For a local Docker pilot on `http://127.0.0.1:8422`, set
-`AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS=1` because fleet sync enforces HTTPS
-outbound policy. `findings push` accepts the default local HTTP API URL without
-that override.
+For a local Docker pilot on `http://127.0.0.1:8422`, `fleet sync` and
+`findings push` both accept loopback HTTP URLs without extra env overrides.
 
 That gives you:
 

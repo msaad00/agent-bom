@@ -165,10 +165,10 @@ page — compliance shows hub posture totals only.
 **First seen**, and **Last seen** only when the API returns lifecycle metadata
 (bulk-ingested / reconciled rows). Scan-only job findings omit those fields.
 
-**Local pilot URLs:** `findings push` defaults `--api-url` to
-`http://127.0.0.1:8422`. `fleet sync` enforces HTTPS outbound policy via
-`validate_url`; for loopback pilots set
-`AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS=1` or use an HTTPS local endpoint.
+**Local pilot URLs:** `findings push` and `fleet sync` accept
+`http://127.0.0.1:8422` loopback control-plane URLs for local Docker pilots.
+Remote HTTP endpoints still require HTTPS (or
+`AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS=1` for private-network pilots).
 
 **Air-gap:** export `AGENT_BOM_SKIP_UPDATE_CHECK=1` or `AGENT_BOM_OFFLINE=1`
 before invoking the CLI to suppress the background PyPI version check (it starts

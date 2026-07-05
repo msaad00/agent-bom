@@ -18,6 +18,42 @@ def _trunc(s):
 
 
 @pytest.mark.asyncio
+async def test_check_accepts_separate_version_argument():
+    from agent_bom.mcp_tools.scanning import check_impl
+
+    async def _noop_scan(pkgs, **_kw):
+        return 0
+
+    with patch("agent_bom.scanners.scan_packages", side_effect=_noop_scan):
+        result = await check_impl(
+            package="flask",
+            version="0.12.2",
+            ecosystem="pypi",
+            _validate_ecosystem=lambda e: e,
+            _truncate_response=_trunc,
+        )
+    data = json.loads(result)
+    assert data["package"] == "flask"
+    assert data["version"] == "0.12.2"
+
+
+@pytest.mark.asyncio
+async def test_check_rejects_conflicting_embedded_and_argument_version():
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from agent_bom.mcp_tools.scanning import check_impl
+
+    with pytest.raises(ToolError, match="Conflicting versions"):
+        await check_impl(
+            package="flask@1.0.0",
+            version="0.12.2",
+            ecosystem="pypi",
+            _validate_ecosystem=lambda e: e,
+            _truncate_response=_trunc,
+        )
+
+
+@pytest.mark.asyncio
 async def test_check_parses_pip_double_equals_spec():
     from agent_bom.mcp_tools.scanning import check_impl
 

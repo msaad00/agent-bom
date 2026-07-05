@@ -14,6 +14,36 @@ from agent_bom.security import sanitize_error
 logger = logging.getLogger(__name__)
 
 
+def normalize_check_package_spec(package: str, version: str | None = None) -> tuple[str, str]:
+    """Parse MCP/CLI check input into ``(name, version)``.
+
+    Accepts embedded ``name@version``, pip specifiers (``name==1.0``), and an
+    optional separate ``version`` argument for agent discoverability.
+    """
+    spec = package.strip()
+    if "@" not in spec:
+        _specifier = re.split(r"(===|==|~=|!=|>=|<=|>|<)", spec, maxsplit=1)
+        if len(_specifier) == 3:
+            spec = f"{_specifier[0].strip()}@{_specifier[2].strip()}"
+    if "@" in spec and not spec.startswith("@"):
+        name, parsed_version = spec.rsplit("@", 1)
+    elif spec.startswith("@") and spec.count("@") > 1:
+        last_at = spec.rindex("@")
+        name, parsed_version = spec[:last_at], spec[last_at + 1 :]
+    else:
+        name, parsed_version = spec, "latest"
+
+    explicit_version = (version or "").strip()
+    if explicit_version:
+        if parsed_version not in ("latest", "") and parsed_version != explicit_version:
+            raise ToolError(
+                f"Conflicting versions for {name!r}: package embeds {parsed_version!r} "
+                f"but version argument is {explicit_version!r}. Use one source."
+            )
+        parsed_version = explicit_version
+    return name, parsed_version
+
+
 async def _version_published(name: str, version: str, ecosystem: str, client) -> bool:
     """Return True if an exact package version is published (404 → not published).
 
@@ -303,6 +333,7 @@ async def check_impl(
     *,
     package: str,
     ecosystem: str = "npm",
+    version: str | None = None,
     _validate_ecosystem,
     _truncate_response,
 ) -> str:
@@ -312,23 +343,11 @@ async def check_impl(
         from agent_bom.parsers.os_parsers import enrich_os_package_context
         from agent_bom.scanners import ScanOptions, scan_packages
 
-        # Parse name@version. Accept pip/PEP 440 specifiers (pkg==1.0, pkg>=1.0)
-        # as well as the universal pkg@1.0 form — agents routinely paste pip
-        # syntax, and without this the operator stayed glued to the name, which
-        # then failed to resolve (read as an error) or scanned the wrong thing
-        # (read as clean). Mirrors the CLI check parser.
-        spec = package.strip()
-        if "@" not in spec:
-            _specifier = re.split(r"(===|==|~=|!=|>=|<=|>|<)", spec, maxsplit=1)
-            if len(_specifier) == 3:
-                spec = f"{_specifier[0].strip()}@{_specifier[2].strip()}"
-        if "@" in spec and not spec.startswith("@"):
-            name, version = spec.rsplit("@", 1)
-        elif spec.startswith("@") and spec.count("@") > 1:
-            last_at = spec.rindex("@")
-            name, version = spec[:last_at], spec[last_at + 1 :]
-        else:
-            name, version = spec, "latest"
+        try:
+            name, parsed_version = normalize_check_package_spec(package, version)
+        except ToolError as exc:
+            raise exc
+        version = parsed_version
 
         try:
             eco = _validate_ecosystem(ecosystem)

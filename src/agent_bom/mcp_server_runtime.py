@@ -392,14 +392,6 @@ def authorize_destructive_tool(
             "required_role": "admin",
             "provided_role": normalized_role or "unset",
         }
-    if normalized_role != "admin":
-        return {
-            "error": f"tool '{tool_name}' is a write action and requires admin operator role",
-            "tool": tool_name,
-            "status": "blocked",
-            "required_role": "admin",
-            "provided_role": normalized_role or "unset",
-        }
     if required_scope:
         wanted = required_scope.strip().lower()
         family = wanted.split(":", 1)[0]
@@ -435,17 +427,19 @@ async def execute_tool_async(
 ) -> _ToolReturn | str:
     request_meta = request_meta_factory()
     if destructive:
-        kwargs.setdefault("_authenticated_actor", request_meta.get("client_id") or request_meta.get("caller") or "mcp-operator")
+        authenticated_actor = request_meta.get("client_id") or request_meta.get("caller") or "mcp-operator"
+        kwargs.setdefault("_authenticated_actor", authenticated_actor)
+        auth_scopes = str(request_meta.get("auth_scopes", "") or "")
         denial = authorize_destructive_tool(
             tool_name,
             operator_role=str(kwargs.get("operator_role", "") or ""),
             operator_scopes=str(kwargs.get("operator_scopes", "") or ""),
-            auth_scopes=str(request_meta.get("auth_scopes", "") or ""),
+            auth_scopes=auth_scopes,
             required_scope=required_scope,
         )
         if denial is not None:
             log_caller = _log_value(request_meta["caller"])
-            log_role = _log_value(str(kwargs.get("operator_role", "") or "unset"))
+            log_actor = _log_value(str(authenticated_actor or "unset"))
             record_tool_metric_fn(tool_name, elapsed_ms=0, success=False, error="forbidden")
             record_tool_request_fn(
                 tool_name,
@@ -457,12 +451,14 @@ async def execute_tool_async(
                 error="forbidden",
             )
             logger.warning(
-                "mcp tool forbidden: %s caller=%s role=%r",
+                "mcp tool forbidden: %s caller=%s actor=%r",
                 tool_name,
                 log_caller,
-                log_role,
+                log_actor,
             )
             return truncate_response_fn(json.dumps(denial))
+        if _scope_set(auth_scopes) & {"admin", "operator", "admin:*", "*"}:
+            kwargs["operator_role"] = "admin"
     log_caller = _log_value(request_meta["caller"])
     log_request_id = _log_value(request_meta["request_id"])
     retry_after = check_caller_rate_limit_fn(request_meta["caller"] or "local")

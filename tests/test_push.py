@@ -271,6 +271,21 @@ class TestPushResults:
         assert result is True
         assert mock_client.post.call_args.args[0] == "http://localhost:8422/v1/results/push"
 
+    def test_push_url_loopback_http_allowed_without_private_egress_override(self):
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("agent_bom.http_client.create_client", return_value=mock_client):
+            result = push_results("http://127.0.0.1:8422/v1/fleet/sync", {"agents": []})
+
+        assert result is True
+        assert mock_client.post.call_args.args[0] == "http://127.0.0.1:8422/v1/fleet/sync"
+
     def test_push_network_error(self):
         """Network errors retry up to max attempts then return False."""
         mock_client = AsyncMock()

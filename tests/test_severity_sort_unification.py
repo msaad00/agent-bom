@@ -20,3 +20,24 @@ def test_finding_sort_key_matches_compliance_hub_policy_rank() -> None:
 
 def test_worst_first_rank_orders_critical_before_low() -> None:
     assert severity_worst_first_rank("critical") < severity_worst_first_rank("low")
+
+
+def test_html_cis_section_sorts_critical_before_medium() -> None:
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.html import _cis_benchmark_section
+
+    bundle = {
+        "pass_rate": 50.0,
+        "passed": 1,
+        "failed": 2,
+        "total": 3,
+        "checks": [
+            {"check_id": "med-1", "status": "fail", "severity": "medium", "remediation": {"priority": 1}},
+            {"check_id": "crit-1", "status": "fail", "severity": "critical", "remediation": {"priority": 3}},
+            {"check_id": "ok-1", "status": "pass", "severity": "low"},
+        ],
+    }
+    report = AIBOMReport(tool_version="0.1")
+    report.cis_benchmark_data = bundle
+    html = _cis_benchmark_section(report)
+    assert html.index("crit-1") < html.index("med-1")

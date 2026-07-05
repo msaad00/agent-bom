@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from agent_bom.finding import FindingType
-from agent_bom.graph.severity import severity_policy_rank
+from agent_bom.graph.severity import SEVERITY_THRESHOLD_LABELS, severity_policy_rank, severity_worst_first_rank
 from agent_bom.output.exposure_path import exposure_path_brief_for_finding
 from agent_bom.output.finding_views import ranked_cve_findings
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
@@ -728,9 +728,6 @@ _CIS_CLOUD_LABELS = {
     "databricks": ("Databricks", "databricks_cis_benchmark_data"),
 }
 
-_CIS_SEV_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-
-
 def _cis_evidence_html(check: dict) -> str:
     """Affected-resource evidence cell: resource IDs when present, else text."""
     resources = check.get("resource_ids") or []
@@ -764,9 +761,7 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
         priority = rem.get("priority", 3)
         if not isinstance(priority, int):
             priority = 3
-        sev = (c.get("severity") or "").lower()
-        sev_rank = _CIS_SEV_RANK.get(sev, 4)
-        return (sev_rank, priority, str(c.get("check_id") or ""))
+        return (severity_worst_first_rank(c.get("severity")), priority, str(c.get("check_id") or ""))
 
     panels: list[str] = []
     for idx, (cloud_key, (label, attr)) in enumerate(_CIS_CLOUD_LABELS.items()):
@@ -783,14 +778,19 @@ def _cis_benchmark_section(report: "AIBOMReport") -> str:
         band_color = "#16a34a" if pass_rate >= 90 else "#eab308" if pass_rate >= 70 else "#ef4444"
 
         # Verdict + per-severity failed counts for the summary header.
-        sev_counts = {s: sum(1 for c in failed if (c.get("severity") or "").lower() == s) for s in _CIS_SEV_RANK}
+        sev_counts = {
+            s: sum(1 for c in failed if (c.get("severity") or "").lower() == s) for s in SEVERITY_THRESHOLD_LABELS
+        }
         if not failed:
             verdict_text, verdict_color = "PASS", "#16a34a"
         else:
-            worst = min((_CIS_SEV_RANK.get((c.get("severity") or "").lower(), 4) for c in failed), default=4)
-            worst_band = {0: "CRITICAL", 1: "HIGH", 2: "MEDIUM", 3: "LOW"}.get(worst, "LOW")
+            worst_check = min(failed, key=lambda c: severity_worst_first_rank(c.get("severity")))
+            worst_sev = (worst_check.get("severity") or "low").lower()
+            if worst_sev not in SEVERITY_THRESHOLD_LABELS:
+                worst_sev = "low"
+            worst_band = worst_sev.upper()
             verdict_text = f"{worst_band} GAPS"
-            verdict_color = _SEV_COLOR.get(worst_band.lower(), "#ef4444")
+            verdict_color = _SEV_COLOR.get(worst_sev, "#ef4444")
 
         top = sorted(failed, key=_sort_key)[:3]
         top_html = ""

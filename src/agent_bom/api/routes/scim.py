@@ -78,48 +78,73 @@ def _optional_str(value: object) -> str | None:
     return text or None
 
 
-def _user_from_payload(tenant_id: str, body: dict[str, Any], *, existing: SCIMUser | None = None) -> SCIMUser:
-    user_name = str(body.get("userName") or (existing.user_name if existing else "")).strip()
+def _user_from_payload(
+    tenant_id: str,
+    body: dict[str, Any],
+    *,
+    existing: SCIMUser | None = None,
+    replace: bool = False,
+) -> SCIMUser:
+    user_name = str(body.get("userName") or (existing.user_name if existing and not replace else "")).strip()
     if not user_name:
         raise HTTPException(status_code=400, detail="userName is required")
     display_name = str(body.get("displayName") or "").strip()
     if not display_name and isinstance(body.get("name"), dict):
         display_name = str(body["name"].get("formatted") or "").strip()
-    if existing and not display_name:
+    if not replace and existing and not display_name:
         display_name = existing.display_name
-    emails = body.get("emails", existing.emails if existing else [])
+    if replace:
+        emails = body.get("emails", [])
+        groups = [str(group.get("value", "")).strip() for group in body.get("groups", []) if isinstance(group, dict) and group.get("value")]
+        external_id = _optional_str(body.get("externalId"))
+        active = bool(body.get("active", True))
+        roles = extract_scim_roles(body)
+    else:
+        emails = body.get("emails", existing.emails if existing else [])
+        groups = [str(group.get("value", "")).strip() for group in body.get("groups", []) if isinstance(group, dict) and group.get("value")]
+        external_id = _optional_str(body.get("externalId"))
+        if external_id is None and existing is not None:
+            external_id = existing.external_id
+        active = bool(body.get("active", existing.active if existing else True))
+        roles = extract_scim_roles(body, existing_roles=existing.roles if existing else None)
     if not isinstance(emails, list):
         raise HTTPException(status_code=400, detail="emails must be a list")
-    groups = [str(group.get("value", "")).strip() for group in body.get("groups", []) if isinstance(group, dict) and group.get("value")]
-    external_id = _optional_str(body.get("externalId"))
-    if external_id is None and existing is not None:
-        external_id = existing.external_id
     return SCIMUser(
         tenant_id=tenant_id,
         user_id=existing.user_id if existing else str(uuid.uuid4()),
         external_id=external_id,
         user_name=user_name,
         display_name=display_name,
-        active=bool(body.get("active", existing.active if existing else True)),
-        roles=extract_scim_roles(body, existing_roles=existing.roles if existing else None),
+        active=active,
+        roles=roles,
         emails=[entry for entry in emails if isinstance(entry, dict)],
-        groups=groups or (existing.groups if existing else []),
+        groups=groups if replace or groups else (existing.groups if existing else []),
         raw=dict(body),
         created_at=existing.created_at if existing else now_utc_iso(),
         updated_at=now_utc_iso(),
     )
 
 
-def _group_from_payload(tenant_id: str, body: dict[str, Any], *, existing: SCIMGroup | None = None) -> SCIMGroup:
-    display_name = str(body.get("displayName") or (existing.display_name if existing else "")).strip()
+def _group_from_payload(
+    tenant_id: str,
+    body: dict[str, Any],
+    *,
+    existing: SCIMGroup | None = None,
+    replace: bool = False,
+) -> SCIMGroup:
+    display_name = str(body.get("displayName") or (existing.display_name if existing and not replace else "")).strip()
     if not display_name:
         raise HTTPException(status_code=400, detail="displayName is required")
-    members = body.get("members", existing.members if existing else [])
+    if replace:
+        members = body.get("members", [])
+        external_id = _optional_str(body.get("externalId"))
+    else:
+        members = body.get("members", existing.members if existing else [])
+        external_id = _optional_str(body.get("externalId"))
+        if external_id is None and existing is not None:
+            external_id = existing.external_id
     if not isinstance(members, list):
         raise HTTPException(status_code=400, detail="members must be a list")
-    external_id = _optional_str(body.get("externalId"))
-    if external_id is None and existing is not None:
-        external_id = existing.external_id
     return SCIMGroup(
         tenant_id=tenant_id,
         group_id=existing.group_id if existing else str(uuid.uuid4()),
@@ -401,7 +426,8 @@ def _bulk_modify_user(request: Request, method: str, user_id: str | None, body: 
         action = "scim.user_patched"
     elif method == "PUT":
         previously_active = user.active
-        saved = _save_scim_user(store, _user_from_payload(tenant_id, body, existing=user), previously_active=previously_active)
+        replaced = _user_from_payload(tenant_id, body, existing=user, replace=True)
+        saved = _save_scim_user(store, replaced, previously_active=previously_active)
         action = "scim.user_replaced"
     elif method == "DELETE":
         previously_active = user.active
@@ -432,7 +458,7 @@ def _bulk_modify_group(request: Request, method: str, group_id: str | None, body
         saved = store.put_group(_apply_group_patch(group, body))
         action = "scim.group_patched"
     elif method == "PUT":
-        saved = store.put_group(_group_from_payload(tenant_id, body, existing=group))
+        saved = store.put_group(_group_from_payload(tenant_id, body, existing=group, replace=True))
         action = "scim.group_replaced"
     elif method == "DELETE":
         deleted = store.delete_group(tenant_id, group_id)
@@ -483,10 +509,8 @@ async def service_provider_config(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/Schemas", name="scim_schemas")
-async def schemas(request: Request) -> dict[str, Any]:
-    _require_scim(request)
-    resources = [
+def _schema_resources() -> list[dict[str, Any]]:
+    return [
         {
             "schemas": [SCIM_SCHEMA_SCHEMA],
             "id": SCIM_USER_SCHEMA,
@@ -525,19 +549,10 @@ async def schemas(request: Request) -> dict[str, Any]:
             ],
         },
     ]
-    return {
-        "schemas": [SCIM_LIST_SCHEMA],
-        "totalResults": len(resources),
-        "startIndex": 1,
-        "itemsPerPage": len(resources),
-        "Resources": resources,
-    }
 
 
-@router.get("/ResourceTypes", name="scim_resource_types")
-async def resource_types(request: Request) -> dict[str, Any]:
-    _require_scim(request)
-    resources = [
+def _resource_type_resources() -> list[dict[str, Any]]:
+    return [
         {
             "schemas": [SCIM_RESOURCE_TYPE_SCHEMA],
             "id": "User",
@@ -553,6 +568,12 @@ async def resource_types(request: Request) -> dict[str, Any]:
             "schema": SCIM_GROUP_SCHEMA,
         },
     ]
+
+
+@router.get("/Schemas", name="scim_schemas")
+async def schemas(request: Request) -> dict[str, Any]:
+    _require_scim(request)
+    resources = _schema_resources()
     return {
         "schemas": [SCIM_LIST_SCHEMA],
         "totalResults": len(resources),
@@ -560,6 +581,37 @@ async def resource_types(request: Request) -> dict[str, Any]:
         "itemsPerPage": len(resources),
         "Resources": resources,
     }
+
+
+@router.get("/Schemas/{schema_id}", name="scim_get_schema")
+async def get_schema(request: Request, schema_id: str) -> dict[str, Any]:
+    _require_scim(request)
+    for resource in _schema_resources():
+        if resource["id"] == schema_id:
+            return resource
+    raise HTTPException(status_code=404, detail="Schema not found")
+
+
+@router.get("/ResourceTypes", name="scim_resource_types")
+async def resource_types(request: Request) -> dict[str, Any]:
+    _require_scim(request)
+    resources = _resource_type_resources()
+    return {
+        "schemas": [SCIM_LIST_SCHEMA],
+        "totalResults": len(resources),
+        "startIndex": 1,
+        "itemsPerPage": len(resources),
+        "Resources": resources,
+    }
+
+
+@router.get("/ResourceTypes/{resource_type_id}", name="scim_get_resource_type")
+async def get_resource_type(request: Request, resource_type_id: str) -> dict[str, Any]:
+    _require_scim(request)
+    for resource in _resource_type_resources():
+        if resource["id"] == resource_type_id:
+            return resource
+    raise HTTPException(status_code=404, detail="ResourceType not found")
 
 
 @router.post("/Bulk", name="scim_bulk")
@@ -685,7 +737,8 @@ async def replace_user(request: Request, user_id: str, body: dict[str, Any]) -> 
     if existing is None:
         raise HTTPException(status_code=404, detail="User not found")
     previously_active = existing.active
-    saved = _save_scim_user(store, _user_from_payload(tenant_id, body, existing=existing), previously_active=previously_active)
+    replaced = _user_from_payload(tenant_id, body, existing=existing, replace=True)
+    saved = _save_scim_user(store, replaced, previously_active=previously_active)
     log_action(
         "scim.user_replaced",
         actor=_actor(request),
@@ -796,7 +849,7 @@ async def replace_group(request: Request, group_id: str, body: dict[str, Any]) -
     existing = store.get_group(tenant_id, group_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Group not found")
-    saved = store.put_group(_group_from_payload(tenant_id, body, existing=existing))
+    saved = store.put_group(_group_from_payload(tenant_id, body, existing=existing, replace=True))
     log_action(
         "scim.group_replaced",
         actor=_actor(request),

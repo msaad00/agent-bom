@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 import uuid
 from typing import Annotated
@@ -14,6 +15,7 @@ from agent_bom.api.pipeline import _now
 from agent_bom.api.report_job_store import get_report_job_store
 from agent_bom.api.report_worker import resolve_report_artifact, submit_report_job
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.config import API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT
 
 router = APIRouter()
 
@@ -24,16 +26,44 @@ def _tenant_id(request: Request) -> str:
 
 def _job_payload(job: ReportJob, *, request: Request) -> dict:
     payload = job.model_dump(mode="json")
-    if job.status == JobStatus.DONE and job.download_token:
-        payload["download_url"] = str(request.url_for("download_report_artifact", job_id=job.job_id)) + f"?token={job.download_token}"
+    if job.status == JobStatus.DONE:
+        if job.presigned_download_url:
+            payload["download_url"] = job.presigned_download_url
+        elif job.download_token:
+            payload["download_url"] = str(request.url_for("download_report_artifact", job_id=job.job_id)) + f"?token={job.download_token}"
     payload.pop("download_token", None)
+    payload.pop("presigned_download_url", None)
     return payload
+
+
+def _active_report_jobs_limit() -> int:
+    raw = os.environ.get("AGENT_BOM_API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT")
+    if raw is not None and str(raw).strip():
+        return int(raw)
+    return API_MAX_ACTIVE_REPORT_JOBS_PER_TENANT
+
+
+def _enforce_active_report_quota(tenant_id: str) -> None:
+    limit = _active_report_jobs_limit()
+    if limit <= 0:
+        return
+    active = sum(
+        1
+        for job in get_report_job_store().list_for_tenant(tenant_id)
+        if job.status in (JobStatus.PENDING, JobStatus.RUNNING)
+    )
+    if active >= limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Active report export limit reached ({limit} pending or running jobs)",
+        )
 
 
 @router.post("/v1/reports", tags=["reports"], status_code=202)
 async def create_report_job(request: Request, body: ReportJobRequest) -> dict:
     """Enqueue an async findings export (gzipped NDJSON) instead of a synchronous body."""
     tenant_id = _tenant_id(request)
+    _enforce_active_report_quota(tenant_id)
     job = ReportJob(
         job_id=str(uuid.uuid4()),
         tenant_id=tenant_id,

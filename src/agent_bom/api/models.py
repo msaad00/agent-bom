@@ -243,6 +243,9 @@ class ReportJob(BaseModel):
     row_count: int | None = None
     byte_count: int | None = None
     download_token: str | None = None
+    artifact_backend: Literal["local", "s3"] | None = None
+    artifact_uri: str | None = None
+    presigned_download_url: str | None = None
     error: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

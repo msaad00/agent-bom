@@ -33,15 +33,18 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas mapped to value proof: AppSec/GRC to SARIF and compliance, Platform/SRE to fleet and CI gates, agent builders to MCP inventory and runtime shield, security engineers to findings queue and attack paths" width="980" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas mapped to value proof: AppSec/GRC to SARIF and compliance, Platform/SRE to fleet sync and CI gates, agent builders to MCP inventory and runtime shield, security engineers to findings queue and attack paths" width="980" />
   </picture>
 </p>
 
-Four buyer lanes share one evidence model (`Finding` + `UnifiedGraph`):
+<p align="center"><em>Four buyer lanes · one evidence model (<code>Finding</code> + <code>UnifiedGraph</code>)</em></p>
+
+<details>
+<summary><b>Persona lane detail</b></summary>
 
 - **AppSec / GRC** — SARIF, compliance packs, and audit-ready exports from the
   same scan that powers the dashboard.
-- **Platform / SRE** — fleet inventory, Helm deploy, CI gates, and SBOM output
+- **Platform / SRE** — fleet sync, Helm deploy, CI gates, and SBOM output
   without a separate scanner stack.
 - **Agent builders** — MCP inventory, Shield SDK, and optional runtime proxy or
   gateway enforcement on the same graph.
@@ -53,6 +56,8 @@ Snowflake is a supported connector lane, not the product center.
 MCP server mode advertises 70 MCP tools, 6 resources, and 8 workflow prompts.
 Registry metadata is tracked through the committed Smithery manifest and Glama
 listing; install and liveness checks live in the integration docs.
+
+</details>
 
 ## Start Here
 

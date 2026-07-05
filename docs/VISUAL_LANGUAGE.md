@@ -42,7 +42,7 @@ Current SVG inventory:
 | `logo-{light,dark}.svg` | Brand mark | hero |
 | `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + ContextGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; available for README architecture section |
 | `how-it-works-{light,dark}.svg` | Six-step scan pipeline from read-only intake through evidence core to outputs | README "How It Works" |
-| `persona-value-{light,dark}.svg` | Buyer personas mapped to product value proof points | README / GTM collateral |
+| `persona-value-{light,dark}.svg` | Four buyer personas in a 2×2 lane-colored card grid (persona → value proof per card) | README hero — Who It's For |
 | `blast-radius-{light,dark}.svg` | CVE, package, MCP server, agent, credentials, and tools in one blast-radius path | hero, under tagline |
 | `scan-pipeline-{light,dark}.svg` | 5-stage pipeline (discover → scan → analyze → report → enforce) | "How a scan moves" |
 | `engine-internals-{light,dark}.svg` | Inside the scanner | available for deeper architecture docs; not currently embedded in the README |

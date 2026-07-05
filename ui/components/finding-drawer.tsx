@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { ExternalLink, FileSearch, Loader2, Radar, ShieldAlert, X } from "lucide-react";
 
 import { severityColor, type FindingTriageDecision, type FindingTriageItem, type FindingTriageJustification } from "@/lib/api";
-import { type EnrichedVuln, uniqueStrings } from "@/lib/findings-view";
+import { type EnrichedVuln, uniqueStrings, formatFindingTimestamp, findingStatusClass, findingStatusLabel } from "@/lib/findings-view";
 
 export function FindingDrawer({
   vuln,
@@ -75,6 +75,13 @@ function VulnDetailPanel({
   const cweMatches = summary.match(/CWE-\d+/gi) ?? [];
   const published = vuln.published_at ?? vuln.published ?? vuln.nvd_published;
   const modified = vuln.modified_at;
+  const hasLifecycle =
+    Boolean(vuln.lifecycle_status?.trim()) ||
+    Boolean(vuln.first_seen?.trim()) ||
+    Boolean(vuln.last_seen?.trim()) ||
+    Boolean(vuln.resolved_at?.trim()) ||
+    Boolean(vuln.reopened_at?.trim()) ||
+    typeof vuln.scan_count === "number";
   const references = uniqueStrings(vuln.references).slice(0, 6);
   const fixCandidates = vuln.remediation_items.filter((item) => item.fixed_version || item.command || item.verify_command);
   const investigationSources = uniqueStrings([
@@ -141,6 +148,28 @@ function VulnDetailPanel({
         </div>
 
         <div className="space-y-4">
+          {hasLifecycle && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Lifecycle</h4>
+              <div className="mt-3 space-y-2 text-sm text-zinc-300">
+                {vuln.lifecycle_status && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-500">Status:</span>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded border ${findingStatusClass(vuln.lifecycle_status)}`}>
+                      {findingStatusLabel(vuln.lifecycle_status)}
+                    </span>
+                  </div>
+                )}
+                {vuln.first_seen && <div><span className="text-zinc-500">First seen:</span> {formatFindingTimestamp(vuln.first_seen)}</div>}
+                {vuln.last_seen && <div><span className="text-zinc-500">Last seen:</span> {formatFindingTimestamp(vuln.last_seen)}</div>}
+                {vuln.resolved_at && <div><span className="text-zinc-500">Resolved:</span> {formatFindingTimestamp(vuln.resolved_at)}</div>}
+                {vuln.reopened_at && <div><span className="text-zinc-500">Reopened:</span> {formatFindingTimestamp(vuln.reopened_at)}</div>}
+                {typeof vuln.scan_count === "number" && (
+                  <div><span className="text-zinc-500">Scan count:</span> {vuln.scan_count}</div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
             <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Fix context</h4>
             <div className="mt-3 space-y-2 text-sm text-zinc-300">

@@ -757,6 +757,12 @@ export interface UnifiedFinding {
   exposed_tools?: string[] | undefined;
   scan_id?: string | undefined;
   scan_sources?: string[] | undefined;
+  status?: string | undefined;
+  first_seen?: string | null | undefined;
+  last_seen?: string | null | undefined;
+  resolved_at?: string | null | undefined;
+  reopened_at?: string | null | undefined;
+  scan_count?: number | undefined;
 }
 
 export interface FindingsResponse {

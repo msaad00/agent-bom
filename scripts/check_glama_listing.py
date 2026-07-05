@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -19,6 +20,21 @@ README = ROOT / "README.md"
 DEFAULT_URL = "https://glama.ai/mcp/servers/msaad00/agent-bom"
 GLAMA_DOCKERFILE = "integrations/glama/Dockerfile"
 GLAMA_MANIFESTS = (ROOT / "glama.json", ROOT / "integrations" / "glama" / "server.json")
+
+
+def _read_repo_file(relative_path: str, *, git_ref: str | None = None) -> str:
+    if not git_ref:
+        return (ROOT / relative_path).read_text(encoding="utf-8")
+    try:
+        return subprocess.check_output(
+            ["git", "show", f"{git_ref}:{relative_path}"],
+            cwd=ROOT,
+            text=True,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or "").strip()
+        raise FileNotFoundError(f"{relative_path} at {git_ref}: {detail}") from exc
 
 
 def _load_version() -> str:
@@ -37,15 +53,16 @@ def _load_readme_tool_count() -> str:
     return match.group(1)
 
 
-def verify_build_manifest() -> list[str]:
+def verify_build_manifest(git_ref: str | None = None) -> list[str]:
     """Ensure Glama manifests point at the curated Dockerfile before rebuild."""
 
     failures: list[str] = []
-    dockerfile_path = ROOT / GLAMA_DOCKERFILE
-    if not dockerfile_path.is_file():
-        failures.append(f"missing Glama Dockerfile at {GLAMA_DOCKERFILE}")
+    try:
+        dockerfile_text = _read_repo_file(GLAMA_DOCKERFILE, git_ref=git_ref)
+    except FileNotFoundError:
+        location = f" at {git_ref}" if git_ref else ""
+        failures.append(f"missing Glama Dockerfile at {GLAMA_DOCKERFILE}{location}")
     else:
-        dockerfile_text = dockerfile_path.read_text(encoding="utf-8")
         run_lines = [
             line
             for line in dockerfile_text.splitlines()
@@ -59,13 +76,17 @@ def verify_build_manifest() -> list[str]:
             failures.append(f"{GLAMA_DOCKERFILE} must pip install agent-bom onto system PATH")
 
     for manifest in GLAMA_MANIFESTS:
-        if not manifest.is_file():
-            failures.append(f"missing Glama manifest: {manifest.relative_to(ROOT)}")
+        manifest_path = str(manifest.relative_to(ROOT))
+        try:
+            manifest_text = _read_repo_file(manifest_path, git_ref=git_ref)
+        except FileNotFoundError:
+            location = f" at {git_ref}" if git_ref else ""
+            failures.append(f"missing Glama manifest: {manifest_path}{location}")
             continue
-        data = json.loads(manifest.read_text(encoding="utf-8"))
+        data = json.loads(manifest_text)
         if data.get("dockerfile") != GLAMA_DOCKERFILE:
             failures.append(
-                f"{manifest.relative_to(ROOT)} dockerfile must be {GLAMA_DOCKERFILE!r}, "
+                f"{manifest_path} dockerfile must be {GLAMA_DOCKERFILE!r}, "
                 f"found {data.get('dockerfile')!r}"
             )
     return failures
@@ -122,16 +143,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Validate glama.json/server.json and integrations/glama/Dockerfile, then exit.",
     )
+    parser.add_argument(
+        "--git-ref",
+        default=None,
+        help="Read manifest files from this git ref/SHA while running trusted checker code.",
+    )
     args = parser.parse_args(argv)
 
     if args.verify_manifest:
-        failures = verify_build_manifest()
+        failures = verify_build_manifest(args.git_ref)
         if failures:
             print("ERROR: Glama build manifest check failed:", file=sys.stderr)
             for failure in failures:
                 print(f"- {failure}", file=sys.stderr)
             return 1
-        print(f"Glama build manifest is valid ({GLAMA_DOCKERFILE})")
+        suffix = f" at {args.git_ref}" if args.git_ref else ""
+        print(f"Glama build manifest is valid ({GLAMA_DOCKERFILE}{suffix})")
         return 0
 
     version = (args.expected or _load_version()).lstrip("v").strip()

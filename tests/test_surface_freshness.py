@@ -47,6 +47,11 @@ def test_glama_build_manifest_verify_passes():
     assert script.main(["--verify-manifest"]) == 0
 
 
+def test_glama_build_manifest_verify_reads_git_ref():
+    script = _load_script("check_glama_listing.py")
+    assert script.main(["--verify-manifest", "--git-ref", "HEAD"]) == 0
+
+
 def test_glama_build_manifest_verify_rejects_missing_dockerfile(monkeypatch):
     script = _load_script("check_glama_listing.py")
     monkeypatch.setattr(script, "GLAMA_DOCKERFILE", "integrations/glama/does-not-exist.dockerfile")

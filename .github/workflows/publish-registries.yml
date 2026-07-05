@@ -177,10 +177,6 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          # Pin to the release commit so manifest/Dockerfile checks and webhook
-          # payload match the tag the Release workflow just published.
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Extract release metadata
         id: meta
@@ -214,8 +210,13 @@ jobs:
           echo "release_ref=$RELEASE_REF" >> "$GITHUB_OUTPUT"
           echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch release commit for manifest verification
+        env:
+          RELEASE_SHA: ${{ steps.meta.outputs.release_sha }}
+        run: git fetch --no-tags --depth=1 origin "$RELEASE_SHA"
+
       - name: Verify Glama build manifest
-        run: python scripts/check_glama_listing.py --verify-manifest
+        run: python scripts/check_glama_listing.py --verify-manifest --git-ref "${{ steps.meta.outputs.release_sha }}"
 
       - name: Trigger Glama rebuild
         env:

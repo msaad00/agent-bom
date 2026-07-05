@@ -1134,6 +1134,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
 
     harden_tool_arguments(mcp)
 
+    # Opt-in third-party MCP tool plugins (off by default). Requires both
+    # AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS and AGENT_BOM_ACTIVATE_MCP_TOOL_PLUGINS.
+    from agent_bom.plugin_activation import activate_mcp_tool_plugins
+
+    activated = activate_mcp_tool_plugins(mcp)
+    if activated:
+        logger.info("Activated %d third-party MCP tool plugin(s): %s", len(activated), ", ".join(sorted(activated)))
+        harden_tool_arguments(mcp)
+
     return mcp
 
 

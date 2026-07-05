@@ -323,7 +323,16 @@ def _persist_runtime_observations(events: list[dict[str, Any]], *, tenant_id: st
         return 0
     store = get_runtime_event_store()
     records = [_runtime_observation_from_event(event, tenant_id=tenant_id, source=source) for event in events]
-    return store.put_observations_batch(records)
+    persisted = store.put_observations_batch(records)
+    # Opt-in runtime emitter plugins receive a redacted routing envelope per
+    # persisted observation (off by default; see plugin_activation). Never lets
+    # a third-party emitter failure affect the persisted ingest result.
+    from agent_bom.plugin_activation import fan_out_runtime_event, runtime_emitter_activation_enabled
+
+    if runtime_emitter_activation_enabled():
+        for record in records:
+            fan_out_runtime_event(record)
+    return persisted
 
 
 def _finish_ocsf_ingest(normalized_events: list[dict[str, Any]], *, tenant_id: str) -> None:

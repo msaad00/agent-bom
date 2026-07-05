@@ -101,3 +101,39 @@ def test_plugin_status_api_returns_registry_metadata(monkeypatch):
     assert payload["schema_version"] == "agent-bom.plugin_registry_status.v1"
     assert payload["metadata_only"] is True
     assert payload["totals"]["declared_entrypoints"] == 1
+
+
+def test_registry_status_reports_activation_flags(monkeypatch):
+    monkeypatch.delenv(ENTRYPOINTS_ENABLED_ENV, raising=False)
+    monkeypatch.delenv("AGENT_BOM_ACTIVATE_MCP_TOOL_PLUGINS", raising=False)
+    _patch_entry_points(monkeypatch, [])
+
+    status = plugin_registry_status()
+
+    # Activation is off by default; the metadata-only status still advertises the
+    # per-group activation flag state so operators can see what would run.
+    assert status["activation"] == {
+        "agent_bom.mcp_tools": False,
+        "agent_bom.advisory_sources": False,
+        "agent_bom.runtime_emitters": False,
+    }
+    mcp_group = next(group for group in status["groups"] if group["group"] == "agent_bom.mcp_tools")
+    assert mcp_group["activation_enabled"] is False
+
+
+def test_plugins_activation_cli_emits_json(monkeypatch):
+    monkeypatch.delenv(ENTRYPOINTS_ENABLED_ENV, raising=False)
+    _patch_entry_points(monkeypatch, [])
+
+    result = CliRunner().invoke(main, ["plugins", "activation", "--format", "json"])
+
+    assert result.exit_code == 0
+    payload: dict[str, Any] = json.loads(result.output)
+    assert payload["schema_version"] == "agent-bom.plugin_activation_status.v1"
+    assert payload["discovery_enabled"] is False
+    assert payload["totals"]["activated_plugins"] == 0
+    assert {group["group"] for group in payload["groups"]} == {
+        "agent_bom.mcp_tools",
+        "agent_bom.advisory_sources",
+        "agent_bom.runtime_emitters",
+    }

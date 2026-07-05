@@ -24,11 +24,58 @@ installed entry-point declarations, and whether opt-in loading is enabled.
 
 ## Supported Groups
 
-| Group | Purpose | Default runtime behavior |
-|---|---|---|
-| `agent_bom.mcp_tools` | Advertise an MCP tool registration module and function. | Not registered on the live MCP server. |
-| `agent_bom.advisory_sources` | Advertise a private advisory lookup or sync source. | Not queried during scans. |
-| `agent_bom.runtime_emitters` | Advertise a runtime event emitter. | Not added to proxy, gateway, or alert dispatch. |
+| Group | Purpose | Default runtime behavior | Activation flag |
+|---|---|---|---|
+| `agent_bom.mcp_tools` | Advertise an MCP tool registration module and function. | Not registered on the live MCP server. | `AGENT_BOM_ACTIVATE_MCP_TOOL_PLUGINS` |
+| `agent_bom.advisory_sources` | Advertise a private advisory lookup or sync source. | Not queried during scans. | `AGENT_BOM_ACTIVATE_ADVISORY_SOURCE_PLUGINS` |
+| `agent_bom.runtime_emitters` | Advertise a runtime event emitter. | Not added to proxy, gateway, or alert dispatch. | `AGENT_BOM_ACTIVATE_RUNTIME_EMITTER_PLUGINS` |
+
+## Runtime Activation
+
+Discovery is metadata-only: it never imports or runs third-party plugin code.
+Runtime activation is a **second, explicit opt-in** on top of discovery. A group
+activates only when both `AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS` (discovery) and
+that group's activation flag are set. With no activation flag set, every surface
+below is a no-op and default behavior is unchanged.
+
+```bash
+# Register discovered third-party MCP tools on the live MCP server.
+AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS=true \
+AGENT_BOM_ACTIVATE_MCP_TOOL_PLUGINS=true \
+  agent-bom mcp
+
+# Augment `intel lookup` with operator-owned advisory sources.
+AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS=true \
+AGENT_BOM_ACTIVATE_ADVISORY_SOURCE_PLUGINS=true agent-bom ...
+
+# Fan runtime observations out to operator-owned event emitters.
+AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS=true \
+AGENT_BOM_ACTIVATE_RUNTIME_EMITTER_PLUGINS=true agent-bom serve
+```
+
+Activation surfaces, per group:
+
+- **MCP tools** — each activated plugin's `register_attr` (default `register_tools`)
+  is called with the live server during `create_mcp_server`; plugin-added tools
+  are then hardened with the same strict-argument contract as built-ins.
+- **Advisory sources** — the `intel lookup` MCP tool calls each activated source's
+  `lookup_attr` (default `lookup`) and appends provenance-tagged records under
+  `operator_advisory_sources`. The deterministic local result is never replaced.
+- **Runtime emitters** — every persisted runtime observation is forwarded to each
+  activated emitter's `emit_attr` (default `emit`) as a **redacted routing
+  envelope** (`runtime.emitter_envelope.v1`) that carries only metadata — never
+  raw prompts, tool arguments, or credential values.
+
+Every activation is isolated: an import, binding, or invocation failure in one
+plugin is sanitized into a warning and never crashes the server or scan, and one
+failing plugin does not stop the others. Inspect the live wiring with:
+
+```bash
+agent-bom plugins activation --format json
+```
+
+The `agent-bom plugins status` view also reports each group's `activation_enabled`
+state so operators can see what would run before enabling it.
 
 The registry status view also includes existing built-in extension groups:
 `agent_bom.cloud_providers`, `agent_bom.connectors`, and

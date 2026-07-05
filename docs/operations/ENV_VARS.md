@@ -124,6 +124,9 @@ so they cannot regress silently, but they are not part of this reference.
 ## Extension Loading
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_ACTIVATE_ADVISORY_SOURCE_PLUGINS` | `bool` | `False` | — |
+| `AGENT_BOM_ACTIVATE_MCP_TOOL_PLUGINS` | `bool` | `False` | Per-group runtime activation for discovered plugin entry points. Each is a second, explicit opt-in on top of discovery: even with discovery enabled, an operator must set the group flag before agent-bom binds and executes a third-party MCP t |
+| `AGENT_BOM_ACTIVATE_RUNTIME_EMITTER_PLUGINS` | `bool` | `False` | — |
 | `AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS` | `bool` | `False` | Disabled by default so third-party provider/connector/parser entry points never execute unless an operator explicitly opts in. |
 
 ## Graph Backend Selection

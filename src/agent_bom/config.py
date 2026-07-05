@@ -54,6 +54,14 @@ def _str(env_key: str, default: str) -> str:
 
 ENABLE_EXTENSION_ENTRYPOINTS = _bool("AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS", False)
 
+# Per-group runtime activation for discovered plugin entry points. Each is a
+# second, explicit opt-in on top of discovery: even with discovery enabled, an
+# operator must set the group flag before agent-bom binds and executes a
+# third-party MCP tool, advisory source, or runtime emitter. Off by default.
+ACTIVATE_MCP_TOOL_PLUGINS = _bool("AGENT_BOM_ACTIVATE_MCP_TOOL_PLUGINS", False)
+ACTIVATE_ADVISORY_SOURCE_PLUGINS = _bool("AGENT_BOM_ACTIVATE_ADVISORY_SOURCE_PLUGINS", False)
+ACTIVATE_RUNTIME_EMITTER_PLUGINS = _bool("AGENT_BOM_ACTIVATE_RUNTIME_EMITTER_PLUGINS", False)
+
 
 # ── OS-package reporting ──────────────────────────────────────────────────────
 # When False (default), OS/distro advisories with no fix for the scanned release

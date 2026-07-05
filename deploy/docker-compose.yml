@@ -44,6 +44,8 @@ services:
       # Windows: use %APPDATA% paths or run via WSL2
       - ~/.config:/home/abom/.config:ro
       - ~/.claude:/home/abom/.claude:ro
+      # Persist vuln DB, scan cache, and control-plane state for the abom user
+      - ~/.agent-bom:/home/abom/.agent-bom
       # Mount current directory for output
       - ./reports:/workspace/reports
       # Mount test configs

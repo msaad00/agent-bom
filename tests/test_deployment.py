@@ -160,6 +160,19 @@ def test_pilot_insecure_mode_is_loopback_scoped():
     assert ui["ports"] == ["127.0.0.1:3000:3000"]
 
 
+def test_dev_compose_mounts_agent_bom_home_for_abom_user():
+    """Dev compose profiles persist ~/.agent-bom into the abom user home."""
+    import yaml
+
+    for relative in ("deploy/docker-compose.yml", "deploy/docker-compose.fullstack.yml"):
+        data = yaml.safe_load((ROOT / relative).read_text(encoding="utf-8"))
+        services = data["services"]
+        service = services.get("agent-bom") or services.get("api")
+        assert service is not None, relative
+        volumes = service.get("volumes") or []
+        assert "~/.agent-bom:/home/abom/.agent-bom" in volumes, relative
+
+
 # ---------------------------------------------------------------------------
 # Integration files version consistency
 # ---------------------------------------------------------------------------

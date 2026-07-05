@@ -94,6 +94,7 @@ docker build -t agent-bom:latest .
 docker run --rm \
   -v $(pwd):/workspace \
   -v ~/.config:/home/abom/.config:ro \
+  -v ~/.agent-bom:/home/abom/.agent-bom \
   agent-bom:latest agents --enrich --output /workspace/report.json
 
 # Scan with environment variables

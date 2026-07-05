@@ -645,6 +645,16 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
                 )
             ),
         ] = "npm",
+        version: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Optional package version when omitted from ``package`` "
+                    "(e.g. package='flask', version='0.12.2'). Prefer embedding "
+                    "in ``package`` as 'flask@0.12.2' or 'flask==0.12.2' when possible."
+                ),
+            ),
+        ] = None,
     ) -> str:
         """Check a specific package for known CVEs before installing.
 
@@ -669,6 +679,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             check_impl,
             package=package,
             ecosystem=ecosystem,
+            version=version,
             _validate_ecosystem=_validate_ecosystem,
             _truncate_response=_truncate_response,
         )

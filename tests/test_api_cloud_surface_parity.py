@@ -291,6 +291,54 @@ def test_dispatch_blocks_self_asserted_admin_without_operator_token() -> None:
     assert "authenticated operator token" in json.loads(out)["error"]
 
 
+def test_authorize_destructive_allows_authenticated_operator_without_self_asserted_role() -> None:
+    from agent_bom.mcp_server_runtime import authorize_destructive_tool
+
+    assert (
+        authorize_destructive_tool(
+            "identity_issue",
+            operator_role="viewer",
+            operator_scopes="",
+            auth_scopes="admin,identity:write",
+            required_scope="identity:write",
+        )
+        is None
+    )
+
+
+def test_dispatch_allows_destructive_tool_with_default_viewer_role_when_operator_token(
+    monkeypatch,
+) -> None:
+    from agent_bom import mcp_server
+
+    async def handler(**_kwargs: object) -> str:
+        return "HANDLER_RAN"
+
+    monkeypatch.setattr(
+        mcp_server,
+        "_current_tool_request",
+        lambda: {
+            "caller": "operator",
+            "client_id": "agent-bom-operator-token",
+            "request_id": "req-2",
+            "auth_scopes": "admin,shield:write",
+        },
+    )
+
+    out = asyncio.run(
+        mcp_server._execute_tool_async(
+            "shield_start",
+            handler,
+            destructive=True,
+            required_scope="shield:write",
+            operator_role="viewer",
+            operator_scopes="",
+            reason="legitimate operator audit reason",
+        )
+    )
+    assert out == "HANDLER_RAN"
+
+
 def test_dispatch_allows_destructive_tool_for_authenticated_operator(monkeypatch) -> None:
     from agent_bom import mcp_server
 

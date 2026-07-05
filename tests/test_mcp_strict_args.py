@@ -44,15 +44,21 @@ def test_unknown_argument_raises_clear_error(mcp_server) -> None:  # noqa: ANN00
     async def call() -> None:
         await mcp_server._tool_manager.call_tool(
             "check",
-            {"package": "flask", "version": "2.0.0", "ecosystem": "pypi"},
+            {"package": "flask", "Version": "2.0.0", "ecosystem": "pypi"},
         )
 
     with pytest.raises(ToolError) as exc:
         asyncio.run(call())
     msg = str(exc.value)
     assert "Unknown argument" in msg
-    assert "version" in msg
+    assert "Version" in msg
     assert "check" in msg
+
+
+def test_separate_version_argument_is_accepted(mcp_server) -> None:  # noqa: ANN001
+    """The check tool advertises an optional version field for agent discoverability."""
+    check = mcp_server._tool_manager.get_tool("check")
+    assert "version" in (check.parameters or {}).get("properties", {})
 
 
 def test_known_arguments_pass_through(mcp_server) -> None:  # noqa: ANN001

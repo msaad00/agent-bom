@@ -85,7 +85,7 @@ Policy, trust, fleet, FinOps, identity, API, scheduling, and control-plane ops.
 |---|---|
 | `policy` | Policy-as-code group. |
 | `trust` | Trust-boundary commands. |
-| `fleet` | Fleet inventory group — `sync` discovers local MCP agents and pushes to `POST /v1/fleet/sync` (requires `--push-url` or `AGENT_BOM_PUSH_URL`; HTTPS-only unless `AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS=1`). |
+| `fleet` | Fleet inventory group — `sync` discovers local MCP agents and pushes to `POST /v1/fleet/sync` (requires `--push-url` or `AGENT_BOM_PUSH_URL`; loopback HTTP allowed for local pilots). |
 | `cost` | LLM cost / FinOps group (forecast, budget, chargeback). |
 | `identity` | Non-human identity group (credential-expiry, access review). |
 | `serve` | Run the local API + bundled dashboard. |

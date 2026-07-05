@@ -84,16 +84,57 @@ def fleet_group(ctx: click.Context) -> None:
 
 
 @click.command("sync")
+@click.option(
+    "--project",
+    "project_dir",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Restrict discovery to a project directory",
+)
+@click.option(
+    "--push-url",
+    default=None,
+    envvar="AGENT_BOM_PUSH_URL",
+    metavar="URL",
+    help="Control-plane fleet sync URL (full /v1/fleet/sync or API base URL)",
+)
+@click.option(
+    "--push-api-key",
+    default=None,
+    envvar="AGENT_BOM_PUSH_API_KEY",
+    metavar="TOKEN",
+    help="Bearer token for fleet sync",
+)
+@click.option("--source-id", default=None, envvar="AGENT_BOM_PUSH_SOURCE_ID", help="Stable endpoint source identifier")
 @click.option("--quiet", "-q", is_flag=True)
-def fleet_sync_cmd(quiet: bool) -> None:
-    """Run agent discovery and sync results into fleet registry."""
+def fleet_sync_cmd(project_dir: str | None, push_url: str | None, push_api_key: str | None, source_id: str | None, quiet: bool) -> None:
+    """Run agent discovery and sync results into the fleet registry."""
     from rich.console import Console
 
+    from agent_bom.fleet.sync_client import run_fleet_sync
+
     con = Console(stderr=True, quiet=quiet)
-    con.print("[dim]Fleet sync requires the API server. Start with:[/dim]")
-    con.print("  [cyan]agent-bom api[/cyan]")
-    con.print("  [cyan]curl -X POST http://localhost:8422/v1/fleet/sync[/cyan]")
-    raise click.ClickException("fleet sync is not available as a local-only command; call the API endpoint instead")
+    try:
+        result = run_fleet_sync(
+            push_url=push_url,
+            api_key=push_api_key,
+            project_dir=project_dir,
+            source_id=source_id,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if not quiet:
+        con.print(
+            "[green]Fleet sync complete[/green] "
+            f"discovered={result.get('discovered', 0)} "
+            f"synced={result.get('synced', 0)} "
+            f"new={result.get('new', 0)} "
+            f"updated={result.get('updated', 0)} "
+            f"source_id={result.get('source_id', '')}"
+        )
 
 
 @click.command("list")

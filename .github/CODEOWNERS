@@ -3,8 +3,8 @@
 # only this file. The granular per-module routing below was merged from the
 # previous root-level CODEOWNERS.
 
-# Default code owners — PRs require review from at least one owner.
-* @msaad00 @andres-linero
+# Default owner for day-to-day changes (no auto-requested co-review).
+* @msaad00
 
 # Release and supply-chain control surfaces.
 /.github/workflows/release.yml @msaad00 @andres-linero

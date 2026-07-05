@@ -696,11 +696,12 @@ def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
 
         # Sort by remediation priority (1 = fix first), then severity.
         def _sort_key(c: dict) -> tuple[int, int]:
+            from agent_bom.graph.severity import severity_worst_first_rank
+
             rem = c.get("remediation") or {}
             priority = rem.get("priority", 3)
-            sev = (c.get("severity") or "").lower()
-            sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(sev, 4)
-            return (priority, sev_rank)
+            sev = c.get("severity") or ""
+            return (priority, severity_worst_first_rank(sev))
 
         failed_sorted = sorted(failed, key=_sort_key)
         shown = failed_sorted[:limit]

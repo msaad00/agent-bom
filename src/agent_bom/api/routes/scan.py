@@ -1247,8 +1247,9 @@ def _finding_sort_key(row: dict[str, Any], sort: str) -> tuple[float, float, flo
     deterministic for a given input.
     """
     from agent_bom.api.compliance_hub_store import compute_effective_reach_score
+    from agent_bom.graph.severity import severity_policy_rank
 
-    sev_rank = {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(str(row.get("severity", "")).lower(), 0)
+    sev_rank = severity_policy_rank(str(row.get("severity", "")))
     cvss = float(row.get("cvss_score") or 0.0)
     reach_val = compute_effective_reach_score(row)
 

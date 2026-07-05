@@ -22,17 +22,22 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
+from agent_bom.graph.severity import severity_rank
 from agent_bom.models import MCPServer, Severity
 
 logger = logging.getLogger(__name__)
 
-# Severity weights for CVE deductions
-_CVE_SEVERITY_WEIGHTS: dict[Severity, float] = {
-    Severity.CRITICAL: 8.0,
-    Severity.HIGH: 5.0,
-    Severity.MEDIUM: 2.0,
-    Severity.LOW: 0.5,
+# CVE deduction weights keyed by canonical severity rank (graph.severity.SEVERITY_RANK).
+_CVE_WEIGHT_BY_RANK: dict[int, float] = {
+    5: 8.0,  # critical
+    4: 5.0,  # high
+    3: 2.0,  # medium
+    2: 0.5,  # low
 }
+
+
+def _cve_severity_weight(severity: Severity) -> float:
+    return _CVE_WEIGHT_BY_RANK.get(severity_rank(severity.value), 0.5)
 
 # Baseline category budgets. CVE deductions can exceed the historical
 # 35-point ceiling so heavily exposed servers no longer collapse into the
@@ -174,7 +179,7 @@ def _score_cves(server: MCPServer) -> CategoryScore:
 
     for pkg in server.packages:
         for vuln in pkg.vulnerabilities:
-            weight = _CVE_SEVERITY_WEIGHTS.get(vuln.severity, 0.5)
+            weight = _cve_severity_weight(vuln.severity)
             epss_bonus, epss_note = _epss_bonus(vuln)
             deduction = weight + epss_bonus
             total_deduction += deduction

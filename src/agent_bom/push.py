@@ -15,7 +15,7 @@ import logging
 import os
 import platform
 import uuid
-from typing import Any
+from typing import Any, Literal, overload
 
 import httpx
 
@@ -125,6 +125,32 @@ def _push_retry_delay(attempt: int, base: float, cap: float) -> float:
     exp = base * (2 ** (attempt - 1))
     jitter = random.uniform(0, exp * 0.1)
     return min(cap, exp + jitter)
+
+
+@overload
+async def _push_async(
+    push_url: str,
+    results: dict,
+    api_key: str | None = None,
+    *,
+    max_attempts: int = _DEFAULT_PUSH_MAX_ATTEMPTS,
+    base_delay_seconds: float = _DEFAULT_PUSH_BASE_DELAY,
+    max_delay_seconds: float = _DEFAULT_PUSH_MAX_DELAY,
+    return_body: Literal[False] = False,
+) -> bool: ...
+
+
+@overload
+async def _push_async(
+    push_url: str,
+    results: dict,
+    api_key: str | None = None,
+    *,
+    max_attempts: int = _DEFAULT_PUSH_MAX_ATTEMPTS,
+    base_delay_seconds: float = _DEFAULT_PUSH_BASE_DELAY,
+    max_delay_seconds: float = _DEFAULT_PUSH_MAX_DELAY,
+    return_body: Literal[True],
+) -> tuple[bool, dict[str, Any] | None]: ...
 
 
 async def _push_async(

@@ -65,6 +65,19 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: commit-message-strip
+        name: commit message strip (remove injected assistant trailers)
+        entry: python3 scripts/check_commit_message.py --strip
+        language: system
+        stages: [prepare-commit-msg]
+        pass_filenames: true
+        always_run: true
+      - id: commit-message-hygiene
+        name: commit message hygiene (no LLM co-author attribution)
+        entry: python3 scripts/check_commit_message.py
+        language: system
+        stages: [commit-msg]
+        pass_filenames: true
       - id: exception-sanitization-guard
         name: exception sanitization (no raw exception text in HTTP responses or logs)
         # Rejects new detail=str(exc) / detail=f"...{exc}" HTTPException bodies and

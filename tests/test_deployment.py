@@ -496,7 +496,9 @@ def test_publish_registries_workflow_validates_smithery_best_effort_and_curated_
     assert '_publish_skill "integrations/openclaw" "agent-bom"' not in workflow
     assert "check_glama_listing.py --verify-manifest" in workflow
     assert "workflow_run.head_sha || github.ref" in workflow
-    assert '"dockerfile": os.environ["GLAMA_DOCKERFILE"]' in workflow
+    assert "actions: read" in workflow
+    assert "jq -n" in workflow
+    assert "dockerfile: $dockerfile" in workflow
 
 
 def test_refresh_latest_container_keeps_release_code_but_applies_runtime_security_overlay():

@@ -172,6 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      actions: read
       contents: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
@@ -202,8 +203,12 @@ jobs:
             if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
               VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
             fi
-            RELEASE_REF="refs/tags/${HEAD_BRANCH}"
-            RELEASE_SHA="${HEAD_SHA}"
+            if [ -n "${HEAD_BRANCH:-}" ]; then
+              RELEASE_REF="refs/tags/${HEAD_BRANCH}"
+            else
+              RELEASE_REF="refs/tags/v${VERSION}"
+            fi
+            RELEASE_SHA="${HEAD_SHA:-$(git rev-parse HEAD)}"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "release_ref=$RELEASE_REF" >> "$GITHUB_OUTPUT"
@@ -221,16 +226,17 @@ jobs:
           GLAMA_DOCKERFILE: integrations/glama/Dockerfile
         run: |
           if [ -z "$GLAMA_WEBHOOK_URL" ]; then
-            echo "::warning::GLAMA_WEBHOOK_URL not configured — verifying Glama auto-sync freshness instead"
+            echo "::warning::GLAMA_WEBHOOK_URL not configured — skipping webhook trigger"
+            echo "Release pin for Glama: ${RELEASE_REF} (${RELEASE_SHA:0:7}) dockerfile=${GLAMA_DOCKERFILE}"
             echo "To enable instant rebuild, set GLAMA_WEBHOOK_URL in repo variables"
             exit 0
           fi
-          PAYLOAD=$(python3 -c 'import json, os; print(json.dumps({
-              "ref": os.environ["RELEASE_REF"],
-              "commit": os.environ["RELEASE_SHA"],
-              "version": os.environ["VERSION"],
-              "dockerfile": os.environ["GLAMA_DOCKERFILE"],
-          }, separators=(",", ":")))')
+          PAYLOAD=$(jq -n \
+            --arg ref "$RELEASE_REF" \
+            --arg commit "$RELEASE_SHA" \
+            --arg version "$VERSION" \
+            --arg dockerfile "$GLAMA_DOCKERFILE" \
+            '{ref: $ref, commit: $commit, version: $version, dockerfile: $dockerfile}')
           echo "Triggering Glama rebuild for ${RELEASE_REF} (${RELEASE_SHA:0:7}) using ${GLAMA_DOCKERFILE}"
           HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
             -o /dev/null -w "%{http_code}" \

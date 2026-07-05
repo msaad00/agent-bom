@@ -530,6 +530,7 @@ AmazonEC2ReadOnlyAccess
 ```bash
 docker run --rm \
   -v ~/.config:/home/abom/.config:ro \
+  -v ~/.agent-bom:/home/abom/.agent-bom \
   -v $(pwd):/workspace:ro \
   agentbom/agent-bom:0.92.0 agents --format json
 ```

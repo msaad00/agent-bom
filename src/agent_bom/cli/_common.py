@@ -272,10 +272,26 @@ def _update_check_cache_file() -> Path:
     return base / "update-check.txt"
 
 
+def _should_skip_update_check() -> bool:
+    import os
+
+    truthy = {"1", "true", "yes", "on"}
+    if os.environ.get("AGENT_BOM_SKIP_UPDATE_CHECK", "").strip().lower() in truthy:
+        return True
+    if os.environ.get("AGENT_BOM_OFFLINE", "").strip().lower() in truthy:
+        return True
+    return False
+
+
 def _check_for_update_bg() -> None:
     """Background thread: compare __version__ against PyPI latest. Non-blocking."""
     global _update_check_result  # noqa: PLW0603
     import errno
+
+    if _should_skip_update_check():
+        _update_check_result = None
+        _update_check_done.set()
+        return
 
     try:
         cache_file = _update_check_cache_file()

@@ -70,6 +70,8 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `mesh` | Show lightweight agent/MCP topology without CVE scanning |
 | `report` | History, diff, pipeline-event artifacts, local queries, analytics, dashboard, and compliance narrative workflows |
 | `findings` | List normalized findings, manage the triage queue, record decisions, and export signed OpenVEX evidence |
+| `findings push` | Push normalized findings or Trivy / Grype / Syft JSON to `POST /v1/findings/bulk` on the control plane |
+| `findings list` | List findings from the control plane; prints lifecycle columns when bulk-ingest metadata is present |
 | `attest` | Sign and verify generated SBOM output (SHA-256 digest + in-toto attestation) |
 
 ### Governance And Operations
@@ -80,6 +82,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 | `firewall` | Inter-agent firewall policy validate / list / check |
 | `trust` | Show data access, network, auth, and storage boundaries |
 | `fleet` | Manage AI agent fleet discovery, lifecycle, and posture |
+| `fleet sync` | Discover local MCP agents and push inventory to `POST /v1/fleet/sync` |
 | `cost` | LLM FinOps posture — spend forecast and chargeback rollups (read-only) |
 | `cost forecast` | Project LLM burn rate and budget runway (read-only FinOps) |
 | `cost allocation` | Roll up LLM spend by cost-center / allocation tag (alias: `cost chargeback`) |
@@ -131,6 +134,45 @@ verbs are additive entry points that delegate to the underlying implementations.
 - `agent-bom verify` and `agent-bom verify agent-bom` both self-verify the installed package.
 - `cloud aws` / `cloud azure` / `cloud gcp` (and `cloud scan --provider <name>`) exit non-zero when an explicitly requested provider hard-fails discovery or its CIS benchmark because the provider SDK is not installed or credentials are absent/invalid. The helpful `pip install 'agent-bom[<provider>]'` / credential-setup message is still printed. A genuinely empty-but-successful scan (credentials present, no AI resources) still exits 0, and one provider failing never aborts the others — every requested provider is still attempted, the exit code only reflects that one hard-failed. `cloud scan --provider all` only scans auto-detected configured clouds, so unconfigured clouds are skipped (not failed) and the run stays at exit 0.
 - `secrets` accepts `--offline` as a no-op for parity with `agents`/`scan`; secret scanning is always local and never makes network calls, so shared CI invocations that pass `--offline` work unchanged.
+
+## Headless control-plane ingest
+
+Use these when CI, a laptop, or an MCP client needs to push evidence into a
+running control plane without opening the dashboard.
+
+```bash
+# Push external scanner output (Trivy / Grype / Syft) or normalized findings JSON
+agent-bom findings push ./trivy.json \
+  --api-url https://agent-bom.internal.example.com \
+  --api-key "$AGENT_BOM_API_KEY" \
+  --source trivy
+
+# List findings back from the control plane (lifecycle columns when present)
+agent-bom findings list --api-url https://agent-bom.internal.example.com --api-key "$AGENT_BOM_API_KEY"
+
+# Discover local MCP agents and sync fleet inventory
+agent-bom fleet sync \
+  --push-url https://agent-bom.internal.example.com/v1/fleet/sync \
+  --push-api-key "$AGENT_BOM_PUSH_API_KEY"
+```
+
+**Unified findings queue:** bulk-ingested findings appear in `GET /v1/findings`
+and the dashboard `/findings` page. Hub-native clients can also call
+`GET /v1/compliance/hub/findings`; there is no separate hub-findings browser
+page — compliance shows hub posture totals only.
+
+**Lifecycle columns:** the dashboard and `findings list` show **Status**,
+**First seen**, and **Last seen** only when the API returns lifecycle metadata
+(bulk-ingested / reconciled rows). Scan-only job findings omit those fields.
+
+**Local pilot URLs:** `findings push` defaults `--api-url` to
+`http://127.0.0.1:8422`. `fleet sync` enforces HTTPS outbound policy via
+`validate_url`; for loopback pilots set
+`AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS=1` or use an HTTPS local endpoint.
+
+**Air-gap:** export `AGENT_BOM_SKIP_UPDATE_CHECK=1` or `AGENT_BOM_OFFLINE=1`
+before invoking the CLI to suppress the background PyPI version check (it starts
+before subcommand flags are parsed).
 
 ## Common flags
 
@@ -225,4 +267,8 @@ Contract](remediate-output.md).
 | `AGENT_BOM_OKTA_DISCOVERY` / `AGENT_BOM_ENTRA_DISCOVERY` | Gate `identity discover` and discovered-NHI credential expiry | Only for NHI discovery |
 | `AGENT_BOM_AWS_INVENTORY` / `AGENT_BOM_AZURE_INVENTORY` / `AGENT_BOM_GCP_INVENTORY` | Gate `cloud inventory` and `cloud scan` per provider | Only for cloud connect / estate inventory |
 | `AGENT_BOM_VULN_DB_MAX_AGE_HOURS` / `AGENT_BOM_VULN_DB_OFFLINE` | Staleness threshold and offline override behind the `db freshness` indicator | No |
+| `AGENT_BOM_API_URL` / `AGENT_BOM_API_KEY` / `AGENT_BOM_API_TOKEN` | Control-plane base URL and credentials for `findings push` and MCP bulk ingest | Only for headless push |
+| `AGENT_BOM_PUSH_URL` / `AGENT_BOM_PUSH_API_KEY` | Fleet sync destination (`/v1/fleet/sync`) and bearer token | Only for `fleet sync` |
+| `AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS` | Allow HTTP / loopback outbound URLs for local fleet sync pilots | Only when pushing to local HTTP endpoints |
+| `AGENT_BOM_SKIP_UPDATE_CHECK` / `AGENT_BOM_OFFLINE` | Suppress background PyPI version check on CLI startup | Air-gap / offline installs |
 | `AGENT_BOM_REGISTRY_MAX_IMAGES` / `AGENT_BOM_REGISTRY_MAX_TAGS_PER_REPO` | Cap the `cloud registry-scan` work list | Only for registry sweeps |

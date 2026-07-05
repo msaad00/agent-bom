@@ -155,6 +155,34 @@ def test_check_optional_dep_found_exception():
 # ---------------------------------------------------------------------------
 
 
+def test_check_for_update_bg_skips_when_offline(monkeypatch):
+    import agent_bom.cli._common as mod
+    from agent_bom.cli._common import _check_for_update_bg
+
+    old_result = mod._update_check_result
+    old_done = mod._update_check_done
+
+    mod._update_check_result = "stale"
+    mod._update_check_done = threading.Event()
+    monkeypatch.setenv("AGENT_BOM_OFFLINE", "1")
+    fetch_calls: list[str] = []
+
+    def _fail_fetch(*args, **kwargs):
+        fetch_calls.append("called")
+        raise AssertionError("PyPI must not be contacted in offline mode")
+
+    monkeypatch.setattr("agent_bom.http_client.fetch_json", _fail_fetch)
+
+    _check_for_update_bg()
+
+    assert fetch_calls == []
+    assert mod._update_check_result is None
+    assert mod._update_check_done.is_set()
+
+    mod._update_check_result = old_result
+    mod._update_check_done = old_done
+
+
 def test_print_update_notice_no_result():
     import agent_bom.cli._common as mod
     from agent_bom.cli._common import _print_update_notice

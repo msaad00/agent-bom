@@ -40,6 +40,19 @@ agent-bom agents \
   --push-api-key "$AGENT_BOM_PUSH_API_KEY"
 ```
 
+Or use the dedicated fleet sync verb (same push contract, discovery-only):
+
+```bash
+agent-bom fleet sync \
+  --push-url https://agent-bom.internal.example.com/v1/fleet/sync \
+  --push-api-key "$AGENT_BOM_PUSH_API_KEY"
+```
+
+For a local Docker pilot on `http://127.0.0.1:8422`, set
+`AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS=1` because fleet sync enforces HTTPS
+outbound policy. `findings push` accepts the default local HTTP API URL without
+that override.
+
 That gives you:
 
 - endpoint MCP config discovery

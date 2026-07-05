@@ -55,6 +55,8 @@ services:
       # Mount host MCP config dirs read-only so the API can discover local agents
       - ~/.config:/home/abom/.config:ro
       - ~/.claude:/home/abom/.claude:ro
+      # Persist vuln DB, scan cache, and control-plane state for the abom user
+      - ~/.agent-bom:/home/abom/.agent-bom
     networks:
       - agent-bom
     depends_on:

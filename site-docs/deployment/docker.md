@@ -49,6 +49,7 @@ Mount your MCP client configs for auto-discovery:
 ```bash
 docker run --rm \
   -v "$HOME/.config:/home/abom/.config:ro" \
+  -v "$HOME/.agent-bom:/home/abom/.agent-bom" \
   -v "$HOME/Library/Application Support:/home/abom/Library/Application Support:ro" \
   agentbom/agent-bom:latest agents
 ```

@@ -35,6 +35,7 @@ docker run --rm agentbom/agent-bom:latest agents
 # With host config access (for MCP client discovery)
 docker run --rm \
   -v "$HOME/.config:/home/abom/.config:ro" \
+  -v "$HOME/.agent-bom:/home/abom/.agent-bom" \
   -v "$HOME/Library/Application Support:/home/abom/Library/Application Support:ro" \
   agentbom/agent-bom:latest agents
 ```

@@ -68,7 +68,7 @@ def _print_findings_table(payload: JsonObject) -> None:
     rows = payload.get("findings")
     if not isinstance(rows, list):
         rows = []
-    click.echo("id\tseverity\tpackage\ttitle")
+    click.echo("id\tseverity\tstatus\tpackage\tfirst_seen\tlast_seen\ttitle")
     for item in rows:
         if not isinstance(item, dict):
             continue
@@ -77,7 +77,10 @@ def _print_findings_table(payload: JsonObject) -> None:
                 [
                     _finding_id(item),
                     _string(item.get("severity")),
+                    _string(item.get("status")),
                     _package_name(item),
+                    _string(item.get("first_seen")),
+                    _string(item.get("last_seen")),
                     _string(item.get("title") or item.get("summary") or item.get("message")),
                 ]
             )
@@ -120,6 +123,46 @@ def _run_request(client: AgentBomClient, callback: Any) -> JsonObject:
 @click.group(name="findings")
 def findings_cmd() -> None:
     """Inspect and triage normalized findings from the control plane."""
+
+
+@findings_cmd.command("push")
+@click.argument("input_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--source", default="external_scan", show_default=True, help="Source label stored on ingested findings.")
+@click.option("--reconcile", "reconcile_absent", is_flag=True, help="Mark findings absent from this batch as resolved.")
+@click.option("--observed-at", help="ISO-8601 observation timestamp for the batch.")
+@click.option("--idempotency-key", help="Optional Idempotency-Key header for safe retries.")
+@click.option("--format", "output_format", type=click.Choice(["json"]), default="json", show_default=True)
+@_common_api_options
+def push_findings_cmd(
+    api_url: str | None,
+    api_key: str | None,
+    bearer_token: str | None,
+    tenant_id: str | None,
+    input_path: Path,
+    source: str,
+    reconcile_absent: bool,
+    observed_at: str | None,
+    idempotency_key: str | None,
+    output_format: str,
+) -> None:
+    """Push normalized findings or external scanner JSON to the control plane."""
+
+    from agent_bom.findings_push import load_push_findings_file
+
+    findings = load_push_findings_file(input_path, source=source)
+    client = _make_client(api_url, api_key, bearer_token, tenant_id)
+    payload = _run_request(
+        client,
+        lambda api: api.ingest_findings(
+            findings,
+            source=source,
+            observed_at=observed_at,
+            reconcile_absent=reconcile_absent,
+            idempotency_key=idempotency_key,
+        ),
+    )
+    if output_format == "json":
+        _emit_json(payload)
 
 
 @findings_cmd.command("list")

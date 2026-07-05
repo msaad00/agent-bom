@@ -18,6 +18,10 @@ class FakeFindingsClient:
     def close(self) -> None:
         self.__class__.calls.append(("close", {}))
 
+    def ingest_findings(self, findings: list[dict[str, object]], **kwargs: Any) -> dict[str, object]:
+        self.__class__.calls.append(("ingest_findings", {"findings": findings, **kwargs}))
+        return {"ingested": len(findings), "reconciled": 0}
+
     def list_findings(self, **kwargs: Any) -> dict[str, object]:
         self.__class__.calls.append(("list_findings", kwargs))
         return {
@@ -25,7 +29,10 @@ class FakeFindingsClient:
                 {
                     "id": "finding-1",
                     "severity": "high",
+                    "status": "open",
                     "package": "requests",
+                    "first_seen": "2026-07-01T00:00:00Z",
+                    "last_seen": "2026-07-03T00:00:00Z",
                     "title": "Reachable CVE",
                 }
             ],
@@ -66,6 +73,48 @@ def _install_fake_client(monkeypatch) -> type[FakeFindingsClient]:
     FakeFindingsClient.init_kwargs = {}
     monkeypatch.setattr("agent_bom.cli._findings_group.AgentBomClient", FakeFindingsClient)
     return FakeFindingsClient
+
+
+def test_findings_push_ingests_json_file(monkeypatch, tmp_path) -> None:
+    fake = _install_fake_client(monkeypatch)
+    payload_path = tmp_path / "findings.json"
+    payload_path.write_text(
+        json.dumps([{"id": "finding-push-1", "severity": "high", "package": "requests"}]),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "findings",
+            "push",
+            str(payload_path),
+            "--api-url",
+            "https://agent-bom.example.com",
+            "--api-key",
+            "key",
+            "--source",
+            "ci-trivy",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["ingested"] == 1
+    assert fake.calls[0][0] == "ingest_findings"
+    assert fake.calls[0][1]["source"] == "ci-trivy"
+    assert fake.calls[0][1]["findings"][0]["id"] == "finding-push-1"
+
+
+def test_findings_list_table_includes_lifecycle_columns(monkeypatch) -> None:
+    _install_fake_client(monkeypatch)
+
+    result = CliRunner().invoke(main, ["findings", "list"])
+
+    assert result.exit_code == 0, result.output
+    lines = result.output.strip().splitlines()
+    assert lines[0].startswith("id\tseverity\tstatus\tpackage\tfirst_seen\tlast_seen\ttitle")
+    assert "open" in lines[1]
+    assert "2026-07-01T00:00:00Z" in lines[1]
 
 
 def test_findings_list_outputs_json_and_passes_filters(monkeypatch) -> None:

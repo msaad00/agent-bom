@@ -308,31 +308,73 @@ def register_specialized_ai_tools(
                 description="JSON string from Trivy, Grype, or Syft scan output",
             ),
         ],
+        parse_only: Annotated[
+            bool,
+            Field(
+                description=(
+                    "When true, parse locally only. When false, bulk-ingest to the control plane "
+                    "when AGENT_BOM_API_URL and credentials are configured."
+                ),
+            ),
+        ] = False,
+        source: Annotated[str, Field(description="Source label stored on ingested findings.")] = "external_scan",
+        reconcile_absent: Annotated[
+            bool,
+            Field(description="When pushing, mark findings absent from this batch as resolved."),
+        ] = False,
     ) -> str:
-        """Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis."""
+        """Ingest Trivy, Grype, or Syft JSON scan output and optionally push findings to the control plane."""
 
         async def _impl() -> str:
             import json as _json
+            import os
 
+            from agent_bom.client import AgentBomClient
+            from agent_bom.findings_push import packages_to_bulk_findings
             from agent_bom.parsers.external_scanners import detect_and_parse
 
             try:
                 data = _json.loads(scan_json)
                 packages = detect_and_parse(data)
-                return _json.dumps(
-                    {
-                        "packages": len(packages),
-                        "ingested": [
-                            {
-                                "name": p.name,
-                                "version": p.version,
-                                "ecosystem": p.ecosystem,
-                                "vulnerabilities": len(p.vulnerabilities),
-                            }
-                            for p in packages[:50]
-                        ],
-                    }
-                )
+                findings = packages_to_bulk_findings(packages, source=source)
+                result: dict[str, object] = {
+                    "packages": len(packages),
+                    "findings": len(findings),
+                    "ingested": [
+                        {
+                            "name": p.name,
+                            "version": p.version,
+                            "ecosystem": p.ecosystem,
+                            "vulnerabilities": len(p.vulnerabilities),
+                        }
+                        for p in packages[:50]
+                    ],
+                }
+                if not parse_only:
+                    base_url = os.getenv("AGENT_BOM_API_URL")
+                    api_key = os.getenv("AGENT_BOM_API_KEY")
+                    bearer_token = os.getenv("AGENT_BOM_API_TOKEN")
+                    if base_url and (api_key or bearer_token):
+                        client = AgentBomClient(
+                            base_url=base_url,
+                            api_key=api_key,
+                            bearer_token=bearer_token,
+                            tenant_id=os.getenv("AGENT_BOM_TENANT_ID"),
+                        )
+                        try:
+                            result["control_plane"] = client.ingest_findings(
+                                findings,
+                                source=source,
+                                reconcile_absent=reconcile_absent,
+                            )
+                        finally:
+                            client.close()
+                    elif findings:
+                        result["control_plane"] = {
+                            "skipped": True,
+                            "reason": "Set AGENT_BOM_API_URL and AGENT_BOM_API_KEY or AGENT_BOM_API_TOKEN to bulk-ingest findings",
+                        }
+                return _json.dumps(result)
             except Exception as exc:  # noqa: BLE001
                 return truncate_response(mcp_error_json(CODE_INTERNAL_UNEXPECTED, exc))
 

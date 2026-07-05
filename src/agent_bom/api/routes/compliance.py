@@ -1935,6 +1935,12 @@ async def ingest_compliance_findings(request: Request) -> dict:
     return response
 
 
+def _unpack_hub_list_page(result: tuple[Any, ...]) -> tuple[list[dict[str, Any]], int]:
+    page = result[0]
+    total = result[1] if len(result) > 1 else None
+    return page, total or 0
+
+
 @router.get("/v1/compliance/hub/findings", tags=["compliance"])
 async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0) -> dict:
     """List compliance-hub findings for the current tenant.
@@ -1949,17 +1955,16 @@ async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0)
     safe_offset = max(0, offset)
     native = _native_hub_findings(request)
     store = get_compliance_hub_store()
-    list_page = getattr(store, "list_page", None)
+    list_page = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
     if callable(list_page):
         if native:
             window = safe_offset + safe_limit
-            hub_rows, hub_total = list_page(tenant_id, limit=window, offset=0)
+            hub_rows, hub_total = _unpack_hub_list_page(list_page(tenant_id, limit=window, offset=0, sort="ordinal"))
             combined = native + hub_rows
             page = combined[safe_offset : safe_offset + safe_limit]
-            total = len(native) + (hub_total or 0)
+            total = len(native) + hub_total
         else:
-            page, total = list_page(tenant_id, limit=safe_limit, offset=safe_offset)
-            total = total or 0
+            page, total = _unpack_hub_list_page(list_page(tenant_id, limit=safe_limit, offset=safe_offset, sort="ordinal"))
     else:
         findings = store.list(tenant_id) + native
         page = findings[safe_offset : safe_offset + safe_limit]

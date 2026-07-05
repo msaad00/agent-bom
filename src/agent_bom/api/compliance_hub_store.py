@@ -832,9 +832,26 @@ def _sqlite_order_clause(sort: str) -> str:
 
 
 def _sqlite_current_order_clause(sort: str) -> str:
-    """ORDER BY for ``hub_findings_current`` (no ingest ``ordinal`` column)."""
+    """ORDER BY for ``hub_findings_current``.
+
+    Current-state rows keep a ``ledger_finding_id`` pointer to the durable
+    ingest row. For the legacy hub-list ``ordinal`` contract, preserve ingest
+    order by looking up that ledger ordinal; timestamp/canonical ordering is
+    only a fallback for rows without a ledger reference.
+    """
     if sort == "ordinal":
-        return "ORDER BY last_seen ASC, canonical_id ASC"
+        return """
+        ORDER BY COALESCE(
+            (
+                SELECT f.ordinal
+                FROM compliance_hub_findings f
+                WHERE f.tenant_id = hub_findings_current.tenant_id
+                  AND f.finding_id = hub_findings_current.ledger_finding_id
+                LIMIT 1
+            ),
+            9223372036854775807
+        ) ASC, first_seen ASC, canonical_id ASC
+        """
     if sort == "cvss":
         return "ORDER BY COALESCE(cvss_score, 0) DESC, last_seen DESC, canonical_id ASC"
     if sort == "severity":

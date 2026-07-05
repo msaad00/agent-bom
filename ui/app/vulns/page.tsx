@@ -35,6 +35,7 @@ import {
   uniqueStrings,
   serverFindingsSort,
   formatFindingsTotal,
+  hasLifecycleMetadata,
 } from "@/lib/findings-view";
 import { severityRank } from "@/lib/severity";
 import { Bug, Download, Layers, Loader2, Package, Server, ClipboardCheck } from "lucide-react";
@@ -212,6 +213,12 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
         : [],
       graph_reachable: null,
       graph_min_hop_distance: null,
+      lifecycle_status: finding.status ?? undefined,
+      first_seen: finding.first_seen ?? undefined,
+      last_seen: finding.last_seen ?? undefined,
+      resolved_at: finding.resolved_at ?? undefined,
+      reopened_at: finding.reopened_at ?? undefined,
+      scan_count: finding.scan_count,
     };
   });
 }
@@ -278,6 +285,7 @@ function VulnsPage() {
   const [findingsTotalApproximate, setFindingsTotalApproximate] = useState(false);
   const PAGE_SIZE = 25;
   const useServerPaging = groupBy === "none" && !search.trim();
+  const showLifecycleColumns = useMemo(() => hasLifecycleMetadata(vulns), [vulns]);
 
   // URL-as-source-of-truth: when the query string changes (link, back/forward),
   // re-sync the derived filter state so the view matches the address bar instead
@@ -950,6 +958,7 @@ function VulnsPage() {
                       onMarkFP={handleMarkFP}
                       selectedId={selectedId}
                       onSelect={setSelectedId}
+                      showLifecycle={showLifecycleColumns}
                     />
                     {groupOverflow > 0 && (
                       <p className="mt-2 text-xs text-zinc-600">
@@ -972,6 +981,7 @@ function VulnsPage() {
               onMarkFP={handleMarkFP}
               selectedId={selectedId}
               onSelect={setSelectedId}
+              showLifecycle={showLifecycleColumns}
             />
           )}
 

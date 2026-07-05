@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -393,6 +394,44 @@ def test_verify_oidc_token_allows_modern_asymmetric_algorithms():
     assert algorithms == list(OIDC_ALLOWED_ALGORITHMS)
     assert "ES512" in algorithms
     assert "EdDSA" in algorithms
+
+
+def test_verify_oidc_token_rejects_replayed_jti():
+    from agent_bom.api.oidc import OIDCError, verify_oidc_token
+
+    mock_jwks_client = MagicMock()
+    mock_signing_key = MagicMock()
+    mock_signing_key.key = "public-key"
+    mock_jwks_client.get_signing_key_from_jwt.return_value = mock_signing_key
+
+    mock_jwt_module = MagicMock()
+    mock_jwt_module.PyJWKClient.return_value = mock_jwks_client
+    mock_jwt_module.PyJWTError = Exception
+    mock_jwt_module.decode.return_value = {
+        "sub": "user-1",
+        "iss": "https://example.com",
+        "exp": int(time.time()) + 3600,
+        "iat": 1,
+        "jti": "replay-me-once",
+    }
+
+    with patch("agent_bom.api.oidc._check_pyjwt"):
+        with patch(
+            "agent_bom.api.oidc._validate_jwks_uri",
+            return_value="https://example.com/.well-known/jwks.json",
+        ):
+            with patch.dict("sys.modules", {"jwt": mock_jwt_module}):
+                verify_oidc_token(
+                    "header.payload.signature",
+                    "https://example.com",
+                    jwks_uri="https://example.com/.well-known/jwks.json",
+                )
+                with pytest.raises(OIDCError, match="jti already consumed"):
+                    verify_oidc_token(
+                        "header.payload.signature",
+                        "https://example.com",
+                        jwks_uri="https://example.com/.well-known/jwks.json",
+                    )
 
 
 def test_oidc_algorithm_allowlist_rejects_none_and_symmetric_algorithms():

@@ -10,6 +10,7 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.tree import Tree
 
+from agent_bom.graph.severity import severity_rank
 from agent_bom.models import AgentStatus, AIBOMReport, Severity
 from agent_bom.output.compact import _coverage_bar, _pct
 from agent_bom.output.finding_views import (
@@ -1265,7 +1266,7 @@ def build_remediation_plan(blast_radii: Sequence[object]) -> list[dict]:
             "suppressed_prerelease_fixes": set(),
         }
     )
-    severity_order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.NONE: 0}
+    severity_order = {sev: severity_rank(sev.value) for sev in Severity}
     priority_order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
 
     def _ranking_reasons(group: dict) -> list[str]:

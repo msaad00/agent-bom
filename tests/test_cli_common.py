@@ -155,6 +155,17 @@ def test_check_optional_dep_found_exception():
 # ---------------------------------------------------------------------------
 
 
+def test_should_skip_update_check_honors_offline_argv(monkeypatch):
+    import sys
+
+    from agent_bom.cli._common import _should_skip_update_check
+
+    monkeypatch.delenv("AGENT_BOM_SKIP_UPDATE_CHECK", raising=False)
+    monkeypatch.delenv("AGENT_BOM_OFFLINE", raising=False)
+    monkeypatch.setattr(sys, "argv", ["agent-bom", "agents", "--demo", "--offline"])
+    assert _should_skip_update_check() is True
+
+
 def test_check_for_update_bg_skips_when_offline(monkeypatch):
     import agent_bom.cli._common as mod
     from agent_bom.cli._common import _check_for_update_bg
@@ -170,6 +181,38 @@ def test_check_for_update_bg_skips_when_offline(monkeypatch):
     def _fail_fetch(*args, **kwargs):
         fetch_calls.append("called")
         raise AssertionError("PyPI must not be contacted in offline mode")
+
+    monkeypatch.setattr("agent_bom.http_client.fetch_json", _fail_fetch)
+
+    _check_for_update_bg()
+
+    assert fetch_calls == []
+    assert mod._update_check_result is None
+    assert mod._update_check_done.is_set()
+
+    mod._update_check_result = old_result
+    mod._update_check_done = old_done
+
+
+def test_check_for_update_bg_skips_when_offline_argv(monkeypatch):
+    import sys
+
+    import agent_bom.cli._common as mod
+    from agent_bom.cli._common import _check_for_update_bg
+
+    old_result = mod._update_check_result
+    old_done = mod._update_check_done
+
+    mod._update_check_result = "stale"
+    mod._update_check_done = threading.Event()
+    monkeypatch.delenv("AGENT_BOM_SKIP_UPDATE_CHECK", raising=False)
+    monkeypatch.delenv("AGENT_BOM_OFFLINE", raising=False)
+    monkeypatch.setattr(sys, "argv", ["agent-bom", "agents", "--demo", "--offline"])
+    fetch_calls: list[str] = []
+
+    def _fail_fetch(*args, **kwargs):
+        fetch_calls.append("called")
+        raise AssertionError("PyPI must not be contacted when --offline is on argv")
 
     monkeypatch.setattr("agent_bom.http_client.fetch_json", _fail_fetch)
 

@@ -28,46 +28,6 @@
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
 
-## What It Is
-
-`agent-bom` is a read-only scanner and self-hosted control plane for local
-projects, agent fleets, MCP runtimes, and cloud estates (AWS, Azure, GCP,
-Snowflake).
-
-**ContextGraph** is agent-bom's unified evidence graph across CLI, API, UI, MCP
-tools, reports, and gateway decisions. Findings, assets, packages, cloud
-resources, identities, agents, MCP servers, credentials, and runtime decisions
-all normalize into that graph so posture, blast radius, and enforcement read
-from the same evidence.
-
-Blast radius is the core idea: a vulnerable package is linked to the MCP server
-that loads it, the tools it exposes, reachable credential references, and the
-agents that can call it — not just a CVE row.
-
-Coverage depth and honest boundaries:
-[AI infrastructure scanning](docs/AI_INFRASTRUCTURE_SCANNING.md) ·
-[product boundaries](docs/PRODUCT_BOUNDARIES.md)
-
-## Accuracy Model
-
-agent-bom normalizes advisory and distro evidence into canonical CVE findings
-with match-confidence tiers:
-
-`distro_confirmed` > `osv_range` > `osv_ecosystem` > `unfixed_distro` > `nvd_cpe_candidate`
-
-Distro-confirmed findings are treated as confirmed. Optional NVD CPE candidate
-matching widens long-tail OS/vendor software coverage, but remains review-grade
-and off by default.
-
-**NVD key model.** End users do not need an NVD API key. CVE/CPE enrichment
-ships through the distributed vulnerability database. `NVD_API_KEY` is only an
-optional self-hosted freshness knob for operators rebuilding or refreshing the
-database.
-
-Matching mechanics and release evidence:
-[vulnerability matching](docs/VULNERABILITY_MATCHING.md) ·
-[scanner accuracy baseline](docs/SCANNER_ACCURACY_BASELINE.md)
-
 ## Who It's For
 
 <p align="center">
@@ -93,46 +53,6 @@ Snowflake is a supported connector lane, not the product center.
 MCP server mode advertises 70 MCP tools, 6 resources, and 8 workflow prompts.
 Registry metadata is tracked through the committed Smithery manifest and Glama
 listing; install and liveness checks live in the integration docs.
-
-## How It Works
-
-Read-only intake, scan and enrichment, one evidence graph, then the same model
-through CLI, CI, API, UI, MCP, exports, and optional runtime policy.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom workflow from read-only intake through scan engine, evidence graph, control plane, and outputs" width="980" />
-  </picture>
-</p>
-
-<details>
-<summary><b>Control-plane architecture</b></summary>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="agent-bom layered control-plane architecture" width="980" />
-  </picture>
-</p>
-
-</details>
-
-<details>
-<summary><b>Blast radius drilldown</b></summary>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast-radius drilldown — package to finding to MCP server to agent" width="900" />
-  </picture>
-</p>
-
-```text
-package -> vulnerability finding -> MCP server -> tools + credential refs -> agent
-```
-
-</details>
 
 ## Start Here
 
@@ -222,6 +142,92 @@ routes with a visible <strong>Demo data — simulated estate</strong> label — 
 claim these entities came from a buyer environment. Regenerate from the UI package
 with <code>npm run capture:product-proof</code> (see
 <a href="docs/CAPTURE.md">docs/CAPTURE.md</a>).</sub>
+
+</details>
+
+## How It Works
+
+Read-only intake, scan and enrichment, one evidence graph, then the same model
+through CLI, CI, API, UI, MCP, exports, and optional runtime policy.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom workflow from read-only intake through scan engine, evidence graph, control plane, and outputs" width="980" />
+  </picture>
+</p>
+
+<details>
+<summary><b>Control-plane architecture</b></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="agent-bom layered control-plane architecture" width="980" />
+  </picture>
+</p>
+
+</details>
+
+<details>
+<summary><b>Blast radius drilldown</b></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast-radius drilldown — package to finding to MCP server to agent" width="900" />
+  </picture>
+</p>
+
+```text
+package -> vulnerability finding -> MCP server -> tools + credential refs -> agent
+```
+
+</details>
+
+<details>
+<summary><b>What it is</b> — scanner, ContextGraph, and blast radius</summary>
+
+`agent-bom` is a read-only scanner and self-hosted control plane for local
+projects, agent fleets, MCP runtimes, and cloud estates (AWS, Azure, GCP,
+Snowflake).
+
+**ContextGraph** is agent-bom's unified evidence graph across CLI, API, UI, MCP
+tools, reports, and gateway decisions. Findings, assets, packages, cloud
+resources, identities, agents, MCP servers, credentials, and runtime decisions
+all normalize into that graph so posture, blast radius, and enforcement read
+from the same evidence.
+
+Blast radius is the core idea: a vulnerable package is linked to the MCP server
+that loads it, the tools it exposes, reachable credential references, and the
+agents that can call it — not just a CVE row.
+
+Coverage depth and honest boundaries:
+[AI infrastructure scanning](docs/AI_INFRASTRUCTURE_SCANNING.md) ·
+[product boundaries](docs/PRODUCT_BOUNDARIES.md)
+
+</details>
+
+<details>
+<summary><b>Accuracy model</b> — match-confidence tiers and NVD key model</summary>
+
+agent-bom normalizes advisory and distro evidence into canonical CVE findings
+with match-confidence tiers:
+
+`distro_confirmed` > `osv_range` > `osv_ecosystem` > `unfixed_distro` > `nvd_cpe_candidate`
+
+Distro-confirmed findings are treated as confirmed. Optional NVD CPE candidate
+matching widens long-tail OS/vendor software coverage, but remains review-grade
+and off by default.
+
+**NVD key model.** End users do not need an NVD API key. CVE/CPE enrichment
+ships through the distributed vulnerability database. `NVD_API_KEY` is only an
+optional self-hosted freshness knob for operators rebuilding or refreshing the
+database.
+
+Matching mechanics and release evidence:
+[vulnerability matching](docs/VULNERABILITY_MATCHING.md) ·
+[scanner accuracy baseline](docs/SCANNER_ACCURACY_BASELINE.md)
 
 </details>
 

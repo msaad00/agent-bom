@@ -266,6 +266,13 @@ def compute_finding_deltas(
     return events
 
 
+def needs_hub_prior_snapshots(*, reconcile_absent: bool) -> bool:
+    """Return whether bulk ingest must walk current-state before writing."""
+    if reconcile_absent:
+        return True
+    return load_delta_stream_destination() is not None
+
+
 def capture_hub_snapshots(store: Any, tenant_id: str, *, source: str) -> dict[str, FindingSnapshot]:
     """Walk current-state findings for a tenant/source into diff snapshots."""
     snapshots: dict[str, FindingSnapshot] = {}
@@ -382,6 +389,8 @@ class DeliveryDeltaStreamConnector:
 
 
 def load_delta_stream_destination() -> DeltaStreamDestination | None:
+    import os
+
     from agent_bom.config import (
         DELTA_STREAM_AUTH_SCHEME,
         DELTA_STREAM_AUTH_TOKEN,
@@ -392,15 +401,22 @@ def load_delta_stream_destination() -> DeltaStreamDestination | None:
         DELTA_STREAM_URL,
     )
 
-    if not DELTA_STREAM_ENABLED:
+    raw_enabled = os.environ.get("AGENT_BOM_DELTA_STREAM_ENABLED")
+    if raw_enabled is None or not str(raw_enabled).strip():
+        enabled = DELTA_STREAM_ENABLED
+    else:
+        enabled = str(raw_enabled).strip().lower() in ("1", "true", "yes", "on")
+    raw_url = os.environ.get("AGENT_BOM_DELTA_STREAM_URL")
+    url = (raw_url if raw_url is not None else DELTA_STREAM_URL).strip()
+    if not enabled:
         return None
-    if not DELTA_STREAM_URL.strip():
+    if not url:
         logger.warning("AGENT_BOM_DELTA_STREAM_ENABLED=1 but AGENT_BOM_DELTA_STREAM_URL is empty; skipping delta export")
         return None
     fmt: DeltaFormat = "ocsf" if DELTA_STREAM_FORMAT.strip().lower() == "ocsf" else "ndjson"
     return DeltaStreamDestination(
         destination_id=DELTA_STREAM_DESTINATION_ID or "delta-stream-default",
-        url=DELTA_STREAM_URL.strip(),
+        url=url,
         format=fmt,
         auth_scheme=DELTA_STREAM_AUTH_SCHEME,
         auth_token=DELTA_STREAM_AUTH_TOKEN,
@@ -450,6 +466,7 @@ __all__ = [
     "FindingDeltaEvent",
     "FindingSnapshot",
     "InMemoryDeltaSink",
+    "needs_hub_prior_snapshots",
     "capture_hub_snapshots",
     "compute_finding_deltas",
     "default_delta_stream_store_path",

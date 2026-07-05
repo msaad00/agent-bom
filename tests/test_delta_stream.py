@@ -16,6 +16,7 @@ from agent_bom.delta_stream import (
     capture_hub_snapshots,
     compute_finding_deltas,
     emit_hub_finding_deltas_if_enabled,
+    needs_hub_prior_snapshots,
     resolved_canonical_ids,
 )
 
@@ -169,3 +170,14 @@ def test_hub_ingest_emits_new_changed_resolved_via_memory_sink(tmp_path: Path) -
     assert second_kinds == {"changed", "new", "resolved"}
 
     reset_compliance_hub_store()
+
+
+def test_needs_hub_prior_snapshots(monkeypatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_DELTA_STREAM_ENABLED", raising=False)
+    monkeypatch.delenv("AGENT_BOM_DELTA_STREAM_URL", raising=False)
+    assert needs_hub_prior_snapshots(reconcile_absent=False) is False
+    assert needs_hub_prior_snapshots(reconcile_absent=True) is True
+
+    monkeypatch.setenv("AGENT_BOM_DELTA_STREAM_ENABLED", "1")
+    monkeypatch.setenv("AGENT_BOM_DELTA_STREAM_URL", "https://siem.example/delta")
+    assert needs_hub_prior_snapshots(reconcile_absent=False) is True

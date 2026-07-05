@@ -25,6 +25,7 @@ def test_glama_listing_json_contract_reports_stale_listing(monkeypatch, capsys):
     uses: msaad00/agent-bom@v0.88.4
     MCP server mode advertises 55 MCP tools
     18 tools for CVE scanning
+    git checkout 98c3e543
     """
 
     monkeypatch.setattr(script, "_load_readme_tool_count", lambda: "69")
@@ -39,6 +40,18 @@ def test_glama_listing_json_contract_reports_stale_listing(monkeypatch, capsys):
     assert payload["expected"] == "0.89.2"
     assert payload["listing_version"] == "0.88.4"
     assert "missing current Glama listing token" in payload["error"]
+
+
+def test_glama_build_manifest_verify_passes():
+    script = _load_script("check_glama_listing.py")
+    assert script.main(["--verify-manifest"]) == 0
+
+
+def test_glama_build_manifest_verify_rejects_missing_dockerfile(monkeypatch):
+    script = _load_script("check_glama_listing.py")
+    monkeypatch.setattr(script, "GLAMA_DOCKERFILE", "integrations/glama/does-not-exist.dockerfile")
+    failures = script.verify_build_manifest()
+    assert any("missing Glama Dockerfile" in failure for failure in failures)
 
 
 def test_surface_freshness_reads_smithery_catalog_listing(monkeypatch):

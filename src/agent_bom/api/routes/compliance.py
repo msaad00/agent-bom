@@ -1959,12 +1959,12 @@ async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0)
     if callable(list_page):
         if native:
             window = safe_offset + safe_limit
-            hub_rows, hub_total = _unpack_hub_list_page(list_page(tenant_id, limit=window, offset=0))
+            hub_rows, hub_total = _unpack_hub_list_page(list_page(tenant_id, limit=window, offset=0, sort="ordinal"))
             combined = native + hub_rows
             page = combined[safe_offset : safe_offset + safe_limit]
             total = len(native) + hub_total
         else:
-            page, total = _unpack_hub_list_page(list_page(tenant_id, limit=safe_limit, offset=safe_offset))
+            page, total = _unpack_hub_list_page(list_page(tenant_id, limit=safe_limit, offset=safe_offset, sort="ordinal"))
     else:
         findings = store.list(tenant_id) + native
         page = findings[safe_offset : safe_offset + safe_limit]

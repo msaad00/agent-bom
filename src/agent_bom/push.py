@@ -15,6 +15,7 @@ import logging
 import os
 import platform
 import uuid
+from typing import Any
 
 import httpx
 
@@ -134,7 +135,8 @@ async def _push_async(
     max_attempts: int = _DEFAULT_PUSH_MAX_ATTEMPTS,
     base_delay_seconds: float = _DEFAULT_PUSH_BASE_DELAY,
     max_delay_seconds: float = _DEFAULT_PUSH_MAX_DELAY,
-) -> bool:
+    return_body: bool = False,
+) -> bool | tuple[bool, dict[str, Any] | None]:
     """POST sanitized results to the central dashboard with bounded retries.
 
     Retries on network errors (``httpx.HTTPError``, ``OSError``) and on
@@ -151,7 +153,7 @@ async def _push_async(
         validate_url(push_url)
     except SecurityError as exc:
         logger.error("Push URL rejected by outbound URL policy: %s", exc)
-        return False
+        return (False, None) if return_body else False
 
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
@@ -183,6 +185,12 @@ async def _push_async(
                         resp.status_code,
                         attempt,
                     )
+                    if return_body:
+                        try:
+                            parsed = resp.json()
+                        except ValueError:
+                            parsed = {}
+                        return True, parsed if isinstance(parsed, dict) else {}
                     return True
                 if resp.status_code not in retryable_status:
                     logger.warning(
@@ -190,7 +198,7 @@ async def _push_async(
                         resp.status_code,
                         sanitize_text(resp.text[:200]),
                     )
-                    return False
+                    return (False, None) if return_body else False
                 last_error = sanitize_text(resp.text[:200])
                 logger.warning(
                     "Push attempt %d/%d returned retryable status %d",
@@ -208,9 +216,18 @@ async def _push_async(
         last_status,
         last_error,
     )
+    if return_body:
+        return False, None
     return False
 
 
 def push_results(push_url: str, results: dict, api_key: str | None = None) -> bool:
     """Synchronous wrapper for pushing results to a dashboard."""
-    return asyncio.run(_push_async(push_url, results, api_key))
+    result = asyncio.run(_push_async(push_url, results, api_key))
+    return bool(result)
+
+
+def push_json(push_url: str, results: dict, api_key: str | None = None) -> dict | None:
+    """POST sanitized JSON and return the parsed response body on success."""
+    ok, body = asyncio.run(_push_async(push_url, results, api_key, return_body=True))
+    return body if ok else None

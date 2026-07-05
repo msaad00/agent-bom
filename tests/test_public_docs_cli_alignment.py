@@ -51,6 +51,8 @@ def test_documented_primary_commands_are_real_cli_surfaces() -> None:
         ["validate", "--help"],
         ["db", "status", "--help"],
         ["skills", "scan", "--help"],
+        ["findings", "push", "--help"],
+        ["fleet", "sync", "--help"],
     ]
 
     for command in commands:

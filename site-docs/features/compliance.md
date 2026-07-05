@@ -52,3 +52,22 @@ agent-bom agents --snowflake --snowflake-cis-benchmark
 ```
 
 Requires cloud credentials (AWS_PROFILE or SNOWFLAKE_ACCOUNT/USER/PASSWORD).
+
+## Compliance hub ingest
+
+External scanner evidence can land in the control plane without a native scan
+job:
+
+```bash
+# CLI — Trivy / Grype / Syft JSON or normalized findings
+agent-bom findings push ./scan.json --api-url https://agent-bom.internal.example.com --api-key "$AGENT_BOM_API_KEY"
+
+# API — SARIF, CycloneDX, CSV, or JSON adapters
+curl -X POST https://agent-bom.internal.example.com/v1/compliance/ingest ...
+```
+
+Ingested rows participate in hub posture (`GET /v1/compliance/hub/posture`) and
+the unified findings queue (`GET /v1/findings`). The dashboard `/findings` page
+reads the unified list; lifecycle status columns appear only on bulk-ingested
+rows. Hub-native listing is available at `GET /v1/compliance/hub/findings` for
+API clients — there is no separate hub-findings browser page in the UI today.

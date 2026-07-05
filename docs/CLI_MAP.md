@@ -75,7 +75,7 @@ Graph, mesh, dashboard, and narrative reporting workflows.
 | `graph` | Build / export the context graph. |
 | `mesh` | Agent-mesh view. |
 | `report` | Reporting group (history, narrative, exports). |
-| `findings` | Findings workbench for CLI users: list normalized findings, triage queue items, decisions, and signed OpenVEX export. |
+| `findings` | Findings workbench for CLI users: `list` normalized findings (lifecycle columns when bulk-ingest metadata exists), `push` external scanner or normalized JSON to `POST /v1/findings/bulk`, triage queue items, decisions, and signed OpenVEX export. |
 
 ## Governance
 
@@ -85,7 +85,7 @@ Policy, trust, fleet, FinOps, identity, API, scheduling, and control-plane ops.
 |---|---|
 | `policy` | Policy-as-code group. |
 | `trust` | Trust-boundary commands. |
-| `fleet` | Fleet inventory group. |
+| `fleet` | Fleet inventory group — `sync` discovers local MCP agents and pushes to `POST /v1/fleet/sync` (requires `--push-url` or `AGENT_BOM_PUSH_URL`; HTTPS-only unless `AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS=1`). |
 | `cost` | LLM cost / FinOps group (forecast, budget, chargeback). |
 | `identity` | Non-human identity group (credential-expiry, access review). |
 | `serve` | Run the local API + bundled dashboard. |
@@ -158,3 +158,25 @@ the source is:
 
 Both paths normalize into the same `Finding` and `ContextGraph` model; the
 split is only the operator command and provider API boundary.
+
+---
+
+## Headless control-plane ingest
+
+Push scanner or CI evidence into a running control plane without the dashboard:
+
+| Command | API | Notes |
+|---|---|---|
+| `findings push <file>` | `POST /v1/findings/bulk` | Accepts normalized findings JSON or Trivy / Grype / Syft output. Defaults `--api-url` to `http://127.0.0.1:8422` for local pilots. |
+| `fleet sync` | `POST /v1/fleet/sync` | Local discovery only — no dry-run preview without a push URL. |
+| `mcp` tool `ingest_external_scan` | same bulk route when `AGENT_BOM_API_URL` + credentials are set | Parse-only when credentials are absent. |
+
+Ingested external findings land in the unified `GET /v1/findings` queue (and
+`GET /v1/compliance/hub/findings` for hub-native clients). The dashboard
+`/findings` page reads the unified list — lifecycle **Status** / **Last seen**
+columns appear only when rows carry bulk-ingest lifecycle metadata; scan-only
+rows omit those fields by design.
+
+Air-gap installs: set `AGENT_BOM_SKIP_UPDATE_CHECK=1` or `AGENT_BOM_OFFLINE=1`
+before any CLI invocation to suppress the background PyPI version check (the
+check starts before subcommand flags are parsed).

@@ -281,6 +281,23 @@ def verify_oidc_token(
         if token_nonce != required_nonce:
             raise OIDCError("JWT verification failed: nonce claim mismatch")
 
+    jti = claims.get("jti")
+    if isinstance(jti, str) and jti.strip():
+        exp = claims.get("exp")
+        if exp is not None:
+            try:
+                expires_at = int(exp)
+            except (TypeError, ValueError) as exc:
+                raise OIDCError("JWT verification failed: invalid exp claim") from exc
+            from agent_bom.api.shared_auth_state import get_auth_state
+
+            if not get_auth_state().consume_nonce_once(
+                f"oidc-jti:{jti.strip()}",
+                expires_at,
+                now=int(time.time()),
+            ):
+                raise OIDCError("JWT replay detected: jti already consumed")
+
     return claims
 
 

@@ -343,10 +343,17 @@ class TestAgentClaw:
         fleet = claw.get_command(None, "fleet")
         assert fleet.get_command(None, "state") is None
 
-    def test_fleet_placeholder_commands_fail_closed(self):
+    def test_fleet_sync_requires_push_url(self):
         from agent_bom.cli.claw import claw
 
-        for command in ("sync", "list", "stats"):
+        r = CliRunner().invoke(claw, ["fleet", "sync"])
+        assert r.exit_code != 0
+        assert "AGENT_BOM_PUSH_URL" in r.output
+
+    def test_fleet_list_and_stats_fail_closed(self):
+        from agent_bom.cli.claw import claw
+
+        for command in ("list", "stats"):
             r = CliRunner().invoke(claw, ["fleet", command])
             assert r.exit_code != 0
             assert "agent-bom api" in r.output

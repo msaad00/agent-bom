@@ -23,6 +23,23 @@ from agent_bom.security import sanitize_command_args, sanitize_env_vars, sanitiz
 
 logger = logging.getLogger(__name__)
 
+_LOCAL_CONTROL_PLANE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _validate_push_destination_url(push_url: str) -> None:
+    """Validate fleet/scan push URLs with the same local-pilot carve-out as findings push."""
+    from urllib.parse import urlparse
+
+    from agent_bom.security import validate_url
+
+    host = (urlparse(push_url).hostname or "").lower()
+    allow_local = host in _LOCAL_CONTROL_PLANE_HOSTS
+    validate_url(
+        push_url,
+        allowed_schemes=("https", "http") if allow_local else ("https",),
+        allow_private=allow_local,
+    )
+
 
 def _csv_env(name: str) -> list[str]:
     raw = os.environ.get(name, "").strip()
@@ -172,11 +189,11 @@ async def _push_async(
     controller so both egress paths degrade the same way.
     """
     from agent_bom.http_client import create_client
-    from agent_bom.security import SecurityError, validate_url
+    from agent_bom.security import SecurityError
 
     sanitized = sanitize_results(results)
     try:
-        validate_url(push_url)
+        _validate_push_destination_url(push_url)
     except SecurityError as exc:
         logger.error("Push URL rejected by outbound URL policy: %s", exc)
         return (False, None) if return_body else False

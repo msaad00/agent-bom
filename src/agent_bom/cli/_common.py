@@ -274,11 +274,17 @@ def _update_check_cache_file() -> Path:
 
 def _should_skip_update_check() -> bool:
     import os
+    import sys
 
     truthy = {"1", "true", "yes", "on"}
     if os.environ.get("AGENT_BOM_SKIP_UPDATE_CHECK", "").strip().lower() in truthy:
         return True
     if os.environ.get("AGENT_BOM_OFFLINE", "").strip().lower() in truthy:
+        return True
+    # The update-check thread starts before Click parses subcommand flags, so
+    # honor ``--offline`` on argv for air-gap invocations like
+    # ``agent-bom agents --demo --offline``.
+    if "--offline" in sys.argv:
         return True
     return False
 

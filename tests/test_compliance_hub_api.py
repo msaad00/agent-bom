@@ -152,6 +152,34 @@ def test_list_hub_findings_returns_what_we_ingested():
     assert body["findings"][0]["source"] == "EXTERNAL"
 
 
+def test_list_hub_findings_exposes_lifecycle_for_bulk_ingest():
+    client = _client(role="analyst")
+    observed_at = "2026-07-01T12:00:00Z"
+    client.post(
+        "/v1/findings/bulk",
+        json={
+            "source": "external_scan",
+            "observed_at": observed_at,
+            "findings": [
+                {
+                    "id": "finding-hub-list-1",
+                    "vulnerability_id": "CVE-2026-7777",
+                    "severity": "high",
+                    "package": "requests",
+                    "title": "Bulk ingest lifecycle row",
+                }
+            ],
+        },
+    )
+
+    body = client.get("/v1/compliance/hub/findings").json()
+    assert body["total"] == 1
+    row = body["findings"][0]
+    assert row["status"] == "open"
+    assert row["first_seen"] == observed_at
+    assert row["last_seen"] == observed_at
+
+
 def test_list_hub_findings_pagination():
     client = _client()
     csv_rows = "Title,Severity\n" + "\n".join(f"row-{i},low" for i in range(50))

@@ -379,10 +379,48 @@ def test_wiring_stamps_unreachable_when_symbol_absent() -> None:
 
 def test_wiring_skips_unsupported_ecosystem_rows() -> None:
     br = _python_br(["get"])
-    br.package.ecosystem = "maven"
+    br.package.ecosystem = "rubygems"
     stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get())
     assert stamped == 0
     assert br.symbol_reachability is None
+
+
+def test_wiring_stamps_maven_row() -> None:
+    br = _python_br(["newCall"], pkg_name="com.squareup.okhttp3:okhttp")
+    br.package.ecosystem = "maven"
+    maven_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="com.squareup.okhttp3:okhttp",
+        module="com.squareup.okhttp3:okhttp",
+        symbol="newCall",
+        file_path="Server.java",
+        line_number=8,
+        call_path=["fetch_url", "fetchUrl", "com.squareup.okhttp3:okhttp.newCall"],
+        ecosystem="maven",
+    )
+    stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[maven_reach]))
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.reachable_affected_symbols == ["newCall"]
+
+
+def test_wiring_stamps_cargo_row() -> None:
+    br = _python_br(["get"], pkg_name="reqwest")
+    br.package.ecosystem = "cargo"
+    cargo_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="reqwest",
+        module="reqwest",
+        symbol="get",
+        file_path="server.rs",
+        line_number=6,
+        call_path=["fetch_url", "fetch_url", "reqwest::get"],
+        ecosystem="cargo",
+    )
+    stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[cargo_reach]))
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.reachable_affected_symbols == ["get"]
 
 
 def test_wiring_stamps_npm_row() -> None:

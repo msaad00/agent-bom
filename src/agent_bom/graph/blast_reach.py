@@ -31,7 +31,9 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 # Ecosystems where a symbol-level call graph join is supported.
-_SYMBOL_REACH_ECOSYSTEMS: frozenset[str] = frozenset({"pypi", "python", "npm", "go"})
+_SYMBOL_REACH_ECOSYSTEMS: frozenset[str] = frozenset(
+    {"pypi", "python", "npm", "go", "maven", "java", "cargo", "rust"}
+)
 
 
 def apply_dependency_reachability_to_blast_radii(
@@ -96,8 +98,9 @@ def apply_symbol_reachability_to_blast_radii(
     Thin additive surfacing of :mod:`agent_bom.reachability_cve`. For Python and
     npm findings it stamps ``symbol_reachability`` (function_reachable /
     package_reachable / unreachable) and, when a match is found,
-    ``reachable_affected_symbols``. Other ecosystems are left untouched until
-    their call-graph symbol reach is implemented.
+    ``reachable_affected_symbols``. Java (Maven) and Rust (Cargo) rows are
+    stamped when AST symbol reach is available. Other ecosystems are left
+    untouched until their call-graph symbol reach is implemented.
 
     The graph-walk reach already on the row (``graph_reachable``) is fed in as
     the import / dependency-closure fallback so a package that is reached but

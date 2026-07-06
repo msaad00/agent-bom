@@ -150,7 +150,11 @@ def ingest_sarif_findings(path: str | Path) -> list[Finding]:
         return []
     if not isinstance(sarif, dict):
         return []
+    return parse_sarif_document(sarif)
 
+
+def parse_sarif_document(sarif: dict) -> list[Finding]:
+    """Parse an in-memory SARIF 2.1.0 document into hub-classified findings."""
     runs = sarif.get("runs") or []
     findings: list[Finding] = []
     for run in runs:

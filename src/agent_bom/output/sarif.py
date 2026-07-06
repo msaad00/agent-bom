@@ -459,6 +459,8 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             "impact_category": getattr(br, "impact_category", "code-execution"),
             "attack_vector_summary": getattr(br, "attack_vector_summary", None),
             "reachability": br.reachability,
+            "symbol_reachability": getattr(br, "symbol_reachability", None),
+            "reachable_affected_symbols": getattr(br, "reachable_affected_symbols", []),
             # Structured reach lists + AI-native context (unified Finding parity).
             "affected_servers": [s.name for s in br.affected_servers],
             "affected_agents": [a.name for a in br.affected_agents],

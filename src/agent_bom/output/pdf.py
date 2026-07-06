@@ -11,9 +11,14 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 from textwrap import wrap
-from typing import Iterable
 
 from agent_bom.models import AIBOMReport, BlastRadius
+from agent_bom.output.finding_views import (
+    package_name,
+    package_version,
+    ranked_cve_findings,
+    severity_value,
+)
 
 _PAGE_WIDTH = 612
 _PAGE_HEIGHT = 792
@@ -66,7 +71,7 @@ def _append_wrapped(lines: list[str], value: object = "", *, indent: str = "") -
         lines.append(f"{follow_indent}{chunk}")
 
 
-def _build_report_lines(report: AIBOMReport, blast_radii: Iterable[BlastRadius]) -> list[str]:
+def _build_report_lines(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[str]:
     lines: list[str] = []
     lines.append("Agent-BOM Scan Report")
     lines.append("=" * 76)
@@ -89,29 +94,32 @@ def _build_report_lines(report: AIBOMReport, blast_radii: Iterable[BlastRadius])
         lines.append("-" * 76)
         _append_wrapped(lines, report.executive_summary)
 
-    sorted_radii = sorted(blast_radii, key=lambda item: item.risk_score, reverse=True)
-    if sorted_radii:
+    top_findings = ranked_cve_findings(report, blast_radii, limit=15)
+    if top_findings:
         lines.append("")
         lines.append("Top Blast Radius Findings")
         lines.append("-" * 76)
-        for index, br in enumerate(sorted_radii[:15], start=1):
-            vuln = br.vulnerability
+        for index, finding in enumerate(top_findings, start=1):
+            vuln_id = finding.cve_id or finding.id
+            pkg = package_name(finding)
+            version = package_version(finding)
+            risk = float(finding.risk_score or 0.0)
             header = (
-                f"{index}. {vuln.id} | {br.package.name}@{br.package.version} | {vuln.severity.value.upper()} | risk {br.risk_score:.1f}"
+                f"{index}. {vuln_id} | {pkg}@{version} | {severity_value(finding).upper()} | risk {risk:.1f}"
             )
             _append_wrapped(lines, header)
             details: list[str] = []
-            if br.affected_agents:
-                details.append(f"agents={len(br.affected_agents)}")
-            if br.exposed_credentials:
-                details.append(f"creds={', '.join(br.exposed_credentials[:4])}")
-            if br.exposed_tools:
-                details.append(f"tools={len(br.exposed_tools)}")
-            if vuln.fixed_version:
-                details.append(f"fix={vuln.fixed_version}")
+            if finding.affected_agents:
+                details.append(f"agents={len(finding.affected_agents)}")
+            if finding.exposed_credentials:
+                details.append(f"creds={', '.join(finding.exposed_credentials[:4])}")
+            if finding.exposed_tools:
+                details.append(f"tools={len(finding.exposed_tools)}")
+            if finding.fixed_version:
+                details.append(f"fix={finding.fixed_version}")
             if details:
                 _append_wrapped(lines, "; ".join(details), indent="   ")
-            summary = vuln.summary or br.attack_vector_summary or br.ai_summary
+            summary = finding.description or finding.attack_vector_summary or finding.ai_summary
             if summary:
                 _append_wrapped(lines, summary, indent="   ")
 
@@ -184,12 +192,12 @@ def _build_pdf(lines: list[str]) -> bytes:
     return buffer.getvalue()
 
 
-def to_pdf(report: AIBOMReport, blast_radii: list | None = None) -> bytes:
+def to_pdf(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> bytes:
     """Render the report to PDF bytes without external renderers."""
-    lines = _build_report_lines(report, blast_radii or [])
+    lines = _build_report_lines(report, blast_radii)
     return _build_pdf(lines)
 
 
-def export_pdf(report: AIBOMReport, output_path: str, blast_radii: list | None = None) -> None:
+def export_pdf(report: AIBOMReport, output_path: str, blast_radii: list[BlastRadius] | None = None) -> None:
     """Write the rendered PDF report to disk."""
     Path(output_path).write_bytes(to_pdf(report, blast_radii))

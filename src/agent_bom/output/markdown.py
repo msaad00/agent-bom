@@ -5,17 +5,26 @@ Produces a self-contained Markdown report with summary table and detailed findin
 
 from __future__ import annotations
 
-from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
+from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.finding import Finding, FindingType
 from agent_bom.graph.severity import severity_policy_rank
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.output.exposure_path import exposure_path_brief_for_finding
-from agent_bom.output.finding_views import ranked_cve_findings
+from agent_bom.output.finding_views import (
+    cve_findings,
+    evidence,
+    has_high_or_critical,
+    package_name,
+    package_version,
+    ranked_cve_findings,
+    severity_value,
+)
 
 
 def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
     """Convert an AIBOMReport to Markdown string."""
     brs = blast_radii or report.blast_radii
+    cve_rows = cve_findings(report, blast_radii)
     policy_findings = _non_cve_findings(report)
     lines: list[str] = []
 
@@ -84,76 +93,80 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
                 if finding.remediation_guidance:
                     lines.append(f"- **Remediation**: {finding.remediation_guidance}")
                 if finding.evidence:
-                    evidence = ", ".join(f"{key}={value}" for key, value in finding.evidence.items() if value is not None)
-                    if evidence:
-                        lines.append(f"- **Evidence**: {evidence}")
+                    evidence_text = ", ".join(f"{key}={value}" for key, value in finding.evidence.items() if value is not None)
+                    if evidence_text:
+                        lines.append(f"- **Evidence**: {evidence_text}")
                 lines.append("")
 
     # Findings table
-    if brs:
+    if cve_rows:
         lines.append("## Findings")
         lines.append("")
         lines.append("| Severity | CVE | Package | Version | Fix | CVSS | EPSS | KEV | CWE | Tags | Source | Agents |")
         lines.append("|----------|-----|---------|---------|-----|------|------|-----|-----|------|--------|--------|")
 
-        for br in sorted(brs, key=lambda b: _sev_order(b.vulnerability.severity)):
-            v = br.vulnerability
-            sev_badge = _severity_badge(v.severity)
-            cvss = f"{v.cvss_score}" if v.cvss_score is not None else "-"
-            epss = f"{v.epss_score:.4f}" if v.epss_score is not None else "-"
-            kev = "Yes" if v.is_kev else "-"
-            cwe = _md_cell(", ".join(v.cwe_ids) if v.cwe_ids else "-")
-            tags = _md_cell(_compliance_tags_text(br) or "-")
-            source = _md_cell(v.severity_source or "-")
-            fix = v.fixed_version or "-"
-            agents = str(len(br.affected_agents))
+        for finding in sorted(cve_rows, key=lambda f: _finding_sev_order(severity_value(f))):
+            vuln_id = finding.cve_id or finding.id
+            sev_badge = _severity_text(severity_value(finding))
+            cvss = f"{finding.cvss_score}" if finding.cvss_score is not None else "-"
+            epss = f"{finding.epss_score:.4f}" if finding.epss_score is not None else "-"
+            kev = "Yes" if finding.is_kev else "-"
+            cwe = _md_cell(", ".join(finding.cwe_ids) if finding.cwe_ids else "-")
+            tags = _md_cell(", ".join(framework_qualified_finding_tags(finding)) or "-")
+            source = _md_cell(evidence(finding, "severity_source", "-") or "-")
+            fix = finding.fixed_version or "-"
+            agents = str(len(finding.affected_agents))
             lines.append(
-                f"| {sev_badge} | {v.id} | {br.package.name} | {br.package.version or '-'} | {fix} | {cvss} | "
+                f"| {sev_badge} | {vuln_id} | {package_name(finding)} | {package_version(finding) or '-'} | {fix} | {cvss} | "
                 f"{epss} | {kev} | {cwe} | {tags} | {source} | {agents} |"
             )
 
         lines.append("")
 
-        lines.extend(_exposure_path_section(report, brs))
+        lines.extend(_exposure_path_section(report, blast_radii))
 
     # Critical/High details
-    critical_high = [br for br in brs if br.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)]
+    critical_high = [finding for finding in cve_rows if has_high_or_critical(finding)]
     if critical_high:
         lines.append("## Critical & High Findings")
         lines.append("")
-        for br in critical_high:
-            v = br.vulnerability
-            lines.append(f"### {v.id} — {br.package.name}@{br.package.version or '?'}")
+        for finding in critical_high:
+            vuln_id = finding.cve_id or finding.id
+            lines.append(f"### {vuln_id} — {package_name(finding)}@{package_version(finding) or '?'}")
             lines.append("")
-            if v.summary:
-                lines.append(f"> {v.summary}")
+            if finding.description:
+                lines.append(f"> {finding.description}")
                 lines.append("")
-            lines.append(f"- **Severity**: {v.severity.value.upper()}")
-            if v.severity_source:
-                lines.append(f"- **Severity source**: {v.severity_source}")
-            if v.cvss_score is not None:
-                lines.append(f"- **CVSS**: {v.cvss_score}")
-            if v.epss_score is not None:
-                lines.append(f"- **EPSS**: {v.epss_score:.4f}")
-            if v.epss_percentile is not None:
-                lines.append(f"- **EPSS percentile**: {v.epss_percentile:.4f}")
-            if v.is_kev:
+            lines.append(f"- **Severity**: {severity_value(finding).upper()}")
+            severity_source = evidence(finding, "severity_source", "")
+            if severity_source:
+                lines.append(f"- **Severity source**: {severity_source}")
+            if finding.cvss_score is not None:
+                lines.append(f"- **CVSS**: {finding.cvss_score}")
+            if finding.epss_score is not None:
+                lines.append(f"- **EPSS**: {finding.epss_score:.4f}")
+            epss_percentile = evidence(finding, "epss_percentile", None)
+            if epss_percentile is not None:
+                lines.append(f"- **EPSS percentile**: {float(epss_percentile):.4f}")
+            if finding.is_kev:
                 lines.append("- **KEV**: Yes (CISA Known Exploited)")
-            if v.kev_date_added:
-                lines.append(f"- **KEV date added**: {v.kev_date_added}")
-            if v.kev_due_date:
-                lines.append(f"- **KEV due date**: {v.kev_due_date}")
-            if v.fixed_version:
-                lines.append(f"- **Fix**: Upgrade to {v.fixed_version}")
-            if v.cwe_ids:
-                lines.append(f"- **CWE**: {', '.join(v.cwe_ids)}")
-            compliance_tags = _compliance_tags_text(br)
+            kev_date_added = evidence(finding, "kev_date_added", "")
+            if kev_date_added:
+                lines.append(f"- **KEV date added**: {kev_date_added}")
+            kev_due_date = evidence(finding, "kev_due_date", "")
+            if kev_due_date:
+                lines.append(f"- **KEV due date**: {kev_due_date}")
+            if finding.fixed_version:
+                lines.append(f"- **Fix**: Upgrade to {finding.fixed_version}")
+            if finding.cwe_ids:
+                lines.append(f"- **CWE**: {', '.join(finding.cwe_ids)}")
+            compliance_tags = ", ".join(framework_qualified_finding_tags(finding))
             if compliance_tags:
                 lines.append(f"- **Compliance tags**: {compliance_tags}")
-            if br.affected_agents:
-                lines.append(f"- **Affected agents**: {', '.join(a.name for a in br.affected_agents)}")
-            if br.exposed_credentials:
-                lines.append(f"- **Exposed credentials**: {len(br.exposed_credentials)}")
+            if finding.affected_agents:
+                lines.append(f"- **Affected agents**: {', '.join(finding.affected_agents)}")
+            if finding.exposed_credentials:
+                lines.append(f"- **Exposed credentials**: {len(finding.exposed_credentials)}")
             lines.append("")
 
     # Footer
@@ -208,17 +221,8 @@ def _trust_assessment_section(report: AIBOMReport) -> list[str]:
     return lines
 
 
-def _sev_order(sev: Severity) -> int:
-    return -severity_policy_rank(sev.value)
-
-
 def _finding_sev_order(sev: str) -> int:
     return -severity_policy_rank(sev)
-
-
-def _severity_badge(sev: Severity) -> str:
-    """Return a text badge for severity."""
-    return f"**{sev.value.upper()}**"
 
 
 def _severity_text(sev: str) -> str:
@@ -231,12 +235,7 @@ def _md_cell(value: object) -> str:
     return str(value).replace("|", "\\|")
 
 
-def _compliance_tags_text(br: BlastRadius) -> str:
-    """Return framework-qualified tags for compact Markdown rendering."""
-    return ", ".join(framework_qualified_blast_radius_tags(br))
-
-
-def _exposure_path_section(report: AIBOMReport, blast_radii: list[BlastRadius]) -> list[str]:
+def _exposure_path_section(report: AIBOMReport, blast_radii: list[BlastRadius] | None) -> list[str]:
     """Render the top CVE findings as investigation-first exposure paths."""
     findings = ranked_cve_findings(report, blast_radii)
     if not findings:

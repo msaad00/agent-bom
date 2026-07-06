@@ -16,6 +16,7 @@ product split.
 | `keda-autoscaling` | `eks-production-values.yaml` + `eks-keda-values.yaml` + `gateway-upstreams.example.yaml` | Production overlay with KEDA-backed API and gateway autoscaling |
 | `eks-vanilla` | `eks-vanilla-values.yaml` | Postgres-backed production EKS rollout with ALB, IRSA, Kubernetes Secrets, and no service mesh / ESO / cert-manager requirement |
 | `mesh-hardening` | `eks-istio-kyverno-values.yaml` | Overlay for Istio mTLS/authz and Kyverno policy-controller packaging |
+| `collector-mtls` | `collector-mtls-values.yaml` | Scanner fleet-sync push with client TLS + delegated control-plane mTLS posture env |
 | `snowflake-backend` | `eks-snowflake-values.yaml` | Overlay for Snowflake governance and selected store parity, not a claim of full control-plane replacement |
 | `gateway-runtime` | `eks-mcp-pilot-values.yaml` + `gateway-upstreams.example.yaml` | Focused pilot plus central gateway rendering for shared MCP relay/policy |
 

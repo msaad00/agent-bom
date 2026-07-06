@@ -130,6 +130,23 @@ def _redact_nested_secrets(value):
     return value
 
 
+def _push_tls_cert() -> str | tuple[str, str] | None:
+    cert_file = os.environ.get("AGENT_BOM_PUSH_TLS_CERT_FILE", "").strip()
+    key_file = os.environ.get("AGENT_BOM_PUSH_TLS_KEY_FILE", "").strip()
+    if cert_file and key_file:
+        return cert_file, key_file
+    if cert_file or key_file:
+        logger.warning(
+            "Ignoring partial collector push TLS config; set both AGENT_BOM_PUSH_TLS_CERT_FILE and AGENT_BOM_PUSH_TLS_KEY_FILE"
+        )
+    return None
+
+
+def _push_tls_verify() -> bool | str:
+    ca_file = os.environ.get("AGENT_BOM_PUSH_TLS_CA_FILE", "").strip()
+    return ca_file if ca_file else True
+
+
 _DEFAULT_PUSH_MAX_ATTEMPTS = 3
 _DEFAULT_PUSH_BASE_DELAY = 1.0
 _DEFAULT_PUSH_MAX_DELAY = 30.0
@@ -206,7 +223,7 @@ async def _push_async(
     last_status: int | None = None
     last_error: str | None = None
 
-    async with create_client(timeout=30.0) as client:
+    async with create_client(timeout=30.0, cert=_push_tls_cert(), verify=_push_tls_verify()) as client:
         for attempt in range(1, max_attempts + 1):
             try:
                 resp = await client.post(push_url, json=sanitized, headers=headers)

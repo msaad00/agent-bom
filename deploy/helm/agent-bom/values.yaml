@@ -79,6 +79,10 @@ scanner:
   outputFormat: json
   extraArgs: []
   env: []
+  # Optional client TLS material for HTTPS fleet/scan push (collector -> control plane mTLS).
+  # Mount the Secret with cert/key (and optional CA) via extraVolumes + extraVolumeMounts.
+  extraVolumes: []
+  extraVolumeMounts: []
   # Extra `envFrom` sources (e.g. a Snowflake key-pair Secret reference managed
   # by external-secrets). Never inline secret material in values — reference a
   # Secret the cluster already holds.

@@ -68,10 +68,26 @@ def is_verified_ruby_gem(gem_name: str, gem_map: dict[str, str]) -> bool:
     return gem_name in set(gem_map.values())
 
 
+def is_verified_composer_package(package_name: str, package_map: dict[str, str]) -> bool:
+    """Return True when a Composer package is declared in the project manifest map."""
+    if not package_name or not package_map:
+        return False
+    return package_name in set(package_map.values())
+
+
+def is_verified_swift_package(package_name: str, package_map: dict[str, str]) -> bool:
+    """Return True when an SPM package identity is declared in Package.resolved."""
+    if not package_name or not package_map:
+        return False
+    return package_name in set(package_map.values())
+
+
 __all__ = [
     "is_actionable_dependency_symbol",
     "is_external_rust_crate",
+    "is_verified_composer_package",
     "is_verified_maven_coord",
     "is_verified_nuget_package",
     "is_verified_ruby_gem",
+    "is_verified_swift_package",
 ]

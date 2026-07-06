@@ -22,6 +22,7 @@ from agent_bom.output import (
     export_json,
     export_junit,
     export_markdown,
+    export_parquet,
     export_pdf,
     export_prometheus,
     export_sarif,
@@ -64,6 +65,7 @@ _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     "spdx2": ("agent-bom.spdx2.json", (".spdx2.json", ".spdx.json", ".json")),
     "junit": ("agent-bom-results.xml", (".xml",)),
     "csv": ("agent-bom-results.csv", (".csv",)),
+    "parquet": ("agent-bom-findings.parquet", (".parquet",)),
     "markdown": ("agent-bom-report.md", (".md", ".markdown")),
     "html": ("agent-bom-report.html", (".html", ".htm")),
     "pdf": ("agent-bom-report.pdf", (".pdf",)),
@@ -151,6 +153,8 @@ def _stdout_serialization(
         return to_junit(report, blast_radii)
     if output_format == "csv":
         return to_csv(report, blast_radii)
+    if output_format == "parquet":
+        return None
     if output_format == "markdown":
         return to_markdown(report, blast_radii)
     if output_format == "prometheus":
@@ -299,6 +303,9 @@ def render_output(
                 sys.stdout.write(to_junit(report, blast_radii))
             elif output_format == "csv":
                 sys.stdout.write(to_csv(report, blast_radii))
+            elif output_format == "parquet":
+                click.echo("Error: --format parquet requires --output/-o (binary Parquet)", err=True)
+                sys.exit(2)
             elif output_format == "markdown":
                 sys.stdout.write(to_markdown(report, blast_radii))
             elif output_format == "graph-html":
@@ -427,6 +434,10 @@ def render_output(
             out_path = _resolve_output_path(output, output_format)
             export_csv(report, out_path, blast_radii)
             con.print(f"\n  [green]✓[/green] CSV report: {out_path}")
+        elif output_format == "parquet":
+            out_path = _resolve_output_path(output, output_format)
+            export_parquet(report, out_path, blast_radii)
+            con.print(f"\n  [green]✓[/green] Parquet findings: {out_path}")
         elif output_format == "markdown":
             out_path = _resolve_output_path(output, output_format)
             export_markdown(report, out_path, blast_radii)
@@ -521,6 +532,8 @@ def render_output(
                 export_junit(report, output, blast_radii)
             elif output.endswith(".csv"):
                 export_csv(report, output, blast_radii)
+            elif output.endswith(".parquet"):
+                export_parquet(report, output, blast_radii)
             elif output.endswith(".md"):
                 export_markdown(report, output, blast_radii)
             else:

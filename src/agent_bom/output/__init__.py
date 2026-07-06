@@ -56,6 +56,10 @@ from agent_bom.output.markdown import (  # noqa: E402
     export_markdown,  # noqa: F401
     to_markdown,  # noqa: F401
 )
+from agent_bom.output.parquet_fmt import (  # noqa: E402
+    export_parquet,  # noqa: F401
+    to_parquet_bytes,  # noqa: F401
+)
 from agent_bom.output.sarif import (  # noqa: E402
     export_sarif,  # noqa: F401
     to_sarif,  # noqa: F401

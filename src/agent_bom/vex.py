@@ -207,9 +207,7 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
                     vulnerability_id=vuln.id,
                     status=VexStatus.NOT_AFFECTED,
                     justification=VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH,
-                    action_statement=(
-                        "AST symbol-reach: vulnerable package not reached from any MCP tool entrypoint."
-                    ),
+                    action_statement=("AST symbol-reach: vulnerable package not reached from any MCP tool entrypoint."),
                     impact_statement=impact_text,
                     products=products,
                 )

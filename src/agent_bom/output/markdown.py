@@ -17,6 +17,7 @@ from agent_bom.output.finding_views import (
     package_name,
     package_version,
     ranked_cve_findings,
+    severity_counts,
     severity_value,
 )
 
@@ -36,7 +37,7 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
     lines.append("")
 
     # Summary
-    sev_counts = _severity_counts(brs)
+    sev_counts = severity_counts(cve_rows)
     lines.append("## Summary")
     lines.append("")
     lines.append("| Metric | Count |")
@@ -44,7 +45,7 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
     lines.append(f"| Agents discovered | {report.total_agents} |")
     lines.append(f"| MCP servers | {report.total_servers} |")
     lines.append(f"| Packages scanned | {report.total_packages} |")
-    lines.append(f"| Vulnerabilities | {len(brs)} |")
+    lines.append(f"| Vulnerabilities | {len(cve_rows)} |")
     lines.append(f"| Policy/security findings | {len(policy_findings)} |")
     lines.append(f"| Critical | {sev_counts.get('critical', 0)} |")
     lines.append(f"| High | {sev_counts.get('high', 0)} |")
@@ -181,15 +182,6 @@ def export_markdown(report: AIBOMReport, output_path: str, blast_radii: list[Bla
     from pathlib import Path
 
     Path(output_path).write_text(to_markdown(report, blast_radii), encoding="utf-8")
-
-
-def _severity_counts(brs: list[BlastRadius]) -> dict[str, int]:
-    """Count findings by severity."""
-    counts: dict[str, int] = {}
-    for br in brs:
-        key = br.vulnerability.severity.value
-        counts[key] = counts.get(key, 0) + 1
-    return counts
 
 
 def _non_cve_findings(report: AIBOMReport) -> list[Finding]:

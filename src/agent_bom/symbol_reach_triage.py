@@ -68,7 +68,10 @@ def band_from_composite(composite: float) -> Literal["green", "amber", "red", "p
 
 def apply_composite_delta(score: float, symbol_reachability: str | None) -> float:
     """Clamp an effective-reach composite after symbol-reach adjustment."""
-    adjusted = score + composite_delta(symbol_reachability)
+    state = _normalize_symbol_state(symbol_reachability)
+    if state is None:
+        return score
+    adjusted = score + composite_delta(state)
     return round(max(0.0, min(adjusted, 100.0)), 2)
 
 

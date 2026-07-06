@@ -76,7 +76,7 @@ branch + `findings push` / CLI flag docs.
 | Exists | Gap |
 |--------|-----|
 | `discovery.discover_mcp_processes()` via **psutil** (opt-in `include_processes`) | Off by default; requires `psutil` extra |
-| Config parsers (Cursor, Claude, VS Code, etc.) | No listening-port sweep for localhost MCP HTTP/SSE |
+| Editor/agent config parsers | No listening-port sweep for localhost MCP HTTP/SSE |
 | `ai_components` “shadow AI” (undeclared SDK imports) | Different problem than shadow **servers** |
 
 **Work:** Default-on process discovery in fleet agent profile; optional port listener pass;
@@ -91,7 +91,7 @@ defer full EDR/browser telemetry.
 | Exists | Gap |
 |--------|-----|
 | `remediation.py`, `remediation_apply.apply_remediation_plan(..., open_pr=True)` | No first-class GitHub Action step |
-| `agent-bom remediate --open-pr` (CLI) | Not documented as the “Snyk-style fix PR” motion |
+| `agent-bom remediate --open-pr` (CLI) | Not documented as the default fix-PR motion |
 | `pr_url` on `RemediationApplyOutcome` | No evidence attachment template in PR body |
 
 **Work:** GH Action job + PR body with blast-radius / finding links.

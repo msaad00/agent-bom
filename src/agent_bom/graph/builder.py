@@ -1096,6 +1096,11 @@ def build_unified_graph_from_report(
     except Exception:  # noqa: BLE001
         _logger.warning("ASPM overlay failed", exc_info=True)
 
+    try:
+        _apply_runtime_evidence_overlay(graph, report_json)
+    except Exception:  # noqa: BLE001
+        _logger.warning("runtime evidence overlay failed", exc_info=True)
+
     # Repository folder/file structure: materialise the directory tree, manifest
     # files, file → dependency → vuln paths, and file → finding paths from the
     # project inventory + file-scoped findings already in the report, so a code
@@ -1163,6 +1168,12 @@ def _apply_aspm_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> 
     from agent_bom.graph.aspm_overlay import apply_aspm_overlay
 
     apply_aspm_overlay(graph, dict(report_json), datetime.now(timezone.utc))
+
+
+def _apply_runtime_evidence_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
+    from agent_bom.graph.evidence_overlay import apply_runtime_evidence_overlay
+
+    apply_runtime_evidence_overlay(graph, report_json)
 
 
 def _apply_repo_structure_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:

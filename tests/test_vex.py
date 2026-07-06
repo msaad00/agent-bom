@@ -256,10 +256,100 @@ class TestVexLoad:
         doc = load_vex(str(path))
         assert doc.statements[0].vulnerability_id == "GHSA-abcd-efgh"
 
+    def test_load_cyclonedx_vex_format(self, tmp_path):
+        data = {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.5",
+            "version": 1,
+            "vulnerabilities": [
+                {
+                    "id": "CVE-2020-8911",
+                    "analysis": {
+                        "state": "not_affected",
+                        "justification": "code_not_reachable",
+                        "response": ["will_not_fix", "update"],
+                        "detail": "The vulnerable function is not called",
+                    },
+                    "affects": [
+                        {
+                            "ref": "urn:cdx:3e671687-395b-41f5-a30f-a58921a69b79/1#pkg:golang/github.com/aws/aws-sdk-go@1.44.234"
+                        }
+                    ],
+                }
+            ],
+        }
+        path = tmp_path / "vex.cdx.json"
+        path.write_text(json.dumps(data))
+        doc = load_vex(str(path))
+        assert doc.metadata["format"] == "cyclonedx"
+        assert len(doc.statements) == 1
+        stmt = doc.statements[0]
+        assert stmt.vulnerability_id == "CVE-2020-8911"
+        assert stmt.status == VexStatus.NOT_AFFECTED
+        assert stmt.justification == VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH
+        assert stmt.products == ["pkg:golang/github.com/aws/aws-sdk-go@1.44.234"]
+        assert stmt.impact_statement == "The vulnerable function is not called"
+        assert "will_not_fix" in stmt.action_statement
 
-# ---------------------------------------------------------------------------
-# TestVexGenerate
-# ---------------------------------------------------------------------------
+    def test_load_csaf_vex_format(self, tmp_path):
+        data = {
+            "document": {
+                "category": "csaf_vex",
+                "csaf_version": "2.0",
+                "publisher": {"category": "vendor", "name": "Example Company ProductCERT"},
+                "tracking": {
+                    "id": "2022-EVD-UC-01-NA-001",
+                    "current_release_date": "2022-03-03T11:00:00.000Z",
+                    "version": "1",
+                },
+            },
+            "vulnerabilities": [
+                {
+                    "cve": "CVE-2021-44228",
+                    "product_status": {"known_not_affected": ["CSAFPID-0001"]},
+                    "threats": [
+                        {
+                            "category": "impact",
+                            "details": "Class with vulnerable code was removed before shipping.",
+                            "product_ids": ["CSAFPID-0001"],
+                        }
+                    ],
+                }
+            ],
+        }
+        path = tmp_path / "vex.csaf.json"
+        path.write_text(json.dumps(data))
+        doc = load_vex(str(path))
+        assert doc.metadata["format"] == "csaf"
+        assert len(doc.statements) == 1
+        stmt = doc.statements[0]
+        assert stmt.vulnerability_id == "CVE-2021-44228"
+        assert stmt.status == VexStatus.NOT_AFFECTED
+        assert stmt.products == ["CSAFPID-0001"]
+        assert "removed before shipping" in stmt.impact_statement
+
+    def test_cyclonedx_vex_applies_to_report(self, tmp_path):
+        vuln = _vuln("CVE-2020-8911")
+        pkg = _pkg(vulns=[vuln])
+        report = _report([(vuln, pkg)])
+        data = {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.5",
+            "version": 1,
+            "vulnerabilities": [
+                {
+                    "id": "CVE-2020-8911",
+                    "analysis": {"state": "not_affected", "justification": "code_not_reachable"},
+                }
+            ],
+        }
+        path = tmp_path / "vex.cdx.json"
+        path.write_text(json.dumps(data))
+        doc = load_vex(str(path))
+        count = apply_vex(report, doc)
+        assert count == 1
+        assert vuln.vex_status == "not_affected"
+        assert is_vex_suppressed(vuln)
 
 
 class TestVexGenerate:

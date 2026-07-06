@@ -1,6 +1,6 @@
 # Security Metadata Registry
 
-A curated registry of 880 MCP server security metadata entries.
+A curated registry of 917 MCP server security metadata entries.
 
 ## What's in each entry
 

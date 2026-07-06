@@ -15,6 +15,15 @@ export interface EnrichedVuln extends Vulnerability {
   remediation_items: RemediationSummary[];
   graph_reachable?: boolean | null | undefined;
   graph_min_hop_distance?: number | null | undefined;
+  effective_reach_score?: number | undefined;
+  effective_reach_band?: string | undefined;
+  framework_tags?: string[] | undefined;
+  phantom_tools?: string[] | undefined;
+  runtime_evidence?: {
+    state?: "static" | "observed" | "blocked" | "replay_only" | string;
+    blocked_count?: number;
+    observed_count?: number;
+  } | undefined;
   lifecycle_status?: string | undefined;
   first_seen?: string | undefined;
   last_seen?: string | undefined;

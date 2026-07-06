@@ -13,7 +13,7 @@ from agent_bom.asset_provenance import (
     package_version_provenance,
     sanitize_discovery_provenance,
 )
-from agent_bom.compliance_utils import effective_blast_radius_tags
+from agent_bom.compliance_utils import effective_blast_radius_tags, framework_qualified_blast_radius_tags
 from agent_bom.exploitability import fused_triage_priority
 from agent_bom.finding import FINDING_SCHEMA_VERSION, Finding
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
@@ -881,6 +881,8 @@ def _blast_radius_json_entry(
         "affected_servers": [s.name for s in br.affected_servers],
         "exposed_credentials": br.exposed_credentials,
         "exposed_tools": [t.name for t in br.exposed_tools],
+        "phantom_tools": [t.name for t in getattr(br, "phantom_tools", []) or []],
+        "framework_tags": framework_qualified_blast_radius_tags(br),
         "impact_category": getattr(br, "impact_category", "code-execution"),
         "cvss_vector": getattr(br.vulnerability, "cvss_vector", None),
         "attack_vector": getattr(br.vulnerability, "attack_vector", None),

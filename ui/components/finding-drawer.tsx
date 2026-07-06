@@ -111,6 +111,25 @@ function VulnDetailPanel({
             <DetailStat label="CVSS" value={typeof vuln.cvss_score === "number" ? vuln.cvss_score.toFixed(1) : "Not published"} />
             <DetailStat label="EPSS" value={typeof vuln.epss_score === "number" ? `${(vuln.epss_score * 100).toFixed(1)}%` : "Not available"} />
           </div>
+          {(vuln.effective_reach_band || vuln.runtime_evidence?.state) && (
+            <div className="flex flex-wrap gap-2">
+              {vuln.effective_reach_band && (
+                <span className="rounded border border-amber-800/60 bg-amber-950/40 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-300">
+                  Reach {vuln.effective_reach_band}
+                  {typeof vuln.effective_reach_score === "number" ? ` (${vuln.effective_reach_score.toFixed(0)})` : ""}
+                </span>
+              )}
+              {vuln.runtime_evidence?.state && vuln.runtime_evidence.state !== "static" && (
+                <span className={`rounded border px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
+                  vuln.runtime_evidence.state === "blocked"
+                    ? "border-rose-800/60 bg-rose-950/40 text-rose-300"
+                    : "border-sky-800/60 bg-sky-950/40 text-sky-300"
+                }`}>
+                  Runtime {vuln.runtime_evidence.state}
+                </span>
+              )}
+            </div>
+          )}
           <div className="grid gap-3 md:grid-cols-2">
             <ContextCard
               icon={Radar}
@@ -135,16 +154,34 @@ function VulnDetailPanel({
               title="Exposure at risk"
               items={[
                 `${vuln.exposed_credentials.length} credential${vuln.exposed_credentials.length === 1 ? "" : "s"} exposed`,
-                `${vuln.reachable_tools.length} reachable tool${vuln.reachable_tools.length === 1 ? "" : "s"}`,
+                `${vuln.reachable_tools.length} confirmed tool${vuln.reachable_tools.length === 1 ? "" : "s"}`,
+                vuln.phantom_tools?.length
+                  ? `${vuln.phantom_tools.length} registry-only tool${vuln.phantom_tools.length === 1 ? "" : "s"} (excluded from score)`
+                  : null,
               ]}
               detail={
                 <>
                   <TagList label="Credentials" values={vuln.exposed_credentials} mono />
-                  <TagList label="Tools" values={vuln.reachable_tools} mono />
+                  <TagList label="Confirmed tools" values={vuln.reachable_tools} mono />
+                  {vuln.phantom_tools && vuln.phantom_tools.length > 0 && (
+                    <TagList label="Registry-only tools" values={vuln.phantom_tools} mono />
+                  )}
                 </>
               }
             />
           </div>
+          {vuln.framework_tags && vuln.framework_tags.length > 0 && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Compliance controls</h4>
+              <div className="mt-3 flex flex-wrap gap-1">
+                {vuln.framework_tags.slice(0, 24).map((tag) => (
+                  <span key={tag} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] font-mono text-zinc-300">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">

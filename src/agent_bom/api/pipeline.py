@@ -940,7 +940,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 )
             pipeline.start_step("scanning", scan_message)
             try:
-                blast_radii = scan_agents_sync(agents, enable_enrichment=effective_enrich, offline=req.offline)
+                blast_radii = scan_agents_sync(agents, enable_enrichment=effective_enrich, offline=req.offline, compliance_enabled=True)
             except Exception as scan_exc:  # noqa: BLE001
                 safe_scan_error = sanitize_error(scan_exc)
                 if req.offline:
@@ -953,7 +953,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                     _logger.warning("Scan phase error (retrying without enrichment): %s", safe_scan_error)
                     pipeline.update_step("scanning", f"Scan error: {safe_scan_error} — retrying without enrichment")
                     try:
-                        blast_radii = scan_agents_sync(agents, enable_enrichment=False, offline=False)
+                        blast_radii = scan_agents_sync(agents, enable_enrichment=False, offline=False, compliance_enabled=True)
                     except Exception as retry_exc:  # noqa: BLE001
                         _logger.error("Scan retry also failed: %s", sanitize_error(retry_exc))
                         blast_radii = []

@@ -15,10 +15,11 @@ from agent_bom.asset_provenance import (
 )
 from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.exploitability import fused_triage_priority
-from agent_bom.finding import FINDING_SCHEMA_VERSION, blast_radius_to_finding
+from agent_bom.finding import FINDING_SCHEMA_VERSION, Finding
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.output.exposure_path import exposure_path_for_report_finding
+from agent_bom.output.finding_views import cve_findings
 from agent_bom.security import (
     sanitize_command_args,
     sanitize_path_label,
@@ -823,6 +824,102 @@ def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
     }
 
 
+def _blast_radius_json_entry(
+    br: BlastRadius,
+    finding: Finding,
+    rank: int,
+    exposure_path: dict[str, Any],
+) -> dict[str, Any]:
+    """Build one blast_radius JSON row from a unified Finding plus legacy BlastRadius fields."""
+    return {
+        "schema_version": BLAST_RADIUS_SCHEMA_VERSION,
+        "exposure_path": exposure_path,
+        **({"package_name": br.package.name, "package_version": br.package.version, "package_stable_id": br.package.stable_id}),
+        "package_canonical_id": br.package.canonical_id,
+        **effective_blast_radius_tags(br),
+        "risk_score": br.risk_score,
+        "reachability": br.reachability,
+        "actionable": br.is_actionable,
+        "vulnerability_id": finding.cve_id or br.vulnerability.id,
+        "severity": br.vulnerability.severity.value,
+        "severity_label": _severity_label(br.vulnerability.severity),
+        "severity_state": _severity_state(br.vulnerability.severity),
+        "advisory_sources": br.vulnerability.all_advisory_sources,
+        "primary_advisory_source": (br.vulnerability.all_advisory_sources[0] if br.vulnerability.all_advisory_sources else None),
+        "advisory_coverage_state": br.vulnerability.advisory_coverage_state,
+        "match_confidence_tier": br.vulnerability.match_confidence_tier,
+        "cvss_score": br.vulnerability.cvss_score,
+        "epss_score": br.vulnerability.epss_score,
+        "is_kev": br.vulnerability.is_kev,
+        "exploit_likelihood": br.vulnerability.exploit_likelihood,
+        "published_at": br.vulnerability.published_at,
+        "modified_at": br.vulnerability.modified_at,
+        "nvd_status": br.vulnerability.nvd_status,
+        "vex_status": br.vulnerability.vex_status,
+        "vex_justification": br.vulnerability.vex_justification,
+        "vex_suppressed": br.risk_score == 0.0 and br.vulnerability.vex_status in {"not_affected", "fixed"},
+        "suppressed": getattr(br, "suppressed", False),
+        "suppression_id": getattr(br, "suppression_id", None),
+        "suppression_state": getattr(br, "suppression_state", None),
+        "suppression_reason": getattr(br, "suppression_reason", None),
+        "unsuppressed_risk_score": getattr(br, "unsuppressed_risk_score", None),
+        "compliance_tags": br.vulnerability.compliance_tags,
+        "package": f"{br.package.name}@{br.package.version}",
+        "ecosystem": br.package.ecosystem,
+        "layer_attribution": [_package_occurrence_to_dict(occ) for occ in br.layer_attribution],
+        "introduced_in_layer": (
+            _package_occurrence_to_dict(br.package.primary_occurrence) if br.package.primary_occurrence else None
+        ),
+        "package_discovery_provenance": package_discovery_provenance(br.package),
+        "package_version_provenance": package_version_provenance(br.package),
+        "is_malicious": br.package.is_malicious,
+        "malicious_reason": br.package.malicious_reason,
+        "scorecard_score": br.package.scorecard_score,
+        "scorecard_repo": br.package.scorecard_repo,
+        "scorecard_lookup_state": br.package.scorecard_lookup_state,
+        "affected_agents": [a.name for a in br.affected_agents],
+        "affected_servers": [s.name for s in br.affected_servers],
+        "exposed_credentials": br.exposed_credentials,
+        "exposed_tools": [t.name for t in br.exposed_tools],
+        "impact_category": getattr(br, "impact_category", "code-execution"),
+        "cvss_vector": getattr(br.vulnerability, "cvss_vector", None),
+        "attack_vector": getattr(br.vulnerability, "attack_vector", None),
+        "attack_complexity": getattr(br.vulnerability, "attack_complexity", None),
+        "privileges_required": getattr(br.vulnerability, "privileges_required", None),
+        "user_interaction": getattr(br.vulnerability, "user_interaction", None),
+        "network_exploitable": getattr(br.vulnerability, "network_exploitable", False),
+        "triage_priority": fused_triage_priority(
+            severity=(
+                br.vulnerability.severity.value if hasattr(br.vulnerability.severity, "value") else str(br.vulnerability.severity)
+            ),
+            is_kev=bool(br.vulnerability.is_kev),
+            epss_score=getattr(br.vulnerability, "epss_score", None),
+            network_exploitable=bool(getattr(br.vulnerability, "network_exploitable", False)),
+            impact_category=getattr(br, "impact_category", None),
+            reachable=getattr(br, "graph_reachable", None),
+            exposed_credential_count=len(br.exposed_credentials),
+            exposed_tool_count=len(br.exposed_tools),
+        ),
+        "all_server_credentials": getattr(br, "all_server_credentials", []),
+        "attack_vector_summary": getattr(br, "attack_vector_summary", None),
+        "fixed_version": br.vulnerability.fixed_version,
+        "vendor_severity": getattr(br.vulnerability, "vendor_severity", None),
+        "cvss_severity": getattr(br.vulnerability, "cvss_severity", None),
+        "ai_risk_context": br.ai_risk_context,
+        "ai_summary": br.ai_summary,
+        "hop_depth": getattr(br, "hop_depth", 1),
+        "delegation_chain": getattr(br, "delegation_chain", []),
+        "transitive_agents": getattr(br, "transitive_agents", []),
+        "transitive_credentials": getattr(br, "transitive_credentials", []),
+        "transitive_risk_score": getattr(br, "transitive_risk_score", 0.0),
+        "graph_reachable": getattr(br, "graph_reachable", None),
+        "graph_min_hop_distance": getattr(br, "graph_min_hop_distance", None),
+        "graph_reachable_from_agents": getattr(br, "graph_reachable_from_agents", []),
+        "symbol_reachability": getattr(br, "symbol_reachability", None),
+        "reachable_affected_symbols": getattr(br, "reachable_affected_symbols", []),
+    }
+
+
 def to_json(report: AIBOMReport) -> dict:
     """Convert report to JSON-serializable dict."""
     ai_bom_entities = _build_ai_bom_entities_snapshot(report)
@@ -832,9 +929,12 @@ def to_json(report: AIBOMReport) -> dict:
     from agent_bom.scorecard import summarize_scorecard_coverage
 
     all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
+    cve_pairs = (
+        list(zip(cve_findings(report, report.blast_radii), report.blast_radii, strict=True)) if report.blast_radii else []
+    )
     exposure_paths = [
-        exposure_path_for_report_finding(blast_radius_to_finding(br), br=br, rank=rank)
-        for rank, br in enumerate(report.blast_radii, start=1)
+        exposure_path_for_report_finding(finding, br=br, rank=rank)
+        for rank, (finding, br) in enumerate(cve_pairs, start=1)
     ]
     unified_findings = [finding.to_dict() for finding in report.to_findings()]
     finding_summary = _build_finding_summary(unified_findings)
@@ -1079,101 +1179,8 @@ def to_json(report: AIBOMReport) -> dict:
             for agent in report.agents
         ],
         "blast_radius": [
-            {
-                "schema_version": BLAST_RADIUS_SCHEMA_VERSION,
-                "exposure_path": exposure_paths[rank - 1],
-                **({"package_name": br.package.name, "package_version": br.package.version, "package_stable_id": br.package.stable_id}),
-                "package_canonical_id": br.package.canonical_id,
-                **effective_blast_radius_tags(br),
-                "risk_score": br.risk_score,
-                "reachability": br.reachability,
-                "actionable": br.is_actionable,
-                "vulnerability_id": br.vulnerability.id,
-                "severity": br.vulnerability.severity.value,
-                "severity_label": _severity_label(br.vulnerability.severity),
-                "severity_state": _severity_state(br.vulnerability.severity),
-                "advisory_sources": br.vulnerability.all_advisory_sources,
-                "primary_advisory_source": (br.vulnerability.all_advisory_sources[0] if br.vulnerability.all_advisory_sources else None),
-                "advisory_coverage_state": br.vulnerability.advisory_coverage_state,
-                "match_confidence_tier": br.vulnerability.match_confidence_tier,
-                "cvss_score": br.vulnerability.cvss_score,
-                "epss_score": br.vulnerability.epss_score,
-                "is_kev": br.vulnerability.is_kev,
-                "exploit_likelihood": br.vulnerability.exploit_likelihood,
-                "published_at": br.vulnerability.published_at,
-                "modified_at": br.vulnerability.modified_at,
-                "nvd_status": br.vulnerability.nvd_status,
-                "vex_status": br.vulnerability.vex_status,
-                "vex_justification": br.vulnerability.vex_justification,
-                "vex_suppressed": br.risk_score == 0.0 and br.vulnerability.vex_status in {"not_affected", "fixed"},
-                "suppressed": getattr(br, "suppressed", False),
-                "suppression_id": getattr(br, "suppression_id", None),
-                "suppression_state": getattr(br, "suppression_state", None),
-                "suppression_reason": getattr(br, "suppression_reason", None),
-                "unsuppressed_risk_score": getattr(br, "unsuppressed_risk_score", None),
-                "compliance_tags": br.vulnerability.compliance_tags,
-                "package": f"{br.package.name}@{br.package.version}",
-                "ecosystem": br.package.ecosystem,
-                "layer_attribution": [_package_occurrence_to_dict(occ) for occ in br.layer_attribution],
-                "introduced_in_layer": (
-                    _package_occurrence_to_dict(br.package.primary_occurrence) if br.package.primary_occurrence else None
-                ),
-                "package_discovery_provenance": package_discovery_provenance(br.package),
-                "package_version_provenance": package_version_provenance(br.package),
-                "is_malicious": br.package.is_malicious,
-                "malicious_reason": br.package.malicious_reason,
-                "scorecard_score": br.package.scorecard_score,
-                "scorecard_repo": br.package.scorecard_repo,
-                "scorecard_lookup_state": br.package.scorecard_lookup_state,
-                "affected_agents": [a.name for a in br.affected_agents],
-                "affected_servers": [s.name for s in br.affected_servers],
-                "exposed_credentials": br.exposed_credentials,
-                "exposed_tools": [t.name for t in br.exposed_tools],
-                "impact_category": getattr(br, "impact_category", "code-execution"),
-                "cvss_vector": getattr(br.vulnerability, "cvss_vector", None),
-                "attack_vector": getattr(br.vulnerability, "attack_vector", None),
-                "attack_complexity": getattr(br.vulnerability, "attack_complexity", None),
-                "privileges_required": getattr(br.vulnerability, "privileges_required", None),
-                "user_interaction": getattr(br.vulnerability, "user_interaction", None),
-                "network_exploitable": getattr(br.vulnerability, "network_exploitable", False),
-                "triage_priority": fused_triage_priority(
-                    severity=(
-                        br.vulnerability.severity.value if hasattr(br.vulnerability.severity, "value") else str(br.vulnerability.severity)
-                    ),
-                    is_kev=bool(br.vulnerability.is_kev),
-                    epss_score=getattr(br.vulnerability, "epss_score", None),
-                    network_exploitable=bool(getattr(br.vulnerability, "network_exploitable", False)),
-                    impact_category=getattr(br, "impact_category", None),
-                    reachable=getattr(br, "graph_reachable", None),
-                    exposed_credential_count=len(br.exposed_credentials),
-                    exposed_tool_count=len(br.exposed_tools),
-                ),
-                "all_server_credentials": getattr(br, "all_server_credentials", []),
-                "attack_vector_summary": getattr(br, "attack_vector_summary", None),
-                "fixed_version": br.vulnerability.fixed_version,
-                "vendor_severity": getattr(br.vulnerability, "vendor_severity", None),
-                "cvss_severity": getattr(br.vulnerability, "cvss_severity", None),
-                "ai_risk_context": br.ai_risk_context,
-                "ai_summary": br.ai_summary,
-                "hop_depth": getattr(br, "hop_depth", 1),
-                "delegation_chain": getattr(br, "delegation_chain", []),
-                "transitive_agents": getattr(br, "transitive_agents", []),
-                "transitive_credentials": getattr(br, "transitive_credentials", []),
-                "transitive_risk_score": getattr(br, "transitive_risk_score", 0.0),
-                # Graph-walk reachability stamped by
-                # `agent_bom.graph.blast_reach.apply_dependency_reachability_to_blast_radii`
-                # in both the API pipeline and the CLI scan path. ``None`` =
-                # engine did not run for this scan.
-                "graph_reachable": getattr(br, "graph_reachable", None),
-                "graph_min_hop_distance": getattr(br, "graph_min_hop_distance", None),
-                "graph_reachable_from_agents": getattr(br, "graph_reachable_from_agents", []),
-                # Function-level symbol reachability stamped by
-                # `agent_bom.graph.blast_reach.apply_symbol_reachability_to_blast_radii`
-                # when AST symbol-reach evidence exists. ``None`` = join did not run.
-                "symbol_reachability": getattr(br, "symbol_reachability", None),
-                "reachable_affected_symbols": getattr(br, "reachable_affected_symbols", []),
-            }
-            for rank, br in enumerate(report.blast_radii, start=1)
+            _blast_radius_json_entry(br, finding, rank, exposure_paths[rank - 1])
+            for rank, (finding, br) in enumerate(cve_pairs, start=1)
         ],
         "exposure_paths": {
             "schema_version": "1",

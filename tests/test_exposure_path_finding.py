@@ -105,3 +105,34 @@ def test_json_and_sarif_exposure_paths_use_finding_native_projection() -> None:
     assert json_path["label"] == sarif_path["label"] == "lodash@4.17.20 -> CVE-2024-0001"
     assert json_path["affectedAgents"] == sarif_path["affectedAgents"] == ["prod-agent"]
     assert json_path["reachableTools"] == sarif_path["reachableTools"] == ["deploy"]
+
+
+def test_html_vuln_and_blast_tables_render_from_finding_stream() -> None:
+    from agent_bom.output.html import to_html
+
+    tool = MCPTool(name="deploy", description="Deploy workloads")
+    server = _server(tools=[tool])
+    agent = _agent(servers=[server])
+    br = _blast_radius()
+    br.affected_servers = [server]
+    br.exposed_tools = [tool]
+    br.exposed_credentials = ["AWS_SECRET_ACCESS_KEY"]
+    br.risk_score = 9.4
+    br.ai_risk_context = "High-impact agent path."
+
+    from agent_bom.models import AIBOMReport
+
+    report = AIBOMReport(
+        agents=[agent],
+        blast_radii=[br],
+        tool_version="0.91.0",
+    )
+
+    html = to_html(report, [br])
+
+    assert 'id="vulnTable"' in html
+    assert "CVE-2024-0001" in html
+    assert "lodash" in html
+    assert 'id="blast"' in html
+    assert "9.4" in html
+    assert "badge-ai" in html

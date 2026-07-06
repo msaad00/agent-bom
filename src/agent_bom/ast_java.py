@@ -1,4 +1,10 @@
-"""Java analyzer helpers for MCP symbol-level reachability."""
+"""Java analyzer helpers for MCP symbol-level reachability.
+
+Regex-backed and conservative: Maven coordinates must be declared in ``pom.xml``
+before import/local-variable bindings are trusted. Heuristic group:artifact
+invention and unresolved MCP tool handlers are dropped so headless agents do
+not inherit false ``function_reachable`` upgrades at CVE join time.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +24,7 @@ from agent_bom.ast_models import (
     _JavaMethodAnalysis,
     _JavaToolRegistration,
 )
+from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_verified_maven_coord
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -129,21 +136,21 @@ def _java_local_bindings(body: str, import_bindings: Mapping[str, str]) -> dict[
 
 
 def _maven_coord_from_import(import_path: str, maven_map: Mapping[str, str]) -> str | None:
+    if not maven_map:
+        return None
     if import_path in maven_map:
-        return maven_map[import_path]
+        coord = maven_map[import_path]
+        return coord if is_verified_maven_coord(coord, dict(maven_map)) else None
     parts = import_path.split(".")
     if len(parts) < 2:
         return None
     simple = parts[-1]
     prefix = ".".join(parts[:-1])
-    if prefix in maven_map:
-        return maven_map[prefix]
-    if simple in maven_map:
-        return maven_map[simple]
-    # group:artifact heuristic — last package segment as artifactId
-    group = prefix
-    artifact = parts[-2] if len(parts) >= 2 else simple
-    return f"{group}:{artifact}"
+    for candidate in (prefix, simple, f"{prefix}.{simple}"):
+        coord = maven_map.get(candidate)
+        if coord and is_verified_maven_coord(coord, dict(maven_map)):
+            return coord
+    return None
 
 
 def _java_import_bindings(source: str, maven_map: Mapping[str, str]) -> dict[str, str]:
@@ -165,6 +172,8 @@ def _java_call_sites(body: str, *, line_offset: int) -> list[_JavaCallSite]:
     sites: list[_JavaCallSite] = []
     for match in _JAVA_CALL_RE.finditer(body):
         name = match.group("name")
+        if "." not in name:
+            continue
         head = name.split(".", 1)[0]
         if head in _JAVA_CALL_SKIP:
             continue
@@ -238,7 +247,7 @@ def _collect_java_tool_registrations(
         if key in seen:
             continue
         seen.add(key)
-        handler_name = f"tool:{tool_name}"
+        handler_name: str | None = None
         args_start = source.find("(", match.start())
         args_segment = _balanced_segment(source, args_start, open_char="(", close_char=")") if args_start >= 0 else None
         if args_segment is not None:
@@ -246,6 +255,8 @@ def _collect_java_tool_registrations(
             ref_match = re.search(r"::\s*(?P<method>[a-z]\w*)", args_text)
             if ref_match:
                 handler_name = _java_method_key(class_name, ref_match.group("method"))
+        if handler_name is None or handler_name not in methods:
+            continue
         registrations.append(
             _JavaToolRegistration(
                 tool_name=tool_name,
@@ -305,19 +316,16 @@ def _resolve_java_external_dependency_symbol(
     method: _JavaMethodAnalysis,
     call_name: str,
 ) -> tuple[str, str, str] | None:
-    if not call_name:
-        return None
-    if "." not in call_name:
+    """Resolve an external import call to ``(package, module, symbol)``."""
+    if not call_name or "." not in call_name:
         return None
     head, tail = call_name.split(".", 1)
     coord = method.import_bindings.get(head)
     if coord:
         symbol = tail.split(".", 1)[0]
+        if not is_actionable_dependency_symbol(symbol):
+            return None
         return coord, coord, symbol
-    for import_path, maven_coord in method.import_bindings.items():
-        if call_name.startswith(import_path + "."):
-            symbol = call_name[len(import_path) + 1 :].split(".", 1)[0]
-            return maven_coord, maven_coord, symbol
     return None
 
 
@@ -355,13 +363,6 @@ def build_java_dependency_symbol_reach(
 
     for registration in tool_registrations:
         handler_key = registration.handler_name
-        if handler_key not in methods and not handler_key.startswith("tool:"):
-            continue
-        if handler_key not in methods:
-            handler_key = next(
-                (key for key, method in methods.items() if method.name == registration.tool_name),
-                handler_key,
-            )
         if handler_key not in methods:
             continue
         queue: list[tuple[str, list[str]]] = [(handler_key, [handler_key])]

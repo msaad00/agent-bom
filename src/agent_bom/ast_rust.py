@@ -1,4 +1,10 @@
-"""Rust analyzer helpers for MCP symbol-level reachability."""
+"""Rust analyzer helpers for MCP symbol-level reachability.
+
+Regex-backed and conservative: only ``use``-proven crate aliases become
+``dependency_symbol_reach`` rows. Unresolved MCP tool handlers and std/internal
+crates are skipped so headless agents do not inherit false ``function_reachable``
+upgrades at CVE join time.
+"""
 
 from __future__ import annotations
 
@@ -18,13 +24,13 @@ from agent_bom.ast_models import (
     _RustFunctionAnalysis,
     _RustToolRegistration,
 )
+from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_external_rust_crate
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 _MAX_FILE_SIZE = 512 * 1024
 _RUST_USE_STMT_RE = re.compile(r"^\s*use\s+(?P<stmt>[^;]+);", re.MULTILINE)
-_RUST_USE_ITEM_RE = re.compile(r"(?:(?P<alias>\w+)\s+as\s+)?(?P<path>[\w:]+(?:::\{[^}]+\})?)")
 _RUST_FN_RE = re.compile(r"(?:pub\s+)?(?:async\s+)?fn\s+(?P<name>\w+)\s*\(")
 _RUST_CALL_RE = re.compile(r"\b(?P<name>\w+(?:::\w+)+|\w+\.\w+)\s*\(")
 _RUST_CALL_SKIP = frozenset({"if", "for", "while", "match", "loop", "return", "let", "fn", "pub", "async", "move"})
@@ -107,10 +113,12 @@ def _rust_use_bindings(source: str) -> dict[str, str]:
     return bindings
 
 
-def _rust_call_sites(body: str, *, line_offset: int, bindings: dict[str, str]) -> list[_RustCallSite]:
+def _rust_call_sites(body: str, *, line_offset: int) -> list[_RustCallSite]:
     sites: list[_RustCallSite] = []
     for match in _RUST_CALL_RE.finditer(body):
         name = match.group("name")
+        if "." not in name and "::" not in name:
+            continue
         head = name.split(".", 1)[0].split("::", 1)[0]
         if head in _RUST_CALL_SKIP:
             continue
@@ -149,7 +157,7 @@ def _collect_rust_functions(
         if body_segment is not None:
             body_text, _ = body_segment
             body_line_offset = _line_number_from_index(source, brace_index) - 1
-            call_sites = _rust_call_sites(body_text, line_offset=body_line_offset, bindings=bindings)
+            call_sites = _rust_call_sites(body_text, line_offset=body_line_offset)
         functions[_rust_function_key(module_name, name)] = _RustFunctionAnalysis(
             name=name,
             line_number=_line_number_from_index(source, match.start()),
@@ -176,6 +184,19 @@ def _collect_rust_tool_registrations(
         tool_name = match.group("name").strip()
         if not tool_name:
             continue
+        handler_key: str | None = None
+        args_start = source.find("(", match.start())
+        args_segment = _balanced_segment(source, args_start, open_char="(", close_char=")") if args_start >= 0 else None
+        if args_segment is not None:
+            args_text, _ = args_segment
+            args = [part.strip() for part in args_text[1:-1].split(",") if part.strip()]
+            for candidate in reversed(args[1:]):
+                bare = candidate.strip().lstrip("&").split("::", 1)[-1]
+                if re.fullmatch(r"[a-z]\w*", bare):
+                    handler_key = _rust_function_key(module_name, bare)
+                    break
+        if handler_key is None or handler_key not in functions:
+            continue
         key = (tool_name, match.start())
         if key in seen:
             continue
@@ -183,7 +204,7 @@ def _collect_rust_tool_registrations(
         registrations.append(
             _RustToolRegistration(
                 tool_name=tool_name,
-                handler_name=f"tool:{tool_name}",
+                handler_name=handler_key,
                 line_number=_line_number_from_index(source, match.start()),
                 file_path=rel_path,
                 module_name=module_name,
@@ -195,6 +216,19 @@ def _collect_rust_tool_registrations(
         tool_name = match.group("name").strip()
         if not tool_name:
             continue
+        handler_key = None
+        args_start = source.find("(", match.start())
+        args_segment = _balanced_segment(source, args_start, open_char="(", close_char=")") if args_start >= 0 else None
+        if args_segment is not None:
+            args_text, _ = args_segment
+            args = [part.strip() for part in args_text[1:-1].split(",") if part.strip()]
+            for candidate in reversed(args[1:]):
+                bare = candidate.strip().lstrip("&").split("::", 1)[-1]
+                if re.fullmatch(r"[a-z]\w*", bare):
+                    handler_key = _rust_function_key(module_name, bare)
+                    break
+        if handler_key is None or handler_key not in functions:
+            continue
         key = (tool_name, match.start())
         if key in seen:
             continue
@@ -202,7 +236,7 @@ def _collect_rust_tool_registrations(
         registrations.append(
             _RustToolRegistration(
                 tool_name=tool_name,
-                handler_name=f"tool:{tool_name}",
+                handler_name=handler_key,
                 line_number=_line_number_from_index(source, match.start()),
                 file_path=rel_path,
                 module_name=module_name,
@@ -260,23 +294,26 @@ def _resolve_rust_external_dependency_symbol(
     function: _RustFunctionAnalysis,
     call_name: str,
 ) -> tuple[str, str, str] | None:
-    if not call_name:
+    """Resolve an external import call to ``(package, module, symbol)``."""
+    if not call_name or ("." not in call_name and "::" not in call_name):
         return None
     if "::" in call_name:
         head, tail = call_name.split("::", 1)
-        crate = function.crate_bindings.get(head, head if head not in function.crate_bindings.values() else head)
-        if head in function.crate_bindings:
-            crate = function.crate_bindings[head]
-            symbol = tail.split("::", 1)[0]
-            return crate, crate, symbol
-        if head in function.crate_bindings.values():
-            return head, head, tail.split("::", 1)[0]
-    if "." in call_name:
-        head, tail = call_name.split(".", 1)
         crate = function.crate_bindings.get(head)
-        if crate:
-            return crate, crate, tail.split("::", 1)[0]
-    return None
+        if crate is None or not is_external_rust_crate(crate):
+            return None
+        symbol = tail.split("::", 1)[0]
+        if not is_actionable_dependency_symbol(symbol):
+            return None
+        return crate, crate, symbol
+    head, tail = call_name.split(".", 1)
+    crate = function.crate_bindings.get(head)
+    if crate is None or not is_external_rust_crate(crate):
+        return None
+    symbol = tail.split(".", 1)[0]
+    if not is_actionable_dependency_symbol(symbol):
+        return None
+    return crate, crate, symbol
 
 
 def build_rust_dependency_symbol_reach(
@@ -313,13 +350,6 @@ def build_rust_dependency_symbol_reach(
 
     for registration in tool_registrations:
         handler_key = registration.handler_name
-        if handler_key not in functions and not handler_key.startswith("tool:"):
-            continue
-        if handler_key not in functions:
-            handler_key = next(
-                (key for key, fn in functions.items() if fn.name == registration.tool_name),
-                handler_key,
-            )
         if handler_key not in functions:
             continue
         queue: list[tuple[str, list[str]]] = [(handler_key, [handler_key])]

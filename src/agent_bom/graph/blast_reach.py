@@ -95,12 +95,11 @@ def apply_symbol_reachability_to_blast_radii(
 ) -> int:
     """Join CVE affected-symbols to AST symbol reach on each BlastRadius row.
 
-    Thin additive surfacing of :mod:`agent_bom.reachability_cve`. For Python and
-    npm findings it stamps ``symbol_reachability`` (function_reachable /
-    package_reachable / unreachable) and, when a match is found,
-    ``reachable_affected_symbols``. Java (Maven) and Rust (Cargo) rows are
-    stamped when AST symbol reach is available. Other ecosystems are left
-    untouched until their call-graph symbol reach is implemented.
+    Thin additive surfacing of :mod:`agent_bom.reachability_cve`. For Python, npm,
+    Go, Maven, and Cargo findings it stamps ``symbol_reachability``
+    (function_reachable / package_reachable / unreachable) when AST evidence
+    passes conservative import-proof guards. Rust/Java parsers are regex-backed:
+    they never invent Maven coordinates or walk unresolved MCP tool handlers.
 
     The graph-walk reach already on the row (``graph_reachable``) is fed in as
     the import / dependency-closure fallback so a package that is reached but

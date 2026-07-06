@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   graphRollupEligible,
   parseGraphRollupUrlPreference,
+  parseRollupNodeParam,
   rollupViewHasContainers,
 } from "@/lib/graph-rollup-default";
 
@@ -15,6 +16,12 @@ describe("parseGraphRollupUrlPreference", () => {
     expect(parseGraphRollupUrlPreference(new URLSearchParams("rollup=0"))).toBe(
       "off",
     );
+  });
+
+  it("parses rollup_node drill param", () => {
+    expect(
+      parseRollupNodeParam(new URLSearchParams("rollup_node=account%3Aprod")),
+    ).toBe("account:prod");
   });
 });
 

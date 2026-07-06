@@ -657,6 +657,30 @@ def test_analyze_project_surfaces_swift_dependency_symbol_reach(tmp_path: Path) 
     assert reach.package == "alamofire"
 
 
+def test_analyze_project_swift_bare_helper_call_chain(tmp_path: Path) -> None:
+    (tmp_path / "Package.resolved").write_text(
+        '{"pins": [{"identity": "alamofire", "state": {"version": "5.9.0"}}], "version": 2}',
+        encoding="utf-8",
+    )
+    (tmp_path / "Server.swift").write_text(
+        'import Alamofire\n\n'
+        "func register(server: MCPServer) {\n"
+        '    server.tool("fetch_url", handler)\n'
+        "}\n\n"
+        "func handler(_ url: String) {\n"
+        "    helper(url)\n"
+        "}\n\n"
+        "func helper(_ url: String) {\n"
+        "    Alamofire.request(url)\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = analyze_project(tmp_path)
+    swift_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "swift"]
+    assert any(reach.symbol == "request" and reach.entrypoint == "fetch_url" for reach in swift_reaches)
+
+
 def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

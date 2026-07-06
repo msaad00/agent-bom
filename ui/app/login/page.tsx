@@ -6,16 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { LoginPanel } from "@/components/login-panel";
 import { useAuthState } from "@/components/auth-provider";
-
-function safeReturnPath(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/";
-  }
-  if (value.startsWith("/login")) {
-    return "/";
-  }
-  return value;
-}
+import { safeReturnPath } from "@/lib/safe-return-path";
 
 function LoginPageContent() {
   const router = useRouter();

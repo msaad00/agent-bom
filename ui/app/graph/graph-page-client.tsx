@@ -108,6 +108,7 @@ import { decideGraphRenderer } from "@/lib/graph-renderer-switch";
 import {
   graphRollupEligible,
   parseGraphRollupUrlPreference,
+  parseRollupNodeParam,
   rollupViewHasContainers,
 } from "@/lib/graph-rollup-default";
 import {
@@ -666,7 +667,11 @@ function GraphPageInner() {
   const [loadingBlast, setLoadingBlast] = useState(false);
   const [blastError, setBlastError] = useState<string | null>(null);
   const [rollupView, setRollupView] = useState<GraphRollupResponse | null>(null);
-  const [rollupStack, setRollupStack] = useState<RollupBreadcrumb[]>([]);
+  const [rollupStack, setRollupStack] = useState<RollupBreadcrumb[]>(() => {
+    if (typeof window === "undefined") return [];
+    const nodeId = parseRollupNodeParam(new URLSearchParams(window.location.search));
+    return nodeId ? [{ id: nodeId, label: nodeId }] : [];
+  });
   const [rollupDismissed, setRollupDismissed] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -1119,8 +1124,18 @@ function GraphPageInner() {
     }
     if (rollupDismissed) {
       nextParams.set("rollup", "0");
-    } else if (rollupPreferenceRef.current === "force") {
+      nextParams.delete("rollup_node");
+    } else if (rollupNavigationActive || rollupPreferenceRef.current === "force") {
       nextParams.set("rollup", "1");
+      const drillNode = rollupStack.at(-1)?.id;
+      if (drillNode) {
+        nextParams.set("rollup_node", drillNode);
+      } else {
+        nextParams.delete("rollup_node");
+      }
+    } else {
+      nextParams.delete("rollup");
+      nextParams.delete("rollup_node");
     }
     const next = nextParams.toString();
     const url = next ? `${pathname}?${next}` : pathname;
@@ -1143,6 +1158,8 @@ function GraphPageInner() {
     investigationMode,
     pathname,
     rollupDismissed,
+    rollupNavigationActive,
+    rollupStack,
     router,
     selectedScanId,
   ]);

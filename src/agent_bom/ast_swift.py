@@ -34,6 +34,31 @@ _SWIFT_IMPORT_RE = re.compile(r"^\s*import\s+(?P<module>\w+)", re.MULTILINE)
 _SWIFT_FUNC_RE = re.compile(r"^\s*func\s+(?P<name>\w+)\s*\(", re.MULTILINE)
 _SWIFT_MODULE_CALL_RE = re.compile(r"\b(?P<module>\w+)\.(?P<method>\w+)\s*\(")
 _SWIFT_DOT_CALL_RE = re.compile(r"(?P<receiver>\w+)\.(?P<method>\w+)\s*\(")
+_SWIFT_BARE_CALL_RE = re.compile(r"(?<![.\w\"])\b(?P<name>\w+)\s*\(")
+_SWIFT_CALL_KEYWORDS = frozenset(
+    {
+        "if",
+        "for",
+        "while",
+        "switch",
+        "return",
+        "guard",
+        "catch",
+        "func",
+        "init",
+        "let",
+        "var",
+        "try",
+        "throw",
+        "await",
+        "async",
+        "in",
+        "where",
+        "case",
+        "server",
+        "tool",
+    },
+)
 _SWIFT_TOOL_RE = re.compile(
     r'\.(?:tool|registerTool|addTool)\s*\(\s*"(?P<name>[^"]+)"',
     re.IGNORECASE,
@@ -118,6 +143,16 @@ def _swift_call_sites(body: str, *, line_offset: int) -> list[_SwiftCallSite]:
         sites.append(
             _SwiftCallSite(
                 name=f"{match.group('receiver')}.{match.group('method')}",
+                line_number=line_offset + body[: match.start()].count("\n") + 1,
+            ),
+        )
+    for match in _SWIFT_BARE_CALL_RE.finditer(body):
+        name = match.group("name")
+        if name in _SWIFT_CALL_KEYWORDS:
+            continue
+        sites.append(
+            _SwiftCallSite(
+                name=name,
                 line_number=line_offset + body[: match.start()].count("\n") + 1,
             ),
         )

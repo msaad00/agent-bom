@@ -5,8 +5,8 @@ It is organized around product phases, not a loose feature wish list.
 
 For the full backlog, see [open issues](https://github.com/msaad00/agent-bom/issues).
 
-For the validated quick-wins queue (SARIF ingest, VEX formats, verified MCP badge, shadow
-discovery, fix-PR, runtime conditions, docs), see [ROADMAP_QUICK_WINS.md](../ROADMAP_QUICK_WINS.md).
+For the internal operator quick-wins queue (not on the public docs site), see
+[ROADMAP_QUICK_WINS.md](ROADMAP_QUICK_WINS.md).
 
 ---
 

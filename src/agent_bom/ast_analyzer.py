@@ -13,6 +13,8 @@ Extends the regex-based scanner with semantic analysis:
 Python files use full AST parsing. JS/TS files contribute prompt/tool/guardrail
 signals plus parser-backed import, handler, and call-chain extraction so
 non-Python agent projects participate in the same inventory and flow model.
+Go, Rust, and Java sources also contribute MCP tool entrypoints and
+dependency-symbol reach for Cargo/Maven CVE join.
 
 Compliance mapping:
 - OWASP LLM01 (Prompt Injection) — prompt inventory and risk review signals
@@ -31,10 +33,22 @@ if TYPE_CHECKING:
 from agent_bom.ast_go import _go_function_key, build_go_dependency_symbol_reach
 from agent_bom.ast_go import build_go_flow_findings as _build_go_flow_findings
 from agent_bom.ast_go import scan_go_file as _scan_go_file
+from agent_bom.ast_java import _java_method_key, _load_maven_dependency_map, build_java_dependency_symbol_reach
+from agent_bom.ast_java import scan_java_file as _scan_java_file
 from agent_bom.ast_js_ts import _JS_TS_EXTS, _js_ts_function_key, build_js_ts_dependency_symbol_reach
 from agent_bom.ast_js_ts import build_js_ts_flow_findings as _build_js_ts_flow_findings
 from agent_bom.ast_js_ts import scan_js_ts_file as _scan_js_ts_file
-from agent_bom.ast_models import ASTAnalysisResult, CallEdge, _FunctionAnalysis, _GoFunctionAnalysis, _GoToolRegistration
+from agent_bom.ast_models import (
+    ASTAnalysisResult,
+    CallEdge,
+    _FunctionAnalysis,
+    _GoFunctionAnalysis,
+    _GoToolRegistration,
+    _JavaMethodAnalysis,
+    _JavaToolRegistration,
+    _RustFunctionAnalysis,
+    _RustToolRegistration,
+)
 from agent_bom.ast_python_analysis import (
     _MAX_FILES,
     _SKIP_DIRS,
@@ -47,6 +61,8 @@ from agent_bom.ast_python_analysis import (
 from agent_bom.ast_python_analysis import (
     _max_taint_depth as _python_max_taint_depth,
 )
+from agent_bom.ast_rust import _rust_function_key, build_rust_dependency_symbol_reach
+from agent_bom.ast_rust import scan_rust_file as _scan_rust_file
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
@@ -101,15 +117,39 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
             continue
         go_files.append(f)
 
+    rust_files = []
+    for f in sorted(project.rglob("*.rs")):
+        if any(part in _SKIP_DIRS for part in f.parts):
+            continue
+        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
+            continue
+        rust_files.append(f)
+
+    java_files = []
+    for f in sorted(project.rglob("*.java")):
+        if any(part in _SKIP_DIRS for part in f.parts):
+            continue
+        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
+            continue
+        java_files.append(f)
+
     py_files = py_files[:_MAX_FILES]
     js_ts_files = js_ts_files[: max(0, _MAX_FILES - len(py_files))]
     go_files = go_files[: max(0, _MAX_FILES - len(py_files) - len(js_ts_files))]
-    result.files_analyzed = len(py_files) + len(js_ts_files) + len(go_files)
+    remaining = max(0, _MAX_FILES - len(py_files) - len(js_ts_files) - len(go_files))
+    rust_files = rust_files[: remaining]
+    java_files = java_files[: max(0, remaining - len(rust_files))]
+    result.files_analyzed = len(py_files) + len(js_ts_files) + len(go_files) + len(rust_files) + len(java_files)
     function_analyses: list[_FunctionAnalysis] = []
     js_ts_functions: dict[str, JSTSFunction] = {}
     js_ts_tool_registrations: list[JSTSToolRegistration] = []
     go_functions: dict[str, _GoFunctionAnalysis] = {}
     go_tool_registrations: list[_GoToolRegistration] = []
+    rust_functions: dict[str, _RustFunctionAnalysis] = {}
+    rust_tool_registrations: list[_RustToolRegistration] = []
+    java_methods: dict[str, _JavaMethodAnalysis] = {}
+    java_tool_registrations: list[_JavaToolRegistration] = []
+    maven_dependency_map = _load_maven_dependency_map(project)
 
     for py_file in py_files:
         rel = str(py_file.relative_to(project))
@@ -155,6 +195,38 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
                 go_functions[_go_function_key(go_function.scope_name, go_function.name)] = go_function
             go_tool_registrations.extend(go_analysis.tool_registrations)
 
+    for rust_file in rust_files:
+        rel = str(rust_file.relative_to(project))
+        prompts, guardrails, tools, flow_findings, frameworks, rust_call_edges, rust_analysis = _scan_rust_file(rust_file, rel)
+        result.prompts.extend(prompts)
+        result.guardrails.extend(guardrails)
+        result.tools.extend(tools)
+        result.flow_findings.extend(flow_findings)
+        result.frameworks_detected.extend(frameworks)
+        result.call_edges.extend(rust_call_edges)
+        if rust_analysis is not None:
+            for rust_function in rust_analysis.functions.values():
+                rust_functions[_rust_function_key(rust_function.module_name, rust_function.name)] = rust_function
+            rust_tool_registrations.extend(rust_analysis.tool_registrations)
+
+    for java_file in java_files:
+        rel = str(java_file.relative_to(project))
+        prompts, guardrails, tools, flow_findings, frameworks, java_call_edges, java_analysis = _scan_java_file(
+            java_file,
+            rel,
+            maven_map=maven_dependency_map,
+        )
+        result.prompts.extend(prompts)
+        result.guardrails.extend(guardrails)
+        result.tools.extend(tools)
+        result.flow_findings.extend(flow_findings)
+        result.frameworks_detected.extend(frameworks)
+        result.call_edges.extend(java_call_edges)
+        if java_analysis is not None:
+            for java_method in java_analysis.functions.values():
+                java_methods[_java_method_key(java_method.class_name, java_method.name)] = java_method
+            java_tool_registrations.extend(java_analysis.tool_registrations)
+
     python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
     result.call_edges.extend(python_call_edges)
     result.flow_findings.extend(interprocedural_findings)
@@ -183,6 +255,20 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         build_go_dependency_symbol_reach(
             functions=go_functions,
             tool_registrations=go_tool_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    result.dependency_symbol_reach.extend(
+        build_rust_dependency_symbol_reach(
+            functions=rust_functions,
+            tool_registrations=rust_tool_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    result.dependency_symbol_reach.extend(
+        build_java_dependency_symbol_reach(
+            methods=java_methods,
+            tool_registrations=java_tool_registrations,
             max_depth=_python_max_taint_depth(),
         )
     )

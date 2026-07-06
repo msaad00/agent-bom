@@ -522,6 +522,43 @@ def test_analyze_project_surfaces_java_dependency_symbol_reach(tmp_path: Path) -
     assert reach.package == "com.squareup.okhttp3:okhttp"
 
 
+def test_analyze_project_surfaces_csharp_dependency_symbol_reach(tmp_path: Path) -> None:
+    import json
+
+    lock = {
+        "version": 1,
+        "dependencies": {
+            "net8.0": {
+                "RestSharp": {
+                    "type": "Direct",
+                    "requested": "[112.0.0, )",
+                    "resolved": "112.1.0",
+                }
+            }
+        },
+    }
+    (tmp_path / "packages.lock.json").write_text(json.dumps(lock))
+    (tmp_path / "Server.cs").write_text(
+        "using RestSharp;\n\n"
+        "class Server {\n"
+        "    void Register(dynamic server) {\n"
+        '        server.AddTool("fetch_url", FetchUrl);\n'
+        "    }\n\n"
+        "    void FetchUrl(string url) {\n"
+        "        RestSharp.RestClient client = new RestSharp.RestClient();\n"
+        "        client.ExecuteAsync(new RestRequest(url));\n"
+        "    }\n"
+        "}\n"
+    )
+
+    result = analyze_project(tmp_path)
+    nuget_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "nuget"]
+    assert nuget_reaches
+    reach = next(item for item in nuget_reaches if item.symbol == "ExecuteAsync")
+    assert reach.entrypoint == "fetch_url"
+    assert reach.package == "RestSharp"
+
+
 def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

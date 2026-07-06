@@ -404,6 +404,25 @@ def test_wiring_stamps_maven_row() -> None:
     assert br.reachable_affected_symbols == ["newCall"]
 
 
+def test_wiring_stamps_nuget_row() -> None:
+    br = _python_br(["ExecuteAsync"], pkg_name="RestSharp")
+    br.package.ecosystem = "nuget"
+    nuget_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="RestSharp",
+        module="RestSharp",
+        symbol="ExecuteAsync",
+        file_path="Server.cs",
+        line_number=10,
+        call_path=["fetch_url", "FetchUrl", "RestSharp.ExecuteAsync"],
+        ecosystem="nuget",
+    )
+    stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[nuget_reach]))
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.reachable_affected_symbols == ["ExecuteAsync"]
+
+
 def test_wiring_stamps_cargo_row() -> None:
     br = _python_br(["get"], pkg_name="reqwest")
     br.package.ecosystem = "cargo"

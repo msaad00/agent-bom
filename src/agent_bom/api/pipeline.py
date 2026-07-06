@@ -541,6 +541,50 @@ def _optional_str(value: object) -> str:
 # ─── Scan Pipeline Runner ───────────────────────────────────────────────────
 
 
+def _project_paths_for_symbol_reach(req: Any) -> list[str]:
+    """Collect scan-target paths that may contain Python source for symbol reach."""
+    paths: list[str] = []
+    seen: set[str] = set()
+    for raw in (
+        list(getattr(req, "agent_projects", []) or [])
+        + list(getattr(req, "filesystem_paths", []) or [])
+        + list(getattr(req, "jupyter_dirs", []) or [])
+        + ([req.gha_path] if getattr(req, "gha_path", None) else [])
+    ):
+        if raw and raw not in seen:
+            seen.add(raw)
+            paths.append(raw)
+    return paths
+
+
+def _ast_result_for_symbol_reach(paths: Iterable[str]) -> Any | None:
+    """Best-effort AST symbol-reach for API pipeline parity with CLI --project."""
+    from pathlib import Path
+
+    from agent_bom.ast_analyzer import analyze_project
+    from agent_bom.ast_models import ASTAnalysisResult
+
+    merged: ASTAnalysisResult | None = None
+    for raw in paths:
+        project = Path(raw)
+        try:
+            if not list(project.rglob("*.py"))[:1]:
+                continue
+        except OSError as path_exc:
+            _logger.debug("AST symbol-reach path skipped for %s: %s", raw, sanitize_error(path_exc))
+            continue
+        try:
+            result = analyze_project(project)
+        except Exception as ast_exc:  # noqa: BLE001
+            _logger.debug("AST symbol-reach analysis skipped for %s: %s", raw, sanitize_error(ast_exc))
+            continue
+        if merged is None:
+            merged = result
+        elif result.dependency_symbol_reach:
+            merged.dependency_symbol_reach.extend(result.dependency_symbol_reach)
+    return merged
+
+
 def _run_scan_sync(job: ScanJob) -> None:
     """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
     lock = _job_lock(job.job_id)
@@ -938,12 +982,21 @@ def _run_scan_sync(job: ScanJob) -> None:
         try:
             from agent_bom.graph.blast_reach import (
                 apply_dependency_reachability_to_blast_radii,
+                apply_symbol_reachability_to_blast_radii,
             )
 
             stamped = apply_dependency_reachability_to_blast_radii(blast_radii, agents, rescore=True)
             if stamped:
                 with lock:
                     job.progress.append(f"Reachability: stamped {stamped} blast-radius row(s) with graph-walk evidence")
+            _ast_for_reach = _ast_result_for_symbol_reach(_project_paths_for_symbol_reach(req))
+            if _ast_for_reach is not None:
+                sym_stamped = apply_symbol_reachability_to_blast_radii(blast_radii, _ast_for_reach)
+                if sym_stamped:
+                    with lock:
+                        job.progress.append(
+                            f"Symbol reachability: stamped {sym_stamped} blast-radius row(s) with function-level evidence"
+                        )
         except Exception as reach_exc:  # noqa: BLE001
             _logger.warning("Reachability surfacing skipped: %s", sanitize_error(reach_exc))
         pipeline.complete_step("analysis", f"Computed {len(blast_radii)} blast radius entries", {"blast_radius": len(blast_radii)})

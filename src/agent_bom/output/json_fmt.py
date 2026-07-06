@@ -1165,6 +1165,11 @@ def to_json(report: AIBOMReport) -> dict:
                 "graph_reachable": getattr(br, "graph_reachable", None),
                 "graph_min_hop_distance": getattr(br, "graph_min_hop_distance", None),
                 "graph_reachable_from_agents": getattr(br, "graph_reachable_from_agents", []),
+                # Function-level symbol reachability stamped by
+                # `agent_bom.graph.blast_reach.apply_symbol_reachability_to_blast_radii`
+                # when AST symbol-reach evidence exists. ``None`` = join did not run.
+                "symbol_reachability": getattr(br, "symbol_reachability", None),
+                "reachable_affected_symbols": getattr(br, "reachable_affected_symbols", []),
             }
             for rank, br in enumerate(report.blast_radii, start=1)
         ],

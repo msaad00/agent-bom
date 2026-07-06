@@ -123,6 +123,23 @@ if [ "$SKIP_UI" != "1" ] && [ -d "$ROOT/ui" ]; then
   fi
 fi
 
+if [ "${AGENT_BOM_RELEASE_SMOKE_FINDINGS_BENCH:-0}" = "1" ]; then
+  bold "Findings read bench (hub limit=1)"
+  if command -v uv >/dev/null 2>&1; then
+    bench_db="$tmp/findings-bench.db"
+    uv run python scripts/bench_findings_read.py \
+      --mode api \
+      --sqlite-db "$bench_db" \
+      --count 10000 \
+      --limit 1 \
+      --p50-threshold-ms 500 \
+      || fail "findings read bench failed"
+    ok "findings read bench passed (10k rows, limit=1)"
+  else
+    fail "uv required for findings read bench"
+  fi
+fi
+
 bold "release smoke passed"
 echo "  version: ${version}"
 echo "  findings: ${vulns}"

@@ -1334,6 +1334,98 @@ def _finding_sort_key(row: dict[str, Any], sort: str) -> tuple[float, float, flo
     return (-primary, -cvss, -float(sev_rank))
 
 
+_BULK_MERGE_CHUNK = 256
+
+
+def _merged_scan_bulk_page(
+    scan_findings: list[dict[str, Any]],
+    *,
+    bulk_list: Any,
+    tenant_id: str,
+    sort_key: str,
+    severity: str | None,
+    scan_id: str | None,
+    offset: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Merge pre-sorted scan findings with bulk hub pages without O(table) work.
+
+  Streams two sorted sources with a two-pointer walk so deep ``offset`` does
+  not require loading ``offset + limit`` bulk rows up front or re-sorting the
+  full combined window in memory.
+    """
+    scan_i = 0
+    bulk_remote_offset = 0
+    bulk_buf: list[dict[str, Any]] = []
+    bulk_i = 0
+
+    def _refill_bulk() -> bool:
+        nonlocal bulk_buf, bulk_i, bulk_remote_offset
+        bulk_result = bulk_list(
+            tenant_id,
+            limit=_BULK_MERGE_CHUNK,
+            offset=bulk_remote_offset,
+            sort=sort_key,
+            severity=severity,
+            scan_id=scan_id,
+            origin="bulk_ingest",
+            include_total=False,
+        )
+        bulk_buf = bulk_result[0]
+        bulk_remote_offset += len(bulk_buf)
+        bulk_i = 0
+        return bool(bulk_buf)
+
+    def bulk_head() -> dict[str, Any] | None:
+        if bulk_i >= len(bulk_buf) and not _refill_bulk():
+            return None
+        return bulk_buf[bulk_i]
+
+    def scan_head() -> dict[str, Any] | None:
+        if scan_i >= len(scan_findings):
+            return None
+        return scan_findings[scan_i]
+
+    def take_scan() -> dict[str, Any]:
+        nonlocal scan_i
+        row = scan_findings[scan_i]
+        scan_i += 1
+        return row
+
+    def take_bulk() -> dict[str, Any]:
+        nonlocal bulk_i
+        row = bulk_buf[bulk_i]
+        bulk_i += 1
+        return row
+
+    def pick_next() -> dict[str, Any] | None:
+        scan_row = scan_head()
+        bulk_row = bulk_head()
+        if scan_row is None and bulk_row is None:
+            return None
+        if bulk_row is None:
+            return take_scan()
+        if scan_row is None:
+            return take_bulk()
+        if _finding_sort_key(scan_row, sort_key) <= _finding_sort_key(bulk_row, sort_key):
+            return take_scan()
+        return take_bulk()
+
+    skipped = 0
+    while skipped < offset:
+        if pick_next() is None:
+            return []
+        skipped += 1
+
+    page: list[dict[str, Any]] = []
+    for _ in range(limit):
+        row = pick_next()
+        if row is None:
+            break
+        page.append(row)
+    return page
+
+
 @router.get("/v1/findings", tags=["scan"])
 async def list_findings(
     request: Request,
@@ -1399,10 +1491,9 @@ async def list_findings(
         warnings.append("cursor pagination applies to bulk-ingested findings only; in-memory scan findings appear on the first page")
     if callable(bulk_list):
         if scan_findings and not cursor:
-            window = offset + limit
             bulk_result = bulk_list(
                 tenant_id,
-                limit=window,
+                limit=1,
                 offset=0,
                 sort=sort_key,
                 severity=severity,
@@ -1410,11 +1501,17 @@ async def list_findings(
                 origin="bulk_ingest",
                 include_total=include_bulk_total,
             )
-            bulk_page = bulk_result[0]
             bulk_total = bulk_result[1]
-            combined = scan_findings + bulk_page
-            combined.sort(key=lambda row: _finding_sort_key(row, sort_key))
-            page_rows = combined[offset : offset + limit]
+            page_rows = _merged_scan_bulk_page(
+                scan_findings,
+                bulk_list=bulk_list,
+                tenant_id=tenant_id,
+                sort_key=sort_key,
+                severity=severity,
+                scan_id=scan_id,
+                offset=offset,
+                limit=limit,
+            )
             resolved_bulk, total_approximate = _resolve_bulk_findings_total(
                 tenant_id=tenant_id,
                 severity=severity,

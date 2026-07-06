@@ -80,7 +80,23 @@ def _seed_inmemory_store(count: int, *, tenant_id: str) -> str:
     batch_id = f"bench-{uuid.uuid4().hex}"
     store = InMemoryComplianceHubStore()
     set_compliance_hub_store(store)
-    store.add(tenant_id, _synthetic_findings(count, batch_id=batch_id))
+    chunk = 2000
+    findings = _synthetic_findings(count, batch_id=batch_id)
+    for offset in range(0, len(findings), chunk):
+        store.add(tenant_id, findings[offset : offset + chunk])
+    return batch_id
+
+
+def _seed_sqlite_store(count: int, *, tenant_id: str, db_path: str) -> str:
+    from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore, set_compliance_hub_store
+
+    batch_id = f"bench-{uuid.uuid4().hex}"
+    store = SQLiteComplianceHubStore(db_path)
+    set_compliance_hub_store(store)
+    chunk = 5000
+    findings = _synthetic_findings(count, batch_id=batch_id)
+    for offset in range(0, len(findings), chunk):
+        store.add(tenant_id, findings[offset : offset + chunk])
     return batch_id
 
 
@@ -134,15 +150,22 @@ def _bench_store_list(
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     store = get_compliance_hub_store()
+    list_page = getattr(store, "list_page", None)
     for _ in range(warmup):
-        rows = store.list(tenant_id)
-        _ = rows[:limit]
+        if callable(list_page):
+            list_page(tenant_id, limit=limit, offset=0, include_total=False)
+        else:
+            rows = store.list(tenant_id)
+            _ = rows[:limit]
 
     timings: list[float] = []
     for _ in range(samples):
         started = time.perf_counter()
-        rows = store.list(tenant_id)
-        _ = rows[:limit]
+        if callable(list_page):
+            list_page(tenant_id, limit=limit, offset=0, include_total=False)
+        else:
+            rows = store.list(tenant_id)
+            _ = rows[:limit]
         timings.append((time.perf_counter() - started) * 1000)
     return timings
 
@@ -209,7 +232,10 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
     tenant_id = args.tenant_id
     if args.mode in {"api", "store"}:
         _enable_proxy_auth_env()
-        _seed_inmemory_store(args.count, tenant_id=tenant_id)
+        if args.sqlite_db:
+            _seed_sqlite_store(args.count, tenant_id=tenant_id, db_path=args.sqlite_db)
+        else:
+            _seed_inmemory_store(args.count, tenant_id=tenant_id)
 
     if args.mode == "store":
         timings = _bench_store_list(tenant_id=tenant_id, limit=args.limit, samples=args.samples, warmup=args.warmup)
@@ -243,7 +269,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--count", type=int, default=10_000, help="Synthetic findings to seed (default: 10000)")
-    parser.add_argument("--limit", type=int, default=50, help="Page size for list/read (default: 50)")
+    parser.add_argument("--limit", type=int, default=1, help="Page size for list/read (default: 1 — audit regression case)")
     parser.add_argument("--samples", type=int, default=7, help="Timed iterations after warmup (default: 7)")
     parser.add_argument("--warmup", type=int, default=2, help="Warmup iterations (default: 2)")
     parser.add_argument(
@@ -262,8 +288,46 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tenant-id", default="bench-findings-tenant", help="Tenant scope for seeded findings")
     parser.add_argument("--token", default=os.environ.get("AGENT_BOM_API_TOKEN", ""), help="Bearer token for live API mode")
     parser.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout for live API mode")
+    parser.add_argument(
+        "--sqlite-db",
+        default="",
+        help="Seed SQLiteComplianceHubStore at this path (production-representative hub read path)",
+    )
+    parser.add_argument(
+        "--sweep",
+        default="",
+        help="Comma-separated row counts to benchmark sequentially (e.g. 10000,100000,500000)",
+    )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON summary")
     args = parser.parse_args(argv)
+
+    if args.sweep:
+        counts = [int(part.strip()) for part in args.sweep.split(",") if part.strip()]
+        if not counts:
+            parser.error("--sweep requires at least one count")
+        summaries: list[dict[str, Any]] = []
+        exit_code = 0
+        for count in counts:
+            sweep_args = argparse.Namespace(**{**vars(args), "count": count, "sweep": ""})
+            try:
+                summary = _run(sweep_args)
+            except (HTTPError, URLError, RuntimeError) as exc:
+                print(f"bench_findings_read: count={count} {exc}", file=sys.stderr)
+                return 2
+            summaries.append(summary)
+            if summary["p50_ms"] > summary["threshold_ms"]:
+                exit_code = 1
+        if args.json:
+            print(json.dumps({"sweep": summaries}, indent=2))
+        else:
+            for summary in summaries:
+                print(
+                    "findings read bench: "
+                    f"mode={summary['mode']} count={summary['count']} limit={summary['limit']} "
+                    f"p50={summary['p50_ms']}ms p95={summary['p95_ms']}ms "
+                    f"threshold={summary['threshold_ms']}ms"
+                )
+        return exit_code
 
     if args.count < 1:
         parser.error("--count must be >= 1")

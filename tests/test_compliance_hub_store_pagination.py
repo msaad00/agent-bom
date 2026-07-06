@@ -271,3 +271,47 @@ def test_sqlite_effective_reach_sort_uses_index(tmp_path) -> None:
     count_text = " ".join(str(row[-1]) for row in count_plan)
     assert "USING" in count_text and "INDEX" in count_text, count_text
     assert "SCAN compliance_hub_findings" not in count_text, count_text
+
+
+_SCALE_ROWS = 10_000
+_SCALE_LIMIT1_BUDGET_S = 0.25
+
+
+def test_sqlite_list_page_limit1_stays_fast_at_10k(tmp_path) -> None:
+    """Regression: limit=1 must not scan/sort the full tenant (#3511)."""
+    import time
+
+    store = SQLiteComplianceHubStore(str(tmp_path / "scale.db"))
+    tenant = "tenant-scale-10k"
+    chunk = 2000
+    for start in range(0, _SCALE_ROWS, chunk):
+        store.add(tenant, [_finding(i) for i in range(start, min(start + chunk, _SCALE_ROWS))])
+
+    started = time.perf_counter()
+    rows, total = store.list_page(tenant, limit=1, offset=0, sort="effective_reach")
+    elapsed = time.perf_counter() - started
+
+    assert len(rows) == 1
+    assert total == _SCALE_ROWS
+    assert elapsed < _SCALE_LIMIT1_BUDGET_S, f"limit=1 read took {elapsed:.3f}s at {_SCALE_ROWS} rows"
+
+
+@pytest.mark.slow
+def test_sqlite_list_page_limit1_stays_fast_at_1m(tmp_path) -> None:
+    """Opt-in million-row guard for hub/SQLite read path (``pytest -m slow``)."""
+    import time
+
+    target = 1_000_000
+    store = SQLiteComplianceHubStore(str(tmp_path / "scale-1m.db"))
+    tenant = "tenant-scale-1m"
+    chunk = 10_000
+    for start in range(0, target, chunk):
+        store.add(tenant, [_finding(i) for i in range(start, min(start + chunk, target))])
+
+    started = time.perf_counter()
+    rows, total = store.list_page(tenant, limit=1, offset=0, sort="effective_reach")
+    elapsed = time.perf_counter() - started
+
+    assert len(rows) == 1
+    assert total == target
+    assert elapsed < 1.0, f"limit=1 read took {elapsed:.3f}s at {target} rows"

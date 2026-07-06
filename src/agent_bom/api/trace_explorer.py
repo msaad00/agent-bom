@@ -7,7 +7,7 @@ compliance controls, policy block reason).
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 
 def _norm(value: object) -> str:
@@ -18,7 +18,7 @@ def correlate_findings(
     *,
     agent: str,
     tool: str,
-    findings: list[Mapping[str, Any]],
+    findings: Sequence[Mapping[str, Any]],
     limit: int = 5,
 ) -> list[dict[str, Any]]:
     """Return findings whose agent/tool exposure overlaps this runtime event."""
@@ -32,7 +32,7 @@ def correlate_findings(
         if not isinstance(row, Mapping):
             continue
         agents = {_norm(a) for a in (row.get("affected_agents") or []) if _norm(a)}
-        tools = set()
+        tools: set[str] = set()
         for key in ("exposed_tools", "reachable_tools", "phantom_tools"):
             tools.update(_norm(t) for t in (row.get(key) or []) if _norm(t))
         if agent_key and agents and agent_key not in agents:
@@ -58,7 +58,7 @@ def correlate_findings(
     return matched
 
 
-def _span_from_feed_event(event: Mapping[str, Any], *, findings: list[Mapping[str, Any]]) -> dict[str, Any]:
+def _span_from_feed_event(event: Mapping[str, Any], *, findings: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     action = str(event.get("action_type") or "")
     agent = str(event.get("agent") or "")
     tool = str(event.get("target") or "")
@@ -84,7 +84,7 @@ def _span_from_feed_event(event: Mapping[str, Any], *, findings: list[Mapping[st
     }
 
 
-def _span_from_observation(obs: Mapping[str, Any], *, findings: list[Mapping[str, Any]]) -> dict[str, Any]:
+def _span_from_observation(obs: Mapping[str, Any], *, findings: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     agent = str(obs.get("agent_name") or "")
     tool = str(obs.get("tool_name") or "")
     verdict = str(obs.get("verdict") or "observed")
@@ -114,10 +114,10 @@ def _span_from_observation(obs: Mapping[str, Any], *, findings: list[Mapping[str
 def build_trace_explorer_payload(
     *,
     tenant_id: str,
-    feed_events: list[Mapping[str, Any]],
-    findings: list[Mapping[str, Any]],
-    sessions: list[Mapping[str, Any]],
-    observations: list[Mapping[str, Any]],
+    feed_events: Sequence[Mapping[str, Any]],
+    findings: Sequence[Mapping[str, Any]],
+    sessions: Sequence[Mapping[str, Any]],
+    observations: Sequence[Mapping[str, Any]],
     limit: int = 100,
 ) -> dict[str, Any]:
     """Build session-grouped trace explorer tree for the UI."""

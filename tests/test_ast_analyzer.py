@@ -376,12 +376,7 @@ def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):
 
 
 def test_analyze_project_surfaces_dependency_symbol_reach_from_tool(tmp_path: Path):
-    (tmp_path / "agent.py").write_text(
-        "import requests\n\n"
-        "@tool\n"
-        "def fetch(url):\n"
-        "    return requests.get(url)\n"
-    )
+    (tmp_path / "agent.py").write_text("import requests\n\n@tool\ndef fetch(url):\n    return requests.get(url)\n")
 
     result = analyze_project(tmp_path)
     payload = result.to_dict()
@@ -435,8 +430,7 @@ def test_analyze_project_surfaces_dependency_symbol_reach_through_helper(tmp_pat
 
 def test_analyze_project_surfaces_js_dependency_symbol_reach(tmp_path: Path):
     (tmp_path / "server.ts").write_text(
-        'import axios from "axios";\n'
-        'server.tool("fetch_url", "Fetch a URL", async (url: string) => axios.get(url));\n'
+        'import axios from "axios";\nserver.tool("fetch_url", "Fetch a URL", async (url: string) => axios.get(url));\n'
     )
 
     result = analyze_project(tmp_path)
@@ -523,11 +517,7 @@ def test_analyze_project_surfaces_java_dependency_symbol_reach(tmp_path: Path) -
 
 
 def test_analyze_project_surfaces_gradle_only_java_dependency_symbol_reach(tmp_path: Path) -> None:
-    (tmp_path / "build.gradle").write_text(
-        'dependencies {\n'
-        '    implementation "com.squareup.okhttp3:okhttp:4.12.0"\n'
-        "}\n"
-    )
+    (tmp_path / "build.gradle").write_text('dependencies {\n    implementation "com.squareup.okhttp3:okhttp:4.12.0"\n}\n')
     (tmp_path / "Server.java").write_text(
         "import com.squareup.okhttp3.OkHttpClient;\n"
         "import com.squareup.okhttp3.Request;\n\n"
@@ -585,6 +575,30 @@ def test_analyze_project_surfaces_csharp_dependency_symbol_reach(tmp_path: Path)
     reach = next(item for item in nuget_reaches if item.symbol == "ExecuteAsync")
     assert reach.entrypoint == "fetch_url"
     assert reach.package == "RestSharp"
+
+
+def test_analyze_project_surfaces_ruby_dependency_symbol_reach(tmp_path: Path) -> None:
+    (tmp_path / "Gemfile").write_text('gem "faraday"\n')
+    (tmp_path / "Gemfile.lock").write_text("GEM\n  remote: https://rubygems.org/\n  specs:\n    faraday (2.9.0)\n")
+    (tmp_path / "server.rb").write_text(
+        "require 'faraday'\n\n"
+        "class Server\n"
+        "  def register(server)\n"
+        '    server.add_tool("fetch_url", method(:fetch_url))\n'
+        "  end\n\n"
+        "  def fetch_url(url)\n"
+        "    client = Faraday.new\n"
+        "    client.get(url)\n"
+        "  end\n"
+        "end\n"
+    )
+
+    result = analyze_project(tmp_path)
+    ruby_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "rubygems"]
+    assert ruby_reaches
+    reach = next(item for item in ruby_reaches if item.symbol == "get")
+    assert reach.entrypoint == "fetch_url"
+    assert reach.package == "faraday"
 
 
 def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):

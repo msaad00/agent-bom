@@ -2309,6 +2309,43 @@ export interface TraceIngestResponse {
   message?: string | undefined;
 }
 
+export interface TraceExplorerSpan {
+  span_id: string;
+  timestamp?: string | undefined;
+  agent: string;
+  tool: string;
+  action_type: string;
+  verdict: string;
+  detail?: string | undefined;
+  linked_findings: Array<{
+    finding_id?: string | undefined;
+    vulnerability_id?: string | undefined;
+    severity?: string | undefined;
+    effective_reach_band?: string | undefined;
+    framework_tags?: string[] | undefined;
+    policy_state?: string | undefined;
+  }>;
+  compliance_controls: string[];
+}
+
+export interface TraceExplorerSession {
+  session_id: string;
+  agent?: string | undefined;
+  trace_id?: string | undefined;
+  blocked_count: number;
+  observed_count: number;
+  spans: TraceExplorerSpan[];
+}
+
+export interface TraceExplorerResponse {
+  schema_version: string;
+  tenant_id: string;
+  session_count: number;
+  span_count: number;
+  blocked_count: number;
+  sessions: TraceExplorerSession[];
+}
+
 export interface ProxyStatusResponse {
   status: string;
   message?: string | undefined;

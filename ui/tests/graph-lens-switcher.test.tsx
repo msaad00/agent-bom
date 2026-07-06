@@ -4,15 +4,20 @@ import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 
 const push = vi.fn();
 let pathname = "/graph";
+let scope: string | null = null;
 
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname,
   useRouter: () => ({ push }),
+  useSearchParams: () => ({
+    get: (key: string) => (key === "scope" ? scope : null),
+  }),
 }));
 
 describe("GraphLensSwitcher", () => {
   beforeEach(() => {
     pathname = "/graph";
+    scope = null;
     push.mockClear();
   });
 
@@ -32,6 +37,7 @@ describe("GraphLensSwitcher", () => {
     expect(screen.getByText("Security Graph Lens")).toBeInTheDocument();
     expect(screen.getByText("Attack Paths")).toBeInTheDocument();
     expect(screen.getByText("Lineage")).toBeInTheDocument();
+    expect(screen.getByText("Asset Drift")).toBeInTheDocument();
     expect(screen.getByText("Agent Mesh")).toBeInTheDocument();
     expect(screen.getByText("Context")).toBeInTheDocument();
   });
@@ -42,6 +48,14 @@ describe("GraphLensSwitcher", () => {
     fireEvent.click(screen.getByRole("button", { name: /agent mesh/i }));
 
     expect(push).toHaveBeenCalledWith("/mesh");
+  });
+
+  it("routes to the asset drift lens on the lineage graph", () => {
+    render(<GraphLensSwitcher variant="floating" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /asset drift/i }));
+
+    expect(push).toHaveBeenCalledWith("/graph?scope=asset-drift");
   });
 
   it("does not reroute when the active lens is selected", () => {

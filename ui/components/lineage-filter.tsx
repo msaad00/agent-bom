@@ -89,19 +89,28 @@ export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   configFile: true,
 };
 
-export type GraphScopePreset = "immediate" | "relevant" | "expanded";
+export type GraphScopePreset =
+  | "immediate"
+  | "relevant"
+  | "expanded"
+  | "assetDrift";
 
 export const GRAPH_SCOPE_LABELS: Record<GraphScopePreset, string> = {
   immediate: "Immediate",
   relevant: "Relevant paths",
   expanded: "Expanded",
+  assetDrift: "Asset lifecycle drift",
 };
 
 export const GRAPH_SCOPE_DESCRIPTIONS: Record<GraphScopePreset, string> = {
   immediate: "One-hop triage around a selected agent.",
   relevant: "Default fix-first graph with bounded path context.",
   expanded: "Broader topology review with lower-priority context included.",
+  assetDrift:
+    "Governance and exhibits_drift paths tying estate containers to drift incidents.",
 };
+
+export const ASSET_DRIFT_GRAPH_SCOPE_PARAM = "asset-drift";
 
 export function createImmediateGraphFilters(
   agentName: string | null = null,
@@ -148,11 +157,68 @@ export function createExpandedGraphFilters(
   };
 }
 
+/** Governance-scoped lens for asset lifecycle drift evidence on the lineage graph. */
+export function createAssetLifecycleDriftGraphFilters(
+  agentName: string | null = null,
+): FilterState {
+  return {
+    layers: {
+      ...FOCUSED_LAYER_DEFAULTS,
+      provider: false,
+      package: false,
+      model: false,
+      dataset: false,
+      vulnerability: false,
+      misconfiguration: false,
+      credential: false,
+      tool: false,
+      managedIdentity: false,
+      accessGrant: false,
+      accessPolicy: false,
+      dataStore: false,
+      directory: false,
+      sourceFile: false,
+      driftIncident: true,
+      configFile: true,
+      environment: true,
+      fleet: true,
+      cluster: true,
+      org: true,
+      account: true,
+      container: true,
+      cloudResource: true,
+    },
+    severity: null,
+    agentName,
+    vulnOnly: false,
+    runtimeMode: "all",
+    relationshipScope: "governance",
+    maxDepth: 3,
+    pageSize: 100,
+  };
+}
+
+export function matchesAssetLifecycleDriftFilters(filters: FilterState): boolean {
+  const baseline = createAssetLifecycleDriftGraphFilters(filters.agentName);
+  return (
+    filters.relationshipScope === baseline.relationshipScope &&
+    filters.vulnOnly === baseline.vulnOnly &&
+    filters.maxDepth === baseline.maxDepth &&
+    filters.pageSize === baseline.pageSize &&
+    filters.severity === baseline.severity &&
+    filters.runtimeMode === baseline.runtimeMode &&
+    (Object.keys(baseline.layers) as LineageNodeType[]).every(
+      (key) => filters.layers[key] === baseline.layers[key],
+    )
+  );
+}
+
 export const DEFAULT_FILTERS: FilterState = createFocusedGraphFilters();
 
 export function graphScopePresetForFilters(
   filters: FilterState,
 ): GraphScopePreset {
+  if (matchesAssetLifecycleDriftFilters(filters)) return "assetDrift";
   if (filters.maxDepth <= 1 && filters.pageSize <= 25 && filters.vulnOnly)
     return "immediate";
   if (

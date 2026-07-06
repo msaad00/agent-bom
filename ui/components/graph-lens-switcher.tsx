@@ -1,7 +1,8 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { InsightLayerToggle } from "@/components/insight-layer-toggle";
+import { ASSET_DRIFT_GRAPH_SCOPE_PARAM } from "@/components/lineage-filter";
 
 // One security-graph surface, several lenses. Each lens is a deep route that keeps
 // working on its own (deep links + e2e), but the nav now exposes a single
@@ -12,7 +13,7 @@ interface GraphLens {
   label: string;
   icon: string;
   href: string;
-  match: (path: string) => boolean;
+  match: (path: string, scope: string | null) => boolean;
 }
 
 const GRAPH_LENSES: GraphLens[] = [
@@ -28,7 +29,18 @@ const GRAPH_LENSES: GraphLens[] = [
     label: "Lineage",
     icon: "🌿",
     href: "/graph",
-    match: (p) => p === "/graph" || p.startsWith("/graph/"),
+    match: (p, scope) =>
+      (p === "/graph" || p.startsWith("/graph/")) &&
+      scope !== ASSET_DRIFT_GRAPH_SCOPE_PARAM,
+  },
+  {
+    id: "asset-drift",
+    label: "Asset Drift",
+    icon: "📐",
+    href: `/graph?scope=${ASSET_DRIFT_GRAPH_SCOPE_PARAM}`,
+    match: (p, scope) =>
+      (p === "/graph" || p.startsWith("/graph/")) &&
+      scope === ASSET_DRIFT_GRAPH_SCOPE_PARAM,
   },
   {
     id: "mesh",
@@ -55,17 +67,19 @@ export function GraphLensSwitcher({
 }: GraphLensSwitcherProps) {
   const path = usePathname() ?? "/security-graph";
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const scope = searchParams?.get("scope") ?? null;
 
   const layers = GRAPH_LENSES.map((lens) => ({
     id: lens.id,
     label: lens.label,
     icon: lens.icon,
-    active: lens.match(path),
+    active: lens.match(path, scope),
   }));
 
   const onToggle = (id: string) => {
     const lens = GRAPH_LENSES.find((l) => l.id === id);
-    if (!lens || lens.match(path)) return;
+    if (!lens || lens.match(path, scope)) return;
     router.push(lens.href);
   };
 

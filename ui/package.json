@@ -34,7 +34,7 @@
     "next": "^16.2.10",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "recharts": "^3.9.1",
+    "recharts": "^3.9.2",
     "sigma": "^3.0.3"
   },
   "overrides": {
@@ -60,6 +60,6 @@
     "tailwindcss": "^4.3.2",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.62.1",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   }
 }

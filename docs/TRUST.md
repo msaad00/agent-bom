@@ -82,6 +82,7 @@ reports. Demo estates are watermarked **Demo data — simulated estate** in the 
 | Release smoke | `./scripts/release_smoke.sh` |
 | Pre-tag consistency | `scripts/preflight_release.sh` |
 | Pilot install | `scripts/pilot-verify.sh <url> <api-key>` |
+| Runtime HITL queue | `GET /v1/runtime/approval-queue` · decisions require `policy.manage` |
 | Product screenshots | `cd ui && npm run capture:product-proof` |
 
 ## Questions this page answers

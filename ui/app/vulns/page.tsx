@@ -408,9 +408,9 @@ function VulnsPage() {
                 ]);
                 existing.phantom_tools = uniqueStrings([...(existing.phantom_tools ?? []), ...(blast?.phantom_tools ?? [])]);
                 existing.framework_tags = uniqueStrings([...(existing.framework_tags ?? []), ...(blast?.framework_tags ?? [])]);
-                existing.effective_reach_band = existing.effective_reach_band ?? (blast as { effective_reach_band?: string })?.effective_reach_band;
-                existing.effective_reach_score = existing.effective_reach_score ?? (blast as { effective_reach_score?: number })?.effective_reach_score;
-                existing.runtime_evidence = existing.runtime_evidence ?? (blast as { runtime_evidence?: EnrichedVuln["runtime_evidence"] })?.runtime_evidence;
+                existing.effective_reach_band = existing.effective_reach_band ?? blast?.effective_reach_band;
+                existing.effective_reach_score = existing.effective_reach_score ?? blast?.effective_reach_score;
+                existing.runtime_evidence = existing.runtime_evidence ?? blast?.runtime_evidence;
                 existing.references = uniqueStrings([...existing.references, ...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]);
                 existing.advisory_sources = uniqueStrings([...existing.advisory_sources, ...(vuln.advisory_sources ?? [])]);
                 existing.aliases = uniqueStrings([...(existing.aliases ?? []), ...(vuln.aliases ?? [])]);
@@ -430,9 +430,9 @@ function VulnsPage() {
                   reachable_tools: uniqueStrings([...(blast?.exposed_tools ?? []), ...(blast?.reachable_tools ?? [])]),
                   phantom_tools: blast?.phantom_tools ?? [],
                   framework_tags: blast?.framework_tags ?? [],
-                  effective_reach_band: (blast as { effective_reach_band?: string })?.effective_reach_band,
-                  effective_reach_score: (blast as { effective_reach_score?: number })?.effective_reach_score,
-                  runtime_evidence: (blast as { runtime_evidence?: EnrichedVuln["runtime_evidence"] })?.runtime_evidence,
+                  effective_reach_band: blast?.effective_reach_band,
+                  effective_reach_score: blast?.effective_reach_score,
+                  runtime_evidence: blast?.runtime_evidence,
                   references: uniqueStrings([...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]),
                   advisory_sources: vuln.advisory_sources ?? [],
                   aliases: vuln.aliases ?? [],

@@ -809,6 +809,20 @@ export interface BlastRadius {
   all_server_credentials?: string[] | undefined;
   /** Human-readable attack vector description */
   attack_vector_summary?: string | undefined;
+  /** Registry-only tools (not confirmed in runtime inventory). */
+  phantom_tools?: string[] | undefined;
+  /** Flattened compliance framework tags for chips. */
+  framework_tags?: string[] | undefined;
+  /** Effective reach band from blast-radius scoring. */
+  effective_reach_band?: string | undefined;
+  /** Effective reach score (0-100). */
+  effective_reach_score?: number | undefined;
+  /** Runtime observation/blocking evidence fused onto the finding. */
+  runtime_evidence?: {
+    state?: "static" | "observed" | "blocked" | "replay_only" | string;
+    blocked_count?: number;
+    observed_count?: number;
+  } | undefined;
   /** Graph-walk reachability (populated by the unified-graph dependency
    *  reach engine). `true` when an agent's USES/DEPENDS_ON closure
    *  reaches the vulnerable package; `false` when the package is in

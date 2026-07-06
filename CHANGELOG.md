@@ -9,6 +9,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Meta
+- Close post-audit hardening tracker **#3242** (corrective arc complete; forward work stays on epic issues).
+
 ## [0.92.0] - 2026-07-02
 
 Release hardens the product path from first run to hosted POC: a user can

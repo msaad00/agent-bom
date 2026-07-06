@@ -19,6 +19,7 @@ from agent_bom.delta_stream import (
     needs_hub_prior_snapshots,
     resolved_canonical_ids,
 )
+from agent_bom.reachability_cve import FUNCTION_REACHABLE, UNREACHABLE
 
 
 def _finding(
@@ -181,3 +182,80 @@ def test_needs_hub_prior_snapshots(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_BOM_DELTA_STREAM_ENABLED", "1")
     monkeypatch.setenv("AGENT_BOM_DELTA_STREAM_URL", "https://siem.example/delta")
     assert needs_hub_prior_snapshots(reconcile_absent=False) is True
+
+
+def test_finding_snapshot_reads_symbol_reachability_from_evidence() -> None:
+    snap = FindingSnapshot.from_finding(
+        {
+            "id": "sym-evidence",
+            "severity": "high",
+            "evidence": {
+                "symbol_reachability": FUNCTION_REACHABLE,
+                "reachable_affected_symbols": ["get"],
+            },
+        },
+        source="src",
+    )
+    assert snap.symbol_reachability == FUNCTION_REACHABLE
+    assert snap.reachable_affected_symbols == ("get",)
+    assert snap.finding["symbol_reachability"] == FUNCTION_REACHABLE
+    assert snap.finding["reachable_affected_symbols"] == ["get"]
+
+
+def test_compute_finding_deltas_emits_changed_on_symbol_reachability() -> None:
+    prior = {
+        "sym-delta": FindingSnapshot.from_finding(
+            {
+                "id": "sym-delta",
+                "severity": "high",
+                "evidence": {
+                    "symbol_reachability": UNREACHABLE,
+                    "reachable_affected_symbols": [],
+                },
+            },
+            source="src",
+        ),
+    }
+    batch = [
+        {
+            "id": "sym-delta",
+            "severity": "high",
+            "evidence": {
+                "symbol_reachability": FUNCTION_REACHABLE,
+                "reachable_affected_symbols": ["get"],
+            },
+        },
+    ]
+    events = compute_finding_deltas(
+        tenant_id="tenant-1",
+        prior=prior,
+        batch_findings=batch,
+        resolved_canonical_ids=set(),
+        observed_at="2026-07-04T12:00:00Z",
+        batch_id="batch-sym",
+        source="src",
+    )
+    assert len(events) == 1
+    assert events[0].kind == "changed"
+    assert events[0].finding["symbol_reachability"] == FUNCTION_REACHABLE
+    assert events[0].finding["reachable_affected_symbols"] == ["get"]
+
+
+def test_compute_finding_deltas_ignores_unchanged_symbol_reachability() -> None:
+    finding = {
+        "id": "sym-stable",
+        "severity": "medium",
+        "symbol_reachability": FUNCTION_REACHABLE,
+        "reachable_affected_symbols": ["get"],
+    }
+    prior = {"sym-stable": FindingSnapshot.from_finding(finding, source="src")}
+    events = compute_finding_deltas(
+        tenant_id="tenant-1",
+        prior=prior,
+        batch_findings=[dict(finding)],
+        resolved_canonical_ids=set(),
+        observed_at="2026-07-04T12:00:00Z",
+        batch_id="batch-sym-stable",
+        source="src",
+    )
+    assert events == []

@@ -27,6 +27,42 @@ DeltaEventKind = Literal["new", "resolved", "changed"]
 DeltaFormat = Literal["ndjson", "ocsf"]
 
 
+def _symbol_reachability_from_finding(finding: dict[str, Any]) -> tuple[str | None, tuple[str, ...]]:
+    """Read symbol reachability from top-level keys or ``evidence`` (export shape)."""
+    evidence = finding.get("evidence")
+    symbol_reachability = finding.get("symbol_reachability")
+    reachable_affected_symbols = finding.get("reachable_affected_symbols")
+    if isinstance(evidence, dict):
+        if symbol_reachability is None:
+            symbol_reachability = evidence.get("symbol_reachability")
+        if reachable_affected_symbols is None:
+            reachable_affected_symbols = evidence.get("reachable_affected_symbols")
+    if symbol_reachability is not None and not isinstance(symbol_reachability, str):
+        symbol_reachability = str(symbol_reachability)
+    if reachable_affected_symbols is None:
+        symbols: tuple[str, ...] = ()
+    elif isinstance(reachable_affected_symbols, list):
+        symbols = tuple(str(item) for item in reachable_affected_symbols)
+    else:
+        symbols = ()
+    return symbol_reachability, symbols
+
+
+def _enrich_finding_symbol_reachability(
+    finding: dict[str, Any],
+    *,
+    symbol_reachability: str | None,
+    reachable_affected_symbols: tuple[str, ...],
+) -> dict[str, Any]:
+    """Promote symbol reachability onto the finding dict for delta payloads."""
+    enriched = dict(finding)
+    if symbol_reachability is not None and "symbol_reachability" not in enriched:
+        enriched["symbol_reachability"] = symbol_reachability
+    if reachable_affected_symbols and "reachable_affected_symbols" not in enriched:
+        enriched["reachable_affected_symbols"] = list(reachable_affected_symbols)
+    return enriched
+
+
 class DeltaStreamError(RuntimeError):
     """Raised for invalid connector configuration."""
 
@@ -38,20 +74,29 @@ class FindingSnapshot:
     severity_rank: int
     cvss_score: float
     effective_reach_score: float
+    symbol_reachability: str | None
+    reachable_affected_symbols: tuple[str, ...]
     status: str
     finding: dict[str, Any]
 
     @classmethod
     def from_finding(cls, finding: dict[str, Any], *, source: str = "") -> FindingSnapshot:
         canonical = str(finding.get("canonical_id") or resolve_canonical_id(finding, source=source))
+        symbol_reachability, reachable_affected_symbols = _symbol_reachability_from_finding(finding)
         return cls(
             canonical_id=canonical,
             severity=str(finding.get("severity") or "unknown").lower(),
             severity_rank=int(finding.get("severity_rank") or 0),
             cvss_score=float(finding.get("cvss_score") or 0.0),
             effective_reach_score=float(finding.get("effective_reach_score") or 0.0),
+            symbol_reachability=symbol_reachability,
+            reachable_affected_symbols=reachable_affected_symbols,
             status=str(finding.get("status") or "open"),
-            finding=dict(finding),
+            finding=_enrich_finding_symbol_reachability(
+                finding,
+                symbol_reachability=symbol_reachability,
+                reachable_affected_symbols=reachable_affected_symbols,
+            ),
         )
 
     def material_fields_changed(self, other: FindingSnapshot) -> bool:
@@ -60,6 +105,8 @@ class FindingSnapshot:
             or self.severity_rank != other.severity_rank
             or self.cvss_score != other.cvss_score
             or self.effective_reach_score != other.effective_reach_score
+            or self.symbol_reachability != other.symbol_reachability
+            or self.reachable_affected_symbols != other.reachable_affected_symbols
             or self.status != other.status
         )
 

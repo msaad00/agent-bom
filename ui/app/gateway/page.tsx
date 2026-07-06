@@ -36,6 +36,9 @@ import {
   Activity,
 } from "lucide-react";
 import { GatewayFeedPanel } from "./GatewayFeedPanel";
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { useRuntimeEmbedded } from "@/components/runtime-embed-context";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -57,6 +60,7 @@ const RUNTIME_COLORS: Record<GatewayPolicyRuntimeSummary["rollout_mode"], string
 
 export default function GatewayPage() {
   const embedded = useRuntimeEmbedded();
+  const { counts } = useDeploymentContext();
   const [policies, setPolicies] = useState<GatewayPolicy[]>([]);
   const [stats, setStats] = useState<GatewayStatsResponse | null>(null);
   const [audit, setAudit] = useState<PolicyAuditEntry[]>([]);
@@ -302,6 +306,9 @@ export default function GatewayPage() {
       {!loading && tab === "policies" && (
         <>
           {policies.length === 0 && (
+            counts && !isDeploymentSurfaceAvailable("gateway", counts) ? (
+              <DeploymentSurfaceRequiredState surface="gateway" counts={counts} detail={error} />
+            ) : (
             <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
               <Lock className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
               <p className="text-zinc-500 text-sm">No gateway policies yet.</p>
@@ -309,6 +316,7 @@ export default function GatewayPage() {
                 Create a policy to define runtime MCP tool enforcement rules.
               </p>
             </div>
+            )
           )}
           <div className="space-y-2">
             {policies?.map((policy) => {

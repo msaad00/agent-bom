@@ -37,6 +37,10 @@ import {
   Ban,
 } from "lucide-react";
 
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -66,6 +70,7 @@ interface LiveMetrics {
 
 export default function ProxyDashboard() {
   const embedded = useRuntimeEmbedded();
+  const { counts } = useDeploymentContext();
   const [status, setStatus] = useState<ProxyStatusResponse | null>(null);
   const [alerts, setAlerts] = useState<ProxyAlert[]>([]);
   const [live, setLive] = useState<LiveMetrics | null>(null);
@@ -245,6 +250,9 @@ export default function ProxyDashboard() {
 
       {/* No proxy session */}
       {!loading && !error && !isActive && (
+        counts && !isDeploymentSurfaceAvailable("proxy", counts) ? (
+          <DeploymentSurfaceRequiredState surface="proxy" counts={counts} detail={error} />
+        ) : (
         <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 p-8">
           <Shield className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
           <p className="text-zinc-300 text-sm text-center">No runtime telemetry connected</p>
@@ -270,6 +278,7 @@ export default function ProxyDashboard() {
             />
           </div>
         </div>
+        )
       )}
 
       {/* Stats cards */}

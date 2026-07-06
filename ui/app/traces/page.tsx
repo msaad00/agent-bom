@@ -13,6 +13,9 @@ import {
 } from "lucide-react";
 
 import { api, type TraceIngestResponse } from "@/lib/api";
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 
 const SAMPLE_PAYLOAD = JSON.stringify(
   {
@@ -40,6 +43,7 @@ const SAMPLE_PAYLOAD = JSON.stringify(
 );
 
 export default function TracesPage() {
+  const { counts } = useDeploymentContext();
   const [payload, setPayload] = useState(SAMPLE_PAYLOAD);
   const [result, setResult] = useState<TraceIngestResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -75,6 +79,9 @@ export default function TracesPage() {
 
   return (
     <div className="space-y-6">
+      {counts && !isDeploymentSurfaceAvailable("traces", counts) && !result && (
+        <DeploymentSurfaceRequiredState surface="traces" counts={counts} detail={error} />
+      )}
       <div className="flex flex-col gap-4 rounded-3xl border border-zinc-800 bg-zinc-950/70 p-6 shadow-2xl shadow-black/20 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-3xl">
           <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-400">Trace review</p>

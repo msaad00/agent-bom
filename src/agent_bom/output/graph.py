@@ -17,6 +17,7 @@ from agent_bom.graph import SEVERITY_RANK as _SEVERITY_RANK
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 if TYPE_CHECKING:
+    from agent_bom.finding import Finding
     from agent_bom.models import AIBOMReport, BlastRadius
 
 
@@ -88,7 +89,7 @@ def _summarize_package_vulns(vulns: list[dict]) -> _PackageVulnSummary:
 
 def build_graph_elements(
     report: "AIBOMReport",
-    blast_radii: list["BlastRadius"],
+    blast_radii: list["BlastRadius"] | None = None,
     include_cve_nodes: bool = True,
     *,
     collapse_cves: bool = False,
@@ -117,8 +118,11 @@ def build_graph_elements(
       - ``depends_on``  — server → package
       - ``affects``     — package → CVE
     """
+    from agent_bom.output.finding_views import cve_findings, topology_package_key, topology_vuln_dict
+
+    findings = cve_findings(report, blast_radii)
     elements: list[dict] = []
-    vuln_pkg_keys: set[tuple[str, str]] = {(br.package.name, br.package.ecosystem) for br in blast_radii}
+    vuln_pkg_keys: set[tuple[str, str]] = {topology_package_key(finding) for finding in findings}
 
     # Track which provider nodes we've already created
     providers_seen: set[str] = set()
@@ -127,27 +131,11 @@ def build_graph_elements(
 
     # Build a lookup: (pkg_name, ecosystem) → list of vulnerability IDs
     pkg_to_vulns: dict[tuple[str, str], list[dict]] = {}
-    for br in blast_radii:
-        key = (br.package.name, br.package.ecosystem)
+    for finding in findings:
+        key = topology_package_key(finding)
         if key not in pkg_to_vulns:
             pkg_to_vulns[key] = []
-        pkg_to_vulns[key].append(
-            {
-                "id": br.vulnerability.id,
-                "severity": br.vulnerability.severity.value,
-                "summary": br.vulnerability.summary[:100] if br.vulnerability.summary else "",
-                "risk_score": br.risk_score,
-                "cvss_score": br.vulnerability.cvss_score or 0,
-                "fix_version": br.vulnerability.fixed_version or "",
-                "owasp_tags": list(br.owasp_tags),
-                "atlas_tags": list(br.atlas_tags),
-                "attack_tags": list(getattr(br, "attack_tags", [])),
-                "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
-                "owasp_mcp_tags": list(br.owasp_mcp_tags),
-                "owasp_agentic_tags": list(br.owasp_agentic_tags),
-                "eu_ai_act_tags": list(br.eu_ai_act_tags),
-            }
-        )
+        pkg_to_vulns[key].append(topology_vuln_dict(finding))
 
     for agent in report.agents:
         # ── Provider node ─────────────────────────────────────────────
@@ -674,7 +662,8 @@ def _provider_label(source: str) -> str:
 
 
 def build_attack_flow_elements(
-    blast_radii: list["BlastRadius"],
+    report: "AIBOMReport",
+    blast_radii: list["BlastRadius"] | None = None,
 ) -> list[dict]:
     """Build a CVE-centric attack flow graph showing how vulns compromise assets.
 
@@ -699,7 +688,10 @@ def build_attack_flow_elements(
       - ``reaches``    — server → tool
       - ``compromises``— server → agent
     """
-    if not blast_radii:
+    from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version, severity_value
+
+    findings = cve_findings(report, blast_radii)
+    if not findings:
         return []
 
     elements: list[dict] = []
@@ -718,44 +710,61 @@ def build_attack_flow_elements(
             seen_edges.add(key)
             elements.append({"data": {"source": source, "target": target, "type": edge_type}})
 
-    for br in blast_radii:
-        v = br.vulnerability
-        sev = v.severity.value
+    agents_by_name = {agent.name: agent for agent in report.agents}
+
+    for finding in findings:
+        sev = severity_value(finding)
+        vuln_id = finding.cve_id or finding.title
 
         # CVE node
-        cve_id = f"cve:{v.id}"
-        score_text = f"\nCVSS: {v.cvss_score:.1f}" if v.cvss_score else ""
-        fix_text = f"\nFix: {v.fixed_version}" if v.fixed_version else "\nNo fix available"
+        cve_id = f"cve:{vuln_id}"
+        score_text = f"\nCVSS: {finding.cvss_score:.1f}" if finding.cvss_score else ""
+        fix_text = f"\nFix: {finding.fixed_version}" if finding.fixed_version else "\nNo fix available"
         _add_node(
             cve_id,
-            label=v.id,
+            label=vuln_id,
             type="cve",
             kind="cve",
             severity=sev,
             severityClass=f"cve_{sev}",
-            tip=f"{v.id}\nSeverity: {sev}{score_text}\nBlast score: {br.risk_score:.1f}{fix_text}",
+            tip=f"{vuln_id}\nSeverity: {sev}{score_text}\nBlast score: {finding.risk_score:.1f}{fix_text}",
         )
 
         # Package node
-        pkg_id = f"pkg:{br.package.name}"
+        pkg_id = f"pkg:{package_name(finding)}"
         _add_node(
             pkg_id,
-            label=f"{br.package.name}\n@{br.package.version}",
+            label=f"{package_name(finding)}\n@{package_version(finding)}",
             type="pkg_vuln",
-            tip=f"Package: {br.package.name}\nVersion: {br.package.version}\nEcosystem: {br.package.ecosystem}",
+            tip=(
+                f"Package: {package_name(finding)}\n"
+                f"Version: {package_version(finding)}\n"
+                f"Ecosystem: {package_ecosystem(finding)}"
+            ),
         )
         _add_edge(cve_id, pkg_id, "exploits")
 
+        target_eco = package_ecosystem(finding)
+        target_name = package_name(finding)
+
         # Servers that use this package
-        for agent in br.affected_agents:
+        for agent_name in finding.affected_agents:
+            agent = agents_by_name.get(agent_name)
+            if not agent:
+                continue
             for srv in agent.mcp_servers:
-                pkg_match = any(p.name == br.package.name and p.ecosystem == br.package.ecosystem for p in srv.packages)
+                if finding.affected_servers and srv.name not in finding.affected_servers:
+                    continue
+                pkg_match = any(p.name == target_name and p.ecosystem == target_eco for p in srv.packages)
                 if not pkg_match:
                     continue
 
                 srv_id = f"srv:{agent.name}:{srv.name}"
                 _add_node(
-                    srv_id, label=srv.name, type="server", tip=f"MCP Server: {srv.name}\nAgent: {agent.name}\nPackages: {len(srv.packages)}"
+                    srv_id,
+                    label=srv.name,
+                    type="server",
+                    tip=f"MCP Server: {srv.name}\nAgent: {agent.name}\nPackages: {len(srv.packages)}",
                 )
                 _add_edge(pkg_id, srv_id, "runs_on")
 
@@ -766,7 +775,7 @@ def build_attack_flow_elements(
                     _add_edge(srv_id, cred_id, "exposes")
 
                 # Reachable tools (from introspection data if available)
-                tools = getattr(srv, "tool_names", []) or []
+                tools = getattr(srv, "tool_names", []) or [tool.name for tool in srv.tools]
                 for tool_name in tools[:8]:  # cap at 8 to avoid graph explosion
                     tool_id = f"tool:{srv.name}:{tool_name}"
                     _add_node(tool_id, label=tool_name, type="tool", tip=f"MCP Tool: {tool_name}\nServer: {srv.name}")
@@ -780,68 +789,73 @@ def build_attack_flow_elements(
     return elements
 
 
-def _graph_priority_summary(blast_radii: list["BlastRadius"], *, collapse_cves: bool = False) -> list[dict]:
+def _graph_priority_summary(findings: list["Finding"], *, collapse_cves: bool = False) -> list[dict]:
     """Summarize the highest-value blast-radius paths for the HTML graph.
 
     The standalone graph needs an operator-facing starting point, not just raw
     nodes. These summaries drive the top-risk sidebar and focus behavior.
     """
+    from agent_bom.output.finding_views import package_ecosystem, package_name, package_version, severity_value
+
     priorities: list[dict] = []
-    for br in sorted(blast_radii, key=lambda item: item.risk_score, reverse=True)[:8]:
-        node_id = f"cve:{br.vulnerability.id}"
-        if collapse_cves and br.affected_agents and br.affected_servers:
+    for finding in sorted(findings, key=lambda item: float(item.risk_score or 0.0), reverse=True)[:8]:
+        vuln_id = finding.cve_id or finding.title
+        node_id = f"cve:{vuln_id}"
+        if collapse_cves and finding.affected_agents and finding.affected_servers:
             node_id = _package_node_id(
-                br.package.name,
-                br.package.ecosystem,
-                agent_name=br.affected_agents[0].name,
-                server_name=br.affected_servers[0].name,
+                package_name(finding),
+                package_ecosystem(finding),
+                agent_name=finding.affected_agents[0],
+                server_name=finding.affected_servers[0],
                 scoped=True,
             )
         priorities.append(
             {
                 "nodeId": node_id,
-                "vulnerabilityId": br.vulnerability.id,
-                "packageName": br.package.name,
-                "packageVersion": br.package.version,
-                "packageEcosystem": br.package.ecosystem,
-                "severity": br.vulnerability.severity.value,
-                "riskScore": round(br.risk_score, 1),
-                "agentCount": len(br.affected_agents),
-                "serverCount": len(br.affected_servers),
-                "credentialCount": len(br.exposed_credentials),
-                "toolCount": len(br.exposed_tools),
-                "fixVersion": br.vulnerability.fixed_version or "",
-                "reachability": br.reachability,
-                "summary": br.vulnerability.summary or "",
-                "agents": [agent.name for agent in br.affected_agents[:6]],
-                "servers": [server.name for server in br.affected_servers[:6]],
-                "credentials": list(br.exposed_credentials)[:8],
-                "tools": [tool.name for tool in br.exposed_tools[:10]],
-                "owaspTags": list(br.owasp_tags),
-                "atlasTags": list(br.atlas_tags),
-                "owaspMcpTags": list(br.owasp_mcp_tags),
-                "owaspAgenticTags": list(br.owasp_agentic_tags),
+                "vulnerabilityId": vuln_id,
+                "packageName": package_name(finding),
+                "packageVersion": package_version(finding),
+                "packageEcosystem": package_ecosystem(finding),
+                "severity": severity_value(finding),
+                "riskScore": round(float(finding.risk_score or 0.0), 1),
+                "agentCount": len(finding.affected_agents),
+                "serverCount": len(finding.affected_servers),
+                "credentialCount": len(finding.exposed_credentials),
+                "toolCount": len(finding.exposed_tools),
+                "fixVersion": finding.fixed_version or "",
+                "reachability": finding.reachability,
+                "summary": finding.description or finding.title or "",
+                "agents": list(finding.affected_agents[:6]),
+                "servers": list(finding.affected_servers[:6]),
+                "credentials": list(finding.exposed_credentials)[:8],
+                "tools": list(finding.exposed_tools)[:10],
+                "owaspTags": list(finding.owasp_tags),
+                "atlasTags": list(finding.atlas_tags),
+                "owaspMcpTags": list(finding.owasp_mcp_tags),
+                "owaspAgenticTags": list(finding.owasp_agentic_tags),
             }
         )
     return priorities
 
 
-def _graph_overview(blast_radii: list["BlastRadius"]) -> dict[str, int]:
+def _graph_overview(findings: list["Finding"]) -> dict[str, int]:
     """Aggregate the key counts operators need before drilling into a path."""
+    from agent_bom.output.finding_views import severity_value
+
     counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     exposed_credentials: set[str] = set()
     exposed_tools: set[str] = set()
     affected_servers: set[str] = set()
     affected_agents: set[str] = set()
 
-    for br in blast_radii:
-        severity = br.vulnerability.severity.value
+    for finding in findings:
+        severity = severity_value(finding)
         if severity in counts:
             counts[severity] += 1
-        exposed_credentials.update(br.exposed_credentials)
-        exposed_tools.update(tool.name for tool in br.exposed_tools)
-        affected_servers.update(server.name for server in br.affected_servers)
-        affected_agents.update(agent.name for agent in br.affected_agents)
+        exposed_credentials.update(finding.exposed_credentials)
+        exposed_tools.update(finding.exposed_tools)
+        affected_servers.update(finding.affected_servers)
+        affected_agents.update(finding.affected_agents)
 
     return {
         **counts,
@@ -854,7 +868,7 @@ def _graph_overview(blast_radii: list["BlastRadius"]) -> dict[str, int]:
 
 def export_graph_html(
     report: "AIBOMReport",
-    blast_radii: list["BlastRadius"],
+    blast_radii: list["BlastRadius"] | None,
     output_path: str,
     *,
     offline_assets: bool = False,
@@ -868,15 +882,18 @@ def export_graph_html(
     """
     from pathlib import Path
 
+    from agent_bom.output.finding_views import cve_findings
+
+    findings = cve_findings(report, blast_radii)
     elements = build_graph_elements(report, blast_radii, include_cve_nodes=False, collapse_cves=True)
     elements_json = json.dumps(elements, indent=2)
 
     total_agents = len(report.agents)
     total_servers = sum(len(a.mcp_servers) for a in report.agents)
     total_pkgs = sum(a.total_packages for a in report.agents)
-    total_vulns = len(blast_radii)
-    top_risks_json = json.dumps(_graph_priority_summary(blast_radii, collapse_cves=True), indent=2)
-    overview_json = json.dumps(_graph_overview(blast_radii), indent=2)
+    total_vulns = len(findings)
+    top_risks_json = json.dumps(_graph_priority_summary(findings, collapse_cves=True), indent=2)
+    overview_json = json.dumps(_graph_overview(findings), indent=2)
 
     html_content = _GRAPH_HTML_TEMPLATE.format(
         elements_json=elements_json,
@@ -893,8 +910,8 @@ def export_graph_html(
             total_servers=total_servers,
             total_pkgs=total_pkgs,
             total_vulns=total_vulns,
-            top_risks=_graph_priority_summary(blast_radii, collapse_cves=True),
-            overview=_graph_overview(blast_radii),
+            top_risks=_graph_priority_summary(findings, collapse_cves=True),
+            overview=_graph_overview(findings),
         )
     Path(output_path).write_text(html_content, encoding="utf-8")
 

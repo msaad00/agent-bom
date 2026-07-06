@@ -9,6 +9,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Meta
+- Close post-audit hardening tracker **#3242** (corrective arc complete; forward work stays on epic issues).
+
+### Finding model / outputs
+- **Mermaid and graph topology** exports read CVE paths from the unified `Finding` stream (#2918).
+
+### UI / demo estate
+- **Deployment surface lock cards** on proxy, gateway, traces, and audit pages (#3468).
+
 ## [0.92.0] - 2026-07-02
 
 Release hardens the product path from first run to hosted POC: a user can

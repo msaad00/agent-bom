@@ -22,6 +22,9 @@ import {
   Filter,
 } from "lucide-react";
 import { useAuthState } from "@/components/auth-provider";
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { KeyLifecyclePanel } from "@/components/key-lifecycle-panel";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -43,6 +46,7 @@ const PAGE_SIZE = 50;
 
 export default function AuditLogPage() {
   const { session, loading: authSessionLoading, hasCapability } = useAuthState();
+  const { counts } = useDeploymentContext();
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [integrity, setIntegrity] = useState<AuditIntegrityResponse | null>(null);
@@ -256,6 +260,9 @@ export default function AuditLogPage() {
       {!loading && !error && (
         <>
           {entries.length === 0 ? (
+            counts && !isDeploymentSurfaceAvailable("audit", counts) ? (
+              <DeploymentSurfaceRequiredState surface="audit" counts={counts} detail={error} />
+            ) : (
             <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
               <FileText className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
               <p className="text-zinc-500 text-sm">No audit log entries</p>
@@ -263,6 +270,7 @@ export default function AuditLogPage() {
                 Entries will appear as scan, policy, and fleet actions are performed.
               </p>
             </div>
+            )
           ) : (
             <div className="space-y-1">
               {entries?.map((entry) => {

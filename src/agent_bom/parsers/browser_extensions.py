@@ -21,6 +21,8 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_bom.graph.severity import severity_worst_first_rank
+
 logger = logging.getLogger(__name__)
 
 # ─── Permission risk taxonomy ─────────────────────────────────────────────────
@@ -71,12 +73,6 @@ _AI_ASSISTANT_HOSTS: list[str] = [
     "perplexity.ai",
     "anthropic.com",
 ]
-
-_RISK_ORDER: dict[str, int] = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-
-
-# ─── Data model ───────────────────────────────────────────────────────────────
-
 
 @dataclass
 class BrowserExtension:
@@ -375,7 +371,7 @@ def discover_browser_extensions(
     if not include_low_risk:
         all_extensions = [e for e in all_extensions if e.risk_level != "low"]
 
-    all_extensions.sort(key=lambda e: _RISK_ORDER.get(e.risk_level, 4))
+    all_extensions.sort(key=lambda e: severity_worst_first_rank(e.risk_level))
 
     logger.debug(
         "Browser extension scan: %d extensions (%d medium+)",

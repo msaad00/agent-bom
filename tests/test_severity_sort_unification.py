@@ -49,3 +49,8 @@ def test_console_cis_sort_key_orders_critical_before_medium() -> None:
     medium = {"check_id": "med-1", "severity": "medium", "remediation": {"priority": 1}}
     critical = {"check_id": "crit-1", "severity": "critical", "remediation": {"priority": 3}}
     assert _cis_check_sort_key(critical) < _cis_check_sort_key(medium)
+
+
+def test_remaining_sort_paths_use_worst_first_rank() -> None:
+    assert severity_worst_first_rank("critical") < severity_worst_first_rank("high")
+    assert severity_worst_first_rank("high") < severity_worst_first_rank("unknown")

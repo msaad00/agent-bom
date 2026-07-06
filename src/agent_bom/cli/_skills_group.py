@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from agent_bom.cli._grouped_help import SuggestingGroup
+from agent_bom.graph.severity import severity_worst_first_rank
 from agent_bom.skills_policy import SkillsPolicyError, evaluate_skills_policy, load_skills_policy
 from agent_bom.skills_service import rescan_skill_catalog, scan_skill_targets, verify_skill_targets
 
@@ -238,7 +239,7 @@ def skills_scan_cmd(
             sev_style = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
             ordered = sorted(
                 all_findings,
-                key=lambda finding: ({"critical": 0, "high": 1, "medium": 2, "low": 3}.get(finding.severity, 4), finding.title.lower()),
+                key=lambda finding: (severity_worst_first_rank(finding.severity), finding.title.lower()),
             )
             for finding in ordered[: len(ordered) if verbose else 8]:
                 style = sev_style.get(finding.severity, "white")

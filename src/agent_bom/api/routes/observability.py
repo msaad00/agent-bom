@@ -697,6 +697,51 @@ async def list_runtime_observations(
     }
 
 
+@router.get("/v1/runtime/trace-explorer", tags=["runtime", "observability"], dependencies=[_dep("read")])
+async def trace_explorer(
+    request: Request,
+    limit: int = 100,
+) -> dict[str, object]:
+    """Langfuse-style trace explorer joined to findings and policy decisions (#3608).
+
+    Fuses gateway/proxy feed events and persisted runtime observations into
+    session-grouped spans. Each span carries correlated findings (CVE, reach
+    band, compliance controls) and blocked/observed verdict metadata.
+    """
+    from agent_bom.api.cost_store import get_cost_store
+    from agent_bom.api.routes.gateway_feed import _load_tenant_alerts, build_gateway_feed
+    from agent_bom.api.routes.scan import _completed_jobs_for_tenant, _iter_scan_findings
+    from agent_bom.api.trace_explorer import build_trace_explorer_payload
+
+    tenant_id = _tenant_id(request)
+    bounded_limit = max(1, min(limit, 200))
+    alerts = _load_tenant_alerts(tenant_id)
+    llm_records = list(get_cost_store().list_records(tenant_id, limit=bounded_limit))
+    feed = build_gateway_feed(
+        tenant_id=tenant_id,
+        alerts=alerts,
+        llm_records=llm_records,
+        limit=bounded_limit,
+    )
+    findings: list[dict[str, Any]] = []
+    for job in _completed_jobs_for_tenant(tenant_id):
+        findings.extend(_iter_scan_findings(job))
+    store = get_runtime_event_store()
+    sessions = [session.to_dict() for session in store.list_sessions(tenant_id, limit=bounded_limit, offset=0)]
+    observations = [
+        observation.to_dict()
+        for observation in store.list_observations(tenant_id, limit=bounded_limit, offset=0)
+    ]
+    return build_trace_explorer_payload(
+        tenant_id=tenant_id,
+        feed_events=cast(list[dict[str, Any]], feed.get("events", [])),
+        findings=findings,
+        sessions=sessions,
+        observations=observations,
+        limit=bounded_limit,
+    )
+
+
 @router.get("/v1/runtime/sessions/{session_id}/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])
 async def list_runtime_session_observations(
     request: Request,

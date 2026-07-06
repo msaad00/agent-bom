@@ -87,6 +87,7 @@ import type {
   GovernanceReport,
   ActivityTimeline,
   TraceIngestResponse,
+  TraceExplorerResponse,
   ProxyStatusResponse,
   ProxyAlertsResponse,
   AuditEntry,
@@ -264,6 +265,7 @@ export type {
   ActivityTimeline,
   TraceFlaggedCall,
   TraceIngestResponse,
+  TraceExplorerResponse,
   ProxyStatusResponse,
   ProxyAlert,
   ProxyAlertsResponse,
@@ -906,6 +908,7 @@ export const api = {
   // Activity Timeline
   getActivity: (days = 30) => get<ActivityTimeline>(`/v1/activity?days=${days}`),
   ingestTraces: (body: unknown) => post<TraceIngestResponse>("/v1/traces", body),
+  getTraceExplorer: (limit = 100) => get<TraceExplorerResponse>(`/v1/runtime/trace-explorer?limit=${limit}`),
 
   // ── Proxy Runtime ──
   getProxyStatus: () => get<ProxyStatusResponse>("/v1/proxy/status"),

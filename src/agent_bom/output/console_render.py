@@ -10,7 +10,7 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.tree import Tree
 
-from agent_bom.graph.severity import severity_rank
+from agent_bom.graph.severity import SEVERITY_THRESHOLD_LABELS, severity_rank, severity_worst_first_rank
 from agent_bom.models import AgentStatus, AIBOMReport, Severity
 from agent_bom.output.compact import _coverage_bar, _pct
 from agent_bom.output.finding_views import (
@@ -1538,7 +1538,6 @@ _CIS_CLOUD_BUNDLES: tuple[tuple[str, str, str], ...] = (
     ("databricks", "Databricks", "databricks_cis_benchmark_data"),
 )
 
-_SEV_RANK: dict[str, int] = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 _SEV_LABEL: dict[str, str] = {
     "critical": "CRITICAL",
     "high": "HIGH",
@@ -1556,7 +1555,7 @@ _SEV_TABLE_STYLE: dict[str, str] = {
 def _cis_sev(check: dict) -> str:
     """Normalize a check's severity to a known lowercase band."""
     sev = str(check.get("severity") or "").lower()
-    return sev if sev in _SEV_RANK else "low"
+    return sev if sev in SEVERITY_THRESHOLD_LABELS else "low"
 
 
 def _cis_check_sort_key(check: dict) -> tuple[int, int, str, str]:
@@ -1566,7 +1565,7 @@ def _cis_check_sort_key(check: dict) -> tuple[int, int, str, str]:
     if not isinstance(priority, int):
         priority = 3
     return (
-        _SEV_RANK.get(_cis_sev(check), 4),
+        severity_worst_first_rank(check.get("severity")),
         priority,
         str(check.get("cis_section") or "~"),
         str(check.get("check_id") or ""),
@@ -1642,8 +1641,8 @@ def print_cis_findings(report: AIBOMReport, *, show_passed: bool = False) -> Non
         if not failed:
             verdict = "[bold green]PASS[/bold green]"
         else:
-            worst = min((_SEV_RANK.get(_cis_sev(c), 4) for c in failed), default=4)
-            worst_band = {0: "CRITICAL", 1: "HIGH", 2: "MEDIUM", 3: "LOW"}.get(worst, "LOW")
+            worst_check = min(failed, key=lambda c: severity_worst_first_rank(c.get("severity")))
+            worst_band = _SEV_LABEL.get(_cis_sev(worst_check), "LOW")
             vstyle = {"CRITICAL": "red bold", "HIGH": "#e67e22 bold", "MEDIUM": "yellow", "LOW": "dim"}[worst_band]
             verdict = f"[{vstyle}]{worst_band} GAPS[/{vstyle}]"
 

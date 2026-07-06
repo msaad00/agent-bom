@@ -203,6 +203,7 @@ for ingest lanes, auth boundaries, and surface detail.
 | Need | Surface | First action | Main artifact |
 |---|---|---|---|
 | Scan a repo, image, or local agent config | CLI / CI | `agent-bom agents -p .` | JSON, SARIF, SBOM, HTML |
+| Ingest external scanner / SARIF evidence | CLI / CI | `agent-bom agents --external-scan report.json` | JSON, SARIF, blast radius |
 | Connect cloud and data-estate evidence | Cloud connectors | `agent-bom connect aws` then `agent-bom cloud scan` | assets, CIS findings, graph edges |
 | Review posture as a team | API + dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
 | Give agents security tools | MCP server | `agent-bom mcp server` | strict MCP tool responses |
@@ -212,7 +213,8 @@ for ingest lanes, auth boundaries, and surface detail.
 | Goal | Command |
 |---|---|
 | Multi-hop exposure paths | `agent-bom graph` |
-| LLM cost forecast | `agent-bom cost forecast` |
+| LLM cost forecast (FinOps) | `agent-bom cost forecast` — see [docs/COST_MODEL.md](docs/COST_MODEL.md) |
+| External scanner / SARIF ingest | `agent-bom agents --external-scan <file>` — see [docs/INGEST_PATHS.md](docs/INGEST_PATHS.md) |
 | Non-human identity posture | `agent-bom identity credential-expiry` |
 | Advisory remediation plan | `agent-bom remediate -p .` |
 | Gated-capability readiness | `agent-bom capabilities` |

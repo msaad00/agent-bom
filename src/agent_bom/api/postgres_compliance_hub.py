@@ -287,9 +287,25 @@ class PostgresComplianceHubStore:
                 "ON compliance_hub_findings(tenant_id, origin, severity_rank, cvss_score DESC, ordinal)"
             )
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
-            from agent_bom.api.finding_lifecycle import _CURRENT_LIFECYCLE_POSTGRES_DDL
+            from agent_bom.api.finding_lifecycle import (
+                _CURRENT_LIFECYCLE_POSTGRES_DDL,
+                _CURRENT_LIFECYCLE_POSTGRES_OBSERVATIONS_LEGACY_DDL,
+            )
+            from agent_bom.api.hub_observations_partition import (
+                ensure_observation_partitions,
+                is_observations_partitioned,
+                observations_table_exists,
+                partitioned_observations_parent_ddl,
+            )
 
             conn.execute(_CURRENT_LIFECYCLE_POSTGRES_DDL)
+            if not observations_table_exists(conn):
+                conn.execute(partitioned_observations_parent_ddl())
+                ensure_observation_partitions(conn)
+            elif not is_observations_partitioned(conn):
+                conn.execute(_CURRENT_LIFECYCLE_POSTGRES_OBSERVATIONS_LEGACY_DDL)
+            else:
+                ensure_observation_partitions(conn)
             _migrate_lifecycle_observations_l2_postgres(conn)
             _migrate_current_ledger_ref_postgres(conn)
             conn.execute("UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL")

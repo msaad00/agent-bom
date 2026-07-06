@@ -101,7 +101,7 @@ def test_json_and_sarif_exposure_paths_use_finding_native_projection() -> None:
     sarif_path = to_sarif(report)["runs"][0]["results"][0]["properties"]["exposure_path"]
 
     assert json_path["id"].startswith("blast:")
-    assert sarif_path["id"].startswith("blast:")
+    assert sarif_path["id"].startswith("finding:")
     assert json_path["label"] == sarif_path["label"] == "lodash@4.17.20 -> CVE-2024-0001"
     assert json_path["affectedAgents"] == sarif_path["affectedAgents"] == ["prod-agent"]
     assert json_path["reachableTools"] == sarif_path["reachableTools"] == ["deploy"]

@@ -55,6 +55,7 @@ from agent_bom.api.auth import Role, get_key_store
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
 from agent_bom.api.oauth_as import OAuthAuthorizationServer, build_oauth_as_router
+from agent_bom.api.oidc_discovery_shim import OIDCDiscoveryShimConfig, build_oidc_discovery_shim_router
 from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
 from agent_bom.firewall import (
     AgentFirewallPolicy,
@@ -235,6 +236,10 @@ class GatewaySettings:
     # the caller's verified agent identity. None = AS disabled (no behaviour
     # change). The OAuth scopes carried in the token feed ``tool_scope_map``.
     oauth_as: OAuthAuthorizationServer | None = None
+    # Static OIDC discovery shim for legacy IdPs that do not publish
+    # /.well-known/openid-configuration. Serves public metadata only; tokens
+    # still come from the upstream IdP endpoints declared in the config.
+    oidc_discovery_shim: OIDCDiscoveryShimConfig | None = None
     # A2A inline mutual-auth enforcement. "off" (default) keeps the existing
     # identity posture; "warn" audits weak (anonymous / unverified / invalid)
     # inter-agent / agent-MCP edges; "enforce" rejects them inline at the relay.
@@ -1141,6 +1146,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         app.include_router(build_oauth_as_router(settings.oauth_as))
         if settings.oauth_as.signing_key.ephemeral:
             logger.warning("gateway OAuth AS enabled with an ephemeral signing key; set AGENT_BOM_OAUTH_AS_PRIVATE_KEY_PEM for production")
+    if settings.oidc_discovery_shim is not None:
+        app.include_router(build_oidc_discovery_shim_router(settings.oidc_discovery_shim))
 
     dlp_config = _gateway_dlp_config(settings)
 
@@ -1188,6 +1195,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             "firewall_runtime": firewall_runtime,
             "broker_runtime": {
                 "oauth_as_enabled": settings.oauth_as is not None,
+                "oidc_discovery_shim_enabled": settings.oidc_discovery_shim is not None,
                 "a2a_mutual_auth_enforcement_mode": settings.a2a_mutual_auth_enforcement_mode,
                 "tool_scope_mapped_tools": len(settings.tool_scope_map),
                 "dlp_enabled": settings.dlp_enabled,

@@ -1,0 +1,41 @@
+# OIDC discovery shim overlay — MCP clients + legacy IdPs (#3609)
+#
+# Serves /.well-known/openid-configuration on the gateway hostname while
+# authorization/token/JWKS traffic goes to the buyer's existing IdP.
+#
+#   helm upgrade --install agent-bom deploy/helm/agent-bom \
+#     -f deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml \
+#     -f deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml \
+#     -f deploy/helm/agent-bom/examples/oidc-discovery-shim-values.yaml
+#
+# Prerequisites:
+#   1. Gateway enabled and reachable at the shim issuer hostname (ingress TLS).
+#   2. MCP OAuth client registered manually in the IdP (redirect URIs + PKCE).
+#   3. Replace the placeholder IdP URLs below before production use.
+
+gateway:
+  enabled: true
+  env:
+    - name: AGENT_BOM_OIDC_DISCOVERY_SHIM_JSON
+      value: |
+        {
+          "issuer": "https://mcp-auth.example.internal",
+          "authorization_endpoint": "https://idp.example.com/oauth2/v1/authorize",
+          "token_endpoint": "https://idp.example.com/oauth2/v1/token",
+          "jwks_uri": "https://idp.example.com/oauth2/v1/keys",
+          "userinfo_endpoint": "https://idp.example.com/oauth2/v1/userinfo",
+          "scopes_supported": ["openid", "profile", "email"]
+        }
+
+# Optional ingress-only pattern: nginx sidecar serving static discovery JSON
+# when the gateway is not the public hostname. Uncomment and mount a ConfigMap
+# with openid-configuration.json at /usr/share/nginx/html/.well-known/.
+#
+# controlPlane:
+#   ingress:
+#     annotations:
+#       nginx.ingress.kubernetes.io/configuration-snippet: |
+#         location /.well-known/openid-configuration {
+#           default_type application/json;
+#           return 200 '{"issuer":"https://mcp-auth.example.internal",...}';
+#         }

@@ -17,6 +17,7 @@ product split.
 | `eks-vanilla` | `eks-vanilla-values.yaml` | Postgres-backed production EKS rollout with ALB, IRSA, Kubernetes Secrets, and no service mesh / ESO / cert-manager requirement |
 | `mesh-hardening` | `eks-istio-kyverno-values.yaml` | Overlay for Istio mTLS/authz and Kyverno policy-controller packaging |
 | `collector-mtls` | `collector-mtls-values.yaml` | Scanner fleet-sync push with client TLS + delegated control-plane mTLS posture env |
+| `oidc-discovery-shim` | `eks-mcp-pilot-values.yaml` + `gateway-upstreams.example.yaml` + `oidc-discovery-shim-values.yaml` | Gateway-hosted `/.well-known/openid-configuration` for legacy IdPs (MCP OAuth interop) |
 | `snowflake-backend` | `eks-snowflake-values.yaml` | Overlay for Snowflake governance and selected store parity, not a claim of full control-plane replacement |
 | `gateway-runtime` | `eks-mcp-pilot-values.yaml` + `gateway-upstreams.example.yaml` | Focused pilot plus central gateway rendering for shared MCP relay/policy |
 

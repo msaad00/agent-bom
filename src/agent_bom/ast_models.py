@@ -319,6 +319,39 @@ class _JavaFileAnalysis:
 
 
 @dataclass
+class _CSharpCallSite:
+    name: str
+    line_number: int
+
+
+@dataclass
+class _CSharpMethodAnalysis:
+    name: str
+    line_number: int
+    file_path: str = ""
+    class_name: str = ""
+    import_bindings: dict[str, str] = field(default_factory=dict)
+    call_sites: list[_CSharpCallSite] = field(default_factory=list)
+
+
+@dataclass
+class _CSharpToolRegistration:
+    tool_name: str
+    handler_name: str
+    line_number: int
+    file_path: str = ""
+    class_name: str = ""
+    import_bindings: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class _CSharpFileAnalysis:
+    class_name: str
+    functions: dict[str, _CSharpMethodAnalysis] = field(default_factory=dict)
+    tool_registrations: list[_CSharpToolRegistration] = field(default_factory=list)
+
+
+@dataclass
 class _FunctionAnalysis:
     """Internal representation of a function for call-graph construction."""
 

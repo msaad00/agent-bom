@@ -30,9 +30,7 @@ _GENERIC_SYMBOL_DENYLIST: frozenset[str] = frozenset(
 )
 
 # Rust std/internal crates are not Cargo.lock CVE targets for third-party join.
-_RUST_INTRINSIC_CRATES: frozenset[str] = frozenset(
-    {"std", "core", "alloc", "proc_macro", "test", "self", "super", "crate"}
-)
+_RUST_INTRINSIC_CRATES: frozenset[str] = frozenset({"std", "core", "alloc", "proc_macro", "test", "self", "super", "crate"})
 
 
 def is_actionable_dependency_symbol(symbol: str) -> bool:
@@ -56,8 +54,16 @@ def is_verified_maven_coord(coord: str, maven_map: dict[str, str]) -> bool:
     return coord in set(maven_map.values())
 
 
+def is_verified_nuget_package(package_id: str, nuget_map: dict[str, str]) -> bool:
+    """Return True when a NuGet package ID is declared in the project manifest map."""
+    if not package_id or not nuget_map:
+        return False
+    return package_id in set(nuget_map.values())
+
+
 __all__ = [
     "is_actionable_dependency_symbol",
     "is_external_rust_crate",
     "is_verified_maven_coord",
+    "is_verified_nuget_package",
 ]

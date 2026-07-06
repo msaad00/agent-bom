@@ -30,6 +30,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from agent_bom.js_ts_ast import JSTSFunction, JSTSToolRegistration
+from agent_bom.ast_csharp import _csharp_method_key, build_csharp_dependency_symbol_reach, load_nuget_namespace_map
+from agent_bom.ast_csharp import scan_csharp_file as _scan_csharp_file
 from agent_bom.ast_go import _go_function_key, build_go_dependency_symbol_reach
 from agent_bom.ast_go import build_go_flow_findings as _build_go_flow_findings
 from agent_bom.ast_go import scan_go_file as _scan_go_file
@@ -41,6 +43,8 @@ from agent_bom.ast_js_ts import scan_js_ts_file as _scan_js_ts_file
 from agent_bom.ast_models import (
     ASTAnalysisResult,
     CallEdge,
+    _CSharpMethodAnalysis,
+    _CSharpToolRegistration,
     _FunctionAnalysis,
     _GoFunctionAnalysis,
     _GoToolRegistration,
@@ -133,13 +137,22 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
             continue
         java_files.append(f)
 
+    csharp_files = []
+    for f in sorted(project.rglob("*.cs")):
+        if any(part in _SKIP_DIRS for part in f.parts):
+            continue
+        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
+            continue
+        csharp_files.append(f)
+
     py_files = py_files[:_MAX_FILES]
     js_ts_files = js_ts_files[: max(0, _MAX_FILES - len(py_files))]
     go_files = go_files[: max(0, _MAX_FILES - len(py_files) - len(js_ts_files))]
     remaining = max(0, _MAX_FILES - len(py_files) - len(js_ts_files) - len(go_files))
-    rust_files = rust_files[: remaining]
+    rust_files = rust_files[:remaining]
     java_files = java_files[: max(0, remaining - len(rust_files))]
-    result.files_analyzed = len(py_files) + len(js_ts_files) + len(go_files) + len(rust_files) + len(java_files)
+    csharp_files = csharp_files[: max(0, remaining - len(rust_files) - len(java_files))]
+    result.files_analyzed = len(py_files) + len(js_ts_files) + len(go_files) + len(rust_files) + len(java_files) + len(csharp_files)
     function_analyses: list[_FunctionAnalysis] = []
     js_ts_functions: dict[str, JSTSFunction] = {}
     js_ts_tool_registrations: list[JSTSToolRegistration] = []
@@ -149,7 +162,10 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     rust_tool_registrations: list[_RustToolRegistration] = []
     java_methods: dict[str, _JavaMethodAnalysis] = {}
     java_tool_registrations: list[_JavaToolRegistration] = []
+    csharp_methods: dict[str, _CSharpMethodAnalysis] = {}
+    csharp_tool_registrations: list[_CSharpToolRegistration] = []
     maven_dependency_map = _load_maven_dependency_map(project)
+    nuget_namespace_map = load_nuget_namespace_map(project)
 
     for py_file in py_files:
         rel = str(py_file.relative_to(project))
@@ -227,6 +243,24 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
                 java_methods[_java_method_key(java_method.class_name, java_method.name)] = java_method
             java_tool_registrations.extend(java_analysis.tool_registrations)
 
+    for csharp_file in csharp_files:
+        rel = str(csharp_file.relative_to(project))
+        prompts, guardrails, tools, flow_findings, frameworks, csharp_call_edges, csharp_analysis = _scan_csharp_file(
+            csharp_file,
+            rel,
+            nuget_map=nuget_namespace_map,
+        )
+        result.prompts.extend(prompts)
+        result.guardrails.extend(guardrails)
+        result.tools.extend(tools)
+        result.flow_findings.extend(flow_findings)
+        result.frameworks_detected.extend(frameworks)
+        result.call_edges.extend(csharp_call_edges)
+        if csharp_analysis is not None:
+            for csharp_method in csharp_analysis.functions.values():
+                csharp_methods[_csharp_method_key(csharp_method.class_name, csharp_method.name)] = csharp_method
+            csharp_tool_registrations.extend(csharp_analysis.tool_registrations)
+
     python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
     result.call_edges.extend(python_call_edges)
     result.flow_findings.extend(interprocedural_findings)
@@ -269,6 +303,13 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         build_java_dependency_symbol_reach(
             methods=java_methods,
             tool_registrations=java_tool_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    result.dependency_symbol_reach.extend(
+        build_csharp_dependency_symbol_reach(
+            methods=csharp_methods,
+            tool_registrations=csharp_tool_registrations,
             max_depth=_python_max_taint_depth(),
         )
     )

@@ -9,6 +9,7 @@ from agent_bom.ast_symbol_reach_guards import (
     is_actionable_dependency_symbol,
     is_external_rust_crate,
     is_verified_maven_coord,
+    is_verified_nuget_package,
 )
 
 
@@ -29,6 +30,12 @@ def test_maven_coord_requires_manifest_entry() -> None:
     assert not is_verified_maven_coord("com.invented:guess", maven_map)
 
 
+def test_nuget_package_requires_manifest_entry() -> None:
+    nuget_map = {"RestSharp": "RestSharp", "Rest": "RestSharp"}
+    assert is_verified_nuget_package("RestSharp", nuget_map)
+    assert not is_verified_nuget_package("Invented.Package", nuget_map)
+
+
 def test_analyze_project_java_without_pom_emits_no_maven_symbol_reach(tmp_path: Path) -> None:
     (tmp_path / "Server.java").write_text(
         "import com.squareup.okhttp3.OkHttpClient;\n"
@@ -40,6 +47,20 @@ def test_analyze_project_java_without_pom_emits_no_maven_symbol_reach(tmp_path: 
     )
     result = analyze_project(tmp_path)
     assert not [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "maven"]
+
+
+def test_analyze_project_csharp_without_lock_emits_no_nuget_symbol_reach(tmp_path: Path) -> None:
+    (tmp_path / "Server.cs").write_text(
+        "using RestSharp;\n"
+        "class Server {\n"
+        "  void FetchUrl(string url) {\n"
+        "    RestSharp.RestClient client = new RestSharp.RestClient();\n"
+        "    client.ExecuteAsync(null);\n"
+        "  }\n"
+        "}\n"
+    )
+    result = analyze_project(tmp_path)
+    assert not [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "nuget"]
 
 
 def test_analyze_project_rust_skips_std_and_unresolved_tool(tmp_path: Path) -> None:

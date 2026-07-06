@@ -684,6 +684,34 @@ class TestMarkdown:
         assert "| Recommendation | `review` |" in md
 
 
+# ── PDF ──────────────────────────────────────────────────────────────────────
+
+
+class TestPdf:
+    def test_blast_radius_findings_render_with_blast_radii(self):
+        from agent_bom.output.pdf import to_pdf
+
+        report, brs = _report_with_vulns()
+        text = to_pdf(report, brs).decode("latin-1", "replace")
+
+        assert "Top Blast Radius Findings" in text
+        assert "CVE-2024-0001" in text
+        assert "lodash@4.17.20" in text
+        assert "4.17.21" in text
+
+    def test_unified_cve_findings_drive_pdf_without_blast_radii(self):
+        from agent_bom.output.pdf import to_pdf
+
+        report = _make_report()
+        report.findings = [_make_unified_cve_finding()]
+        text = to_pdf(report).decode("latin-1", "replace")
+
+        assert "Top Blast Radius Findings" in text
+        assert "CVE-2026-4242" in text
+        assert "web-lib@1.0.0" in text
+        assert "AWS_SECRET_ACCESS_KEY" in text
+
+
 def test_exposure_path_is_embedded_in_sarif_properties():
     tool = MCPTool(name="deploy", description="Deploy workloads")
     server = _make_server(name="prod-mcp", tools=[tool], env={"AWS_SECRET_ACCESS_KEY": "redacted"})

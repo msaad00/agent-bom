@@ -175,7 +175,13 @@ def _should_retry_status(status_code: int, url: str) -> bool:
     return True
 
 
-def create_client(timeout: float | None = None, max_redirects: int = 0) -> httpx.AsyncClient:
+def create_client(
+    timeout: float | None = None,
+    max_redirects: int = 0,
+    *,
+    cert: str | tuple[str, str] | None = None,
+    verify: bool | str = True,
+) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with connection-level retries.
 
     Uses httpx's built-in transport retry for connection failures (DNS, TCP reset).
@@ -198,7 +204,8 @@ def create_client(timeout: float | None = None, max_redirects: int = 0) -> httpx
         transport=transport,
         follow_redirects=False,
         max_redirects=max_redirects,
-        verify=True,  # Explicit: always verify TLS certificates (defense-in-depth)
+        verify=verify,
+        cert=cert,
     )
 
 

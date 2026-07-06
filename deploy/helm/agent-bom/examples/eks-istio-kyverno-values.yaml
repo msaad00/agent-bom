@@ -24,6 +24,16 @@ controlPlane:
     env:
       - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
         value: "1"
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE
+        value: delegated
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_PROVIDER
+        value: istio
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF
+        value: secret/agent-bom/proxy-client-ca
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_EVIDENCE_REF
+        value: deploy/helm/agent-bom/templates/controlplane-istio-peerauthentication.yaml
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CERT_HEADER
+        value: x-forwarded-client-cert
   ingress:
     enabled: true
     className: nginx

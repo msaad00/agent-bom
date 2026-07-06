@@ -16,6 +16,7 @@ import html
 from typing import TYPE_CHECKING
 
 from agent_bom.asset_provenance import package_version_provenance
+from agent_bom.output.finding_views import cve_findings, severity_value, topology_package_key
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
@@ -83,16 +84,17 @@ def to_svg(
     if max_rows_per_column is not None and max_rows_per_column < 2:
         raise ValueError("max_rows_per_column must be at least 2 or None")
 
-    vuln_pkg_keys: set[tuple[str, str]] = {(br.package.name, br.package.ecosystem) for br in blast_radii}
+    findings = cve_findings(report, blast_radii)
+    vuln_pkg_keys: set[tuple[str, str]] = {topology_package_key(finding) for finding in findings}
     pkg_cve_map: dict[tuple[str, str], list[dict]] = {}
-    for br in blast_radii:
-        key = (br.package.name, br.package.ecosystem)
+    for finding in findings:
+        key = topology_package_key(finding)
         if key not in pkg_cve_map:
             pkg_cve_map[key] = []
         pkg_cve_map[key].append(
             {
-                "id": br.vulnerability.id,
-                "severity": br.vulnerability.severity.value.lower(),
+                "id": finding.cve_id or finding.title,
+                "severity": severity_value(finding),
             }
         )
 

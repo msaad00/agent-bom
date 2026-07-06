@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agent_bom.compliance_utils import framework_qualified_finding_tags
+from agent_bom.compliance_utils import compliance_tags_export_cell
 from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output.finding_views import (
     cve_findings,
@@ -82,7 +82,7 @@ def _row_dict(finding) -> dict[str, Any]:
         "epss_percentile": evidence(finding, "epss_percentile", None),
         "kev_date_added": evidence(finding, "kev_date_added", "") or None,
         "kev_due_date": evidence(finding, "kev_due_date", "") or None,
-        "compliance_tags": ";".join(framework_qualified_finding_tags(finding)) or None,
+        "compliance_tags": compliance_tags_export_cell(finding) or None,
         "symbol_reachability": evidence(finding, "symbol_reachability", "") or None,
         "reachable_affected_symbols": ";".join(evidence(finding, "reachable_affected_symbols", []) or [])
         or None,

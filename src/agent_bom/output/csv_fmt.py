@@ -9,7 +9,7 @@ from __future__ import annotations
 import csv
 import io
 
-from agent_bom.compliance_utils import framework_qualified_finding_tags
+from agent_bom.compliance_utils import compliance_tags_export_cell
 from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output.finding_views import cve_findings, evidence, package_ecosystem, package_name, package_version, severity_value
 
@@ -49,6 +49,7 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
     writer = csv.DictWriter(buf, fieldnames=_COLUMNS, quoting=csv.QUOTE_MINIMAL)
     writer.writeheader()
 
+
     for finding in findings:
         writer.writerow(
             {
@@ -72,7 +73,7 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
                 "epss_percentile": _format_optional_float(evidence(finding, "epss_percentile", None)),
                 "kev_date_added": evidence(finding, "kev_date_added", ""),
                 "kev_due_date": evidence(finding, "kev_due_date", ""),
-                "compliance_tags": _compliance_tags_cell(finding),
+                "compliance_tags": compliance_tags_export_cell(finding),
             }
         )
 
@@ -88,11 +89,6 @@ def _format_optional_float(value: object) -> str:
         return f"{float(value):.4f}"
     except (TypeError, ValueError):
         return str(value)
-
-
-def _compliance_tags_cell(finding: object) -> str:
-    """Return framework-qualified tags for one spreadsheet cell."""
-    return ";".join(framework_qualified_finding_tags(finding))
 
 
 def export_csv(report: AIBOMReport, output_path: str, blast_radii: list[BlastRadius] | None = None) -> None:

@@ -394,6 +394,11 @@ class Finding:
                 result.append(tag)
         return result
 
+    def _framework_tags_for_export(self) -> list[str]:
+        from agent_bom.compliance_utils import framework_qualified_finding_tags
+
+        return framework_qualified_finding_tags(self)
+
     def effective_severity(self) -> str:
         """Return the best severity value: vendor > cvss > base severity."""
         return self.vendor_severity or self.cvss_severity or self.severity
@@ -441,6 +446,7 @@ class Finding:
             # findings without it keep their existing serialization shape.
             **({"remediation": self.remediation.to_dict()} if self.remediation is not None else {}),
             "compliance_tags": self.all_compliance_tags(),
+            "framework_tags": self._framework_tags_for_export(),
             "applicable_frameworks": list(self.applicable_frameworks),
             "controls": [tag.to_dict() for tag in self.normalized_controls()],
             "owasp_tags": self.owasp_tags,

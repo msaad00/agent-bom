@@ -65,6 +65,7 @@ for self-hosted control planes.
 ### Docs / positioning
 - README product-first personas and FinOps lane; internal quick-wins queue moved
   to `docs/archive/` (#3580, #3587).
+- Close post-audit hardening tracker **#3242** (corrective arc complete; forward work stays on epic issues).
 
 ## [0.92.0] - 2026-07-02
 

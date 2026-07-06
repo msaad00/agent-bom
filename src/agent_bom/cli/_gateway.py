@@ -500,6 +500,16 @@ def serve_cmd(
         oauth_as = OAuthAuthorizationServer(issuer=oauth_as_issuer)
         click.echo(f"OAuth 2.1 AS enabled (issuer={oauth_as_issuer or '<derived from request>'})")
 
+    oidc_discovery_shim = None
+    try:
+        from agent_bom.api.oidc_discovery_shim import OIDCDiscoveryShimConfig, OIDCDiscoveryShimError
+
+        oidc_discovery_shim = OIDCDiscoveryShimConfig.from_env()
+    except OIDCDiscoveryShimError as exc:
+        raise click.ClickException(f"OIDC discovery shim config invalid: {exc}") from exc
+    if oidc_discovery_shim is not None:
+        click.echo(f"OIDC discovery shim enabled (issuer={oidc_discovery_shim.issuer})")
+
     tool_scope_mapping: dict[str, list[str]] = {}
     if tool_scope_map is not None:
         raw_map = read_json_file_for_cli(tool_scope_map, label="tool scope map")
@@ -537,6 +547,7 @@ def serve_cmd(
         graph_reachability_path=graph_reachability_path,
         graph_reachability_enforcement_mode=graph_reachability_enforcement,
         oauth_as=oauth_as,
+        oidc_discovery_shim=oidc_discovery_shim,
         a2a_mutual_auth_enforcement_mode=a2a_mutual_auth_enforcement,
         tool_scope_map=tool_scope_mapping,
         dlp_enabled=enable_dlp,

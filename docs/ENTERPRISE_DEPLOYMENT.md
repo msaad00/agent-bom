@@ -369,6 +369,29 @@ open https://<control-plane-host>/login
 After sign-in, open **Connections** (`/connections`) to add a read-only cloud
 account, then launch or schedule a scan from the same dashboard.
 
+### MCP OIDC discovery shim
+
+When MCP OAuth clients require `/.well-known/openid-configuration` at your
+gateway hostname but the buyer IdP only exposes manually configured endpoints,
+enable the read-only discovery shim on the gateway:
+
+```bash
+export AGENT_BOM_OIDC_DISCOVERY_SHIM_JSON='{
+  "issuer": "https://mcp-auth.example.internal",
+  "authorization_endpoint": "https://idp.example.com/oauth2/v1/authorize",
+  "token_endpoint": "https://idp.example.com/oauth2/v1/token",
+  "jwks_uri": "https://idp.example.com/oauth2/v1/keys"
+}'
+```
+
+The shim publishes public metadata only; tokens still come from the upstream
+IdP. For agent-bom-native MCP OAuth (broker AS), use
+`AGENT_BOM_GATEWAY_ENABLE_OAUTH_AS` instead.
+
+See [`docs/design/OIDC_DISCOVERY_SHIM.md`](design/OIDC_DISCOVERY_SHIM.md) and
+`deploy/helm/agent-bom/examples/oidc-discovery-shim-values.yaml` for architecture,
+Helm overlay, and contract tests.
+
 ### Proxy-to-control-plane mTLS posture
 
 The recommended production pattern is delegated mTLS: terminate TLS and verify

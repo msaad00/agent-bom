@@ -147,9 +147,9 @@ def _maven_coord_from_import(import_path: str, maven_map: Mapping[str, str]) -> 
     simple = parts[-1]
     prefix = ".".join(parts[:-1])
     for candidate in (prefix, simple, f"{prefix}.{simple}"):
-        coord = maven_map.get(candidate)
-        if coord and is_verified_maven_coord(coord, dict(maven_map)):
-            return coord
+        candidate_coord = maven_map.get(candidate)
+        if candidate_coord and is_verified_maven_coord(candidate_coord, dict(maven_map)):
+            return candidate_coord
     return None
 
 
@@ -430,11 +430,7 @@ def scan_java_file(
     class_name = class_match.group("name") if class_match else Path(rel_path).stem
     bindings = _java_import_bindings(source, maven_map)
     frameworks = sorted(
-        {
-            framework
-            for prefix, framework in _JAVA_FRAMEWORK_HINTS.items()
-            if any(prefix in binding for binding in bindings.values())
-        }
+        {framework for prefix, framework in _JAVA_FRAMEWORK_HINTS.items() if any(prefix in binding for binding in bindings.values())}
     )
     methods = _collect_java_methods(source, rel_path=rel_path, class_name=class_name, bindings=bindings)
     tool_registrations = _collect_java_tool_registrations(

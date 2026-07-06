@@ -388,10 +388,10 @@ def _server_discovery_provenance_from_report(report: AIBOMReport, server_names: 
             servers_by_name[server.name] = server
     out: list[Any] = []
     for name in server_names[:10]:
-        server = servers_by_name.get(str(name))
-        if not server:
+        matched_server: Any = servers_by_name.get(str(name))
+        if not matched_server:
             continue
-        provenance = sanitize_discovery_provenance(getattr(server, "discovery_provenance", None))
+        provenance = sanitize_discovery_provenance(getattr(matched_server, "discovery_provenance", None))
         if provenance:
             out.append(provenance)
     return out
@@ -458,9 +458,7 @@ def _ensure_cve_sarif_rule(
                     fallback=f"{rule_id} package vulnerability",
                 )
             },
-            "fullDescription": {
-                "text": _sanitize_sarif_text("description", finding.description, fallback=f"Vulnerability {rule_id}")
-            },
+            "fullDescription": {"text": _sanitize_sarif_text("description", finding.description, fallback=f"Vulnerability {rule_id}")},
             "helpUri": f"https://osv.dev/vulnerability/{rule_id}",
             "defaultConfiguration": {"level": level},
             "properties": rule_props,
@@ -576,8 +574,8 @@ def to_sarif(
             (fixed_version is None/empty). Reduces noise in GitHub Security tab
             from CVEs that can't be acted on.
     """
-    rules = []
-    results = []
+    rules: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     seen_rule_ids: set[str] = set()
 
     for rank, finding in enumerate(cve_findings(report, blast_radii), 1):
@@ -588,8 +586,8 @@ def to_sarif(
         if exclude_unfixable and not finding.fixed_version:
             continue
 
-        sev = finding_severity(finding)
-        level = _SARIF_SEVERITY_MAP.get(sev, "warning")
+        cve_severity = finding_severity(finding)
+        level = _SARIF_SEVERITY_MAP.get(cve_severity, "warning")
         pkg_name = package_name(finding)
         pkg_version = package_version(finding)
 
@@ -632,9 +630,9 @@ def to_sarif(
             and evidence.get("provider") in _DEDICATED_CIS_PROVIDERS
         ):
             continue
-        sev = str(finding.severity or "medium").lower()
+        finding_severity_name = str(finding.severity or "medium").lower()
         rule_id = f"finding/{finding.finding_type.value}"
-        level = finding_sev_map.get(sev, "warning")
+        level = finding_sev_map.get(finding_severity_name, "warning")
         if rule_id not in seen_rule_ids:
             seen_rule_ids.add(rule_id)
             rules.append(
@@ -650,7 +648,7 @@ def to_sarif(
                     },
                     "defaultConfiguration": {"level": level},
                     "properties": {
-                        "security-severity": finding_sev_score.get(sev, "4.0"),
+                        "security-severity": finding_sev_score.get(finding_severity_name, "4.0"),
                         "source": finding.source.value,
                         "finding_type": finding.finding_type.value,
                     },
@@ -836,10 +834,10 @@ def to_sarif(
         for check in bundle.get("checks", []):
             if check.get("status") != "fail":
                 continue
-            sev = (check.get("severity") or "medium").lower()
+            cis_severity = str(check.get("severity") or "medium").lower()
             check_id = check.get("check_id") or "unknown"
             rule_id = f"cis/{cloud_key}/{check_id}"
-            level = cis_sev_map.get(sev, "warning")
+            level = cis_sev_map.get(cis_severity, "warning")
             remediation = check.get("remediation") or {}
             title = check.get("title") or rule_id
             help_uri = remediation.get("docs") or ""
@@ -851,7 +849,7 @@ def to_sarif(
                     "shortDescription": {
                         "text": _sanitize_sarif_text(
                             "title",
-                            f"{sev.upper()}: CIS {cloud_key.upper()} {check_id} - {title}",
+                            f"{cis_severity.upper()}: CIS {cloud_key.upper()} {check_id} - {title}",
                             fallback=rule_id,
                         )
                     },
@@ -864,7 +862,7 @@ def to_sarif(
                     },
                     "defaultConfiguration": {"level": level},
                     "properties": {
-                        "security-severity": cis_sev_score.get(sev, "4.0"),
+                        "security-severity": cis_sev_score.get(cis_severity, "4.0"),
                         "tags": ["cis", cloud_key, "compliance"],
                         "cis_section": check.get("cis_section") or "",
                     },

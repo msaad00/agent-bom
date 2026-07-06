@@ -357,6 +357,8 @@ def _scan_source_labels(job: ScanJob) -> list[str]:
         labels.append("kubernetes")
     if req.sbom:
         labels.append("sbom-import")
+    if req.external_scan:
+        labels.append("external_scan")
     labels.extend(req.connectors)
     labels.extend(req.filesystem_paths)
     labels.extend(req.agent_projects)
@@ -374,6 +376,12 @@ def _finding_key(finding: dict[str, Any]) -> str:
 def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, Any]:
     vulnerability_id = item.get("vulnerability_id") or item.get("id") or ""
     package = item.get("package") or item.get("package_name") or ""
+    vex_status = item.get("vex_status")
+    risk_score = item.get("risk_score", item.get("blast_score", 0))
+    if "vex_suppressed" in item:
+        vex_suppressed = bool(item.get("vex_suppressed"))
+    else:
+        vex_suppressed = risk_score == 0.0 and vex_status in {"not_affected", "fixed"}
     return {
         "id": item.get("finding_id") or f"{vulnerability_id}:{package}",
         "vulnerability_id": vulnerability_id,
@@ -384,9 +392,16 @@ def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, 
         "scan_sources": _scan_source_labels(job),
         "affected_agents": item.get("affected_agents", []),
         "affected_servers": item.get("affected_servers", []),
-        "risk_score": item.get("risk_score", item.get("blast_score", 0)),
+        "risk_score": risk_score,
         "fixed_version": item.get("fixed_version"),
         "is_kev": bool(item.get("is_kev") or item.get("cisa_kev")),
+        "graph_reachable": item.get("graph_reachable"),
+        "symbol_reachability": item.get("symbol_reachability"),
+        "reachable_affected_symbols": item.get("reachable_affected_symbols", []),
+        "match_confidence_tier": item.get("match_confidence_tier"),
+        "vex_status": vex_status,
+        "vex_justification": item.get("vex_justification"),
+        "vex_suppressed": vex_suppressed,
     }
 
 

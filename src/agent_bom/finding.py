@@ -859,6 +859,10 @@ def blast_radius_to_finding(br: object) -> "Finding":
     tier = getattr(vuln, "match_confidence_tier", None)
     if tier:
         evidence["match_confidence_tier"] = tier
+    if getattr(vuln, "vex_status", None):
+        evidence["vex_status"] = vuln.vex_status
+    if getattr(vuln, "vex_justification", None):
+        evidence["vex_justification"] = vuln.vex_justification
     if getattr(vuln, "aliases", None):
         evidence["advisory_aliases"] = _sanitized_evidence_field(list(vuln.aliases))
     from agent_bom.advisory_ids import all_cve_identifiers
@@ -891,6 +895,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
     )
 
     from agent_bom.compliance_hub import apply_hub_classification
+    from agent_bom.vex import is_vex_suppressed
 
     finding = Finding(
         finding_type=FindingType.CVE,
@@ -934,7 +939,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
         reachability=getattr(br, "reachability", None),
         is_actionable=getattr(br, "is_actionable", None),
         impact_category=getattr(br, "impact_category", None),
-        suppressed=bool(getattr(br, "suppressed", False)),
+        suppressed=bool(getattr(br, "suppressed", False)) or is_vex_suppressed(vuln),
         suppression_id=getattr(br, "suppression_id", None),
         suppression_state=getattr(br, "suppression_state", None),
         suppression_reason=getattr(br, "suppression_reason", None),

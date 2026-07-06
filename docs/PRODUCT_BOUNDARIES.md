@@ -77,3 +77,5 @@ Avoid unless a future release proves it:
 - "all cloud identity providers have live ingestion parity"
 
 See the site-docs page for the full lane matrix and release checklist.
+
+Trust boundary and verification hooks: [`TRUST.md`](TRUST.md).

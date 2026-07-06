@@ -132,6 +132,17 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/security-graph')).toBe(true)
   })
 
+  it('surfaces curated proof-path links for golden workflows', () => {
+    render(<Nav />)
+    const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/findings')
+    expect(hrefs).toContain('/security-graph')
+    expect(hrefs).toContain('/runtime')
+    expect(hrefs).toContain('/compliance')
+    expect(hrefs).toContain('/connections')
+    expect(screen.getByText(/proof path/i)).toBeInTheDocument()
+  })
+
   it('contains Registry link in Discover', () => {
     render(<Nav />)
     const links = screen.getAllByRole('link', { name: /^registry$/i })

@@ -2346,6 +2346,33 @@ export interface TraceExplorerResponse {
   sessions: TraceExplorerSession[];
 }
 
+export interface HitlApprovalQueueItem {
+  item_id: string;
+  tenant_id: string;
+  span_id: string;
+  session_id: string;
+  agent: string;
+  tool: string;
+  timestamp?: string | undefined;
+  detail?: string | undefined;
+  source?: string | undefined;
+  status: "pending" | "approved" | "denied" | string;
+  linked_findings: TraceExplorerSpan["linked_findings"];
+  linked_finding_ids: string[];
+  compliance_controls: string[];
+  decided_by?: string | undefined;
+  decided_at?: string | undefined;
+  note?: string | undefined;
+}
+
+export interface HitlApprovalQueueResponse {
+  schema_version: string;
+  tenant_id: string;
+  count: number;
+  pending_count: number;
+  items: HitlApprovalQueueItem[];
+}
+
 export interface ProxyStatusResponse {
   status: string;
   message?: string | undefined;

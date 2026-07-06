@@ -308,6 +308,13 @@ OLLAMA_BASE_URL = _str("AGENT_BOM_OLLAMA_URL", "http://localhost:11434")
 OIDC_DISCOVERY_SHIM_JSON = _str("AGENT_BOM_OIDC_DISCOVERY_SHIM_JSON", "")
 
 
+# ── Demo Estate ──────────────────────────────────────────────────────────
+# Enables curated demo-estate bootstrap on loopback / hosted proof paths. Off
+# by default so production deployments never seed synthetic estate data unless
+# an operator explicitly opts in.
+DEMO_ESTATE = _bool("AGENT_BOM_DEMO_ESTATE", False)
+
+
 # ── Enrichment Cache ──────────────────────────────────────────────────────
 # Used by enrichment.py for persistent NVD + EPSS disk cache.
 #

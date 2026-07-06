@@ -115,6 +115,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_DSPM_S3_MAX_BYTES_PER_OBJECT` | `int` | `64 * 1024` | — |
 | `AGENT_BOM_DSPM_S3_MAX_OBJECTS_PER_BUCKET` | `int` | `10` | Content reads are opt-in at the caller/module level. These caps bound the amount of object-store data read when an operator enables object-store sampling. |
 
+## Demo Estate
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_DEMO_ESTATE` | `bool` | `False` | Enables curated demo-estate bootstrap on loopback / hosted proof paths. Off by default so production deployments never seed synthetic estate data unless an operator explicitly opts in. |
+
 ## EPSS Thresholds
 | Env var | Type | Default | Description |
 |---|---|---|---|

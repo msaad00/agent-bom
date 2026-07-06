@@ -144,7 +144,8 @@ test("jobs page links sources to completed evidence surfaces", async ({ page }) 
   await expect(page.getByText("Prod cloud account")).toBeVisible();
   await expect(page.getByText("3 CVEs · 1 critical · 8 packages")).toBeVisible();
 
-  await expect(page.getByRole("link", { name: "Findings", exact: true })).toHaveAttribute("href", "/findings?scan=job-prod-cloud");
-  await expect(page.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute("href", "/security-graph?scan=job-prod-cloud");
-  await expect(page.getByRole("link", { name: "Compliance", exact: true })).toHaveAttribute("href", "/compliance?scan=job-prod-cloud");
+  const mainContent = page.locator("#main-content");
+  await expect(mainContent.getByRole("link", { name: "Findings", exact: true })).toHaveAttribute("href", "/findings?scan=job-prod-cloud");
+  await expect(mainContent.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute("href", "/security-graph?scan=job-prod-cloud");
+  await expect(mainContent.getByRole("link", { name: "Compliance", exact: true })).toHaveAttribute("href", "/compliance?scan=job-prod-cloud");
 });

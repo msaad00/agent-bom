@@ -504,6 +504,14 @@ async def _lifespan(app_instance: FastAPI):
         _logger.exception("Distributed scan worker failed to start; continuing single-node")
         _scan_worker = None
 
+    if os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
+
+            await asyncio.to_thread(maybe_bootstrap_demo_estate)
+        except Exception:  # noqa: BLE001
+            _logger.warning("demo estate bootstrap skipped", exc_info=True)
+
     yield
 
     # ── Graceful shutdown ──

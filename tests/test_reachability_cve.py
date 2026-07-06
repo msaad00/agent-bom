@@ -68,9 +68,7 @@ def test_extract_symbols_from_osv_imports() -> None:
 
 
 def test_extract_symbols_from_vulnerability_field() -> None:
-    vuln = Vulnerability(
-        id="CVE-2099-1", summary="x", severity=Severity.HIGH, affected_symbols=["dangerous_load"]
-    )
+    vuln = Vulnerability(id="CVE-2099-1", summary="x", severity=Severity.HIGH, affected_symbols=["dangerous_load"])
     assert "dangerous_load" in extract_affected_symbols(vuln)
 
 
@@ -149,9 +147,7 @@ def test_extract_ignores_malformed_blocks() -> None:
 
 def test_function_reachable_when_affected_symbol_is_reached() -> None:
     index = SymbolReachIndex.from_reaches([_reach("jinja2", "jinja2.sandbox", "SandboxedEnvironment")])
-    signal = classify_reachability(
-        package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index
-    )
+    signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
     assert signal.state == FUNCTION_REACHABLE
     assert signal.matched_symbols == ("SandboxedEnvironment",)
     assert signal.function_reachable is True
@@ -160,21 +156,15 @@ def test_function_reachable_when_affected_symbol_is_reached() -> None:
 def test_function_reachable_matches_method_on_reached_class() -> None:
     # Reached symbol is the method ``SandboxedEnvironment.from_string``; the
     # advisory names the type. The leading-component token must still match.
-    index = SymbolReachIndex.from_reaches(
-        [_reach("jinja2", "jinja2.sandbox", "SandboxedEnvironment.from_string")]
-    )
-    signal = classify_reachability(
-        package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index
-    )
+    index = SymbolReachIndex.from_reaches([_reach("jinja2", "jinja2.sandbox", "SandboxedEnvironment.from_string")])
+    signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
     assert signal.state == FUNCTION_REACHABLE
 
 
 def test_package_reachable_when_affected_symbol_not_reached() -> None:
     # The reached symbol is a different, benign function in the same package.
     index = SymbolReachIndex.from_reaches([_reach("jinja2", "jinja2", "escape")])
-    signal = classify_reachability(
-        package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index
-    )
+    signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
     assert signal.state == PACKAGE_REACHABLE
     assert signal.matched_symbols == ()
 
@@ -189,9 +179,7 @@ def test_package_reachable_when_advisory_has_no_symbols() -> None:
 
 def test_unreachable_when_package_not_reached() -> None:
     index = SymbolReachIndex.from_reaches([_reach("requests", "requests", "get")])
-    signal = classify_reachability(
-        package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index
-    )
+    signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
     assert signal.state == UNREACHABLE
 
 
@@ -211,9 +199,7 @@ def test_graph_reach_fallback_yields_package_reachable() -> None:
 
 def test_package_name_normalization_matches() -> None:
     index = SymbolReachIndex.from_reaches([_reach("Jinja2", "jinja2.sandbox", "SandboxedEnvironment")])
-    signal = classify_reachability(
-        package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index
-    )
+    signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
     assert signal.state == FUNCTION_REACHABLE
 
 
@@ -268,9 +254,7 @@ def test_npm_function_reachable_when_affected_symbol_is_reached() -> None:
 
 
 def test_function_reachable_from_real_ast_analysis(tmp_path: Path) -> None:
-    (tmp_path / "agent.py").write_text(
-        "import requests\n\n@tool\ndef fetch(url):\n    return requests.get(url)\n"
-    )
+    (tmp_path / "agent.py").write_text("import requests\n\n@tool\ndef fetch(url):\n    return requests.get(url)\n")
     result = analyze_project(tmp_path)
     index = SymbolReachIndex.from_ast_result(result)
 
@@ -305,9 +289,7 @@ def test_function_reachable_from_real_ast_analysis(tmp_path: Path) -> None:
 
 
 def _python_br(symbols: list[str], pkg_name: str = "requests") -> BlastRadius:
-    vuln = Vulnerability(
-        id="CVE-2099-7", summary="x", severity=Severity.HIGH, affected_symbols=symbols
-    )
+    vuln = Vulnerability(id="CVE-2099-7", summary="x", severity=Severity.HIGH, affected_symbols=symbols)
     pkg = Package(name=pkg_name, version="2.0.0", ecosystem="pypi")
     return BlastRadius(
         vulnerability=vuln,

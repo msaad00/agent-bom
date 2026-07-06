@@ -5,9 +5,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from agent_bom.cloud.base import CloudDiscoveryError
 from agent_bom.cloud.nebius import (
     _discover_ai_studio,
     _discover_container_services,

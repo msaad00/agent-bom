@@ -31,9 +31,9 @@ is a three-state reachability signal on the finding:
 
 Honest scope: Python, npm, Go, Maven/Java, Cargo/Rust, NuGet/C#, and RubyGems
 symbol-level call graphs are supported when import proof is available (``use`` /
-``pom.xml`` / ``packages.lock.json`` / ``Gemfile.lock``). Regex parsers apply
-conservative guards and omit heuristic rows so headless MCP consumers do not
-receive false ``function_reachable`` upgrades.
+``pom.xml`` / ``build.gradle`` / ``packages.lock.json`` / ``Gemfile.lock``).
+Regex parsers apply conservative guards and omit heuristic rows so headless MCP
+consumers do not receive false ``function_reachable`` upgrades.
 
 The module is read-only: no graph mutation, no network. It is safe to call
 from the report layer, the graph/blast-radius surfacing, the API, or a

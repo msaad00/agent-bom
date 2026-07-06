@@ -326,6 +326,7 @@ def build_context_graph(
                         "is_kev": br_dict.get("is_kev", False),
                         "risk_score": br_dict.get("risk_score", 0),
                         "package": br_dict.get("package", ""),
+                        "symbol_reachability": br_dict.get("symbol_reachability"),
                     },
                 )
             )

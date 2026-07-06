@@ -557,12 +557,27 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     reach = _effective_reach_lookup(job)
 
     def _attach_reach(row: dict[str, Any]) -> dict[str, Any]:
+        from agent_bom.symbol_reach_triage import adjust_effective_reach_breakdown, symbol_reachability_from_payload
+
         vuln_id = row.get("vulnerability_id") or row.get("cve_id") or row.get("id") or ""
         breakdown = reach.get(str(vuln_id))
+        sym = symbol_reachability_from_payload(row)
         if breakdown:
-            row["effective_reach"] = breakdown
-            row.setdefault("effective_reach_score", breakdown.get("composite"))
-            row.setdefault("effective_reach_band", breakdown.get("band"))
+            adjusted = adjust_effective_reach_breakdown(breakdown, sym)
+            row["effective_reach"] = adjusted
+            row.setdefault("effective_reach_score", adjusted.get("composite"))
+            row.setdefault("effective_reach_band", adjusted.get("band"))
+        elif sym:
+            from agent_bom.symbol_reach_triage import apply_composite_delta, band_from_composite
+
+            composite = apply_composite_delta(0.0, sym)
+            row["effective_reach"] = {
+                "composite": composite,
+                "band": band_from_composite(composite),
+                "symbol_reachability": sym,
+            }
+            row.setdefault("effective_reach_score", composite)
+            row.setdefault("effective_reach_band", band_from_composite(composite))
         return row
 
     for item in result.get("findings", []) or []:

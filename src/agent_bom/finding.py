@@ -887,6 +887,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
         reachable=getattr(br, "graph_reachable", None),
         exposed_credential_count=len(br.exposed_credentials),
         exposed_tool_count=len(br.exposed_tools),
+        symbol_reachability=getattr(br, "symbol_reachability", None),
     )
 
     from agent_bom.compliance_hub import apply_hub_classification

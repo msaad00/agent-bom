@@ -196,6 +196,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_MCP_MAX_TOOL_METRICS` | `int` | `128` | — |
 | `AGENT_BOM_MCP_TOOL_TIMEOUT_SECONDS` | `float` | `30.0` | — |
 
+## OIDC discovery shim
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_OIDC_DISCOVERY_SHIM_JSON` | `str` | `''` | Optional static OIDC discovery metadata JSON served by the gateway for legacy IdPs / MCP clients that need discovery documents but cannot publish them at the normal issuer location. Empty string disables the shim. |
+
 ## OS-package reporting
 | Env var | Type | Default | Description |
 |---|---|---|---|

@@ -182,9 +182,7 @@ def rollover_observation_partitions(
         partition_end = _partition_end_date(partition_name)
         if partition_end is None or partition_end > cutoff:
             continue
-        conn.execute(
-            f"ALTER TABLE {OBSERVATIONS_TABLE} DETACH PARTITION {partition_name}"
-        )  # nosec B608 — partition_name parsed from pg_catalog
+        conn.execute(f"ALTER TABLE {OBSERVATIONS_TABLE} DETACH PARTITION {partition_name}")  # nosec B608 — partition_name parsed from pg_catalog
         conn.execute(f"DROP TABLE IF EXISTS {partition_name}")  # nosec B608
         dropped += 1
         logger.info(
@@ -217,7 +215,7 @@ def migrate_observations_to_partitioned(conn: Any) -> bool:
             date_trunc('month', MIN(observed_at::timestamptz))::date AS min_month,
             date_trunc('month', MAX(observed_at::timestamptz))::date AS max_month
         FROM {OBSERVATIONS_TABLE}_pre_partition
-        """
+        """  # nosec B608 — table name is a static internal migration table
     ).fetchone()
     min_month = bounds[0] if bounds and bounds[0] else date.today().replace(day=1)
     max_month = bounds[1] if bounds and bounds[1] else min_month
@@ -239,7 +237,7 @@ def migrate_observations_to_partitioned(conn: Any) -> bool:
             (tenant_id, canonical_id, scan_id, observed_at)
         SELECT tenant_id, canonical_id, scan_id, observed_at::timestamptz
         FROM {OBSERVATIONS_TABLE}_pre_partition
-        """
+        """  # nosec B608 — table names are static internal migration tables
     )
     conn.execute(f"DROP TABLE {OBSERVATIONS_TABLE}_pre_partition")
     return True

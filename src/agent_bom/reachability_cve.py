@@ -29,13 +29,10 @@ is a three-state reachability signal on the finding:
 * ``unreachable`` — the package is present in the dependency set but no
   entrypoint reaches it at all.
 
-Honest scope: Python, npm, and Go symbol-level call graphs are supported.
-The ``function_reachable`` upgrade only fires when the advisory genuinely
-carries affected symbols (OSV ``imports``, GHSA ``vulnerable_functions``, or
-pre-extracted ``affected_symbols``). CVE/CWE/CPE identifiers are carried on
-the advisory and surfaced alongside the reachability verdict for CWE-aware
-impact and VEX triage; they do not substitute for missing symbol data.
-Everything else degrades to ``package_reachable`` or ``unreachable``.
+Honest scope: Python, npm, Go, Maven/Java, and Cargo/Rust symbol-level call
+graphs are supported when import proof is available (``use`` / ``pom.xml``).
+Rust/Java regex parsers apply conservative guards and omit heuristic rows so
+headless MCP consumers do not receive false ``function_reachable`` upgrades.
 
 The module is read-only: no graph mutation, no network. It is safe to call
 from the report layer, the graph/blast-radius surfacing, the API, or a

@@ -25,6 +25,6 @@ jobs:
           fetch-depth: 0
 
       - name: Submit dependency graph snapshot
-        uses: advanced-security/component-detection-dependency-submission-action@9c110eb34dee187cd9eca76a652b9f6a0ed22927 # v0.1.1
+        uses: advanced-security/component-detection-dependency-submission-action@31f25a8de68ae5ce2ca274bc28546a78683c15ce # v0.1.4
         with:
           detectorArgs: UvLock=EnableIfDefaultOff,NpmLockfile3=EnableIfDefaultOff,Pip=EnableIfDefaultOff,SimplePip=EnableIfDefaultOff,Dockerfile=EnableIfDefaultOff,Spdx22=EnableIfDefaultOff

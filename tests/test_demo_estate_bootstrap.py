@@ -11,12 +11,18 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_GRAPH_DB", str(tmp_path / "demo-graph.db"))
 
     from agent_bom.api import server as api_server
+    from agent_bom.api import stores as api_stores
 
     api_server._runtime_api_key_seeded = False
     api_server._shutting_down = False
+    original_graph_store = api_stores._graph_store
+    api_stores._graph_store = None
 
-    with TestClient(api_server.app) as client:
-        yield client
+    try:
+        with TestClient(api_server.app) as client:
+            yield client
+    finally:
+        api_stores._graph_store = original_graph_store
 
 
 def test_demo_estate_bootstrap_seeds_jobs_and_graph(demo_estate_client: TestClient) -> None:

@@ -240,7 +240,8 @@ def seed_showcase_graph_if_empty(
     tenant_id: str = SHOWCASE_TENANT,
 ) -> bool:
     """Persist the showcase graph when the tenant has no snapshot yet."""
-    if graph_store.latest_snapshot_id(tenant_id=tenant_id):
+    latest_snapshot_id = getattr(graph_store, "latest_snapshot_id", None)
+    if callable(latest_snapshot_id) and latest_snapshot_id(tenant_id=tenant_id):
         return False
     graph, identity_store, drift_store = build_showcase_graph(tenant_id=tenant_id)
     apply_showcase_overlays(graph, tenant_id=tenant_id, identity_store=identity_store, drift_store=drift_store)

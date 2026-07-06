@@ -455,6 +455,7 @@ function toLineageData(
     attributes,
     isCritical: isCriticalNode(node),
     evidenceTier: evidenceTierAttr(attributes),
+    runtimeEvidenceTier: runtimeEvidenceTierAttr(attributes),
     evidenceCaptureReplay: attributes.capture_replay_enabled === true,
     evidenceNotAfter: stringAttr(node, "not_after"),
   };
@@ -969,9 +970,26 @@ function evidenceTierAttr(
   attributes: Record<string, unknown>,
 ): "safe_to_store" | "replay_only" | undefined {
   const value = attributes.evidence_tier ?? attributes.tier;
-  return value === "safe_to_store" || value === "replay_only"
-    ? value
-    : undefined;
+  if (value === "safe_to_store" || value === "replay_only") {
+    return value;
+  }
+  return undefined;
+}
+
+export type RuntimeEvidenceTier = "static_scan" | "runtime_observed" | "runtime_blocked";
+
+export function runtimeEvidenceTierAttr(
+  attributes: Record<string, unknown>,
+): RuntimeEvidenceTier | undefined {
+  const value = attributes.evidence_tier;
+  if (
+    value === "static_scan" ||
+    value === "runtime_observed" ||
+    value === "runtime_blocked"
+  ) {
+    return value;
+  }
+  return undefined;
 }
 
 function complianceSubset(tags: string[], prefix: string): string[] {

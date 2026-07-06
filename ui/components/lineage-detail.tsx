@@ -19,6 +19,7 @@ import {
   Package,
   Radar,
   Server,
+  Shield,
   ShieldAlert,
   ShieldOff,
   TriangleAlert,
@@ -33,7 +34,7 @@ import {
   reachTextClass,
 } from "@/lib/effective-reach";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
-import type { LineageNodeData } from "./lineage-nodes";
+import type { LineageNodeData, RuntimeEvidenceTier } from "./lineage-nodes";
 
 const TYPE_ICON = {
   provider: Building2,
@@ -489,6 +490,8 @@ export function LineageDetailPanel({
           notAfter={data.evidenceNotAfter}
         />
 
+        <RuntimeEvidenceBadge tier={data.runtimeEvidenceTier} />
+
         {(data.status ||
           data.riskScore != null ||
           data.firstSeen ||
@@ -810,6 +813,41 @@ function EvidenceTierBadge({
       <span>
         {rotatesIn != null ? `Rotates in ${rotatesIn} days` : "Replay only"}
       </span>
+    </div>
+  );
+}
+
+function RuntimeEvidenceBadge({
+  tier,
+}: {
+  tier?: RuntimeEvidenceTier | undefined;
+}) {
+  if (!tier) return null;
+
+  const labels: Record<
+    RuntimeEvidenceTier,
+    { text: string; className: string }
+  > = {
+    static_scan: {
+      text: "Static scan evidence",
+      className: "border-zinc-700 bg-zinc-900 text-zinc-300",
+    },
+    runtime_observed: {
+      text: "Runtime observed path",
+      className: "border-sky-800 bg-sky-950 text-sky-300",
+    },
+    runtime_blocked: {
+      text: "Runtime blocked path",
+      className: "border-rose-800 bg-rose-950 text-rose-300",
+    },
+  };
+  const chip = labels[tier];
+  return (
+    <div
+      className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[10px] font-mono ${chip.className}`}
+    >
+      <Shield className="w-3 h-3" />
+      <span>{chip.text}</span>
     </div>
   );
 }

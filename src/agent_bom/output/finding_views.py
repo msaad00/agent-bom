@@ -163,3 +163,28 @@ def ranked_cve_findings(
     """Return top CVE findings by unified risk score for exposure-path views."""
     findings = cve_findings(report, blast_radii)
     return sorted(findings, key=lambda finding: float(finding.risk_score or 0.0), reverse=True)[:limit]
+
+
+def topology_package_key(finding: Finding) -> tuple[str, str]:
+    """Return ``(name, ecosystem)`` for graph/mermaid package nodes."""
+    return package_name(finding), package_ecosystem(finding)
+
+
+def topology_vuln_dict(finding: Finding) -> dict[str, Any]:
+    """Project a unified CVE finding into the graph builder vuln payload shape."""
+    summary = finding.description or finding.title or ""
+    return {
+        "id": finding.cve_id or finding.title,
+        "severity": severity_value(finding),
+        "summary": summary[:100] if summary else "",
+        "risk_score": finding.risk_score,
+        "cvss_score": finding.cvss_score or 0,
+        "fix_version": finding.fixed_version or "",
+        "owasp_tags": list(finding.owasp_tags),
+        "atlas_tags": list(finding.atlas_tags),
+        "attack_tags": list(finding.attack_tags),
+        "nist_ai_rmf_tags": list(finding.nist_ai_rmf_tags),
+        "owasp_mcp_tags": list(finding.owasp_mcp_tags),
+        "owasp_agentic_tags": list(finding.owasp_agentic_tags),
+        "eu_ai_act_tags": list(finding.eu_ai_act_tags),
+    }

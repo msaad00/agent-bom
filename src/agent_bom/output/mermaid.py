@@ -48,22 +48,31 @@ class _MermaidIds:
         return self._ids[raw]
 
 
-def to_mermaid(report: AIBOMReport, blast_radii: list[BlastRadius]) -> str:
-    """Generate a Mermaid flowchart from blast radius data.
+def to_mermaid(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
+    """Generate a Mermaid flowchart from the unified CVE finding stream.
 
     The graph shows the attack chain:
         CVE → package → server → agent → credentials/tools
 
     Args:
         report: The AI-BOM report (used for metadata).
-        blast_radii: List of BlastRadius objects to visualize.
+        blast_radii: Optional legacy BlastRadius override.
 
     Returns:
         Mermaid flowchart as a string.
     """
-    lines: list[str] = ["graph LR"]
+    from agent_bom.output.finding_views import (
+        cve_findings,
+        package_ecosystem,
+        package_name,
+        package_version,
+        severity_value,
+    )
 
-    if not blast_radii:
+    lines: list[str] = ["graph LR"]
+    findings = cve_findings(report, blast_radii)
+
+    if not findings:
         lines.append('    empty["No vulnerabilities found"]')
         return "\n".join(lines)
 
@@ -73,55 +82,55 @@ def to_mermaid(report: AIBOMReport, blast_radii: list[BlastRadius]) -> str:
     cve_severities: dict[str, str] = {}
     ids = _MermaidIds()
 
-    for br in blast_radii:
-        cve_id = br.vulnerability.id
+    for finding in findings:
+        cve_id = finding.cve_id or finding.title
         cve_node = ids.get(f"cve:{cve_id}")
-        sev = br.vulnerability.severity.value.lower()
+        sev = severity_value(finding)
         cve_severities[cve_node] = sev
 
-        pkg_label = f"{br.package.name}@{br.package.version}"
-        pkg_node = ids.get(f"pkg:{br.package.ecosystem}:{br.package.name}@{br.package.version}")
+        pkg_label = f"{package_name(finding)}@{package_version(finding)}"
+        pkg_node = ids.get(f"pkg:{package_ecosystem(finding)}:{package_name(finding)}@{package_version(finding)}")
 
         # CVE → package
         edge = f'    {cve_node}["{_sanitize_label(cve_id)}"] -->|affects| {pkg_node}["{_sanitize_label(pkg_label)}"]'
         edges.add(edge)
 
         # package → servers
-        for server in br.affected_servers:
-            srv_node = ids.get(f"srv:{server.name}")
-            edge = f'    {pkg_node} -->|in| {srv_node}["{_sanitize_label(server.name)}"]'
+        for server_name in finding.affected_servers:
+            srv_node = ids.get(f"srv:{server_name}")
+            edge = f'    {pkg_node} -->|in| {srv_node}["{_sanitize_label(server_name)}"]'
             edges.add(edge)
 
             # server → agents
-            for agent in br.affected_agents:
-                agt_node = ids.get(f"agt:{agent.name}")
-                edge = f'    {srv_node} -->|used by| {agt_node}["{_sanitize_label(agent.name)}"]'
+            for agent_name in finding.affected_agents:
+                agt_node = ids.get(f"agt:{agent_name}")
+                edge = f'    {srv_node} -->|used by| {agt_node}["{_sanitize_label(agent_name)}"]'
                 edges.add(edge)
 
         # server → credentials
-        for cred in br.exposed_credentials:
+        for cred in finding.exposed_credentials:
             cred_node = ids.get(f"cred:{cred}")
             # Link from each affected server
-            for server in br.affected_servers:
-                srv_node = ids.get(f"srv:{server.name}")
+            for server_name in finding.affected_servers:
+                srv_node = ids.get(f"srv:{server_name}")
                 edge = f'    {srv_node} -->|exposes| {cred_node}["{_sanitize_label(cred)}"]'
                 edges.add(edge)
 
         # server → tools
-        for tool in br.exposed_tools:
-            tool_node = ids.get(f"tool:{tool.name}")
-            for server in br.affected_servers:
-                srv_node = ids.get(f"srv:{server.name}")
-                edge = f'    {srv_node} -->|exposes| {tool_node}["{_sanitize_label(tool.name)}"]'
+        for tool_name in finding.exposed_tools:
+            tool_node = ids.get(f"tool:{tool_name}")
+            for server_name in finding.affected_servers:
+                srv_node = ids.get(f"srv:{server_name}")
+                edge = f'    {srv_node} -->|exposes| {tool_node}["{_sanitize_label(tool_name)}"]'
                 edges.add(edge)
 
         # credential → tools reachable through the same affected server scope.
         # This mirrors the conservative graph-builder mapping used by JSON,
         # Cytoscape, GraphML, and Cypher exports.
-        for cred in br.exposed_credentials:
+        for cred in finding.exposed_credentials:
             cred_node = ids.get(f"cred:{cred}")
-            for tool in br.exposed_tools:
-                tool_node = ids.get(f"tool:{tool.name}")
+            for tool_name in finding.exposed_tools:
+                tool_node = ids.get(f"tool:{tool_name}")
                 edge = f"    {cred_node} -.->|reaches_tool| {tool_node}"
                 edges.add(edge)
 
@@ -252,26 +261,29 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
     return "\n".join(lines) + "\n"
 
 
-def to_mermaid_lifecycle(report: AIBOMReport, blast_radii: list[BlastRadius]) -> str:
+def to_mermaid_lifecycle(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> str:
     """Generate a Mermaid gantt chart showing vulnerability lifecycle timeline.
 
     Shows per-package milestones: scan date → vuln discovered → fix available.
 
     Args:
         report: The AI-BOM report (used for scan date).
-        blast_radii: List of BlastRadius objects to visualize.
+        blast_radii: Optional legacy BlastRadius override.
 
     Returns:
         Mermaid gantt chart as a string.
     """
+    from agent_bom.output.finding_views import cve_findings, evidence, package_name, package_version
+
     lines: list[str] = [
         "gantt",
         "    title Vulnerability Lifecycle Timeline",
         "    dateFormat YYYY-MM-DD",
         "    axisFormat %Y-%m",
     ]
+    findings = cve_findings(report, blast_radii)
 
-    if not blast_radii:
+    if not findings:
         lines.append("    section No vulnerabilities")
         lines.append("    Clean scan :done, s0, 2025-01-01, 1d")
         return "\n".join(lines) + "\n"
@@ -283,14 +295,14 @@ def to_mermaid_lifecycle(report: AIBOMReport, blast_radii: list[BlastRadius]) ->
     else:
         scan_date = str(scan_date)[:10]
 
-    # Group blast radii by package
-    pkg_vulns: dict[str, list[BlastRadius]] = {}
-    for br in blast_radii:
-        pkg_label = f"{br.package.name}@{br.package.version}"
-        pkg_vulns.setdefault(pkg_label, []).append(br)
+    # Group findings by package
+    pkg_vulns: dict[str, list] = {}
+    for finding in findings:
+        pkg_label = f"{package_name(finding)}@{package_version(finding)}"
+        pkg_vulns.setdefault(pkg_label, []).append(finding)
 
     task_id = 0
-    for pkg_label, brs in sorted(pkg_vulns.items()):
+    for pkg_label, pkg_findings in sorted(pkg_vulns.items()):
         safe_label = _sanitize_label(pkg_label)
         lines.append(f"    section {safe_label}")
 
@@ -299,12 +311,11 @@ def to_mermaid_lifecycle(report: AIBOMReport, blast_radii: list[BlastRadius]) ->
         prev_id = f"t{task_id}"
         task_id += 1
 
-        for br in brs:
-            vuln = br.vulnerability
-            vuln_id = vuln.id
+        for finding in pkg_findings:
+            vuln_id = finding.cve_id or finding.title
 
             # Determine discovery date
-            discover_date = getattr(vuln, "published_at", None) or getattr(vuln, "nvd_published", None)
+            discover_date = evidence(finding, "published_at", None) or evidence(finding, "nvd_published", None)
             if discover_date:
                 discover_str = str(discover_date)[:10]
                 lines.append(f"    {vuln_id} :crit, t{task_id}, {discover_str}, 1d")
@@ -314,8 +325,8 @@ def to_mermaid_lifecycle(report: AIBOMReport, blast_radii: list[BlastRadius]) ->
             task_id += 1
 
             # Fixed version milestone
-            if vuln.fixed_version:
-                lines.append(f"    Fix → {vuln.fixed_version} :active, t{task_id}, after {prev_id}, 1d")
+            if finding.fixed_version:
+                lines.append(f"    Fix → {finding.fixed_version} :active, t{task_id}, after {prev_id}, 1d")
                 prev_id = f"t{task_id}"
                 task_id += 1
 

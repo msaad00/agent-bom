@@ -22,6 +22,7 @@ import {
   Filter,
 } from "lucide-react";
 import { useAuthState } from "@/components/auth-provider";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { KeyLifecyclePanel } from "@/components/key-lifecycle-panel";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ const PAGE_SIZE = 50;
 
 export default function AuditLogPage() {
   const { session, loading: authSessionLoading, hasCapability } = useAuthState();
+  const { counts } = useDeploymentContext();
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [integrity, setIntegrity] = useState<AuditIntegrityResponse | null>(null);
@@ -60,6 +62,7 @@ export default function AuditLogPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const roleLabel = session?.role_summary?.display_name ?? session?.role ?? "Unknown";
   const canManageKeys = hasCapability("keys.manage");
+  const auditUnavailable = counts ? !(counts.has_proxy || counts.has_gateway || counts.has_traces) : false;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -258,9 +261,13 @@ export default function AuditLogPage() {
           {entries.length === 0 ? (
             <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
               <FileText className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-              <p className="text-zinc-500 text-sm">No audit log entries</p>
+              <p className="text-zinc-500 text-sm">
+                {auditUnavailable ? "No runtime audit surfaces enabled" : "No audit log entries"}
+              </p>
               <p className="text-zinc-600 text-xs mt-1">
-                Entries will appear as scan, policy, and fleet actions are performed.
+                {auditUnavailable
+                  ? "Enable proxy, gateway, or trace ingest to populate runtime audit history."
+                  : "Entries will appear as scan, policy, and fleet actions are performed."}
               </p>
             </div>
           ) : (

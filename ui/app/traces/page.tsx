@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { api, type TraceIngestResponse } from "@/lib/api";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
 
 const SAMPLE_PAYLOAD = JSON.stringify(
   {
@@ -40,10 +41,12 @@ const SAMPLE_PAYLOAD = JSON.stringify(
 );
 
 export default function TracesPage() {
+  const { counts } = useDeploymentContext();
   const [payload, setPayload] = useState(SAMPLE_PAYLOAD);
   const [result, setResult] = useState<TraceIngestResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const tracesUnavailable = counts ? !counts.has_traces : false;
 
   async function submit() {
     setLoading(true);
@@ -80,7 +83,9 @@ export default function TracesPage() {
           <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-400">Trace review</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100">Runtime tool-call correlation</h1>
           <p className="mt-3 text-sm leading-6 text-zinc-400">
-            Review OTLP traces against vulnerable packages and servers already known to agent-bom. This page is for inspection and replay.
+            {tracesUnavailable
+              ? "Trace ingest is not enabled for this estate yet. Paste or upload an OTLP JSON export to validate runtime correlation before wiring collectors."
+              : "Review OTLP traces against vulnerable packages and servers already known to agent-bom. This page is for inspection and replay."}{" "}
             Production collectors should send OTLP JSON to <code className="rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-zinc-200">POST /v1/traces</code>.
           </p>
         </div>

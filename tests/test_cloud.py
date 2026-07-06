@@ -817,17 +817,18 @@ def test_graph_json_format():
 
 def test_attack_flow_empty_when_no_vulns():
     """Attack flow returns empty list when no blast radii."""
+    from agent_bom.models import AIBOMReport
     from agent_bom.output.graph import build_attack_flow_elements
 
-    assert build_attack_flow_elements([]) == []
+    assert build_attack_flow_elements(AIBOMReport(), []) == []
 
 
 def test_attack_flow_elements_structure():
     """Attack flow builds correct node/edge types for CVE → impact propagation."""
     from agent_bom.output.graph import build_attack_flow_elements
 
-    _, blast_radii = _make_sample_report()
-    elements = build_attack_flow_elements(blast_radii)
+    report, blast_radii = _make_sample_report()
+    elements = build_attack_flow_elements(report, blast_radii)
     assert len(elements) > 0
 
     nodes = [e for e in elements if "source" not in e["data"]]
@@ -847,8 +848,8 @@ def test_attack_flow_deduplicates_nodes():
     """Attack flow doesn't create duplicate nodes for shared packages."""
     from agent_bom.output.graph import build_attack_flow_elements
 
-    _, blast_radii = _make_sample_report()
-    elements = build_attack_flow_elements(blast_radii)
+    report, blast_radii = _make_sample_report()
+    elements = build_attack_flow_elements(report, blast_radii)
     nodes = [e for e in elements if "source" not in e["data"]]
     node_ids = [n["data"]["id"] for n in nodes]
     assert len(node_ids) == len(set(node_ids)), "Duplicate node IDs found"

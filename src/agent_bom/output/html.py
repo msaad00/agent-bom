@@ -117,11 +117,11 @@ def _cytoscape_elements(report: "AIBOMReport", blast_radii: list["BlastRadius"])
     return json.dumps(elements)
 
 
-def _attack_flow_elements(blast_radii: list["BlastRadius"]) -> str:
+def _attack_flow_elements(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
     """Build attack flow element list showing CVE → impact propagation."""
     from agent_bom.output.graph import build_attack_flow_elements
 
-    elements = build_attack_flow_elements(blast_radii)
+    elements = build_attack_flow_elements(report, blast_radii)
     return json.dumps(elements)
 
 
@@ -1410,7 +1410,7 @@ def to_html(
     policy_findings = _non_cve_findings(report)
     generated = report.generated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
     elements_json = _cytoscape_elements(report, blast_radii)
-    attack_flow_json = _attack_flow_elements(blast_radii)
+    attack_flow_json = _attack_flow_elements(report, blast_radii)
     chart_data_json = _chart_data(blast_radii)
     crit = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
     policy_crit = sum(1 for finding in policy_findings if str(finding.severity).lower() == "critical")

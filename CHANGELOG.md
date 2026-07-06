@@ -36,6 +36,8 @@ for self-hosted control planes.
 - **Markdown, PDF, and SARIF CVE loops** migrated to the unified `Finding` stream
   (#3570, #3574, #3578).
 - **JSON/HTML CVE tables** migrated to `cve_findings()` (#3588).
+- **Mermaid and graph topology** exports read CVE paths from the unified
+  `Finding` stream (#2918).
 - **Exposure paths** flow through `Finding` in JSON/HTML/SARIF.
 - **VEX on Finding stream** with API `external_scan` / `vex` scan parity and SARIF
   VEX properties (#3589).
@@ -55,7 +57,8 @@ for self-hosted control planes.
 ### UI / graph
 - **Findings lifecycle** status in queue; estate roll-up navigation; blast-radius
   graph overlay; graph lens dock fix (#3551, #3507, #3502, #3505).
-- **Labeled demo estate** surface lock states (#3467).
+- **Labeled demo estate** surface lock states, including proxy, gateway, traces,
+  and audit unavailable-state copy (#3467, #3468).
 
 ### CLI / headless
 - **Findings push** CLI wired to hub current-state list (#3549).

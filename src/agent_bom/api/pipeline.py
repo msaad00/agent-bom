@@ -561,14 +561,14 @@ def _ast_result_for_symbol_reach(paths: Iterable[str]) -> Any | None:
     """Best-effort AST symbol-reach for API pipeline parity with CLI --project."""
     from pathlib import Path
 
-    from agent_bom.ast_analyzer import analyze_project
+    from agent_bom.ast_analyzer import analyze_project, project_has_analyzable_sources
     from agent_bom.ast_models import ASTAnalysisResult
 
     merged: ASTAnalysisResult | None = None
     for raw in paths:
         project = Path(raw)
         try:
-            if not list(project.rglob("*.py"))[:1]:
+            if not project_has_analyzable_sources(project):
                 continue
         except OSError as path_exc:
             _logger.debug("AST symbol-reach path skipped for %s: %s", raw, sanitize_error(path_exc))

@@ -84,6 +84,27 @@ from agent_bom.ast_swift import scan_swift_file as _scan_swift_file
 
 _max_taint_depth = _python_max_taint_depth
 
+_ANALYZABLE_SUFFIXES = frozenset(
+    {".py", ".go", ".java", ".rb", ".php", ".swift", ".rs", ".cs", *_JS_TS_EXTS}
+)
+
+
+def project_has_analyzable_sources(project_path: str | Path) -> bool:
+    """Return True when *project_path* contains AST-analyzable source files."""
+    project = Path(project_path)
+    if not project.is_dir():
+        return False
+    for path in project.rglob("*"):
+        if not path.is_file():
+            continue
+        if any(part in _SKIP_DIRS for part in path.parts):
+            continue
+        if any(skip in path.name.lower() for skip in _SKIP_FILE_PATTERNS):
+            continue
+        if path.suffix.lower() in _ANALYZABLE_SUFFIXES:
+            return True
+    return False
+
 
 def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     """Analyze a project directory for prompts, tools, and risky call paths.

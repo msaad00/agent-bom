@@ -5,7 +5,7 @@ const BLOCKED_PREFIXES = ["/login"];
 export function safeReturnPath(value: string | null): string {
   if (!value) return "/";
 
-  let candidate = value.trim();
+  const candidate = value.trim();
   if (!candidate) return "/";
 
   // Reject backslashes and control chars (encoded open-redirect tricks).

@@ -19,6 +19,7 @@ from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package, Severity, Vulnerability
 from agent_bom.package_utils import normalize_package_name
+from agent_bom.reachability_cve import advisory_affected_symbols_list
 
 logger = logging.getLogger(__name__)
 
@@ -423,6 +424,7 @@ async def check_github_advisories(
                             fixed_version=fixed,
                             references=refs,
                             cwe_ids=cwe_ids,
+                            affected_symbols=advisory_affected_symbols_list(advisory),
                             advisory_sources=["ghsa"],
                         )
                         target_pkg.vulnerabilities.append(vuln)

@@ -538,6 +538,10 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
             if isinstance(raw_cwes, list):
                 cwe_ids = [c for c in raw_cwes if isinstance(c, str) and c.startswith("CWE-")]
 
+        from agent_bom.reachability_cve import advisory_affected_symbols_list
+
+        affected_symbols = advisory_affected_symbols_list(vuln_data)
+
         vulns.append(
             Vulnerability(
                 id=canonical_id,
@@ -551,6 +555,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 modified_at=vuln_data.get("modified"),
                 aliases=all_aliases,
                 cwe_ids=cwe_ids,
+                affected_symbols=affected_symbols,
                 advisory_sources=["osv"],
                 match_confidence_tier=match_confidence_tier(
                     advisory_source="osv",

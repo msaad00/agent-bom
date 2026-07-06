@@ -416,6 +416,27 @@ def test_build_vulnerabilities_ghsa_with_cve_alias():
     assert vulns[0].id == "CVE-2025-0001"
 
 
+def test_build_vulnerabilities_extracts_affected_symbols():
+    pkg = Package(name="axios", version="1.6.0", ecosystem="npm")
+    vuln_data = [
+        {
+            "id": "GHSA-xxxx-yyyy-zzzz",
+            "summary": "axios advisory",
+            "database_specific": {"vulnerable_functions": ["get", "request"]},
+            "affected": [
+                {
+                    "package": {"name": "axios", "ecosystem": "npm"},
+                    "ecosystem_specific": {"imports": [{"path": "axios", "symbols": ["defaults"]}]},
+                }
+            ],
+        }
+    ]
+    vulns = build_vulnerabilities(vuln_data, pkg)
+    assert "get" in vulns[0].affected_symbols
+    assert "request" in vulns[0].affected_symbols
+    assert "defaults" in vulns[0].affected_symbols
+
+
 def test_build_vulnerabilities_no_summary():
     pkg = Package(name="pkg", version="1.0", ecosystem="pypi")
     vuln_data = [{"id": "CVE-1", "details": "Detailed description here"}]

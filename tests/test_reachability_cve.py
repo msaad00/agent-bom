@@ -91,6 +91,28 @@ def test_extract_symbols_from_ghsa_vulnerable_functions() -> None:
     assert "request" in tokens
 
 
+def test_extract_symbols_from_ghsa_rest_top_level_vulnerable_functions() -> None:
+    advisory = {
+        "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+        "vulnerable_functions": ["express.static", "send"],
+    }
+    tokens = extract_affected_symbols(advisory)
+    assert "express.static" in tokens
+    assert "express" in tokens
+    assert "send" in tokens
+
+
+def test_extract_symbols_from_vulnerability_affected_symbols_field() -> None:
+    vuln = Vulnerability(
+        id="CVE-2099-55",
+        summary="x",
+        severity=Severity.HIGH,
+        affected_symbols=["axios.get", "request"],
+    )
+    assert "axios.get" in extract_affected_symbols(vuln)
+    assert "get" not in extract_affected_symbols(vuln) or "axios" in extract_affected_symbols(vuln)
+
+
 def test_extract_advisory_identifiers_from_vulnerability_model() -> None:
     vuln = Vulnerability(
         id="CVE-2099-42",
@@ -307,6 +329,45 @@ def test_wiring_stamps_function_reachable_on_python_row() -> None:
     assert stamped == 1
     assert br.symbol_reachability == FUNCTION_REACHABLE
     assert br.reachable_affected_symbols == ["get"]
+
+
+def test_wiring_stamps_function_reachable_from_built_vulnerability_model() -> None:
+    from agent_bom.scanners import build_vulnerabilities
+
+    pkg = Package(name="axios", version="1.6.0", ecosystem="npm")
+    vulns = build_vulnerabilities(
+        [
+            {
+                "id": "GHSA-xxxx-yyyy-zzzz",
+                "aliases": ["CVE-2099-1234"],
+                "summary": "axios SSRF",
+                "database_specific": {"vulnerable_functions": ["get"]},
+            }
+        ],
+        pkg,
+    )
+    assert vulns[0].affected_symbols
+    br = BlastRadius(
+        vulnerability=vulns[0],
+        package=pkg,
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    npm_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="axios",
+        module="axios",
+        symbol="get",
+        file_path="server.ts",
+        line_number=3,
+        call_path=["fetch_url", "axios.get"],
+        ecosystem="npm",
+    )
+    stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[npm_reach]))
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
 
 
 def test_wiring_stamps_unreachable_when_symbol_absent() -> None:

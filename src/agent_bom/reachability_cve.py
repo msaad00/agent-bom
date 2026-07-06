@@ -207,21 +207,35 @@ def _collect_cwe_tokens(raw: Any) -> set[str]:
 
 
 def _symbols_from_database_specific(advisory: Mapping[str, Any]) -> set[str]:
-    """GHSA/OSV ``database_specific.vulnerable_functions`` and similar symbol lists."""
+    """GHSA/OSV symbol lists from ``database_specific`` and GHSA REST shapes."""
     tokens: set[str] = set()
+    containers: list[Mapping[str, Any]] = []
     db = advisory.get("database_specific")
-    if not isinstance(db, Mapping):
-        return tokens
-    for key in ("vulnerable_functions", "vulnerableFunctions", "affected_functions"):
-        raw = db.get(key)
-        if not isinstance(raw, list):
-            continue
-        for item in raw:
-            if isinstance(item, str):
-                tokens |= _symbol_tokens(item)
-                if len(tokens) >= _MAX_SYMBOLS:
-                    return tokens
+    if isinstance(db, Mapping):
+        containers.append(db)
+    containers.append(advisory)
+    vulnerabilities = advisory.get("vulnerabilities")
+    if isinstance(vulnerabilities, list):
+        for entry in vulnerabilities:
+            if isinstance(entry, Mapping):
+                containers.append(entry)
+
+    for container in containers:
+        for key in ("vulnerable_functions", "vulnerableFunctions", "affected_functions"):
+            raw = container.get(key)
+            if not isinstance(raw, list):
+                continue
+            for item in raw:
+                if isinstance(item, str):
+                    tokens |= _symbol_tokens(item)
+                    if len(tokens) >= _MAX_SYMBOLS:
+                        return tokens
     return tokens
+
+
+def advisory_affected_symbols_list(advisory: "Vulnerability | Mapping[str, Any] | None") -> list[str]:
+    """Return sorted affected-symbol tokens ready for ``Vulnerability.affected_symbols``."""
+    return sorted(extract_affected_symbols(advisory))
 
 
 def extract_advisory_identifiers(advisory: "Vulnerability | Mapping[str, Any] | None") -> AdvisoryIdentifiers:
@@ -416,6 +430,7 @@ __all__ = [
     "AdvisoryIdentifiers",
     "SymbolReachIndex",
     "ReachabilitySignal",
+    "advisory_affected_symbols_list",
     "extract_advisory_identifiers",
     "extract_affected_symbols",
     "classify_reachability",

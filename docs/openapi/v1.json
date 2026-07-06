@@ -3483,7 +3483,7 @@
   "info": {
     "description": "Security scanner for AI supply chain and infrastructure \u2014 map the full trust chain from agents to CVEs, credentials, and blast radius.",
     "title": "agent-bom API",
-    "version": "0.92.0"
+    "version": "0.93.0"
   },
   "openapi": "3.1.0",
   "paths": {

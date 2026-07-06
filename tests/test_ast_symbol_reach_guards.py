@@ -10,6 +10,7 @@ from agent_bom.ast_symbol_reach_guards import (
     is_external_rust_crate,
     is_verified_maven_coord,
     is_verified_nuget_package,
+    is_verified_ruby_gem,
 )
 
 
@@ -34,6 +35,12 @@ def test_nuget_package_requires_manifest_entry() -> None:
     nuget_map = {"RestSharp": "RestSharp", "Rest": "RestSharp"}
     assert is_verified_nuget_package("RestSharp", nuget_map)
     assert not is_verified_nuget_package("Invented.Package", nuget_map)
+
+
+def test_ruby_gem_requires_manifest_entry() -> None:
+    gem_map = {"faraday": "faraday", "Faraday": "faraday"}
+    assert is_verified_ruby_gem("faraday", gem_map)
+    assert not is_verified_ruby_gem("invented-gem", gem_map)
 
 
 def test_analyze_project_java_without_pom_emits_no_maven_symbol_reach(tmp_path: Path) -> None:
@@ -61,6 +68,20 @@ def test_analyze_project_csharp_without_lock_emits_no_nuget_symbol_reach(tmp_pat
     )
     result = analyze_project(tmp_path)
     assert not [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "nuget"]
+
+
+def test_analyze_project_ruby_without_lock_emits_no_rubygems_symbol_reach(tmp_path: Path) -> None:
+    (tmp_path / "server.rb").write_text(
+        "require 'faraday'\n"
+        "class Server\n"
+        "  def fetch_url(url)\n"
+        "    client = Faraday.new\n"
+        "    client.get(url)\n"
+        "  end\n"
+        "end\n"
+    )
+    result = analyze_project(tmp_path)
+    assert not [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "rubygems"]
 
 
 def test_analyze_project_rust_skips_std_and_unresolved_tool(tmp_path: Path) -> None:

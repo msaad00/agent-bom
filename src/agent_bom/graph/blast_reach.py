@@ -31,7 +31,9 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 # Ecosystems where a symbol-level call graph join is supported.
-_SYMBOL_REACH_ECOSYSTEMS: frozenset[str] = frozenset({"pypi", "python", "npm", "go", "maven", "java", "cargo", "rust", "nuget"})
+_SYMBOL_REACH_ECOSYSTEMS: frozenset[str] = frozenset(
+    {"pypi", "python", "npm", "go", "maven", "java", "cargo", "rust", "nuget", "rubygems"}
+)
 
 
 def apply_dependency_reachability_to_blast_radii(
@@ -94,10 +96,10 @@ def apply_symbol_reachability_to_blast_radii(
     """Join CVE affected-symbols to AST symbol reach on each BlastRadius row.
 
     Thin additive surfacing of :mod:`agent_bom.reachability_cve`. For Python, npm,
-    Go, Maven, and Cargo findings it stamps ``symbol_reachability``
+    Go, Maven, Cargo, NuGet, and RubyGems findings it stamps ``symbol_reachability``
     (function_reachable / package_reachable / unreachable) when AST evidence
-    passes conservative import-proof guards. Rust/Java parsers are regex-backed:
-    they never invent Maven coordinates or walk unresolved MCP tool handlers.
+    passes conservative import-proof guards. Rust/Java/C#/Ruby parsers are regex-backed:
+    they never invent manifest coordinates or walk unresolved MCP tool handlers.
 
     The graph-walk reach already on the row (``graph_reachable``) is fed in as
     the import / dependency-closure fallback so a package that is reached but

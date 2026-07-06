@@ -559,6 +559,35 @@ def test_analyze_project_surfaces_csharp_dependency_symbol_reach(tmp_path: Path)
     assert reach.package == "RestSharp"
 
 
+def test_analyze_project_surfaces_ruby_dependency_symbol_reach(tmp_path: Path) -> None:
+    (tmp_path / "Gemfile").write_text('gem "faraday"\n')
+    (tmp_path / "Gemfile.lock").write_text(
+        "GEM\n"
+        "  remote: https://rubygems.org/\n"
+        "  specs:\n"
+        "    faraday (2.9.0)\n"
+    )
+    (tmp_path / "server.rb").write_text(
+        "require 'faraday'\n\n"
+        "class Server\n"
+        "  def register(server)\n"
+        '    server.add_tool("fetch_url", method(:fetch_url))\n'
+        "  end\n\n"
+        "  def fetch_url(url)\n"
+        "    client = Faraday.new\n"
+        "    client.get(url)\n"
+        "  end\n"
+        "end\n"
+    )
+
+    result = analyze_project(tmp_path)
+    ruby_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "rubygems"]
+    assert ruby_reaches
+    reach = next(item for item in ruby_reaches if item.symbol == "get")
+    assert reach.entrypoint == "fetch_url"
+    assert reach.package == "faraday"
+
+
 def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

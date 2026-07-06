@@ -59,6 +59,8 @@ from agent_bom.ast_models import (
     _SwiftFunctionAnalysis,
     _SwiftToolRegistration,
 )
+from agent_bom.ast_php import _php_method_key, build_php_dependency_symbol_reach, load_composer_package_map
+from agent_bom.ast_php import scan_php_file as _scan_php_file
 from agent_bom.ast_python_analysis import (
     _MAX_FILES,
     _SKIP_DIRS,
@@ -71,8 +73,6 @@ from agent_bom.ast_python_analysis import (
 from agent_bom.ast_python_analysis import (
     _max_taint_depth as _python_max_taint_depth,
 )
-from agent_bom.ast_php import _php_method_key, build_php_dependency_symbol_reach, load_composer_package_map
-from agent_bom.ast_php import scan_php_file as _scan_php_file
 from agent_bom.ast_ruby import _ruby_method_key, build_ruby_dependency_symbol_reach, load_ruby_gem_map
 from agent_bom.ast_ruby import scan_ruby_file as _scan_ruby_file
 from agent_bom.ast_rust import _rust_function_key, build_rust_dependency_symbol_reach

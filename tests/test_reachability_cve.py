@@ -361,7 +361,7 @@ def test_wiring_stamps_unreachable_when_symbol_absent() -> None:
 
 def test_wiring_skips_unsupported_ecosystem_rows() -> None:
     br = _python_br(["get"])
-    br.package.ecosystem = "composer"
+    br.package.ecosystem = "hex"
     stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get())
     assert stamped == 0
     assert br.symbol_reachability is None

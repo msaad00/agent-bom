@@ -980,157 +980,156 @@ def architecture(theme_name: str) -> str:
     return "\n".join(parts)
 
 
+# Persona band accents — one restrained hue per buyer lane, on neutral cards.
+PERSONA_ACCENTS = {
+    "appsec": ("#2dd4bf", "#0d9488"),
+    "platform": ("#38bdf8", "#0284c7"),
+    "builders": ("#a78bfa", "#7c3aed"),
+    "seceng": ("#fb7185", "#e11d48"),
+}
+
+# Role badge glyphs on the solid accent badge circle at (18.5, 18): compliance
+# doc-with-check, platform layers, agent bot, security shield-with-check.
+# GLYPH / ACCENT tokens are substituted per theme when the card is drawn.
+PERSONA_BADGES = {
+    "appsec": (
+        '<rect x="16.2" y="14.7" width="4.6" height="6.2" rx="1" fill="GLYPH" stroke="none"/>'
+        '<path d="M17.3 17.9l.95.95 1.75-1.75" stroke="ACCENT" stroke-width="1.05"/>'
+    ),
+    "platform": '<path d="M18.5 15.1l3.1 1.55-3.1 1.55-3.1-1.55z"/><path d="M15.7 18.85l2.8 1.4 2.8-1.4"/>',
+    "builders": '<rect x="16" y="16.4" width="5" height="3.8" rx="1.1"/><path d="M17.6 18.3h.01 M19.4 18.3h.01 M18.5 14.6v1.8"/>',
+    "seceng": (
+        '<path d="M18.5 14.3l3.15 1.15v2.1c0 2.1-1.4 3.5-3.15 4-1.75-.5-3.15-1.9-3.15-4v-2.1z" fill="GLYPH" stroke="none"/>'
+        '<path d="M17.1 17.95l1 1 1.8-1.8" stroke="ACCENT" stroke-width="1.05"/>'
+    ),
+}
+
+
 def _persona_lane_card(
     x: int,
     y: int,
     w: int,
     h: int,
-    persona_icon: str,
     persona_title: str,
     persona_sub: str,
-    value_icon: str,
     value_title: str,
     value_sub: str,
-    lane_key: str,
+    accent_key: str,
     theme: str,
     t: dict,
 ) -> list[str]:
-    lane_bg, lane_accent, lane_text = LANE_COLORS[lane_key]
+    accent = PERSONA_ACCENTS[accent_key][0 if theme == "dark" else 1]
+    tint_opacity = "0.10" if theme == "dark" else "0.07"
     parts: list[str] = []
-    if theme == "dark":
-        card_fill = lane_bg
-        card_stroke = lane_accent
-        persona_title_fill = lane_text
-        persona_sub_fill = lane_accent
-        value_fill = "#12121a"
-        value_stroke = lane_accent
-        value_title_fill = lane_text
-        value_sub_fill = lane_accent
-    else:
-        card_fill = t["card"]
-        card_stroke = lane_accent
-        persona_title_fill = t["text"]
-        persona_sub_fill = lane_accent
-        value_fill = t["accent_fill"]
-        value_stroke = t["accent_stroke"]
-        value_title_fill = t["text"]
-        value_sub_fill = t["text_muted"]
 
     parts.append(
-        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="14" fill="{card_fill}" stroke="{card_stroke}" stroke-width="1.8"/>'
+        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="12" fill="{t["card"]}" stroke="{t["card_stroke"]}" stroke-width="1.4"/>'
     )
-    parts.append(_icon_box(x + 20, y + 18, ICONS[persona_icon], t, accent=True, size=44))
+
+    # SaaS-style avatar chip: tinted app-icon square, filled person silhouette,
+    # solid accent badge with a reverse-contrast role glyph.
+    chip_x, chip_y, chip_size = x + 14, y + 12, 40
+    chip_tint = "0.16" if theme == "dark" else "0.10"
+    glyph_stroke = "#0f0f13" if theme == "dark" else "#ffffff"
+    scale = 32 / 24
+    parts.append(
+        f'<rect x="{chip_x}" y="{chip_y}" width="{chip_size}" height="{chip_size}" rx="11" fill="{accent}" opacity="{chip_tint}"/>'
+        f'<g transform="translate({chip_x + 4},{chip_y + 4}) scale({scale})">'
+        f'<circle cx="10.5" cy="7.5" r="3.4" fill="{accent}"/>'
+        f'<path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="{accent}"/>'
+        f'<circle cx="18.5" cy="18" r="6" fill="{t["card"]}"/>'
+        f'<circle cx="18.5" cy="18" r="4.6" fill="{accent}"/>'
+        f'<g fill="none" stroke="{glyph_stroke}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">'
+        f'{PERSONA_BADGES[accent_key].replace("GLYPH", glyph_stroke).replace("ACCENT", accent)}</g></g>'
+    )
     parts.append(
         _text(
-            x + 76,
-            y + 40,
+            x + 62,
+            y + 37,
             persona_title,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "18", "font-weight": "800", "fill": persona_title_fill},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "15", "font-weight": "800", "fill": t["text"]},
         )
     )
     parts.append(
         _text(
-            x + 76,
-            y + 62,
+            x + 16,
+            y + 68,
             persona_sub,
-            **{"font-family": "ui-monospace,monospace", "font-size": "11.5", "font-weight": "600", "fill": persona_sub_fill},
+            **{"font-family": "ui-monospace,monospace", "font-size": "9.5", "font-weight": "600", "fill": t["text_muted"]},
         )
     )
 
-    divider_y = y + 92
+    divider_y = y + 80
     parts.append(
-        f'<line x1="{x + 20}" y1="{divider_y}" x2="{x + w - 20}" y2="{divider_y}" '
-        f'stroke="{lane_accent}" stroke-width="1.2" opacity="0.55"/>'
+        f'<line x1="{x + 16}" y1="{divider_y}" x2="{x + w - 16}" y2="{divider_y}" '
+        f'stroke="{t["card_stroke"]}" stroke-width="1"/>'
     )
     arrow_x = x + w // 2
     parts.append(
-        f'<polygon points="{arrow_x},{divider_y + 14} {arrow_x - 7},{divider_y + 4} {arrow_x + 7},{divider_y + 4}" '
-        f'fill="{lane_accent}"/>'
+        f'<polygon points="{arrow_x},{divider_y + 10} {arrow_x - 5},{divider_y + 3} {arrow_x + 5},{divider_y + 3}" '
+        f'fill="{accent}" opacity="0.9"/>'
     )
 
-    value_y = divider_y + 22
-    value_h = h - (value_y - y) - 16
+    value_y = divider_y + 14
+    value_h = h - (value_y - y) - 12
     parts.append(
-        f'<rect x="{x + 16}" y="{value_y}" width="{w - 32}" height="{value_h}" rx="10" '
-        f'fill="{value_fill}" stroke="{value_stroke}"/>'
+        f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" '
+        f'fill="{accent}" opacity="{tint_opacity}"/>'
     )
-    parts.append(_icon_box(x + 28, value_y + 14, ICONS[value_icon], t, accent=True, size=36))
+    parts.append(
+        f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" '
+        f'fill="none" stroke="{accent}" opacity="0.4"/>'
+    )
     parts.append(
         _text(
-            x + 76,
-            value_y + 32,
+            x + 24,
+            value_y + 20,
             value_title,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "16", "font-weight": "800", "fill": value_title_fill},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "12.5", "font-weight": "800", "fill": t["text"]},
         )
     )
     parts.append(
         _text(
-            x + 76,
-            value_y + 54,
+            x + 24,
+            value_y + 37,
             value_sub,
-            **{"font-family": "ui-monospace,monospace", "font-size": "11", "font-weight": "600", "fill": value_sub_fill},
+            **{"font-family": "ui-monospace,monospace", "font-size": "8.5", "font-weight": "600", "fill": t["text_muted"]},
         )
     )
     return parts
 
 
 def persona_value(theme: str) -> str:
+    """Compact single-row buyer-lane band — persona -> value proof per card."""
     t = THEMES[theme]
-    w, h = 980, 720
+    w, h = 1080, 218
     persona_bg = "#16161d" if theme == "dark" else t["bg"]
 
     cards = [
-        ("shield", "AppSec / GRC", "SARIF · compliance · audit chain", "bug", "Accurate SCA", "15 ecosystems · EPSS/KEV · distro-aware", "control"),
-        ("gate", "Platform / SRE", "fleet sync · Helm · CI · SBOM", "image", "Container coverage", "OCI native · Grype · CIS posture", "scan"),
-        ("mcp", "Agent builders", "MCP inventory · Shield · runtime", "audit", "Self-hosted control plane", "your VPC · signed audit · Helm", "intake"),
-        ("graph", "Security engineers", "findings queue · paths · graph", "api", "Agent-native surface", "283 API ops · 70 MCP tools · SARIF", "core"),
+        ("AppSec / GRC", "SARIF · compliance · audit chain", "Accurate SCA", "15 ecosystems · EPSS/KEV · distro-aware", "appsec"),
+        ("Platform / SRE", "fleet sync · Helm · CI · SBOM", "Container coverage", "OCI native · Grype · CIS posture", "platform"),
+        ("Agent builders", "MCP inventory · Shield · runtime", "Self-hosted control plane", "your VPC · signed audit · Helm", "builders"),
+        ("Security engineers", "findings queue · paths · graph", "Agent-native surface", "283 API ops · 70 MCP tools · SARIF", "seceng"),
     ]
 
-    margin_x, margin_y = 24, 96
-    gap = 20
-    card_w = (w - margin_x * 2 - gap) // 2
-    card_h = (h - margin_y - 56 - gap) // 2
+    margin_x, margin_y = 23, 18
+    gap = 14
+    card_w = (w - margin_x * 2 - gap * 3) // 4
+    card_h = 148
 
     parts = _svg_open(w, h, "agent-bom personas and value")
     parts.append(f'<rect width="{w}" height="{h}" rx="12" fill="{persona_bg}"/>')
-    parts += [
-        _text(
-            28,
-            42,
-            "Who it serves · what they get",
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "28", "font-weight": "800", "fill": t["title"]},
-        ),
-        _text(
-            28,
-            68,
-            "One evidence model — inventory -> findings -> graph -> gates",
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "13", "font-weight": "500", "fill": t["subtitle"]},
-        ),
-    ]
 
     for idx, card in enumerate(cards):
-        col = idx % 2
-        row = idx // 2
-        x = margin_x + col * (card_w + gap)
-        y = margin_y + row * (card_h + gap)
-        parts += _persona_lane_card(x, y, card_w, card_h, *card, theme, t)
+        x = margin_x + idx * (card_w + gap)
+        parts += _persona_lane_card(x, margin_y, card_w, card_h, *card, theme, t)
 
-    footer_y = h - 44
     parts.append(
-        f'<rect x="24" y="{footer_y}" width="{w - 48}" height="32" rx="10" fill="{t["trust_bg"]}" stroke="{t["trust_stroke"]}"/>'
-    )
-    parts.append(
-        _text(
-            w // 2,
-            footer_y + 21,
+        _trust_footer(
+            w,
+            h,
+            t,
             "LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph",
-            **{
-                "text-anchor": "middle",
-                "font-family": "Inter,system-ui,sans-serif",
-                "font-size": "11",
-                "font-weight": "700",
-                "fill": t["trust"],
-            },
         )
     )
     parts.append("</svg>")

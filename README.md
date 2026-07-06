@@ -17,7 +17,7 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
-<p align="center">Headless agent primitives and human cockpit surfaces over one shared evidence model.</p>
+<p align="center">Scan locally, centralize findings, govern runtime — one evidence model for your team and your agents.</p>
 
 <p align="center">
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -28,6 +28,80 @@
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
 
+## What Is agent-bom
+
+`agent-bom` is a read-only scanner and self-hosted control plane for local
+projects, agent fleets, MCP runtimes, containers, and cloud estates. Every
+surface writes into one evidence model — `Finding` + `ContextGraph` — and the
+same model comes back through CLI, CI, API, dashboard, MCP tools, exports, and
+optional runtime policy.
+
+Blast radius is the core idea: a vulnerable package is linked to the MCP server
+that loads it, the tools it exposes, reachable credential references, and the
+agents that can call it — not just a CVE row.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom workflow from read-only intake through scan engine, evidence graph, control plane, and outputs" width="980" />
+  </picture>
+</p>
+
+Coverage depth and honest boundaries:
+[AI infrastructure scanning](docs/AI_INFRASTRUCTURE_SCANNING.md) ·
+[product boundaries](docs/PRODUCT_BOUNDARIES.md)
+
+<details>
+<summary><b>Control-plane architecture</b></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="agent-bom layered control-plane architecture" width="980" />
+  </picture>
+</p>
+
+</details>
+
+<details>
+<summary><b>Blast radius drilldown</b></summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast-radius drilldown — package to finding to MCP server to agent" width="900" />
+  </picture>
+</p>
+
+```text
+package -> vulnerability finding -> MCP server -> tools + credential refs -> agent
+```
+
+</details>
+
+<details>
+<summary><b>Accuracy model</b> — match-confidence tiers and NVD key model</summary>
+
+agent-bom normalizes advisory and distro evidence into canonical CVE findings
+with match-confidence tiers:
+
+`distro_confirmed` > `osv_range` > `osv_ecosystem` > `unfixed_distro` > `nvd_cpe_candidate`
+
+Distro-confirmed findings are treated as confirmed. Optional NVD CPE candidate
+matching widens long-tail OS/vendor software coverage, but remains review-grade
+and off by default.
+
+**NVD key model.** End users do not need an NVD API key. CVE/CPE enrichment
+ships through the distributed vulnerability database. `NVD_API_KEY` is only an
+optional self-hosted freshness knob for operators rebuilding or refreshing the
+database.
+
+Matching mechanics and release evidence:
+[vulnerability matching](docs/VULNERABILITY_MATCHING.md) ·
+[scanner accuracy baseline](docs/SCANNER_ACCURACY_BASELINE.md)
+
+</details>
+
 ## Who It's For
 
 <p align="center">
@@ -36,8 +110,6 @@
     <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/persona-value-light.svg" alt="agent-bom personas mapped to value proof: AppSec/GRC to SARIF and compliance, Platform/SRE to fleet sync and CI gates, agent builders to MCP inventory and runtime shield, security engineers to findings queue and attack paths" width="980" />
   </picture>
 </p>
-
-<p align="center"><em>Four buyer lanes · one evidence model (<code>Finding</code> + <code>UnifiedGraph</code>)</em></p>
 
 <details>
 <summary><b>Persona lane detail</b></summary>
@@ -58,34 +130,6 @@ Registry metadata is tracked through the committed Smithery manifest and Glama
 listing; install and liveness checks live in the integration docs.
 
 </details>
-
-## Start Here
-
-Every lane writes into the same `Finding` and `ContextGraph` model. Pick the
-entry point that matches your role; see [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md)
-for ingest lanes, auth boundaries, and surface detail.
-
-| Need | Surface | First action | Main artifact |
-|---|---|---|---|
-| Scan a repo, image, or local agent config | CLI / CI | `agent-bom agents -p .` | JSON, SARIF, SBOM, HTML |
-| Connect cloud and data-estate evidence | Cloud connectors | `agent-bom connect aws` then `agent-bom cloud scan` | assets, CIS findings, graph edges |
-| Review posture as a team | API + dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
-| Give agents security tools | MCP server | `agent-bom mcp server` | strict MCP tool responses |
-| Govern runtime tool calls | Proxy / gateway | configure proxy or gateway policy | allow/warn/block audit trail |
-| Package evidence for audit | Reports / exports | `agent-bom agents -p . -f html -o report.html` | SARIF, CycloneDX, SPDX, OCSF, compliance bundle |
-
-| Goal | Command |
-|---|---|
-| Multi-hop exposure paths | `agent-bom graph` |
-| LLM cost forecast | `agent-bom cost forecast` |
-| Non-human identity posture | `agent-bom identity credential-expiry` |
-| Advisory remediation plan | `agent-bom remediate -p .` |
-| Gated-capability readiness | `agent-bom capabilities` |
-| CI gate | `uses: msaad00/agent-bom@v0.92.0` |
-
-Full command map: [docs/CLI_MAP.md](docs/CLI_MAP.md) · role routing:
-[docs/START_HERE.md](docs/START_HERE.md) · repo layout:
-[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
 
 ## First Run
 
@@ -150,99 +194,39 @@ with <code>npm run capture:product-proof</code> (see
 
 </details>
 
-## How It Works
+## Start Here
 
-Read-only intake, scan and enrichment, one evidence graph, then the same model
-through CLI, CI, API, UI, MCP, exports, and optional runtime policy.
+Every lane writes into the same `Finding` and `ContextGraph` model. Pick the
+entry point that matches your role; see [docs/PRODUCT_MAP.md](docs/PRODUCT_MAP.md)
+for ingest lanes, auth boundaries, and surface detail.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/how-it-works-light.svg" alt="agent-bom workflow from read-only intake through scan engine, evidence graph, control plane, and outputs" width="980" />
-  </picture>
-</p>
+| Need | Surface | First action | Main artifact |
+|---|---|---|---|
+| Scan a repo, image, or local agent config | CLI / CI | `agent-bom agents -p .` | JSON, SARIF, SBOM, HTML |
+| Connect cloud and data-estate evidence | Cloud connectors | `agent-bom connect aws` then `agent-bom cloud scan` | assets, CIS findings, graph edges |
+| Review posture as a team | API + dashboard | `pip install 'agent-bom[ui]' && agent-bom serve` | findings, graph, audit, compliance |
+| Give agents security tools | MCP server | `agent-bom mcp server` | strict MCP tool responses |
+| Govern runtime tool calls | Proxy / gateway | configure proxy or gateway policy | allow/warn/block audit trail |
+| Package evidence for audit | Reports / exports | `agent-bom agents -p . -f html -o report.html` | SARIF, CycloneDX, SPDX, OCSF, compliance bundle |
 
-<details>
-<summary><b>Control-plane architecture</b></summary>
+| Goal | Command |
+|---|---|
+| Multi-hop exposure paths | `agent-bom graph` |
+| LLM cost forecast | `agent-bom cost forecast` |
+| Non-human identity posture | `agent-bom identity credential-expiry` |
+| Advisory remediation plan | `agent-bom remediate -p .` |
+| Gated-capability readiness | `agent-bom capabilities` |
+| CI gate | `uses: msaad00/agent-bom@v0.92.0` |
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-light.svg" alt="agent-bom layered control-plane architecture" width="980" />
-  </picture>
-</p>
+Full command map: [docs/CLI_MAP.md](docs/CLI_MAP.md) · role routing:
+[docs/START_HERE.md](docs/START_HERE.md) · repo layout:
+[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
 
-</details>
+## Cloud Connectors
 
-<details>
-<summary><b>Blast radius drilldown</b></summary>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast-radius drilldown — package to finding to MCP server to agent" width="900" />
-  </picture>
-</p>
-
-```text
-package -> vulnerability finding -> MCP server -> tools + credential refs -> agent
-```
-
-</details>
-
-<details>
-<summary><b>What it is</b> — scanner, ContextGraph, and blast radius</summary>
-
-`agent-bom` is a read-only scanner and self-hosted control plane for local
-projects, agent fleets, MCP runtimes, and cloud estates (AWS, Azure, GCP,
-Snowflake).
-
-**ContextGraph** is agent-bom's unified evidence graph across CLI, API, UI, MCP
-tools, reports, and gateway decisions. Findings, assets, packages, cloud
-resources, identities, agents, MCP servers, credentials, and runtime decisions
-all normalize into that graph so posture, blast radius, and enforcement read
-from the same evidence.
-
-Blast radius is the core idea: a vulnerable package is linked to the MCP server
-that loads it, the tools it exposes, reachable credential references, and the
-agents that can call it — not just a CVE row.
-
-Coverage depth and honest boundaries:
-[AI infrastructure scanning](docs/AI_INFRASTRUCTURE_SCANNING.md) ·
-[product boundaries](docs/PRODUCT_BOUNDARIES.md)
-
-</details>
-
-<details>
-<summary><b>Accuracy model</b> — match-confidence tiers and NVD key model</summary>
-
-agent-bom normalizes advisory and distro evidence into canonical CVE findings
-with match-confidence tiers:
-
-`distro_confirmed` > `osv_range` > `osv_ecosystem` > `unfixed_distro` > `nvd_cpe_candidate`
-
-Distro-confirmed findings are treated as confirmed. Optional NVD CPE candidate
-matching widens long-tail OS/vendor software coverage, but remains review-grade
-and off by default.
-
-**NVD key model.** End users do not need an NVD API key. CVE/CPE enrichment
-ships through the distributed vulnerability database. `NVD_API_KEY` is only an
-optional self-hosted freshness knob for operators rebuilding or refreshing the
-database.
-
-Matching mechanics and release evidence:
-[vulnerability matching](docs/VULNERABILITY_MATCHING.md) ·
-[scanner accuracy baseline](docs/SCANNER_ACCURACY_BASELINE.md)
-
-</details>
-
-## Cloud, Deploy, Trust
-
-**Cloud (read-only).** Four connectors — AWS, Azure, GCP, Snowflake — are
-opt-in, agentless, and default-off. No secret values are read or stored.
-`agent-bom connect <provider>` prints the grant template and enable flag without
-network I/O until you opt in. Full intake map:
-[docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)
+Read-only, opt-in, and default-off. No secret values are read or stored.
+`agent-bom connect <provider>` prints the grant template and enable flag —
+no network I/O until you opt in.
 
 | Cloud | Enable | Scan |
 |---|---|---|
@@ -251,13 +235,24 @@ network I/O until you opt in. Full intake map:
 | GCP | `AGENT_BOM_GCP_INVENTORY=1` | `agent-bom cloud gcp` |
 | Snowflake | SSO or key-pair auth | `pip install 'agent-bom[snowflake]'` then `agent-bom agents --snowflake` |
 
+Setup and grants: [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md) · full intake
+map: [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)
+
+<details>
+<summary><b>Snowflake auth detail</b></summary>
+
 Snowflake auth defaults to browser SSO (`externalbrowser`); use
 `SNOWFLAKE_AUTHENTICATOR=snowflake_jwt` with `SNOWFLAKE_PRIVATE_KEY_PATH` for
 CI. agent-bom authenticates through the Python connector — no `snowsql` session
-needed. Setup and grants: [docs/CLOUD_CONNECT.md](docs/CLOUD_CONNECT.md)
+needed.
 
-**Deploy in your boundary.** OSS CLI, self-hosted API/UI, gated hosted POC, or
-optional Snowflake-native lane — no managed public SaaS in this repo yet.
+</details>
+
+## Deploy in Your Boundary
+
+OSS CLI, self-hosted API/UI, gated hosted POC, or optional Snowflake-native
+lane — no managed public SaaS in this repo yet. One compose file starts a local
+control plane:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
@@ -269,12 +264,15 @@ Pilot compose binds to `127.0.0.1` with loopback CORS only. Use
 `docker-compose.platform.yml` or [docs/HOSTED_POC.md](docs/HOSTED_POC.md) before
 sharing a link.
 
-- [Deploy anywhere](docs/DEPLOY_PLATFORM.md) · [Helm](deploy/helm/agent-bom) ·
-  [EKS module](deploy/terraform/platform-eks) ·
-  [Docker Hub](https://hub.docker.com/r/agentbom/agent-bom) ·
-  [CloudFormation one-click](deploy/cloudformation)
+| Target | Path |
+|---|---|
+| Any container platform | [Deploy anywhere](docs/DEPLOY_PLATFORM.md) |
+| Kubernetes | [Helm chart](deploy/helm/agent-bom) |
+| AWS EKS | [Terraform module](deploy/terraform/platform-eks) |
+| AWS one-click | [CloudFormation](deploy/cloudformation) |
+| Images | [Docker Hub](https://hub.docker.com/r/agentbom/agent-bom) |
 
-**Trust.**
+## Trust
 
 - Read-only discovery by default; no mandatory telemetry.
 - Credential values redacted; env names preserved for explainable exposure paths.
@@ -282,9 +280,9 @@ sharing a link.
 - Tenant scope, auth boundaries, and audit evidence on API/runtime paths.
 
 [Threat model](docs/THREAT_MODEL.md) · [Pentest readiness](docs/PENTEST_READINESS.md) ·
-[Python client](docs/PYTHON_API.md) · [Go client](sdks/go/README.md) ·
 [Release verification](docs/RELEASE_VERIFICATION.md) ·
-[MCP security model](docs/MCP_SECURITY_MODEL.md)
+[MCP security model](docs/MCP_SECURITY_MODEL.md) ·
+[Python client](docs/PYTHON_API.md) · [Go client](sdks/go/README.md)
 
 ## Contributing
 

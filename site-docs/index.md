@@ -10,8 +10,8 @@
 
 **Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.**
 
-Headless agent primitives and human cockpit surfaces use the same evidence
-model.
+Scan locally, centralize findings, govern runtime — your team and your agents
+work from the same evidence model.
 
 `agent-bom` is also an open security data plane. It generates a
 reachability-backed AI BOM across agents, MCP servers, tools, packages,
@@ -76,9 +76,8 @@ The dashboard is not the only door into the product. It is the human cockpit
 over the same evidence that agents can request through MCP and platforms can
 consume through API, CLI, reports, and exports.
 
-The product shape is cockpit plus callable primitives: humans get a review
-surface and agents get strict-argument tools over the same security evidence
-and `ExposurePath` graphs.
+Humans get a review surface; agents get strict-argument tools. Both work over
+the same security evidence and `ExposurePath` graphs.
 
 Cloud posture follows the same model: use `agent-bom iac` to block unsafe
 Terraform, CloudFormation, Kubernetes, or Docker changes before deployment,

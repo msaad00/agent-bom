@@ -749,3 +749,44 @@ class TestIsVexSuppressed:
         assert item["risk_score"] == 0.0
         assert item["vex_status"] == "fixed"
         assert item["vex_suppressed"] is True
+
+
+class TestBlastRadiusToFindingVex:
+    def test_blast_radius_to_finding_carries_vex_evidence_and_suppressed(self):
+        from agent_bom.finding import blast_radius_to_finding
+
+        vuln = _vuln("CVE-2024-8888", severity=Severity.HIGH)
+        vuln.vex_status = "not_affected"
+        vuln.vex_justification = "component_not_present"
+        pkg = _pkg(vulns=[vuln])
+        br = BlastRadius(
+            vulnerability=vuln,
+            package=pkg,
+            affected_servers=[],
+            affected_agents=[],
+            exposed_credentials=[],
+            exposed_tools=[],
+        )
+        finding = blast_radius_to_finding(br)
+        assert finding.evidence["vex_status"] == "not_affected"
+        assert finding.evidence["vex_justification"] == "component_not_present"
+        assert finding.suppressed is True
+
+    def test_blast_radius_to_finding_preserves_existing_suppression(self):
+        from agent_bom.finding import blast_radius_to_finding
+
+        vuln = _vuln("CVE-2024-8889", severity=Severity.MEDIUM)
+        pkg = _pkg(vulns=[vuln])
+        br = BlastRadius(
+            vulnerability=vuln,
+            package=pkg,
+            affected_servers=[],
+            affected_agents=[],
+            exposed_credentials=[],
+            exposed_tools=[],
+            suppressed=True,
+            suppression_id="sup-1",
+        )
+        finding = blast_radius_to_finding(br)
+        assert finding.suppressed is True
+        assert finding.suppression_id == "sup-1"

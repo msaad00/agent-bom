@@ -382,7 +382,7 @@ def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, 
         vex_suppressed = bool(item.get("vex_suppressed"))
     else:
         vex_suppressed = risk_score == 0.0 and vex_status in {"not_affected", "fixed"}
-    return {
+    row = {
         "id": item.get("finding_id") or f"{vulnerability_id}:{package}",
         "vulnerability_id": vulnerability_id,
         "package": package,
@@ -392,7 +392,15 @@ def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, 
         "scan_sources": _scan_source_labels(job),
         "affected_agents": item.get("affected_agents", []),
         "affected_servers": item.get("affected_servers", []),
+        "exposed_credentials": item.get("exposed_credentials", []),
+        "exposed_tools": item.get("exposed_tools", []),
+        "phantom_tools": item.get("phantom_tools", []),
         "risk_score": risk_score,
+        "cvss_score": item.get("cvss_score"),
+        "epss_score": item.get("epss_score"),
+        "attack_vector_summary": item.get("attack_vector_summary"),
+        "impact_category": item.get("impact_category"),
+        "ai_risk_context": item.get("ai_risk_context"),
         "fixed_version": item.get("fixed_version"),
         "is_kev": bool(item.get("is_kev") or item.get("cisa_kev")),
         "graph_reachable": item.get("graph_reachable"),
@@ -402,7 +410,31 @@ def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, 
         "vex_status": vex_status,
         "vex_justification": item.get("vex_justification"),
         "vex_suppressed": vex_suppressed,
+        "compliance_tags": item.get("compliance_tags"),
     }
+    for tag_field in (
+        "owasp_tags",
+        "atlas_tags",
+        "attack_tags",
+        "nist_ai_rmf_tags",
+        "owasp_mcp_tags",
+        "owasp_agentic_tags",
+        "eu_ai_act_tags",
+        "nist_csf_tags",
+        "iso_27001_tags",
+        "soc2_tags",
+        "cis_tags",
+        "cmmc_tags",
+        "nist_800_53_tags",
+        "fedramp_tags",
+        "pci_dss_tags",
+    ):
+        if tag_field in item:
+            row[tag_field] = item.get(tag_field) or []
+    from agent_bom.finding_runtime_evidence import compliance_tags_from_finding_row
+
+    row["framework_tags"] = compliance_tags_from_finding_row(row)
+    return row
 
 
 def _iter_package_findings(job: ScanJob) -> list[dict[str, Any]]:
@@ -570,6 +602,14 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     seen: set[str] = set()
     reach = _effective_reach_lookup(job)
+    from agent_bom.finding_runtime_evidence import (
+        attach_runtime_evidence_to_finding,
+        build_tenant_runtime_evidence_index,
+        compliance_tags_from_finding_row,
+    )
+
+    runtime_index = build_tenant_runtime_evidence_index(str(getattr(job, "tenant_id", None) or "default"))
+    incidents = result.get("runtime_incident_feedback") if isinstance(result.get("runtime_incident_feedback"), list) else []
 
     def _attach_reach(row: dict[str, Any]) -> dict[str, Any]:
         from agent_bom.symbol_reach_triage import adjust_effective_reach_breakdown, symbol_reachability_from_payload
@@ -593,7 +633,8 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
             }
             row.setdefault("effective_reach_score", composite)
             row.setdefault("effective_reach_band", band_from_composite(composite))
-        return row
+        row.setdefault("framework_tags", compliance_tags_from_finding_row(row))
+        return attach_runtime_evidence_to_finding(row, runtime_index, incidents=incidents)
 
     for item in result.get("findings", []) or []:
         if not isinstance(item, dict):

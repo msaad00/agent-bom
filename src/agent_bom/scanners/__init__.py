@@ -1416,8 +1416,8 @@ async def scan_agents(
 
         exposed_creds: list[str] = []
         exposed_tools: list = []
+        phantom_tools: list = []
         _registry_cache: dict[str, dict | None] = {}
-        _has_phantom_tools = False
         for server in affected_servers:
             server_creds = server.credential_names
             server_tools = list(server.tools)  # copy — don't mutate server
@@ -1431,14 +1431,24 @@ async def scan_agents(
                     if not server_tools and reg.get("tools"):
                         from agent_bom.models import MCPTool
 
-                        # Mark as registry-sourced (phantom) — not confirmed by introspection
-                        server_tools = [MCPTool(name=t, description="(registry — unverified)") for t in reg["tools"]]
-                        _has_phantom_tools = True
+                        server_tools = [
+                            MCPTool(
+                                name=t,
+                                description="(registry — unverified)",
+                                discovery_source="registry",
+                                discovery_confidence="unverified",
+                            )
+                            for t in reg["tools"]
+                        ]
                     if not server_creds and reg.get("credential_env_vars"):
                         server_creds = reg["credential_env_vars"]
 
             exposed_creds.extend(server_creds)
-            exposed_tools.extend(server_tools)
+            for tool in server_tools:
+                if getattr(tool, "discovery_source", None) == "registry" and getattr(tool, "discovery_confidence", None) == "unverified":
+                    phantom_tools.append(tool)
+                else:
+                    exposed_tools.append(tool)
 
         # Deduplicate credentials and tools to prevent inflation
         exposed_creds_deduped = list(set(exposed_creds))
@@ -1449,6 +1459,13 @@ async def scan_agents(
                 seen_tool_names.add(t.name)
                 deduped_tools.append(t)
         exposed_tools = deduped_tools
+        seen_phantom: set[str] = set()
+        deduped_phantom = []
+        for t in phantom_tools:
+            if t.name not in seen_phantom:
+                seen_phantom.add(t.name)
+                deduped_phantom.append(t)
+        phantom_tools = deduped_phantom
 
         # AI-native risk context: elevated when an AI framework has creds + tools
         is_ai_framework = (
@@ -1457,11 +1474,12 @@ async def scan_agents(
         )
         has_creds = bool(exposed_creds_deduped)
         has_tools = bool(exposed_tools)
+        has_phantom_tools = bool(phantom_tools)
         if is_ai_framework and has_creds and has_tools:
-            phantom_note = " (some tools unverified — from registry)" if _has_phantom_tools else ""
+            phantom_note = f" (+{len(phantom_tools)} registry-only tool(s) excluded from score)" if has_phantom_tools else ""
             ai_risk_context = (
                 f"AI framework '{pkg.name}' runs inside an agent with {len(exposed_creds_deduped)} "
-                f"exposed credential(s) and {len(exposed_tools)} reachable tool(s){phantom_note}. "
+                f"exposed credential(s) and {len(exposed_tools)} confirmed reachable tool(s){phantom_note}. "
                 f"A compromise here gives an attacker both identity and capability."
             )
         elif is_ai_framework and has_creds:
@@ -1497,6 +1515,10 @@ async def scan_agents(
                 impact_cat,
                 exposed_tools,
             )
+            filtered_phantom = filter_tools_by_impact(
+                impact_cat,
+                phantom_tools,
+            )
             attack_summary = build_attack_vector_summary(
                 cwe_ids=vuln.cwe_ids,
                 category=impact_cat,
@@ -1505,6 +1527,11 @@ async def scan_agents(
                 severity=vuln.severity.value if vuln.severity else None,
                 is_kev=vuln.is_kev,
             )
+            if attack_summary:
+                if ai_risk_context:
+                    ai_risk_context = f"{ai_risk_context} {attack_summary}"
+                else:
+                    ai_risk_context = attack_summary
 
             br = BlastRadius(
                 vulnerability=vuln,
@@ -1513,10 +1540,11 @@ async def scan_agents(
                 affected_agents=affected_agents,
                 exposed_credentials=filtered_creds,
                 exposed_tools=filtered_tools,
+                phantom_tools=filtered_phantom,
                 ai_risk_context=ai_risk_context,
                 impact_category=impact_cat,
                 all_server_credentials=list(exposed_creds_deduped),
-                all_server_tools=list(exposed_tools),
+                all_server_tools=list(exposed_tools) + list(phantom_tools),
                 attack_vector_summary=attack_summary,
             )
             br.calculate_risk_score()

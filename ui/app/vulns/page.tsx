@@ -171,13 +171,21 @@ function collectGraphVulns(graph: UnifiedGraphResponse): EnrichedVuln[] {
 
 function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
   return findings.map((finding): EnrichedVuln => {
+    const raw = finding as UnifiedFinding & {
+      framework_tags?: string[];
+      phantom_tools?: string[];
+      runtime_evidence?: EnrichedVuln["runtime_evidence"];
+      effective_reach_band?: string;
+      effective_reach_score?: number;
+      attack_vector_summary?: string;
+    };
     const assetName = finding.asset?.name?.trim() || finding.asset?.identifier || finding.asset?.stable_id || "asset";
     const findingLabel = finding.cve_id || finding.title || finding.id;
     const sourceLabel = uniqueStrings([finding.source, finding.finding_type, ...(finding.scan_sources ?? [])]);
     return {
       id: findingLabel,
       severity: normalizedSeverity(finding.effective_severity ?? finding.severity),
-      summary: finding.title ?? finding.description,
+      summary: raw.attack_vector_summary ?? finding.title ?? finding.description,
       description: finding.description ?? finding.title,
       references: [],
       advisory_sources: sourceLabel,
@@ -193,9 +201,14 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       affected_servers: finding.affected_servers ?? [],
       exposed_credentials: finding.exposed_credentials ?? [],
       reachable_tools: finding.exposed_tools ?? [],
-      attack_vector_summary: finding.network_exploitable ? "Network exploitable" : undefined,
+      phantom_tools: raw.phantom_tools ?? [],
+      framework_tags: raw.framework_tags ?? finding.compliance_tags ?? [],
+      attack_vector_summary: raw.attack_vector_summary ?? (finding.network_exploitable ? "Network exploitable" : undefined),
       impact_category: finding.impact_category ?? finding.finding_type,
       risk_score: finding.risk_score,
+      effective_reach_band: raw.effective_reach_band,
+      effective_reach_score: raw.effective_reach_score,
+      runtime_evidence: raw.runtime_evidence,
       remediation_items: finding.remediation_guidance
         ? [
             {
@@ -393,6 +406,11 @@ function VulnsPage() {
                   ...(blast?.exposed_tools ?? []),
                   ...(blast?.reachable_tools ?? []),
                 ]);
+                existing.phantom_tools = uniqueStrings([...(existing.phantom_tools ?? []), ...(blast?.phantom_tools ?? [])]);
+                existing.framework_tags = uniqueStrings([...(existing.framework_tags ?? []), ...(blast?.framework_tags ?? [])]);
+                existing.effective_reach_band = existing.effective_reach_band ?? blast?.effective_reach_band;
+                existing.effective_reach_score = existing.effective_reach_score ?? blast?.effective_reach_score;
+                existing.runtime_evidence = existing.runtime_evidence ?? blast?.runtime_evidence;
                 existing.references = uniqueStrings([...existing.references, ...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]);
                 existing.advisory_sources = uniqueStrings([...existing.advisory_sources, ...(vuln.advisory_sources ?? [])]);
                 existing.aliases = uniqueStrings([...(existing.aliases ?? []), ...(vuln.aliases ?? [])]);
@@ -410,6 +428,11 @@ function VulnsPage() {
                   affected_servers: blast?.affected_servers ?? [],
                   exposed_credentials: blast?.exposed_credentials ?? [],
                   reachable_tools: uniqueStrings([...(blast?.exposed_tools ?? []), ...(blast?.reachable_tools ?? [])]),
+                  phantom_tools: blast?.phantom_tools ?? [],
+                  framework_tags: blast?.framework_tags ?? [],
+                  effective_reach_band: blast?.effective_reach_band,
+                  effective_reach_score: blast?.effective_reach_score,
+                  runtime_evidence: blast?.runtime_evidence,
                   references: uniqueStrings([...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]),
                   advisory_sources: vuln.advisory_sources ?? [],
                   aliases: vuln.aliases ?? [],

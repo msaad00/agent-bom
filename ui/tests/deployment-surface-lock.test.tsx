@@ -33,13 +33,13 @@ describe("Deployment surface lock cards", () => {
     });
   });
 
-  it("renders the guided proxy lock card when proxy telemetry is inactive", async () => {
+  it("renders guided proxy setup copy when proxy telemetry is inactive", async () => {
     render(<ProxyDashboard />);
 
     await waitFor(() =>
-      expect(screen.getByText("Proxy is not active in this deployment")).toBeInTheDocument(),
+      expect(screen.getByText("Proxy telemetry is not enabled for this estate")).toBeInTheDocument(),
     );
-    expect(screen.getByText("Runtime proxy audit or detector telemetry")).toBeInTheDocument();
-    expect(screen.getByText("agent-bom proxy --help")).toBeInTheDocument();
+    expect(screen.getByText(/Enable an inline proxy/)).toBeInTheDocument();
+    expect(screen.getByText("Local proxy")).toBeInTheDocument();
   });
 });

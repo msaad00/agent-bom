@@ -37,9 +37,7 @@ import {
   Ban,
 } from "lucide-react";
 
-import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
-import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -79,6 +77,7 @@ export default function ProxyDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string>("");
   const wsRef = useRef<WebSocket | null>(null);
+  const proxyUnavailable = counts ? !counts.has_proxy : false;
 
   // Fetch initial data. Status and alerts are independent — render whichever
   // resolves successfully so a transient alerts failure doesn't blank the
@@ -250,15 +249,15 @@ export default function ProxyDashboard() {
 
       {/* No proxy session */}
       {!loading && !error && !isActive && (
-        counts && !isDeploymentSurfaceAvailable("proxy", counts) ? (
-          <DeploymentSurfaceRequiredState surface="proxy" counts={counts} detail={error} />
-        ) : (
         <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 p-8">
           <Shield className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-300 text-sm text-center">No runtime telemetry connected</p>
+          <p className="text-zinc-300 text-sm text-center">
+            {proxyUnavailable ? "Proxy telemetry is not enabled for this estate" : "No runtime telemetry connected"}
+          </p>
           <p className="text-zinc-500 text-xs mt-2 max-w-2xl mx-auto text-center">
-            Proxy is an optional runtime feed for live tool-call review, policy enforcement, and audit alerts. Core scanning,
-            graph analysis, and compliance workflows do not depend on it.
+            {proxyUnavailable
+              ? "Enable an inline proxy when you want live tool-call review, policy enforcement, and audit alerts."
+              : "Proxy is an optional runtime feed for live tool-call review, policy enforcement, and audit alerts. Core scanning, graph analysis, and compliance workflows do not depend on it."}
           </p>
           <div className="mt-6 grid gap-3 md:grid-cols-3">
             <SetupCard
@@ -278,7 +277,6 @@ export default function ProxyDashboard() {
             />
           </div>
         </div>
-        )
       )}
 
       {/* Stats cards */}

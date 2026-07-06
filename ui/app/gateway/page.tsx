@@ -36,9 +36,7 @@ import {
   Activity,
 } from "lucide-react";
 import { GatewayFeedPanel } from "./GatewayFeedPanel";
-import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
-import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { useRuntimeEmbedded } from "@/components/runtime-embed-context";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -80,6 +78,7 @@ export default function GatewayPage() {
   const [newMode, setNewMode] = useState<PolicyMode>("audit");
   const [newBlockTools, setNewBlockTools] = useState("");
   const [newDescription, setNewDescription] = useState("");
+  const gatewayUnavailable = counts ? !counts.has_gateway : false;
 
   const load = () => {
     setLoading(true);
@@ -306,17 +305,17 @@ export default function GatewayPage() {
       {!loading && tab === "policies" && (
         <>
           {policies.length === 0 && (
-            counts && !isDeploymentSurfaceAvailable("gateway", counts) ? (
-              <DeploymentSurfaceRequiredState surface="gateway" counts={counts} detail={error} />
-            ) : (
             <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
               <Lock className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-              <p className="text-zinc-500 text-sm">No gateway policies yet.</p>
+              <p className="text-zinc-500 text-sm">
+                {gatewayUnavailable ? "Gateway not enabled for this estate." : "No gateway policies yet."}
+              </p>
               <p className="text-zinc-600 text-xs mt-1">
-                Create a policy to define runtime MCP tool enforcement rules.
+                {gatewayUnavailable
+                  ? "Enable the runtime gateway to manage shared MCP policy enforcement."
+                  : "Create a policy to define runtime MCP tool enforcement rules."}
               </p>
             </div>
-            )
           )}
           <div className="space-y-2">
             {policies?.map((policy) => {

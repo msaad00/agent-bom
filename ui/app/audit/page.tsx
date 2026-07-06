@@ -22,9 +22,7 @@ import {
   Filter,
 } from "lucide-react";
 import { useAuthState } from "@/components/auth-provider";
-import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
-import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 import { KeyLifecyclePanel } from "@/components/key-lifecycle-panel";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -64,6 +62,7 @@ export default function AuditLogPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const roleLabel = session?.role_summary?.display_name ?? session?.role ?? "Unknown";
   const canManageKeys = hasCapability("keys.manage");
+  const auditUnavailable = counts ? !(counts.has_proxy || counts.has_gateway || counts.has_traces) : false;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -260,17 +259,17 @@ export default function AuditLogPage() {
       {!loading && !error && (
         <>
           {entries.length === 0 ? (
-            counts && !isDeploymentSurfaceAvailable("audit", counts) ? (
-              <DeploymentSurfaceRequiredState surface="audit" counts={counts} detail={error} />
-            ) : (
             <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
               <FileText className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-              <p className="text-zinc-500 text-sm">No audit log entries</p>
+              <p className="text-zinc-500 text-sm">
+                {auditUnavailable ? "No runtime audit surfaces enabled" : "No audit log entries"}
+              </p>
               <p className="text-zinc-600 text-xs mt-1">
-                Entries will appear as scan, policy, and fleet actions are performed.
+                {auditUnavailable
+                  ? "Enable proxy, gateway, or trace ingest to populate runtime audit history."
+                  : "Entries will appear as scan, policy, and fleet actions are performed."}
               </p>
             </div>
-            )
           ) : (
             <div className="space-y-1">
               {entries?.map((entry) => {

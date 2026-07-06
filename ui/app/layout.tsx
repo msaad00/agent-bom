@@ -2,10 +2,8 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import Script from "next/script";
 import "./globals.css";
-import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
-import { DemoEstateLabel } from "@/components/demo-estate-label";
-import { Nav } from "@/components/nav";
+import { AppShell } from "@/components/app-shell";
 // Theme bootstrap script lives in lib/csp-source.ts so its sha256 stays in
 // sync with the script-src hash that lib/security-headers.ts emits in CSP.
 // Editing the script body in only one place will cause the sync test to fail.
@@ -45,16 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {THEME_BOOTSTRAP_SCRIPT}
         </Script>
         <AuthProvider>
-          <DemoEstateLabel />
-          <Nav />
-          {/* Main content — offset by sidebar width on desktop, offset by top bar on mobile */}
-          <AuthGate>
-            <main id="main-content" className="lg:pl-[240px] pt-14 lg:pt-0 min-h-screen transition-[padding-left] duration-200">
-              <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                {children}
-              </div>
-            </main>
-          </AuthGate>
+          <AppShell>{children}</AppShell>
         </AuthProvider>
       </body>
     </html>

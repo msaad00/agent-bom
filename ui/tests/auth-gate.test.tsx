@@ -1,9 +1,17 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
 import { clearSessionApiKey } from "@/lib/auth";
+
+const mockReplace = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: mockReplace, push: vi.fn() }),
+  usePathname: () => "/agents",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 const originalFetch = global.fetch;
 
@@ -11,6 +19,7 @@ afterEach(() => {
   global.fetch = originalFetch;
   window.__AGENT_BOM_CONFIG__ = undefined;
   clearSessionApiKey();
+  mockReplace.mockReset();
   vi.restoreAllMocks();
 });
 
@@ -48,7 +57,7 @@ describe("AuthGate", () => {
     await waitFor(() => expect(screen.getByText("protected surface")).toBeInTheDocument());
   });
 
-  it("shows the browser session form when the API returns 401 without prefilled browser storage", async () => {
+  it("redirects unauthenticated users to /login", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 401,
@@ -64,31 +73,10 @@ describe("AuthGate", () => {
       </AuthProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText("Control-plane authentication required")).toBeInTheDocument());
-    expect(screen.getByLabelText("API key")).toHaveValue("");
-  });
-
-  it("keeps the browser session submit disabled until an API key is entered", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: "Unauthorized",
-      json: () => Promise.resolve({ detail: "Unauthorized — invalid API key" }),
-    }) as typeof fetch;
-
-    render(
-      <AuthProvider>
-        <AuthGate>
-          <div>protected surface</div>
-        </AuthGate>
-      </AuthProvider>,
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith("/login?returnTo=%2Fagents"),
     );
-
-    const unlock = await screen.findByRole("button", { name: "Unlock dashboard" });
-    expect(unlock).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "abk_test" } });
-    expect(unlock).toBeEnabled();
+    expect(screen.queryByText("protected surface")).not.toBeInTheDocument();
   });
 
   it("blocks protected content when auth discovery gets a server error", async () => {
@@ -111,6 +99,5 @@ describe("AuthGate", () => {
 
     await waitFor(() => expect(screen.getByText("Control plane unreachable")).toBeInTheDocument());
     expect(screen.queryByText("page-level offline state")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retry connection" })).toBeInTheDocument();
   });
 });

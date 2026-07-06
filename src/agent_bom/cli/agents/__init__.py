@@ -2177,12 +2177,11 @@ def scan(
         from pathlib import Path as _APath
 
         _aproj = _APath(project)
-        # Auto-detect: any .py file with AI framework imports
-        _has_py = list(_aproj.rglob("*.py"))[:1]
-        if _has_py:
-            try:
-                from agent_bom.ast_analyzer import analyze_project as _ast_analyze
+        from agent_bom.ast_analyzer import analyze_project as _ast_analyze
+        from agent_bom.ast_analyzer import project_has_analyzable_sources as _has_ast_sources
 
+        if _has_ast_sources(_aproj):
+            try:
                 _ast_result = _ast_analyze(project)
                 _ast_result_for_reach = _ast_result
                 if _ast_result.prompts or _ast_result.guardrails or _ast_result.tools:

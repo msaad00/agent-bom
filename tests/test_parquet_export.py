@@ -10,7 +10,6 @@ from agent_bom.models import AIBOMReport, BlastRadius, Package, Severity, Vulner
 from agent_bom.output.parquet_fmt import export_parquet, to_parquet_bytes
 from agent_bom.reachability_cve import FUNCTION_REACHABLE
 
-
 pyarrow = pytest.importorskip("pyarrow")
 
 
@@ -20,6 +19,7 @@ def _stamped_br() -> BlastRadius:
         summary="x",
         severity=Severity.HIGH,
         affected_symbols=["get"],
+        compliance_tags={"OWASP": ["LLM01"]},
     )
     pkg = Package(name="requests", version="2.0.0", ecosystem="pypi")
     br = BlastRadius(
@@ -66,6 +66,7 @@ def test_parquet_export_includes_reachability_columns(tmp_path) -> None:
     assert row["reachable_affected_symbols"] == "get"
     assert row["graph_reachable"] is True
     assert row["graph_min_hop_distance"] == 1
+    assert row["compliance_tags"] == "OWASP:LLM01"
 
 
 def test_parquet_bytes_round_trip() -> None:

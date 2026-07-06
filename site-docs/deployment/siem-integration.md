@@ -163,7 +163,7 @@ export AGENT_BOM_DELTA_STREAM_AUTH_TOKEN="$SIEM_TOKEN"
 Each ingest batch emits a delta payload with:
 
 - `new` — canonical id first seen in current state for the ingest source
-- `changed` — severity, CVSS, reach score, or status materially changed
+- `changed` — severity, CVSS, reach score, symbol reachability, or status materially changed
 - `resolved` — open finding absent from a reconcile-absent batch
 
 Watermarks are stored per `(tenant_id, destination_id)` so retries and

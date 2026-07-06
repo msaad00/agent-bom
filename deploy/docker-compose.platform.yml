@@ -103,7 +103,7 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://ui:3000}
       - NVD_API_KEY=${NVD_API_KEY:-}
     volumes:
-      - agent-bom-state:/root/.agent-bom
+      - agent-bom-state:/home/abom/.agent-bom
     depends_on:
       postgres:
         condition: service_healthy

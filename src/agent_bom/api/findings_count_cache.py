@@ -82,3 +82,33 @@ def reset_findings_count_cache() -> None:
     """Test helper — never call from production code."""
     with _lock:
         _entries.clear()
+
+
+def approximate_total_threshold() -> int | None:
+    """Return the tenant-size threshold for auto approximate totals, or ``None`` to disable."""
+    raw = os.environ.get("AGENT_BOM_FINDINGS_APPROXIMATE_TOTAL_THRESHOLD", "50000").strip()
+    if raw.lower() in {"", "0", "off", "false", "none", "disabled"}:
+        return None
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return 50_000
+
+
+def resolve_effective_approximate_total(
+    *,
+    requested: bool,
+    tenant_id: str,
+    severity: str | None,
+    scan_id: str | None,
+    origin: str | None = "bulk_ingest",
+) -> bool:
+    """Return whether list-findings should skip ``COUNT(*)`` for the bulk slice."""
+    if requested:
+        return True
+    threshold = approximate_total_threshold()
+    if threshold is None:
+        return False
+    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin=origin)
+    cached = get_cached_total(key)
+    return cached is not None and cached >= threshold

@@ -28,6 +28,22 @@ from fastapi import HTTPException, Request
 logger = logging.getLogger(__name__)
 
 
+def _no_auth_role() -> Role:
+    """Role granted to unauthenticated requests when explicitly allowed.
+
+    Defaults to ``viewer``. ``AGENT_BOM_DEMO_ESTATE=1`` always clamps to viewer
+    so public demo stacks cannot mutate tenant state anonymously.
+    """
+    if os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return Role.VIEWER
+    raw = os.environ.get("AGENT_BOM_NO_AUTH_ROLE", "viewer").strip().lower()
+    if raw == "admin":
+        return Role.ADMIN
+    if raw == "analyst":
+        return Role.ANALYST
+    return Role.VIEWER
+
+
 class Role(str, Enum):
     ADMIN = "admin"
     ANALYST = "analyst"
@@ -450,10 +466,10 @@ def require_authenticated_permission(action: str) -> Callable:
             and not proxy_identity_headers_present
         ):
             request.state.api_key_name = "local-no-auth"
-            request.state.api_key_role = Role.ADMIN.value
+            request.state.api_key_role = _no_auth_role().value
             request.state.tenant_id = getattr(request.state, "tenant_id", None) or "default"
             request.state.auth_method = "no_auth"
-            return _authorize(Role.ADMIN, action)
+            return _authorize(_no_auth_role(), action)
 
         trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {
             "1",

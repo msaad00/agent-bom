@@ -23,7 +23,12 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
+      {{- if .Values.controlPlane.api.serviceAccount.create }}
+      serviceAccountName: {{ include "agent-bom.controlPlaneApiServiceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.controlPlane.api.serviceAccount.automountServiceAccountToken }}
+      {{- else }}
       automountServiceAccountToken: false
+      {{- end }}
       terminationGracePeriodSeconds: {{ .Values.controlPlane.api.terminationGracePeriodSeconds | default 30 }}
       {{- $priorityClassName := include "agent-bom.controlPlanePriorityClassName" . }}
       {{- if $priorityClassName }}

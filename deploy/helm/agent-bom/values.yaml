@@ -426,6 +426,12 @@ controlPlane:
     description: "Priority class for agent-bom control-plane API and UI workloads."
   api:
     enabled: true
+    serviceAccount:
+      create: true
+      name: ""
+      # IRSA for async findings export to customer S3 (set eks.amazonaws.com/role-arn).
+      annotations: {}
+      automountServiceAccountToken: true
     replicas: 2
     autoscaling:
       enabled: false

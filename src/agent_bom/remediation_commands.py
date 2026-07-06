@@ -43,3 +43,27 @@ def build_verify_command(ecosystem: str, package: str, version: str) -> str | No
         return None
     normalized = ecosystem.lower()
     return f"agent-bom check {package}@{version} --ecosystem {normalized}"
+
+
+_REMOVE_COMMANDS: dict[str, str] = {
+    "npm": "npm uninstall {package}",
+    "pypi": "pip uninstall -y {package}",
+    "PyPI": "pip uninstall -y {package}",
+    "cargo": "cargo remove {package}",
+    "go": "go mod edit -droprequire={package}",
+    "maven": "# Remove {package} from pom.xml / build.gradle",
+    "nuget": "dotnet remove package {package}",
+    "rubygems": "gem uninstall {package}",
+}
+
+
+def build_remove_command(ecosystem: str, package: str) -> str | None:
+    """Build a remove-package command for known-malicious packages."""
+    if not ecosystem or not package:
+        return None
+    if has_shell_metachar(package):
+        return None
+    template = _REMOVE_COMMANDS.get(ecosystem)
+    if not template:
+        return None
+    return template.format(package=package)

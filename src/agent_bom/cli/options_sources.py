@@ -431,6 +431,7 @@ def policy_options(fn):
                 ),
             ),
             click.option("--fail-on-kev", is_flag=True, help="Exit 1 if any finding appears in CISA KEV (must use --enrich)"),
+            click.option("--fail-on-malicious", is_flag=True, help="Exit 1 if any package is flagged as known malicious"),
             click.option("--fail-if-ai-risk", is_flag=True, help="Exit 1 if an AI framework package with credentials has vulnerabilities"),
             click.option("--save", "save_report", is_flag=True, help="Save this scan to ~/.agent-bom/history/ for future diffing"),
             click.option("--baseline", type=click.Path(exists=True), help="Path to a baseline report JSON to diff against current scan"),

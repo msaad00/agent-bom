@@ -15,7 +15,7 @@ from agent_bom.asset_provenance import (
 )
 from agent_bom.compliance_utils import effective_blast_radius_tags, framework_qualified_blast_radius_tags
 from agent_bom.exploitability import fused_triage_priority
-from agent_bom.finding import FINDING_SCHEMA_VERSION, Finding
+from agent_bom.finding import FINDING_SCHEMA_VERSION, Finding, _forward_fixed_version
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.output.exposure_path import exposure_path_for_report_finding
@@ -904,7 +904,7 @@ def _blast_radius_json_entry(
         ),
         "all_server_credentials": getattr(br, "all_server_credentials", []),
         "attack_vector_summary": getattr(br, "attack_vector_summary", None),
-        "fixed_version": br.vulnerability.fixed_version,
+        "fixed_version": _forward_fixed_version(br.vulnerability.fixed_version, br.package.version, br.package.ecosystem),
         "vendor_severity": getattr(br.vulnerability, "vendor_severity", None),
         "cvss_severity": getattr(br.vulnerability, "cvss_severity", None),
         "ai_risk_context": br.ai_risk_context,

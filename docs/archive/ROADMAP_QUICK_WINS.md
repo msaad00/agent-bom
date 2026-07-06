@@ -1,8 +1,9 @@
 # Quick wins queue (internal, validated 2026-07-06)
 
 Operator-facing priority queue — **not** published on the docs site. Track customer-facing
-progress via GitHub issues [#3242](https://github.com/msaad00/agent-bom/issues/3242) and
-[#3499](https://github.com/msaad00/agent-bom/issues/3499).
+progress on open epics ([#3499](https://github.com/msaad00/agent-bom/issues/3499) reachability,
+[#2918](https://github.com/msaad00/agent-bom/issues/2918) Finding convergence, [#3192](https://github.com/msaad00/agent-bom/issues/3192) graph).
+Post-audit hardening tracker [#3242](https://github.com/msaad00/agent-bom/issues/3242) is closed.
 
 Ranked by value-per-effort. Claims marked **extend** build on shipped modules; **unify**
 closes a wiring gap; **net-new** is honest greenfield.

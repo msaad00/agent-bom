@@ -9,6 +9,64 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.93.0] - 2026-07-06
+
+Release deepens reachability proof, evidence ingest parity, and the unified
+`Finding` read path — while hardening API scale, lifecycle, and operator docs
+for self-hosted control planes.
+
+### Reachability / blast radius
+- **Multilanguage symbol join** for npm, Go, PyPI (AST), plus Java, Rust, NuGet,
+  Ruby, and Gradle-only Java (conservative regex/manifest proof).
+- **Symbol reach → triage and VEX**: unreachable symbol evidence feeds
+  `effective_reach` scoring and auto-`not_affected` VEX suggestions (#3577).
+- **Python symbol reach** exported in JSON/SARIF findings; delta-stream snapshots
+  include symbol-reach material fields (#3571, #3573).
+- **Advisory context** enrichment (CWE/CVE/CPE) at symbol-join build time (#3576).
+
+### Evidence intake
+- **SARIF external-scanner ingest** wired into `detect_and_parse` and
+  `agent-bom agents --external-scan` for full scan depth (#3585).
+- **CSAF and CycloneDX VEX** documents load through `load_vex` alongside OpenVEX
+  (#3586).
+- **`docs/INGEST_PATHS.md`** documents push vs `--external-scan` tradeoffs,
+  Trivy/Grype/SARIF paths, and VM/registry first-command flows (#3587).
+
+### Finding model / outputs
+- **Markdown, PDF, and SARIF CVE loops** migrated to the unified `Finding` stream
+  (#3570, #3574, #3578).
+- **JSON/HTML CVE tables** migrated to `cve_findings()` (#3588).
+- **Exposure paths** flow through `Finding` in JSON/HTML/SARIF.
+- **VEX on Finding stream** with API `external_scan` / `vex` scan parity and SARIF
+  VEX properties (#3589).
+- **Registry verified badge** in default JSON MCP server rows and CLI dependency
+  tree (#3587).
+
+### API / data plane
+- **Finding lifecycle** L1–L4: current-state merge, occurrence log, resolve
+  reconcile, SDK ingest (#3470, #3480–#3483, #3465).
+- **Hub read scale**: keyset pagination, deduped payloads, expression-indexed
+  sorts, gzip/zstd compression (#3515–#3518, #3442, #3454).
+- **Idempotent bulk ingest** and batch scan caps (#3462, #3474).
+- **Hub observations partitioning** foundation with retention rollover (#3572).
+- **Delta-stream connector** for SIEM/data-lake sinks (#3514).
+- **OIDC JWT replay protection** via jti one-time store (#3561).
+
+### UI / graph
+- **Findings lifecycle** status in queue; estate roll-up navigation; blast-radius
+  graph overlay; graph lens dock fix (#3551, #3507, #3502, #3505).
+- **Labeled demo estate** surface lock states (#3467).
+
+### CLI / headless
+- **Findings push** CLI wired to hub current-state list (#3549).
+- **Offline/air-gap** fixes for PyPI check, fleet push, and MCP version (#3556,
+  #3557).
+
+### Docs / positioning
+- README product-first personas and FinOps lane; internal quick-wins queue moved
+  to `docs/archive/` (#3580, #3587).
+- Close post-audit hardening tracker **#3242** (corrective arc complete; forward work stays on epic issues).
+
 ## [0.92.0] - 2026-07-02
 
 Release hardens the product path from first run to hosted POC: a user can
@@ -2013,7 +2071,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.92.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.93.0...HEAD
+[0.93.0]: https://github.com/msaad00/agent-bom/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/msaad00/agent-bom/compare/v0.91.0...v0.92.0
 [0.91.0]: https://github.com/msaad00/agent-bom/compare/v0.90.0...v0.91.0
 [0.90.0]: https://github.com/msaad00/agent-bom/compare/v0.89.2...v0.90.0

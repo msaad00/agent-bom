@@ -343,7 +343,7 @@ See [`docs/operations/ENV_VARS.md`](operations/ENV_VARS.md) for the full enrichm
 **Runtime / MCP IdP without OIDC discovery:** legacy issuers that cannot publish
 `/.well-known/openid-configuration` can use the gateway OIDC discovery shim —
 [`docs/design/OIDC_DISCOVERY_SHIM.md`](design/OIDC_DISCOVERY_SHIM.md) and
-[`deploy/helm/agent-bom/values/oidc-discovery-shim-values.yaml`](../deploy/helm/agent-bom/values/oidc-discovery-shim-values.yaml).
+[`deploy/helm/agent-bom/examples/oidc-discovery-shim-values.yaml`](../deploy/helm/agent-bom/examples/oidc-discovery-shim-values.yaml).
 
 ---
 

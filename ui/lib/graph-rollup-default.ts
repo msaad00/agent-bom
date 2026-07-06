@@ -14,6 +14,14 @@ export function parseGraphRollupUrlPreference(
   return "default";
 }
 
+/** Drill-down container id persisted in shareable graph URLs. */
+export function parseRollupNodeParam(
+  params: URLSearchParams | { get(name: string): string | null },
+): string | null {
+  const node = params.get("rollup_node")?.trim();
+  return node || null;
+}
+
 export interface GraphRollupEligibilityInput {
   hasSelectedScan: boolean;
   rollupPreference: GraphRollupUrlPreference;

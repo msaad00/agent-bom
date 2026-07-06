@@ -42,7 +42,7 @@ _BATCH_LIST_TARGET_FIELDS = (
     "connectors",
     "filesystem_paths",
 )
-_BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom")
+_BATCH_SINGLE_TARGET_FIELDS = ("inventory", "gha_path", "sbom", "external_scan", "vex")
 
 _SCAN_PATH_MAX_LENGTH = 4096
 _SCAN_IMAGE_REF_MAX_LENGTH = 512
@@ -105,6 +105,12 @@ class ScanRequest(BaseModel):
 
     sbom: ScanSinglePath | None = None
     """Path to an existing CycloneDX / SPDX SBOM file."""
+
+    external_scan: ScanSinglePath | None = None
+    """Path to an external scanner JSON report (Trivy, Grype, Syft, SARIF)."""
+
+    vex: ScanSinglePath | None = None
+    """Path to a VEX document (OpenVEX JSON) to apply before result serialization."""
 
     enrich: bool = False
     """Enrich with NVD CVSS, EPSS, and CISA KEV data."""

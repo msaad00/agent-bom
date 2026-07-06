@@ -536,6 +536,12 @@ def _cve_sarif_result(
         "ai_summary": finding.ai_summary,
         "suppressed": bool(finding.suppressed),
     }
+    vex_status = evidence(finding, "vex_status")
+    if vex_status:
+        result_properties["vex_status"] = vex_status
+    vex_justification = evidence(finding, "vex_justification")
+    if vex_justification:
+        result_properties["vex_justification"] = vex_justification
     package_provenance = evidence(finding, "package_discovery_provenance")
     if package_provenance:
         result_properties["package_discovery_provenance"] = _sanitize_sarif_property(package_provenance)

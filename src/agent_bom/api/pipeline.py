@@ -794,6 +794,38 @@ def _run_scan_sync(job: ScanJob) -> None:
                 )
                 agents.append(sbom_agent)
 
+        if req.external_scan:
+            pipeline.update_step("discovery", f"Ingesting external scan: {req.external_scan}")
+            import json as _json
+            from pathlib import Path as _Path
+
+            from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
+            from agent_bom.parsers.external_scanners import detect_and_parse
+
+            try:
+                with open(req.external_scan) as _ext_f:
+                    _ext_data = _json.load(_ext_f)
+                _ext_packages = detect_and_parse(_ext_data)
+                _ext_resource_name = _Path(req.external_scan).stem
+                _ext_server = MCPServer(
+                    name=_ext_resource_name,
+                    command="external-scan",
+                    args=[req.external_scan],
+                    transport=TransportType.STDIO,
+                    packages=_ext_packages,
+                    surface=ServerSurface.EXTERNAL_SCAN,
+                )
+                _ext_agent = Agent(
+                    name=f"external-scan:{_ext_resource_name}",
+                    agent_type=AgentType.CUSTOM,
+                    config_path=req.external_scan,
+                    source="external-scan",
+                    mcp_servers=[_ext_server],
+                )
+                agents.append(_ext_agent)
+            except (OSError, ValueError, _json.JSONDecodeError) as ext_exc:
+                warnings_all.append(f"External scan error: {sanitize_error(ext_exc)}")
+
         for connector_name in req.connectors:
             pipeline.update_step("discovery", f"Discovering from connector: {connector_name}")
             try:
@@ -1020,6 +1052,19 @@ def _run_scan_sync(job: ScanJob) -> None:
         except Exception as mcp_auth_exc:  # noqa: BLE001
             _logger.warning("MCP auth posture evaluation skipped: %s", sanitize_error(mcp_auth_exc))
         report = AIBOMReport(agents=agents, blast_radii=blast_radii, findings=report_findings, scan_id=job.job_id)
+        if req.vex:
+            from agent_bom.vex import apply_vex, load_vex
+            from agent_bom.vex import to_serializable as vex_to_serializable
+
+            try:
+                _vex_doc = load_vex(req.vex)
+            except ValueError as vex_exc:
+                raise RuntimeError(f"Failed to load VEX file: {vex_exc}") from vex_exc
+            _vex_count = apply_vex(report, _vex_doc)
+            report.vex_data = vex_to_serializable(_vex_doc)
+            report.findings = [blast_radius_to_finding(br) for br in blast_radii]
+            with lock:
+                job.progress.append(f"VEX applied: {_vex_count} vulnerabilities updated from {req.vex}")
         try:
             from agent_bom.scanners import consume_coverage_warnings
 

@@ -936,6 +936,20 @@ async def _cleanup_loop():
                 _logger.info("proxy_replay_log cleanup removed %d expired rows", removed)
         except Exception:  # noqa: BLE001
             _logger.debug("proxy_replay_log cleanup skipped", exc_info=True)
+        # Hub observations partition retention (#3463). Postgres-only; no-op on
+        # SQLite and legacy unpartitioned tables. Fail-open like other cleanup
+        # hooks so a backend hiccup never stops the loop.
+        try:
+            from agent_bom.api.hub_observations_partition import run_hub_observations_retention
+
+            dropped_partitions = run_hub_observations_retention()
+            if dropped_partitions:
+                _logger.info(
+                    "hub_findings_current_observations retention dropped %d partition(s)",
+                    dropped_partitions,
+                )
+        except Exception:  # noqa: BLE001
+            _logger.debug("hub observations retention skipped", exc_info=True)
         # NHI lifecycle enforcement (#nhi): expire lingering JIT grants, opt-in
         # dormant-identity deprovision, advisory token rotation-due flagging.
         # Backend-agnostic and fail-open — a store error logs and is skipped so

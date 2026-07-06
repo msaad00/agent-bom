@@ -262,6 +262,15 @@ LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 GRAPH_RETENTION_DAYS = _int("AGENT_BOM_GRAPH_RETENTION_DAYS", 180)
 
 
+# ── Hub Observations Retention ────────────────────────────────────────────
+# Age-based retention for the Postgres occurrence log
+# (``hub_findings_current_observations``). Monthly RANGE partitions are
+# detached and dropped once wholly past this window. ``<= 0`` disables
+# rollover. SQLite and legacy unpartitioned Postgres tables are unaffected.
+
+HUB_OBSERVATIONS_RETENTION_DAYS = _int("AGENT_BOM_HUB_OBSERVATIONS_RETENTION_DAYS", 365)
+
+
 # ── Analytics Retention ───────────────────────────────────────────────────
 # Caps local analytics mirrors and runtime observation tables on write. ClickHouse
 # analytics tables carry their own TTL clauses; this knob bounds SQLite/Postgres

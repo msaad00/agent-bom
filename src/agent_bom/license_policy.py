@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING
 
+from agent_bom.graph.severity import severity_worst_first_rank
 from agent_bom.models import Agent
 
 if TYPE_CHECKING:
@@ -522,7 +523,7 @@ def print_license_report(report: LicenseReport, console: Console) -> None:
         "unknown": "dim",
     }
 
-    for f in sorted(report.findings, key=lambda x: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(x.risk_level, 4)):
+    for f in sorted(report.findings, key=lambda x: severity_worst_first_rank(x.risk_level)):
         risk_color = risk_colors.get(f.risk_level, "white")
         cat_color = cat_colors.get(f.category, "white")
         table.add_row(

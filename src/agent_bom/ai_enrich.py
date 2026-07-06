@@ -85,6 +85,8 @@ OLLAMA_MODEL_PREFERENCE = [
     "llama3.2",
     "llama3.2:3b",
     "qwen2.5:7b",
+    "glm4:9b",
+    "glm4",
     "mistral:7b",
     "mistral",
     "gemma2:9b",

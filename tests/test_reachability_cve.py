@@ -379,7 +379,7 @@ def test_wiring_stamps_unreachable_when_symbol_absent() -> None:
 
 def test_wiring_skips_unsupported_ecosystem_rows() -> None:
     br = _python_br(["get"])
-    br.package.ecosystem = "rubygems"
+    br.package.ecosystem = "composer"
     stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get())
     assert stamped == 0
     assert br.symbol_reachability is None
@@ -437,6 +437,25 @@ def test_wiring_stamps_cargo_row() -> None:
         ecosystem="cargo",
     )
     stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[cargo_reach]))
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.reachable_affected_symbols == ["get"]
+
+
+def test_wiring_stamps_rubygems_row() -> None:
+    br = _python_br(["get"], pkg_name="faraday")
+    br.package.ecosystem = "rubygems"
+    ruby_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="faraday",
+        module="faraday",
+        symbol="get",
+        file_path="server.rb",
+        line_number=9,
+        call_path=["fetch_url", "fetch_url", "faraday.get"],
+        ecosystem="rubygems",
+    )
+    stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[ruby_reach]))
     assert stamped == 1
     assert br.symbol_reachability == FUNCTION_REACHABLE
     assert br.reachable_affected_symbols == ["get"]

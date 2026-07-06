@@ -1,7 +1,7 @@
 """Conservative guards for regex-backed dependency symbol reach.
 
 Headless agents and MCP posture tools consume ``dependency_symbol_reach``
-evidence. Regex parsers (Rust/Java) are intentionally lossy, so we only emit
+evidence. Regex parsers (Rust/Java/Ruby) are intentionally lossy, so we only emit
 rows that pass the same bar as Go: a proven import/use alias to an external
 package plus a non-generic symbol token. Heuristic Maven coordinates and
 unresolved MCP tool handlers are dropped rather than downgraded to
@@ -61,9 +61,17 @@ def is_verified_nuget_package(package_id: str, nuget_map: dict[str, str]) -> boo
     return package_id in set(nuget_map.values())
 
 
+def is_verified_ruby_gem(gem_name: str, gem_map: dict[str, str]) -> bool:
+    """Return True when a gem name is declared in the project manifest map."""
+    if not gem_name or not gem_map:
+        return False
+    return gem_name in set(gem_map.values())
+
+
 __all__ = [
     "is_actionable_dependency_symbol",
     "is_external_rust_crate",
     "is_verified_maven_coord",
     "is_verified_nuget_package",
+    "is_verified_ruby_gem",
 ]

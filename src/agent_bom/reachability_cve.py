@@ -30,9 +30,10 @@ is a three-state reachability signal on the finding:
   entrypoint reaches it at all.
 
 Honest scope: Python, npm, Go, Maven/Java, and Cargo/Rust symbol-level call
-graphs are supported when import proof is available (``use`` / ``pom.xml``).
-Rust/Java regex parsers apply conservative guards and omit heuristic rows so
-headless MCP consumers do not receive false ``function_reachable`` upgrades.
+graphs are supported when import proof is available (``use`` / ``pom.xml`` /
+``build.gradle``). Rust/Java regex parsers apply conservative guards and omit
+heuristic rows so headless MCP consumers do not receive false ``function_reachable``
+upgrades.
 
 The module is read-only: no graph mutation, no network. It is safe to call
 from the report layer, the graph/blast-radius surfacing, the API, or a

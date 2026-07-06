@@ -102,25 +102,45 @@ def _balanced_segment(source: str, open_index: int, *, open_char: str, close_cha
     return None
 
 
+def _maven_map_from_coord(coord: str) -> dict[str, str]:
+    """Expand a ``groupId:artifactId`` coord into import-binding keys."""
+    if not coord or ":" not in coord:
+        return {}
+    group, artifact = coord.split(":", 1)
+    if not group or not artifact:
+        return {}
+    return {
+        artifact: coord,
+        group: coord,
+        f"{group}.{artifact}": coord,
+    }
+
+
 def _load_maven_dependency_map(project: Path) -> dict[str, str]:
     """Map Java type prefixes and artifactIds to ``groupId:artifactId``."""
     mapping: dict[str, str] = {}
     pom = project / "pom.xml"
-    if not pom.is_file():
+    if pom.is_file():
+        try:
+            text = pom.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        else:
+            for match in _MAVEN_DEP_RE.finditer(text):
+                group = match.group("group").strip()
+                artifact = match.group("artifact").strip()
+                if not group or not artifact:
+                    continue
+                mapping.update(_maven_map_from_coord(f"{group}:{artifact}"))
+    if mapping:
         return mapping
-    try:
-        text = pom.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return mapping
-    for match in _MAVEN_DEP_RE.finditer(text):
-        group = match.group("group").strip()
-        artifact = match.group("artifact").strip()
-        if not group or not artifact:
+
+    from agent_bom.parsers.compiled_parsers import parse_gradle_packages
+
+    for pkg in parse_gradle_packages(project):
+        if (pkg.ecosystem or "").lower() != "maven" or not pkg.name:
             continue
-        coord = f"{group}:{artifact}"
-        mapping[artifact] = coord
-        mapping[group] = coord
-        mapping[f"{group}.{artifact}"] = coord
+        mapping.update(_maven_map_from_coord(pkg.name.strip()))
     return mapping
 
 

@@ -522,6 +522,34 @@ def test_analyze_project_surfaces_java_dependency_symbol_reach(tmp_path: Path) -
     assert reach.package == "com.squareup.okhttp3:okhttp"
 
 
+def test_analyze_project_surfaces_gradle_only_java_dependency_symbol_reach(tmp_path: Path) -> None:
+    (tmp_path / "build.gradle").write_text(
+        'dependencies {\n'
+        '    implementation "com.squareup.okhttp3:okhttp:4.12.0"\n'
+        "}\n"
+    )
+    (tmp_path / "Server.java").write_text(
+        "import com.squareup.okhttp3.OkHttpClient;\n"
+        "import com.squareup.okhttp3.Request;\n\n"
+        "class Server {\n"
+        "    void register(McpServer server) {\n"
+        '        server.addTool("fetch_url", this::fetchUrl);\n'
+        "    }\n\n"
+        "    void fetchUrl(String url) throws Exception {\n"
+        "        OkHttpClient client = new OkHttpClient();\n"
+        "        client.newCall(new Request.Builder().url(url).build()).execute();\n"
+        "    }\n"
+        "}\n"
+    )
+
+    result = analyze_project(tmp_path)
+    maven_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "maven"]
+    assert maven_reaches
+    reach = next(item for item in maven_reaches if item.symbol == "newCall")
+    assert reach.entrypoint == "fetch_url"
+    assert reach.package == "com.squareup.okhttp3:okhttp"
+
+
 def test_analyze_project_surfaces_csharp_dependency_symbol_reach(tmp_path: Path) -> None:
     import json
 

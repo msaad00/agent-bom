@@ -40,10 +40,10 @@ Current SVG inventory:
 | File | What it shows | Where it lives in the README |
 |---|---|---|
 | `logo-{light,dark}.svg` | Brand mark | hero |
-| `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + ContextGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; available for README architecture section |
-| `how-it-works-{light,dark}.svg` | Six-step scan pipeline from read-only intake through evidence core to outputs | README "How It Works" |
-| `persona-value-{light,dark}.svg` | Four buyer personas in a 2×2 lane-colored card grid (persona → value proof per card) | README hero — Who It's For |
-| `blast-radius-{light,dark}.svg` | CVE, package, MCP server, agent, credentials, and tools in one blast-radius path | hero, under tagline |
+| `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + ContextGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; README "What Is agent-bom", collapsed detail |
+| `how-it-works-{light,dark}.svg` | Six-step scan pipeline from read-only intake through evidence core to outputs | README "What Is agent-bom" |
+| `persona-value-{light,dark}.svg` | Four buyer personas in a compact single-row band — neutral cards, one restrained accent hue and person-with-role-badge icon per persona, value proof pill per card | README "Who It's For", after the product intro |
+| `blast-radius-{light,dark}.svg` | CVE, package, MCP server, agent, credentials, and tools in one blast-radius path | README "What Is agent-bom", collapsed drilldown |
 | `scan-pipeline-{light,dark}.svg` | 5-stage pipeline (discover → scan → analyze → report → enforce) | "How a scan moves" |
 | `engine-internals-{light,dark}.svg` | Inside the scanner | available for deeper architecture docs; not currently embedded in the README |
 | `compliance-{light,dark}.svg` | Finding → control → evidence packet | Compliance section |

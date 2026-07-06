@@ -1,8 +1,8 @@
 # Product Brief
 
 `agent-bom` is an open security scanner and self-hosted control plane for
-AI/MCP infrastructure. It adds headless agent primitives and human cockpit
-surfaces over the same evidence model. It generates a reachability-backed AI
+AI/MCP infrastructure. It serves security teams and AI agents from the same
+evidence model. It generates a reachability-backed AI
 BOM across agents, MCP servers, packages, credential environment names, cloud,
 runtime, and skill surfaces, then exposes the same evidence through CLI/CI,
 API/UI, MCP tools, and selected runtime controls.

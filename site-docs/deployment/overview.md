@@ -1,5 +1,9 @@
 # Deployment Overview
 
+> **Unified quickstart:** [`docs/DEPLOY_QUICKSTART.md`](../../docs/DEPLOY_QUICKSTART.md)
+> — `scripts/deploy/install.sh` for pilot, EKS, AKS, GKE, Snowflake, and
+> read-only cloud connect.
+
 Use this page when the question is not "how do I install `agent-bom`?" but
 "what should I deploy first, what does that give me, and when do I add runtime
 enforcement?"
@@ -16,6 +20,8 @@ teams intentionally diverging from them.
 Pilot on one workstation:
 
 ```bash
+scripts/deploy/install.sh pilot
+# or without a checkout:
 curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
 docker compose -f docker-compose.pilot.yml up -d
 # Dashboard -> http://localhost:3000
@@ -25,11 +31,12 @@ Production in your own cluster from a checked-out repo:
 
 ```bash
 export AWS_REGION="<your-aws-region>"
-scripts/deploy/install-eks-reference.sh \
-  --cluster-name corp-ai \
+scripts/deploy/install.sh eks \
+  --create-cluster \
   --region "$AWS_REGION" \
-  --hostname agent-bom.internal.example.com \
   --enable-gateway
+# or the legacy reference installer directly:
+# scripts/deploy/install-eks-reference.sh ...
 ```
 
 Advanced/manual chart install from a checked-out repo:

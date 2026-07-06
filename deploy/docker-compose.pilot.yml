@@ -33,6 +33,7 @@ services:
     environment:
       AGENT_BOM_DB_PATH: /var/lib/agent-bom/vulns.db
       AGENT_BOM_DEPLOYMENT_ENV: pilot-loopback
+      AGENT_BOM_DEMO_ESTATE: ${AGENT_BOM_DEMO_ESTATE:-0}
     ports:
       - "127.0.0.1:8422:8422"
     volumes:

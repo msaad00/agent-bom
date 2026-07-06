@@ -78,27 +78,253 @@ class VexDocument:
 # Load VEX documents
 # ---------------------------------------------------------------------------
 
+_CDX_STATE_TO_VEX: dict[str, VexStatus] = {
+    "not_affected": VexStatus.NOT_AFFECTED,
+    "exploitable": VexStatus.AFFECTED,
+    "resolved": VexStatus.FIXED,
+    "resolved_with_pedigree": VexStatus.FIXED,
+    "in_triage": VexStatus.UNDER_INVESTIGATION,
+    "false_positive": VexStatus.NOT_AFFECTED,
+}
 
-def load_vex(path: str) -> VexDocument:
-    """Load a VEX document from a JSON file.
+_CDX_JUSTIFICATION_TO_VEX: dict[str, VexJustification] = {
+    "code_not_present": VexJustification.VULNERABLE_CODE_NOT_PRESENT,
+    "code_not_reachable": VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH,
+    "requires_configuration": VexJustification.VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY,
+    "requires_dependency": VexJustification.COMPONENT_NOT_PRESENT,
+    "requires_environment": VexJustification.VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY,
+    "protected_by_compiler": VexJustification.INLINE_MITIGATIONS_ALREADY_EXIST,
+    "protected_at_runtime": VexJustification.INLINE_MITIGATIONS_ALREADY_EXIST,
+    "protected_at_perimeter": VexJustification.INLINE_MITIGATIONS_ALREADY_EXIST,
+    "protected_by_mitigating_control": VexJustification.INLINE_MITIGATIONS_ALREADY_EXIST,
+}
 
-    Supports OpenVEX format:
-    {
-      "@context": "https://openvex.dev/ns/v0.2.0",
-      "statements": [{"vulnerability": {"name": "CVE-..."}, "status": "..."}]
+_CSAF_STATUS_TO_VEX: dict[str, VexStatus] = {
+    "fixed": VexStatus.FIXED,
+    "known_not_affected": VexStatus.NOT_AFFECTED,
+    "known_affected": VexStatus.AFFECTED,
+    "under_investigation": VexStatus.UNDER_INVESTIGATION,
+    "first_fixed": VexStatus.FIXED,
+}
+
+_CSAF_FLAG_TO_VEX: dict[str, VexJustification] = {
+    "component_not_present": VexJustification.COMPONENT_NOT_PRESENT,
+    "vulnerable_code_not_present": VexJustification.VULNERABLE_CODE_NOT_PRESENT,
+    "vulnerable_code_not_in_execute_path": VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH,
+    "vulnerable_code_cannot_be_controlled_by_adversary": (
+        VexJustification.VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY
+    ),
+    "inline_mitigations_already_exist": VexJustification.INLINE_MITIGATIONS_ALREADY_EXIST,
+}
+
+
+def _detect_vex_format(data: dict) -> str:
+    vulnerabilities = data.get("vulnerabilities")
+    if data.get("bomFormat") == "CycloneDX" and isinstance(vulnerabilities, list):
+        if any(isinstance(entry, dict) and entry.get("analysis") for entry in vulnerabilities):
+            return "cyclonedx"
+    document = data.get("document")
+    if isinstance(document, dict):
+        if document.get("category") == "csaf_vex":
+            return "csaf"
+        if document.get("csaf_version") and vulnerabilities:
+            return "csaf"
+    if isinstance(vulnerabilities, list) and vulnerabilities:
+        first = vulnerabilities[0]
+        if isinstance(first, dict) and "product_status" in first:
+            return "csaf"
+    if data.get("@context", "").startswith("https://openvex.dev/") or "statements" in data:
+        return "openvex"
+    return "openvex"
+
+
+def _extract_cdx_product_ref(ref: str) -> str:
+    if not ref:
+        return ""
+    if "#" in ref:
+        return ref.rsplit("#", 1)[-1]
+    return ref
+
+
+def _parse_cyclonedx_vex(data: dict) -> VexDocument:
+    statements: list[VexStatement] = []
+    for entry in data.get("vulnerabilities", []):
+        if not isinstance(entry, dict):
+            continue
+        vuln_id = entry.get("id") or entry.get("bom-ref") or ""
+        analysis = entry.get("analysis") or {}
+        if not isinstance(analysis, dict):
+            continue
+        state_raw = str(analysis.get("state") or "under_investigation").lower()
+        try:
+            status = _CDX_STATE_TO_VEX.get(state_raw, VexStatus.UNDER_INVESTIGATION)
+        except ValueError:
+            status = VexStatus.UNDER_INVESTIGATION
+
+        justification = None
+        just_raw = analysis.get("justification")
+        if just_raw:
+            justification = _CDX_JUSTIFICATION_TO_VEX.get(str(just_raw).lower())
+            if justification is None:
+                logger.warning("Unknown CycloneDX VEX justification value: %s", just_raw)
+
+        products = [
+            _extract_cdx_product_ref(aff.get("ref", ""))
+            for aff in entry.get("affects", [])
+            if isinstance(aff, dict) and aff.get("ref")
+        ]
+        detail = analysis.get("detail")
+        response = analysis.get("response")
+        action_statement = None
+        if isinstance(response, list) and response:
+            action_statement = ", ".join(str(item) for item in response)
+        timestamp = ""
+        for key in ("lastUpdated", "firstIssued"):
+            if analysis.get(key):
+                timestamp = str(analysis[key])
+                break
+
+        author = "unknown"
+        metadata = data.get("metadata")
+        if isinstance(metadata, dict):
+            authors = metadata.get("authors")
+            if isinstance(authors, list) and authors and isinstance(authors[0], dict):
+                author = authors[0].get("name", author)
+            supplier = metadata.get("supplier")
+            if isinstance(supplier, dict) and supplier.get("name"):
+                author = supplier["name"]
+
+        statements.append(
+            VexStatement(
+                vulnerability_id=vuln_id,
+                status=status,
+                justification=justification,
+                impact_statement=detail,
+                action_statement=action_statement,
+                products=products,
+                timestamp=timestamp,
+                author=author,
+            )
+        )
+
+    metadata = {
+        "id": data.get("serialNumber", data.get("@id", f"urn:uuid:{uuid.uuid4()}")),
+        "author": statements[0].author if statements else "unknown",
+        "timestamp": data.get("metadata", {}).get("timestamp", ""),
+        "version": data.get("version", 1),
+        "format": "cyclonedx",
     }
+    return VexDocument(statements=statements, metadata=metadata)
 
-    Also supports simplified format:
-    {
-      "statements": [{"vulnerability_id": "CVE-...", "status": "..."}]
+
+def _csaf_vuln_id(entry: dict) -> str:
+    for key in ("cve", "ids"):
+        value = entry.get(key)
+        if isinstance(value, str) and value:
+            return value
+        if isinstance(value, list) and value:
+            first = value[0]
+            if isinstance(first, dict):
+                return str(first.get("text") or first.get("id") or "")
+            return str(first)
+    return ""
+
+
+def _csaf_impact_statement(entry: dict, product_ids: list[str]) -> str | None:
+    for threat in entry.get("threats", []) or []:
+        if not isinstance(threat, dict):
+            continue
+        if threat.get("category") == "impact" and threat.get("details"):
+            threat_products = threat.get("product_ids") or []
+            if not threat_products or any(pid in threat_products for pid in product_ids):
+                return str(threat["details"])
+    for note in entry.get("notes", []) or []:
+        if isinstance(note, dict) and note.get("text"):
+            return str(note["text"])
+    return None
+
+
+def _csaf_action_statement(entry: dict, product_ids: list[str]) -> str | None:
+    for remediation in entry.get("remediations", []) or []:
+        if not isinstance(remediation, dict):
+            continue
+        remediation_products = remediation.get("product_ids") or []
+        if remediation_products and not any(pid in remediation_products for pid in product_ids):
+            continue
+        for key in ("details", "description"):
+            if remediation.get(key):
+                return str(remediation[key])
+    return None
+
+
+def _csaf_justification(entry: dict, product_ids: list[str]) -> VexJustification | None:
+    for flag in entry.get("flags", []) or []:
+        if not isinstance(flag, dict):
+            continue
+        flag_products = flag.get("product_ids") or []
+        if flag_products and not any(pid in flag_products for pid in product_ids):
+            continue
+        label = str(flag.get("label") or "").lower()
+        mapped = _CSAF_FLAG_TO_VEX.get(label)
+        if mapped:
+            return mapped
+    return None
+
+
+def _parse_csaf_vex(data: dict) -> VexDocument:
+    statements: list[VexStatement] = []
+    document = data.get("document", {})
+    author = "unknown"
+    publisher = document.get("publisher")
+    if isinstance(publisher, dict):
+        author = publisher.get("name", author)
+    tracking = document.get("tracking", {})
+    doc_id = tracking.get("id", f"urn:uuid:{uuid.uuid4()}")
+    timestamp = tracking.get("current_release_date", tracking.get("initial_release_date", ""))
+
+    for entry in data.get("vulnerabilities", []):
+        if not isinstance(entry, dict):
+            continue
+        vuln_id = _csaf_vuln_id(entry)
+        if not vuln_id:
+            continue
+        product_status = entry.get("product_status") or {}
+        if not isinstance(product_status, dict):
+            continue
+        for status_key, product_ids in product_status.items():
+            if not isinstance(product_ids, list) or not product_ids:
+                continue
+            status = _CSAF_STATUS_TO_VEX.get(str(status_key).lower())
+            if status is None:
+                logger.warning("Unknown CSAF product_status key: %s", status_key)
+                continue
+            justification = _csaf_justification(entry, product_ids)
+            if status == VexStatus.NOT_AFFECTED and justification is None:
+                justification = VexJustification.VULNERABLE_CODE_NOT_PRESENT
+            statements.append(
+                VexStatement(
+                    vulnerability_id=vuln_id,
+                    status=status,
+                    justification=justification,
+                    impact_statement=_csaf_impact_statement(entry, product_ids),
+                    action_statement=_csaf_action_statement(entry, product_ids),
+                    products=[str(pid) for pid in product_ids],
+                    timestamp=timestamp,
+                    author=author,
+                )
+            )
+
+    metadata = {
+        "id": doc_id,
+        "author": author,
+        "timestamp": timestamp,
+        "version": tracking.get("version", 1),
+        "format": "csaf",
     }
-    """
-    try:
-        with open(path) as f:
-            data = json.load(f)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"VEX JSON error in {path}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
+    return VexDocument(statements=statements, metadata=metadata)
 
+
+def _parse_openvex(data: dict) -> VexDocument:
     statements = []
     for stmt_data in data.get("statements", []):
         # OpenVEX format
@@ -111,7 +337,7 @@ def load_vex(path: str) -> VexDocument:
         try:
             status = VexStatus(status_str)
         except ValueError as exc:
-            raise ValueError(f"Unknown VEX status {status_str!r} in {path}") from exc
+            raise ValueError(f"Unknown VEX status {status_str!r}") from exc
 
         justification = None
         just_str = stmt_data.get("justification")
@@ -146,6 +372,28 @@ def load_vex(path: str) -> VexDocument:
     }
 
     return VexDocument(statements=statements, metadata=metadata)
+
+
+def load_vex(path: str) -> VexDocument:
+    """Load a VEX document from a JSON file.
+
+    Supports OpenVEX, CycloneDX 1.5+ VEX BOMs, and CSAF 2.0 VEX advisories.
+    """
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"VEX JSON error in {path}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError(f"VEX document in {path} must be a JSON object")
+
+    fmt = _detect_vex_format(data)
+    if fmt == "cyclonedx":
+        return _parse_cyclonedx_vex(data)
+    if fmt == "csaf":
+        return _parse_csaf_vex(data)
+    return _parse_openvex(data)
 
 
 # ---------------------------------------------------------------------------

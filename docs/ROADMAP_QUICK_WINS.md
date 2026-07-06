@@ -27,31 +27,26 @@ For language reachability status see the reachability matrix in open issues
 
 ## 1. Generic SARIF ingest → SAST parity via integration
 
-**Verdict:** **Unify** (partial today) — highest leverage.
+**Verdict:** **Shipped** (#3585).
 
 | Exists | Gap |
 |--------|-----|
-| `compliance_hub_ingest.ingest_sarif_findings()` → `Finding` stream for compliance hub | Not wired into `parsers/external_scanners.detect_and_parse` or the main `agent-bom agents` scan path |
-| `external_scanners.py` auto-detects Trivy / Grype / Syft JSON | No Semgrep / CodeQL / Bandit SARIF in the same ingest lane |
-| SARIF **export** (`output/sarif.py`) | Ingest ≠ export |
+| `compliance_hub_ingest.ingest_sarif_findings()` → `Finding` stream for compliance hub | Wired into `parsers/external_scanners.detect_and_parse` and `--external-scan` |
+| `external_scanners.py` auto-detects Trivy / Grype / Syft JSON | SARIF detect branch + tests |
+| SARIF **export** (`output/sarif.py`) | Ingest ≠ export (by design) |
 
-**Work:** One parser (or reuse `_parse_sarif_findings` from SAST module) + `detect_and_parse`
-branch + `findings push` / CLI flag docs.
-
-**Outcome:** “Bring any SAST scanner output into the same graph, blast radius, and compliance evidence.”
+**Outcome:** Bring any SAST scanner SARIF into graph, blast radius, and compliance evidence via `--external-scan`.
 
 ---
 
 ## 2. CSAF and CycloneDX VEX ingest
 
-**Verdict:** **Extend** — enterprise checkbox.
+**Verdict:** **Extend** — enterprise checkbox (**in flight**).
 
 | Exists | Gap |
 |--------|-----|
-| `vex.py` — `load_vex`, `apply_vex`, OpenVEX export | OpenVEX JSON only |
-| Triage auto-`not_affected` on `unreachable` symbol reach (#3577) | No CSAF / CycloneDX VEX parse |
-
-**Work:** Parse-and-map into `VexDocument` / `VexStatement` (1–2 days).
+| `vex.py` — `load_vex`, `apply_vex`, OpenVEX export | CycloneDX + CSAF VEX branches in `load_vex` |
+| Triage auto-`not_affected` on `unreachable` symbol reach (#3577) | — |
 
 ---
 

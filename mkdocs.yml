@@ -93,6 +93,7 @@ nav:
       - Policy Engine: features/policy.md
   - Deployment:
       - Overview: deployment/overview.md
+      - Deploy Quickstart: deployment/quickstart.md
       - Product Boundaries: deployment/product-boundaries.md
       - Paved Paths:
           - One-machine Docker Pilot: deployment/docker.md

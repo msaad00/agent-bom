@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 # Ecosystems where a symbol-level call graph join is supported.
-_SYMBOL_REACH_ECOSYSTEMS: frozenset[str] = frozenset({"pypi", "python", "npm"})
+_SYMBOL_REACH_ECOSYSTEMS: frozenset[str] = frozenset({"pypi", "python", "npm", "go"})
 
 
 def apply_dependency_reachability_to_blast_radii(

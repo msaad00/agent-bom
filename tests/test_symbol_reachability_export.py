@@ -62,10 +62,12 @@ def _stamp_python_br() -> BlastRadius:
 
 def test_finding_evidence_exports_symbol_reachability_fields() -> None:
     br = _stamp_python_br()
+    br.vulnerability.cwe_ids = ["CWE-502"]
     finding = blast_radius_to_finding(br)
 
     assert finding.evidence["symbol_reachability"] == FUNCTION_REACHABLE
     assert finding.evidence["reachable_affected_symbols"] == ["get"]
+    assert finding.evidence["reachability_advisory_cwe_ids"] == ["CWE-502"]
 
 
 def test_to_json_blast_radius_exports_symbol_reachability_fields() -> None:

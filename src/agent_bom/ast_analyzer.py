@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from agent_bom.js_ts_ast import JSTSFunction, JSTSToolRegistration
-from agent_bom.ast_go import _go_function_key
+from agent_bom.ast_go import _go_function_key, build_go_dependency_symbol_reach
 from agent_bom.ast_go import build_go_flow_findings as _build_go_flow_findings
 from agent_bom.ast_go import scan_go_file as _scan_go_file
 from agent_bom.ast_js_ts import _JS_TS_EXTS, _js_ts_function_key, build_js_ts_dependency_symbol_reach
@@ -176,6 +176,13 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         build_js_ts_dependency_symbol_reach(
             functions=js_ts_functions,
             tool_registrations=js_ts_tool_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    result.dependency_symbol_reach.extend(
+        build_go_dependency_symbol_reach(
+            functions=go_functions,
+            tool_registrations=go_tool_registrations,
             max_depth=_python_max_taint_depth(),
         )
     )

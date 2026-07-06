@@ -30,6 +30,7 @@ from agent_bom.reachability_cve import (
     UNREACHABLE,
     SymbolReachIndex,
     classify_reachability,
+    extract_advisory_identifiers,
     extract_affected_symbols,
 )
 
@@ -77,6 +78,43 @@ def test_extract_returns_empty_without_symbol_data() -> None:
     advisory = {"id": "CVE-2099-2", "affected": [{"package": {"ecosystem": "PyPI", "name": "jinja2"}}]}
     assert extract_affected_symbols(advisory) == set()
     assert extract_affected_symbols(None) == set()
+
+
+def test_extract_symbols_from_ghsa_vulnerable_functions() -> None:
+    advisory = {
+        "id": "GHSA-xxxx-yyyy-zzzz",
+        "database_specific": {"vulnerable_functions": ["axios.get", "request"]},
+    }
+    tokens = extract_affected_symbols(advisory)
+    assert "axios.get" in tokens
+    assert "axios" in tokens
+    assert "request" in tokens
+
+
+def test_extract_advisory_identifiers_from_vulnerability_model() -> None:
+    vuln = Vulnerability(
+        id="CVE-2099-42",
+        summary="x",
+        severity=Severity.HIGH,
+        cwe_ids=["CWE-79"],
+        aliases=["GHSA-abcd-efgh-ijkl"],
+    )
+    ids = extract_advisory_identifiers(vuln)
+    assert ids.cve_ids == ("CVE-2099-42",)
+    assert ids.cwe_ids == ("CWE-79",)
+
+
+def test_extract_advisory_identifiers_from_osv_cpe() -> None:
+    advisory = {
+        "id": "CVE-2099-99",
+        "aliases": ["CVE-2099-99"],
+        "database_specific": {"cwe_ids": ["CWE-502"]},
+        "affected": [{"package": {"ecosystem": "PyPI", "name": "pickle", "cpe": "cpe:2.3:a:python:pickle:*:*:*:*:*:*:*:*"}}],
+    }
+    ids = extract_advisory_identifiers(advisory)
+    assert ids.cve_ids == ("CVE-2099-99",)
+    assert ids.cwe_ids == ("CWE-502",)
+    assert ids.cpe_ids == ("cpe:2.3:a:python:pickle:*:*:*:*:*:*:*:*",)
 
 
 def test_extract_ignores_malformed_blocks() -> None:
@@ -303,6 +341,25 @@ def test_wiring_stamps_npm_row() -> None:
     assert stamped == 1
     assert br.symbol_reachability == FUNCTION_REACHABLE
     assert br.reachable_affected_symbols == ["get"]
+
+
+def test_wiring_stamps_go_row() -> None:
+    br = _python_br(["Get"], pkg_name="net/http")
+    br.package.ecosystem = "go"
+    go_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="net/http",
+        module="net/http",
+        symbol="Get",
+        file_path="server.go",
+        line_number=8,
+        call_path=["fetch_url", "fetchURL", "net/http.Get"],
+        ecosystem="go",
+    )
+    stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[go_reach]))
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.reachable_affected_symbols == ["Get"]
 
 
 def test_wiring_no_op_without_symbol_reach_evidence() -> None:

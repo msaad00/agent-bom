@@ -450,6 +450,31 @@ def test_analyze_project_surfaces_js_dependency_symbol_reach(tmp_path: Path):
         assert reach.call_path[0] == "fetch_url"
 
 
+def test_analyze_project_surfaces_go_dependency_symbol_reach(tmp_path: Path):
+    (tmp_path / "server.go").write_text(
+        "package main\n\n"
+        "import (\n"
+        '    "net/http"\n'
+        '    "github.com/modelcontextprotocol/go-sdk/mcp"\n'
+        ")\n\n"
+        "func fetchURL(target string) error {\n"
+        "    _, err := http.Get(target)\n"
+        "    return err\n"
+        "}\n\n"
+        "func register(server *mcp.Server) {\n"
+        '    server.AddTool("fetch_url", fetchURL)\n'
+        "}\n"
+    )
+
+    result = analyze_project(tmp_path)
+    go_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "go"]
+    assert len(go_reaches) == 1
+    reach = go_reaches[0]
+    assert reach.entrypoint == "fetch_url"
+    assert reach.package == "net/http"
+    assert reach.symbol == "Get"
+
+
 def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

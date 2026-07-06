@@ -29,12 +29,13 @@ is a three-state reachability signal on the finding:
 * ``unreachable`` — the package is present in the dependency set but no
   entrypoint reaches it at all.
 
-Honest scope: Python and npm symbol-level call graphs are supported; Go and
-other ecosystems are follow-up work. The ``function_reachable`` upgrade only
-fires when the advisory genuinely carries affected symbols. Everything else
-degrades to ``package_reachable`` or ``unreachable``; we do not fabricate
-symbol reachability we cannot back with evidence. Additional advisory symbol
-sources (e.g. GHSA REST ``vulnerable_functions``) are follow-up work.
+Honest scope: Python, npm, and Go symbol-level call graphs are supported.
+The ``function_reachable`` upgrade only fires when the advisory genuinely
+carries affected symbols (OSV ``imports``, GHSA ``vulnerable_functions``, or
+pre-extracted ``affected_symbols``). CVE/CWE/CPE identifiers are carried on
+the advisory and surfaced alongside the reachability verdict for CWE-aware
+impact and VEX triage; they do not substitute for missing symbol data.
+Everything else degrades to ``package_reachable`` or ``unreachable``.
 
 The module is read-only: no graph mutation, no network. It is safe to call
 from the report layer, the graph/blast-radius surfacing, the API, or a
@@ -137,6 +138,15 @@ class SymbolReachIndex:
 
 
 @dataclass(frozen=True)
+class AdvisoryIdentifiers:
+    """CVE/CWE/CPE identifiers extracted from an advisory for reachability context."""
+
+    cve_ids: tuple[str, ...] = ()
+    cwe_ids: tuple[str, ...] = ()
+    cpe_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class ReachabilitySignal:
     """The reachability verdict for one vulnerable package."""
 
@@ -146,6 +156,7 @@ class ReachabilitySignal:
     matched_symbols: tuple[str, ...] = ()
     advisory_symbols: tuple[str, ...] = ()
     call_path: tuple[str, ...] = ()
+    advisory_identifiers: AdvisoryIdentifiers = field(default_factory=AdvisoryIdentifiers)
 
     @property
     def function_reachable(self) -> bool:
@@ -159,6 +170,110 @@ def _iter_affected_blocks(advisory: Mapping[str, Any]) -> Iterable[Mapping[str, 
     for block in affected:
         if isinstance(block, Mapping):
             yield block
+
+
+def _normalize_cve_id(value: str) -> str | None:
+    token = (value or "").strip().upper()
+    return token if token.startswith("CVE-") else None
+
+
+def _normalize_cwe_id(value: str) -> str | None:
+    token = (value or "").strip().upper()
+    if not token:
+        return None
+    return token if token.startswith("CWE-") else f"CWE-{token}" if token.isdigit() else None
+
+
+def _collect_cwe_tokens(raw: Any) -> set[str]:
+    tokens: set[str] = set()
+    if isinstance(raw, str):
+        normalized = _normalize_cwe_id(raw)
+        if normalized:
+            tokens.add(normalized)
+        return tokens
+    if isinstance(raw, (list, tuple, set)):
+        for item in raw:
+            if isinstance(item, str):
+                normalized = _normalize_cwe_id(item)
+                if normalized:
+                    tokens.add(normalized)
+            elif isinstance(item, Mapping):
+                ext_id = item.get("external_id") or item.get("cweId")
+                if isinstance(ext_id, str):
+                    normalized = _normalize_cwe_id(ext_id)
+                    if normalized:
+                        tokens.add(normalized)
+    return tokens
+
+
+def _symbols_from_database_specific(advisory: Mapping[str, Any]) -> set[str]:
+    """GHSA/OSV ``database_specific.vulnerable_functions`` and similar symbol lists."""
+    tokens: set[str] = set()
+    db = advisory.get("database_specific")
+    if not isinstance(db, Mapping):
+        return tokens
+    for key in ("vulnerable_functions", "vulnerableFunctions", "affected_functions"):
+        raw = db.get(key)
+        if not isinstance(raw, list):
+            continue
+        for item in raw:
+            if isinstance(item, str):
+                tokens |= _symbol_tokens(item)
+                if len(tokens) >= _MAX_SYMBOLS:
+                    return tokens
+    return tokens
+
+
+def extract_advisory_identifiers(advisory: "Vulnerability | Mapping[str, Any] | None") -> AdvisoryIdentifiers:
+    """Extract CVE/CWE/CPE identifiers carried on an advisory."""
+    cve_ids: set[str] = set()
+    cwe_ids: set[str] = set()
+    cpe_ids: set[str] = set()
+
+    if advisory is None:
+        return AdvisoryIdentifiers()
+
+    primary_id = getattr(advisory, "id", None)
+    if isinstance(primary_id, str):
+        normalized = _normalize_cve_id(primary_id)
+        if normalized:
+            cve_ids.add(normalized)
+
+    for alias in getattr(advisory, "aliases", None) or ():
+        if isinstance(alias, str):
+            normalized = _normalize_cve_id(alias)
+            if normalized:
+                cve_ids.add(normalized)
+
+    cwe_ids |= _collect_cwe_tokens(getattr(advisory, "cwe_ids", None))
+
+    if isinstance(advisory, Mapping):
+        for alias in advisory.get("aliases", []) or []:
+            if isinstance(alias, str):
+                normalized = _normalize_cve_id(alias)
+                if normalized:
+                    cve_ids.add(normalized)
+        db = advisory.get("database_specific")
+        if isinstance(db, Mapping):
+            cwe_ids |= _collect_cwe_tokens(db.get("cwe_ids") or db.get("cwes") or db.get("cwe"))
+        for block in _iter_affected_blocks(advisory):
+            pkg = block.get("package")
+            if not isinstance(pkg, Mapping):
+                continue
+            for cpe_field in ("cpe", "cpes", "cpe23"):
+                raw = pkg.get(cpe_field)
+                if isinstance(raw, str) and raw.strip():
+                    cpe_ids.add(raw.strip())
+                elif isinstance(raw, list):
+                    for item in raw:
+                        if isinstance(item, str) and item.strip():
+                            cpe_ids.add(item.strip())
+
+    return AdvisoryIdentifiers(
+        cve_ids=tuple(sorted(cve_ids)),
+        cwe_ids=tuple(sorted(cwe_ids)),
+        cpe_ids=tuple(sorted(cpe_ids)),
+    )
 
 
 def extract_affected_symbols(advisory: "Vulnerability | Mapping[str, Any] | None") -> set[str]:
@@ -176,6 +291,8 @@ def extract_affected_symbols(advisory: "Vulnerability | Mapping[str, Any] | None
         {"affected": [{"ecosystem_specific": {"imports": [
             {"path": "jinja2.sandbox", "symbols": ["SandboxedEnvironment"]}
         ]}}]}
+
+    GHSA ``database_specific.vulnerable_functions`` is also parsed when present.
     """
     if advisory is None:
         return set()
@@ -193,6 +310,9 @@ def extract_affected_symbols(advisory: "Vulnerability | Mapping[str, Any] | None
 
     # Raw advisory mapping: parse ecosystem_specific.imports[].symbols.
     if isinstance(advisory, Mapping):
+        tokens |= _symbols_from_database_specific(advisory)
+        if len(tokens) >= _MAX_SYMBOLS:
+            return tokens
         for block in _iter_affected_blocks(advisory):
             eco = block.get("ecosystem_specific")
             if not isinstance(eco, Mapping):
@@ -246,6 +366,7 @@ def classify_reachability(
     """
     eco = normalize_package_ecosystem(ecosystem or "pypi")
     advisory_symbols = extract_affected_symbols(advisory)
+    advisory_ids = extract_advisory_identifiers(advisory)
     reached_symbols = index.symbols_for_package(package, ecosystem=eco)
     pkg_reached = index.is_package_reached(package, ecosystem=eco) or package_reachable is True
     call_path = index.call_path_for_package(package, ecosystem=eco)
@@ -260,6 +381,7 @@ def classify_reachability(
                 matched_symbols=tuple(matched),
                 advisory_symbols=tuple(sorted(advisory_symbols)),
                 call_path=call_path,
+                advisory_identifiers=advisory_ids,
             )
 
     if pkg_reached:
@@ -267,12 +389,15 @@ def classify_reachability(
             reason = "package reached; advisory carries no symbol data"
         else:
             reason = "package reached but no affected symbol is reached"
+        if advisory_ids.cwe_ids:
+            reason = f"{reason}; CWE context: {', '.join(advisory_ids.cwe_ids)}"
         return ReachabilitySignal(
             state=PACKAGE_REACHABLE,
             package=package,
             reason=reason,
             advisory_symbols=tuple(sorted(advisory_symbols)),
             call_path=call_path,
+            advisory_identifiers=advisory_ids,
         )
 
     return ReachabilitySignal(
@@ -280,6 +405,7 @@ def classify_reachability(
         package=package,
         reason="package present in dependencies but not reached from any entrypoint",
         advisory_symbols=tuple(sorted(advisory_symbols)),
+        advisory_identifiers=advisory_ids,
     )
 
 
@@ -287,8 +413,10 @@ __all__ = [
     "FUNCTION_REACHABLE",
     "PACKAGE_REACHABLE",
     "UNREACHABLE",
+    "AdvisoryIdentifiers",
     "SymbolReachIndex",
     "ReachabilitySignal",
+    "extract_advisory_identifiers",
     "extract_affected_symbols",
     "classify_reachability",
 ]

@@ -19797,6 +19797,101 @@
         ]
       }
     },
+    "/v1/runtime/trace-explorer": {
+      "get": {
+        "description": "Langfuse-style trace explorer joined to findings and policy decisions (#3608).\n\nFuses gateway/proxy feed events and persisted runtime observations into\nsession-grouped spans. Each span carries correlated findings (CVE, reach\nband, compliance controls) and blocked/observed verdict metadata.",
+        "operationId": "trace_explorer_v1_runtime_trace_explorer_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trace Explorer V1 Runtime Trace Explorer Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trace Explorer",
+        "tags": [
+          "runtime",
+          "observability"
+        ]
+      }
+    },
     "/v1/scan": {
       "post": {
         "description": "Start a scan. Returns immediately with a job_id.\nPoll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.\n\nRetry-safe: repeating the request with the same ``Idempotency-Key`` header\nreturns the first job instead of minting a new job_id per attempt; reusing\nthe key with a different body is a 409 conflict.",

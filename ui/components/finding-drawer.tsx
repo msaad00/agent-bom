@@ -128,6 +128,11 @@ function VulnDetailPanel({
                   Runtime {vuln.runtime_evidence.state}
                 </span>
               )}
+              {vuln.runtime_evidence?.state === "blocked" && (
+                <Link href="/traces" className="text-xs text-emerald-300 hover:underline">
+                  Open trace explorer
+                </Link>
+              )}
             </div>
           )}
           <div className="grid gap-3 md:grid-cols-2">

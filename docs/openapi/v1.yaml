@@ -12807,6 +12807,69 @@ paths:
       tags:
       - runtime
       - observability
+  /v1/runtime/trace-explorer:
+    get:
+      description: 'Langfuse-style trace explorer joined to findings and policy decisions
+        (#3608).
+
+
+        Fuses gateway/proxy feed events and persisted runtime observations into
+
+        session-grouped spans. Each span carries correlated findings (CVE, reach
+
+        band, compliance controls) and blocked/observed verdict metadata.'
+      operationId: trace_explorer_v1_runtime_trace_explorer_get
+      parameters:
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 100
+          title: Limit
+          type: integer
+      - in: header
+        name: X-Agent-Bom-Role
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Role
+      - in: header
+        name: X-Agent-Bom-Tenant-ID
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Tenant-Id
+      - in: header
+        name: X-Agent-Bom-Proxy-Secret
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Agent-Bom-Proxy-Secret
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Trace Explorer V1 Runtime Trace Explorer Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Trace Explorer
+      tags:
+      - runtime
+      - observability
   /v1/scan:
     post:
       description: 'Start a scan. Returns immediately with a job_id.

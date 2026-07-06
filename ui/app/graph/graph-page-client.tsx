@@ -34,7 +34,9 @@ import {
 } from "@/components/graph-state-panels";
 import {
   FilterPanel,
+  ASSET_DRIFT_GRAPH_SCOPE_PARAM,
   DEFAULT_FILTERS,
+  createAssetLifecycleDriftGraphFilters,
   createExpandedGraphFilters,
   createFocusedGraphFilters,
   createImmediateGraphFilters,
@@ -103,6 +105,11 @@ import {
   LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
 } from "@/lib/large-graph-overview";
 import { decideGraphRenderer } from "@/lib/graph-renderer-switch";
+import {
+  graphRollupEligible,
+  parseGraphRollupUrlPreference,
+  rollupViewHasContainers,
+} from "@/lib/graph-rollup-default";
 import {
   applyFilters,
   decodeFiltersFromParams,
@@ -660,7 +667,13 @@ function GraphPageInner() {
   const [blastError, setBlastError] = useState<string | null>(null);
   const [rollupView, setRollupView] = useState<GraphRollupResponse | null>(null);
   const [rollupStack, setRollupStack] = useState<RollupBreadcrumb[]>([]);
-  const [rollupDismissed, setRollupDismissed] = useState(false);
+  const [rollupDismissed, setRollupDismissed] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      parseGraphRollupUrlPreference(
+        new URLSearchParams(window.location.search),
+      ) === "off",
+  );
   const [loadingRollup, setLoadingRollup] = useState(false);
   const [rollupError, setRollupError] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -674,10 +687,13 @@ function GraphPageInner() {
   // Seed filters from URL on first render so /graph?agent=...&severity=high
   // reproduces the exact view in another tab.
   const [filters, setFilters] = useState<FilterState>(() => {
-    const seed = { ...DEFAULT_FILTERS };
-    if (typeof window === "undefined") return seed;
+    if (typeof window === "undefined") return DEFAULT_FILTERS;
     const params = new URLSearchParams(window.location.search);
-    return { ...seed, ...decodeFiltersFromParams(params) };
+    const baseline =
+      params.get("scope") === ASSET_DRIFT_GRAPH_SCOPE_PARAM
+        ? createAssetLifecycleDriftGraphFilters(params.get("agent"))
+        : DEFAULT_FILTERS;
+    return { ...baseline, ...decodeFiltersFromParams(params) };
   });
   const [initializedFocus, setInitializedFocus] = useState(false);
   // Track whether we've already seeded filters from the URL so the
@@ -701,9 +717,12 @@ function GraphPageInner() {
         )
       : null,
   );
-  const requestedRollupRef = useRef<boolean>(
-    typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("rollup") === "1",
+  const rollupPreferenceRef = useRef(
+    typeof window !== "undefined"
+      ? parseGraphRollupUrlPreference(
+          new URLSearchParams(window.location.search),
+        )
+      : ("default" as const),
   );
   const firstScanSelectionRef = useRef(true);
   // Last URL the filter→URL sync effect wrote, used to break an infinite
@@ -955,13 +974,15 @@ function GraphPageInner() {
     graphData?.nodes.length ??
     0;
 
-  const rollupEligible =
-    (estateNodeCount >= LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD ||
-      requestedRollupRef.current) &&
-    !investigationMode &&
-    !selectedAttackPath &&
-    !reachabilitySummary &&
-    !blastRadius;
+  const rollupEligible = graphRollupEligible({
+    hasSelectedScan: Boolean(selectedScanId),
+    rollupPreference: rollupPreferenceRef.current,
+    rollupDismissed,
+    investigationMode: Boolean(investigationMode),
+    selectedAttackPath: Boolean(selectedAttackPath),
+    reachabilityActive: Boolean(reachabilitySummary),
+    blastRadiusActive: Boolean(blastRadius),
+  });
 
   const rollupNavigationActive =
     rollupEligible && !rollupDismissed && rollupView !== null;
@@ -983,6 +1004,18 @@ function GraphPageInner() {
       })
       .then((result) => {
         if (cancelled) return;
+        if (
+          !rollupViewHasContainers(
+            result.mode,
+            result.top_level,
+            result.children,
+          )
+        ) {
+          setRollupDismissed(true);
+          setRollupView(null);
+          setRollupError(null);
+          return;
+        }
         setRollupView(result);
         setRollupError(null);
       })
@@ -1081,6 +1114,14 @@ function GraphPageInner() {
         nextParams.set("q", shareableInvestigation.rootLabel);
       }
     }
+    if (activeScopePreset === "assetDrift") {
+      nextParams.set("scope", ASSET_DRIFT_GRAPH_SCOPE_PARAM);
+    }
+    if (rollupDismissed) {
+      nextParams.set("rollup", "0");
+    } else if (rollupPreferenceRef.current === "force") {
+      nextParams.set("rollup", "1");
+    }
     const next = nextParams.toString();
     const url = next ? `${pathname}?${next}` : pathname;
     // Guard against an infinite navigation loop. router.replace() in the App
@@ -1096,7 +1137,15 @@ function GraphPageInner() {
     lastSyncedUrlRef.current = url;
     if (next === currentSearch.toString()) return;
     router.replace(url, { scroll: false });
-  }, [filters, investigationMode, pathname, router, selectedScanId]);
+  }, [
+    activeScopePreset,
+    filters,
+    investigationMode,
+    pathname,
+    rollupDismissed,
+    router,
+    selectedScanId,
+  ]);
 
   // Constraint propagation — recompute valid values whenever graph or
   // filters change. Cheap on focused snapshots, BFS-bounded on expanded.
@@ -2078,6 +2127,22 @@ function GraphPageInner() {
                 <button
                   type="button"
                   onClick={() =>
+                    setFilters(
+                      createAssetLifecycleDriftGraphFilters(
+                        filters.agentName ?? flow.agentNames[0] ?? null,
+                      ),
+                    )
+                  }
+                  className={scopeButtonClass(
+                    activeScopePreset === "assetDrift",
+                  )}
+                  title="Governance paths and drift incidents across estate containers"
+                >
+                  Asset lifecycle drift
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
                     setFilters({ ...filters, vulnOnly: !filters.vulnOnly })
                   }
                   className={scopeButtonClass(filters.vulnOnly)}
@@ -2096,6 +2161,22 @@ function GraphPageInner() {
               />
             </div>
           </details>
+
+          {activeScopePreset === "assetDrift" && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
+              <span>
+                Asset lifecycle drift lens — governance and{" "}
+                <span className="font-mono">exhibits_drift</span> edges with
+                drift incidents on estate containers.
+              </span>
+              <a
+                href="/drift"
+                className="rounded-lg border border-orange-400/30 bg-orange-950/60 px-2.5 py-1 text-orange-100 transition hover:border-orange-300"
+              >
+                Open drift incidents
+              </a>
+            </div>
+          )}
 
           {investigationMode && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
@@ -2927,7 +3008,7 @@ function RollupNavigationPanel({
             <p className="mt-1 text-sm font-medium text-emerald-50">
               {active
                 ? `${visibleCount} container${visibleCount === 1 ? "" : "s"} at this level · ${estateNodeCount} nodes in snapshot`
-                : `Large estate (${estateNodeCount} nodes) — loading roll-up view`}
+                : `Loading CONTAINS roll-up · ${estateNodeCount} nodes in snapshot`}
             </p>
             {active && (
               <p className="mt-1 text-[11px] text-emerald-200/80">

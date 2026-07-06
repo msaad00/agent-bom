@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_FILTERS,
   FilterPanel,
+  createAssetLifecycleDriftGraphFilters,
   createExpandedGraphFilters,
   createImmediateGraphFilters,
   graphScopeLabelForFilters,
@@ -30,6 +31,7 @@ describe("FilterPanel", () => {
   it("names graph scope presets by operator workflow instead of raw depth", () => {
     const immediate = createImmediateGraphFilters("cursor");
     const expanded = createExpandedGraphFilters();
+    const assetDrift = createAssetLifecycleDriftGraphFilters();
 
     expect(immediate.maxDepth).toBe(1);
     expect(immediate.pageSize).toBe(25);
@@ -37,6 +39,12 @@ describe("FilterPanel", () => {
     expect(expanded.maxDepth).toBe(3);
     expect(expanded.pageSize).toBe(250);
     expect(graphScopeLabelForFilters(expanded)).toBe("Expanded");
+    expect(assetDrift.relationshipScope).toBe("governance");
+    expect(assetDrift.layers.driftIncident).toBe(true);
+    expect(graphScopePresetForFilters(assetDrift)).toBe("assetDrift");
+    expect(graphScopeLabelForFilters(assetDrift)).toBe(
+      "Asset lifecycle drift",
+    );
   });
 
   it("windows large agent lists instead of rendering every agent option", () => {

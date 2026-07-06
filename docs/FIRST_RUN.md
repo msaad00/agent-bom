@@ -3,6 +3,10 @@
 This guide gives new users a deterministic path from install to a real
 inventory and graph without asking them to scan a private repository first.
 
+**Hosting the control plane?** See [`DEPLOY_QUICKSTART.md`](DEPLOY_QUICKSTART.md) —
+`scripts/deploy/install.sh pilot` for local Docker, or EKS/AKS/GKE/Snowflake
+paths with read-only cloud connect.
+
 ## 1. Run the Release-Pinned Demo
 
 ```bash

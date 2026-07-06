@@ -1,5 +1,9 @@
 # Deploy agent-bom anywhere
 
+> **Quickstart:** [`DEPLOY_QUICKSTART.md`](DEPLOY_QUICKSTART.md) — one script,
+> Wiz-style onboarding (deploy → connect accounts → inventory → scans).
+> Run `scripts/deploy/install.sh list` from the repo root.
+
 agent-bom is one product with one control plane (API + UI) and a stateless
 scanner. You can run that control plane wherever you want it — on a laptop, on
 your own Kubernetes cluster, or as a hosted service where you operate the
@@ -174,6 +178,8 @@ enterprise customer-owned install path.
 
 ## Related
 
+- [`DEPLOY_QUICKSTART.md`](DEPLOY_QUICKSTART.md) — unified install script + onboarding
+- [`deploy/RUNBOOK.md`](../deploy/RUNBOOK.md) — multicloud collector federation
 - [`platform-eks` module](../deploy/terraform/platform-eks/README.md) — one-apply EKS
 - [`aws/baseline` module](../deploy/terraform/aws/baseline/README.md) — RDS/IRSA/S3/Secrets
 - [`connect-*` modules](../deploy/terraform/) — read-only cloud connect roles

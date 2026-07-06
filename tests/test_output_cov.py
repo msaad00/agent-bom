@@ -921,6 +921,31 @@ def test_to_json_with_blast_radius():
     assert result["blast_radius"][0]["layer_attribution"][0]["dockerfile_instruction"] == "RUN npm install lodash@4.17.20"
 
 
+def test_to_json_blast_radius_uses_finding_stream():
+    """JSON blast_radius rows iterate cve_findings while preserving BlastRadius-only fields."""
+    from agent_bom.finding import blast_radius_to_finding
+
+    vuln = _make_vuln_cov2(vid="CVE-2025-7777")
+    pkg = _make_pkg_cov2(vulns=[vuln])
+    agent = _make_agent_cov2()
+    br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg, agents=[agent], creds=["API_KEY"])
+    br.risk_score = 8.2
+    br.graph_reachable = True
+    br.symbol_reachability = "confirmed"
+    report = _make_report_cov2(agents=[agent], blast_radii=[br])
+
+    result = to_json(report)
+    row = result["blast_radius"][0]
+    finding = blast_radius_to_finding(br)
+
+    assert row["vulnerability_id"] == finding.cve_id
+    assert row["exposure_path"]["label"] == result["exposure_paths"]["paths"][0]["label"]
+    assert row["graph_reachable"] is True
+    assert row["symbol_reachability"] == "confirmed"
+    assert row["risk_score"] == 8.2
+    assert row["exposed_credentials"] == ["API_KEY"]
+
+
 def test_to_json_with_optional_fields():
     report = _make_report_cov2()
     report.executive_summary = "Test summary"

@@ -26,7 +26,15 @@ from typing import TYPE_CHECKING, Any
 from agent_bom.finding import FindingType
 from agent_bom.graph.severity import SEVERITY_THRESHOLD_LABELS, severity_policy_rank, severity_worst_first_rank
 from agent_bom.output.exposure_path import exposure_path_brief_for_finding
-from agent_bom.output.finding_views import ranked_cve_findings
+from agent_bom.output.finding_views import (
+    cve_findings,
+    evidence,
+    exploit_likelihood_value,
+    package_name,
+    package_version,
+    ranked_cve_findings,
+    severity_value,
+)
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 if TYPE_CHECKING:
@@ -205,11 +213,12 @@ def _summary_cards(report: "AIBOMReport", blast_radii: list["BlastRadius"], poli
     )
 
 
-def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
-    if not blast_radii:
+def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
+    findings = cve_findings(report, blast_radii)
+    if not findings:
         return '<div class="empty-state">&#x2705; No vulnerabilities found in scanned packages.</div>'
 
-    has_missing = any(not br.vulnerability.cvss_score or not br.vulnerability.summary for br in blast_radii)
+    has_missing = any(not finding.cvss_score or not finding.description for finding in findings)
     hint = ""
     if has_missing:
         hint = (
@@ -219,33 +228,29 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
             "</div>"
         )
 
-    sorted_brs = sorted(
-        blast_radii,
-        key=lambda b: severity_policy_rank(b.vulnerability.severity.value),
+    sorted_findings = sorted(
+        findings,
+        key=lambda finding: severity_policy_rank(severity_value(finding)),
         reverse=True,
     )
     rows = []
-    for br in sorted_brs:
-        v = br.vulnerability
-        sev = v.severity.value.lower()
+    for finding in sorted_findings:
+        sev = severity_value(finding)
         color = _SEV_COLOR.get(sev, "#6b7280")
         cvss_bar = ""
-        if v.cvss_score:
-            pct = int(v.cvss_score * 10)
+        if finding.cvss_score:
+            pct = int(finding.cvss_score * 10)
             cvss_bar = (
                 f'<div style="display:flex;align-items:center;gap:6px">'
                 f'<div style="background:#0f172a;border-radius:3px;height:4px;width:52px;flex-shrink:0">'
                 f'<div style="background:{color};border-radius:3px;height:4px;width:{pct}%"></div></div>'
-                f'<strong style="color:{color}">{v.cvss_score:.1f}</strong></div>'
+                f'<strong style="color:{color}">{finding.cvss_score:.1f}</strong></div>'
             )
         else:
             cvss_bar = '<span style="color:#334155">&mdash;</span>'
-        epss = f"{v.epss_score:.1%}" if v.epss_score else '<span style="color:#334155">&mdash;</span>'
-        # Exploit likelihood (issue #486) — graded badge subsuming KEV +
-        # EPSS-percentile signals. KEV takes priority; elevated
-        # EPSS-only levels still surface a muted "exploit" hint.
-        exploit_level = v.exploit_likelihood
-        if v.is_kev:
+        epss = f"{finding.epss_score:.1%}" if finding.epss_score else '<span style="color:#334155">&mdash;</span>'
+        exploit_level = exploit_likelihood_value(finding)
+        if finding.is_kev:
             kev = '<span class="badge-kev" title="CISA Known Exploited Vulnerability">KEV</span>'
         elif exploit_level == "likely_exploited":
             kev = '<span class="badge-exploit-likely" title="EPSS ≥ 0.5 or percentile ≥ 95 — exploitation likely">EXPL</span>'
@@ -254,42 +259,42 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
         else:
             kev = '<span style="color:#334155">&mdash;</span>'
         fix = (
-            f'<code style="color:#4ade80">{_esc(v.fixed_version)}</code>'
-            if v.fixed_version
+            f'<code style="color:#4ade80">{_esc(finding.fixed_version)}</code>'
+            if finding.fixed_version
             else '<span style="color:#475569">No fix</span>'
         )
-        summary_text = (v.summary or "")[:90]
+        summary_text = (finding.description or "")[:90]
         summary = _esc(summary_text) if summary_text else '<span style="color:#475569;font-style:italic">Run --enrich</span>'
-        agents_s = ", ".join(_esc(a.name) for a in br.affected_agents) or "<span style='color:#334155'>&mdash;</span>"
+        agents_s = ", ".join(_esc(name) for name in finding.affected_agents) or "<span style='color:#334155'>&mdash;</span>"
         creds_s = (
-            " ".join(f'<code style="color:#fbbf24">{_esc(c)}</code>' for c in br.exposed_credentials)
+            " ".join(f'<code style="color:#fbbf24">{_esc(c)}</code>' for c in finding.exposed_credentials)
             or "<span style='color:#334155'>&mdash;</span>"
         )
-        # Vendor severity indicator: show when vendor reports different severity than CVSS
-        vendor_sev = getattr(v, "vendor_severity", None)
+        vendor_sev = finding.vendor_severity
         vendor_hint = ""
         if vendor_sev and vendor_sev.lower() != sev:
             vendor_hint = f'<br><span style="font-size:.62rem;color:#94a3b8;font-style:italic">vendor: {_esc(vendor_sev)}</span>'
-        # Match-confidence tier — how the finding was matched to this package.
-        # nvd_cpe_candidate is review-grade (lower confidence); render it muted/amber.
-        tier = getattr(v, "match_confidence_tier", None)
+        tier = evidence(finding, "match_confidence_tier", None)
         tier_hint = ""
         if tier:
             _tier_color = "#f59e0b" if tier == "nvd_cpe_candidate" else "#64748b"
             tier_hint = (
                 f'<br><span class="match-tier" data-tier="{_esc(tier)}" '
                 f'title="match confidence: {_esc(tier)}" '
-                f'style="font-size:.6rem;color:{_tier_color}">{_esc(tier.replace("_", " "))}</span>'
+                f'style="font-size:.6rem;color:{_tier_color}">{_esc(str(tier).replace("_", " "))}</span>'
             )
+        vuln_id = finding.cve_id or finding.id
+        pkg_name = package_name(finding)
+        pkg_version = package_version(finding)
         rows.append(
-            f'<tr data-severity="{sev}" data-kev="{"1" if v.is_kev else "0"}" '
+            f'<tr data-severity="{sev}" data-kev="{"1" if finding.is_kev else "0"}" '
             f'data-exploit-likelihood="{exploit_level}" '
             f'data-match-tier="{_esc(tier or "")}" '
-            f'data-cvss="{v.cvss_score if v.cvss_score else 0}">'
-            f'<td><code class="vuln-id">{_esc(v.id)}</code>{tier_hint}</td>'
+            f'data-cvss="{finding.cvss_score if finding.cvss_score else 0}">'
+            f'<td><code class="vuln-id">{_esc(vuln_id)}</code>{tier_hint}</td>'
             f"<td>{_sev_badge(sev)}{vendor_hint}</td>"
-            f'<td><strong style="color:#e2e8f0">{_esc(br.package.name)}</strong>'
-            f'<span style="color:#475569;font-size:.78rem">@{_esc(br.package.version)}</span></td>'
+            f'<td><strong style="color:#e2e8f0">{_esc(pkg_name)}</strong>'
+            f'<span style="color:#475569;font-size:.78rem">@{_esc(pkg_version)}</span></td>'
             f"<td>{cvss_bar}</td>"
             f'<td style="text-align:center;font-size:.82rem;color:#94a3b8">{epss}</td>'
             f'<td style="text-align:center">{kev}</td>'
@@ -335,37 +340,39 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
     )
 
 
-def _blast_table(blast_radii: list["BlastRadius"]) -> str:
-    if not blast_radii:
+def _blast_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
+    findings = cve_findings(report, blast_radii)
+    if not findings:
         return ""
-    sorted_brs = sorted(blast_radii, key=lambda b: b.risk_score, reverse=True)
+    sorted_findings = sorted(findings, key=lambda finding: float(finding.risk_score or 0.0), reverse=True)
     rows = []
-    for i, br in enumerate(sorted_brs, 1):
-        v = br.vulnerability
-        sev = v.severity.value.lower()
+    for i, finding in enumerate(sorted_findings, 1):
+        sev = severity_value(finding)
         color = _SEV_COLOR.get(sev, "#6b7280")
-        bar_w = int(br.risk_score * 9)
-        ai_badge = '<span class="badge-ai">AI</span>' if br.ai_risk_context else ""
-        kev_badge = '<span class="badge-kev">KEV</span>' if v.is_kev else ""
+        risk_score = float(finding.risk_score or 0.0)
+        bar_w = int(risk_score * 9)
+        ai_badge = '<span class="badge-ai">AI</span>' if finding.ai_risk_context else ""
+        kev_badge = '<span class="badge-kev">KEV</span>' if finding.is_kev else ""
         fix = (
-            f'<code style="color:#4ade80;font-size:.8rem">{_esc(v.fixed_version)}</code>'
-            if v.fixed_version
+            f'<code style="color:#4ade80;font-size:.8rem">{_esc(finding.fixed_version)}</code>'
+            if finding.fixed_version
             else '<span style="color:#475569">&mdash;</span>'
         )
+        vuln_id = finding.cve_id or finding.id
         rows.append(
             f"<tr>"
             f'<td style="color:#475569;font-weight:600">#{i}</td>'
-            f'<td><code class="vuln-id">{_esc(v.id)}</code></td>'
+            f'<td><code class="vuln-id">{_esc(vuln_id)}</code></td>'
             f"<td>{_sev_badge(sev)}</td>"
             f"<td>"
             f'<div style="display:flex;align-items:center;gap:8px">'
             f'<div style="background:#0f172a;border-radius:3px;height:5px;width:90px">'
             f'<div style="background:{color};border-radius:3px;height:5px;width:{bar_w}px"></div></div>'
-            f'<strong style="color:{color}">{br.risk_score:.1f}</strong></div>'
+            f'<strong style="color:{color}">{risk_score:.1f}</strong></div>'
             f"</td>"
-            f'<td style="text-align:center;color:#e2e8f0">{len(br.affected_agents)}</td>'
-            f'<td style="text-align:center;color:#fbbf24">{len(br.exposed_credentials)}</td>'
-            f'<td style="text-align:center;color:#94a3b8">{len(br.exposed_tools)}</td>'
+            f'<td style="text-align:center;color:#e2e8f0">{len(finding.affected_agents)}</td>'
+            f'<td style="text-align:center;color:#fbbf24">{len(finding.exposed_credentials)}</td>'
+            f'<td style="text-align:center;color:#94a3b8">{len(finding.exposed_tools)}</td>'
             f"<td>{ai_badge}{kev_badge}</td>"
             f"<td>{fix}</td>"
             f"</tr>"
@@ -1425,7 +1432,7 @@ def to_html(
             f'<div class="sec-title">&#x26a0;&#xfe0f; Vulnerabilities'
             f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(blast_radii)}</sup>'
             f"</div>"
-            f'<div class="panel">{_vuln_table(blast_radii)}</div>'
+            f'<div class="panel">{_vuln_table(report, blast_radii)}</div>'
             f"</section>"
             f'<section id="exposure-paths">'
             f'<div class="sec-title">&#x1f9ed; Exposure Paths'
@@ -1439,7 +1446,7 @@ def to_html(
             f'<sup style="font-size:.65rem;color:#475569;margin-left:6px;font-weight:400">'
             f"risk = CVSS + agents + creds + tools + KEV/EPSS boosts (max 10)"
             f"</sup></div>"
-            f'<div class="panel">{_blast_table(blast_radii)}</div>'
+            f'<div class="panel">{_blast_table(report, blast_radii)}</div>'
             f"</section>"
             f'<section id="remediation">'
             f'<div class="sec-title">&#x1f527; Remediation Plan</div>'

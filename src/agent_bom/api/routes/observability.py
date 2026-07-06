@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict
 
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
@@ -740,6 +741,135 @@ async def trace_explorer(
         observations=observations,
         limit=bounded_limit,
     )
+
+
+async def _trace_explorer_payload_for_tenant(tenant_id: str, *, limit: int = 100) -> dict[str, object]:
+    """Shared trace explorer builder for runtime surfaces."""
+    from agent_bom.api.cost_store import get_cost_store
+    from agent_bom.api.routes.gateway_feed import _load_tenant_alerts, build_gateway_feed
+    from agent_bom.api.routes.scan import _completed_jobs_for_tenant, _iter_scan_findings
+    from agent_bom.api.trace_explorer import build_trace_explorer_payload
+
+    bounded_limit = max(1, min(limit, 200))
+    alerts = _load_tenant_alerts(tenant_id)
+    llm_records = list(get_cost_store().list_records(tenant_id, limit=bounded_limit))
+    feed = build_gateway_feed(
+        tenant_id=tenant_id,
+        alerts=alerts,
+        llm_records=llm_records,
+        limit=bounded_limit,
+    )
+    findings: list[dict[str, Any]] = []
+    for job in _completed_jobs_for_tenant(tenant_id):
+        findings.extend(_iter_scan_findings(job))
+    store = get_runtime_event_store()
+    sessions = [session.to_dict() for session in store.list_sessions(tenant_id, limit=bounded_limit, offset=0)]
+    observations = [
+        observation.to_dict()
+        for observation in store.list_observations(tenant_id, limit=bounded_limit, offset=0)
+    ]
+    return build_trace_explorer_payload(
+        tenant_id=tenant_id,
+        feed_events=cast(list[dict[str, Any]], feed.get("events", [])),
+        findings=findings,
+        sessions=sessions,
+        observations=observations,
+        limit=bounded_limit,
+    )
+
+
+@router.get("/v1/runtime/approval-queue", tags=["runtime", "observability"], dependencies=[_dep("read")])
+async def runtime_approval_queue(
+    request: Request,
+    status: str | None = None,
+    limit: int = 100,
+) -> dict[str, object]:
+    """List blocked runtime spans awaiting or after human approval (#3617)."""
+    from agent_bom.api.hitl_approval_queue import build_hitl_queue_items
+    from agent_bom.api.hitl_approval_store import get_hitl_approval_store
+
+    tenant_id = _tenant_id(request)
+    bounded_limit = max(1, min(limit, 200))
+    trace_payload = await _trace_explorer_payload_for_tenant(tenant_id, limit=bounded_limit)
+    status_filter = status.strip().lower() if status else None
+    if status_filter not in {None, "", "pending", "approved", "denied"}:
+        raise HTTPException(status_code=400, detail="status must be pending, approved, or denied")
+    items = build_hitl_queue_items(
+        tenant_id=tenant_id,
+        trace_payload=trace_payload,
+        store=get_hitl_approval_store(),
+        status_filter=status_filter or None,
+    )
+    pending = sum(1 for item in items if item.get("status") == "pending")
+    return {
+        "schema_version": "runtime.approval_queue.v1",
+        "tenant_id": tenant_id,
+        "count": len(items),
+        "pending_count": pending,
+        "items": items[:bounded_limit],
+    }
+
+
+class _HitlDecisionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: str
+    note: str = ""
+
+
+@router.post(
+    "/v1/runtime/approval-queue/{item_id}/decision",
+    tags=["runtime", "observability"],
+    dependencies=[_dep("policy.manage")],
+)
+async def runtime_approval_decision(request: Request, item_id: str, body: _HitlDecisionBody) -> dict[str, object]:
+    """Approve or deny a blocked runtime span; emits a signed audit event."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.hitl_approval_queue import apply_hitl_decision, build_hitl_queue_items
+    from agent_bom.api.hitl_approval_store import get_hitl_approval_store
+
+    tenant_id = _tenant_id(request)
+    actor = _triggered_by(request)
+    store = get_hitl_approval_store()
+    trace_payload = await _trace_explorer_payload_for_tenant(tenant_id, limit=200)
+    queue_items = build_hitl_queue_items(
+        tenant_id=tenant_id,
+        trace_payload=trace_payload,
+        store=store,
+    )
+    queue_item = next((item for item in queue_items if item.get("item_id") == item_id), None)
+    if queue_item is None:
+        raise HTTPException(status_code=404, detail="Approval queue item not found")
+    try:
+        record = apply_hitl_decision(
+            tenant_id=tenant_id,
+            item_id=item_id,
+            decision=body.decision,
+            actor=actor,
+            note=body.note,
+            queue_item=queue_item,
+            store=store,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+
+    log_action(
+        "runtime.hitl_decision",
+        actor=actor,
+        resource=f"runtime/approval-queue/{item_id}",
+        tenant_id=tenant_id,
+        decision=record.status.value,
+        span_id=record.span_id,
+        agent=record.agent,
+        tool=record.tool,
+        linked_finding_ids=record.linked_finding_ids,
+        compliance_controls=record.compliance_controls,
+        note=record.note,
+    )
+    return {
+        "schema_version": "runtime.approval_queue.v1",
+        "item": record.to_dict(),
+    }
 
 
 @router.get("/v1/runtime/sessions/{session_id}/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])

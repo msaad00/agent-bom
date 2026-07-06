@@ -88,6 +88,7 @@ import type {
   ActivityTimeline,
   TraceIngestResponse,
   TraceExplorerResponse,
+  HitlApprovalQueueResponse,
   ProxyStatusResponse,
   ProxyAlertsResponse,
   AuditEntry,
@@ -266,6 +267,7 @@ export type {
   TraceFlaggedCall,
   TraceIngestResponse,
   TraceExplorerResponse,
+  HitlApprovalQueueResponse,
   ProxyStatusResponse,
   ProxyAlert,
   ProxyAlertsResponse,
@@ -909,6 +911,16 @@ export const api = {
   getActivity: (days = 30) => get<ActivityTimeline>(`/v1/activity?days=${days}`),
   ingestTraces: (body: unknown) => post<TraceIngestResponse>("/v1/traces", body),
   getTraceExplorer: (limit = 100) => get<TraceExplorerResponse>(`/v1/runtime/trace-explorer?limit=${limit}`),
+  getHitlApprovalQueue: (status?: string, limit = 100) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status) params.set("status", status);
+    return get<HitlApprovalQueueResponse>(`/v1/runtime/approval-queue?${params}`);
+  },
+  decideHitlApproval: (itemId: string, decision: "approve" | "deny", note = "") =>
+    post<{ schema_version: string; item: HitlApprovalQueueResponse["items"][number] }>(
+      `/v1/runtime/approval-queue/${encodeURIComponent(itemId)}/decision`,
+      { decision, note },
+    ),
 
   // ── Proxy Runtime ──
   getProxyStatus: () => get<ProxyStatusResponse>("/v1/proxy/status"),

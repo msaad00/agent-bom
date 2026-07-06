@@ -16,6 +16,7 @@ import {
 import { api, type TraceIngestResponse } from "@/lib/api";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { TraceExplorerPanel } from "@/components/trace-explorer-panel";
+import { HitlApprovalQueuePanel } from "@/components/hitl-approval-queue-panel";
 
 const SAMPLE_PAYLOAD = JSON.stringify(
   {
@@ -44,7 +45,7 @@ const SAMPLE_PAYLOAD = JSON.stringify(
 
 export default function TracesPage() {
   const { counts } = useDeploymentContext();
-  const [mode, setMode] = useState<"explorer" | "ingest">("explorer");
+  const [mode, setMode] = useState<"explorer" | "queue" | "ingest">("explorer");
   const [payload, setPayload] = useState(SAMPLE_PAYLOAD);
   const [result, setResult] = useState<TraceIngestResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -104,6 +105,16 @@ export default function TracesPage() {
             </button>
             <button
               type="button"
+              onClick={() => setMode("queue")}
+              className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
+                mode === "queue" ? "bg-emerald-600 text-white" : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+              Approval queue
+            </button>
+            <button
+              type="button"
               onClick={() => setMode("ingest")}
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
                 mode === "ingest" ? "bg-emerald-600 text-white" : "text-zinc-400 hover:text-zinc-200"
@@ -130,6 +141,8 @@ export default function TracesPage() {
 
       {mode === "explorer" ? (
         <TraceExplorerPanel />
+      ) : mode === "queue" ? (
+        <HitlApprovalQueuePanel />
       ) : (
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">

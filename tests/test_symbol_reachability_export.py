@@ -121,7 +121,39 @@ def test_ast_result_for_symbol_reach_reads_python_project(tmp_path: Path) -> Non
     assert result.dependency_symbol_reach
 
 
-def test_ast_result_for_symbol_reach_skips_non_python_paths(tmp_path: Path) -> None:
+def test_ast_result_for_symbol_reach_reads_php_only_project(tmp_path: Path) -> None:
+    project = tmp_path / "php-mcp"
+    project.mkdir()
+    (project / "composer.json").write_text(
+        '{"require": {"guzzlehttp/guzzle": "^7.0"}}',
+        encoding="utf-8",
+    )
+    (project / "composer.lock").write_text(
+        '{"packages": [{"name": "guzzlehttp/guzzle", "version": "7.8.1"}]}',
+        encoding="utf-8",
+    )
+    (project / "Server.php").write_text(
+        "<?php\n"
+        "use GuzzleHttp\\Client;\n\n"
+        "class Server {\n"
+        "    public function register($server) {\n"
+        '        $server->tool("fetch_url", [$this, "fetchUrl"]);\n'
+        "    }\n\n"
+        "    public function fetchUrl($url) {\n"
+        "        $client = new Client();\n"
+        "        return $client->get($url);\n"
+        "    }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = _ast_result_for_symbol_reach([str(project)])
+
+    assert result is not None
+    assert any(reach.ecosystem == "composer" for reach in result.dependency_symbol_reach)
+
+
+def test_ast_result_for_symbol_reach_skips_empty_paths(tmp_path: Path) -> None:
     empty = tmp_path / "empty"
     empty.mkdir()
     assert _ast_result_for_symbol_reach([str(empty)]) is None

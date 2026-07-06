@@ -353,6 +353,22 @@ and [Own-Infra EKS](../site-docs/deployment/own-infra-eks.md#finding-and-scan-pa
 If a threat model requires application-layer (pre-storage) encryption of finding
 payloads, that is not provided today; scope it explicitly rather than assuming it.
 
+### Dashboard sign-in route
+
+The browser UI exposes a dedicated sign-in surface at `/login`. Unauthenticated
+users are redirected there with a `returnTo` query parameter so they can resume
+the page they requested after establishing a browser session or completing
+upstream OIDC at the reverse proxy.
+
+First command for a pilot operator:
+
+```text
+open https://<control-plane-host>/login
+```
+
+After sign-in, open **Connections** (`/connections`) to add a read-only cloud
+account, then launch or schedule a scan from the same dashboard.
+
 ### Proxy-to-control-plane mTLS posture
 
 The recommended production pattern is delegated mTLS: terminate TLS and verify

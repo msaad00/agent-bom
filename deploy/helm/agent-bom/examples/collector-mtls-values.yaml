@@ -1,0 +1,48 @@
+# Collector -> control-plane mTLS overlay
+#
+# Use with a mesh-hardened control plane (Istio STRICT) or app-native TLS on the API.
+# The scanner CronJob presents a client certificate when pushing fleet sync results.
+#
+#   helm upgrade --install agent-bom deploy/helm/agent-bom \
+#     -f deploy/helm/agent-bom/examples/eks-production-values.yaml \
+#     -f deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml \
+#     -f deploy/helm/agent-bom/examples/collector-mtls-values.yaml
+#
+# Prerequisites:
+#   1. Kubernetes Secret `agent-bom-collector-client-tls` with tls.crt + tls.key
+#   2. Control plane API configured for delegated or app-native mTLS (see ENTERPRISE_DEPLOYMENT.md)
+#   3. Optional CA bundle Secret if the collector must pin a private control-plane CA
+
+controlPlane:
+  enabled: true
+  api:
+    env:
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE
+        value: delegated
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_PROVIDER
+        value: istio
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF
+        value: secret/agent-bom/collector-client-ca
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_EVIDENCE_REF
+        value: deploy/helm/agent-bom/templates/controlplane-istio-peerauthentication.yaml
+      - name: AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CERT_HEADER
+        value: x-forwarded-client-cert
+
+scanner:
+  extraArgs:
+    - "--push-url"
+    - "https://agent-bom-api.agent-bom.svc.cluster.local:8422/v1/fleet/sync"
+  env:
+    - name: AGENT_BOM_PUSH_TLS_CERT_FILE
+      value: /etc/agent-bom/tls/tls.crt
+    - name: AGENT_BOM_PUSH_TLS_KEY_FILE
+      value: /etc/agent-bom/tls/tls.key
+  extraVolumes:
+    - name: collector-client-tls
+      secret:
+        secretName: agent-bom-collector-client-tls
+        defaultMode: 0400
+  extraVolumeMounts:
+    - name: collector-client-tls
+      mountPath: /etc/agent-bom/tls
+      readOnly: true

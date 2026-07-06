@@ -98,6 +98,13 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_AUDIT_TRAIL_LOOKBACK_HOURS` | `int` | `24` | Lookback window (hours) for audit events; the reader clamps to two weeks. |
 | `AGENT_BOM_AUDIT_TRAIL_MAX_EVENTS` | `int` | `2000` | Per-provider event cap; the reader clamps to a hard ceiling and warns when hit. |
 
+## Collector push mTLS
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_PUSH_TLS_CA_FILE` | `str` | `''` | Custom CA bundle used to verify the control-plane push endpoint. |
+| `AGENT_BOM_PUSH_TLS_CERT_FILE` | `str` | `''` | Optional client certificate and custom CA bundle used when pushing local discovery/finding payloads to a hosted/self-hosted control plane. Empty strings keep the standard HTTPS trust store and no client certificate. |
+| `AGENT_BOM_PUSH_TLS_KEY_FILE` | `str` | `''` | Client certificate private key path; used with PUSH_TLS_CERT_FILE. |
+
 ## DSPM content sampling
 | Env var | Type | Default | Description |
 |---|---|---|---|

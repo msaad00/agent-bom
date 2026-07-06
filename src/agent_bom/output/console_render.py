@@ -531,11 +531,15 @@ def print_agent_tree(report: AIBOMReport) -> None:
                 elif plevel == "medium":
                     priv_indicator = " [yellow]🛡 elevated[/yellow]"
 
+            registry_indicator = (
+                " [green]✓ registry[/green]" if server.registry_verified else " [dim]unknown registry[/dim]"
+            )
+
             server_args = sanitize_command_args(server.args[:2])
             server_branch = agent_tree.add(
                 f"\U0001f50c MCP Server: [bold cyan]{server.name}[/bold cyan] "
                 f"({server.command} {' '.join(server_args)})"
-                f"{vuln_indicator}{cred_indicator}{priv_indicator}"
+                f"{vuln_indicator}{cred_indicator}{priv_indicator}{registry_indicator}"
             )
 
             if server.tools:

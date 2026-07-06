@@ -51,6 +51,31 @@ agent-bom agents -f sarif -o findings.sarif
 agent-bom agents -f cyclonedx -o bom.json
 ```
 
+## Ingest external scanner or SARIF evidence
+
+When Trivy, Grype, Syft, or a SAST tool (Semgrep, CodeQL, Bandit) already
+produced a report, run full local scan depth without a control plane:
+
+```bash
+agent-bom agents --external-scan trivy.json -f json -o report.json
+agent-bom agents --external-scan findings.sarif -f json -o report.json
+```
+
+For bulk push into a running control plane instead, use
+`agent-bom findings push <file>`. See
+[docs/INGEST_PATHS.md](https://github.com/msaad00/agent-bom/blob/main/docs/INGEST_PATHS.md)
+for the VM/registry matrix and push vs `--external-scan` tradeoff.
+
+## LLM FinOps (cost forecast)
+
+Project LLM burn rate from OpenTelemetry GenAI spans (read-only, no secret values):
+
+```bash
+agent-bom cost forecast
+```
+
+Price model and OTel ingest path: [docs/COST_MODEL.md](https://github.com/msaad00/agent-bom/blob/main/docs/COST_MODEL.md).
+
 ## Run compliance mapping
 
 ```bash

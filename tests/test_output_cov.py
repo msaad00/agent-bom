@@ -898,6 +898,22 @@ def test_to_json_with_agents():
     assert result["agents"][0]["name"] == "agent1"
 
 
+def test_to_json_mcp_server_registry_verified_badge():
+    verified = _make_server_cov2(name="verified-srv")
+    verified.registry_verified = True
+    unverified = _make_server_cov2(name="unknown-srv")
+    unverified.registry_verified = False
+    agent = _make_agent_cov2(servers=[verified, unverified])
+    report = _make_report_cov2(agents=[agent])
+    result = to_json(report)
+    servers = result["agents"][0]["mcp_servers"]
+    by_name = {s["name"]: s for s in servers}
+    assert by_name["verified-srv"]["registry_verified"] is True
+    assert by_name["verified-srv"]["registry_badge"] == "verified"
+    assert by_name["unknown-srv"]["registry_verified"] is False
+    assert by_name["unknown-srv"]["registry_badge"] == "unknown"
+
+
 def test_to_json_with_blast_radius():
     vuln = _make_vuln_cov2()
     pkg = _make_pkg_cov2(vulns=[vuln])

@@ -11,7 +11,8 @@ Pins the contract that:
    over-claimed function reach.
 4. A package present but not reached classifies as ``unreachable``.
 5. The thin ``apply_symbol_reachability_to_blast_radii`` hook stamps the
-   signal onto Python BlastRadius rows and leaves non-Python rows alone.
+   signal onto Python and npm BlastRadius rows and leaves unsupported
+   ecosystems untouched.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from agent_bom.ast_analyzer import analyze_project
+from agent_bom.ast_js_ts import _npm_package_from_module
 from agent_bom.ast_models import ASTAnalysisResult, DependencySymbolReach
 from agent_bom.graph.blast_reach import apply_symbol_reachability_to_blast_radii
 from agent_bom.models import BlastRadius, Package, Severity, Vulnerability
@@ -155,6 +157,53 @@ def test_package_name_normalization_matches() -> None:
     assert signal.state == FUNCTION_REACHABLE
 
 
+def test_ecosystem_keys_do_not_cross_match() -> None:
+    npm_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="lodash",
+        module="lodash",
+        symbol="get",
+        file_path="server.ts",
+        line_number=3,
+        call_path=["fetch_url", "lodash.get"],
+        ecosystem="npm",
+    )
+    index = SymbolReachIndex.from_reaches([npm_reach])
+    signal = classify_reachability(
+        package="lodash",
+        advisory={"id": "CVE-2099-8", "affected": [{"package": {"ecosystem": "npm", "name": "lodash"}}]},
+        index=index,
+        ecosystem="pypi",
+    )
+    assert signal.state == UNREACHABLE
+
+
+def test_npm_function_reachable_when_affected_symbol_is_reached() -> None:
+    npm_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="axios",
+        module="axios",
+        symbol="get",
+        file_path="server.ts",
+        line_number=3,
+        call_path=["fetch_url", "axios.get"],
+        ecosystem="npm",
+    )
+    index = SymbolReachIndex.from_reaches([npm_reach])
+    advisory = {
+        "id": "CVE-2099-9",
+        "affected": [
+            {
+                "package": {"ecosystem": "npm", "name": "axios"},
+                "ecosystem_specific": {"imports": [{"path": "axios", "symbols": ["get"]}]},
+            }
+        ],
+    }
+    signal = classify_reachability(package="axios", advisory=advisory, index=index, ecosystem="npm")
+    assert signal.state == FUNCTION_REACHABLE
+    assert signal.matched_symbols == ("get",)
+
+
 # ── end-to-end through the real AST call graph ────────────────────────────
 
 
@@ -229,12 +278,31 @@ def test_wiring_stamps_unreachable_when_symbol_absent() -> None:
     assert br.symbol_reachability == UNREACHABLE
 
 
-def test_wiring_skips_non_python_rows() -> None:
+def test_wiring_skips_unsupported_ecosystem_rows() -> None:
     br = _python_br(["get"])
-    br.package.ecosystem = "npm"
+    br.package.ecosystem = "maven"
     stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get())
     assert stamped == 0
     assert br.symbol_reachability is None
+
+
+def test_wiring_stamps_npm_row() -> None:
+    br = _python_br(["get"], pkg_name="axios")
+    br.package.ecosystem = "npm"
+    npm_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="axios",
+        module="axios",
+        symbol="get",
+        file_path="server.ts",
+        line_number=3,
+        call_path=["fetch_url", "axios.get"],
+        ecosystem="npm",
+    )
+    stamped = apply_symbol_reachability_to_blast_radii([br], ASTAnalysisResult(dependency_symbol_reach=[npm_reach]))
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.reachable_affected_symbols == ["get"]
 
 
 def test_wiring_no_op_without_symbol_reach_evidence() -> None:
@@ -255,3 +323,10 @@ def test_wiring_is_best_effort_no_op(monkeypatch) -> None:
     monkeypatch.setattr("agent_bom.reachability_cve.SymbolReachIndex.from_ast_result", explode)
     assert apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get()) == 0
     assert br.symbol_reachability is None
+
+
+def test_npm_package_from_module() -> None:
+    assert _npm_package_from_module("axios") == "axios"
+    assert _npm_package_from_module("@scope/pkg/subpath") == "@scope/pkg"
+    assert _npm_package_from_module("./relative") is None
+    assert _npm_package_from_module("node:fs") is None

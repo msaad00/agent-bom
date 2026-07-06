@@ -398,6 +398,7 @@ def test_analyze_project_surfaces_dependency_symbol_reach_from_tool(tmp_path: Pa
             "call_path": ["fetch", "requests.get"],
             "depth": 0,
             "confidence": "import-symbol",
+            "ecosystem": "pypi",
         }
     ]
 
@@ -427,8 +428,26 @@ def test_analyze_project_surfaces_dependency_symbol_reach_through_helper(tmp_pat
             "call_path": ["answer", "ask_model", "openai.OpenAI"],
             "depth": 1,
             "confidence": "import-symbol",
+            "ecosystem": "pypi",
         }
     ]
+
+
+def test_analyze_project_surfaces_js_dependency_symbol_reach(tmp_path: Path):
+    (tmp_path / "server.ts").write_text(
+        'import axios from "axios";\n'
+        'server.tool("fetch_url", "Fetch a URL", async (url: string) => axios.get(url));\n'
+    )
+
+    result = analyze_project(tmp_path)
+    if _js_ts_parser_available():
+        npm_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "npm"]
+        assert len(npm_reaches) == 1
+        reach = npm_reaches[0]
+        assert reach.entrypoint == "fetch_url"
+        assert reach.package == "axios"
+        assert reach.symbol == "get"
+        assert reach.call_path[0] == "fetch_url"
 
 
 def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):

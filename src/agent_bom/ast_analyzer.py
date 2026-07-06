@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 from agent_bom.ast_go import _go_function_key
 from agent_bom.ast_go import build_go_flow_findings as _build_go_flow_findings
 from agent_bom.ast_go import scan_go_file as _scan_go_file
-from agent_bom.ast_js_ts import _JS_TS_EXTS, _js_ts_function_key
+from agent_bom.ast_js_ts import _JS_TS_EXTS, _js_ts_function_key, build_js_ts_dependency_symbol_reach
 from agent_bom.ast_js_ts import build_js_ts_flow_findings as _build_js_ts_flow_findings
 from agent_bom.ast_js_ts import scan_js_ts_file as _scan_js_ts_file
 from agent_bom.ast_models import ASTAnalysisResult, CallEdge, _FunctionAnalysis, _GoFunctionAnalysis, _GoToolRegistration
@@ -172,6 +172,13 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     )
     result.call_edges.extend(go_call_edges)
     result.flow_findings.extend(go_interprocedural_findings)
+    result.dependency_symbol_reach.extend(
+        build_js_ts_dependency_symbol_reach(
+            functions=js_ts_functions,
+            tool_registrations=js_ts_tool_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
 
     deduped_call_edges: list[CallEdge] = []
     seen_call_edges: set[tuple[str, str, str, int]] = set()

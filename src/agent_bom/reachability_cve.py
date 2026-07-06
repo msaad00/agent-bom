@@ -29,12 +29,12 @@ is a three-state reachability signal on the finding:
 * ``unreachable`` — the package is present in the dependency set but no
   entrypoint reaches it at all.
 
-Honest scope: Python only — that is where the call graph exists — and the
-``function_reachable`` upgrade only fires when the advisory genuinely
-carries affected symbols. Everything else degrades to ``package_reachable``
-or ``unreachable``; we do not fabricate symbol reachability we cannot back
-with evidence. JS/TS/Go call graphs and additional advisory symbol sources
-(e.g. GHSA REST ``vulnerable_functions``) are follow-up work.
+Honest scope: Python and npm symbol-level call graphs are supported; Go and
+other ecosystems are follow-up work. The ``function_reachable`` upgrade only
+fires when the advisory genuinely carries affected symbols. Everything else
+degrades to ``package_reachable`` or ``unreachable``; we do not fabricate
+symbol reachability we cannot back with evidence. Additional advisory symbol
+sources (e.g. GHSA REST ``vulnerable_functions``) are follow-up work.
 
 The module is read-only: no graph mutation, no network. It is safe to call
 from the report layer, the graph/blast-radius surfacing, the API, or a
@@ -47,7 +47,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from agent_bom.package_utils import normalize_package_name
+from agent_bom.package_utils import normalize_package_ecosystem, normalize_package_name
 
 if TYPE_CHECKING:
     from agent_bom.ast_models import ASTAnalysisResult, DependencySymbolReach
@@ -63,9 +63,15 @@ UNREACHABLE = "unreachable"
 _MAX_SYMBOLS = 512
 
 
-def _normalize_pkg(name: str) -> str:
-    """Normalize a package name for cross-source matching (PyPI rules)."""
-    return normalize_package_name(name or "", "pypi")
+def _normalize_pkg(name: str, ecosystem: str = "pypi") -> str:
+    """Normalize a package name for cross-source matching."""
+    eco = normalize_package_ecosystem(ecosystem or "pypi")
+    return normalize_package_name(name or "", eco)
+
+
+def _pkg_index_key(package: str, ecosystem: str) -> str:
+    eco = normalize_package_ecosystem(ecosystem or "pypi")
+    return f"{eco}:{_normalize_pkg(package, eco)}"
 
 
 def _symbol_tokens(symbol: str) -> set[str]:
@@ -92,42 +98,42 @@ def _symbol_tokens(symbol: str) -> set[str]:
 class SymbolReachIndex:
     """Per-package reached-symbol index built from AST symbol reach."""
 
-    _symbols_by_package: dict[str, set[str]] = field(default_factory=dict)
-    _paths_by_package: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    _symbols_by_key: dict[str, set[str]] = field(default_factory=dict)
+    _paths_by_key: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
     def from_reaches(cls, reaches: Iterable["DependencySymbolReach"]) -> "SymbolReachIndex":
-        symbols_by_package: dict[str, set[str]] = {}
-        paths_by_package: dict[str, tuple[str, ...]] = {}
+        symbols_by_key: dict[str, set[str]] = {}
+        paths_by_key: dict[str, tuple[str, ...]] = {}
         for reach in reaches:
-            pkg = _normalize_pkg(reach.package)
-            if not pkg:
+            if not reach.package:
                 continue
-            bucket = symbols_by_package.setdefault(pkg, set())
+            key = _pkg_index_key(reach.package, reach.ecosystem)
+            bucket = symbols_by_key.setdefault(key, set())
             bucket |= _symbol_tokens(reach.symbol)
             # Keep the shortest (closest) call path as evidence per package.
-            existing = paths_by_package.get(pkg)
+            existing = paths_by_key.get(key)
             candidate = tuple(reach.call_path)
             if candidate and (existing is None or len(candidate) < len(existing)):
-                paths_by_package[pkg] = candidate
-        return cls(symbols_by_package, paths_by_package)
+                paths_by_key[key] = candidate
+        return cls(symbols_by_key, paths_by_key)
 
     @classmethod
     def from_ast_result(cls, result: "ASTAnalysisResult") -> "SymbolReachIndex":
         return cls.from_reaches(result.dependency_symbol_reach)
 
-    def is_package_reached(self, package: str) -> bool:
+    def is_package_reached(self, package: str, *, ecosystem: str = "pypi") -> bool:
         """True when any symbol of ``package`` is reached from an entrypoint."""
-        return _normalize_pkg(package) in self._symbols_by_package
+        return _pkg_index_key(package, ecosystem) in self._symbols_by_key
 
-    def symbols_for_package(self, package: str) -> set[str]:
-        return set(self._symbols_by_package.get(_normalize_pkg(package), set()))
+    def symbols_for_package(self, package: str, *, ecosystem: str = "pypi") -> set[str]:
+        return set(self._symbols_by_key.get(_pkg_index_key(package, ecosystem), set()))
 
-    def call_path_for_package(self, package: str) -> tuple[str, ...]:
-        return self._paths_by_package.get(_normalize_pkg(package), ())
+    def call_path_for_package(self, package: str, *, ecosystem: str = "pypi") -> tuple[str, ...]:
+        return self._paths_by_key.get(_pkg_index_key(package, ecosystem), ())
 
     def __bool__(self) -> bool:
-        return bool(self._symbols_by_package)
+        return bool(self._symbols_by_key)
 
 
 @dataclass(frozen=True)
@@ -215,6 +221,7 @@ def classify_reachability(
     advisory: "Vulnerability | Mapping[str, Any] | None",
     index: SymbolReachIndex,
     package_reachable: bool | None = None,
+    ecosystem: str = "pypi",
 ) -> ReachabilitySignal:
     """Classify one vulnerable package into a three-state reachability signal.
 
@@ -234,11 +241,14 @@ def classify_reachability(
         whose symbols were not individually captured. ``None`` means the
         caller has no graph-reach evidence and we rely on the symbol index
         alone.
+    ecosystem:
+        Package ecosystem for index lookup (``pypi``, ``npm``, …).
     """
+    eco = normalize_package_ecosystem(ecosystem or "pypi")
     advisory_symbols = extract_affected_symbols(advisory)
-    reached_symbols = index.symbols_for_package(package)
-    pkg_reached = index.is_package_reached(package) or package_reachable is True
-    call_path = index.call_path_for_package(package)
+    reached_symbols = index.symbols_for_package(package, ecosystem=eco)
+    pkg_reached = index.is_package_reached(package, ecosystem=eco) or package_reachable is True
+    call_path = index.call_path_for_package(package, ecosystem=eco)
 
     if advisory_symbols and reached_symbols:
         matched = sorted(advisory_symbols & reached_symbols)

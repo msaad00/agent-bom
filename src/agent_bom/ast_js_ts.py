@@ -6,7 +6,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
-from agent_bom.ast_models import CallEdge, DetectedGuardrail, ExtractedPrompt, FlowFinding, ToolSignature
+from agent_bom.ast_models import CallEdge, DependencySymbolReach, DetectedGuardrail, ExtractedPrompt, FlowFinding, ToolSignature
 from agent_bom.ast_signal_utils import _GUARDRAIL_CALL_PATTERNS, check_prompt_risks, classify_prompt_type
 
 if TYPE_CHECKING:
@@ -758,3 +758,127 @@ def scan_js_ts_file(
             )
 
     return prompts, guardrails, tools, flow_findings, frameworks, call_edges, analysis_result
+
+
+def _npm_package_from_module(module_name: str) -> str | None:
+    """Map a JS/TS module specifier to an npm package name."""
+    mod = module_name.strip()
+    if not mod or mod.startswith(".") or mod.startswith("node:"):
+        return None
+    if mod.startswith("@"):
+        parts = mod.split("/")
+        return f"{parts[0]}/{parts[1]}" if len(parts) >= 2 else mod
+    return mod.split("/", 1)[0]
+
+
+def _resolve_js_ts_external_dependency_symbol(function: JSTSFunction, call_name: str) -> tuple[str, str, str] | None:
+    """Resolve an external import call to ``(package, module, symbol)``."""
+    if not call_name:
+        return None
+
+    direct = function.imported_function_refs.get(call_name)
+    if direct is not None:
+        package = _npm_package_from_module(direct.module_name)
+        if package is None:
+            return None
+        symbol = direct.exported_name or call_name
+        return package, direct.module_name, symbol
+
+    if "." in call_name:
+        alias, tail = call_name.split(".", 1)
+        fn_ref = function.imported_function_refs.get(alias)
+        if fn_ref is not None:
+            package = _npm_package_from_module(fn_ref.module_name)
+            if package is not None:
+                base = fn_ref.exported_name or alias
+                return package, fn_ref.module_name, f"{base}.{tail}" if tail else base
+        mod_ref = function.imported_module_refs.get(alias)
+        if mod_ref is not None:
+            package = _npm_package_from_module(mod_ref.module_name)
+            if package is not None:
+                symbol = tail.split(".", 1)[0]
+                return package, mod_ref.module_name, symbol
+
+    mod_ref = function.imported_module_refs.get(call_name)
+    if mod_ref is not None:
+        package = _npm_package_from_module(mod_ref.module_name)
+        if package is not None:
+            return package, mod_ref.module_name, call_name
+    return None
+
+
+def build_js_ts_dependency_symbol_reach(
+    *,
+    functions: Mapping[str, JSTSFunction],
+    tool_registrations: Sequence[JSTSToolRegistration],
+    max_depth: int = 4,
+) -> list[DependencySymbolReach]:
+    """Build bounded MCP tool-entrypoint -> npm dependency symbol reach evidence."""
+    if not functions or not tool_registrations:
+        return []
+
+    adjacency: dict[str, set[str]] = {name: set() for name in functions}
+    name_counts: dict[str, int] = {}
+    same_module_names: dict[str, set[str]] = {}
+    for function in functions.values():
+        name_counts[function.name] = name_counts.get(function.name, 0) + 1
+        same_module_names.setdefault(function.module_name, set()).add(function.name)
+
+    for function_key, function in functions.items():
+        module_names = same_module_names.get(function.module_name, set())
+        for call_site in function.call_sites:
+            callee_key = _resolve_js_ts_callee_key(
+                call_site.name,
+                function,
+                module_names,
+                functions,
+            )
+            if callee_key and callee_key != function_key:
+                adjacency[function_key].add(callee_key)
+
+    reached: list[DependencySymbolReach] = []
+    seen: set[tuple[str, str, str, str, int]] = set()
+
+    def display_name(function_key: str) -> str:
+        function = functions[function_key]
+        return _js_ts_function_display_name(function.module_name, function.name, name_counts)
+
+    for registration in tool_registrations:
+        if registration.handler_name not in functions:
+            continue
+        queue: list[tuple[str, list[str]]] = [(registration.handler_name, [registration.handler_name])]
+        visited: set[str] = set()
+        while queue:
+            current_name, path = queue.pop(0)
+            if len(path) > max_depth:
+                continue
+            if current_name in visited:
+                continue
+            visited.add(current_name)
+            current = functions[current_name]
+            for call_site in current.call_sites:
+                external = _resolve_js_ts_external_dependency_symbol(current, call_site.name)
+                if external is None:
+                    continue
+                package, module_name, symbol = external
+                dedup_key = (registration.tool_name, module_name, symbol, current.file_path, call_site.line_number)
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                reached.append(
+                    DependencySymbolReach(
+                        entrypoint=registration.tool_name,
+                        package=package,
+                        module=module_name,
+                        symbol=symbol,
+                        file_path=current.file_path,
+                        line_number=call_site.line_number,
+                        call_path=[registration.tool_name, *[display_name(name) for name in path], f"{module_name}.{symbol}"],
+                        depth=max(0, len(path) - 1),
+                        ecosystem="npm",
+                    )
+                )
+            for next_callee in sorted(adjacency.get(current_name, ())):
+                queue.append((next_callee, [*path, next_callee]))
+
+    return reached

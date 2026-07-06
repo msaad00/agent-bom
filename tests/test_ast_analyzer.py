@@ -376,12 +376,7 @@ def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):
 
 
 def test_analyze_project_surfaces_dependency_symbol_reach_from_tool(tmp_path: Path):
-    (tmp_path / "agent.py").write_text(
-        "import requests\n\n"
-        "@tool\n"
-        "def fetch(url):\n"
-        "    return requests.get(url)\n"
-    )
+    (tmp_path / "agent.py").write_text("import requests\n\n@tool\ndef fetch(url):\n    return requests.get(url)\n")
 
     result = analyze_project(tmp_path)
     payload = result.to_dict()
@@ -435,8 +430,7 @@ def test_analyze_project_surfaces_dependency_symbol_reach_through_helper(tmp_pat
 
 def test_analyze_project_surfaces_js_dependency_symbol_reach(tmp_path: Path):
     (tmp_path / "server.ts").write_text(
-        'import axios from "axios";\n'
-        'server.tool("fetch_url", "Fetch a URL", async (url: string) => axios.get(url));\n'
+        'import axios from "axios";\nserver.tool("fetch_url", "Fetch a URL", async (url: string) => axios.get(url));\n'
     )
 
     result = analyze_project(tmp_path)
@@ -522,6 +516,30 @@ def test_analyze_project_surfaces_java_dependency_symbol_reach(tmp_path: Path) -
     assert reach.package == "com.squareup.okhttp3:okhttp"
 
 
+def test_analyze_project_surfaces_gradle_only_java_dependency_symbol_reach(tmp_path: Path) -> None:
+    (tmp_path / "build.gradle").write_text('dependencies {\n    implementation "com.squareup.okhttp3:okhttp:4.12.0"\n}\n')
+    (tmp_path / "Server.java").write_text(
+        "import com.squareup.okhttp3.OkHttpClient;\n"
+        "import com.squareup.okhttp3.Request;\n\n"
+        "class Server {\n"
+        "    void register(McpServer server) {\n"
+        '        server.addTool("fetch_url", this::fetchUrl);\n'
+        "    }\n\n"
+        "    void fetchUrl(String url) throws Exception {\n"
+        "        OkHttpClient client = new OkHttpClient();\n"
+        "        client.newCall(new Request.Builder().url(url).build()).execute();\n"
+        "    }\n"
+        "}\n"
+    )
+
+    result = analyze_project(tmp_path)
+    maven_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "maven"]
+    assert maven_reaches
+    reach = next(item for item in maven_reaches if item.symbol == "newCall")
+    assert reach.entrypoint == "fetch_url"
+    assert reach.package == "com.squareup.okhttp3:okhttp"
+
+
 def test_analyze_project_surfaces_csharp_dependency_symbol_reach(tmp_path: Path) -> None:
     import json
 
@@ -561,12 +579,7 @@ def test_analyze_project_surfaces_csharp_dependency_symbol_reach(tmp_path: Path)
 
 def test_analyze_project_surfaces_ruby_dependency_symbol_reach(tmp_path: Path) -> None:
     (tmp_path / "Gemfile").write_text('gem "faraday"\n')
-    (tmp_path / "Gemfile.lock").write_text(
-        "GEM\n"
-        "  remote: https://rubygems.org/\n"
-        "  specs:\n"
-        "    faraday (2.9.0)\n"
-    )
+    (tmp_path / "Gemfile.lock").write_text("GEM\n  remote: https://rubygems.org/\n  specs:\n    faraday (2.9.0)\n")
     (tmp_path / "server.rb").write_text(
         "require 'faraday'\n\n"
         "class Server\n"

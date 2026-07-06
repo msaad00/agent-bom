@@ -8,7 +8,7 @@ from __future__ import annotations
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.finding import Finding, FindingType
 from agent_bom.graph.severity import severity_policy_rank
-from agent_bom.models import AIBOMReport, BlastRadius, Severity
+from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output.exposure_path import exposure_path_brief_for_finding
 from agent_bom.output.finding_views import (
     cve_findings,

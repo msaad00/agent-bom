@@ -20,6 +20,7 @@
       "list_files",
       "run_shell"
     ],
+    "symbol_reachability": null,
     "tool_capability": 1.0
   },
   "low_reach": {
@@ -37,6 +38,7 @@
     "reachable_tools": [
       "search_documents"
     ],
+    "symbol_reachability": null,
     "tool_capability": 0.1
   }
 }

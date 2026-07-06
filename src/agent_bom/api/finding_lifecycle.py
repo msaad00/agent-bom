@@ -224,14 +224,6 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     PRIMARY KEY (tenant_id, canonical_id)
 );
 
-CREATE TABLE IF NOT EXISTS hub_findings_current_observations (
-    tenant_id TEXT NOT NULL,
-    canonical_id TEXT NOT NULL,
-    scan_id TEXT NOT NULL,
-    observed_at TEXT NOT NULL,
-    PRIMARY KEY (tenant_id, canonical_id, scan_id)
-);
-
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_last_seen
     ON hub_findings_current(tenant_id, last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_reach
@@ -240,4 +232,17 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_cvss
     ON hub_findings_current(tenant_id, cvss_score DESC, last_seen DESC, canonical_id ASC);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity
     ON hub_findings_current(tenant_id, severity_rank DESC, last_seen DESC, canonical_id ASC);
+"""
+
+# Legacy unpartitioned observations DDL for existing Postgres deployments that
+# have not yet run the partition migration (#3463). New installs use
+# hub_observations_partition.partitioned_observations_parent_ddl() instead.
+_CURRENT_LIFECYCLE_POSTGRES_OBSERVATIONS_LEGACY_DDL = """
+CREATE TABLE IF NOT EXISTS hub_findings_current_observations (
+    tenant_id TEXT NOT NULL,
+    canonical_id TEXT NOT NULL,
+    scan_id TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, canonical_id, scan_id)
+);
 """

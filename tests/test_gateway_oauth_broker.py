@@ -95,6 +95,7 @@ def test_gateway_healthz_reports_broker_posture() -> None:
     broker = client.get("/healthz").json()["broker_runtime"]
     assert broker == {
         "oauth_as_enabled": True,
+        "oidc_discovery_shim_enabled": False,
         "a2a_mutual_auth_enforcement_mode": "enforce",
         "tool_scope_mapped_tools": 1,
         "dlp_enabled": True,

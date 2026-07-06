@@ -301,6 +301,13 @@ AI_CACHE_MAX_ENTRIES = _int("AGENT_BOM_AI_CACHE_MAX", 1_000)
 OLLAMA_BASE_URL = _str("AGENT_BOM_OLLAMA_URL", "http://localhost:11434")
 
 
+# ── OIDC discovery shim ──────────────────────────────────────────────────
+# Optional static OIDC discovery metadata JSON served by the gateway for
+# legacy IdPs / MCP clients that need discovery documents but cannot publish
+# them at the normal issuer location. Empty string disables the shim.
+OIDC_DISCOVERY_SHIM_JSON = _str("AGENT_BOM_OIDC_DISCOVERY_SHIM_JSON", "")
+
+
 # ── Enrichment Cache ──────────────────────────────────────────────────────
 # Used by enrichment.py for persistent NVD + EPSS disk cache.
 #

@@ -170,6 +170,19 @@ def topology_package_key(finding: Finding) -> tuple[str, str]:
     return package_name(finding), package_ecosystem(finding)
 
 
+def compliance_row_dict(finding: Finding) -> dict[str, Any]:
+    """Framework table row payload from a unified CVE finding."""
+    return {
+        "severity": severity_value(finding),
+        "owasp_tags": list(finding.owasp_tags),
+        "atlas_tags": list(finding.atlas_tags),
+        "attack_tags": list(finding.attack_tags),
+        "nist_ai_rmf_tags": list(finding.nist_ai_rmf_tags),
+        "owasp_agentic_tags": list(finding.owasp_agentic_tags),
+        "eu_ai_act_tags": list(finding.eu_ai_act_tags),
+    }
+
+
 def topology_vuln_dict(finding: Finding) -> dict[str, Any]:
     """Project a unified CVE finding into the graph builder vuln payload shape."""
     summary = finding.description or finding.title or ""

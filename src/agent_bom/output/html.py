@@ -21,12 +21,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from agent_bom.finding import FindingType
 from agent_bom.graph.severity import SEVERITY_THRESHOLD_LABELS, severity_policy_rank, severity_worst_first_rank
 from agent_bom.output.exposure_path import exposure_path_brief_for_finding
 from agent_bom.output.finding_views import (
+    compliance_row_dict,
     cve_findings,
     evidence,
     exploit_likelihood_value,
@@ -34,6 +35,7 @@ from agent_bom.output.finding_views import (
     package_version,
     ranked_cve_findings,
     severity_value,
+    topology_package_key,
 )
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
@@ -78,20 +80,23 @@ def _esc(s: object) -> str:
 # ─── Data builders ────────────────────────────────────────────────────────────
 
 
-def _chart_data(blast_radii: list["BlastRadius"]) -> str:
+def _chart_data(findings: list["Finding"]) -> str:
     """Build Chart.js dataset JSON for severity donut + blast radius bar chart."""
     from agent_bom.models import Severity
 
     sev_counts: dict[str, int] = {s.value: 0 for s in Severity}
-    for br in blast_radii:
-        sev = br.vulnerability.severity.value
+    for finding in findings:
+        sev = severity_value(finding)
         if sev in sev_counts:
             sev_counts[sev] += 1
 
-    top10 = sorted(blast_radii, key=lambda b: b.risk_score, reverse=True)[:10]
-    blast_labels = [f"{br.vulnerability.id[:16]}/{br.package.name[:14]}" for br in top10]
-    blast_scores = [round(br.risk_score, 2) for br in top10]
-    blast_colors = [_SEV_COLOR.get(br.vulnerability.severity.value.lower(), "#6b7280") for br in top10]
+    top10 = sorted(findings, key=lambda finding: float(finding.risk_score or 0.0), reverse=True)[:10]
+    blast_labels = [
+        f"{(finding.cve_id or finding.title)[:16]}/{package_name(finding)[:14]}"
+        for finding in top10
+    ]
+    blast_scores = [round(float(finding.risk_score or 0.0), 2) for finding in top10]
+    blast_colors = [_SEV_COLOR.get(severity_value(finding), "#6b7280") for finding in top10]
 
     return json.dumps(
         {
@@ -170,12 +175,12 @@ def _warn_gate_banner(report: "AIBOMReport") -> str:
     )
 
 
-def _summary_cards(report: "AIBOMReport", blast_radii: list["BlastRadius"], policy_findings: list["Finding"]) -> str:
-    crit = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
+def _summary_cards(report: "AIBOMReport", findings: list["Finding"], policy_findings: list["Finding"]) -> str:
+    crit = sum(1 for finding in findings if severity_value(finding) == "critical")
     policy_crit = sum(1 for finding in policy_findings if str(finding.severity).lower() == "critical")
-    total_vulns = len(blast_radii)
+    total_vulns = len(findings)
     cred_servers = sum(1 for a in report.agents for s in a.mcp_servers if s.has_credentials)
-    kev_count = sum(1 for br in blast_radii if br.vulnerability.is_kev)
+    kev_count = sum(1 for finding in findings if finding.is_kev)
 
     def card(icon: str, value: str, label: str, accent: str, sub: str = "") -> str:
         sub_html = f'<div style="font-size:.68rem;color:#475569;margin-top:2px">{sub}</div>' if sub else ""
@@ -413,47 +418,46 @@ def _exposure_path_section(report: "AIBOMReport", blast_radii: list["BlastRadius
     return "".join(cards)
 
 
-def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
-    if not blast_radii:
+def _remediation_list(findings: list["Finding"]) -> str:
+    if not findings:
         return '<p style="color:#4ade80">&#x2705; Nothing to remediate.</p>'
     with_fix = sorted(
-        [b for b in blast_radii if b.vulnerability.fixed_version],
-        key=lambda b: b.risk_score,
+        [finding for finding in findings if finding.fixed_version],
+        key=lambda finding: float(finding.risk_score or 0.0),
         reverse=True,
     )
-    no_fix = [b for b in blast_radii if not b.vulnerability.fixed_version]
+    no_fix = [finding for finding in findings if not finding.fixed_version]
     items = []
-    for br in with_fix:
-        v = br.vulnerability
+    for finding in with_fix:
         creds_note = (
-            f' &middot; frees <strong style="color:#fbbf24">{len(br.exposed_credentials)}</strong> credential(s)'
-            if br.exposed_credentials
+            f' &middot; frees <strong style="color:#fbbf24">{len(finding.exposed_credentials)}</strong> credential(s)'
+            if finding.exposed_credentials
             else ""
         )
         items.append(
             f'<div class="remediation-item">'
-            f'<div style="flex-shrink:0;padding-top:1px">{_sev_badge(v.severity.value.lower())}</div>'
+            f'<div style="flex-shrink:0;padding-top:1px">{_sev_badge(severity_value(finding))}</div>'
             f'<div style="flex:1">'
-            f'<div style="color:#e2e8f0;font-weight:600">{_esc(br.package.name)}'
-            f'<span style="color:#475569;font-weight:400">@{_esc(br.package.version)}</span></div>'
+            f'<div style="color:#e2e8f0;font-weight:600">{_esc(package_name(finding))}'
+            f'<span style="color:#475569;font-weight:400">@{_esc(package_version(finding))}</span></div>'
             f'<div style="font-size:.8rem;color:#64748b;margin-top:3px">'
-            f'<code class="vuln-id">{_esc(v.id)}</code>'
-            f' &middot; upgrade to <code style="color:#4ade80">{_esc(v.fixed_version)}</code>'
-            f" &middot; protects <strong>{len(br.affected_agents)}</strong> agent(s)"
+            f'<code class="vuln-id">{_esc(finding.cve_id or finding.title)}</code>'
+            f' &middot; upgrade to <code style="color:#4ade80">{_esc(finding.fixed_version)}</code>'
+            f" &middot; protects <strong>{len(finding.affected_agents)}</strong> agent(s)"
             f"{creds_note}"
             f"</div></div>"
-            f'<div style="flex-shrink:0;color:#475569;font-size:.78rem;padding-top:3px">score&nbsp;{br.risk_score:.1f}</div>'
+            f'<div style="flex-shrink:0;color:#475569;font-size:.78rem;padding-top:3px">score&nbsp;{float(finding.risk_score or 0.0):.1f}</div>'
             f"</div>"
         )
     nf_html = ""
     if no_fix:
         nf_rows = "".join(
             f'<div style="padding:9px 0;border-bottom:1px solid #1e293b;font-size:.82rem">'
-            f"{_sev_badge(b.vulnerability.severity.value.lower())} "
-            f'<code class="vuln-id">{_esc(b.vulnerability.id)}</code> &mdash; '
-            f'<strong style="color:#e2e8f0">{_esc(b.package.name)}</strong>@{_esc(b.package.version)}'
+            f"{_sev_badge(severity_value(finding))} "
+            f'<code class="vuln-id">{_esc(finding.cve_id or finding.title)}</code> &mdash; '
+            f'<strong style="color:#e2e8f0">{_esc(package_name(finding))}</strong>@{_esc(package_version(finding))}'
             f' &mdash; <span style="color:#475569">no fix available &mdash; monitor upstream</span></div>'
-            for b in no_fix
+            for finding in no_fix
         )
         nf_html = '<div style="margin-top:20px"><div class="subsection-label">No Fix Available</div>' + nf_rows + "</div>"
     return "".join(items) + nf_html
@@ -1090,20 +1094,20 @@ def _enforcement_section(report: "AIBOMReport") -> str:
     )
 
 
-def _attack_flow_section(blast_radii: list["BlastRadius"]) -> str:
+def _attack_flow_section(findings: list["Finding"]) -> str:
     """Build the CVE attack flow graph section (only when vulns exist)."""
-    if not blast_radii:
+    if not findings:
         return ""
 
-    total_creds = len({c for br in blast_radii for c in br.exposed_credentials})
-    total_tools = len({t.name for br in blast_radii for t in br.exposed_tools})
-    total_agents = len({a.name for br in blast_radii for a in br.affected_agents})
+    total_creds = len({cred for finding in findings for cred in finding.exposed_credentials})
+    total_tools = len({tool for finding in findings for tool in finding.exposed_tools})
+    total_agents = len({agent for finding in findings for agent in finding.affected_agents})
 
     return (
         '<section id="attackflow">'
         '<div class="sec-title">&#x1f525; CVE Attack Flow'
         '<span style="font-size:.68rem;font-weight:400;opacity:.5;margin-left:8px">'
-        f"{len(blast_radii)} CVEs &#x2192; {total_agents} agents &#x2192; "
+        f"{len(findings)} CVEs &#x2192; {total_agents} agents &#x2192; "
         f"{total_creds} credentials &#x2192; {total_tools} tools at risk"
         "</span></div>"
         '<div class="graph-container">'
@@ -1256,8 +1260,8 @@ _STATUS_BADGE = {
 }
 
 
-def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
-    """Build OWASP/ATLAS/ATT&CK/NIST compliance tables from blast radius tags."""
+def _compliance_section(findings: list["Finding"]) -> str:
+    """Build OWASP/ATLAS/ATT&CK/NIST compliance tables from unified CVE findings."""
     try:
         from agent_bom.atlas import ATLAS_TECHNIQUES
         from agent_bom.eu_ai_act import EU_AI_ACT
@@ -1268,19 +1272,7 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
     except ImportError:
         return ""
 
-    br_dicts: list[dict[str, Any]] = []
-    for br in blast_radii:
-        br_dicts.append(
-            {
-                "severity": br.vulnerability.severity.value,
-                "owasp_tags": list(br.owasp_tags),
-                "atlas_tags": list(br.atlas_tags),
-                "attack_tags": list(getattr(br, "attack_tags", [])),
-                "nist_ai_rmf_tags": list(br.nist_ai_rmf_tags),
-                "owasp_agentic_tags": list(br.owasp_agentic_tags),
-                "eu_ai_act_tags": list(br.eu_ai_act_tags),
-            }
-        )
+    br_dicts = [compliance_row_dict(finding) for finding in findings]
 
     def _build_rows(catalog: dict[str, str], tag_field: str) -> tuple[str, int, int, int]:
         rows = []
@@ -1407,15 +1399,16 @@ def to_html(
     offline_assets: bool = False,
 ) -> str:
     blast_radii = blast_radii or []
+    findings = cve_findings(report, blast_radii)
     policy_findings = _non_cve_findings(report)
     generated = report.generated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
     elements_json = _cytoscape_elements(report, blast_radii)
     attack_flow_json = _attack_flow_elements(report, blast_radii)
-    chart_data_json = _chart_data(blast_radii)
-    crit = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
+    chart_data_json = _chart_data(findings)
+    crit = sum(1 for finding in findings if severity_value(finding) == "critical")
     policy_crit = sum(1 for finding in policy_findings if str(finding.severity).lower() == "critical")
     policy_high = sum(1 for finding in policy_findings if str(finding.severity).lower() == "high")
-    total_vulns = len(blast_radii)
+    total_vulns = len(findings)
 
     if crit or policy_crit:
         status_color, status_label = "#dc2626", "CRITICAL FINDINGS"
@@ -1426,11 +1419,11 @@ def to_html(
 
     # Sections
     vuln_sections = ""
-    if blast_radii:
+    if findings:
         vuln_sections = (
             f'<section id="vulns">'
             f'<div class="sec-title">&#x26a0;&#xfe0f; Vulnerabilities'
-            f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(blast_radii)}</sup>'
+            f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(findings)}</sup>'
             f"</div>"
             f'<div class="panel">{_vuln_table(report, blast_radii)}</div>'
             f"</section>"
@@ -1450,13 +1443,13 @@ def to_html(
             f"</section>"
             f'<section id="remediation">'
             f'<div class="sec-title">&#x1f527; Remediation Plan</div>'
-            f'<div class="panel">{_remediation_list(blast_radii)}</div>'
+            f'<div class="panel">{_remediation_list(findings)}</div>'
             f"</section>"
         )
     policy_section = _policy_findings_section(policy_findings)
 
     # Compliance section
-    compliance_html = _compliance_section(blast_radii)
+    compliance_html = _compliance_section(findings)
 
     # AI inventory section
     ai_inv_section = _ai_inventory_section(report)
@@ -1474,7 +1467,7 @@ def to_html(
     cis_bench_section = _cis_benchmark_section(report)
 
     # Determine node counts for graph subtitle
-    vuln_node_count = len({(br.package.name, br.package.ecosystem) for br in blast_radii})
+    vuln_node_count = len({topology_package_key(finding) for finding in findings})
     graph_note = (
         f"agents + servers + {vuln_node_count} vulnerable pkg(s) only — {report.total_packages - vuln_node_count} clean packages hidden"
         if report.total_packages > vuln_node_count
@@ -1729,12 +1722,12 @@ def to_html(
 
   <div class="sidebar-group">
     <div class="sidebar-group-label">Security</div>
-    {'<a href="#attackflow" class="sidebar-link"><span class="link-icon">&#x26a1;</span> Attack Flow</a>' if blast_radii else ""}
-    {f'<a href="#vulns" class="sidebar-link"><span class="link-icon">&#x1f41b;</span> Vulnerabilities <span class="link-badge" style="background:#7f1d1d;color:#fca5a5">{len(blast_radii)}</span></a>' if blast_radii else ""}
+    {'<a href="#attackflow" class="sidebar-link"><span class="link-icon">&#x26a1;</span> Attack Flow</a>' if findings else ""}
+    {f'<a href="#vulns" class="sidebar-link"><span class="link-icon">&#x1f41b;</span> Vulnerabilities <span class="link-badge" style="background:#7f1d1d;color:#fca5a5">{len(findings)}</span></a>' if findings else ""}
     {f'<a href="#policyfindings" class="sidebar-link"><span class="link-icon">&#x1f6e1;&#xfe0f;</span> Policy Findings <span class="link-badge" style="background:#78350f;color:#fcd34d">{len(policy_findings)}</span></a>' if policy_findings else ""}
-    {'<a href="#exposure-paths" class="sidebar-link"><span class="link-icon">&#x1f9ed;</span> Exposure Paths</a>' if blast_radii else ""}
-    {'<a href="#blast" class="sidebar-link"><span class="link-icon">&#x1f4a5;</span> Blast Radius</a>' if blast_radii else ""}
-    {'<a href="#remediation" class="sidebar-link"><span class="link-icon">&#x1f527;</span> Remediation</a>' if blast_radii else ""}
+    {'<a href="#exposure-paths" class="sidebar-link"><span class="link-icon">&#x1f9ed;</span> Exposure Paths</a>' if findings else ""}
+    {'<a href="#blast" class="sidebar-link"><span class="link-icon">&#x1f4a5;</span> Blast Radius</a>' if findings else ""}
+    {'<a href="#remediation" class="sidebar-link"><span class="link-icon">&#x1f527;</span> Remediation</a>' if findings else ""}
   </div>
 
   <div class="sidebar-group">
@@ -1778,7 +1771,7 @@ def to_html(
   <!-- Summary stat cards -->
   <section id="summary">
     <div class="sec-title">Summary</div>
-    {_summary_cards(report, blast_radii, policy_findings)}
+    {_summary_cards(report, findings, policy_findings)}
   </section>
 
   <!-- Charts row -->
@@ -1859,7 +1852,7 @@ def to_html(
   {cis_bench_section}
 
   <!-- Attack flow graph (only when vulns exist) -->
-  {_attack_flow_section(blast_radii)}
+  {_attack_flow_section(findings)}
 
   <!-- Vuln / Blast / Remediation -->
   {policy_section}

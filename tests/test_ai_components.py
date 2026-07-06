@@ -619,6 +619,38 @@ class TestDeepSeekDetection:
         assert "deepseek-v3" in models
 
 
+class TestGlmDetection:
+    """Tests for Zhipu GLM SDK and model detection."""
+
+    def test_zhipu_python_import(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text("from zhipuai import ZhipuAI\n")
+        report = scan_source(str(tmp_path))
+        names = [c.name for c in report.components if c.component_type == AIComponentType.LLM_PROVIDER]
+        assert "zhipu" in names
+
+    def test_glm4_model_ref(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text('model = "glm-4-plus"\n')
+        report = scan_source(str(tmp_path))
+        models = [c.name for c in report.components if c.component_type == AIComponentType.MODEL_REFERENCE]
+        assert "glm-4-plus" in models
+
+    def test_glm46_model_ref(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text('model = "glm-4.6-flash"\n')
+        report = scan_source(str(tmp_path))
+        models = [c.name for c in report.components if c.component_type == AIComponentType.MODEL_REFERENCE]
+        assert "glm-4.6-flash" in models
+
+    def test_chatglm_model_ref(self, tmp_path: Path):
+        f = tmp_path / "app.py"
+        f.write_text('model = "chatglm3-6b"\n')
+        report = scan_source(str(tmp_path))
+        models = [c.name for c in report.components if c.component_type == AIComponentType.MODEL_REFERENCE]
+        assert "chatglm3-6b" in models
+
+
 class TestInvisibleUnicodeDetection:
     """Tests for GlassWorm-style invisible Unicode supply-chain attack detection."""
 

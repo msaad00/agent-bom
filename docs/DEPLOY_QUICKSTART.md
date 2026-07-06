@@ -309,6 +309,44 @@ AGENT_BOM_RELEASE_SMOKE_FINDINGS_BENCH=1 scripts/release_smoke.sh   # optional r
 
 ---
 
+## Optional BYOM enrichment (your models, your keys)
+
+Core inventory, scans, graph, and compliance **do not** require an LLM. When you want
+`--ai-enrich` on scan jobs or worker-side summarization, point workers at **your**
+model endpoint — nothing routes through a vendor SaaS.
+
+| Path | When to use | Worker env |
+|------|-------------|------------|
+| **Ollama** (local) | Laptop, airgap, pilot VM | `AGENT_BOM_AI_PROVIDER=ollama`, `OLLAMA_HOST=http://127.0.0.1:11434` |
+| **litellm** | 100+ cloud APIs via one proxy | `AGENT_BOM_AI_PROVIDER=litellm`, `LITELLM_PROXY_URL=…` |
+| **OpenAI-compatible** | vLLM, TGI, custom gateway | `AGENT_BOM_AI_PROVIDER=openai`, `OPENAI_API_BASE=…` |
+| **HuggingFace** | Hosted inference endpoints | `AGENT_BOM_AI_PROVIDER=huggingface`, `HF_TOKEN=…` |
+
+**GLM / Zhipu examples** (same BYOM contract — you supply keys and base URL):
+
+```bash
+# Local Ollama
+ollama pull glm4:9b
+export AGENT_BOM_AI_PROVIDER=ollama OLLAMA_HOST=http://127.0.0.1:11434
+
+# Zhipu cloud via litellm proxy
+export AGENT_BOM_AI_PROVIDER=litellm LITELLM_PROXY_URL=http://litellm:4000
+# litellm model id: zhipu/glm-4-plus (see litellm provider docs)
+
+# vLLM OpenAI-compatible
+export AGENT_BOM_AI_PROVIDER=openai OPENAI_API_BASE=http://vllm:8000/v1 OPENAI_API_KEY=local
+```
+
+Inventory scans detect `zhipuai` imports and `glm-*` / `chatglm*` model strings in source.
+See [`docs/operations/ENV_VARS.md`](operations/ENV_VARS.md) for the full enrichment env surface.
+
+**Runtime / MCP IdP without OIDC discovery:** legacy issuers that cannot publish
+`/.well-known/openid-configuration` can use the gateway OIDC discovery shim —
+[`docs/design/OIDC_DISCOVERY_SHIM.md`](design/OIDC_DISCOVERY_SHIM.md) and
+[`deploy/helm/agent-bom/examples/oidc-discovery-shim-values.yaml`](../deploy/helm/agent-bom/examples/oidc-discovery-shim-values.yaml).
+
+---
+
 ## What is not automatic yet (honest boundaries)
 
 - **No single UI wizard** for “click Connect AWS” — today: Terraform connect modules + API `POST /v1/cloud/connections`. UI connections tab is the registration surface.
@@ -324,4 +362,5 @@ AGENT_BOM_RELEASE_SMOKE_FINDINGS_BENCH=1 scripts/release_smoke.sh   # optional r
 - [`DEPLOYMENT.md`](DEPLOYMENT.md) — scalability and architecture reference
 - [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md) — long enterprise rollout
 - [`deploy/RUNBOOK.md`](../deploy/RUNBOOK.md) — cross-cloud collector federation
+- [`docs/design/OIDC_DISCOVERY_SHIM.md`](design/OIDC_DISCOVERY_SHIM.md) — legacy IdP MCP OIDC discovery
 - [`site-docs/deployment/overview.md`](../site-docs/deployment/overview.md) — published chooser

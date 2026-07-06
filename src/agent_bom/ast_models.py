@@ -94,6 +94,7 @@ class DependencySymbolReach:
     call_path: list[str] = field(default_factory=list)
     depth: int = 0
     confidence: str = "import-symbol"
+    ecosystem: str = "pypi"
 
 
 @dataclass
@@ -193,6 +194,7 @@ class ASTAnalysisResult:
                     "call_path": reach.call_path,
                     "depth": reach.depth,
                     "confidence": reach.confidence,
+                    "ecosystem": reach.ecosystem,
                 }
                 for reach in self.dependency_symbol_reach
             ],

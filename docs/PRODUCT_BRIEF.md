@@ -143,7 +143,7 @@ The scanner covers package risk, malicious or suspicious package indicators, con
 
 ### Blast radius
 
-Blast radius is the product center of gravity. `agent-bom` connects vulnerabilities to packages, MCP servers, agents, credential exposure, and reachable tools. Impact is CWE-aware so the reported consequences match the weakness class instead of inflating every issue into full compromise.
+Blast radius is the product center of gravity. `agent-bom` connects vulnerabilities to packages, MCP servers, agents, credential exposure, and reachable tools. Impact is CWE-aware so the reported consequences match the weakness class instead of inflating every issue into full compromise. Function-level CVE de-noising joins OSV/GHSA affected symbols to Python, npm, and Go call graphs when `--project` AST analysis is available; CVE/CWE/CPE identifiers ride along on the reachability verdict.
 
 The highest-risk trust chain is surfaced directly in the human and machine surfaces, not only the JSON report. The `--posture` card renders the top exposure path as a one-line spine (`agent → MCP server → package@version → CVE → tool`) with its blast-radius summary (`N cred(s), N tool(s) reachable`), and SARIF results carry the same chain in the result message, an `exposure_chain` property, and `relatedLocations` so it renders in code-scanning viewers.
 

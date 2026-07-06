@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from agent_bom.ast_models import (
     CallEdge,
+    DependencySymbolReach,
     DetectedGuardrail,
     ExtractedPrompt,
     FlowFinding,
@@ -740,6 +741,163 @@ def build_go_flow_findings(
                     taint_queue.append((callee_key, path + [callee_key], frozenset(tainted_callee_params)))
 
     return call_edges, findings
+
+
+def _go_module_package(module_name: str) -> str | None:
+    """Map a Go import path to a module identifier for vulndb matching."""
+    mod = module_name.strip().strip("/")
+    if not mod or mod.startswith("."):
+        return None
+    return mod
+
+
+def _resolve_go_external_dependency_symbol(
+    function: _GoFunctionAnalysis,
+    call_name: str,
+) -> tuple[str, str, str] | None:
+    """Resolve an external import call to ``(package, module, symbol)``."""
+    if not call_name or "." not in call_name:
+        return None
+    alias, remainder = call_name.split(".", 1)
+    module_path = function.imported_aliases.get(alias)
+    if not module_path:
+        return None
+    package = _go_module_package(module_path)
+    if package is None:
+        return None
+    symbol = remainder.split(".", 1)[0]
+    if not symbol:
+        return None
+    return package, module_path, symbol
+
+
+def _resolve_go_registration_handler_key(
+    registration: _GoToolRegistration,
+    *,
+    functions: Mapping[str, _GoFunctionAnalysis],
+    scope_function_names: Mapping[str, set[str]],
+    known_scopes: set[str],
+    package_scopes: Mapping[str, set[str]],
+    basename_scopes: Mapping[str, set[str]],
+) -> str | None:
+    key = _go_function_key(registration.scope_name, registration.handler_name)
+    if key in functions:
+        return key
+    imported_module = registration.imported_aliases.get(registration.handler_name.split(".", 1)[0], "")
+    if imported_module or "." in registration.handler_name:
+        pseudo_function = _GoFunctionAnalysis(
+            name=registration.handler_name,
+            line_number=registration.line_number,
+            file_path=registration.file_path,
+            scope_name=registration.scope_name,
+            imported_aliases=registration.imported_aliases,
+        )
+        return _resolve_go_callee_key(
+            registration.handler_name,
+            pseudo_function,
+            scope_function_names.get(registration.scope_name, set()),
+            functions,
+            known_scopes=known_scopes,
+            package_scopes=package_scopes,
+            basename_scopes=basename_scopes,
+        )
+    return None
+
+
+def build_go_dependency_symbol_reach(
+    *,
+    functions: Mapping[str, _GoFunctionAnalysis],
+    tool_registrations: Sequence[_GoToolRegistration],
+    max_depth: int = 4,
+) -> list[DependencySymbolReach]:
+    """Build bounded MCP tool-entrypoint -> Go module dependency symbol reach."""
+    if not functions or not tool_registrations:
+        return []
+
+    adjacency: dict[str, set[str]] = {name: set() for name in functions}
+    name_counts: dict[str, int] = {}
+    scope_function_names: dict[str, set[str]] = {}
+    package_scopes: dict[str, set[str]] = {}
+    basename_scopes: dict[str, set[str]] = {}
+    known_scopes: set[str] = set()
+
+    for function in functions.values():
+        name_counts[function.name] = name_counts.get(function.name, 0) + 1
+        scope_function_names.setdefault(function.scope_name, set()).add(function.name)
+        known_scopes.add(function.scope_name)
+        if function.package_name:
+            package_scopes.setdefault(function.package_name, set()).add(function.scope_name)
+        scope_basename = PurePosixPath(function.scope_name).name if function.scope_name not in {"", "."} else "."
+        basename_scopes.setdefault(scope_basename, set()).add(function.scope_name)
+
+    for function_key, function in functions.items():
+        for call_site in function.call_sites:
+            callee_key = _resolve_go_callee_key(
+                call_site.name,
+                function,
+                scope_function_names.get(function.scope_name, set()),
+                functions,
+                known_scopes=known_scopes,
+                package_scopes=package_scopes,
+                basename_scopes=basename_scopes,
+            )
+            if callee_key and callee_key != function_key:
+                adjacency[function_key].add(callee_key)
+
+    def display_name(function_key: str) -> str:
+        function = functions[function_key]
+        return _go_function_display_name(function.scope_name, function.name, name_counts)
+
+    reached: list[DependencySymbolReach] = []
+    seen: set[tuple[str, str, str, str, int]] = set()
+
+    for registration in tool_registrations:
+        handler_key = _resolve_go_registration_handler_key(
+            registration,
+            functions=functions,
+            scope_function_names=scope_function_names,
+            known_scopes=known_scopes,
+            package_scopes=package_scopes,
+            basename_scopes=basename_scopes,
+        )
+        if handler_key is None:
+            continue
+        queue: list[tuple[str, list[str]]] = [(handler_key, [handler_key])]
+        visited: set[str] = set()
+        while queue:
+            current_key, path = queue.pop(0)
+            if len(path) > max_depth:
+                continue
+            if current_key in visited:
+                continue
+            visited.add(current_key)
+            current = functions[current_key]
+            for call_site in current.call_sites:
+                external = _resolve_go_external_dependency_symbol(current, call_site.name)
+                if external is None:
+                    continue
+                package, module_name, symbol = external
+                dedup_key = (registration.tool_name, module_name, symbol, current.file_path, call_site.line_number)
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                reached.append(
+                    DependencySymbolReach(
+                        entrypoint=registration.tool_name,
+                        package=package,
+                        module=module_name,
+                        symbol=symbol,
+                        file_path=current.file_path,
+                        line_number=call_site.line_number,
+                        call_path=[registration.tool_name, *[display_name(name) for name in path], f"{module_name}.{symbol}"],
+                        depth=max(0, len(path) - 1),
+                        ecosystem="go",
+                    )
+                )
+            for next_callee in sorted(adjacency.get(current_key, ())):
+                queue.append((next_callee, [*path, next_callee]))
+
+    return reached
 
 
 def scan_go_file(

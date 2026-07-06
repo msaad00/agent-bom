@@ -30,10 +30,8 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-# Package ecosystems where a Python symbol-level call graph exists. The
-# function-reachability join only applies here — for everything else we leave
-# the signal untouched rather than over-claim.
-_PYTHON_ECOSYSTEMS: frozenset[str] = frozenset({"pypi", "python"})
+# Ecosystems where a symbol-level call graph join is supported.
+_SYMBOL_REACH_ECOSYSTEMS: frozenset[str] = frozenset({"pypi", "python", "npm", "go"})
 
 
 def apply_dependency_reachability_to_blast_radii(
@@ -95,11 +93,11 @@ def apply_symbol_reachability_to_blast_radii(
 ) -> int:
     """Join CVE affected-symbols to AST symbol reach on each BlastRadius row.
 
-    Thin additive surfacing of :mod:`agent_bom.reachability_cve`. For every
-    Python finding it stamps ``symbol_reachability`` (function_reachable /
+    Thin additive surfacing of :mod:`agent_bom.reachability_cve`. For Python and
+    npm findings it stamps ``symbol_reachability`` (function_reachable /
     package_reachable / unreachable) and, when a match is found,
-    ``reachable_affected_symbols``. Non-Python findings are left untouched —
-    the call graph only exists for Python.
+    ``reachable_affected_symbols``. Other ecosystems are left untouched until
+    their call-graph symbol reach is implemented.
 
     The graph-walk reach already on the row (``graph_reachable``) is fed in as
     the import / dependency-closure fallback so a package that is reached but
@@ -129,7 +127,7 @@ def apply_symbol_reachability_to_blast_radii(
     stamped = 0
     for br in blast_radii:
         ecosystem = (getattr(br.package, "ecosystem", "") or "").lower()
-        if ecosystem not in _PYTHON_ECOSYSTEMS:
+        if ecosystem not in _SYMBOL_REACH_ECOSYSTEMS:
             continue
         try:
             signal = classify_reachability(
@@ -137,6 +135,7 @@ def apply_symbol_reachability_to_blast_radii(
                 advisory=br.vulnerability,
                 index=index,
                 package_reachable=br.graph_reachable,
+                ecosystem=ecosystem,
             )
         except Exception as exc:  # noqa: BLE001
             _logger.warning("Symbol reachability classify skipped for %s: %s", br.package.name, exc)

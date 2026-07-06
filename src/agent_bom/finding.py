@@ -866,6 +866,14 @@ def blast_radius_to_finding(br: object) -> "Finding":
     cve_ids = all_cve_identifiers(vuln.id, getattr(vuln, "aliases", []) or [])
     if cve_ids:
         evidence["cve_ids"] = cve_ids
+    if getattr(br, "symbol_reachability", None):
+        from agent_bom.reachability_cve import extract_advisory_identifiers
+
+        reach_ids = extract_advisory_identifiers(vuln)
+        if reach_ids.cwe_ids:
+            evidence["reachability_advisory_cwe_ids"] = list(reach_ids.cwe_ids)
+        if reach_ids.cpe_ids:
+            evidence["reachability_advisory_cpe_ids"] = list(reach_ids.cpe_ids)
 
     sev = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
     from agent_bom.exploitability import fused_triage_priority

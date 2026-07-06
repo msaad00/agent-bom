@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING
 from agent_bom.graph.severity import severity_rank
 
 if TYPE_CHECKING:
-    from agent_bom.finding import Finding
     from agent_bom.models import AIBOMReport, BlastRadius
 
 

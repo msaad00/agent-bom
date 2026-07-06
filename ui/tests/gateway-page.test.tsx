@@ -14,6 +14,7 @@ const { apiMock } = vi.hoisted(() => ({
     evaluateGateway: vi.fn(),
     getGatewayFeed: vi.fn(),
     getGatewayFeedKpis: vi.fn(),
+    getPostureCounts: vi.fn(),
   },
 }));
 
@@ -28,6 +29,13 @@ vi.mock("@/lib/api", async () => {
 describe("GatewayPage", () => {
   beforeEach(() => {
     Object.values(apiMock).forEach((mockFn) => mockFn.mockReset());
+    apiMock.getPostureCounts.mockResolvedValue({
+      has_gateway: true,
+      has_proxy: false,
+      has_traces: false,
+      scan_count: 1,
+      deployment_mode: "local",
+    });
     apiMock.listGatewayPolicies.mockResolvedValue({ policies: [], count: 0 });
     apiMock.listGatewayAudit.mockResolvedValue({ entries: [], count: 0 });
     apiMock.getGatewayFeed.mockResolvedValue({ events: [], count: 0, limit: 200 });

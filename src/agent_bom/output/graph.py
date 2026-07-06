@@ -736,11 +736,7 @@ def build_attack_flow_elements(
             pkg_id,
             label=f"{package_name(finding)}\n@{package_version(finding)}",
             type="pkg_vuln",
-            tip=(
-                f"Package: {package_name(finding)}\n"
-                f"Version: {package_version(finding)}\n"
-                f"Ecosystem: {package_ecosystem(finding)}"
-            ),
+            tip=(f"Package: {package_name(finding)}\nVersion: {package_version(finding)}\nEcosystem: {package_ecosystem(finding)}"),
         )
         _add_edge(cve_id, pkg_id, "exploits")
 

@@ -13,8 +13,8 @@ Extends the regex-based scanner with semantic analysis:
 Python files use full AST parsing. JS/TS files contribute prompt/tool/guardrail
 signals plus parser-backed import, handler, and call-chain extraction so
 non-Python agent projects participate in the same inventory and flow model.
-Go, Rust, Java, C#, and Ruby sources also contribute MCP tool entrypoints and
-dependency-symbol reach for Cargo/Maven/NuGet/RubyGems CVE join.
+Go, Rust, Java, C#, Ruby, PHP (Composer), and Swift sources also contribute MCP tool
+entrypoints and dependency-symbol reach for Cargo/Maven/NuGet/RubyGems/Composer/SPM CVE join.
 
 Compliance mapping:
 - OWASP LLM01 (Prompt Injection) — prompt inventory and risk review signals
@@ -50,10 +50,14 @@ from agent_bom.ast_models import (
     _GoToolRegistration,
     _JavaMethodAnalysis,
     _JavaToolRegistration,
+    _PhpMethodAnalysis,
+    _PhpToolRegistration,
     _RubyMethodAnalysis,
     _RubyToolRegistration,
     _RustFunctionAnalysis,
     _RustToolRegistration,
+    _SwiftFunctionAnalysis,
+    _SwiftToolRegistration,
 )
 from agent_bom.ast_python_analysis import (
     _MAX_FILES,
@@ -67,10 +71,14 @@ from agent_bom.ast_python_analysis import (
 from agent_bom.ast_python_analysis import (
     _max_taint_depth as _python_max_taint_depth,
 )
+from agent_bom.ast_php import _php_method_key, build_php_dependency_symbol_reach, load_composer_package_map
+from agent_bom.ast_php import scan_php_file as _scan_php_file
 from agent_bom.ast_ruby import _ruby_method_key, build_ruby_dependency_symbol_reach, load_ruby_gem_map
 from agent_bom.ast_ruby import scan_ruby_file as _scan_ruby_file
 from agent_bom.ast_rust import _rust_function_key, build_rust_dependency_symbol_reach
 from agent_bom.ast_rust import scan_rust_file as _scan_rust_file
+from agent_bom.ast_swift import _swift_function_key, build_swift_dependency_symbol_reach, load_swift_package_map
+from agent_bom.ast_swift import scan_swift_file as _scan_swift_file
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
@@ -157,6 +165,22 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
             continue
         ruby_files.append(f)
 
+    php_files = []
+    for f in sorted(project.rglob("*.php")):
+        if any(part in _SKIP_DIRS for part in f.parts):
+            continue
+        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
+            continue
+        php_files.append(f)
+
+    swift_files = []
+    for f in sorted(project.rglob("*.swift")):
+        if any(part in _SKIP_DIRS for part in f.parts):
+            continue
+        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
+            continue
+        swift_files.append(f)
+
     py_files = py_files[:_MAX_FILES]
     js_ts_files = js_ts_files[: max(0, _MAX_FILES - len(py_files))]
     go_files = go_files[: max(0, _MAX_FILES - len(py_files) - len(js_ts_files))]
@@ -165,6 +189,10 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     java_files = java_files[: max(0, remaining - len(rust_files))]
     csharp_files = csharp_files[: max(0, remaining - len(rust_files) - len(java_files))]
     ruby_files = ruby_files[: max(0, remaining - len(rust_files) - len(java_files) - len(csharp_files))]
+    php_files = php_files[: max(0, remaining - len(rust_files) - len(java_files) - len(csharp_files) - len(ruby_files))]
+    swift_files = swift_files[
+        : max(0, remaining - len(rust_files) - len(java_files) - len(csharp_files) - len(ruby_files) - len(php_files))
+    ]
     result.files_analyzed = (
         len(py_files)
         + len(js_ts_files)
@@ -173,6 +201,8 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         + len(java_files)
         + len(csharp_files)
         + len(ruby_files)
+        + len(php_files)
+        + len(swift_files)
     )
     function_analyses: list[_FunctionAnalysis] = []
     js_ts_functions: dict[str, JSTSFunction] = {}
@@ -187,9 +217,15 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     csharp_tool_registrations: list[_CSharpToolRegistration] = []
     ruby_methods: dict[str, _RubyMethodAnalysis] = {}
     ruby_tool_registrations: list[_RubyToolRegistration] = []
+    php_methods: dict[str, _PhpMethodAnalysis] = {}
+    php_tool_registrations: list[_PhpToolRegistration] = []
+    swift_functions: dict[str, _SwiftFunctionAnalysis] = {}
+    swift_tool_registrations: list[_SwiftToolRegistration] = []
     maven_dependency_map = _load_maven_dependency_map(project)
     nuget_namespace_map = load_nuget_namespace_map(project)
     ruby_gem_map = load_ruby_gem_map(project)
+    composer_package_map = load_composer_package_map(project)
+    swift_package_map = load_swift_package_map(project)
 
     for py_file in py_files:
         rel = str(py_file.relative_to(project))
@@ -303,6 +339,42 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
                 ruby_methods[_ruby_method_key(ruby_method.class_name, ruby_method.name)] = ruby_method
             ruby_tool_registrations.extend(ruby_analysis.tool_registrations)
 
+    for php_file in php_files:
+        rel = str(php_file.relative_to(project))
+        prompts, guardrails, tools, flow_findings, frameworks, php_call_edges, php_analysis = _scan_php_file(
+            php_file,
+            rel,
+            package_map=composer_package_map,
+        )
+        result.prompts.extend(prompts)
+        result.guardrails.extend(guardrails)
+        result.tools.extend(tools)
+        result.flow_findings.extend(flow_findings)
+        result.frameworks_detected.extend(frameworks)
+        result.call_edges.extend(php_call_edges)
+        if php_analysis is not None:
+            for php_method in php_analysis.functions.values():
+                php_methods[_php_method_key(php_method.class_name, php_method.name)] = php_method
+            php_tool_registrations.extend(php_analysis.tool_registrations)
+
+    for swift_file in swift_files:
+        rel = str(swift_file.relative_to(project))
+        prompts, guardrails, tools, flow_findings, frameworks, swift_call_edges, swift_analysis = _scan_swift_file(
+            swift_file,
+            rel,
+            package_map=swift_package_map,
+        )
+        result.prompts.extend(prompts)
+        result.guardrails.extend(guardrails)
+        result.tools.extend(tools)
+        result.flow_findings.extend(flow_findings)
+        result.frameworks_detected.extend(frameworks)
+        result.call_edges.extend(swift_call_edges)
+        if swift_analysis is not None:
+            for swift_function in swift_analysis.functions.values():
+                swift_functions[_swift_function_key(swift_function.scope_name, swift_function.name)] = swift_function
+            swift_tool_registrations.extend(swift_analysis.tool_registrations)
+
     python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
     result.call_edges.extend(python_call_edges)
     result.flow_findings.extend(interprocedural_findings)
@@ -359,6 +431,22 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         build_ruby_dependency_symbol_reach(
             methods=ruby_methods,
             tool_registrations=ruby_tool_registrations,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    result.dependency_symbol_reach.extend(
+        build_php_dependency_symbol_reach(
+            methods=php_methods,
+            tool_registrations=php_tool_registrations,
+            package_map=composer_package_map,
+            max_depth=_python_max_taint_depth(),
+        )
+    )
+    result.dependency_symbol_reach.extend(
+        build_swift_dependency_symbol_reach(
+            functions=swift_functions,
+            tool_registrations=swift_tool_registrations,
+            package_map=swift_package_map,
             max_depth=_python_max_taint_depth(),
         )
     )

@@ -601,6 +601,62 @@ def test_analyze_project_surfaces_ruby_dependency_symbol_reach(tmp_path: Path) -
     assert reach.package == "faraday"
 
 
+def test_analyze_project_surfaces_php_dependency_symbol_reach(tmp_path: Path) -> None:
+    (tmp_path / "composer.json").write_text(
+        '{"require": {"guzzlehttp/guzzle": "^7.0"}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "composer.lock").write_text(
+        '{"packages": [{"name": "guzzlehttp/guzzle", "version": "7.8.1"}]}',
+        encoding="utf-8",
+    )
+    (tmp_path / "Server.php").write_text(
+        "<?php\n"
+        "use GuzzleHttp\\Client;\n\n"
+        "class Server {\n"
+        "    public function register($server) {\n"
+        '        $server->tool("fetch_url", [$this, "fetchUrl"]);\n'
+        "    }\n\n"
+        "    public function fetchUrl($url) {\n"
+        "        $client = new Client();\n"
+        "        return $client->get($url);\n"
+        "    }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = analyze_project(tmp_path)
+    composer_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "composer"]
+    assert composer_reaches
+    reach = next(item for item in composer_reaches if item.symbol == "get")
+    assert reach.entrypoint == "fetch_url"
+    assert reach.package == "guzzlehttp/guzzle"
+
+
+def test_analyze_project_surfaces_swift_dependency_symbol_reach(tmp_path: Path) -> None:
+    (tmp_path / "Package.resolved").write_text(
+        '{"pins": [{"identity": "alamofire", "state": {"version": "5.9.0"}}], "version": 2}',
+        encoding="utf-8",
+    )
+    (tmp_path / "Server.swift").write_text(
+        'import Alamofire\n\n'
+        "func register(server: MCPServer) {\n"
+        '    server.tool("fetch_url", fetchUrl)\n'
+        "}\n\n"
+        "func fetchUrl(_ url: String) {\n"
+        "    Alamofire.request(url)\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = analyze_project(tmp_path)
+    swift_reaches = [reach for reach in result.dependency_symbol_reach if reach.ecosystem == "swift"]
+    assert swift_reaches
+    reach = next(item for item in swift_reaches if item.symbol == "request")
+    assert reach.entrypoint == "fetch_url"
+    assert reach.package == "alamofire"
+
+
 def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

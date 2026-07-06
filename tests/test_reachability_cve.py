@@ -443,6 +443,50 @@ def test_wiring_stamps_rubygems_row() -> None:
     assert br.reachable_affected_symbols == ["get"]
 
 
+def test_wiring_stamps_composer_row() -> None:
+    br = _python_br(["get"], pkg_name="guzzlehttp/guzzle")
+    br.package.ecosystem = "composer"
+    composer_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="guzzlehttp/guzzle",
+        module="guzzlehttp/guzzle",
+        symbol="get",
+        file_path="Server.php",
+        line_number=12,
+        call_path=["fetch_url", "fetchUrl", "guzzlehttp/guzzle.get"],
+        ecosystem="composer",
+    )
+    stamped = apply_symbol_reachability_to_blast_radii(
+        [br],
+        ASTAnalysisResult(dependency_symbol_reach=[composer_reach]),
+    )
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.reachable_affected_symbols == ["get"]
+
+
+def test_wiring_stamps_swift_row() -> None:
+    br = _python_br(["request"], pkg_name="alamofire")
+    br.package.ecosystem = "swift"
+    swift_reach = DependencySymbolReach(
+        entrypoint="fetch_url",
+        package="alamofire",
+        module="alamofire",
+        symbol="request",
+        file_path="Server.swift",
+        line_number=8,
+        call_path=["fetch_url", "fetchUrl", "alamofire.request"],
+        ecosystem="swift",
+    )
+    stamped = apply_symbol_reachability_to_blast_radii(
+        [br],
+        ASTAnalysisResult(dependency_symbol_reach=[swift_reach]),
+    )
+    assert stamped == 1
+    assert br.symbol_reachability == FUNCTION_REACHABLE
+    assert br.reachable_affected_symbols == ["request"]
+
+
 def test_wiring_stamps_npm_row() -> None:
     br = _python_br(["get"], pkg_name="axios")
     br.package.ecosystem = "npm"

@@ -29,9 +29,10 @@ is a three-state reachability signal on the finding:
 * ``unreachable`` — the package is present in the dependency set but no
   entrypoint reaches it at all.
 
-Honest scope: Python, npm, Go, Maven/Java, Cargo/Rust, NuGet/C#, and RubyGems
-symbol-level call graphs are supported when import proof is available (``use`` /
-``pom.xml`` / ``build.gradle`` / ``packages.lock.json`` / ``Gemfile.lock``).
+Honest scope: Python, npm, Go, Maven/Java, Cargo/Rust, NuGet/C#, RubyGems, Composer/PHP,
+and Swift SPM symbol-level call graphs are supported when import proof is available
+(``use`` / ``pom.xml`` / ``build.gradle`` / ``packages.lock.json`` / ``Gemfile.lock`` /
+``composer.lock`` / ``Package.resolved``).
 Regex parsers apply conservative guards and omit heuristic rows so headless MCP
 consumers do not receive false ``function_reachable`` upgrades.
 

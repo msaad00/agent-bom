@@ -385,6 +385,73 @@ class _RubyFileAnalysis:
 
 
 @dataclass
+class _PhpCallSite:
+    name: str
+    line_number: int
+
+
+@dataclass
+class _PhpMethodAnalysis:
+    name: str
+    line_number: int
+    file_path: str = ""
+    class_name: str = ""
+    import_bindings: dict[str, str] = field(default_factory=dict)
+    local_bindings: dict[str, str] = field(default_factory=dict)
+    call_sites: list[_PhpCallSite] = field(default_factory=list)
+
+
+@dataclass
+class _PhpToolRegistration:
+    tool_name: str
+    handler_name: str
+    line_number: int
+    file_path: str = ""
+    class_name: str = ""
+    import_bindings: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class _PhpFileAnalysis:
+    class_name: str
+    functions: dict[str, _PhpMethodAnalysis] = field(default_factory=dict)
+    tool_registrations: list[_PhpToolRegistration] = field(default_factory=list)
+
+
+@dataclass
+class _SwiftCallSite:
+    name: str
+    line_number: int
+
+
+@dataclass
+class _SwiftFunctionAnalysis:
+    name: str
+    line_number: int
+    file_path: str = ""
+    scope_name: str = ""
+    import_bindings: dict[str, str] = field(default_factory=dict)
+    call_sites: list[_SwiftCallSite] = field(default_factory=list)
+
+
+@dataclass
+class _SwiftToolRegistration:
+    tool_name: str
+    handler_name: str
+    line_number: int
+    file_path: str = ""
+    scope_name: str = ""
+    import_bindings: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class _SwiftFileAnalysis:
+    scope_name: str
+    functions: dict[str, _SwiftFunctionAnalysis] = field(default_factory=dict)
+    tool_registrations: list[_SwiftToolRegistration] = field(default_factory=list)
+
+
+@dataclass
 class _FunctionAnalysis:
     """Internal representation of a function for call-graph construction."""
 

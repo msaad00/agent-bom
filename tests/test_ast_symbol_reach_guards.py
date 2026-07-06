@@ -8,9 +8,11 @@ from agent_bom.ast_analyzer import analyze_project
 from agent_bom.ast_symbol_reach_guards import (
     is_actionable_dependency_symbol,
     is_external_rust_crate,
+    is_verified_composer_package,
     is_verified_maven_coord,
     is_verified_nuget_package,
     is_verified_ruby_gem,
+    is_verified_swift_package,
 )
 
 
@@ -41,6 +43,18 @@ def test_ruby_gem_requires_manifest_entry() -> None:
     gem_map = {"faraday": "faraday", "Faraday": "faraday"}
     assert is_verified_ruby_gem("faraday", gem_map)
     assert not is_verified_ruby_gem("invented-gem", gem_map)
+
+
+def test_composer_package_requires_manifest_entry() -> None:
+    package_map = {"guzzlehttp/guzzle": "guzzlehttp/guzzle"}
+    assert is_verified_composer_package("guzzlehttp/guzzle", package_map)
+    assert not is_verified_composer_package("invented/package", package_map)
+
+
+def test_swift_package_requires_manifest_entry() -> None:
+    package_map = {"alamofire": "alamofire", "Alamofire": "alamofire"}
+    assert is_verified_swift_package("alamofire", package_map)
+    assert not is_verified_swift_package("invented-pkg", package_map)
 
 
 def test_analyze_project_java_without_pom_emits_no_maven_symbol_reach(tmp_path: Path) -> None:

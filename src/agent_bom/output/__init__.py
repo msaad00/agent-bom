@@ -37,6 +37,10 @@ from agent_bom.output.csv_fmt import (  # noqa: E402
     export_csv,  # noqa: F401
     to_csv,  # noqa: F401
 )
+from agent_bom.output.parquet_fmt import (  # noqa: E402
+    export_parquet,  # noqa: F401
+    to_parquet_bytes,  # noqa: F401
+)
 from agent_bom.output.cyclonedx_fmt import (  # noqa: E402
     export_cyclonedx,  # noqa: F401
     to_cyclonedx,  # noqa: F401

@@ -125,6 +125,15 @@ For the curated dashboard demo:
 scripts/demo/load-dashboard-demo.sh http://127.0.0.1:8422
 ```
 
+Or bootstrap a labeled estate on first API start:
+
+```bash
+agent-bom api --demo-estate --allow-insecure-no-auth
+```
+
+See [`TRUST.md`](TRUST.md) for what runs in your boundary and how demo data is
+labeled in the UI.
+
 For the sample project, export JSON and push it through your normal API import
 flow:
 
@@ -146,6 +155,15 @@ agent-bom agents -p .
 
 Add `--inventory <file>` when you already have agent/server inventory from a
 fleet collector, SIEM export, or manually curated source of truth.
+
+## 5. Release smoke (pre-tag)
+
+```bash
+./scripts/release_smoke.sh
+```
+
+Proves install → offline demo scan → CSV export. Optional API health when
+`AGENT_BOM_RELEASE_SMOKE_API_URL` is set.
 Add `--inventory-only` when that file is the complete evidence boundary and
 you do not want project, cwd, skill, model, dataset, or secret auto-discovery
 merged into the result.

@@ -663,6 +663,13 @@ def serve_cmd(
     metavar="ROWS",
     help="Maximum rows to flush per ClickHouse batch.",
 )
+@click.option(
+    "--demo-estate",
+    is_flag=True,
+    default=False,
+    envvar="AGENT_BOM_DEMO_ESTATE",
+    help="Seed a labeled demo graph and curated offline findings on first API start.",
+)
 def api_cmd(
     host: str,
     port: int,
@@ -681,6 +688,7 @@ def api_cmd(
     analytics_buffered: bool,
     analytics_flush_interval: float,
     analytics_max_batch: int,
+    demo_estate: bool,
 ):
     """Start the agent-bom REST API server.
 
@@ -719,6 +727,9 @@ def api_cmd(
     )
 
     import os as _os
+
+    if demo_estate:
+        _os.environ["AGENT_BOM_DEMO_ESTATE"] = "1"
 
     try:
         import uvicorn

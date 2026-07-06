@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { ExternalLink, FileSearch, Loader2, Radar, ShieldAlert, X } from "lucide-react";
 
 import { severityColor, type FindingTriageDecision, type FindingTriageItem, type FindingTriageJustification } from "@/lib/api";
+import { buildWhyItMatters } from "@/lib/finding-why-matters";
 import { type EnrichedVuln, uniqueStrings, formatFindingTimestamp, findingStatusClass, findingStatusLabel } from "@/lib/findings-view";
 
 export function FindingDrawer({
@@ -88,6 +89,7 @@ function VulnDetailPanel({
     ...vuln.sources,
     ...vuln.advisory_sources,
   ]);
+  const whyItMatters = buildWhyItMatters(vuln);
 
   return (
     <div className="ml-6 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
@@ -111,6 +113,26 @@ function VulnDetailPanel({
             <DetailStat label="CVSS" value={typeof vuln.cvss_score === "number" ? vuln.cvss_score.toFixed(1) : "Not published"} />
             <DetailStat label="EPSS" value={typeof vuln.epss_score === "number" ? `${(vuln.epss_score * 100).toFixed(1)}%` : "Not available"} />
           </div>
+          {whyItMatters && (
+            <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
+              <h4 className="text-xs font-medium uppercase tracking-wide text-emerald-400/90">Why it matters</h4>
+              <p className="mt-2 text-sm font-medium text-zinc-100">{whyItMatters.headline}</p>
+              <div className="mt-2 space-y-2 text-sm leading-6 text-zinc-300">
+                {whyItMatters.paragraphs.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
+              {whyItMatters.links.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-3">
+                  {whyItMatters.links.map((link) => (
+                    <Link key={link.href} href={link.href} className="text-xs text-emerald-300 hover:underline">
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {(vuln.effective_reach_band || vuln.runtime_evidence?.state) && (
             <div className="flex flex-wrap gap-2">
               {vuln.effective_reach_band && (

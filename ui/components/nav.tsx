@@ -173,6 +173,15 @@ const NAV_GROUPS: NavGroup[] = [
 
 const ALL_GROUP_LABELS = NAV_GROUPS.map((group) => group.label);
 
+/** Curated first-session proof path (#3618). Full nav stays in groups + ⌘K. */
+const PROOF_PATH_LINKS: NavLink[] = [
+  { href: "/findings", label: "Queue", icon: Bug },
+  { href: "/security-graph", label: "Graph", icon: Network },
+  { href: "/runtime", label: "Runtime", icon: Shield },
+  { href: "/compliance", label: "Reports", icon: FileText },
+  { href: "/connections", label: "Connections", icon: Cloud },
+];
+
 // ─── Risk counts for badges ─────────────────────────────────────────────────
 
 // ─── Sidebar Component ──────────────────────────────────────────────────────
@@ -440,6 +449,35 @@ export function Nav() {
           >
             <Search className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* Proof path — curated golden-workflow entry points */}
+      {!collapsed && (
+        <div className="px-3 pb-1">
+          <p className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">
+            Proof path
+          </p>
+          <div className="grid grid-cols-2 gap-1">
+            {PROOF_PATH_LINKS.map((link) => {
+              const Icon = link.icon;
+              const active = link.href === "/" ? path === "/" : Boolean(path?.startsWith(link.href));
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-colors ${
+                    active
+                      ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
+                      : "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{link.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       )}
 

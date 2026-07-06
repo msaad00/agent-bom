@@ -149,12 +149,10 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     js_ts_files = js_ts_files[: max(0, _MAX_FILES - len(py_files))]
     go_files = go_files[: max(0, _MAX_FILES - len(py_files) - len(js_ts_files))]
     remaining = max(0, _MAX_FILES - len(py_files) - len(js_ts_files) - len(go_files))
-    rust_files = rust_files[: remaining]
+    rust_files = rust_files[:remaining]
     java_files = java_files[: max(0, remaining - len(rust_files))]
     csharp_files = csharp_files[: max(0, remaining - len(rust_files) - len(java_files))]
-    result.files_analyzed = (
-        len(py_files) + len(js_ts_files) + len(go_files) + len(rust_files) + len(java_files) + len(csharp_files)
-    )
+    result.files_analyzed = len(py_files) + len(js_ts_files) + len(go_files) + len(rust_files) + len(java_files) + len(csharp_files)
     function_analyses: list[_FunctionAnalysis] = []
     js_ts_functions: dict[str, JSTSFunction] = {}
     js_ts_tool_registrations: list[JSTSToolRegistration] = []

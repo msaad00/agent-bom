@@ -128,9 +128,9 @@ def _nuget_package_for_namespace(namespace: str, nuget_map: Mapping[str, str]) -
     parts = namespace.split(".")
     for index in range(len(parts), 0, -1):
         prefix = ".".join(parts[:index])
-        package_id = nuget_map.get(prefix)
-        if package_id and is_verified_nuget_package(package_id, dict(nuget_map)):
-            return package_id
+        candidate_package_id = nuget_map.get(prefix)
+        if candidate_package_id and is_verified_nuget_package(candidate_package_id, dict(nuget_map)):
+            return candidate_package_id
     return None
 
 
@@ -160,11 +160,7 @@ def _csharp_local_bindings(body: str, import_bindings: Mapping[str, str]) -> dic
         package_id = (
             import_bindings.get(type_name)
             or import_bindings.get(qualified_type)
-            or (
-                import_bindings.get(qualified_type.split(".", 1)[0])
-                if "." in qualified_type
-                else None
-            )
+            or (import_bindings.get(qualified_type.split(".", 1)[0]) if "." in qualified_type else None)
         )
         if package_id:
             locals_map[var_name] = package_id
@@ -261,10 +257,10 @@ def _collect_csharp_tool_registrations(
                     handler_name = key
         if handler_name is None:
             continue
-        key = (tool_name, match.start())
-        if key in seen:
+        registration_key = (tool_name, match.start())
+        if registration_key in seen:
             continue
-        seen.add(key)
+        seen.add(registration_key)
         registrations.append(
             _CSharpToolRegistration(
                 tool_name=tool_name,
@@ -282,10 +278,10 @@ def _collect_csharp_tool_registrations(
             continue
         method_name = method_match.group("name")
         tool_name = method_name
-        key = (tool_name, attr_match.start())
-        if key in seen:
+        registration_key = (tool_name, attr_match.start())
+        if registration_key in seen:
             continue
-        seen.add(key)
+        seen.add(registration_key)
         handler_key = _csharp_method_key(class_name, method_name)
         if handler_key not in methods:
             continue
@@ -438,11 +434,7 @@ def scan_csharp_file(
     class_name = class_match.group("name") if class_match else Path(rel_path).stem
     bindings = _csharp_using_bindings(source, nuget_map)
     frameworks = sorted(
-        {
-            framework
-            for prefix, framework in _CS_FRAMEWORK_HINTS.items()
-            if any(prefix in binding.lower() for binding in bindings.values())
-        }
+        {framework for prefix, framework in _CS_FRAMEWORK_HINTS.items() if any(prefix in binding.lower() for binding in bindings.values())}
     )
     methods = _collect_csharp_methods(source, rel_path=rel_path, class_name=class_name, bindings=bindings)
     tool_registrations = _collect_csharp_tool_registrations(

@@ -30,9 +30,7 @@ _GENERIC_SYMBOL_DENYLIST: frozenset[str] = frozenset(
 )
 
 # Rust std/internal crates are not Cargo.lock CVE targets for third-party join.
-_RUST_INTRINSIC_CRATES: frozenset[str] = frozenset(
-    {"std", "core", "alloc", "proc_macro", "test", "self", "super", "crate"}
-)
+_RUST_INTRINSIC_CRATES: frozenset[str] = frozenset({"std", "core", "alloc", "proc_macro", "test", "self", "super", "crate"})
 
 
 def is_actionable_dependency_symbol(symbol: str) -> bool:

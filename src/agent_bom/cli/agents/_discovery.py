@@ -243,7 +243,7 @@ def run_local_discovery(
                 _ext_data = _json.load(_ext_f)
             _ext_packages = detect_and_parse(_ext_data)
             _ext_resource_name = Path(external_scan_path).stem
-            con.print(f"\n  [green]✓[/green] Ingested {len(_ext_packages)} packages from Trivy/Grype/Syft report\n")
+            con.print(f"\n  [green]✓[/green] Ingested {len(_ext_packages)} packages from external scan report\n")
             _ext_server = MCPServer(
                 name=_ext_resource_name,
                 command="external-scan",

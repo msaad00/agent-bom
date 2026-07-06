@@ -1,11 +1,14 @@
-"""Ingest Trivy, Grype, and Syft JSON reports into agent-bom models."""
+"""Ingest Trivy, Grype, Syft, and SARIF reports into agent-bom models."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agent_bom.models import Package, Severity, Vulnerability, compute_confidence
+
+if TYPE_CHECKING:
+    from agent_bom.finding import Finding
 
 logger = logging.getLogger(__name__)
 
@@ -307,17 +310,101 @@ def parse_syft_json(data: dict[str, Any]) -> list[Package]:
 # ── Auto-detect ───────────────────────────────────────────────────────────────
 
 
+def is_sarif_document(data: dict[str, Any]) -> bool:
+    """Return True when *data* looks like a SARIF 2.x document."""
+    if not isinstance(data, dict):
+        return False
+    runs = data.get("runs")
+    if not isinstance(runs, list):
+        return False
+    version = str(data.get("version") or "")
+    if version.startswith("2."):
+        return True
+    schema = data.get("$schema")
+    return isinstance(schema, str) and "sarif" in schema.lower()
+
+
+def _severity_from_label(label: str) -> Severity:
+    try:
+        return Severity(label.lower())
+    except ValueError:
+        return Severity.UNKNOWN
+
+
+def _sarif_hub_findings_to_packages(findings: list["Finding"]) -> list[Package]:
+    """Group hub-classified SARIF findings into synthetic sast packages."""
+    from agent_bom.finding import Finding
+
+    file_findings: dict[str, list[Finding]] = {}
+    for item in findings:
+        if not isinstance(item, Finding):
+            continue
+        file_path = item.asset.location or item.asset.name.split(":", 1)[0]
+        file_findings.setdefault(file_path or "unknown", []).append(item)
+
+    packages: list[Package] = []
+    for file_path, rows in file_findings.items():
+        vulns: list[Vulnerability] = []
+        seen: set[str] = set()
+        for finding in rows:
+            evidence = finding.evidence or {}
+            rule_id = str(evidence.get("rule_id") or finding.title or "sarif-rule")
+            line_token = ""
+            if finding.asset.name and ":" in finding.asset.name:
+                line_token = finding.asset.name.rsplit(":", 1)[-1]
+            dedup_key = f"{rule_id}:{line_token}"
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            vulns.append(
+                Vulnerability(
+                    id=rule_id,
+                    summary=finding.description or finding.title,
+                    severity=_severity_from_label(finding.severity),
+                    cwe_ids=list(finding.cwe_ids),
+                    cvss_score=finding.cvss_score,
+                    references=[],
+                )
+            )
+        if vulns:
+            tool_name = str((rows[0].evidence or {}).get("external_tool") or "sarif")
+            packages.append(
+                Package(
+                    name=file_path,
+                    version="0.0.0",
+                    ecosystem="sast",
+                    vulnerabilities=vulns,
+                    description=f"SARIF findings from {tool_name}",
+                )
+            )
+    return packages
+
+
+def parse_sarif_json(data: dict[str, Any]) -> list[Package]:
+    """Parse a SARIF 2.x document into synthetic per-file sast packages."""
+    from agent_bom.compliance_hub_ingest import parse_sarif_document
+
+    if not is_sarif_document(data):
+        raise ValueError("payload is not a SARIF document")
+    findings = parse_sarif_document(data)
+    return _sarif_hub_findings_to_packages(findings)
+
+
 def detect_and_parse(data: dict[str, Any]) -> list[Package]:
     """Auto-detect the scanner JSON format and parse into Package objects.
 
     Detection rules (checked in order):
-    - ``Results`` key present and at least one result has ``Vulnerabilities`` → Trivy
+    - ``runs`` + SARIF ``version`` / ``$schema`` → SARIF (Semgrep, CodeQL, Bandit, …)
+    - ``Results`` key present → Trivy
     - ``matches`` key present → Grype
     - ``artifacts`` key present and ``schema`` key present → Syft
 
     Raises:
         ValueError: if the format cannot be identified.
     """
+    if is_sarif_document(data):
+        return parse_sarif_json(data)
+
     if "Results" in data:
         results = data["Results"]
         if isinstance(results, list):

@@ -1,4 +1,4 @@
-"""Tests for external scanner JSON ingestion (Trivy, Grype, Syft)."""
+"""Tests for external scanner JSON ingestion (Trivy, Grype, Syft, SARIF)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from agent_bom.models import Severity
 from agent_bom.parsers.external_scanners import (
     detect_and_parse,
     parse_grype_json,
+    parse_sarif_json,
     parse_syft_json,
     parse_trivy_json,
 )
@@ -394,3 +395,55 @@ def test_detect_syft():
 def test_detect_unknown_raises():
     with pytest.raises(ValueError, match="Unrecognized scanner JSON format"):
         detect_and_parse({"foo": "bar"})
+
+
+SARIF_BASIC = {
+    "version": "2.1.0",
+    "runs": [
+        {
+            "tool": {
+                "driver": {
+                    "name": "bandit",
+                    "rules": [
+                        {
+                            "id": "B105",
+                            "properties": {"tags": ["CWE-259"]},
+                        }
+                    ],
+                }
+            },
+            "results": [
+                {
+                    "ruleId": "B105",
+                    "level": "warning",
+                    "message": {"text": "Possible hardcoded password"},
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": "src/app.py"},
+                                "region": {"startLine": 12},
+                            }
+                        }
+                    ],
+                }
+            ],
+        }
+    ],
+}
+
+
+def test_parse_sarif_json_groups_by_file():
+    packages = parse_sarif_json(SARIF_BASIC)
+    assert len(packages) == 1
+    pkg = packages[0]
+    assert pkg.ecosystem == "sast"
+    assert pkg.name == "src/app.py"
+    assert len(pkg.vulnerabilities) == 1
+    assert pkg.vulnerabilities[0].id == "B105"
+    assert pkg.vulnerabilities[0].cwe_ids == ["CWE-259"]
+
+
+def test_detect_sarif():
+    packages = detect_and_parse(SARIF_BASIC)
+    assert len(packages) == 1
+    assert packages[0].name == "src/app.py"

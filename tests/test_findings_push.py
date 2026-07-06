@@ -33,6 +33,16 @@ def test_load_push_findings_accepts_scanner_json() -> None:
     assert rows[0]["source"] == "trivy"
 
 
+def test_load_push_findings_accepts_sarif_json() -> None:
+    from tests.test_external_scanners import SARIF_BASIC
+
+    rows = load_push_findings(SARIF_BASIC, source="bandit")
+    assert len(rows) == 1
+    assert rows[0]["package"] == "src/app.py"
+    assert rows[0]["vulnerability_id"] == "B105"
+    assert rows[0]["source"] == "bandit"
+
+
 def test_load_push_findings_file(tmp_path: Path) -> None:
     path = tmp_path / "findings.json"
     path.write_text(json.dumps([{"id": "finding-2", "severity": "medium"}]), encoding="utf-8")

@@ -437,6 +437,15 @@ RATE_LIMIT_KEY_LAST_ROTATED = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROT
 RUNTIME_FEEDBACK_PATH = _str("AGENT_BOM_RUNTIME_FEEDBACK_PATH", "")
 
 
+# ── Collector push mTLS ─────────────────────────────────────────────────
+# Optional client certificate and custom CA bundle used when pushing local
+# discovery/finding payloads to a hosted/self-hosted control plane. Empty
+# strings keep the standard HTTPS trust store and no client certificate.
+PUSH_TLS_CERT_FILE = _str("AGENT_BOM_PUSH_TLS_CERT_FILE", "")
+PUSH_TLS_KEY_FILE = _str("AGENT_BOM_PUSH_TLS_KEY_FILE", "")  # Client certificate private key path; used with PUSH_TLS_CERT_FILE.
+PUSH_TLS_CA_FILE = _str("AGENT_BOM_PUSH_TLS_CA_FILE", "")  # Custom CA bundle used to verify the control-plane push endpoint.
+
+
 # ── Report export artifacts ──────────────────────────────────────────────
 # Async findings report exports are written to a local artifact directory and
 # downloaded through job-scoped tokens. Empty string means use the per-user

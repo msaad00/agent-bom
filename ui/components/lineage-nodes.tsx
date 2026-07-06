@@ -19,6 +19,8 @@ import {
 export { ENTITY_ICONS, entityIcon };
 export type { EntityIcon, LineageNodeType };
 
+export type RuntimeEvidenceTier = "static_scan" | "runtime_observed" | "runtime_blocked";
+
 export type LineageNodeData = {
   label: string;
   nodeType: LineageNodeType;
@@ -75,6 +77,8 @@ export type LineageNodeData = {
   isCritical?: boolean | undefined;
   // Evidence redaction tier (#2261) — per-row badge in lineage detail panel.
   evidenceTier?: "safe_to_store" | "replay_only" | undefined;
+  /** Runtime evidence overlay (#3610) — static vs observed vs blocked graph paths. */
+  runtimeEvidenceTier?: RuntimeEvidenceTier | undefined;
   evidenceCaptureReplay?: boolean | undefined;
   evidenceNotAfter?: string | undefined;
   renderBand?: "detail" | "summary" | "cluster" | undefined;
@@ -92,6 +96,38 @@ type CardProps = {
   footer?: ReactNode;
   subtitle?: ReactNode;
 };
+
+const RUNTIME_EVIDENCE_CHIP: Record<
+  RuntimeEvidenceTier,
+  { label: string; className: string }
+> = {
+  static_scan: {
+    label: "Static",
+    className:
+      "border-zinc-600/70 bg-zinc-900/80 text-zinc-300 dark:border-zinc-500 dark:bg-zinc-950",
+  },
+  runtime_observed: {
+    label: "Observed",
+    className:
+      "border-sky-800/70 bg-sky-950/50 text-sky-300",
+  },
+  runtime_blocked: {
+    label: "Blocked",
+    className:
+      "border-rose-800/70 bg-rose-950/50 text-rose-300",
+  },
+};
+
+function RuntimeEvidenceChip({ tier }: { tier: RuntimeEvidenceTier }) {
+  const chip = RUNTIME_EVIDENCE_CHIP[tier];
+  return (
+    <span
+      className={`rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${chip.className}`}
+    >
+      {chip.label}
+    </span>
+  );
+}
 
 function NodeCard({
   data,
@@ -134,6 +170,9 @@ function NodeCard({
         <span className="ml-auto rounded border border-black/10 bg-white/70 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-zinc-600 dark:border-white/15 dark:bg-black/25 dark:text-zinc-200">
           {NODE_TYPE_BADGES[data.nodeType]}
         </span>
+        {data.runtimeEvidenceTier && data.runtimeEvidenceTier !== "static_scan" ? (
+          <RuntimeEvidenceChip tier={data.runtimeEvidenceTier} />
+        ) : null}
       </div>
       {subtitle && (
         <div className="text-xs leading-4 text-zinc-700 dark:text-zinc-200/90 truncate">

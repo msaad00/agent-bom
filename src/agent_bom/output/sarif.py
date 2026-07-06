@@ -10,18 +10,25 @@ from typing import Any, Optional
 
 from agent_bom.asset_provenance import (
     agent_discovery_provenance,
-    package_discovery_provenance,
-    package_version_provenance,
     sanitize_discovery_provenance,
 )
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.exploitability import exploitability_tags, parse_cvss_vector_signals
-from agent_bom.finding import FindingType, blast_radius_to_finding
-from agent_bom.models import AIBOMReport, Severity
+from agent_bom.finding import Finding, FindingType
+from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.output.exposure_path import (
     exposure_path_blast_summary,
     exposure_path_chain,
     exposure_path_for_report_finding,
+)
+from agent_bom.output.finding_views import (
+    cve_findings,
+    evidence,
+    exploit_likelihood_value,
+    finding_severity,
+    package_ecosystem,
+    package_name,
+    package_version,
 )
 from agent_bom.security import sanitize_sensitive_payload
 
@@ -327,8 +334,239 @@ _DEDICATED_CIS_BENCHMARKS: tuple[tuple[str, str], ...] = (
 )
 _DEDICATED_CIS_PROVIDERS = frozenset(provider for provider, _ in _DEDICATED_CIS_BENCHMARKS)
 
+_FRAMEWORK_TAG_FIELDS: tuple[str, ...] = (
+    "owasp_tags",
+    "atlas_tags",
+    "attack_tags",
+    "nist_ai_rmf_tags",
+    "owasp_mcp_tags",
+    "owasp_agentic_tags",
+    "eu_ai_act_tags",
+    "nist_csf_tags",
+    "iso_27001_tags",
+    "soc2_tags",
+    "cis_tags",
+    "cmmc_tags",
+    "nist_800_53_tags",
+    "fedramp_tags",
+    "pci_dss_tags",
+)
 
-def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
+
+def _finding_artifact_uri(report: AIBOMReport, finding: Finding) -> str:
+    """Resolve a SARIF artifact URI from unified finding + report agent inventory."""
+    ecosystem = package_ecosystem(finding) or None
+    if finding.affected_agents:
+        agents_by_name = {agent.name: agent for agent in report.agents}
+        first_agent = finding.affected_agents[0]
+        agent = agents_by_name.get(str(first_agent))
+        config_path = getattr(agent, "config_path", None) if agent else None
+        if config_path:
+            return _to_relative_path(str(config_path), ecosystem=ecosystem)
+    if finding.asset.location:
+        return _to_relative_path(str(finding.asset.location), ecosystem=ecosystem)
+    return _to_relative_path("unknown", ecosystem=ecosystem)
+
+
+def _agent_discovery_provenance_from_report(report: AIBOMReport, agent_names: list[str]) -> list[Any]:
+    agents_by_name = {agent.name: agent for agent in report.agents}
+    out: list[Any] = []
+    for name in agent_names[:10]:
+        agent = agents_by_name.get(str(name))
+        if not agent:
+            continue
+        provenance = agent_discovery_provenance(agent)
+        if provenance:
+            out.append(provenance)
+    return out
+
+
+def _server_discovery_provenance_from_report(report: AIBOMReport, server_names: list[str]) -> list[Any]:
+    servers_by_name: dict[str, Any] = {}
+    for agent in report.agents:
+        for server in agent.mcp_servers:
+            servers_by_name[server.name] = server
+    out: list[Any] = []
+    for name in server_names[:10]:
+        matched_server: Any = servers_by_name.get(str(name))
+        if not matched_server:
+            continue
+        provenance = sanitize_discovery_provenance(getattr(matched_server, "discovery_provenance", None))
+        if provenance:
+            out.append(provenance)
+    return out
+
+
+def _framework_tag_properties(finding: Finding) -> dict[str, list[str]]:
+    props: dict[str, list[str]] = {}
+    for field in _FRAMEWORK_TAG_FIELDS:
+        value = getattr(finding, field, [])
+        if value:
+            props[field] = list(value)
+    return props
+
+
+def _cve_ids_for_finding(finding: Finding) -> list[str]:
+    candidates: list[Any] = [finding.cve_id]
+    aliases = evidence(finding, "advisory_aliases", [])
+    if isinstance(aliases, list):
+        candidates.extend(aliases)
+    cve_evidence = evidence(finding, "cve_ids", [])
+    if isinstance(cve_evidence, list):
+        candidates.extend(cve_evidence)
+    return sorted({cid for cid in candidates if isinstance(cid, str) and cid.upper().startswith("CVE-")})
+
+
+def _ensure_cve_sarif_rule(
+    finding: Finding,
+    *,
+    rule_id: str,
+    level: str,
+    pkg_name: str,
+    pkg_version: str,
+    seen_rule_ids: set[str],
+    rules: list[dict],
+) -> None:
+    if rule_id in seen_rule_ids:
+        return
+    seen_rule_ids.add(rule_id)
+    sev = finding_severity(finding)
+    sec_sev = str(finding.cvss_score) if finding.cvss_score is not None else _SECURITY_SEVERITY_SCORE.get(sev, "0.0")
+    rule_props: dict[str, Any] = {"security-severity": sec_sev}
+    if finding.epss_score is not None:
+        rule_props["epss-score"] = round(finding.epss_score, 5)
+    if finding.is_kev:
+        rule_props["kev"] = True
+    if finding.cvss_vector:
+        rule_props["cvss_vector"] = finding.cvss_vector
+    rule_props["attack_vector"] = finding.attack_vector
+    rule_props["attack_complexity"] = finding.attack_complexity
+    rule_props["privileges_required"] = finding.privileges_required
+    rule_props["user_interaction"] = finding.user_interaction
+    rule_props["network_exploitable"] = bool(finding.network_exploitable)
+    rule_props["exploit_likelihood"] = exploit_likelihood_value(finding)
+    tags = [*finding.cwe_ids, *exploitability_tags(parse_cvss_vector_signals(finding.cvss_vector))]
+    if tags:
+        rule_props["tags"] = tags
+    rules.append(
+        {
+            "id": rule_id,
+            "shortDescription": {
+                "text": _sanitize_sarif_text(
+                    "title",
+                    f"{sev.value.upper()}: {rule_id} in {pkg_name}@{pkg_version}",
+                    fallback=f"{rule_id} package vulnerability",
+                )
+            },
+            "fullDescription": {"text": _sanitize_sarif_text("description", finding.description, fallback=f"Vulnerability {rule_id}")},
+            "helpUri": f"https://osv.dev/vulnerability/{rule_id}",
+            "defaultConfiguration": {"level": level},
+            "properties": rule_props,
+        }
+    )
+
+
+def _cve_sarif_result(
+    report: AIBOMReport,
+    finding: Finding,
+    *,
+    rank: int,
+    rule_id: str,
+    level: str,
+    pkg_name: str,
+    pkg_version: str,
+) -> dict:
+    exposure_path = exposure_path_for_report_finding(finding, rank=rank)
+    affected = ", ".join(str(name) for name in finding.affected_agents)
+    sev = finding_severity(finding)
+    message_text = f"{rule_id} ({sev.value}) in {pkg_name}@{pkg_version}. Affects agents: {affected}."
+    if finding.fixed_version:
+        message_text += f" Fix: upgrade to {finding.fixed_version}."
+    exposure_chain = exposure_path_chain(exposure_path)
+    if exposure_chain:
+        message_text += f" Exposure path: {exposure_chain}. Blast radius: {exposure_path_blast_summary(exposure_path)}."
+
+    config_path = _finding_artifact_uri(report, finding)
+    fp_input = f"{rule_id}:{pkg_name}:{pkg_version}:{config_path}"
+    fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
+    kind = "informational" if sev == Severity.NONE else "fail"
+    result: dict = {
+        "ruleId": rule_id,
+        "level": level,
+        "kind": kind,
+        "message": {"text": _sanitize_sarif_text("title", message_text, fallback=f"{rule_id} package vulnerability")},
+        "fingerprints": {"agent-bom/v1": fingerprint},
+        "locations": [
+            {
+                "physicalLocation": {
+                    "artifactLocation": {"uri": config_path, "uriBaseId": "%SRCROOT%"},
+                    "region": {"startLine": 1, "startColumn": 1},
+                },
+            }
+        ],
+    }
+    related_locations = _exposure_related_locations(exposure_path)
+    if related_locations:
+        result["relatedLocations"] = related_locations
+    result_properties: dict[str, Any] = {
+        "blast_score": finding.risk_score,
+        "match_confidence_tier": evidence(finding, "match_confidence_tier"),
+        "cve_ids": _cve_ids_for_finding(finding),
+        "exposure_path": exposure_path,
+        "exposure_chain": exposure_chain or None,
+        "epss_score": finding.epss_score,
+        "is_kev": finding.is_kev,
+        "cvss_vector": finding.cvss_vector,
+        "attack_vector": finding.attack_vector,
+        "attack_complexity": finding.attack_complexity,
+        "privileges_required": finding.privileges_required,
+        "user_interaction": finding.user_interaction,
+        "network_exploitable": bool(finding.network_exploitable),
+        "exploit_likelihood": exploit_likelihood_value(finding),
+        "exposed_credentials": list(finding.exposed_credentials),
+        "impact_category": finding.impact_category or "code-execution",
+        "attack_vector_summary": finding.attack_vector_summary,
+        "reachability": finding.reachability,
+        "symbol_reachability": evidence(finding, "symbol_reachability"),
+        "reachable_affected_symbols": evidence(finding, "reachable_affected_symbols", []),
+        "affected_servers": list(finding.affected_servers),
+        "affected_agents": list(finding.affected_agents),
+        "exposed_tools": list(finding.exposed_tools),
+        "ai_risk_context": finding.ai_risk_context,
+        "ai_summary": finding.ai_summary,
+        "suppressed": bool(finding.suppressed),
+    }
+    package_provenance = evidence(finding, "package_discovery_provenance")
+    if package_provenance:
+        result_properties["package_discovery_provenance"] = _sanitize_sarif_property(package_provenance)
+    version_provenance = evidence(finding, "package_version_provenance")
+    if version_provenance is not None:
+        result_properties["package_version_provenance"] = _sanitize_sarif_property(version_provenance)
+    agent_provenance = _agent_discovery_provenance_from_report(report, list(finding.affected_agents))
+    if agent_provenance:
+        result_properties["agent_discovery_provenance"] = _sanitize_sarif_property(agent_provenance)
+    server_provenance = _server_discovery_provenance_from_report(report, list(finding.affected_servers))
+    if server_provenance:
+        result_properties["server_discovery_provenance"] = _sanitize_sarif_property(server_provenance)
+    framework_props = _framework_tag_properties(finding)
+    if framework_props:
+        result_properties.update(framework_props)
+    result["properties"] = result_properties
+    suppressions = _suppression_entries(finding)
+    if suppressions:
+        result["suppressions"] = suppressions
+    taxa_refs = _framework_taxa_references(result_properties)
+    if taxa_refs:
+        result["taxa"] = taxa_refs
+    return result
+
+
+def to_sarif(
+    report: AIBOMReport,
+    *,
+    exclude_unfixable: bool = False,
+    blast_radii: list[BlastRadius] | None = None,
+) -> dict:
     """Convert report to SARIF 2.1.0 dict for GitHub Security tab.
 
     Args:
@@ -336,201 +574,43 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             (fixed_version is None/empty). Reduces noise in GitHub Security tab
             from CVEs that can't be acted on.
     """
-    rules = []
-    results = []
+    rules: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     seen_rule_ids: set[str] = set()
 
-    for rank, br in enumerate(report.blast_radii, 1):
-        finding = blast_radius_to_finding(br)
-        vuln = br.vulnerability
-        rule_id = vuln.id
-
-        # Skip unfixable findings when requested (no upstream fix available)
-        if exclude_unfixable and not vuln.fixed_version:
+    for rank, finding in enumerate(cve_findings(report, blast_radii), 1):
+        rule_id = finding.cve_id or finding.id
+        if not rule_id:
             continue
 
-        level = _SARIF_SEVERITY_MAP.get(vuln.severity, "warning")
+        if exclude_unfixable and not finding.fixed_version:
+            continue
 
-        if rule_id not in seen_rule_ids:
-            seen_rule_ids.add(rule_id)
-            # Use actual CVSS score when available, otherwise map from severity
-            sec_sev = str(vuln.cvss_score) if vuln.cvss_score is not None else _SECURITY_SEVERITY_SCORE.get(vuln.severity, "0.0")
-            rule_props: dict = {"security-severity": sec_sev}
-            if vuln.epss_score is not None:
-                rule_props["epss-score"] = round(vuln.epss_score, 5)
-            if vuln.is_kev:
-                rule_props["kev"] = True
-            if vuln.cvss_vector:
-                rule_props["cvss_vector"] = vuln.cvss_vector
-            rule_props["attack_vector"] = vuln.attack_vector
-            rule_props["attack_complexity"] = vuln.attack_complexity
-            rule_props["privileges_required"] = vuln.privileges_required
-            rule_props["user_interaction"] = vuln.user_interaction
-            rule_props["network_exploitable"] = bool(vuln.network_exploitable)
-            # exploit_likelihood (issue #486) — graded signal computed
-            # from KEV + EPSS percentile / probability.
-            rule_props["exploit_likelihood"] = vuln.exploit_likelihood
-            tags = [*vuln.cwe_ids, *exploitability_tags(parse_cvss_vector_signals(vuln.cvss_vector))]
-            if tags:
-                rule_props["tags"] = tags
-            rule: dict = {
-                "id": rule_id,
-                "shortDescription": {
-                    "text": _sanitize_sarif_text(
-                        "title",
-                        f"{vuln.severity.value.upper()}: {vuln.id} in {br.package.name}@{br.package.version}",
-                        fallback=f"{vuln.id} package vulnerability",
-                    )
-                },
-                "fullDescription": {"text": _sanitize_sarif_text("description", vuln.summary, fallback=f"Vulnerability {vuln.id}")},
-                "helpUri": f"https://osv.dev/vulnerability/{vuln.id}",
-                "defaultConfiguration": {"level": level},
-                "properties": rule_props,
-            }
-            rules.append(rule)
+        cve_severity = finding_severity(finding)
+        level = _SARIF_SEVERITY_MAP.get(cve_severity, "warning")
+        pkg_name = package_name(finding)
+        pkg_version = package_version(finding)
 
-        affected = ", ".join(a.name for a in br.affected_agents)
-        exposure_path = exposure_path_for_report_finding(finding, br=br, rank=rank)
-        message_text = f"{vuln.id} ({vuln.severity.value}) in {br.package.name}@{br.package.version}. Affects agents: {affected}."
-        if vuln.fixed_version:
-            message_text += f" Fix: upgrade to {vuln.fixed_version}."
-        exposure_chain = exposure_path_chain(exposure_path)
-        if exposure_chain:
-            message_text += f" Exposure path: {exposure_chain}. Blast radius: {exposure_path_blast_summary(exposure_path)}."
-
-        raw_config_path = br.affected_agents[0].config_path if br.affected_agents else "unknown"
-        # SARIF requires relative paths from repo root for GitHub Security tab.
-        # Absolute paths cause "No summary of scanned files" in GitHub UI.
-        config_path = _to_relative_path(raw_config_path)
-
-        fp_input = f"{rule_id}:{br.package.name}:{br.package.version}:{config_path}"
-        fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
-
-        kind = "informational" if vuln.severity == Severity.NONE else "fail"
-        result: dict = {
-            "ruleId": rule_id,
-            "level": level,
-            "kind": kind,
-            "message": {"text": _sanitize_sarif_text("title", message_text, fallback=f"{vuln.id} package vulnerability")},
-            "fingerprints": {
-                "agent-bom/v1": fingerprint,
-            },
-            "locations": [
-                {
-                    "physicalLocation": {
-                        "artifactLocation": {
-                            "uri": config_path,
-                            "uriBaseId": "%SRCROOT%",
-                        },
-                        "region": {
-                            "startLine": 1,
-                            "startColumn": 1,
-                        },
-                    },
-                }
-            ],
-        }
-        # Represent the agent → server → package → CVE → tool spine as SARIF
-        # relatedLocations (logicalLocations) so viewers can render the trust
-        # chain that the JSON exposure_path encodes.
-        related_locations = _exposure_related_locations(exposure_path)
-        if related_locations:
-            result["relatedLocations"] = related_locations
-        # Always emit structured properties so downstream consumers get
-        # the exploit_likelihood (#486) + blast metrics without needing
-        # a compliance tag to trigger enrichment.
-        cve_ids = sorted({cid for cid in (vuln.id, *vuln.aliases) if isinstance(cid, str) and cid.upper().startswith("CVE-")})
-        result_properties: dict = {
-            "blast_score": br.risk_score,
-            "match_confidence_tier": vuln.match_confidence_tier,
-            "cve_ids": cve_ids,
-            "exposure_path": exposure_path,
-            "exposure_chain": exposure_chain or None,
-            "epss_score": vuln.epss_score,
-            "is_kev": vuln.is_kev,
-            "cvss_vector": vuln.cvss_vector,
-            "attack_vector": vuln.attack_vector,
-            "attack_complexity": vuln.attack_complexity,
-            "privileges_required": vuln.privileges_required,
-            "user_interaction": vuln.user_interaction,
-            "network_exploitable": bool(vuln.network_exploitable),
-            "exploit_likelihood": vuln.exploit_likelihood,
-            "exposed_credentials": br.exposed_credentials,
-            "impact_category": getattr(br, "impact_category", "code-execution"),
-            "attack_vector_summary": getattr(br, "attack_vector_summary", None),
-            "reachability": br.reachability,
-            "symbol_reachability": getattr(br, "symbol_reachability", None),
-            "reachable_affected_symbols": getattr(br, "reachable_affected_symbols", []),
-            # Structured reach lists + AI-native context (unified Finding parity).
-            "affected_servers": [s.name for s in br.affected_servers],
-            "affected_agents": [a.name for a in br.affected_agents],
-            "exposed_tools": [t.name for t in br.exposed_tools],
-            "ai_risk_context": getattr(br, "ai_risk_context", None),
-            "ai_summary": getattr(br, "ai_summary", None),
-            "suppressed": bool(getattr(br, "suppressed", False)),
-        }
-        package_provenance = package_discovery_provenance(br.package)
-        if package_provenance:
-            result_properties["package_discovery_provenance"] = _sanitize_sarif_property(package_provenance)
-        result_properties["package_version_provenance"] = _sanitize_sarif_property(package_version_provenance(br.package))
-        agent_provenance = [
-            provenance for provenance in (agent_discovery_provenance(agent) for agent in br.affected_agents[:10]) if provenance
-        ]
-        if agent_provenance:
-            result_properties["agent_discovery_provenance"] = _sanitize_sarif_property(agent_provenance)
-        server_provenance = [
-            provenance
-            for provenance in (
-                sanitize_discovery_provenance(getattr(server, "discovery_provenance", None)) for server in br.affected_servers[:10]
+        _ensure_cve_sarif_rule(
+            finding,
+            rule_id=rule_id,
+            level=level,
+            pkg_name=pkg_name,
+            pkg_version=pkg_version,
+            seen_rule_ids=seen_rule_ids,
+            rules=rules,
+        )
+        results.append(
+            _cve_sarif_result(
+                report,
+                finding,
+                rank=rank,
+                rule_id=rule_id,
+                level=level,
+                pkg_name=pkg_name,
+                pkg_version=pkg_version,
             )
-            if provenance
-        ]
-        if server_provenance:
-            result_properties["server_discovery_provenance"] = _sanitize_sarif_property(server_provenance)
-        if (
-            br.owasp_tags
-            or br.atlas_tags
-            or getattr(br, "attack_tags", [])
-            or br.nist_ai_rmf_tags
-            or br.owasp_mcp_tags
-            or br.owasp_agentic_tags
-            or br.eu_ai_act_tags
-            or br.nist_csf_tags
-            or br.iso_27001_tags
-            or br.soc2_tags
-            or br.cis_tags
-            or br.cmmc_tags
-            or getattr(br, "nist_800_53_tags", [])
-            or getattr(br, "fedramp_tags", [])
-            or getattr(br, "pci_dss_tags", [])
-        ):
-            result_properties.update(
-                {
-                    "owasp_tags": br.owasp_tags,
-                    "atlas_tags": br.atlas_tags,
-                    "attack_tags": getattr(br, "attack_tags", []),
-                    "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
-                    "owasp_mcp_tags": br.owasp_mcp_tags,
-                    "owasp_agentic_tags": br.owasp_agentic_tags,
-                    "eu_ai_act_tags": br.eu_ai_act_tags,
-                    "nist_csf_tags": br.nist_csf_tags,
-                    "iso_27001_tags": br.iso_27001_tags,
-                    "soc2_tags": br.soc2_tags,
-                    "cis_tags": br.cis_tags,
-                    "cmmc_tags": br.cmmc_tags,
-                    "nist_800_53_tags": getattr(br, "nist_800_53_tags", []),
-                    "fedramp_tags": getattr(br, "fedramp_tags", []),
-                    "pci_dss_tags": getattr(br, "pci_dss_tags", []),
-                }
-            )
-        result["properties"] = result_properties
-        suppressions = _suppression_entries(br)
-        if suppressions:
-            result["suppressions"] = suppressions
-        taxa_refs = _framework_taxa_references(result_properties)
-        if taxa_refs:
-            result["taxa"] = taxa_refs
-        results.append(result)
+        )
 
     # Unified non-CVE findings, including MCP intelligence/blocklist matches.
     finding_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
@@ -550,9 +630,9 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             and evidence.get("provider") in _DEDICATED_CIS_PROVIDERS
         ):
             continue
-        sev = str(finding.severity or "medium").lower()
+        finding_severity_name = str(finding.severity or "medium").lower()
         rule_id = f"finding/{finding.finding_type.value}"
-        level = finding_sev_map.get(sev, "warning")
+        level = finding_sev_map.get(finding_severity_name, "warning")
         if rule_id not in seen_rule_ids:
             seen_rule_ids.add(rule_id)
             rules.append(
@@ -568,7 +648,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     },
                     "defaultConfiguration": {"level": level},
                     "properties": {
-                        "security-severity": finding_sev_score.get(sev, "4.0"),
+                        "security-severity": finding_sev_score.get(finding_severity_name, "4.0"),
                         "source": finding.source.value,
                         "finding_type": finding.finding_type.value,
                     },
@@ -754,10 +834,10 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
         for check in bundle.get("checks", []):
             if check.get("status") != "fail":
                 continue
-            sev = (check.get("severity") or "medium").lower()
+            cis_severity = str(check.get("severity") or "medium").lower()
             check_id = check.get("check_id") or "unknown"
             rule_id = f"cis/{cloud_key}/{check_id}"
-            level = cis_sev_map.get(sev, "warning")
+            level = cis_sev_map.get(cis_severity, "warning")
             remediation = check.get("remediation") or {}
             title = check.get("title") or rule_id
             help_uri = remediation.get("docs") or ""
@@ -769,7 +849,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     "shortDescription": {
                         "text": _sanitize_sarif_text(
                             "title",
-                            f"{sev.upper()}: CIS {cloud_key.upper()} {check_id} - {title}",
+                            f"{cis_severity.upper()}: CIS {cloud_key.upper()} {check_id} - {title}",
                             fallback=rule_id,
                         )
                     },
@@ -782,7 +862,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     },
                     "defaultConfiguration": {"level": level},
                     "properties": {
-                        "security-severity": cis_sev_score.get(sev, "4.0"),
+                        "security-severity": cis_sev_score.get(cis_severity, "4.0"),
                         "tags": ["cis", cloud_key, "compliance"],
                         "cis_section": check.get("cis_section") or "",
                     },

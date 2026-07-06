@@ -185,6 +185,8 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
             impact_parts.append(f"CVSS: {vuln.cvss_score}")
         impact_parts.append(f"Impact: {impact_cat}")
         impact_parts.append(f"Reachability: {reachability}")
+        if getattr(br, "symbol_reachability", None):
+            impact_parts.append(f"Symbol reach: {br.symbol_reachability}")
         if attack_summary:
             impact_parts.append(attack_summary)
         impact_text = ". ".join(impact_parts)
@@ -195,6 +197,17 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
                     vulnerability_id=vuln.id,
                     status=VexStatus.AFFECTED,
                     action_statement=f"CISA KEV: exploit known in the wild. Patch to {vuln.fixed_version or 'latest'}.",
+                    impact_statement=impact_text,
+                    products=products,
+                )
+            )
+        elif auto_triage and getattr(br, "symbol_reachability", None) == "unreachable":
+            statements.append(
+                VexStatement(
+                    vulnerability_id=vuln.id,
+                    status=VexStatus.NOT_AFFECTED,
+                    justification=VexJustification.VULNERABLE_CODE_NOT_IN_EXECUTE_PATH,
+                    action_statement=("AST symbol-reach: vulnerable package not reached from any MCP tool entrypoint."),
                     impact_statement=impact_text,
                     products=products,
                 )

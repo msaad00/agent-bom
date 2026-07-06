@@ -10,8 +10,9 @@ from agent_bom.models import AIBOMReport, BlastRadius, Severity
 
 def cve_findings(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> list[Finding]:
     """Return CVE findings, accepting non-empty legacy BlastRadius overrides."""
-    if blast_radii:
-        return [blast_radius_to_finding(br) for br in blast_radii]
+    source_blast_radii = blast_radii if blast_radii is not None else report.blast_radii
+    if source_blast_radii:
+        return [blast_radius_to_finding(br) for br in source_blast_radii]
 
     return [finding for finding in report.to_findings() if finding.finding_type == FindingType.CVE]
 

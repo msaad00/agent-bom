@@ -192,6 +192,8 @@ class ReachScore:
     reachable_creds: tuple[str, ...] = field(default=())
     reachable_agents: tuple[str, ...] = field(default=())
 
+    symbol_reachability: str | None = None  # function_reachable | package_reachable | unreachable
+
     @property
     def composite(self) -> float:
         """Deterministic 0..100 composite score.
@@ -232,9 +234,9 @@ class ReachScore:
             + cred_clamped * 20.0  # 20% — credential blast radius
             + breadth_clamped * 5.0  # 25% cap — cross-agent pivot
         )
-        # Final clamp — without KEV the absolute max is 30+20+25+20+25 = 120
-        # (we still clamp to 100 to keep the band UI honest).
-        return round(max(0.0, min(score, 100.0)), 2)
+        from agent_bom.symbol_reach_triage import apply_composite_delta
+
+        return apply_composite_delta(score, self.symbol_reachability)
 
     @property
     def band(self) -> Literal["green", "amber", "red", "pulsing-red"]:
@@ -260,6 +262,7 @@ class ReachScore:
             "reachable_tools": list(self.reachable_tools),
             "reachable_creds": list(self.reachable_creds),
             "reachable_agents": list(self.reachable_agents),
+            "symbol_reachability": self.symbol_reachability,
             "composite": self.composite,
             "band": self.band,
         }
@@ -380,6 +383,7 @@ def compute(node: GraphNode, graph: ContextGraph) -> ReachScore:
     cvss = float(node.metadata.get("cvss_score") or 0.0)
     epss = float(node.metadata.get("epss_score") or 0.0)
     is_kev = bool(node.metadata.get("is_kev"))
+    symbol_reachability = node.metadata.get("symbol_reachability")
 
     tool_capability = 0.0
     cred_visibility = 0.0
@@ -417,6 +421,7 @@ def compute(node: GraphNode, graph: ContextGraph) -> ReachScore:
         reachable_tools=tuple(reachable_tools),
         reachable_creds=tuple(reachable_creds),
         reachable_agents=tuple(sorted(reachable_agents)),
+        symbol_reachability=str(symbol_reachability) if symbol_reachability else None,
     )
 
 

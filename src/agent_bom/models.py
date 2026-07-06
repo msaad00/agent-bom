@@ -979,6 +979,12 @@ class BlastRadius:
         elif self.graph_reachable is False:
             reach_adjustment = -RISK_UNREACHABLE_PENALTY
 
+        sym = getattr(self, "symbol_reachability", None)
+        if sym == "function_reachable":
+            reach_adjustment = max(reach_adjustment, RISK_REACHABLE_BOOST)
+        elif sym == "unreachable":
+            reach_adjustment = min(reach_adjustment, -RISK_UNREACHABLE_PENALTY)
+
         self.risk_score = max(
             0.0,
             min(

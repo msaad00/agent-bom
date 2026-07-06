@@ -2,7 +2,7 @@
   "high_reach": {
     "agent_breadth": 2,
     "band": "pulsing-red",
-    "composite": 100.0,
+    "composite": 142.8,
     "cred_visibility": 1.0,
     "cvss": 9.8,
     "epss": 0.92,
@@ -20,6 +20,7 @@
       "list_files",
       "run_shell"
     ],
+    "symbol_reachability": null,
     "tool_capability": 1.0
   },
   "low_reach": {
@@ -37,6 +38,7 @@
     "reachable_tools": [
       "search_documents"
     ],
+    "symbol_reachability": null,
     "tool_capability": 0.1
   }
 }

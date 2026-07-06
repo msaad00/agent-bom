@@ -377,3 +377,46 @@ class TestPushRetry:
     def test_retry_delay_exponential_and_capped(self, attempt, expected_floor, cap):
         delay = _push_retry_delay(attempt, base=1.0, cap=cap)
         assert expected_floor <= delay <= cap + 0.01
+
+
+def test_push_async_uses_collector_client_tls_material(monkeypatch, tmp_path) -> None:
+    cert = tmp_path / "client.crt"
+    key = tmp_path / "client.key"
+    ca = tmp_path / "ca.crt"
+    cert.write_text("cert")
+    key.write_text("key")
+    ca.write_text("ca")
+
+    monkeypatch.setenv("AGENT_BOM_PUSH_TLS_CERT_FILE", str(cert))
+    monkeypatch.setenv("AGENT_BOM_PUSH_TLS_KEY_FILE", str(key))
+    monkeypatch.setenv("AGENT_BOM_PUSH_TLS_CA_FILE", str(ca))
+
+    captured: dict[str, object] = {}
+
+    def _fake_create_client(*, cert=None, verify=True, timeout=None):
+        captured["cert"] = cert
+        captured["verify"] = verify
+        captured["timeout"] = timeout
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def post(self, *args, **kwargs):
+                response = AsyncMock()
+                response.status_code = 200
+                return response
+
+        return _Client()
+
+    with (
+        patch("agent_bom.http_client.create_client", side_effect=_fake_create_client),
+        patch("agent_bom.security.validate_url", return_value=None),
+    ):
+        assert asyncio.run(_push_async("https://dashboard.example.com/v1/fleet/sync", {"agents": []})) is True
+
+    assert captured["cert"] == (str(cert), str(key))
+    assert captured["verify"] == str(ca)

@@ -160,6 +160,9 @@ spec:
                   mountPath: /snowflake
                   readOnly: true
                 {{- end }}
+                {{- with .Values.scanner.extraVolumeMounts }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
               securityContext:
                 {{- toYaml .Values.securityContext | nindent 16 }}
               resources:
@@ -176,6 +179,9 @@ spec:
               secret:
                 secretName: {{ $cloud.snowflake.keySecretName | quote }}
                 defaultMode: 0400
+            {{- end }}
+            {{- with .Values.scanner.extraVolumes }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.nodeSelector }}
           nodeSelector:

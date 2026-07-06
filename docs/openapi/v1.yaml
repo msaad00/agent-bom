@@ -1891,6 +1891,12 @@ components:
             type: string
           title: Exclude Servers
           type: array
+        external_scan:
+          anyOf:
+          - maxLength: 4096
+            type: string
+          - type: 'null'
+          title: External Scan
         filesystem_paths:
           items:
             maxLength: 4096
@@ -1971,6 +1977,12 @@ components:
             type: string
           title: Tf Dirs
           type: array
+        vex:
+          anyOf:
+          - maxLength: 4096
+            type: string
+          - type: 'null'
+          title: Vex
       title: ScanRequest
       type: object
     ScheduleCreate:

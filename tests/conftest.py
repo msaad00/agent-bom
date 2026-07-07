@@ -109,6 +109,23 @@ def _reset_identity_cache_state() -> None:
         pass
 
 
+def _sync_test_auth_config_from_env() -> None:
+    """Re-read auth posture flags from env after per-test env mutations."""
+    try:
+        import agent_bom.config as config
+
+        config.DEMO_ESTATE = (os.environ.get("AGENT_BOM_DEMO_ESTATE") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        role = (os.environ.get("AGENT_BOM_NO_AUTH_ROLE") or "admin").strip()
+        config.NO_AUTH_ROLE = role
+    except Exception:
+        pass
+
+
 def _reset_api_runtime_state() -> None:
     try:
         from agent_bom.api import server as api_server
@@ -135,6 +152,8 @@ def _reset_api_runtime_state() -> None:
         api_server.set_dev_api_key(None)
     except Exception:
         pass
+
+    _sync_test_auth_config_from_env()
 
     # FastAPI dependency overrides are stored on the app object and persist
     # across tests; a leaked override changes auth/behaviour for unrelated
@@ -208,6 +227,8 @@ _AUTH_ENV_VARS = (
     "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
     "AGENT_BOM_SCIM_BEARER_TOKEN",
     "AGENT_BOM_SCIM_BEARER_TOKENS_JSON",
+    "AGENT_BOM_NO_AUTH_ROLE",
+    "AGENT_BOM_DEMO_ESTATE",
 )
 
 _STORAGE_ENV_VARS = (

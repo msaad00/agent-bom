@@ -16,6 +16,9 @@ def test_how_it_works_includes_pipeline_steps() -> None:
     for step in ("Discover", "Extract", "Scan", "Enrich", "Analyze", "Report"):
         assert step in svg
     assert "PIPELINE" not in svg
+    assert 'fill="#FF9900"' in svg
+    assert "cl-azure-" in svg
+    assert "Snowflake" in svg
 
 
 def test_architecture_includes_core_surfaces() -> None:

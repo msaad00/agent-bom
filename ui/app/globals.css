@@ -2,15 +2,15 @@
 
 :root {
   color-scheme: dark;
-  --background: #0a0a0b;
-  --foreground: #ededed;
-  --surface: #111113;
-  --surface-elevated: #18181b;
-  --surface-muted: rgba(39, 39, 42, 0.45);
-  --border-subtle: rgba(63, 63, 70, 0.72);
-  --border-strong: rgba(82, 82, 91, 0.88);
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
+  --background: #0c0c10;
+  --foreground: #f0f0f2;
+  --surface: #141418;
+  --surface-elevated: #1c1c22;
+  --surface-muted: rgba(48, 48, 56, 0.5);
+  --border-subtle: rgba(72, 72, 82, 0.78);
+  --border-strong: rgba(96, 96, 108, 0.9);
+  --text-secondary: #b4b4bc;
+  --text-tertiary: #8b8b96;
   --shadow-color: rgba(0, 0, 0, 0.28);
   --scrollbar-thumb: #27272a;
   --scrollbar-thumb-hover: #3f3f46;
@@ -113,8 +113,8 @@ body {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .card-hover:hover {
-  border-color: #3f3f46;
-  box-shadow: 0 0 0 1px rgba(63, 63, 70, 0.3);
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-strong) 35%, transparent);
 }
 
 /* Stat card gradient backgrounds */

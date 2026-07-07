@@ -5,7 +5,6 @@ import {
   api,
   type GatewayFeedActionType,
   type GatewayFeedEvent,
-  type GatewayFeedKpis,
   formatDate,
 } from "@/lib/api";
 import { getSessionWebSocketToken } from "@/lib/auth";
@@ -13,7 +12,6 @@ import { getConfiguredApiUrl } from "@/lib/runtime-config";
 import {
   Activity,
   Ban,
-  Bot,
   Clock,
   EyeOff,
   Loader2,
@@ -22,7 +20,6 @@ import {
   Sparkles,
   Wifi,
   WifiOff,
-  Zap,
 } from "lucide-react";
 
 // ─── Action badge styling ─────────────────────────────────────────────────────
@@ -66,24 +63,8 @@ interface LiveMetrics {
   total_blocked: number;
 }
 
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
-  return `${h}h ${m}m`;
-}
-
-// Format a KPI count, degrading to an em dash when the field is absent. A
-// partial KPI payload (object present, individual field missing) must render a
-// placeholder rather than crash the panel on `undefined.toLocaleString()`.
-export function fmtCount(value: number | undefined | null): string {
-  return typeof value === "number" ? value.toLocaleString() : "—";
-}
-
 function formatEventTime(ts: string): string {
   if (!ts) return "—";
-  // Feed timestamps are ISO-8601 strings already normalized server-side.
   try {
     return formatDate(ts);
   } catch {
@@ -93,9 +74,8 @@ function formatEventTime(ts: string): string {
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
-export function GatewayFeedPanel() {
+export function GatewayFeedPanel({ onActivity }: { onActivity?: () => void }) {
   const [events, setEvents] = useState<GatewayFeedEvent[]>([]);
-  const [kpis, setKpis] = useState<GatewayFeedKpis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionFilter, setActionFilter] = useState<GatewayFeedActionType | "">("");
@@ -105,18 +85,13 @@ export function GatewayFeedPanel() {
   const load = () => {
     setLoading(true);
     setError(null);
-    void Promise.allSettled([api.getGatewayFeed(200), api.getGatewayFeedKpis()])
-      .then(([feedResult, kpiResult]) => {
+    void Promise.allSettled([api.getGatewayFeed(200)])
+      .then(([feedResult]) => {
         const failures: string[] = [];
         if (feedResult.status === "fulfilled") {
           setEvents(feedResult.value.events);
         } else {
           failures.push(`feed: ${feedResult.reason?.message ?? "request failed"}`);
-        }
-        if (kpiResult.status === "fulfilled") {
-          setKpis(kpiResult.value);
-        } else {
-          failures.push(`kpis: ${kpiResult.reason?.message ?? "request failed"}`);
         }
         setError(failures.length === 0 ? null : failures.join("; "));
       })
@@ -165,12 +140,10 @@ export function GatewayFeedPanel() {
           if (total !== lastSeen && now - lastRefresh > 3000) {
             lastSeen = total;
             lastRefresh = now;
-            void Promise.allSettled([api.getGatewayFeed(200), api.getGatewayFeedKpis()]).then(
-              ([feedResult, kpiResult]) => {
-                if (feedResult.status === "fulfilled") setEvents(feedResult.value.events);
-                if (kpiResult.status === "fulfilled") setKpis(kpiResult.value);
-              },
-            );
+            void api.getGatewayFeed(200).then((feedResult) => {
+              setEvents(feedResult.events);
+              onActivity?.();
+            });
           }
         } catch {
           // ignore parse errors
@@ -189,53 +162,15 @@ export function GatewayFeedPanel() {
 
   return (
     <div className="space-y-5">
-      {/* KPI header bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
-        <KpiCard
-          label="Calls Today"
-          value={fmtCount(kpis?.calls_today)}
-          icon={Zap}
-          color="text-emerald-400"
-        />
-        <KpiCard
-          label="Blocked"
-          value={fmtCount(kpis?.blocked_today)}
-          icon={Ban}
-          color="text-red-400"
-        />
-        <KpiCard
-          label="Shadow AI Blocked"
-          value={fmtCount(kpis?.shadow_ai_blocked)}
-          icon={Bot}
-          color="text-orange-400"
-          hint="undeclared agents + shadow MCP servers"
-        />
-        <KpiCard
-          label="Data Filters"
-          value={fmtCount(kpis?.data_filters_applied)}
-          icon={EyeOff}
-          color="text-amber-400"
-        />
-        {kpis?.uptime_seconds != null && (
-          <KpiCard
-            label="Uptime"
-            value={formatUptime(kpis.uptime_seconds)}
-            icon={Activity}
-            color="text-zinc-400"
-          />
-        )}
-      </div>
-
-      {/* Feed header + controls */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4">
+      <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
+        <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-300 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-emerald-400" />
-              Gateway Live Feed
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
+              <Activity className="h-4 w-4 text-emerald-400" />
+              Gateway live feed
             </h3>
-            <p className="text-[10px] text-zinc-600 mt-0.5">
-              Unified fleet stream — tool-call authorization, data filters, and LLM calls, per agent
+            <p className="mt-0.5 text-xs text-[color:var(--text-secondary)]">
+              Tool-call authorization, data filters, and blocks — per agent and target
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -276,7 +211,7 @@ export function GatewayFeedPanel() {
             <button
               key={value || "all"}
               onClick={() => setActionFilter(value as GatewayFeedActionType | "")}
-              className={`px-2.5 py-1 rounded text-[10px] font-medium transition-colors ${
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 actionFilter === value
                   ? "bg-zinc-700 text-zinc-100"
                   : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
@@ -335,11 +270,11 @@ function FeedRow({ event }: { event: GatewayFeedEvent }) {
         <span className="text-xs text-zinc-400 font-mono shrink-0 max-w-[12rem] truncate" title={event.target}>
           {event.target}
         </span>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${meta.badge}`}>
+        <span className={`shrink-0 rounded border px-1.5 py-0.5 text-xs ${meta.badge}`}>
           {meta.label}
         </span>
         {event.shadow && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded border shrink-0 bg-orange-950 text-orange-300 border-orange-800">
+          <span className="shrink-0 rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-xs text-orange-300">
             shadow AI
           </span>
         )}
@@ -347,34 +282,10 @@ function FeedRow({ event }: { event: GatewayFeedEvent }) {
           {event.detail}
         </span>
       </div>
-      <span className="text-[10px] text-zinc-600 shrink-0 ml-3 flex items-center gap-1">
+      <span className="ml-3 flex shrink-0 items-center gap-1 text-xs text-[color:var(--text-tertiary)]">
         <Clock className="w-3 h-3" />
         {formatEventTime(event.ts)}
       </span>
-    </div>
-  );
-}
-
-// ─── KPI card ─────────────────────────────────────────────────────────────────
-
-function KpiCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-  hint,
-}: {
-  label: string;
-  value: string;
-  icon: React.ElementType;
-  color: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4" title={hint}>
-      <Icon className={`w-4 h-4 mb-2 ${color}`} />
-      <div className="text-2xl font-bold font-mono">{value}</div>
-      <div className="text-xs text-zinc-500 mt-0.5">{label}</div>
     </div>
   );
 }

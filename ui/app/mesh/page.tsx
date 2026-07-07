@@ -480,17 +480,25 @@ export default function MeshPage() {
   return (
     <div className={`${captureMode ? "h-screen" : "h-[calc(100vh-3.5rem)]"} flex flex-col bg-background text-foreground`}>
       {/* Header */}
-      <div className={`flex flex-col gap-3 border-b border-[var(--border-subtle)] lg:flex-row lg:items-center lg:justify-between ${captureMode ? "px-5 py-3" : "px-4 py-3"}`}>
+      {captureMode ? (
+        <div className="border-b border-[var(--border-subtle)] px-5 py-2.5">
+          <h1 className="text-base font-semibold text-foreground">Agent Mesh</h1>
+          <p className="text-sm text-[var(--text-secondary)]">
+            agent → MCP server → package → tool → CVE
+          </p>
+        </div>
+      ) : (
+      <div className={`flex flex-col gap-3 border-b border-[var(--border-subtle)] lg:flex-row lg:items-center lg:justify-between px-4 py-3`}>
         <div className="min-w-0">
           <h1 className="text-lg font-semibold text-foreground">Agent Mesh</h1>
-          <p className="break-words text-xs text-[var(--text-secondary)]">
+          <p className="break-words text-sm text-[var(--text-secondary)]">
             Evidence-scoped path view across agents, MCP servers, tools, packages, credential references, and findings
           </p>
-          <p className={`mt-1 break-words text-[var(--text-tertiary)] ${captureMode ? "text-xs" : "text-[11px]"}`}>
+          <p className="mt-1 break-words text-xs text-[var(--text-tertiary)]">
             Default view ranks the highest-risk agent first and hides lower-priority nodes until you expand filters.
           </p>
         </div>
-        <div className={`flex min-w-0 flex-wrap items-center ${captureMode ? "gap-2" : "gap-3"}`}>
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           <div className="flex max-w-full items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800">
             {[
               { key: "radial" as const, label: "Risk Map", icon: Orbit },
@@ -527,15 +535,18 @@ export default function MeshPage() {
           <GraphLegend items={legendItems} />
         </div>
       </div>
+      )}
 
       {/* Stats bar */}
       <MeshStats
         stats={stats}
         pathFocusActive={Boolean(pathFocusIds)}
         onTogglePathFocus={stats.topExposurePath ? () => setPathFocusEnabled((current) => !current) : undefined}
+        captureMode={captureMode}
       />
 
       {/* Filter toolbar */}
+      {!captureMode && (
       <MeshToolbar
         nodeFilter={nodeFilter}
         setNodeFilter={setNodeFilter}
@@ -549,12 +560,15 @@ export default function MeshPage() {
         selectedAgents={selectedAgents}
         toggleAgent={toggleAgent}
       />
+      )}
 
       {/* Graph */}
       <div className="flex-1 flex flex-col min-h-0">
+        {!captureMode && (
         <div className="mb-2 shrink-0 px-1">
           <GraphLensSwitcher variant="compact" />
         </div>
+        )}
         <div className="relative min-h-0 flex-1">
         {detailLoading && activeResult && (
           <GraphRefreshOverlay label="Updating agent mesh" />

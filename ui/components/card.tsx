@@ -76,7 +76,7 @@ export function SectionLabel({
 }) {
   return (
     <div
-      className={`text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--text-tertiary)] ${className}`}
+      className={`text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)] ${className}`}
     >
       {children}
     </div>

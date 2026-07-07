@@ -28,6 +28,48 @@
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
 
+<details open>
+<summary><b>Human view</b> — security control plane for AI/MCP estates</summary>
+
+Scan locally, centralize evidence in your VPC, then govern selected runtime hops.
+One model (`Finding` + `ContextGraph`) for CLI, CI, API, dashboard, MCP tools, and
+gateway/proxy enforcement. We are **not** a managed MCP connector catalog — we
+prove blast radius and enforce policy on **your** agents and upstream MCP servers.
+
+**Three lanes:** local scan → self-hosted control plane → runtime proxy/gateway.
+
+</details>
+
+<details>
+<summary><b>Agent view</b> — capability manifest (strict MCP + REST)</summary>
+
+```text
+DESCRIPTION
+Open security scanner and self-hosted control plane. Scan → graph → prove path →
+enforce on selected runtime hops. Same evidence for humans and headless agents.
+
+CAPABILITIES
+MCP security tools       70 tools · 6 resources · 8 workflow prompts
+REST API                 283 ops · OpenAPI docs/openapi/v1.json
+Graph / blast radius     UnifiedGraph · attack paths · hop counts · SARIF export
+Runtime proxy            stdio MCP inline policy (7 detectors)
+Runtime gateway          HTTP/SSE relay · /v1/gateway/feed · KPI rollup
+Fleet inventory          MCP configs · transports · credential refs
+Auth                     API keys · OAuth AS · OIDC · SAML · SCIM
+Deployment               CLI · Docker · Helm · customer VPC (not managed SaaS)
+
+NOT SHIPPED
+No 1,000+ MCP app library · No Cedar engine · No turnkey SIEM tiles
+
+ENDPOINTS
+MCP server               agent-bom mcp server
+Control plane            agent-bom serve
+Gateway KPIs             GET /v1/gateway/feed/kpis
+Full manifest            docs/AGENT_CAPABILITY.md
+```
+
+</details>
+
 ## What Is agent-bom
 
 `agent-bom` is a read-only scanner and self-hosted control plane for local
@@ -167,8 +209,8 @@ Run `agent-bom db update` before `--offline` image or package scans. Guided path
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway policy posture with rules and bound agents" width="900" />
-  <br/><em>Runtime gateway — policy posture, rules, and bound agents</em>
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/gateway-policies-live.png" alt="Runtime gateway live feed with KPI rollup and tool-call authorization stream" width="900" />
+  <br/><em>Runtime gateway — calls, blocks, shadow AI, and live tool-call feed</em>
 </p>
 
 <p align="center">

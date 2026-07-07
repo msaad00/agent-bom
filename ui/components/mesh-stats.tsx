@@ -10,10 +10,12 @@ export function MeshStats({
   stats,
   pathFocusActive = false,
   onTogglePathFocus,
+  captureMode = false,
 }: {
   stats: MeshStatsData;
   pathFocusActive?: boolean;
   onTogglePathFocus?: (() => void) | undefined;
+  captureMode?: boolean;
 }) {
   const totalSev = stats.criticalCount + stats.highCount + stats.mediumCount + stats.lowCount;
   const omittedTotal =
@@ -33,6 +35,7 @@ export function MeshStats({
         />
       )}
 
+      {!captureMode && (
       <div className="flex items-center gap-4 px-4 py-2 text-xs flex-wrap">
         <Stat icon={ShieldAlert} label="Agents" value={stats.totalAgents} color="text-emerald-400" />
         <Stat icon={Server} label="Shared Servers" value={stats.sharedServers} color="text-cyan-400" />
@@ -110,6 +113,7 @@ export function MeshStats({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

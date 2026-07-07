@@ -390,7 +390,7 @@ function SecurityGraphPageContent() {
             </div>
           </div>
           <div className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Graph operating mode</p>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-orange-400">Graph operating mode</p>
             <h2 className="mt-2 text-base font-semibold text-[color:var(--foreground)]">Fix-first investigation</h2>
             <p className="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">
               This page starts with the highest-risk proven path. Use the queue below to change focus, or open the
@@ -447,7 +447,7 @@ function SecurityGraphPageContent() {
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Snapshot</p>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Snapshot</p>
                 <h2 className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">
                   {selectedSnapshot ? `Scan ${selectedSnapshot.scan_id.slice(0, 8)}…` : "No persisted graph snapshot yet"}
                 </h2>
@@ -524,7 +524,7 @@ function SecurityGraphPageContent() {
           </div>
 
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Current pressure</p>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Current pressure</p>
             {posture ? (
               <div className="mt-4">
                 <div className="flex items-end justify-between gap-4">
@@ -534,7 +534,7 @@ function SecurityGraphPageContent() {
                   </div>
                   <div className="text-right">
                     <div className="font-mono text-2xl text-[color:var(--foreground)]">{posture.score}</div>
-                    <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">score</div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">score</div>
                   </div>
                 </div>
                 <div className="mt-4 h-2 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
@@ -633,7 +633,7 @@ function SecurityGraphPageContent() {
           <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Attack path queue</p>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-orange-400">Attack path queue</p>
                 <h2 className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">
                   {attackPaths.length} ranked fix-first path{attackPaths.length !== 1 ? "s" : ""} in the selected snapshot
                 </h2>
@@ -675,7 +675,7 @@ function SecurityGraphPageContent() {
                 </div>
               </div>
               <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3 text-sm text-[color:var(--text-secondary)]">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Highest composite risk</div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Highest composite risk</div>
                 <div className="mt-1 font-mono text-xl text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
               </div>
             </div>
@@ -704,7 +704,7 @@ function SecurityGraphPageContent() {
                     {card && (
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <div>
-                          <div className="text-[10px] uppercase tracking-[0.18em] text-orange-300">#{card.rank} fix first</div>
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-orange-300">#{card.rank} fix first</div>
                           <div className="mt-1 text-sm font-semibold leading-5 text-[color:var(--foreground)]">{card.title}</div>
                         </div>
                         <div className="rounded-full border border-red-900/60 bg-red-950/30 px-2 py-1 font-mono text-[11px] text-red-200">
@@ -724,7 +724,7 @@ function SecurityGraphPageContent() {
                           <span
                             key={`${card.id}-${reason.kind}`}
                             title={reason.detail}
-                            className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-[10px] text-[color:var(--text-secondary)]"
+                            className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)]"
                           >
                             {reason.label}
                           </span>
@@ -785,7 +785,7 @@ function QuickStat({
   };
   return (
     <div className={`rounded-2xl border px-4 py-3 ${tones[tone]}`}>
-      <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">{label}</div>
+      <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">{label}</div>
       <div className="mt-1 font-mono text-xl">{value}</div>
     </div>
   );

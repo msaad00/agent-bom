@@ -1515,7 +1515,7 @@ async function writeScreenshotManifest() {
     {
       path: "gateway-policies-live.png",
       page: "/gateway?capture=1",
-      scope: "Runtime gateway policy posture with one advisory baseline policy, two rules, and two bound agents",
+      scope: "Runtime gateway KPI rollup and live tool-call feed",
     },
     {
       path: "security-graph-live.png",
@@ -1631,17 +1631,9 @@ async function main() {
       await scrollTo(fleetPage, 130);
     });
     await capture(page, "/gateway?capture=1", "gateway-policies-live.png", async (gatewayPage) => {
-      // The gateway page now defaults to the Live Feed tab; switch to Policies
-      // and select a policy when present. Tolerate UI drift so a valid frame is
-      // always captured even if the tab/policy controls move.
-      try {
-        await gatewayPage.getByRole("button", { name: "Policies" }).first().click({ timeout: 8000 });
-        await gatewayPage.waitForTimeout(400);
-        await gatewayPage.getByText("Default-deny prod MCP runtime").first().click({ timeout: 8000 });
-        await gatewayPage.waitForTimeout(500);
-      } catch {
-        await gatewayPage.waitForTimeout(500);
-      }
+      await gatewayPage.getByText("Calls today").first().waitFor({ state: "visible", timeout: 8000 });
+      await gatewayPage.getByText("Gateway live feed").first().waitFor({ state: "visible", timeout: 8000 });
+      await gatewayPage.waitForTimeout(400);
     });
     await capture(page, "/audit?capture=1", "identity-audit-live.png", async (auditPage) => {
       await auditPage.getByPlaceholder("Filter by resource…").fill("identity");

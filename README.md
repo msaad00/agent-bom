@@ -177,9 +177,22 @@ listing; install and liveness checks live in the integration docs.
 
 ```bash
 pip install agent-bom
-agent-bom db update                      # populate ~/.agent-bom vuln DB before --offline scans
-agent-bom quickstart --run --offline    # sample scan, gateway policy seed, dashboard data
-agent-bom agents -p . -f html -o agent-bom-report.html
+agent-bom scan -p .                       # scan this repo: rich console panel with posture grade
+```
+
+The console panel is the fastest first impression — posture grade, blast radius,
+and fix-first findings inline, no file to open. For a reproducible run (safe to
+screenshot or attach to a bug report), use the release-pinned demo:
+
+```bash
+agent-bom scan --demo --offline           # curated sample, no network, deterministic
+```
+
+Then export or hand off when you need a file:
+
+```bash
+agent-bom db update                       # populate ~/.agent-bom vuln DB before --offline scans
+agent-bom scan -p . -f html -o agent-bom-report.html
 ```
 
 Run `agent-bom db update` before `--offline` image or package scans. Guided path:

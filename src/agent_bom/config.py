@@ -254,6 +254,18 @@ DSPM_DB_MAX_CELL_CHARS = _int("AGENT_BOM_DSPM_DB_MAX_CELL_CHARS", 4096)
 LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 
 
+# ── ClickHouse findings-ingest (opt-in analytics mirror) ─────────────────────
+# When a ClickHouse HTTP URL is configured, the scan-completion history hook
+# (agent_bom.history.save_report) best-effort mirrors the scan's findings and
+# summary into ClickHouse alongside the local SQLite analytics store, so the
+# `agent-bom analytics` query command sees CLI scans. Disabled by default:
+# with no URL the hook is a clean no-op with zero overhead, and any ClickHouse
+# error is swallowed so ingest can never fail a scan. The runtime gate reads
+# AGENT_BOM_CLICKHOUSE_URL at call time (so an env override set after import is
+# honored); this constant documents the knob and its default.
+CLICKHOUSE_URL = _str("AGENT_BOM_CLICKHOUSE_URL", "")
+
+
 # ── Graph Retention ───────────────────────────────────────────────────────
 # Age-based graph snapshot retention for self-hosted graph stores. Per-tenant
 # overrides resolve from ``AGENT_BOM_GRAPH_RETENTION_OVERRIDES`` (JSON map) and

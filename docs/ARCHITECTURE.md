@@ -5,17 +5,11 @@ CLI entry points, API/UI, MCP server mode, runtime proxy/gateway, cloud posture,
 IaC scanning, fleet, graph, reporting, and compliance workflows over the same
 core evidence model.
 
----
-
-## 0. Hermetic single-language stack
-
-agent-bom is pure Python (3.11+) end to end — CLI, FastAPI surface, MCP server, parsers, OSV/NVD/EPSS/KEV/GHSA enrichment, blast-radius scoring, IaC engine, and CIS benchmarks all live in the same interpreter. There is no Rust/Go/CGo extension on the scan path. Disk-image scans use native `dpkg` / RPM parsers (`src/agent_bom/filesystem.py`); the `syft` Go binary is opt-in only as a tar-archive fallback for VM-style images.
-
-Operational consequences:
-
-- One language, one dep tree, one pip-audit/SBOM surface to audit and reproduce.
-- Wheels build cleanly on `linux/amd64` and `linux/arm64` — no per-arch native toolchain.
-- Slower than Rust/Go scanners on huge fanouts; per-package memory is higher. For VM disk-image scanning at scale, install `syft` alongside agent-bom and let the fallback path take over.
+> **Product overview lives in [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md)** — the
+> canonical five-stage flow (intake → scan → evidence → control → artifacts) and
+> the symbol-level CVE reachability differentiator. This document is the deeper
+> surface and module architecture: it leads with the product mental model, then
+> the implementation stack.
 
 ---
 
@@ -96,6 +90,24 @@ flowchart TB
 
     L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7
 ```
+
+---
+
+## 1c. Implementation stack — hermetic and single-language
+
+With the product mental model in place, the implementation detail: agent-bom is
+pure Python (3.11+) end to end — CLI, FastAPI surface, MCP server, parsers,
+OSV/NVD/EPSS/KEV/GHSA enrichment, blast-radius scoring, IaC engine, and CIS
+benchmarks all live in the same interpreter. There is no Rust/Go/CGo extension
+on the scan path. Disk-image scans use native `dpkg` / RPM parsers
+(`src/agent_bom/filesystem.py`); the `syft` Go binary is opt-in only as a
+tar-archive fallback for VM-style images.
+
+Operational consequences:
+
+- One language, one dep tree, one pip-audit/SBOM surface to audit and reproduce.
+- Wheels build cleanly on `linux/amd64` and `linux/arm64` — no per-arch native toolchain.
+- Slower than Rust/Go scanners on huge fanouts; per-package memory is higher. For VM disk-image scanning at scale, install `syft` alongside agent-bom and let the fallback path take over.
 
 ---
 

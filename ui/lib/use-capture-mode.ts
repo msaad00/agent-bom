@@ -12,10 +12,12 @@ function readCaptureModeFromLocation(): boolean {
 }
 
 export function useCaptureMode(): boolean {
-  const [captureMode, setCaptureMode] = useState(readCaptureModeFromLocation);
+  // Defer URL reads until after mount so SSR and the first client paint match.
+  const [captureMode, setCaptureMode] = useState(false);
 
   useEffect(() => {
     const update = () => setCaptureMode(readCaptureModeFromLocation());
+    update();
     window.addEventListener("popstate", update);
     return () => window.removeEventListener("popstate", update);
   }, []);

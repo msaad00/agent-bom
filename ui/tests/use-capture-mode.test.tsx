@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { graphFitViewOptions } from "@/lib/graph-viewport";
@@ -11,12 +11,14 @@ describe("useCaptureMode", () => {
     expect(isCaptureModeSearch("")).toBe(false);
   });
 
-  it("reads capture mode synchronously on first render", () => {
+  it("reads capture mode after mount", async () => {
     window.history.replaceState({}, "", "/mesh?capture=1");
 
     const { result } = renderHook(() => useCaptureMode());
 
-    expect(result.current).toBe(true);
+    await waitFor(() => {
+      expect(result.current).toBe(true);
+    });
   });
 
   it("tracks browser navigation changes", () => {

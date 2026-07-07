@@ -1,7 +1,7 @@
 {
   "release_version": "0.93.0",
-  "captured_at": "2026-07-02T23:19:14.785Z",
-  "capture_note": "Captured from real Next.js dashboard routes in capture mode. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
+  "captured_at": "2026-07-07T00:51:18.280Z",
+  "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — simulated estate label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
   "screenshots": [
     {
       "path": "dashboard-live.png",

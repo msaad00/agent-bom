@@ -237,7 +237,7 @@ def test_aws_bedrock_agents_discovered():
 
     mock_ecs = MagicMock()
     mock_ecs.list_clusters.return_value = {"clusterArns": []}
-    mock_session.client.side_effect = lambda svc, **kw: {"bedrock-agent": mock_bedrock, "ecs": mock_ecs}[svc]
+    mock_session.client.side_effect = lambda svc, **kw: {"bedrock-agent": mock_bedrock, "ecs": mock_ecs}.get(svc, _empty_boto_stub())
     mock_session.region_name = "us-east-1"
 
     with patch("boto3.Session", return_value=mock_session):
@@ -324,7 +324,7 @@ def test_aws_access_denied_returns_warning():
     ecs_cluster_paginator = MagicMock()
     ecs_cluster_paginator.paginate.return_value = [{"clusterArns": []}]
     mock_ecs.get_paginator.return_value = ecs_cluster_paginator
-    mock_session.client.side_effect = lambda svc, **kw: {"bedrock-agent": mock_bedrock, "ecs": mock_ecs}[svc]
+    mock_session.client.side_effect = lambda svc, **kw: {"bedrock-agent": mock_bedrock, "ecs": mock_ecs}.get(svc, _empty_boto_stub())
 
     with patch("boto3.Session", return_value=mock_session):
         importlib.reload(importlib.import_module("agent_bom.cloud.aws"))
@@ -360,7 +360,7 @@ def test_aws_ecs_images_collected():
             }
         ]
     }
-    mock_session.client.side_effect = lambda svc, **kw: {"bedrock-agent": mock_bedrock, "ecs": mock_ecs}[svc]
+    mock_session.client.side_effect = lambda svc, **kw: {"bedrock-agent": mock_bedrock, "ecs": mock_ecs}.get(svc, _empty_boto_stub())
 
     with patch("boto3.Session", return_value=mock_session):
         importlib.reload(importlib.import_module("agent_bom.cloud.aws"))
@@ -1094,7 +1094,7 @@ def test_aws_lambda_direct_discovery():
         "bedrock-agent": mock_bedrock,
         "ecs": mock_ecs,
         "lambda": mock_lambda,
-    }[svc]
+    }.get(svc, _empty_boto_stub())
 
     with patch("boto3.Session", return_value=mock_session):
         importlib.reload(importlib.import_module("agent_bom.cloud.aws"))
@@ -2511,3 +2511,12 @@ def test_ollama_tool_metadata():
     assert "params:14B" in tool.description
     assert "quant:Q4_K_M" in tool.description
     assert "format:gguf" in tool.description
+
+
+def _empty_boto_stub():
+    """Benign stub for AWS services a test doesn't explicitly mock (e.g. lambda
+    now that discovery is default-on): empty paginators, no resources."""
+    from unittest.mock import MagicMock
+    m = MagicMock()
+    m.get_paginator.return_value.paginate.return_value = []
+    return m

@@ -38,11 +38,11 @@ export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = 
     <>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[color:var(--text-tertiary)]">Attack path</p>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Attack path</p>
           <p className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">Credential-aware blast radius</p>
         </div>
         <div className={`rounded-xl border px-2.5 py-1 font-mono text-xs font-semibold ${riskTone}`}>
-          <span className="text-[10px] uppercase tracking-[0.16em]">Risk</span>{" "}
+          <span className="text-[11px] uppercase tracking-[0.14em]">Risk</span>{" "}
           <span>{riskScore.toFixed(1)}</span>
         </div>
       </div>
@@ -75,7 +75,7 @@ export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = 
                   >
                     {node.label}
                   </p>
-                  <p className="text-[9px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{node.type}</p>
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{node.type}</p>
                 </div>
               </div>
             </div>
@@ -85,7 +85,7 @@ export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = 
       {href && (
         <div className="mt-4 flex items-center justify-between border-t border-[color:var(--border-subtle)] pt-3">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Drilldown</p>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Drilldown</p>
             <p className="mt-1 text-xs font-medium text-emerald-500 transition-colors group-hover:text-emerald-400">
               Open focused security graph
             </p>

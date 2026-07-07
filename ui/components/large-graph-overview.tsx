@@ -7,6 +7,7 @@ import { Activity, GitBranch, Layers3, Network, ShieldAlert } from "lucide-react
 import type { LineageNodeData } from "@/components/lineage-nodes";
 import { GraphLegend } from "@/components/graph-chrome";
 import type { LegendItem } from "@/lib/graph-utils";
+import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
   buildLargeGraphOverviewModel,
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES,
@@ -175,6 +176,7 @@ export function LargeGraphOverview({
   legendItems,
   onNodeSelect,
 }: LargeGraphOverviewProps) {
+  const captureMode = useCaptureMode();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const model = useMemo(() => buildLargeGraphOverviewModel(nodes, edges), [nodes, edges]);
@@ -298,13 +300,15 @@ export function LargeGraphOverview({
         <div className="pointer-events-auto absolute right-3 top-3">
           <GraphLegend items={legendItems} />
         </div>
-        <div className="pointer-events-none absolute bottom-3 left-3 rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-400 backdrop-blur">
+        {!captureMode && (
+        <div className="pointer-events-none absolute bottom-3 left-3 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/90 px-3 py-2 text-xs text-[color:var(--text-secondary)] backdrop-blur">
           Pan, zoom, search, filter, and select nodes for evidence.
           <span className="sr-only">
             Maximum overview draw budget is {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES.toLocaleString()} nodes and{" "}
             {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES.toLocaleString()} edges.
           </span>
         </div>
+        )}
       </div>
     </div>
   );

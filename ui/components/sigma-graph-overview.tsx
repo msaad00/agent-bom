@@ -10,6 +10,7 @@ import type { LineageNodeData } from "@/components/lineage-nodes";
 import type { LegendItem } from "@/lib/graph-utils";
 import type { UnifiedGraphData } from "@/lib/graph-schema";
 import type { UnifiedGraphFlowFilters } from "@/lib/unified-graph-flow";
+import { useCaptureMode } from "@/lib/use-capture-mode";
 import {
   LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES,
@@ -95,6 +96,7 @@ export function SigmaGraphOverview({
   legendItems,
   onNodeSelect,
 }: SigmaGraphOverviewProps) {
+  const captureMode = useCaptureMode();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
@@ -271,7 +273,8 @@ export function SigmaGraphOverview({
             </div>
           </details>
         </div>
-        <div className="pointer-events-none absolute bottom-3 left-3 max-w-[min(34rem,calc(100vw-2rem))] rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-400 backdrop-blur">
+        {!captureMode && (
+        <div className="pointer-events-none absolute bottom-3 left-3 max-w-[min(34rem,calc(100vw-2rem))] rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/90 px-3 py-2 text-xs text-[color:var(--text-secondary)] backdrop-blur">
           WebGL mode supports pan, zoom, node selection, server-side search, filters, and selected-node detail.
           React Flow-only affordances return after narrowing the graph below{" "}
           {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} nodes / {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()} edges
@@ -281,6 +284,7 @@ export function SigmaGraphOverview({
             {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES.toLocaleString()} edges.
           </span>
         </div>
+        )}
       </div>
     </div>
   );

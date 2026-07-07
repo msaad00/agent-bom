@@ -180,7 +180,7 @@ def test_bedrock_principal_can_be_iam_enriched():
         "sts": mock_sts,
         "bedrock-agent": mock_bedrock,
         "iam": mock_iam,
-    }[service]
+    }.get(service, _empty_boto_stub())
 
     with patch.dict(sys.modules, {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}):
         from agent_bom.cloud import aws
@@ -243,7 +243,7 @@ def test_discover_persists_sts_account_scope_on_aws_origins():
         "sts": mock_sts,
         "bedrock-agent": mock_bedrock,
         "ecs": mock_ecs,
-    }[service]
+    }.get(service, _empty_boto_stub())
 
     with patch.dict(sys.modules, {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}):
         from agent_bom.cloud import aws
@@ -285,7 +285,7 @@ def test_discover_continues_when_sts_account_resolution_is_denied():
             "foundationModel": "anthropic.claude-3-sonnet",
         }
     }
-    mock_session.client.side_effect = lambda service, **_kwargs: {"sts": mock_sts, "bedrock-agent": mock_bedrock}[service]
+    mock_session.client.side_effect = lambda service, **_kwargs: {"sts": mock_sts, "bedrock-agent": mock_bedrock}.get(service, _empty_boto_stub())
 
     with patch.dict(sys.modules, {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}):
         from agent_bom.cloud import aws
@@ -501,3 +501,12 @@ def test_discover_submits_aws_service_discovery_before_waiting_for_ordered_resul
 
     assert warnings == []
     assert [agent.source for agent in agents] == ["aws-bedrock"]
+
+
+def _empty_boto_stub():
+    """Benign stub for AWS services a test doesn't explicitly mock (e.g. lambda
+    now that discovery is default-on): empty paginators, no resources."""
+    from unittest.mock import MagicMock
+    m = MagicMock()
+    m.get_paginator.return_value.paginate.return_value = []
+    return m

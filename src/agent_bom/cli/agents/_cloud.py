@@ -106,8 +106,9 @@ def run_cloud_discovery(
     cloud_providers: list[tuple[str, dict]] = []
     if not skill_only and aws:
         aws_kwargs: dict = {"region": aws_region, "profile": aws_profile}
-        if aws_include_lambda:
-            aws_kwargs["include_lambda"] = True
+        # Lambda is on by default; only pass False when the operator opts out.
+        if aws_include_lambda is False:
+            aws_kwargs["include_lambda"] = False
         if aws_include_eks:
             aws_kwargs["include_eks"] = True
         if aws_include_step_functions:

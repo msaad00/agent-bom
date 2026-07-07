@@ -17,7 +17,10 @@
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
-<p align="center">Scan locally, centralize findings, govern runtime — one evidence model for your team and your agents.</p>
+<p align="center">
+  <strong>BYOC</strong> — bring your own cloud, VPC, and MCP upstreams.<br/>
+  Scan locally, centralize evidence, govern selected runtime hops — one model for your team and your agents.
+</p>
 
 <p align="center">
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -27,48 +30,6 @@
   <a href="https://hub.docker.com/r/agentbom/agent-bom">Docker</a> ·
   <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
 </p>
-
-<details open>
-<summary><b>Human view</b> — security control plane for AI/MCP estates</summary>
-
-Scan locally, centralize evidence in your VPC, then govern selected runtime hops.
-One model (`Finding` + `ContextGraph`) for CLI, CI, API, dashboard, MCP tools, and
-gateway/proxy enforcement. We are **not** a managed MCP connector catalog — we
-prove blast radius and enforce policy on **your** agents and upstream MCP servers.
-
-**Three lanes:** local scan → self-hosted control plane → runtime proxy/gateway.
-
-</details>
-
-<details>
-<summary><b>Agent view</b> — capability manifest (strict MCP + REST)</summary>
-
-```text
-DESCRIPTION
-Open security scanner and self-hosted control plane. Scan → graph → prove path →
-enforce on selected runtime hops. Same evidence for humans and headless agents.
-
-CAPABILITIES
-MCP security tools       70 tools · 6 resources · 8 workflow prompts
-REST API                 283 ops · OpenAPI docs/openapi/v1.json
-Graph / blast radius     UnifiedGraph · attack paths · hop counts · SARIF export
-Runtime proxy            stdio MCP inline policy (7 detectors)
-Runtime gateway          HTTP/SSE relay · /v1/gateway/feed · KPI rollup
-Fleet inventory          MCP configs · transports · credential refs
-Auth                     API keys · OAuth AS · OIDC · SAML · SCIM
-Deployment               CLI · Docker · Helm · customer VPC (not managed SaaS)
-
-NOT SHIPPED
-No 1,000+ MCP app library · No Cedar engine · No turnkey SIEM tiles
-
-ENDPOINTS
-MCP server               agent-bom mcp server
-Control plane            agent-bom serve
-Gateway KPIs             GET /v1/gateway/feed/kpis
-Full manifest            docs/AGENT_CAPABILITY.md
-```
-
-</details>
 
 ## What Is agent-bom
 
@@ -170,6 +131,24 @@ Snowflake is a supported connector lane, not the product center.
 MCP server mode advertises 70 MCP tools, 6 resources, and 8 workflow prompts.
 Registry metadata is tracked through the committed Smithery manifest and Glama
 listing; install and liveness checks live in the integration docs.
+
+</details>
+
+<details>
+<summary><b>Views</b> — operator summary and agent capability manifest</summary>
+
+**Operator view.** Self-hosted security control plane for AI/MCP estates: scan
+→ graph → prove multi-hop blast radius → enforce on selected proxy/gateway hops.
+One evidence model (`Finding` + `ContextGraph`) across CLI, CI, API, dashboard,
+MCP tools, and exports. You bring your cloud, identity boundary, and MCP servers;
+agent-bom inventories, correlates, and governs them.
+
+**Three lanes:** local scan → control plane in your VPC → runtime proxy/gateway.
+
+**Agent view.** Headless clients use strict MCP tools and the REST API over the
+same findings, attack paths, and audit chain. Machine-readable manifest:
+[docs/AGENT_CAPABILITY.md](docs/AGENT_CAPABILITY.md) · OpenAPI
+[docs/openapi/v1.json](docs/openapi/v1.json).
 
 </details>
 
@@ -294,9 +273,12 @@ needed.
 
 ## Deploy in Your Boundary
 
-OSS CLI, self-hosted API/UI, gated hosted POC, or optional Snowflake-native
-lane — no managed public SaaS in this repo yet. One compose file starts a local
-control plane:
+**BYOC by default** — CLI, Docker, Helm, or compose in your account/VPC. You
+operate the control plane; agent-bom does not require a vendor-hosted SaaS.
+Connect read-only cloud roles and point proxy/gateway at **your** MCP upstreams.
+Optional gated hosted POC for evaluation; optional Snowflake-native lane.
+
+One compose file starts a local control plane:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml

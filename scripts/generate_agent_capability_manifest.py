@@ -64,12 +64,12 @@ attack paths, compliance tags, and runtime audit chain.
 | Audit | signed audit chain, gateway feed, identity lifecycle |
 | Deployment | CLI, Docker, GitHub Action, Helm/EKS, airgap — customer VPC |
 
-## Not shipped / honest boundaries
+## Product boundaries
 
-- No managed multi-tenant SaaS (`agent-bom Cloud` is roadmap-only).
-- No 1,000+ verified MCP app connectors — govern **your** upstream MCP servers via proxy/gateway.
-- No Cedar policy engine — YAML/conditional rules + firewall plugins (see `docs/archive/ROADMAP_QUICK_WINS.md`).
-- No turnkey CrowdStrike/SIEM tiles — OCSF/OTLP export hooks; operator wires SIEM.
+- Self-hosted control plane in **your** cloud/VPC — not a vendor-operated multi-tenant SaaS.
+- Runtime governance for **your** MCP upstreams (stdio `proxy`, HTTP/SSE `gateway`) — security evidence plane, not an app connector marketplace.
+- Policy: conditional YAML rules, firewall plugins, signed audit chain — see `docs/PRODUCT_BOUNDARIES.md`.
+- Observability: OCSF/OTLP export hooks; operators wire SIEM in their boundary.
 
 ## Runtime surfaces
 

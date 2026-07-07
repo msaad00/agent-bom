@@ -124,8 +124,15 @@ import {
   isCriticalChange,
   type DriftLensFilter,
 } from "@/lib/filter-algebra";
-import { GraphDriftLegend } from "@/components/graph-drift-legend";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+
+const GraphDriftLegend = dynamic(
+  () =>
+    import("@/components/graph-drift-legend").then(
+      (mod) => mod.GraphDriftLegend,
+    ),
+  { ssr: false },
+);
 
 const SigmaGraphOverview = dynamic(
   () =>

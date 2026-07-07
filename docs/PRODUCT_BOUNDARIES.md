@@ -79,3 +79,4 @@ Avoid unless a future release proves it:
 See the site-docs page for the full lane matrix and release checklist.
 
 Trust boundary and verification hooks: [`TRUST.md`](TRUST.md).
+Publication and operator-private custody: [`PUBLICATION_POLICY.md`](PUBLICATION_POLICY.md).

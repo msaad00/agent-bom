@@ -103,7 +103,7 @@ def _run_cloud_scan(
     verify: bool = False,
     aws_region: Optional[str] = None,
     aws_profile: Optional[str] = None,
-    aws_include_lambda: bool = False,
+    aws_include_lambda: bool = True,
     aws_include_eks: bool = False,
     aws_include_ec2: bool = False,
     aws_include_iam: bool = False,
@@ -246,7 +246,7 @@ def cloud_group(ctx: click.Context) -> None:
 )
 @click.option("--region", default=None, help="AWS region (aws only).")
 @click.option("--profile", default=None, help="AWS credential profile (aws only).")
-@click.option("--include-lambda", is_flag=True, help="Include Lambda functions (aws only).")
+@click.option("--no-lambda", "skip_lambda", is_flag=True, help="Skip Lambda function discovery (aws only).")
 @click.option("--include-eks", is_flag=True, help="Include EKS workloads (aws only).")
 @click.option("--include-ec2", is_flag=True, help="Include EC2 instances (aws only).")
 @click.option("--include-iam", is_flag=True, help="Enrich identity graph with IAM (aws only).")
@@ -270,7 +270,7 @@ def scan_cmd(
     provider: str,
     region: Optional[str],
     profile: Optional[str],
-    include_lambda: bool,
+    skip_lambda: bool,
     include_eks: bool,
     include_ec2: bool,
     include_iam: bool,
@@ -304,7 +304,7 @@ def scan_cmd(
         verify=verify,
         aws_region=region,
         aws_profile=profile,
-        aws_include_lambda=include_lambda,
+        aws_include_lambda=not skip_lambda,
         aws_include_eks=include_eks,
         aws_include_ec2=include_ec2,
         aws_include_iam=include_iam,
@@ -321,7 +321,7 @@ def scan_cmd(
 @click.command("aws")
 @click.option("--region", default=None, help="AWS region")
 @click.option("--profile", default=None, help="AWS credential profile")
-@click.option("--include-lambda", is_flag=True, help="Include Lambda functions")
+@click.option("--no-lambda", "skip_lambda", is_flag=True, help="Skip Lambda function discovery")
 @click.option("--include-eks", is_flag=True, help="Include EKS workloads")
 @click.option("--include-ec2", is_flag=True, help="Include EC2 instances")
 @click.option("--include-iam", is_flag=True, help="Enrich identity graph with IAM role policies and trust principals")
@@ -334,7 +334,7 @@ def scan_cmd(
 def aws_cmd(
     region: Optional[str],
     profile: Optional[str],
-    include_lambda: bool,
+    skip_lambda: bool,
     include_eks: bool,
     include_ec2: bool,
     include_iam: bool,
@@ -348,12 +348,13 @@ def aws_cmd(
     """Scan AWS for AI agents, infrastructure, and CIS compliance.
 
     Alias for ``cloud scan --provider aws`` — kept for back-compat.
+    Bedrock, Lambda, and ECS are discovered automatically; CIS runs by default.
     """
     _run_cloud_scan(
         ["aws"],
         aws_region=region,
         aws_profile=profile,
-        aws_include_lambda=include_lambda,
+        aws_include_lambda=not skip_lambda,
         aws_include_eks=include_eks,
         aws_include_ec2=include_ec2,
         aws_include_iam=include_iam,

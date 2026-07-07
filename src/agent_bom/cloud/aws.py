@@ -50,7 +50,7 @@ def discover(
     profile: str | None = None,
     include_ecs: bool = True,
     include_sagemaker: bool = False,
-    include_lambda: bool = False,
+    include_lambda: bool = True,
     include_eks: bool = False,
     include_step_functions: bool = False,
     include_ec2: bool = False,

@@ -1059,7 +1059,7 @@ def test_snowflake_query_history_audit():
 
 
 def test_aws_lambda_direct_discovery():
-    """Standalone Lambda functions are discovered when include_lambda=True."""
+    """Standalone Lambda functions are discovered by default."""
     _install_mock_boto3()
 
     mock_session = MagicMock()
@@ -1100,7 +1100,7 @@ def test_aws_lambda_direct_discovery():
         importlib.reload(importlib.import_module("agent_bom.cloud.aws"))
         from agent_bom.cloud.aws import discover
 
-        agents, warnings = discover(region="us-east-1", include_lambda=True)
+        agents, warnings = discover(region="us-east-1")
 
     lambda_agents = [a for a in agents if a.source == "aws-lambda"]
     assert len(lambda_agents) == 1
@@ -1330,10 +1330,10 @@ def test_dry_run_lists_nebius_apis():
     assert "Nebius" in result.output
 
 
-def test_dry_run_aws_lambda_flag():
-    """--dry-run --aws --aws-include-lambda mentions Lambda ListFunctions."""
+def test_dry_run_aws_includes_lambda_by_default():
+    """--dry-run --aws includes Lambda ListFunctions without extra flags."""
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--dry-run", "--aws", "--aws-include-lambda"])
+    result = runner.invoke(main, ["scan", "--dry-run", "--aws"])
     assert result.exit_code == 0
     assert "Lambda" in result.output
     assert "ListFunctions" in result.output

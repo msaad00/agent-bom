@@ -203,6 +203,36 @@ def test_parse_trivy_ghsa_cvss_fallback():
     assert packages[0].vulnerabilities[0].cvss_score == 5.3
 
 
+@pytest.mark.parametrize(
+    ("vendor", "score"),
+    [
+        ("redhat", 6.1),
+        ("amazon", 7.0),
+        ("oracle", 8.2),
+    ],
+)
+def test_parse_trivy_vendor_cvss_sources(vendor: str, score: float) -> None:
+    data = {
+        "Results": [
+            {
+                "Target": "image",
+                "Type": "rpm",
+                "Vulnerabilities": [
+                    {
+                        "VulnerabilityID": "CVE-2024-99999",
+                        "PkgName": "openssl",
+                        "InstalledVersion": "1.1.1",
+                        "Severity": "HIGH",
+                        "CVSS": {vendor: {"V3Score": score}},
+                    }
+                ],
+            }
+        ]
+    }
+    packages = parse_trivy_json(data)
+    assert packages[0].vulnerabilities[0].cvss_score == score
+
+
 def test_parse_trivy_preserves_advisory_metadata():
     data = {
         "Results": [

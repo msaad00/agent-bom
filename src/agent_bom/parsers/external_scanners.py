@@ -50,11 +50,40 @@ def _map_severity(raw: str) -> Severity:
         "medium": Severity.MEDIUM,
         "moderate": Severity.MEDIUM,
         "low": Severity.LOW,
+        "info": Severity.LOW,
+        "informational": Severity.LOW,
         "none": Severity.NONE,
         "negligible": Severity.NONE,
         "unknown": Severity.UNKNOWN,
     }
     return mapping.get(raw.lower(), Severity.UNKNOWN)
+
+
+def _trivy_cvss_score(cvss_block: dict) -> float | None:
+    """Extract the best available CVSS v3 score from a Trivy CVSS block."""
+    preferred_sources = ("nvd", "ghsa", "redhat", "amazon", "oracle", "bitnami")
+    for source in preferred_sources:
+        payload = cvss_block.get(source)
+        if not isinstance(payload, dict):
+            continue
+        score_val = payload.get("V3Score")
+        if score_val is None:
+            continue
+        try:
+            return float(score_val)
+        except (TypeError, ValueError):
+            continue
+    for payload in cvss_block.values():
+        if not isinstance(payload, dict):
+            continue
+        score_val = payload.get("V3Score")
+        if score_val is None:
+            continue
+        try:
+            return float(score_val)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _string_list(values: Any) -> list[str]:
@@ -146,17 +175,8 @@ def parse_trivy_json(data: dict[str, Any]) -> list[Package]:
 
             pkg = pkg_map[key]
 
-            # Extract CVSS score
             cvss_block: dict = vuln.get("CVSS") or {}
-            cvss_score: float | None = None
-            for source in ("nvd", "ghsa"):
-                score_val = cvss_block.get(source, {}).get("V3Score")
-                if score_val is not None:
-                    try:
-                        cvss_score = float(score_val)
-                    except (TypeError, ValueError):
-                        pass
-                    break
+            cvss_score = _trivy_cvss_score(cvss_block)
 
             references: list[str] = vuln.get("References") or []
             vuln_id = vuln.get("VulnerabilityID", "")

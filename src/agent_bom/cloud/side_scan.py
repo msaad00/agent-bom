@@ -533,25 +533,29 @@ class AwsEbsSideScanner:
         Returns the list of snapshot ids deleted.
         """
         deleted: list[str] = []
+        filters = [{"Name": f"tag:{SIDESCAN_TAG_KEY}", "Values": [SIDESCAN_TAG_VALUE]}]
+        next_token: str | None = None
         try:
-            resp = self._ec2.describe_snapshots(
-                Filters=[{"Name": f"tag:{SIDESCAN_TAG_KEY}", "Values": [SIDESCAN_TAG_VALUE]}],
-                OwnerIds=["self"],
-            )
+            while True:
+                kwargs: dict[str, object] = {"Filters": filters, "OwnerIds": ["self"]}
+                if next_token:
+                    kwargs["NextToken"] = next_token
+                resp = self._ec2.describe_snapshots(**kwargs)
+                for snap in resp.get("Snapshots", []):
+                    snap_id = snap.get("SnapshotId", "")
+                    if not snap_id:
+                        continue
+                    try:
+                        self._ec2.delete_snapshot(SnapshotId=snap_id)
+                        deleted.append(snap_id)
+                        logger.info("side-scan: orphan sweep deleted stranded snapshot %s", snap_id)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("side-scan: orphan sweep could not delete %s: %s", snap_id, sanitize_text(exc))
+                next_token = resp.get("NextToken")
+                if not next_token:
+                    break
         except Exception as exc:  # noqa: BLE001
             logger.warning("side-scan: orphan sweep describe failed: %s", sanitize_text(exc))
-            return deleted
-
-        for snap in resp.get("Snapshots", []):
-            snap_id = snap.get("SnapshotId", "")
-            if not snap_id:
-                continue
-            try:
-                self._ec2.delete_snapshot(SnapshotId=snap_id)
-                deleted.append(snap_id)
-                logger.info("side-scan: orphan sweep deleted stranded snapshot %s", snap_id)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("side-scan: orphan sweep could not delete %s: %s", snap_id, sanitize_text(exc))
         return deleted
 
 

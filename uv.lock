@@ -28,7 +28,7 @@ overrides = [
 
 [[package]]
 name = "agent-bom"
-version = "0.93.0"
+version = "0.93.5"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

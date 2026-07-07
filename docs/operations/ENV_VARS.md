@@ -240,6 +240,13 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_INCLUDE_UNFIXED` | `bool` | `False` | When False (default), OS/distro advisories with no fix for the scanned release (no-dsa / won't-fix / end-of-life open) are suppressed so container reporting matches mainstream scanner conventions. Set AGENT_BOM_INCLUDE_UNFIXED=1 to surface  |
 
+## Partition Retention (#3463)
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_AUDIT_LOG_RETENTION_DAYS` | `int` | `0` | Age-based RANGE-partition rollover for append-only Postgres tables managed by ``api/partition_maintenance.py``. Each knob is a retention window in days; ``<= 0`` disables rollover for that table (the safe default — partitions are never drop |
+| `AGENT_BOM_LLM_COSTS_RETENTION_DAYS` | `int` | `0` | — |
+| `AGENT_BOM_RUNTIME_OBSERVATIONS_RETENTION_DAYS` | `int` | `0` | — |
+
 ## PostgreSQL Control Plane Tuning
 | Env var | Type | Default | Description |
 |---|---|---|---|

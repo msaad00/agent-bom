@@ -77,8 +77,35 @@ def save_report(report_json: dict, label: Optional[str] = None) -> Path:
         record_scan_report_best_effort(report_json, source="cli", artifact_path=path)
     except Exception:
         pass
+    _ingest_clickhouse_best_effort(report_json)
     prune_history()
     return path
+
+
+def _ingest_clickhouse_best_effort(report_json: dict) -> None:
+    """Mirror the saved scan into ClickHouse when a URL is configured.
+
+    Disabled by default: with no ``AGENT_BOM_CLICKHOUSE_URL`` the ClickHouse
+    URL resolves empty and the ingest helper returns immediately (zero
+    overhead). Any error is swallowed here and inside the helper so analytics
+    ingest can never fail a scan — mirroring the local-analytics best-effort
+    hook above.
+    """
+    clickhouse_url = os.environ.get("AGENT_BOM_CLICKHOUSE_URL") or ""
+    if not clickhouse_url:
+        return
+    try:
+        from agent_bom.api.clickhouse_store import ingest_scan_report_best_effort
+        from agent_bom.cli._tenant import resolve_cli_tenant_id
+
+        ingest_scan_report_best_effort(
+            report_json,
+            source="cli",
+            tenant_id=resolve_cli_tenant_id(),
+            url=clickhouse_url,
+        )
+    except Exception:
+        logger.debug("ClickHouse scan-ingest hook skipped (best-effort)", exc_info=True)
 
 
 def list_reports() -> list[Path]:

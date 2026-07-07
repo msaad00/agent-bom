@@ -93,6 +93,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_RISK_TOOL_WEIGHT` | `float` | `0.1` | — |
 | `AGENT_BOM_RISK_UNREACHABLE_PENALTY` | `float` | `0.5` | — |
 
+## ClickHouse findings-ingest (opt-in analytics mirror)
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_CLICKHOUSE_URL` | `str` | `''` | When a ClickHouse HTTP URL is configured, the scan-completion history hook (agent_bom.history.save_report) best-effort mirrors the scan's findings and summary into ClickHouse alongside the local SQLite analytics store, so the `agent-bom ana |
+
 ## Cloud audit-trail behavioral ingestion (opt-in, read-only)
 | Env var | Type | Default | Description |
 |---|---|---|---|

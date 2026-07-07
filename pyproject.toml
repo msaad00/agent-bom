@@ -215,6 +215,13 @@ dev = [
     "pytest-benchmark>=5.2.3",  # Performance benchmarking — see docs/PERFORMANCE_BENCHMARKS.md
     "pytest-xdist>=3.5",  # Parallel test execution (-n auto) — cuts CI test wall time
     "pytest-randomly>=3.15",  # Randomize test order to surface order-dependence early
+    # API-layer test modules (tests/test_api_*, TestClient) fail to COLLECT
+    # without these. httpx is already a core dep (powers TestClient); fastapi +
+    # starlette live in the [api] extra, so a dev-only env can't import the API
+    # app under test. Pin them into [dev] so the full suite collects locally
+    # without needing `[dev,api]`. (#1969)
+    "fastapi>=0.115,!=0.136.3",
+    "starlette>=0.40",
 ]
 dev-all = [
     "agent-bom[dev]",
@@ -338,6 +345,13 @@ module = [
     "agent_bom.api.postgres_cost",
     "agent_bom.api.postgres_runtime_event",
     "agent_bom.api.postgres_scim",
+    # Phase 1 (#1969): core store/pipeline surface brought under strict typing.
+    "agent_bom.api.store",
+    "agent_bom.api.pipeline",
+    "agent_bom.api.hub_payload_codec",
+    "agent_bom.api.hub_reference_payload",
+    "agent_bom.api.credential_ref_validation",
+    "agent_bom.api.shared_auth_state",
     "agent_bom.api.postgres_tenant_quota",
     "agent_bom.api.proxy_replay_store",
     "agent_bom.api.routes.agent_manifest",

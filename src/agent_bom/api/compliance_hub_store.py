@@ -400,14 +400,15 @@ def _upsert_current_finding_sqlite(
         payload=payload,
         updated_at=now,
     )
+    origin_val = str(payload.get("origin") or "")
     if has_ledger_col:
         conn.execute(
             """
             INSERT INTO hub_findings_current
                 (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                  cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                 updated_at, payload, ledger_finding_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 updated_at, payload, ledger_finding_id, origin)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
                 first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
                 last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
@@ -421,7 +422,8 @@ def _upsert_current_finding_sqlite(
                 reopened_at = excluded.reopened_at,
                 updated_at = excluded.updated_at,
                 payload = excluded.payload,
-                ledger_finding_id = excluded.ledger_finding_id
+                ledger_finding_id = excluded.ledger_finding_id,
+                origin = excluded.origin
             """,
             (
                 tenant_id,
@@ -439,6 +441,7 @@ def _upsert_current_finding_sqlite(
                 merged["updated_at"],
                 payload_json,
                 ledger_finding_id or None,
+                origin_val,
             ),
         )
     else:
@@ -447,8 +450,8 @@ def _upsert_current_finding_sqlite(
             INSERT INTO hub_findings_current
                 (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                  cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                 updated_at, payload)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 updated_at, payload, origin)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
                 first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
                 last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
@@ -461,7 +464,8 @@ def _upsert_current_finding_sqlite(
                 resolved_at = excluded.resolved_at,
                 reopened_at = excluded.reopened_at,
                 updated_at = excluded.updated_at,
-                payload = excluded.payload
+                payload = excluded.payload,
+                origin = excluded.origin
             """,
             (
                 tenant_id,
@@ -478,6 +482,7 @@ def _upsert_current_finding_sqlite(
                 merged["reopened_at"],
                 merged["updated_at"],
                 payload_json,
+                origin_val,
             ),
         )
 
@@ -510,6 +515,23 @@ def _migrate_current_ledger_ref_sqlite(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE hub_findings_current ADD COLUMN ledger_finding_id TEXT")
 
 
+def _migrate_current_origin_col_sqlite(conn: sqlite3.Connection) -> None:
+    """Promote ``origin`` to a real indexed column on ``hub_findings_current``.
+
+    Filtering ``origin`` via ``json_extract(payload, '$.origin')`` forces a
+    full-table scan on the exact ``COUNT(*)`` (#3641). Backfilling a materialised
+    column from the stored overlay lets the count ride the
+    ``(tenant_id, origin, …)`` index prefix. Idempotent: the guarded ALTER only
+    runs once and the backfill only touches empty ``origin`` cells.
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current)").fetchall()}
+    if "origin" not in cols:
+        conn.execute("ALTER TABLE hub_findings_current ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
+        conn.execute(
+            "UPDATE hub_findings_current SET origin = COALESCE(json_extract(payload, '$.origin'), '') WHERE origin = ''"
+        )
+
+
 def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
     from agent_bom.api.finding_lifecycle import (
         _CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE,
@@ -517,6 +539,10 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
     )
 
     conn.executescript(_CURRENT_LIFECYCLE_SQLITE_DDL)
+    # Backfill the origin column before the sort indexes so the composite
+    # ``(tenant_id, origin, cvss_score DESC, …)`` index can build on pre-existing
+    # tables that predate the column.
+    _migrate_current_origin_col_sqlite(conn)
     conn.executescript(_CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE)
     _migrate_lifecycle_observations_l2_sqlite(conn)
     _migrate_current_ledger_ref_sqlite(conn)
@@ -861,7 +887,11 @@ def _sqlite_current_order_clause(sort: str) -> str:
         ) ASC, first_seen ASC, canonical_id ASC
         """
     if sort == "cvss":
-        return "ORDER BY COALESCE(cvss_score, 0) DESC, last_seen DESC, canonical_id ASC"
+        # ``cvss_score`` is NOT NULL DEFAULT 0 (backfilled), so bare
+        # ``cvss_score DESC`` rides ``idx_hub_findings_current_tenant[_origin]_cvss``
+        # as an ordered range scan. A ``COALESCE`` wrapper here defeats the index
+        # and forces a full-table temp-B-tree filesort (#3641).
+        return "ORDER BY cvss_score DESC, last_seen DESC, canonical_id ASC"
     if sort == "severity":
         return "ORDER BY severity_rank DESC, last_seen DESC, canonical_id ASC"
     return "ORDER BY effective_reach_score DESC, last_seen DESC, canonical_id ASC"
@@ -1397,7 +1427,10 @@ class SQLiteComplianceHubStore:
         where = ["tenant_id = ?"]
         params: list[Any] = [tenant_id]
         if origin is not None:
-            where.append("json_extract(payload, '$.origin') = ?")
+            # Materialised column (backfilled from payload) so the exact COUNT(*)
+            # rides the (tenant_id, origin, …) index prefix instead of scanning
+            # every row through json_extract (#3641).
+            where.append("origin = ?")
             params.append(origin)
         if severity is not None:
             where.append("severity_rank = ?")

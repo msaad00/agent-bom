@@ -37,12 +37,18 @@ def test_build_hitl_queue_items_lists_blocked_spans() -> None:
     assert "owasp_llm:LLM05" in items[0]["compliance_controls"]
 
 
-def test_runtime_approval_queue_api_decision_emits_audit() -> None:
+def test_runtime_approval_queue_api_decision_emits_audit(monkeypatch) -> None:
     from agent_bom.api import server as api_server
+
+    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE", "0")
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "admin")
+    monkeypatch.setattr("agent_bom.config.DEMO_ESTATE", False)
+    monkeypatch.setattr("agent_bom.config.NO_AUTH_ROLE", "admin")
 
     store = InMemoryHitlApprovalStore()
     set_hitl_approval_store(store)
     api_server._runtime_api_key_seeded = False
+    api_server.configure_api(api_key=None)
 
     with TestClient(api_server.app) as test_client:
         queue = test_client.get("/v1/runtime/approval-queue")

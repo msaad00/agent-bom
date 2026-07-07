@@ -27,14 +27,17 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from enum import Enum
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypeVar
 
 import httpx
 from rich.console import Console
 
+from agent_bom import config
 from agent_bom.config import AI_CACHE_MAX_ENTRIES as _MAX_AI_CACHE
 from agent_bom.config import OLLAMA_BASE_URL
 from agent_bom.security import sanitize_command_args
@@ -266,9 +269,7 @@ def _provider_status(provider_name: str) -> AIProviderStatus:
             installed=installed,
             configured=configured,
             available=installed and configured,
-            reason="available"
-            if installed and configured
-            else "huggingface-hub and HF_TOKEN are required for HuggingFace enrichment",
+            reason="available" if installed and configured else "huggingface-hub and HF_TOKEN are required for HuggingFace enrichment",
         )
     installed = _check_litellm()
     return AIProviderStatus(
@@ -368,6 +369,266 @@ def _has_any_provider(model: str) -> bool:
     return _resolve_ai_provider(model).available
 
 
+# ─── Secret redaction (no-exfiltration-by-default) ───────────────────────────
+#
+# Issue #3206 hard requirement #4: redact secrets before any prompt leaves the
+# control plane. These patterns cover the credential shapes most likely to be
+# swept into a prompt from scanned configs, env blocks, or source snippets.
+# Redaction runs at every provider network boundary, so it protects local
+# Ollama calls as well as remote providers.
+
+# Prefix / block patterns, in priority order (more specific first — e.g.
+# ``sk-ant-`` must run before the generic ``sk-``).
+_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Private key blocks (PEM)
+    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.DOTALL), "<redacted-private-key>"),
+    # Provider API keys / tokens with recognizable prefixes
+    (re.compile(r"\bsk-ant-[A-Za-z0-9_-]{16,}\b"), "<redacted-anthropic-key>"),
+    (re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"), "<redacted-openai-key>"),
+    (re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{16,}\b"), "<redacted-github-token>"),
+    (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "<redacted-slack-token>"),
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "<redacted-aws-access-key>"),
+    (re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"), "<redacted-google-key>"),
+    (re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"), "<redacted-hf-token>"),
+    # Bearer tokens in headers / auth strings
+    (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}"), "Bearer <redacted-token>"),
+)
+
+# KEY=VALUE / "key": "value" assignments for secret-named variables. Handled
+# separately with a value heuristic so we don't clobber credential *names*
+# (e.g. ``Exposed credentials: OPENAI_API_KEY``) that appear as values.
+_ASSIGNMENT_PATTERN = re.compile(
+    r"(?i)\b([A-Za-z0-9_]*(?:secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|credential)[A-Za-z0-9_]*)\b"
+    r"(\s*[:=]\s*)(['\"]?)([^\s'\";,}]{6,})(\3)"
+)
+
+# A bare UPPER_SNAKE_CASE identifier is a variable *name*, not a secret value.
+_IDENTIFIER_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def _looks_like_secret_value(value: str) -> bool:
+    """Heuristic: does a captured assignment value look like an actual secret?
+
+    Rejects bare identifiers (``OPENAI_API_KEY``, ``DATABASE_URL``) that are
+    names rather than values; accepts strings with real entropy.
+    """
+    if _IDENTIFIER_RE.match(value):
+        return False
+    # Real secrets mix character classes or are long — require a lowercase
+    # letter or digit alongside length so ALL_CAPS words are left alone.
+    return len(value) >= 6 and bool(re.search(r"[a-z0-9]", value))
+
+
+def _redact_assignment(match: re.Match[str]) -> str:
+    name, sep, quote, value, _ = match.groups()
+    if not _looks_like_secret_value(value):
+        return match.group(0)
+    return f"{name}{sep}{quote}<redacted>{quote}"
+
+
+def redact_secrets(text: str) -> str:
+    """Scrub secret-looking material from *text* before it reaches a model.
+
+    Idempotent and conservative: it targets recognizable credential shapes
+    (API keys, tokens, private keys, ``SECRET=...`` assignments) and leaves the
+    surrounding text — including credential *names* like ``OPENAI_API_KEY`` —
+    intact so the model still has useful context.
+    """
+    if not text:
+        return text
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    text = _ASSIGNMENT_PATTERN.sub(_redact_assignment, text)
+    return text
+
+
+def _prepare_prompt(prompt: str) -> str:
+    """Apply redaction to an outbound prompt when enabled by config."""
+    if getattr(config, "AI_REDACT_PROMPTS", True):
+        return redact_secrets(prompt)
+    return prompt
+
+
+# ─── Determinism + reliability helpers ───────────────────────────────────────
+
+
+def _effective_temperature() -> float:
+    """Temperature for a call: 0.0 in deterministic mode, else configured."""
+    if getattr(config, "AI_DETERMINISTIC", False):
+        return 0.0
+    return float(getattr(config, "AI_TEMPERATURE", 0.3))
+
+
+def _request_timeout() -> float:
+    return float(getattr(config, "AI_REQUEST_TIMEOUT", 120.0))
+
+
+_T = TypeVar("_T")
+
+# Exceptions worth retrying — transient network / server-side conditions.
+_RETRYABLE_EXC = (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError)
+
+
+async def retry_async(
+    func: Callable[[], Awaitable[Optional[_T]]],
+    *,
+    max_retries: int | None = None,
+    base_delay: float | None = None,
+    max_delay: float | None = None,
+    retry_on: tuple[type[BaseException], ...] = _RETRYABLE_EXC,
+    label: str = "llm-call",
+) -> Optional[_T]:
+    """Call *func* with bounded exponential backoff + jitter.
+
+    Returns the first non-None result. On a retryable exception it backs off and
+    retries; once retries are exhausted (or a non-retryable exception fires) it
+    returns None so the enrichment layer degrades gracefully rather than raising.
+    """
+    attempts = (max_retries if max_retries is not None else getattr(config, "AI_MAX_RETRIES", 2)) + 1
+    base = base_delay if base_delay is not None else getattr(config, "AI_RETRY_BASE_DELAY", 0.5)
+    ceiling = max_delay if max_delay is not None else getattr(config, "AI_RETRY_MAX_DELAY", 8.0)
+
+    for attempt in range(attempts):
+        try:
+            result = await func()
+        except retry_on as exc:
+            if attempt >= attempts - 1:
+                logger.warning("%s failed after %d attempt(s): %s", label, attempt + 1, exc)
+                return None
+            delay = min(base * (2**attempt), ceiling) + random.uniform(0, base)
+            logger.debug("%s retry %d/%d after %.2fs (%s)", label, attempt + 1, attempts - 1, delay, exc)
+            await asyncio.sleep(delay)
+            continue
+        except Exception as exc:  # non-retryable — degrade, don't raise
+            logger.warning("%s failed (non-retryable): %s", label, exc)
+            return None
+        if result is not None:
+            return result
+        return None
+    return None
+
+
+# ─── Per-task model selection ────────────────────────────────────────────────
+#
+# Different enrichment tasks warrant different models: a cheap local model is
+# fine for tagging and summaries; detection and remediation benefit from a
+# stronger model. Operators pin these per-deployment via config; unset tiers
+# fall back to the single auto-resolved model (legacy behavior).
+
+
+class EnrichmentTask(str, Enum):
+    """Kinds of enrichment work, used to pick a per-task model + provenance."""
+
+    NARRATIVE = "narrative"  # blast-radius risk narratives
+    SUMMARY = "summary"  # executive summaries
+    TAGGING = "tagging"  # compliance / control classification (cheap)
+    DETECTION = "detection"  # LLM-assisted novel-issue detection (strong)
+    TRIAGE = "triage"  # FP reduction / dedup (strong)
+    CONFIG_ANALYSIS = "config_analysis"  # MCP config security review
+
+
+# Which tier each task prefers when tiered models are configured.
+_TASK_TIER: dict[EnrichmentTask, str] = {
+    EnrichmentTask.NARRATIVE: "cheap",
+    EnrichmentTask.SUMMARY: "cheap",
+    EnrichmentTask.TAGGING: "cheap",
+    EnrichmentTask.DETECTION: "strong",
+    EnrichmentTask.TRIAGE: "strong",
+    EnrichmentTask.CONFIG_ANALYSIS: "strong",
+}
+
+
+def resolve_task_model(task: EnrichmentTask, default_model: str = DEFAULT_MODEL) -> str:
+    """Resolve the model to use for *task*.
+
+    Precedence: an explicitly-configured per-tier model (cheap/strong) wins;
+    otherwise fall back to *default_model* (which itself auto-detects Ollama /
+    HF / litellm via :func:`_resolve_ai_provider`).
+    """
+    tier = _TASK_TIER.get(task, "strong")
+    configured = getattr(config, "AI_MODEL_STRONG" if tier == "strong" else "AI_MODEL_CHEAP", "")
+    if configured:
+        return configured
+    return default_model
+
+
+# ─── Provider abstraction + registry ─────────────────────────────────────────
+#
+# A thin, uniform interface over the three backends so callers (and tests) can
+# treat providers polymorphically. The concrete adapters wrap the existing
+# ``_call_*`` functions, keeping one code path for the actual network calls.
+
+
+class EnrichmentProvider:
+    """Uniform provider contract for the enrichment harness.
+
+    Subclasses expose availability + a single ``generate`` coroutine. Redaction,
+    caching, retries and timeouts are handled inside the wrapped ``_call_*``
+    functions, so adapters stay thin.
+    """
+
+    descriptor: AIProviderDescriptor
+
+    def is_available(self) -> bool:  # pragma: no cover - trivial
+        raise NotImplementedError
+
+    async def generate(self, prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:  # pragma: no cover
+        raise NotImplementedError
+
+    @property
+    def name(self) -> str:
+        return self.descriptor.name
+
+
+class OllamaProvider(EnrichmentProvider):
+    descriptor = AI_PROVIDER_DESCRIPTORS["ollama"]
+
+    def is_available(self) -> bool:
+        return _detect_ollama()
+
+    async def generate(self, prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+        bare = model[len("ollama/") :] if model.startswith("ollama/") else model
+        return await _call_ollama_direct(prompt, bare, max_tokens)
+
+
+class HuggingFaceProvider(EnrichmentProvider):
+    descriptor = AI_PROVIDER_DESCRIPTORS["huggingface"]
+
+    def is_available(self) -> bool:
+        return _check_huggingface() and bool(os.environ.get("HF_TOKEN"))
+
+    async def generate(self, prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+        hf_model = model[len("huggingface/") :] if model.startswith("huggingface/") else model
+        return await _call_huggingface(prompt, model=hf_model or HF_DEFAULT_MODEL, max_tokens=max_tokens)
+
+
+class LiteLLMProvider(EnrichmentProvider):
+    descriptor = AI_PROVIDER_DESCRIPTORS["litellm"]
+
+    def is_available(self) -> bool:
+        return _check_litellm()
+
+    async def generate(self, prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
+        return await _call_llm_via_litellm(prompt, model, max_tokens)
+
+
+PROVIDER_REGISTRY: dict[str, EnrichmentProvider] = {
+    "ollama": OllamaProvider(),
+    "huggingface": HuggingFaceProvider(),
+    "litellm": LiteLLMProvider(),
+}
+
+
+def get_provider(name: str) -> EnrichmentProvider:
+    """Return the registered provider adapter by name (KeyError if unknown)."""
+    return PROVIDER_REGISTRY[name]
+
+
+def provider_for_model(model: str) -> EnrichmentProvider:
+    """Return the provider adapter that owns *model* by its prefix."""
+    return PROVIDER_REGISTRY[_provider_name_for_model(model)]
+
+
 # ─── LLM calls ───────────────────────────────────────────────────────────────
 
 
@@ -385,17 +646,18 @@ async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) ->
     if cached is not None:
         return cached
 
+    outbound = _prepare_prompt(prompt)
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=_request_timeout()) as client:
             resp = await client.post(
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json={
                     "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": [{"role": "user", "content": outbound}],
                     "stream": False,
                     "options": {
                         "num_predict": max_tokens,
-                        "temperature": 0.3,
+                        "temperature": _effective_temperature(),
                     },
                 },
             )
@@ -424,26 +686,28 @@ async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) 
     if cached is not None:
         return cached
 
-    try:
-        from litellm import acompletion
+    outbound = _prepare_prompt(prompt)
 
+    async def _once() -> Optional[str]:
+        try:
+            from litellm import acompletion
+        except ImportError:
+            logger.warning("litellm not installed. Install with: pip install 'agent-bom[ai-enrich]'")
+            return None
         response = await acompletion(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": outbound}],
             max_tokens=max_tokens,
-            temperature=0.3,
+            temperature=_effective_temperature(),
+            timeout=_request_timeout(),
         )
         text = _response_text(response.choices[0].message.content)
-        if not text:
-            return None
+        return text or None
+
+    text = await retry_async(_once, retry_on=(Exception,), label=f"litellm:{model}")
+    if text:
         _ai_cache_put(key, text)
-        return text
-    except ImportError:
-        logger.warning("litellm not installed. Install with: pip install 'agent-bom[ai-enrich]'")
-        return None
-    except Exception as exc:
-        logger.warning("LLM call failed: %s", exc)
-        return None
+    return text
 
 
 async def _call_huggingface(
@@ -461,31 +725,28 @@ async def _call_huggingface(
     if cached is not None:
         return cached
 
-    try:
-        from huggingface_hub import InferenceClient
+    outbound = _prepare_prompt(prompt)
 
-        client = InferenceClient(
-            model=model,
-            token=os.environ.get("HF_TOKEN"),
-        )
+    async def _once() -> Optional[str]:
+        try:
+            from huggingface_hub import InferenceClient
+        except ImportError:
+            logger.warning("huggingface-hub not installed. Install with: pip install 'agent-bom[huggingface]'")
+            return None
+        client = InferenceClient(model=model, token=os.environ.get("HF_TOKEN"))
         # Run sync client in executor to avoid blocking event loop
         response = await asyncio.to_thread(
             client.chat_completion,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": outbound}],
             max_tokens=max_tokens,
-            temperature=0.3,
+            temperature=_effective_temperature(),
         )
-        text = _response_text(response.choices[0].message.content)
-        if text:
-            _ai_cache_put(key, text)
-            return text
-        return None
-    except ImportError:
-        logger.warning("huggingface-hub not installed. Install with: pip install 'agent-bom[huggingface]'")
-        return None
-    except Exception as exc:
-        logger.warning("HuggingFace call failed: %s", exc)
-        return None
+        return _response_text(response.choices[0].message.content) or None
+
+    text = await retry_async(_once, retry_on=(Exception,), label=f"huggingface:{model}")
+    if text:
+        _ai_cache_put(key, text)
+    return text
 
 
 async def _call_llm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
@@ -587,17 +848,18 @@ async def _call_ollama_structured(
 
     try:
         json_schema = schema_cls.model_json_schema()
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        outbound = _prepare_prompt(prompt)
+        async with httpx.AsyncClient(timeout=_request_timeout()) as client:
             resp = await client.post(
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json={
                     "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": [{"role": "user", "content": outbound}],
                     "stream": False,
                     "format": json_schema,
                     "options": {
                         "num_predict": max_tokens,
-                        "temperature": 0.3,
+                        "temperature": _effective_temperature(),
                     },
                 },
             )
@@ -839,24 +1101,44 @@ async def run_ai_enrichment(
     model = resolution.model
     provider = resolution.provider.display_name if resolution.provider else "unknown"
 
+    # Per-task model selection: cheap tier for narratives/summaries, strong tier
+    # for config analysis. Tiers fall back to the resolved model when unset.
+    narrative_model = resolve_task_model(EnrichmentTask.NARRATIVE, model)
+    summary_model = resolve_task_model(EnrichmentTask.SUMMARY, model)
+    config_model = resolve_task_model(EnrichmentTask.CONFIG_ANALYSIS, model)
+
+    # Provenance: record the full harness posture, not just the primary model.
+    report.ai_enrichment_metadata = {
+        **resolution.to_metadata(),
+        "harness_version": "2",
+        "task_models": {
+            "narrative": narrative_model,
+            "summary": summary_model,
+            "config_analysis": config_model,
+        },
+        "redaction": bool(getattr(config, "AI_REDACT_PROMPTS", True)),
+        "deterministic": bool(getattr(config, "AI_DETERMINISTIC", False)),
+        "temperature": _effective_temperature(),
+    }
+
     console.print(f"\n[bold blue]AI Enrichment[/bold blue]  [dim]model: {model} via {provider}[/dim]\n")
 
     # Step 1: Enrich blast radii with contextual narratives
     if report.blast_radii:
         console.print("  [cyan]>[/cyan] Generating risk narratives...")
-        enriched = await enrich_blast_radii(report.blast_radii, model)
+        enriched = await enrich_blast_radii(report.blast_radii, narrative_model)
         console.print(f"  [green]{enriched} finding(s) enriched[/green]")
 
         # Step 2: Generate executive summary
         console.print("  [cyan]>[/cyan] Generating executive summary...")
-        summary = await generate_executive_summary(report, model)
+        summary = await generate_executive_summary(report, summary_model)
         if summary:
             report.executive_summary = summary
             console.print("  [green]Executive summary generated[/green]")
 
         # Step 3: Generate threat chain analysis
         console.print("  [cyan]>[/cyan] Analyzing threat chains...")
-        chains = await generate_threat_chains(report, model)
+        chains = await generate_threat_chains(report, summary_model)
         if chains:
             report.ai_threat_chains = chains
             console.print(f"  [green]{len(chains)} threat chain(s) analyzed[/green]")
@@ -865,7 +1147,7 @@ async def run_ai_enrichment(
     total_servers = sum(len(a.mcp_servers) for a in report.agents)
     if total_servers > 0:
         console.print("  [cyan]>[/cyan] Analyzing MCP config security...")
-        config_analysis = await analyze_mcp_config_security(report, model)
+        config_analysis = await analyze_mcp_config_security(report, config_model)
         if config_analysis:
             report.mcp_config_analysis = config_analysis.model_dump()
             console.print(f"  [green]Config analysis complete (risk: {config_analysis.overall_risk})[/green]")

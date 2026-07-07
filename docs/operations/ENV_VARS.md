@@ -203,6 +203,20 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_MCP_MAX_TOOL_METRICS` | `int` | `128` | — |
 | `AGENT_BOM_MCP_TOOL_TIMEOUT_SECONDS` | `float` | `30.0` | — |
 
+## Multi-provider LLM harness (issue #3206)
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_AI_DETERMINISTIC` | `bool` | `False` | Deterministic mode: temperature 0 + cache, so AI-derived findings are stable enough to (optionally, explicitly) gate on. Default temperature stays 0.3 for richer narratives when determinism is not required. |
+| `AGENT_BOM_AI_MAX_CALLS` | `int` | `50` | Per-run cap on total LLM calls (cost/latency control). 0 disables the cap. |
+| `AGENT_BOM_AI_MAX_RETRIES` | `int` | `2` | Reliability: bounded retries with exponential backoff around remote provider calls, and a per-call timeout. Graceful degradation is preserved — exhausted retries return None (no model) rather than raising. |
+| `AGENT_BOM_AI_MODEL_CHEAP` | `str` | `''` | tagging, summaries |
+| `AGENT_BOM_AI_MODEL_STRONG` | `str` | `''` | detection, remediation |
+| `AGENT_BOM_AI_REDACT_PROMPTS` | `bool` | `True` | Redaction: scrub secret-looking material from every prompt before it leaves the control plane. On by default — "no exfiltration by default" (issue #3206 hard requirement #4). Set to False only for trusted local-only deployments. |
+| `AGENT_BOM_AI_REQUEST_TIMEOUT` | `float` | `120.0` | — |
+| `AGENT_BOM_AI_RETRY_BASE_DELAY` | `float` | `0.5` | — |
+| `AGENT_BOM_AI_RETRY_MAX_DELAY` | `float` | `8.0` | — |
+| `AGENT_BOM_AI_TEMPERATURE` | `float` | `0.3` | — |
+
 ## OIDC discovery shim
 | Env var | Type | Default | Description |
 |---|---|---|---|

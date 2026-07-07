@@ -171,6 +171,14 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_HUB_OBSERVATIONS_RETENTION_DAYS` | `int` | `365` | Age-based retention for the Postgres occurrence log (``hub_findings_current_observations``). Monthly RANGE partitions are detached and dropped once wholly past this window. ``<= 0`` disables rollover. SQLite and legacy unpartitioned Postgre |
 
+## Iceberg Catalog Export
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_ICEBERG_CATALOG_URL` | `str` | `''` | Optional findings-lake side-write. Disabled unless a REST catalog URL is set. Credentials are deliberately not mirrored here; they stay env/KMS-only and are allowlisted as secret material in scripts/env_var_allowlist.txt. |
+| `AGENT_BOM_ICEBERG_NAMESPACE` | `str` | `'agent_bom'` | — |
+| `AGENT_BOM_ICEBERG_TABLE` | `str` | `'findings'` | — |
+| `AGENT_BOM_ICEBERG_WAREHOUSE` | `str` | `''` | — |
+
 ## Image Scanning
 | Env var | Type | Default | Description |
 |---|---|---|---|

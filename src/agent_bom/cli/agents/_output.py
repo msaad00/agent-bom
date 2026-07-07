@@ -241,6 +241,24 @@ def _enospc_report_fallback(
             )
 
 
+def _register_iceberg_if_configured(report, blast_radii, con, quiet: bool) -> None:
+    """Best-effort Iceberg REST-catalog registration alongside the .parquet file.
+
+    No-op unless an Iceberg catalog URL is configured (env / --iceberg-catalog-url).
+    A catalog/deps error is surfaced as a warning without failing the scan, since
+    the flat Parquet file has already been written.
+    """
+    from agent_bom.output.iceberg_catalog import maybe_register_iceberg
+
+    try:
+        result = maybe_register_iceberg(report, blast_radii)
+    except Exception as exc:  # noqa: BLE001 - degrade cleanly, file already written
+        con.print(f"  [yellow]⚠[/yellow] Iceberg catalog registration skipped: {exc}")
+        return
+    if result and not quiet:
+        con.print(f"  [green]✓[/green] Iceberg snapshot: {result['identifier']} ({result['rows']} rows) → {result['catalog_url']}")
+
+
 def render_output(
     ctx: ScanContext,
     *,
@@ -471,6 +489,7 @@ def render_output(
             out_path = _resolve_output_path(output, output_format)
             export_parquet(report, out_path, blast_radii)
             con.print(f"\n  [green]✓[/green] Parquet findings: {out_path}")
+            _register_iceberg_if_configured(report, blast_radii, con, quiet)
         elif output_format == "markdown":
             out_path = _resolve_output_path(output, output_format)
             export_markdown(report, out_path, blast_radii)
@@ -567,6 +586,7 @@ def render_output(
                 export_csv(report, output, blast_radii)
             elif output.endswith(".parquet"):
                 export_parquet(report, output, blast_radii)
+                _register_iceberg_if_configured(report, blast_radii, con, quiet)
             elif output.endswith(".md"):
                 export_markdown(report, output, blast_radii)
             else:

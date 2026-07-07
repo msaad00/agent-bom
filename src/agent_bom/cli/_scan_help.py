@@ -167,7 +167,7 @@ class TieredCommand(click.Command):
             if isinstance(param, click.Argument):
                 continue
             tier = self._tier(param)
-            if tier == "vendor" and getattr(param, "envvar", None):
+            if tier == "vendor" and isinstance(param, click.Option) and getattr(param, "envvar", None):
                 # Surface the backing env var for vendor-token flags.
                 original = param.show_envvar
                 param.show_envvar = True

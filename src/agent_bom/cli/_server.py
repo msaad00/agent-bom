@@ -392,6 +392,13 @@ def _analytics_summary_rows(
 )
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
 @click.option(
+    "--no-ui",
+    "no_ui",
+    is_flag=True,
+    default=False,
+    help="Serve the REST API only; do not mount the bundled dashboard (REST-only mode, formerly `agent-bom api`).",
+)
+@click.option(
     "--log-level",
     "log_level",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
@@ -442,6 +449,7 @@ def serve_cmd(
     api_key: str | None,
     allow_insecure_no_auth: bool,
     reload: bool,
+    no_ui: bool,
     log_level: str,
     log_json: bool,
     analytics_backend: str,
@@ -481,6 +489,10 @@ def serve_cmd(
         _os.environ["AGENT_BOM_DB"] = str(Path(persist).resolve())
     if cors_allow_all:
         _os.environ["AGENT_BOM_CORS_ALL"] = "1"
+    # REST-only mode: signal the API app (imported below) to skip mounting the
+    # dashboard. Set before the first `agent_bom.api.server` import.
+    if no_ui:
+        _os.environ["AGENT_BOM_NO_UI"] = "1"
     resolved_backend, resolved_url = _configure_analytics_backend(
         analytics_backend=analytics_backend,
         clickhouse_url=clickhouse_url,
@@ -518,7 +530,9 @@ def serve_cmd(
         ("Docs", f"http://{host}:{port}/docs"),
         (
             "Dashboard",
-            f"http://{host}:{port}" if (_ui_dist / "index.html").exists() else "Not bundled (run: make build-ui)",
+            "Disabled (--no-ui, REST only)"
+            if no_ui
+            else (f"http://{host}:{port}" if (_ui_dist / "index.html").exists() else "Not bundled (run: make build-ui)"),
         ),
         (
             "Auth",

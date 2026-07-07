@@ -17,7 +17,7 @@ verbs are additive entry points that delegate to the underlying implementations.
 
 | Command | Description |
 |---------|-------------|
-| `agents` | Discover MCP clients, extract dependencies, scan packages, and compute blast radius |
+| `scan` | Discover MCP clients, extract dependencies, scan packages, and compute blast radius (alias: `agents`) |
 | `quickstart` | Print local scan, sample-data, and API/UI first-run next steps |
 | `manifest` | Emit the canonical Agent BOM manifest for local agent, MCP server, tool, and credential-reference posture |
 | `skills` | Scan, verify, and rescan AI instruction files and skills |

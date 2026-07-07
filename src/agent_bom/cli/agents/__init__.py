@@ -24,6 +24,7 @@ from agent_bom.cli._common import (
     _sync_runtime_consoles,
     logger,
 )
+from agent_bom.cli._scan_help import TieredCommand
 from agent_bom.cli.agents._cloud import run_benchmarks, run_cloud_discovery
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.cli.agents._discovery import run_local_discovery
@@ -270,7 +271,7 @@ def _reproducible_generated_at(enabled: bool):
         raise click.ClickException("SOURCE_DATE_EPOCH must be an integer Unix timestamp.") from exc
 
 
-@click.command()
+@click.command(cls=TieredCommand)
 @click.argument(
     "path",
     required=False,
@@ -285,6 +286,7 @@ def scan(
     config_dir: Optional[str],
     inventory: Optional[str],
     no_discover: bool,
+    inventory_only: bool,
     follow_symlinks: bool,
     output: Optional[str],
     output_format: str,
@@ -493,6 +495,9 @@ def scan(
                 --fail-on-severity / --fail-on-kev / --fail-if-ai-risk
     """
     import time as _time
+
+    # `--inventory-only` is a deprecated hidden alias for `--no-discover`.
+    no_discover = no_discover or inventory_only
 
     from agent_bom.logging_config import setup_logging
     from agent_bom.project_config import (

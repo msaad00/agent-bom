@@ -161,7 +161,11 @@ def test_enrich_404_not_in_snyk(mock_client_factory, mock_request):
 
 
 def test_cli_snyk_flags():
-    """CLI scan command should accept --snyk, --snyk-token, --snyk-org flags."""
+    """CLI scan command should accept --snyk, --snyk-token, --snyk-org flags.
+
+    The bare --snyk toggle stays in the default help; the vendor-token flags
+    (--snyk-token / --snyk-org) are tiered behind --help-all.
+    """
     from click.testing import CliRunner
 
     from agent_bom.cli import main
@@ -170,5 +174,8 @@ def test_cli_snyk_flags():
     result = runner.invoke(main, ["scan", "--help"])
     assert result.exit_code == 0
     assert "--snyk" in result.output
-    assert "--snyk-token" in result.output
-    assert "--snyk-org" in result.output
+
+    result_all = runner.invoke(main, ["scan", "--help-all"])
+    assert result_all.exit_code == 0
+    assert "--snyk-token" in result_all.output
+    assert "--snyk-org" in result_all.output

@@ -53,3 +53,25 @@ def test_serve_help_mentions_built_dashboard():
     assert result.exit_code == 0
     assert "serve the dashboard when UI assets are built" in result.output
     assert "make build-ui" in result.output
+
+
+def test_serve_no_ui_sets_rest_only_env(monkeypatch):
+    """`serve --no-ui` provides REST-only mode: it sets the env gate that keeps
+    the dashboard from mounting (folds in the legacy `api` command)."""
+    import os
+
+    monkeypatch.delenv("AGENT_BOM_NO_UI", raising=False)
+
+    seen: dict[str, object] = {}
+
+    def fake_run(app, **kwargs):
+        # Captured at boot time — the gate must already be set here.
+        seen["no_ui_env"] = os.environ.get("AGENT_BOM_NO_UI")
+
+    import uvicorn
+
+    monkeypatch.setattr(uvicorn, "run", fake_run)
+    result = CliRunner().invoke(main, ["serve", "--no-ui"])
+    assert result.exit_code == 0, result.output
+    assert seen.get("no_ui_env") == "1"
+    assert "Disabled (--no-ui" in result.output

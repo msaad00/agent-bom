@@ -74,3 +74,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enable_deep_scan_reads" {
+  type        = bool
+  default     = true
+  description = "Attach the deep-scan content-read policy (Lambda code, ECR image pull, Inspector, CIS account contacts, Bedrock agents). Without it those scans silently return empty, since SecurityAudit/ViewOnlyAccess grant metadata reads only."
+}
+
+variable "dspm_s3_bucket_arns" {
+  type        = list(string)
+  default     = []
+  description = "Bucket ARNs to grant s3:GetObject/s3:ListBucket for DSPM/PII object sampling. Empty (default) disables object-content reads. Scope to specific buckets — do not leave as a wildcard in production."
+}

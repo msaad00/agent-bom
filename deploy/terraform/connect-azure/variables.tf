@@ -71,3 +71,15 @@ variable "federated_credential_audience" {
   type        = string
   default     = "api://AzureADTokenExchange"
 }
+
+variable "assign_key_vault_reader" {
+  type        = bool
+  default     = true
+  description = "Assign the built-in 'Key Vault Reader' role so CIS 8.1/8.2 (key/secret expiry) can read vault data-plane metadata. Reader alone cannot, and the check would otherwise be unevaluable. RBAC-model vaults only."
+}
+
+variable "assign_acr_pull" {
+  type        = bool
+  default     = true
+  description = "Assign the built-in 'AcrPull' role so agent-bom can pull ACR images for SBOM/CVE extraction. Reader cannot pull image content."
+}

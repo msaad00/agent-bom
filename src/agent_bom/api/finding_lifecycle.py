@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     status TEXT NOT NULL DEFAULT 'open',
     severity TEXT NOT NULL DEFAULT '',
     severity_rank INTEGER NOT NULL DEFAULT 0,
-    cvss_score REAL,
+    cvss_score REAL NOT NULL DEFAULT 0,
     effective_reach_score REAL NOT NULL DEFAULT 0,
     scan_count INTEGER NOT NULL DEFAULT 1,
     resolved_at TEXT,
@@ -153,6 +153,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     updated_at TEXT NOT NULL,
     payload TEXT NOT NULL,
     ledger_finding_id TEXT,
+    origin TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (tenant_id, canonical_id)
 );
 
@@ -175,6 +176,8 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_cvss
     ON hub_findings_current(tenant_id, cvss_score DESC, last_seen DESC, canonical_id ASC);
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity
     ON hub_findings_current(tenant_id, severity_rank DESC, last_seen DESC, canonical_id ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_origin_cvss
+    ON hub_findings_current(tenant_id, origin, cvss_score DESC, last_seen DESC, canonical_id ASC);
 """
 
 
@@ -213,7 +216,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     status TEXT NOT NULL DEFAULT 'open',
     severity TEXT NOT NULL DEFAULT '',
     severity_rank INTEGER NOT NULL DEFAULT 0,
-    cvss_score DOUBLE PRECISION,
+    cvss_score DOUBLE PRECISION NOT NULL DEFAULT 0,
     effective_reach_score DOUBLE PRECISION NOT NULL DEFAULT 0,
     scan_count INTEGER NOT NULL DEFAULT 1,
     resolved_at TEXT,
@@ -221,6 +224,7 @@ CREATE TABLE IF NOT EXISTS hub_findings_current (
     updated_at TEXT NOT NULL,
     payload JSONB NOT NULL,
     ledger_finding_id TEXT,
+    origin TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (tenant_id, canonical_id)
 );
 
@@ -233,6 +237,15 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_cvss
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity
     ON hub_findings_current(tenant_id, severity_rank DESC, last_seen DESC, canonical_id ASC);
 """
+
+# Origin-scoped composite index — created after the ``origin`` column migration
+# (the column post-dates the base DDL, so it cannot live in the CREATE TABLE
+# block for pre-existing Postgres deployments). Backs both the cvss-sorted page
+# read and the exact COUNT(*) over ``(tenant_id, origin)`` (#3641).
+_CURRENT_LIFECYCLE_ORIGIN_INDEX_POSTGRES = (
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_origin_cvss "
+    "ON hub_findings_current(tenant_id, origin, cvss_score DESC, last_seen DESC, canonical_id ASC)"
+)
 
 # Legacy unpartitioned observations DDL for existing Postgres deployments that
 # have not yet run the partition migration (#3463). New installs use

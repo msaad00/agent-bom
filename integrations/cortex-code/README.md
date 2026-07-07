@@ -114,6 +114,6 @@ For Cortex, agent-bom also audits:
 ## Auto-Discovery
 
 agent-bom already discovers Cortex CoCo's MCP configuration at
-`~/.snowflake/cortex/mcp.json`. Running `agent-bom agents` will
+`~/.snowflake/cortex/mcp.json`. Running `agent-bom scan` will
 automatically find and scan your Cortex Code MCP servers plus the associated
 settings, permissions, and hooks files.

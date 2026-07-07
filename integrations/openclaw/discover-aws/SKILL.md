@@ -100,7 +100,7 @@ or exports from that inventory.
 | Mode | What happens | Data boundary |
 |------|--------------|---------------|
 | `discover-only` | Emit canonical inventory JSON and stop | No agent-bom scan or API handoff |
-| `scan-local` | Run `agent-bom agents --inventory ...` on the generated file | Local handoff into the scanner |
+| `scan-local` | Run `agent-bom scan --inventory ...` on the generated file | Local handoff into the scanner |
 | `export` | Write JSON/SARIF or another operator-selected output | Local output only unless the operator routes it elsewhere |
 
 Use `discover-only` unless the operator asks for scan results or an export.
@@ -122,13 +122,13 @@ python examples/operator_pull/aws_inventory_adapter.py \
 3. If the operator asks for findings, scan the generated inventory locally:
 
 ```bash
-agent-bom agents --inventory aws-inventory.json
+agent-bom scan --inventory aws-inventory.json
 ```
 
 4. If the operator asks for an export, write it to an operator-selected path:
 
 ```bash
-agent-bom agents --inventory aws-inventory.json --format json --output agent-bom-aws-findings.json
+agent-bom scan --inventory aws-inventory.json --format json --output agent-bom-aws-findings.json
 ```
 
 ## Optional Service Flags

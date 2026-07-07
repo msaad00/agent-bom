@@ -126,7 +126,7 @@ provenance via Sigstore, scans filesystems, and generates SBOMs.
 
 ```bash
 pipx install agent-bom
-agent-bom agents             # discover agents and scan dependencies
+agent-bom scan             # discover agents and scan dependencies
 agent-bom check langchain==0.1.0  # check a specific package with version
 agent-bom image nginx:1.25   # scan container image (native)
 agent-bom fs .               # scan filesystem packages
@@ -205,7 +205,7 @@ Markdown for human review, CycloneDX/SPDX for SBOM consumers.
 For CLI gates, prefer:
 
 ```bash
-agent-bom agents --format sarif --output agent-bom.sarif --fail-on-severity high
+agent-bom scan --format sarif --output agent-bom.sarif --fail-on-severity high
 ```
 
 ## Guardrails
@@ -231,7 +231,7 @@ pip install agent-bom
 agent-bom verify agent-bom
 
 # Step 4: Only then run scans
-agent-bom agents
+agent-bom scan
 ```
 
 ## Verification

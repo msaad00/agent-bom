@@ -1189,34 +1189,40 @@ def _discover_cloud_sql_instances(
     instances: list[dict[str, Any]] = []
     try:
         service = build("sqladmin", "v1beta4", credentials=credentials, cache_discovery=False)
-        response = service.instances().list(project=project_id).execute()
-        for item in response.get("items", []) or []:
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("name", "") or "").strip()
-            if not name:
-                continue
-            ip_addresses = [str(ip.get("ipAddress", "")) for ip in (item.get("ipAddresses") or []) if isinstance(ip, dict)]
-            settings = item.get("settings") or {}
-            ip_config = settings.get("ipConfiguration") or {}
-            authorized = [str(net.get("value", "")) for net in (ip_config.get("authorizedNetworks") or []) if isinstance(net, dict)]
-            public_ip = bool(ip_config.get("ipv4Enabled")) and bool(ip_addresses)
-            open_network = any(net in _INTERNET_RANGES for net in authorized)
-            disk_encryption = item.get("diskEncryptionConfiguration") or {}
-            instances.append(
-                {
-                    "name": name,
-                    "id": str(item.get("selfLink", "") or "") or name,
-                    "location": str(item.get("region", "") or ""),
-                    "database_version": str(item.get("databaseVersion", "") or ""),
-                    "ip_addresses": ip_addresses,
-                    "authorized_networks": authorized,
-                    "publicly_accessible": public_ip or open_network,
-                    "internet_exposed": public_ip or open_network,
-                    "encrypted": bool(disk_encryption.get("kmsKeyName")),
-                    "project_id": project_id,
-                }
-            )
+        request = service.instances().list(project=project_id)
+        while request is not None:
+            response = request.execute()
+            for item in response.get("items", []) or []:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name", "") or "").strip()
+                if not name:
+                    continue
+                ip_addresses = [str(ip.get("ipAddress", "")) for ip in (item.get("ipAddresses") or []) if isinstance(ip, dict)]
+                settings = item.get("settings") or {}
+                ip_config = settings.get("ipConfiguration") or {}
+                authorized = [str(net.get("value", "")) for net in (ip_config.get("authorizedNetworks") or []) if isinstance(net, dict)]
+                public_ip = bool(ip_config.get("ipv4Enabled")) and bool(ip_addresses)
+                open_network = any(net in _INTERNET_RANGES for net in authorized)
+                disk_encryption = item.get("diskEncryptionConfiguration") or {}
+                instances.append(
+                    {
+                        "name": name,
+                        "id": str(item.get("selfLink", "") or "") or name,
+                        "location": str(item.get("region", "") or ""),
+                        "database_version": str(item.get("databaseVersion", "") or ""),
+                        "ip_addresses": ip_addresses,
+                        "authorized_networks": authorized,
+                        "publicly_accessible": public_ip or open_network,
+                        "internet_exposed": public_ip or open_network,
+                        "encrypted": bool(disk_encryption.get("kmsKeyName")),
+                        "project_id": project_id,
+                    }
+                )
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+            request = service.instances().list(project=project_id, pageToken=page_token)
     except Exception as exc:  # noqa: BLE001 — one failed Cloud SQL instances list must not sink the scan
         record_discovery_failure(
             exc=exc,

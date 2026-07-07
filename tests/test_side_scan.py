@@ -53,6 +53,11 @@ class FakeEc2Client:
         self._record("describe_volumes", **kwargs)
         return {"Volumes": self._volumes}
 
+    def get_paginator(self, operation_name: str) -> "_FakePaginator":
+        if operation_name != "describe_volumes":
+            raise ValueError(operation_name)
+        return _FakePaginator(self)
+
     def describe_snapshots(self, **kwargs: object) -> dict:
         self._record("describe_snapshots", **kwargs)
         return {"Snapshots": self._orphan_snapshots}
@@ -86,6 +91,14 @@ class FakeEc2Client:
         return {}
 
     # waiters are optional; omit get_waiter so the scanner skips them
+
+
+class _FakePaginator:
+    def __init__(self, client: FakeEc2Client) -> None:
+        self._client = client
+
+    def paginate(self, **kwargs: object):
+        yield self._client.describe_volumes(**kwargs)
 
 
 class FakeMountController:
@@ -432,3 +445,29 @@ class TestEnumeration:
         scanner = AwsEbsSideScanner(ec2_client=ec2)
         targets = scanner.enumerate_target_volumes()
         assert {t["volume_id"] for t in targets} == {"vol-1", "vol-2"}
+
+    def test_enumerate_all_paginates(self, enabled: None) -> None:
+        page1 = [{"VolumeId": f"vol-{idx}", "Attachments": []} for idx in range(500)]
+        page2 = [{"VolumeId": "vol-500", "Attachments": []}]
+
+        class _PagingEc2(FakeEc2Client):
+            def describe_volumes(self, **kwargs: object) -> dict:
+                self._record("describe_volumes", **kwargs)
+                if kwargs.get("NextToken"):
+                    return {"Volumes": page2}
+                return {"Volumes": self._volumes, "NextToken": "page-2"}
+
+            def get_paginator(self, operation_name: str) -> _FakePaginator:
+                return _PagingPaginator(self)
+
+        class _PagingPaginator(_FakePaginator):
+            def paginate(self, **kwargs: object):
+                first = self._client.describe_volumes(**kwargs)
+                yield first
+                if first.get("NextToken"):
+                    yield self._client.describe_volumes(NextToken=first["NextToken"])
+
+        scanner = AwsEbsSideScanner(ec2_client=_PagingEc2(volumes=page1))
+        targets = scanner.enumerate_target_volumes()
+        assert len(targets) == 501
+        assert targets[-1]["volume_id"] == "vol-500"

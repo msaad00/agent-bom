@@ -20,3 +20,5 @@ services:
   api:
     environment:
       - AGENT_BOM_SESSION_COOKIE_SECURE=1
+      - AGENT_BOM_DEMO_ESTATE=1
+      - AGENT_BOM_NO_AUTH_ROLE=viewer

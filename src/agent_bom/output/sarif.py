@@ -693,6 +693,8 @@ def to_sarif(
                 "asset_name": _sanitize_sarif_text("title", finding.asset.name, fallback=finding.asset.asset_type),
                 "evidence": _sanitize_sarif_property(finding.evidence),
                 "remediation_guidance": _sanitize_sarif_property(finding.remediation_guidance),
+                "is_malicious": finding.is_malicious,
+                "malicious_reason": _sanitize_sarif_property(finding.malicious_reason),
                 # Structured reach lists + AI-native context (unified Finding parity).
                 "affected_servers": list(finding.affected_servers),
                 "affected_agents": list(finding.affected_agents),

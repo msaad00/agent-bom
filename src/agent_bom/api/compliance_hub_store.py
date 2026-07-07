@@ -871,6 +871,11 @@ def _postgres_current_order_clause(sort: str) -> str:
     return _sqlite_current_order_clause(sort)
 
 
+def _desc_tie_break(value: str) -> tuple[int, ...]:
+    """Lex descending tie-breaker aligned with SQL ``last_seen DESC``."""
+    return tuple(-ord(ch) for ch in value)
+
+
 def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], tuple[float | str, str, str]]:
     """Sort key for in-memory current-state pages (descending primary signal)."""
     normalized = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
@@ -886,7 +891,7 @@ def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], tuple[float 
             primary = float(row.get("severity_rank") or 0)
         else:
             primary = float(row.get("effective_reach_score") or 0.0)
-        return (-primary, tie, canonical)
+        return (-primary, _desc_tie_break(tie), canonical)
 
     return _key
 

@@ -310,21 +310,23 @@ class AwsEbsSideScanner:
         Returns a list of ``{"volume_id", "instance_id"}`` dicts.
         """
         if volume_id:
-            resp = self._ec2.describe_volumes(VolumeIds=[volume_id])
+            paginate_kwargs: dict[str, object] = {"VolumeIds": [volume_id]}
         elif instance_id:
-            resp = self._ec2.describe_volumes(Filters=[{"Name": "attachment.instance-id", "Values": [instance_id]}])
+            paginate_kwargs = {"Filters": [{"Name": "attachment.instance-id", "Values": [instance_id]}]}
         else:
-            resp = self._ec2.describe_volumes()
+            paginate_kwargs = {}
 
         targets: list[dict[str, str]] = []
-        for vol in resp.get("Volumes", []):
-            vid = vol.get("VolumeId", "")
-            if not vid:
-                continue
-            attached_instance = ""
-            for att in vol.get("Attachments", []):
-                attached_instance = att.get("InstanceId", "") or attached_instance
-            targets.append({"volume_id": vid, "instance_id": attached_instance or (instance_id or "")})
+        paginator = self._ec2.get_paginator("describe_volumes")
+        for page in paginator.paginate(**paginate_kwargs):
+            for vol in page.get("Volumes", []):
+                vid = vol.get("VolumeId", "")
+                if not vid:
+                    continue
+                attached_instance = ""
+                for att in vol.get("Attachments", []):
+                    attached_instance = att.get("InstanceId", "") or attached_instance
+                targets.append({"volume_id": vid, "instance_id": attached_instance or (instance_id or "")})
         return targets
 
     # ── Full scan with guaranteed cleanup ─────────────────────────────────

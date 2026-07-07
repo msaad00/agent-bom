@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.audit_log import log_action
+from agent_bom.api.credential_ref_validation import validate_credential_ref
 from agent_bom.api.credential_rotation import build_credential_rotation_governance
 from agent_bom.api.models import (
     CredentialRefCreate,
@@ -160,8 +161,7 @@ async def update_credential_ref(request: Request, credential_ref_id: str, body: 
 @router.post("/v1/credentials/{credential_ref_id}/test", tags=["credentials"])
 async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
     credential = _credential_for_request(request, credential_ref_id)
-    status = CredentialRefStatus.CONFIGURED if credential.enabled else CredentialRefStatus.DISABLED
-    message = "Credential reference metadata recorded; secret material remains in the customer-managed store."
+    status, message = validate_credential_ref(credential)
     credential.last_validated_at = _now()
     credential.last_validation_status = status.value
     credential.last_validation_message = message

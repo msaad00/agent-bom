@@ -8,6 +8,7 @@ import tempfile
 import pytest
 
 os.environ.setdefault("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", "1")
+os.environ.setdefault("AGENT_BOM_NO_AUTH_ROLE", "admin")
 
 # Force a wide, deterministic console width. Under pytest-xdist there is no TTY,
 # so Rich defaults to 80 cols and wraps long output (e.g. file paths) across

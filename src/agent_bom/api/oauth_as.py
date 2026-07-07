@@ -676,11 +676,19 @@ def build_oauth_as_router(server: OAuthAuthorizationServer):
     router = APIRouter()
 
     def _request_base_url(request: Request) -> str:
-        # Honor a trusted reverse proxy's forwarded host/proto when present.
-        proto = (request.headers.get("x-forwarded-proto", "") or request.url.scheme).split(",")[0].strip()
-        host = (request.headers.get("x-forwarded-host", "") or request.headers.get("host", "")).split(",")[0].strip()
-        if host:
-            return f"{proto}://{host}"
+        # Forwarded host/proto are honored only when the deployment explicitly
+        # trusts its reverse proxy — same gate as enterprise auth routes.
+        trust_proxy = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if trust_proxy:
+            proto = (request.headers.get("x-forwarded-proto", "") or request.url.scheme).split(",")[0].strip()
+            host = (request.headers.get("x-forwarded-host", "") or request.headers.get("host", "")).split(",")[0].strip()
+            if host:
+                return f"{proto}://{host}"
         return str(request.base_url).rstrip("/")
 
     @router.get("/.well-known/oauth-authorization-server")

@@ -8,8 +8,10 @@ from typing import Any
 
 _ALLOWED_SORTS = frozenset({"effective_reach", "cvss", "severity", "ordinal"})
 
-# Legacy rows may have NULL ``cvss_score``; treat as 0 for DESC keyset walks so
-# SQL comparisons stay three-valued-logic safe (#3511 / audit 2026-07-04).
+# ``cvss_score`` is NOT NULL DEFAULT 0 at the storage layer (legacy NULLs are
+# backfilled to 0 on migration), so keyset comparisons stay three-valued-logic
+# safe without a COALESCE wrapper (#3511 / audit 2026-07-04 / #3641). The Python
+# helper keeps a defensive 0 for in-memory rows that never touched storage.
 _CVSS_NULL_SORT_VALUE = 0.0
 
 
@@ -73,7 +75,9 @@ def cursor_from_current_row(row: dict[str, Any], *, sort: str) -> str:
 
 
 def _cvss_keyset_expr() -> str:
-    return "COALESCE(cvss_score, 0)"
+    # Bare column (not COALESCE) so the keyset range predicate rides the
+    # cvss sort index; safe because cvss_score is NOT NULL DEFAULT 0 (#3641).
+    return "cvss_score"
 
 
 def sqlite_keyset_clause(sort: str, cursor: str) -> tuple[str, list[Any]]:

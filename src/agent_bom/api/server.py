@@ -958,6 +958,23 @@ async def _cleanup_loop():
                 )
         except Exception:  # noqa: BLE001
             _logger.debug("hub observations retention skipped", exc_info=True)
+        # Generic partition maintenance for the other append-only tables (#3463):
+        # ensure next partitions exist and roll over expired ones. Postgres-only;
+        # a strict no-op on SQLite and on any table an operator has not converted
+        # to declarative partitioning. Fail-open like the hooks above.
+        try:
+            from agent_bom.api.partition_maintenance import run_partition_retention
+
+            partition_results = run_partition_retention()
+            for table, (partitions_created, partitions_dropped) in partition_results.items():
+                _logger.info(
+                    "%s partition maintenance: %d created, %d dropped",
+                    table,
+                    partitions_created,
+                    partitions_dropped,
+                )
+        except Exception:  # noqa: BLE001
+            _logger.debug("partition maintenance skipped", exc_info=True)
         # NHI lifecycle enforcement (#nhi): expire lingering JIT grants, opt-in
         # dormant-identity deprovision, advisory token rotation-due flagging.
         # Backend-agnostic and fail-open — a store error logs and is skipped so
@@ -1004,8 +1021,8 @@ async def _cleanup_loop():
                 for job in list(_jobs.values()):
                     if job.status == JobStatus.RUNNING and job.created_at:
                         try:
-                            created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
-                            if (now - created).total_seconds() > _STUCK_JOB_TIMEOUT:
+                            job_created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
+                            if (now - job_created).total_seconds() > _STUCK_JOB_TIMEOUT:
                                 job.status = JobStatus.FAILED
                                 job.error = "Timed out (stuck in RUNNING state)"
                                 job.completed_at = now.isoformat()

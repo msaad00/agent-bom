@@ -254,6 +254,18 @@ DSPM_DB_MAX_CELL_CHARS = _int("AGENT_BOM_DSPM_DB_MAX_CELL_CHARS", 4096)
 LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 
 
+# ── ClickHouse findings-ingest (opt-in analytics mirror) ─────────────────────
+# When a ClickHouse HTTP URL is configured, the scan-completion history hook
+# (agent_bom.history.save_report) best-effort mirrors the scan's findings and
+# summary into ClickHouse alongside the local SQLite analytics store, so the
+# `agent-bom analytics` query command sees CLI scans. Disabled by default:
+# with no URL the hook is a clean no-op with zero overhead, and any ClickHouse
+# error is swallowed so ingest can never fail a scan. The runtime gate reads
+# AGENT_BOM_CLICKHOUSE_URL at call time (so an env override set after import is
+# honored); this constant documents the knob and its default.
+CLICKHOUSE_URL = _str("AGENT_BOM_CLICKHOUSE_URL", "")
+
+
 # ── Iceberg Catalog Export ───────────────────────────────────────────────────
 # Optional findings-lake side-write. Disabled unless a REST catalog URL is set.
 # Credentials are deliberately not mirrored here; they stay env/KMS-only and are
@@ -646,3 +658,22 @@ AUDIT_TRAIL_ENABLED = _bool("AGENT_BOM_AUDIT_TRAIL", False)
 AUDIT_TRAIL_LOOKBACK_HOURS = _int("AGENT_BOM_AUDIT_TRAIL_LOOKBACK_HOURS", 24)
 # Per-provider event cap; the reader clamps to a hard ceiling and warns when hit.
 AUDIT_TRAIL_MAX_EVENTS = _int("AGENT_BOM_AUDIT_TRAIL_MAX_EVENTS", 2000)
+
+
+# ── Partition Retention (#3463) ───────────────────────────────────────────
+# Age-based RANGE-partition rollover for append-only Postgres tables managed by
+# ``api/partition_maintenance.py``. Each knob is a retention window in days;
+# ``<= 0`` disables rollover for that table (the safe default — partitions are
+# never dropped until an operator opts in). Maintenance is Postgres-only and a
+# strict no-op on unpartitioned/legacy tables and on SQLite: retention only acts
+# on tables an operator has actually converted to declarative partitioning
+# (see ``partitioned_parent_ddl`` / ``migrate_table_to_partitioned``).
+#
+# ``audit_log`` is append-only and partition-safe (UUID entry_id PK; migration
+# adds ``timestamp`` to the PK). ``llm_costs`` / ``runtime_observations`` are
+# registered but partition-UNSAFE — their idempotency key excludes the time
+# column, so partitioning would regress ingest dedup; they stay disabled until
+# the dedup key is redesigned.
+AUDIT_LOG_RETENTION_DAYS = _int("AGENT_BOM_AUDIT_LOG_RETENTION_DAYS", 0)
+LLM_COSTS_RETENTION_DAYS = _int("AGENT_BOM_LLM_COSTS_RETENTION_DAYS", 0)
+RUNTIME_OBSERVATIONS_RETENTION_DAYS = _int("AGENT_BOM_RUNTIME_OBSERVATIONS_RETENTION_DAYS", 0)

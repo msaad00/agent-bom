@@ -11,7 +11,7 @@ import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS
@@ -196,7 +196,7 @@ class SQLiteJobStore:
             self._local.conn.execute("PRAGMA cache_size=-2048")
             self._local.conn.execute("PRAGMA temp_store=FILE")
             self._local.conn.execute("PRAGMA mmap_size=0")
-        return self._local.conn
+        return cast(sqlite3.Connection, self._local.conn)
 
     def _shrink_connection_memory(self) -> None:
         try:

@@ -966,12 +966,12 @@ async def _cleanup_loop():
             from agent_bom.api.partition_maintenance import run_partition_retention
 
             partition_results = run_partition_retention()
-            for table, (created, dropped) in partition_results.items():
+            for table, (partitions_created, partitions_dropped) in partition_results.items():
                 _logger.info(
                     "%s partition maintenance: %d created, %d dropped",
                     table,
-                    created,
-                    dropped,
+                    partitions_created,
+                    partitions_dropped,
                 )
         except Exception:  # noqa: BLE001
             _logger.debug("partition maintenance skipped", exc_info=True)
@@ -1021,8 +1021,8 @@ async def _cleanup_loop():
                 for job in list(_jobs.values()):
                     if job.status == JobStatus.RUNNING and job.created_at:
                         try:
-                            created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
-                            if (now - created).total_seconds() > _STUCK_JOB_TIMEOUT:
+                            job_created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
+                            if (now - job_created).total_seconds() > _STUCK_JOB_TIMEOUT:
                                 job.status = JobStatus.FAILED
                                 job.error = "Timed out (stuck in RUNNING state)"
                                 job.completed_at = now.isoformat()

@@ -133,7 +133,7 @@ def _php_method_body(source: str, method_start: int, method_end: int) -> tuple[s
 
 
 def _php_call_sites(body: str, *, line_offset: int) -> list[_PhpCallSite]:
-    masked = mask_line_comments_and_strings(body, hash_comments=True)
+    masked = mask_line_comments_and_strings(body, hash_comments=True, heredoc=True)
     sites: list[_PhpCallSite] = []
     for match in _PHP_OBJECT_CALL_RE.finditer(masked):
         sites.append(

@@ -6,9 +6,54 @@ comments or string literals as executable call sites.
 
 from __future__ import annotations
 
+import re
 
-def mask_line_comments_and_strings(source: str, *, hash_comments: bool = False) -> str:
-    """Return ``source`` with comments and quoted literals replaced by spaces."""
+
+def _mask_preserving_newlines(text: str) -> str:
+    """Replace every non-newline character with a space, keeping line count."""
+    return "".join("\n" if ch == "\n" else " " for ch in text)
+
+
+def _consume_heredoc(source: str, start: int) -> tuple[str, int] | None:
+    """Mask a PHP heredoc/nowdoc block starting at ``<<<`` (index ``start``).
+
+    Returns ``(masked_text, next_index)`` covering the opener through the
+    closing label, or ``None`` if ``start`` is not a valid heredoc opener.
+    Newlines are preserved so downstream line numbers stay accurate.
+    """
+    length = len(source)
+    j = start + 3  # past '<<<'
+    while j < length and source[j] in " \t":
+        j += 1
+    quote = ""
+    if j < length and source[j] in "'\"":
+        quote = source[j]
+        j += 1
+    label_start = j
+    while j < length and (source[j].isalnum() or source[j] == "_"):
+        j += 1
+    label = source[label_start:j]
+    if not label or not (source[label_start].isalpha() or source[label_start] == "_"):
+        return None
+    if quote and j < length and source[j] == quote:
+        j += 1
+    # Closing marker: line start, optional indent, the label, then a non-identifier char.
+    close = re.compile(r"^[ \t]*" + re.escape(label) + r"(?![A-Za-z0-9_])", re.MULTILINE)
+    match = close.search(source, j)
+    end = match.end() if match else length
+    return _mask_preserving_newlines(source[start:end]), end
+
+
+def mask_line_comments_and_strings(
+    source: str, *, hash_comments: bool = False, heredoc: bool = False
+) -> str:
+    """Return ``source`` with comments and quoted literals replaced by spaces.
+
+    ``hash_comments`` also masks ``#`` line comments (PHP/Ruby/Swift-adjacent).
+    ``heredoc`` masks PHP heredoc/nowdoc (``<<<EOT`` / ``<<<'EOT'``) bodies,
+    where an identifier such as ``$client->request`` inside a SQL/HTML template
+    must not be mistaken for a call site.
+    """
     result: list[str] = []
     i = 0
     length = len(source)
@@ -20,6 +65,13 @@ def mask_line_comments_and_strings(source: str, *, hash_comments: bool = False) 
         nxt = source[i + 1] if i + 1 < length else ""
 
         if state == "code":
+            if heredoc and char == "<" and source[i : i + 3] == "<<<":
+                consumed = _consume_heredoc(source, i)
+                if consumed is not None:
+                    masked, end = consumed
+                    result.append(masked)
+                    i = end
+                    continue
             if char == "/" and nxt == "/":
                 state = "line_comment"
                 result.extend("  ")

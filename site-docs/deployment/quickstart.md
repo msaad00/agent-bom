@@ -3,7 +3,7 @@
 Unified entry for **BYOC / self-hosted** rollout: one install script, read-only
 cloud connect, and the intake paths that feed your control plane.
 
-Full doc in the repo: [`docs/DEPLOY_QUICKSTART.md`](../../docs/DEPLOY_QUICKSTART.md).
+Full doc in the repo: [`docs/DEPLOY_QUICKSTART.md`](https://github.com/msaad00/agent-bom/blob/main/docs/DEPLOY_QUICKSTART.md).
 
 ## Install
 
@@ -68,7 +68,7 @@ mermaid diagrams:
 
 ## Related
 
-- [Deploy anywhere (three tiers)](../../docs/DEPLOY_PLATFORM.md)
-- [Cloud connect model](../../docs/CLOUD_CONNECT.md)
-- [Cross-cloud runbook](../../deploy/RUNBOOK.md)
-- [Trust boundaries](../../docs/TRUST.md)
+- [Deploy anywhere (three tiers)](https://github.com/msaad00/agent-bom/blob/main/docs/DEPLOY_PLATFORM.md)
+- [Cloud connect model](https://github.com/msaad00/agent-bom/blob/main/docs/CLOUD_CONNECT.md)
+- [Cross-cloud runbook](https://github.com/msaad00/agent-bom/blob/main/deploy/RUNBOOK.md)
+- [Trust boundaries](https://github.com/msaad00/agent-bom/blob/main/docs/TRUST.md)

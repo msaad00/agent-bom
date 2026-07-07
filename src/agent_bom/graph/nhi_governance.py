@@ -5,7 +5,7 @@ The discovery (:mod:`agent_bom.graph.nhi_overlay`), governance
 (:mod:`agent_bom.graph.effective_permissions`) overlays place
 ``managed_identity`` nodes, ``HAS_PERMISSION`` / ``SCOPED_TO`` edges, and
 privilege flags into one graph. This module is pure *analytics over that data* —
-the three Natoma-parity capabilities that close the 2026-06-19 audit gap:
+the three core NHI governance analytics that close the 2026-06-19 audit gap:
 
 1. **Usage-based right-sizing.** Diff the permissions an identity is *granted*
    (the ``HAS_PERMISSION`` transitive closure + standing ``SCOPED_TO`` tool

@@ -1,6 +1,6 @@
 # Deploy quickstart — one product, any cloud
 
-This is the **Wiz-style onboarding story** for agent-bom: deploy the control
+This is the **connect-and-scan onboarding story** for agent-bom: deploy the control
 plane once, connect read-only cloud accounts and endpoints, and get inventory,
 assets, scans, MCP/agents, and AI BOM evidence in one graph — without handing
 credentials to a hosted SaaS.

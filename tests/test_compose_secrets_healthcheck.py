@@ -163,7 +163,11 @@ def test_hosted_poc_overlay_keeps_api_and_ui_loopback_only() -> None:
     api_env = services["api"]["environment"]
     assert "ports" not in services["api"]
     assert "ui" not in services
-    assert api_env == ["AGENT_BOM_SESSION_COOKIE_SECURE=1"]
+    assert api_env == [
+        "AGENT_BOM_SESSION_COOKIE_SECURE=1",
+        "AGENT_BOM_DEMO_ESTATE=1",
+        "AGENT_BOM_NO_AUTH_ROLE=viewer",
+    ]
 
 
 def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:

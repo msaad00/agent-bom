@@ -61,7 +61,7 @@ def emit_dry_run_plan(
     images: tuple,
     aws: bool,
     aws_region: str | None,
-    aws_include_lambda: bool,
+    no_aws_lambda: bool,
     aws_include_eks: bool,
     aws_include_step_functions: bool,
     aws_include_ec2: bool,
@@ -130,7 +130,7 @@ def emit_dry_run_plan(
         reads.append(f"  [green]Would scan:[/green]   docker image {img}  (via grype → syft → docker)")
     if aws:
         reads.append(f"  [green]Would query:[/green]  AWS Bedrock/Lambda/ECS APIs ({aws_region or 'default region'})")
-        if aws_include_lambda:
+        if not no_aws_lambda:
             reads.append(f"  [green]Would query:[/green]  AWS Lambda ListFunctions API ({aws_region or 'default region'})")
         if aws_include_eks:
             reads.append("  [green]Would query:[/green]  AWS EKS ListClusters + kubectl pod discovery")

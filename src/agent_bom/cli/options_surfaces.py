@@ -235,10 +235,10 @@ def cloud_options(fn):
     """AWS, Azure, GCP, CoreWeave, Databricks, Snowflake, Nebius."""
     return _apply(
         [
-            click.option("--aws", is_flag=True, help="Discover AI agents from AWS Bedrock, Lambda, and ECS"),
+            click.option("--aws", is_flag=True, help="Discover AI agents from AWS (Bedrock, Lambda, ECS — on by default)"),
             click.option("--aws-region", default=None, metavar="REGION", help="AWS region (default: AWS_DEFAULT_REGION)"),
             click.option("--aws-profile", default=None, metavar="PROFILE", help="AWS credential profile"),
-            click.option("--aws-include-lambda", is_flag=True, help="Discover standalone Lambda functions (used with --aws)"),
+            click.option("--no-aws-lambda", is_flag=True, help="Skip standalone Lambda discovery when using --aws"),
             click.option("--aws-include-eks", is_flag=True, help="Discover EKS cluster workloads via kubectl (used with --aws)"),
             click.option("--aws-include-step-functions", is_flag=True, help="Discover Step Functions workflows (used with --aws)"),
             click.option("--aws-include-ec2", is_flag=True, help="Discover EC2 instances by tag (used with --aws)"),

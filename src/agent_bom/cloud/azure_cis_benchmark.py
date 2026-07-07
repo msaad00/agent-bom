@@ -2760,6 +2760,8 @@ def _check_8_4(kv_client: Any, subscription_id: str) -> CISCheckResult:
         vaults = list(kv_client.vaults.list())
         failing_keys: list[str] = []
         rbac_vault_count = 0
+        readable = 0
+        denied: list[str] = []
         for vault in vaults:
             vault_name = vault.name or "unknown"
             vault_id = getattr(vault, "id", "") or ""
@@ -2787,15 +2789,26 @@ def _check_8_4(kv_client: Any, subscription_id: str) -> CISCheckResult:
                 for key_prop in key_client.list_properties_of_keys():
                     if getattr(key_prop, "expires_on", None) is None:
                         failing_keys.append(f"{vault_name}/{key_prop.name}")
+                readable += 1
             except Exception as exc:
+                # Denied RBAC vault is UNREADABLE, not compliant — never PASS.
+                denied.append(vault_name)
                 logger.debug("Could not enumerate keys in RBAC vault %s: %s", vault_name, exc)
         if failing_keys:
             result.status = CheckStatus.FAIL
             result.evidence = f"Keys without expiration in RBAC vaults: {', '.join(failing_keys[:10])}"
             result.resource_ids = failing_keys
+        elif rbac_vault_count and readable == 0:
+            result.status = CheckStatus.ERROR
+            result.evidence = (
+                f"Could not read keys in any of {rbac_vault_count} RBAC vault(s) — data-plane access denied. "
+                "Grant the scanner 'Key Vault Reader' to evaluate CIS 8.4."
+            )
+            result.resource_ids = denied
         else:
+            note = f" ({len(denied)} vault(s) skipped — data-plane access denied)" if denied else ""
             result.status = CheckStatus.PASS
-            result.evidence = f"All keys in {rbac_vault_count} RBAC vault(s) have expiration dates set."
+            result.evidence = f"All keys in {readable} readable RBAC vault(s) have expiration dates set.{note}"
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check Key Vault key expiration: {exc}"
@@ -2816,6 +2829,8 @@ def _check_8_5(kv_client: Any, subscription_id: str) -> CISCheckResult:
         vaults = list(kv_client.vaults.list())
         failing_secrets: list[str] = []
         rbac_vault_count = 0
+        readable = 0
+        denied: list[str] = []
         for vault in vaults:
             vault_name = vault.name or "unknown"
             vault_id = getattr(vault, "id", "") or ""
@@ -2843,15 +2858,26 @@ def _check_8_5(kv_client: Any, subscription_id: str) -> CISCheckResult:
                 for secret_prop in secret_client.list_properties_of_secrets():
                     if getattr(secret_prop, "expires_on", None) is None:
                         failing_secrets.append(f"{vault_name}/{secret_prop.name}")
+                readable += 1
             except Exception as exc:
+                # Denied RBAC vault is UNREADABLE, not compliant — never PASS.
+                denied.append(vault_name)
                 logger.debug("Could not enumerate secrets in RBAC vault %s: %s", vault_name, exc)
         if failing_secrets:
             result.status = CheckStatus.FAIL
             result.evidence = f"Secrets without expiration in RBAC vaults: {', '.join(failing_secrets[:10])}"
             result.resource_ids = failing_secrets
+        elif rbac_vault_count and readable == 0:
+            result.status = CheckStatus.ERROR
+            result.evidence = (
+                f"Could not read secrets in any of {rbac_vault_count} RBAC vault(s) — data-plane access denied. "
+                "Grant the scanner 'Key Vault Reader' to evaluate CIS 8.5."
+            )
+            result.resource_ids = denied
         else:
+            note = f" ({len(denied)} vault(s) skipped — data-plane access denied)" if denied else ""
             result.status = CheckStatus.PASS
-            result.evidence = f"All secrets in {rbac_vault_count} RBAC vault(s) have expiration dates set."
+            result.evidence = f"All secrets in {readable} readable RBAC vault(s) have expiration dates set.{note}"
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check Key Vault secret expiration: {exc}"
@@ -2871,6 +2897,8 @@ def _check_8_6(kv_client: Any, subscription_id: str) -> CISCheckResult:
     try:
         vaults = list(kv_client.vaults.list())
         failing_secrets: list[str] = []
+        readable = 0
+        denied: list[str] = []
         for vault in vaults:
             vault_name = vault.name or "unknown"
             vault_url = f"https://{vault_name}.vault.azure.net/"
@@ -2883,15 +2911,27 @@ def _check_8_6(kv_client: Any, subscription_id: str) -> CISCheckResult:
                     content_type = getattr(secret_prop, "content_type", None)
                     if not content_type:
                         failing_secrets.append(f"{vault_name}/{secret_prop.name}")
+                readable += 1
             except Exception as exc:
+                # Denied vault is UNREADABLE, not compliant — never PASS.
+                denied.append(vault_name)
                 logger.debug("Could not enumerate secrets in vault %s: %s", vault_name, exc)
         if failing_secrets:
             result.status = CheckStatus.FAIL
             result.evidence = f"Secrets without content type: {', '.join(failing_secrets[:10])}"
             result.resource_ids = failing_secrets
+        elif vaults and readable == 0:
+            result.status = CheckStatus.ERROR
+            result.evidence = (
+                f"Could not read secrets in any of {len(vaults)} vault(s) — data-plane access denied. "
+                "Grant the scanner 'Key Vault Reader' (RBAC vaults) or a List access policy "
+                "(access-policy vaults) to evaluate CIS 8.6."
+            )
+            result.resource_ids = denied
         else:
+            note = f" ({len(denied)} vault(s) skipped — data-plane access denied)" if denied else ""
             result.status = CheckStatus.PASS
-            result.evidence = f"All secrets across {len(vaults)} vault(s) have content type set."
+            result.evidence = f"All secrets across {readable} readable vault(s) have content type set.{note}"
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check Key Vault secret content types: {exc}"

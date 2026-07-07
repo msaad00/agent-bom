@@ -535,6 +535,7 @@ def scan(
             push_url=push_url,
             push_api_key=push_api_key,
             clickhouse_url=clickhouse_url,
+            agent_mode=agent_mode,
         )
 
     if agent_token_budget < 0:
@@ -2548,6 +2549,28 @@ def scan(
             agent_token_budget=agent_token_budget,
             agent_mode_full=agent_mode_full,
             page=page,
+        )
+
+    # ── First-run nudge: offline scan with no local advisory data ─────────────
+    # A clean install running `scan … --offline` with no synced advisory DB
+    # reports "0 vulns / PARTIAL COVERAGE" — alarming and unexplained. Surface an
+    # actionable line right under the summary so the empty result reads as a
+    # setup gap, not a clean bill of health. Console output only (machine formats
+    # stay clean) and never in demo mode, which ships a bundled advisory DB.
+    if (
+        offline
+        and not demo
+        and not quiet
+        and not agent_mode
+        and output_format == "console"
+        and not output
+        and _vuln_freshness is not None
+        and _vuln_freshness.mode == "offline"
+        and _vuln_freshness.record_count == 0
+    ):
+        con.print(
+            "[yellow]No local advisory DB — run 'agent-bom db update' "
+            "(or drop --offline). Coverage may be incomplete.[/yellow]"
         )
 
     # ── Posture summary mode (--posture) ──────────────────────────────────────

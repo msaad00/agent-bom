@@ -14,10 +14,13 @@ You want findings, an SBOM, and a CI gate.
 
 ```bash
 pip install agent-bom
-agent-bom agents -p .                     # scan this repo: packages, agents, MCP servers, blast radius
-agent-bom agents -p . -f sarif -o out.sarif   # SARIF for code-scanning
+agent-bom scan -p .                       # scan this repo: rich console panel with posture grade
+agent-bom scan -p . -f sarif -o out.sarif     # SARIF for code-scanning
 agent-bom check flask@2.0.0 --ecosystem pypi  # pre-install allow/warn/block
 ```
+
+New here? [`FIRST_RUN.md`](FIRST_RUN.md) is the canonical quickstart —
+`agent-bom scan -p .` is the one first command it leads with.
 
 CI gate (GitHub Action):
 

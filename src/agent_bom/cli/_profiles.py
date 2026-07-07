@@ -167,6 +167,35 @@ def _string_value(profile: dict[str, Any], *keys: str) -> str | None:
     return None
 
 
+def active_profile_banner(
+    name: str | None,
+    output_format: str | None,
+    output: str | None,
+    *,
+    auto_active: bool,
+    user_chose: bool,
+    agent_mode: bool = False,
+) -> str | None:
+    """Build the one-line "profile active" banner, or ``None`` when unwarranted.
+
+    Only fires when a profile was *auto-activated* from ``current_profile`` (no
+    ``--profile``/env), the user did not explicitly pick the format/output, and
+    the profile actually redirects output away from the console default. This is
+    the silent-redirect trap — a profile that pins ``format=json`` +
+    ``output=agent-bom-report.json`` otherwise writes a file with no indication a
+    profile was in play.
+    """
+    if not name or not auto_active or user_chose or agent_mode:
+        return None
+    redirects = (bool(output_format) and output_format != "console") or bool(output)
+    if not redirects:
+        return None
+    detail = f"format={output_format}" if output_format else "format=console"
+    if output:
+        detail += f" → {output}"
+    return f"Profile {name!r} active ({detail}). Override with --format console."
+
+
 def apply_scan_profile_defaults(
     *,
     output: str | None,
@@ -176,9 +205,10 @@ def apply_scan_profile_defaults(
     push_url: str | None,
     push_api_key: str | None,
     clickhouse_url: str | None,
+    agent_mode: bool = False,
 ) -> tuple[str | None, str, str | None, str | None, str | None, str | None, str | None]:
     """Apply active profile defaults for the main scan command."""
-    _name, profile = load_active_profile()
+    name, profile = load_active_profile()
     if not profile:
         return output, output_format, preset, nvd_api_key, push_url, push_api_key, clickhouse_url
     apply_profile_environment(profile)
@@ -208,6 +238,29 @@ def apply_scan_profile_defaults(
         else profile_default(ctx, profile, "output_format", output_format, "format", "output_format")
     )
 
+    # Surface a one-line banner when a profile was auto-activated from
+    # ``current_profile`` and silently redirected output. Without this, a bare
+    # `agent-bom scan` writes a JSON file to CWD with no indication a profile was
+    # active. Suppressed for explicit --profile/env, explicit format/output, and
+    # agent-mode (which owns stdout for machine JSON — the banner goes to stderr,
+    # but stays quiet in agent-mode to keep automation logs clean).
+    from agent_bom.cli._agent_mode import AGENT_MODE_ENV_VAR
+
+    auto_active = not (os.environ.get(PROFILE_ENV_VAR) or "").strip()
+    user_chose = explicit_output or explicit_format or caller_supplied_output or caller_supplied_format
+    quiet = bool(ctx.params.get("quiet")) if ctx is not None else False
+    agent_mode_active = agent_mode or bool((os.environ.get(AGENT_MODE_ENV_VAR) or "").strip())
+    banner = active_profile_banner(
+        name,
+        profile_format,
+        profile_output,
+        auto_active=auto_active,
+        user_chose=user_chose,
+        agent_mode=agent_mode_active,
+    )
+    if banner and not quiet:
+        click.echo(banner, err=True)
+
     return (
         profile_output,
         profile_format,
@@ -233,8 +286,12 @@ def write_profile_template(path: Path, name: str, *, force: bool = False) -> Non
                 "",
                 f"[profiles.{name}]",
                 'tenant_id = "default"',
-                'format = "json"',
-                'output = "agent-bom-report.json"',
+                # Console keeps the rich value panel on stdout by default. A
+                # profile that pins format=json + an output file would silently
+                # redirect `agent-bom scan` to a file — `profiles init` must not
+                # manufacture that footgun. Uncomment to opt into file output:
+                'format = "console"',
+                '# output = "agent-bom-report.json"',
                 'preset = "quick"',
                 'push_url = ""',
                 'push_api_key_env = "AGENT_BOM_PUSH_API_KEY"',

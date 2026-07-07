@@ -14,6 +14,7 @@ import {
   type GraphEdgeKindKey,
   type GraphNodeKindKey,
 } from "@/lib/graph-schema";
+import type { GraphChangeKind, GraphDiffResponse } from "@/lib/api-types";
 
 // ─── Shared Styling Constants ────────────────────────────────────────────────
 
@@ -542,6 +543,139 @@ export const MESH_LEGEND: LegendItem[] = [
   { label: "Cred", color: "#f59e0b", kind: "node", shape: "dot" },
   { label: "Tool", color: "#a855f7", kind: "node", shape: "pill" },
 ];
+
+// ─── Drift lens — snapshot change-kind helpers (#3192) ───────────────────────
+//
+// The graph diff API (/v1/graph/diff) classifies every node/edge between two
+// snapshots as new / removed / changed. These helpers turn that response into
+// a lookup the graph client can paint onto the rollup-default rendered graph
+// without re-implementing the diff. Anything the diff does not mention is
+// treated as `unchanged` (the stable estate).
+
+export type ChangeKind = GraphChangeKind;
+
+export interface ChangeKindMeta {
+  label: string;
+  color: string;
+  description: string;
+  ringClass: string;
+}
+
+export const CHANGE_KIND_ORDER: ChangeKind[] = [
+  "new",
+  "changed",
+  "removed",
+  "unchanged",
+];
+
+export const CHANGE_KIND_META: Record<ChangeKind, ChangeKindMeta> = {
+  new: {
+    label: "New",
+    color: "#10b981",
+    description: "Asset appeared since the compared snapshot.",
+    ringClass: "drift-ring-new",
+  },
+  changed: {
+    label: "Changed",
+    color: "#f59e0b",
+    description: "Asset persisted but its posture or metadata drifted.",
+    ringClass: "drift-ring-changed",
+  },
+  removed: {
+    label: "Removed",
+    color: "#f43f5e",
+    description: "Asset disappeared since the compared snapshot.",
+    ringClass: "drift-ring-removed",
+  },
+  unchanged: {
+    label: "Unchanged",
+    color: "#52525b",
+    description: "Asset is stable across both snapshots.",
+    ringClass: "",
+  },
+};
+
+export function edgeChangeKey(
+  source: string,
+  target: string,
+  relationship: string,
+): string {
+  return `${source}|${target}|${relationship}`;
+}
+
+export interface DriftIndex {
+  nodeKind: Map<string, ChangeKind>;
+  edgeKind: Map<string, ChangeKind>;
+  counts: Record<ChangeKind, number>;
+  /** True when the diff surfaced at least one changed node or edge. */
+  hasChanges: boolean;
+}
+
+const EMPTY_DRIFT_COUNTS = (): Record<ChangeKind, number> => ({
+  new: 0,
+  changed: 0,
+  removed: 0,
+  unchanged: 0,
+});
+
+export function buildDriftIndex(
+  diff: GraphDiffResponse | null | undefined,
+): DriftIndex {
+  const nodeKind = new Map<string, ChangeKind>();
+  const edgeKind = new Map<string, ChangeKind>();
+  const counts = EMPTY_DRIFT_COUNTS();
+
+  const index = diff?.change_kind_index;
+  if (index) {
+    for (const [id, kind] of Object.entries(index.nodes)) {
+      nodeKind.set(id, kind);
+      counts[kind] += 1;
+    }
+    for (const [key, kind] of Object.entries(index.edges)) {
+      edgeKind.set(key, kind);
+    }
+  }
+
+  return {
+    nodeKind,
+    edgeKind,
+    counts,
+    hasChanges: nodeKind.size > 0 || edgeKind.size > 0,
+  };
+}
+
+export function changeKindForNode(id: string, index: DriftIndex): ChangeKind {
+  return index.nodeKind.get(id) ?? "unchanged";
+}
+
+export function changeKindForEdge(
+  source: string,
+  target: string,
+  relationship: string,
+  index: DriftIndex,
+): ChangeKind {
+  return (
+    index.edgeKind.get(edgeChangeKey(source, target, relationship)) ??
+    "unchanged"
+  );
+}
+
+/** Legend rows for the drift lens, optionally annotated with live counts. */
+export function driftLegendItems(
+  counts?: Partial<Record<ChangeKind, number>>,
+): LegendItem[] {
+  return CHANGE_KIND_ORDER.map((kind) => {
+    const meta = CHANGE_KIND_META[kind];
+    const count = counts?.[kind];
+    return {
+      label: count !== undefined ? `${meta.label} · ${count}` : meta.label,
+      color: meta.color,
+      description: meta.description,
+      kind: "node",
+      shape: "dot",
+    };
+  });
+}
 
 export const CONTEXT_LEGEND: LegendItem[] = [
   { label: "Agent", color: "#10b981", kind: "node", shape: "dot" },

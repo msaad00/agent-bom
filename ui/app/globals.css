@@ -132,3 +132,23 @@ main > div {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* Drift lens (#3192) — snapshot change-kind rings painted on React Flow node
+   wrappers when the drift lens is active. Kept as static classes so Tailwind's
+   purge never strips them and both graph renderers share one visual language. */
+.drift-ring-new {
+  border-radius: 0.85rem;
+  box-shadow: 0 0 0 2px #10b981, 0 0 14px -2px rgba(16, 185, 129, 0.55);
+}
+.drift-ring-changed {
+  border-radius: 0.85rem;
+  box-shadow: 0 0 0 2px #f59e0b, 0 0 14px -2px rgba(245, 158, 11, 0.55);
+}
+.drift-ring-removed {
+  border-radius: 0.85rem;
+  box-shadow: 0 0 0 2px #f43f5e, 0 0 14px -2px rgba(244, 63, 94, 0.55);
+}
+.drift-ring-critical {
+  border-radius: 0.85rem;
+  box-shadow: 0 0 0 2px #f43f5e, 0 0 0 5px rgba(244, 63, 94, 0.25);
+}

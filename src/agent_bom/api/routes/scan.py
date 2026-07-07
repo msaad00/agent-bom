@@ -1492,9 +1492,14 @@ async def list_findings(
     cached_bulk_total = get_cached_total(
         cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest")
     )
-    if approximate_total:
-        include_bulk_total = not cursor and offset == 0
-    elif effective_approximate_total:
+    if approximate_total or effective_approximate_total:
+        # Explicit ``approximate_total=true`` (and the auto-threshold path) must
+        # NOT force the O(table) exact COUNT — reuse the cached/approximate total
+        # and surface ``total_approximate: true`` instead. The prior
+        # ``offset == 0`` override paid the full count on every first page even
+        # when a warm cache was present (~10x slower than the default path) and
+        # returned an exact total with no flag (#3641). Warm the cache with one
+        # exact count only when it is cold on the first page.
         include_bulk_total = not cursor and cached_bulk_total is None and offset == 0
     else:
         include_bulk_total = not cursor and cached_bulk_total is None

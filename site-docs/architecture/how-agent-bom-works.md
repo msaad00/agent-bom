@@ -1,4 +1,4 @@
-# How Agent-BOM Works
+# How agent-bom Works
 
 `agent-bom` discovers security-relevant AI infrastructure data, normalizes it
 into one canonical model, then exposes it through the right operator surfaces.

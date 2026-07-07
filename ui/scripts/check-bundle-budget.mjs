@@ -21,7 +21,8 @@ const BUDGETS = {
   // Includes recurring cloud-connection scan schedules; keep small CI variance headroom.
   // Includes the repo folder/file structure graph layer icons and code-layer filters.
   // Includes measured bundler/runtime drift from the July 2026 UI dependency refresh.
-  totalClientJsBytes: 3_126_000,
+  // Includes the graph drift lens (#3192) — opt-in diff overlay on the lineage canvas.
+  totalClientJsBytes: 3_132_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

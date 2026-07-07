@@ -36,6 +36,36 @@ def candidate_package_names(package_name: str, ecosystem: str = "", source_packa
     return names
 
 
+def ecosystem_matches(osv_ecosystem: str, query_ecosystem: str) -> bool:
+    """Whether an OSV ``affected[].package.ecosystem`` matches the queried ecosystem.
+
+    OSV advisories are frequently shared across ecosystems (a single GHSA can
+    list npm, PyPI, NuGet, Maven … affected entries). When resolving a fix or
+    matching an installed version we must only consider entries from the same
+    ecosystem, otherwise a fix version from a different ecosystem's entry can
+    bleed in (e.g. jQuery's npm ``3.4.0`` being reported as Django's PyPI fix).
+
+    Returns True when either side is unknown (nothing to disqualify on), and
+    compares on the base ecosystem so OSV release-suffixed ecosystems such as
+    ``Debian:11`` or ``Alpine:v3.16`` still match their bare form.
+    """
+    if not osv_ecosystem or not query_ecosystem:
+        return True
+    osv_base = osv_ecosystem.split(":", 1)[0].strip().lower()
+    query_base = query_ecosystem.split(":", 1)[0].strip().lower()
+    if osv_base == query_base:
+        return True
+    # The queried ecosystem is often the internal code ("deb", "rpm", "conda")
+    # while OSV uses its own name ("Debian:11", "Linux", "PyPI"). Map the query
+    # code to its OSV ecosystem and compare on that base too.
+    from agent_bom.scanners import ECOSYSTEM_MAP  # lazy: avoids import cycle
+
+    mapped = ECOSYSTEM_MAP.get(query_base)
+    if mapped and mapped.split(":", 1)[0].strip().lower() == osv_base:
+        return True
+    return False
+
+
 def is_valid_fix_version(version: str) -> bool:
     """Check if a string looks like a usable package version."""
     if not version or not any(c.isdigit() for c in version):
@@ -81,6 +111,15 @@ def parse_fixed_version(
             _logger.debug("Skipping affected entry with empty package name in %s", vuln_data.get("id", "?"))
             continue
         osv_eco = pkg.get("ecosystem", ecosystem)
+        if not ecosystem_matches(osv_eco, ecosystem):
+            _logger.debug(
+                "Skipping cross-ecosystem affected entry %s/%s (want %s) in %s",
+                osv_eco,
+                pkg_name,
+                ecosystem,
+                vuln_data.get("id", "?"),
+            )
+            continue
         osv_norm = normalize_package_name(pkg_name, osv_eco)
         if osv_norm in norm_inputs:
             for rng in affected.get("ranges", []):
@@ -146,6 +185,28 @@ async def enrich_vuln_details(
     return dict(pairs)
 
 
+def vuln_needs_enrichment(vuln: dict) -> bool:
+    """Whether an OSV record must be enriched before fix/version resolution.
+
+    The OSV ``/v1/querybatch`` endpoint returns minimal ``{id, modified}``
+    stubs, and a partially-enriched record (e.g. one carrying only a
+    ``summary`` from a prior run) can still be missing the ``affected`` block.
+    Both ``parse_fixed_version`` and version-range matching need ``affected``
+    with at least one ranges/versions entry, so gate enrichment on the presence
+    of that resolution data rather than on the ``summary`` field. Keying off
+    ``summary`` alone dropped fixes for records that had a summary but no
+    ``affected`` and, because ``summary``-less advisories (e.g. PYSEC) were
+    re-fetched every run, made the null-fix count nondeterministic across
+    cache-cold and cache-warm runs.
+    """
+    if not vuln.get("id"):
+        return False
+    affected = vuln.get("affected")
+    if not affected:
+        return True
+    return not any(isinstance(entry, dict) and (entry.get("ranges") or entry.get("versions")) for entry in affected)
+
+
 async def enrich_results_if_needed(
     results: dict[str, list[dict]],
     *,
@@ -160,9 +221,11 @@ async def enrich_results_if_needed(
     all_vuln_ids: list[str] = []
     for vuln_list in results.values():
         for vuln in vuln_list:
-            if "summary" not in vuln and vuln.get("id"):
+            if vuln_needs_enrichment(vuln):
                 all_vuln_ids.append(vuln["id"])
-    unique_ids = list(dict.fromkeys(all_vuln_ids))
+    # Deterministic order/dedup: the same set of ids is enriched regardless of
+    # cache-cold vs cache-warm runs, so fix-version resolution is reproducible.
+    unique_ids = sorted(dict.fromkeys(all_vuln_ids))
     if not unique_ids:
         return results
     try:
@@ -394,9 +457,7 @@ async def query_osv_batch_impl(
                     # concurrent 429s just wait the pause out.
                     if rate_gate.is_set():
                         rate_gate.clear()
-                        console.print(
-                            f"  [yellow]⚠[/yellow] OSV rate limit (429) — pausing the OSV pipeline {pipeline_wait:.0f}s"
-                        )
+                        console.print(f"  [yellow]⚠[/yellow] OSV rate limit (429) — pausing the OSV pipeline {pipeline_wait:.0f}s")
                         _logger.warning("OSV rate limit hit after all retries; pausing pipeline %.0fs", pipeline_wait)
                         try:
                             await asyncio.sleep(pipeline_wait)
@@ -412,9 +473,7 @@ async def query_osv_batch_impl(
                     for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                         pkg_err = pkg_index.get(idx)
                         if pkg_err:
-                            batch_errors.append(
-                                (pkg_err[0].name, pkg_err[0].ecosystem, "rate limited (HTTP 429) after retries")
-                            )
+                            batch_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, "rate limited (HTTP 429) after retries"))
                 elif response:
                     record_enrichment_source("osv", "failure", error=f"HTTP {response.status_code}")
                     console.print(f"  [red]✗[/red] OSV API error: HTTP {response.status_code}")

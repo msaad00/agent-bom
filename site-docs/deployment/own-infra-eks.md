@@ -131,7 +131,7 @@ Architecture](../architecture/self-hosted-product-architecture.md).*
 | **Shared remote MCP control** | everything in inventory-first plus shared upstream inventory and gateway policy/audit | workload-local proxy evidence where stdio or sidecar inspection is required |
 | **Full self-hosted platform** | one correlated plane across scans, fleet, gateway, proxy, graph, findings, and audit | longer-retention analytics and stricter platform controls |
 
-## Which Agent-BOM Surface Runs Where
+## Which agent-bom Surface Runs Where
 
 | Surface | Where it runs | Why you deploy it |
 |---|---|---|

@@ -415,12 +415,26 @@ export interface GraphAgentsResponse {
   pagination: GraphPagination;
 }
 
+/** Lifecycle classification the drift lens paints onto graph nodes/edges. */
+export type GraphChangeKind = "new" | "removed" | "changed" | "unchanged";
+
+/**
+ * Server-computed map from node id / `source|target|relationship` edge key to
+ * its change kind between two snapshots. Entries absent from the map are
+ * treated as `unchanged`. Populated by `/v1/graph/diff`.
+ */
+export interface GraphChangeKindIndex {
+  nodes: Record<string, GraphChangeKind>;
+  edges: Record<string, GraphChangeKind>;
+}
+
 export interface GraphDiffResponse {
   nodes_added: string[];
   nodes_removed: string[];
   nodes_changed: string[];
   edges_added: [string, string, string][];
   edges_removed: [string, string, string][];
+  change_kind_index?: GraphChangeKindIndex | undefined;
 }
 
 export type GraphExportFormat =

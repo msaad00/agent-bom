@@ -1,5 +1,39 @@
 # Visual language for agent-bom docs
 
+## Brand basics (canonical)
+
+One name, one tagline, one accent. Use these everywhere — README, docs, badges,
+social cards, CLI splash.
+
+- **Name:** `agent-bom` — always lowercase and hyphenated, even at the start of a
+  sentence or in a Title Case heading. Never `Agent-BOM`, `AgentBOM`, or
+  `Agent-Bom` (the title-cased `X-Agent-Bom-*` HTTP headers are a separate wire
+  convention and are intentionally left as-is).
+- **Tagline (short, for the wordmark/badges):** "AI supply-chain & infrastructure security".
+- **Tagline (full, for prose/meta):** "Security scanner for the AI supply chain and
+  infrastructure — from agent to runtime."
+- **Positioning line (README hero):** "Open security scanner and self-hosted control
+  plane for AI, MCP, and cloud infrastructure."
+- **Accent:** blue → violet gradient. Light `#2563eb → #7c3aed`; dark `#60a5fa → #a78bfa`.
+  Ink `#1f2937` (light) / `#e6edf3` (dark); muted `#6b7280` / `#8b949e`.
+- **Mark:** a security shield wrapping a three-node supply-chain / blast-radius graph —
+  the product's signature "agent → MCP → package → CVE → blast radius" motif.
+
+Brand assets live in `docs/images/brand/` (self-contained SVG, no external fonts or
+network refs, light + dark pairs):
+
+| Asset | Use |
+|---|---|
+| `logo-{light,dark}.svg` | Horizontal lockup (mark + wordmark + tagline) — README/docs hero |
+| `mark-{light,dark}.svg` | Icon-only mark — square avatars, favicons, tight spaces |
+| `wordmark-{light,dark}.svg` | Wordmark only — inline headers where the mark is redundant |
+
+`docs/images/logo-{light,dark}.svg` are kept as compatibility aliases of the lockup.
+The MkDocs site uses `site-docs/assets/brand/mark-mono.svg` (white, for the colored
+header bar) as `theme.logo` and `mark.svg` as the favicon.
+
+
+
 Three media, used deliberately. agent-bom is one product with multiple
 surfaces; images should show the surface being discussed without implying a
 separate product or unshipped capability. Picking the right medium keeps the README
@@ -39,7 +73,7 @@ Current SVG inventory:
 
 | File | What it shows | Where it lives in the README |
 |---|---|---|
-| `logo-{light,dark}.svg` | Brand mark | hero |
+| `brand/logo-{light,dark}.svg` | Brand lockup (mark + wordmark + tagline); see Brand basics above | hero |
 | `architecture-{light,dark}.svg` | End-to-end LR data flow: sources → scan/ingest → unified Finding + ContextGraph → control plane (API / Gateway / MCP) → consumers (humans + headless agents) + artifacts | `docs/ARCHITECTURE.md` System Overview; README "What Is agent-bom", collapsed detail |
 | `how-it-works-{light,dark}.svg` | Six-step scan pipeline from read-only intake through evidence core to outputs; cloud intake row uses the same public vector marks as `ui/public/logos/` | README "What Is agent-bom" |
 | `persona-value-{light,dark}.svg` | Four buyer personas in a compact single-row band — neutral cards, one restrained accent hue and person-with-role-badge icon per persona, value proof pill per card (larger body copy for README scale) | README "Who It's For", after the product intro |

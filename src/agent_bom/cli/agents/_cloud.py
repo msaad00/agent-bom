@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent_bom.cli._terminal_sections import (
+    ctx_quiet,
+    ctx_verbose,
+    print_benchmark_line,
+    print_lane_header,
+    print_provider_discovery_result,
+    stage_status,
+)
 from agent_bom.cli.agents._context import ScanContext
 
 # Shared CIS status badges across every provider table. ``not_applicable`` is
@@ -136,22 +144,31 @@ def run_cloud_discovery(
         cloud_providers.append(("ollama", {"host": ollama_host}))
 
     _pre_cloud_idx = len(ctx.agents)
+    quiet = ctx_quiet(ctx)
+    verbose = ctx_verbose(ctx)
     for provider_name, provider_kwargs in cloud_providers:
         from agent_bom.cloud import CloudDiscoveryError, discover_from_provider
 
-        con.print(f"\n[bold blue]Discovering agents from {provider_name.upper()}...[/bold blue]\n")
+        if verbose and not quiet:
+            print_lane_header(con, "discover", f"{provider_name.upper()} agents")
         try:
-            cloud_agents, cloud_warnings = discover_from_provider(provider_name, **provider_kwargs)
-            for w in cloud_warnings:
-                con.print(f"  [yellow]⚠[/yellow] {w}")
+            with stage_status(con, f"[bold]Discovering {provider_name.upper()}…[/bold]", enabled=not quiet and not verbose):
+                cloud_agents, cloud_warnings = discover_from_provider(provider_name, **provider_kwargs)
+            if not quiet:
+                pkg_count = sum(a.total_packages for a in cloud_agents) if cloud_agents else 0
+                print_provider_discovery_result(
+                    con,
+                    provider_name,
+                    agent_count=len(cloud_agents),
+                    package_count=pkg_count,
+                    warnings=cloud_warnings,
+                    verbose=verbose,
+                )
             if cloud_agents:
-                pkg_count = sum(a.total_packages for a in cloud_agents)
-                con.print(f"  [green]✓[/green] {len(cloud_agents)} agent(s) discovered, {pkg_count} package(s) to scan")
                 ctx.agents.extend(cloud_agents)
-            else:
-                con.print(f"  [dim]  No AI agents found in {provider_name.upper()}[/dim]")
         except CloudDiscoveryError as exc:
-            con.print(f"\n  [red]{provider_name.upper()} discovery error: {_safe_error(exc)}[/red]")
+            if not quiet:
+                con.print(f"\n  [red]{provider_name.upper()} discovery error: {_safe_error(exc)}[/red]")
             # A requested provider whose SDK or credentials are missing/invalid is a
             # hard failure, not a clean empty result. Record it so the final exit code
             # is non-zero (silent CI passes are the bug). The loop continues, so the
@@ -176,17 +193,24 @@ def run_cloud_discovery(
             srv.surface = ServerSurface.CONTAINER_IMAGE
             _seen.setdefault(img_ref, []).append(srv)
 
-        con.print(f"\n[bold blue]Scanning {len(_seen)} cloud container image(s)...[/bold blue]\n")
-        for img_ref, servers in _seen.items():
-            try:
-                img_packages, strategy = scan_image(img_ref)
-                for srv in servers:
-                    srv.packages = img_packages
-                con.print(f"  [green]✓[/green] {img_ref}: {len(img_packages)} package(s) [dim](via {strategy})[/dim]")
-            except ImageScanError as exc:
-                con.print(f"  [yellow]⚠[/yellow] cloud image {img_ref}: {exc}")
-            except Exception as exc:
-                con.print(f"  [yellow]⚠[/yellow] cloud image {img_ref}: could not scan — {exc}")
+        if verbose and not quiet:
+            print_lane_header(con, "scan", f"{len(_seen)} cloud container image(s)")
+        with stage_status(con, f"[bold]Scanning {len(_seen)} cloud image(s)…[/bold]", enabled=not quiet and not verbose):
+            for img_ref, servers in _seen.items():
+                try:
+                    img_packages, strategy = scan_image(img_ref)
+                    for srv in servers:
+                        srv.packages = img_packages
+                    if not quiet:
+                        con.print(
+                            f"  [green]✓[/green] {img_ref}: {len(img_packages)} package(s) [dim](via {strategy})[/dim]"
+                        )
+                except ImageScanError as exc:
+                    if not quiet:
+                        con.print(f"  [yellow]![/yellow] cloud image {img_ref}: {exc}")
+                except Exception as exc:
+                    if not quiet:
+                        con.print(f"  [yellow]![/yellow] cloud image {img_ref}: could not scan — {exc}")
 
     # Step 1y: SaaS connector discovery
     saas_connectors: list[tuple[str, dict]] = []
@@ -200,18 +224,25 @@ def run_cloud_discovery(
     for connector_name, connector_kwargs in saas_connectors:
         from agent_bom.connectors import ConnectorError, discover_from_connector
 
-        con.print(f"\n[bold blue]Discovering agents from {connector_name.upper()} connector...[/bold blue]\n")
+        if verbose and not quiet:
+            print_lane_header(con, "discover", f"{connector_name.upper()} connector")
         try:
-            con_agents, con_warnings = discover_from_connector(connector_name, **connector_kwargs)
-            for w in con_warnings:
-                con.print(f"  [yellow]![/yellow] {w}")
+            with stage_status(con, f"[bold]Discovering {connector_name.upper()}…[/bold]", enabled=not quiet and not verbose):
+                con_agents, con_warnings = discover_from_connector(connector_name, **connector_kwargs)
+            if not quiet:
+                print_provider_discovery_result(
+                    con,
+                    connector_name,
+                    agent_count=len(con_agents),
+                    package_count=0,
+                    warnings=con_warnings,
+                    verbose=verbose,
+                )
             if con_agents:
-                con.print(f"  [green]v[/green] {len(con_agents)} agent(s) discovered from {connector_name.upper()}")
                 ctx.agents.extend(con_agents)
-            else:
-                con.print(f"  [dim]  No AI agents found in {connector_name.upper()}[/dim]")
         except ConnectorError as exc:
-            con.print(f"\n  [red]{connector_name.upper()} connector error: {exc}[/red]")
+            if not quiet:
+                con.print(f"\n  [red]{connector_name.upper()} connector error: {exc}[/red]")
 
     # Step 1z: Multi-source correlation (dedup + merge across sources)
     if not skill_only and ctx.agents:
@@ -220,7 +251,7 @@ def run_cloud_discovery(
             from agent_bom.correlate import correlate_agents
 
             ctx.agents, corr_result = correlate_agents(ctx.agents)
-            if corr_result.cross_source_matches:
+            if corr_result.cross_source_matches and not quiet:
                 con.print(
                     f"\n  [bold]Correlated:[/bold] {corr_result.cross_source_matches} package(s) "
                     f"merged across {len(corr_result.source_summary)} source(s)"
@@ -261,6 +292,8 @@ def run_benchmarks(
 ) -> None:
     """Steps 1x–1z: model hash, CIS benchmarks, AISVS, vector DB, GPU, SaaS connectors."""
     con = ctx.con
+    quiet = ctx_quiet(ctx)
+    verbose = ctx_verbose(ctx)
 
     # Step 1x: Model hash verification (supply chain integrity)
     if verify_model_hashes:
@@ -316,137 +349,181 @@ def run_benchmarks(
     if aws_cis_benchmark:
         from agent_bom.cloud import CloudDiscoveryError
 
-        con.print("\n[bold blue]Running CIS AWS Foundations Benchmark v3.0...[/bold blue]\n")
+        if verbose and not quiet:
+            print_lane_header(con, "govern", "CIS AWS Foundations Benchmark v3.0")
         try:
             from agent_bom.cloud import aws_organizations
 
-            # When the org fan-out flag is on, fan the benchmark across every
-            # member account of the organization (same boundary set the inventory
-            # fan-out uses) and aggregate with per-account attribution. Each
-            # account is reached via a read-only AssumeRole; an account that denies
-            # the role is skipped. Off = unchanged single-account/region run.
-            if aws_organizations.org_fanout_enabled():
-                from agent_bom.cloud.aws_cis_benchmark import run_all_account_benchmarks
+            with stage_status(con, "[bold]CIS AWS Foundations Benchmark v3.0[/bold]", enabled=not quiet and not verbose):
+                # When the org fan-out flag is on, fan the benchmark across every
+                # member account of the organization (same boundary set the inventory
+                # fan-out uses) and aggregate with per-account attribution. Each
+                # account is reached via a read-only AssumeRole; an account that denies
+                # the role is skipped. Off = unchanged single-account/region run.
+                if aws_organizations.org_fanout_enabled():
+                    from agent_bom.cloud.aws_cis_benchmark import run_all_account_benchmarks
 
-                ctx.cis_benchmark_report = run_all_account_benchmarks(profile=aws_profile)
-            else:
-                from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_cis
+                    ctx.cis_benchmark_report = run_all_account_benchmarks(profile=aws_profile)
+                else:
+                    from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_cis
 
-                ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
+                    ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
             passed = ctx.cis_benchmark_report.passed
             failed = ctx.cis_benchmark_report.failed
             total = ctx.cis_benchmark_report.total
             rate = ctx.cis_benchmark_report.pass_rate
             scanned = getattr(ctx.cis_benchmark_report, "accounts_scanned", []) or []
-            scope = f" across {len(scanned)} account(s)" if len(scanned) > 1 else ""
-            con.print(f"  [green]✓[/green] {total} checks evaluated{scope} — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            scope = f"{len(scanned)} account(s)" if len(scanned) > 1 else ""
+            if not quiet:
+                print_benchmark_line(
+                    con,
+                    "CIS AWS",
+                    total=total,
+                    passed=passed,
+                    failed=failed,
+                    pass_rate=rate,
+                    scope=scope,
+                )
         except CloudDiscoveryError as exc:
-            con.print(f"  [red]CIS Benchmark error: {_safe_error(exc)}[/red]")
+            if not quiet:
+                con.print(f"  [red]CIS Benchmark error: {_safe_error(exc)}[/red]")
             ctx.cloud_provider_failures.append({"provider": "aws", "stage": "cis_benchmark", "error": str(exc)})
 
     # Step 1x-sf: CIS Snowflake Benchmark
     if snowflake_cis_benchmark:
         from agent_bom.cloud import CloudDiscoveryError as _SFCISError
 
-        con.print("\n[bold blue]Running CIS Snowflake Benchmark v1.0...[/bold blue]\n")
+        if verbose and not quiet:
+            print_lane_header(con, "govern", "CIS Snowflake Benchmark v1.0")
         try:
             from agent_bom.cloud.snowflake_cis_benchmark import run_benchmark as run_sf_cis
 
-            # Forward the chosen authenticator; account/user resolve from env.
-            ctx.sf_cis_benchmark_report = run_sf_cis(authenticator=snowflake_authenticator or None)
+            with stage_status(con, "[bold]CIS Snowflake Benchmark v1.0[/bold]", enabled=not quiet and not verbose):
+                # Forward the chosen authenticator; account/user resolve from env.
+                ctx.sf_cis_benchmark_report = run_sf_cis(authenticator=snowflake_authenticator or None)
             passed = ctx.sf_cis_benchmark_report.passed
             failed = ctx.sf_cis_benchmark_report.failed
             total = ctx.sf_cis_benchmark_report.total
             rate = ctx.sf_cis_benchmark_report.pass_rate
-            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            if not quiet:
+                print_benchmark_line(con, "CIS Snowflake", total=total, passed=passed, failed=failed, pass_rate=rate)
         except _SFCISError as exc:
-            con.print(f"  [red]CIS Snowflake Benchmark error: {_safe_error(exc)}[/red]")
+            if not quiet:
+                con.print(f"  [red]CIS Snowflake Benchmark error: {_safe_error(exc)}[/red]")
             ctx.cloud_provider_failures.append({"provider": "snowflake", "stage": "cis_benchmark", "error": str(exc)})
 
     # Step 1x-az: CIS Azure Benchmark
     if azure_cis_benchmark:
         from agent_bom.cloud import CloudDiscoveryError as _AZCISError
 
-        con.print("\n[bold blue]Running CIS Azure Security Benchmark v3.0...[/bold blue]\n")
+        if verbose and not quiet:
+            print_lane_header(con, "govern", "CIS Azure Security Benchmark v3.0")
         try:
             from agent_bom.cloud import azure_inventory
 
-            # When the multi-subscription flag is on, fan the benchmark across
-            # every subscription in the tenant (same boundary set the inventory
-            # fan-out uses) and aggregate with per-subscription attribution.
-            # Off = unchanged single-subscription run.
-            if azure_inventory.all_subscriptions_enabled():
-                from agent_bom.cloud.azure_cis_benchmark import run_all_subscription_benchmarks
+            with stage_status(con, "[bold]CIS Azure Security Benchmark v3.0[/bold]", enabled=not quiet and not verbose):
+                # When the multi-subscription flag is on, fan the benchmark across
+                # every subscription in the tenant (same boundary set the inventory
+                # fan-out uses) and aggregate with per-subscription attribution.
+                # Off = unchanged single-subscription run.
+                if azure_inventory.all_subscriptions_enabled():
+                    from agent_bom.cloud.azure_cis_benchmark import run_all_subscription_benchmarks
 
-                ctx.azure_cis_benchmark_report = run_all_subscription_benchmarks()
-            else:
-                from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_az_cis
+                    ctx.azure_cis_benchmark_report = run_all_subscription_benchmarks()
+                else:
+                    from agent_bom.cloud.azure_cis_benchmark import run_benchmark as run_az_cis
 
-                # Forward the --subscription value; run_benchmark falls back to
-                # AZURE_SUBSCRIPTION_ID only when this is None.
-                ctx.azure_cis_benchmark_report = run_az_cis(subscription_id=azure_subscription or None)
+                    # Forward the --subscription value; run_benchmark falls back to
+                    # AZURE_SUBSCRIPTION_ID only when this is None.
+                    ctx.azure_cis_benchmark_report = run_az_cis(subscription_id=azure_subscription or None)
             passed = ctx.azure_cis_benchmark_report.passed
             failed = ctx.azure_cis_benchmark_report.failed
             total = ctx.azure_cis_benchmark_report.total
             rate = ctx.azure_cis_benchmark_report.pass_rate
             scanned = getattr(ctx.azure_cis_benchmark_report, "subscriptions_scanned", []) or []
-            scope = f" across {len(scanned)} subscription(s)" if len(scanned) > 1 else ""
-            con.print(f"  [green]✓[/green] {total} checks evaluated{scope} — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            scope = f"{len(scanned)} subscription(s)" if len(scanned) > 1 else ""
+            if not quiet:
+                print_benchmark_line(
+                    con,
+                    "CIS Azure",
+                    total=total,
+                    passed=passed,
+                    failed=failed,
+                    pass_rate=rate,
+                    scope=scope,
+                )
         except _AZCISError as exc:
-            con.print(f"  [red]CIS Azure Benchmark error: {_safe_error(exc)}[/red]")
+            if not quiet:
+                con.print(f"  [red]CIS Azure Benchmark error: {_safe_error(exc)}[/red]")
             ctx.cloud_provider_failures.append({"provider": "azure", "stage": "cis_benchmark", "error": str(exc)})
 
     # Step 1x-gcp: CIS GCP Benchmark
     if gcp_cis_benchmark:
         from agent_bom.cloud import CloudDiscoveryError as _GCPCISError
 
-        con.print("\n[bold blue]Running CIS GCP Foundation Benchmark v3.0...[/bold blue]\n")
+        if verbose and not quiet:
+            print_lane_header(con, "govern", "CIS GCP Foundation Benchmark v3.0")
         try:
             from agent_bom.cloud import gcp_inventory
 
-            # When the multi-project flag is on, fan the benchmark across every
-            # project in the org/folder tree (same boundary set the inventory
-            # fan-out uses) and aggregate with per-project attribution.
-            # Off = unchanged single-project run.
-            if gcp_inventory.all_projects_enabled():
-                from agent_bom.cloud.gcp_cis_benchmark import run_all_project_benchmarks
+            with stage_status(con, "[bold]CIS GCP Foundation Benchmark v3.0[/bold]", enabled=not quiet and not verbose):
+                # When the multi-project flag is on, fan the benchmark across every
+                # project in the org/folder tree (same boundary set the inventory
+                # fan-out uses) and aggregate with per-project attribution.
+                # Off = unchanged single-project run.
+                if gcp_inventory.all_projects_enabled():
+                    from agent_bom.cloud.gcp_cis_benchmark import run_all_project_benchmarks
 
-                ctx.gcp_cis_benchmark_report = run_all_project_benchmarks()
-            else:
-                from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
+                    ctx.gcp_cis_benchmark_report = run_all_project_benchmarks()
+                else:
+                    from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
 
-                ctx.gcp_cis_benchmark_report = run_gcp_cis()
+                    ctx.gcp_cis_benchmark_report = run_gcp_cis()
             passed = ctx.gcp_cis_benchmark_report.passed
             failed = ctx.gcp_cis_benchmark_report.failed
             total = ctx.gcp_cis_benchmark_report.total
             rate = ctx.gcp_cis_benchmark_report.pass_rate
             scanned = getattr(ctx.gcp_cis_benchmark_report, "projects_scanned", []) or []
-            scope = f" across {len(scanned)} project(s)" if len(scanned) > 1 else ""
-            con.print(f"  [green]✓[/green] {total} checks evaluated{scope} — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            scope = f"{len(scanned)} project(s)" if len(scanned) > 1 else ""
+            if not quiet:
+                print_benchmark_line(
+                    con,
+                    "CIS GCP",
+                    total=total,
+                    passed=passed,
+                    failed=failed,
+                    pass_rate=rate,
+                    scope=scope,
+                )
         except _GCPCISError as exc:
-            con.print(f"  [red]CIS GCP Benchmark error: {_safe_error(exc)}[/red]")
+            if not quiet:
+                con.print(f"  [red]CIS GCP Benchmark error: {_safe_error(exc)}[/red]")
             ctx.cloud_provider_failures.append({"provider": "gcp", "stage": "cis_benchmark", "error": str(exc)})
 
     # Step 1x-db: Databricks Security Best Practices
     if databricks_security:
         from agent_bom.cloud import CloudDiscoveryError as _DBSecError
 
-        con.print("\n[bold blue]Running Databricks Security Best Practices checks...[/bold blue]\n")
+        if verbose and not quiet:
+            print_lane_header(con, "govern", "Databricks Security Best Practices")
         try:
             import os
 
             from agent_bom.cloud.databricks_security import run_security_checks as run_db_sec
 
-            _db_host = os.environ.get("DATABRICKS_HOST")
-            _db_token = os.environ.get("DATABRICKS_TOKEN")
-            ctx.databricks_security_report = run_db_sec(host=_db_host, token=_db_token)
+            with stage_status(con, "[bold]Databricks security checks[/bold]", enabled=not quiet and not verbose):
+                _db_host = os.environ.get("DATABRICKS_HOST")
+                _db_token = os.environ.get("DATABRICKS_TOKEN")
+                ctx.databricks_security_report = run_db_sec(host=_db_host, token=_db_token)
             passed = ctx.databricks_security_report.passed
             failed = ctx.databricks_security_report.failed
             total = ctx.databricks_security_report.total
             rate = ctx.databricks_security_report.pass_rate
-            con.print(f"  [green]✓[/green] {total} checks evaluated — {passed} passed, {failed} failed ({rate:.0f}% pass rate)")
+            if not quiet:
+                print_benchmark_line(con, "Databricks", total=total, passed=passed, failed=failed, pass_rate=rate)
         except _DBSecError as exc:
-            con.print(f"  [red]Databricks security check error: {_safe_error(exc)}[/red]")
+            if not quiet:
+                con.print(f"  [red]Databricks security check error: {_safe_error(exc)}[/red]")
             ctx.cloud_provider_failures.append({"provider": "databricks", "stage": "security_checks", "error": str(exc)})
 
     # Step 1x-b: Vector DB scan
@@ -549,53 +626,50 @@ def run_benchmarks(
     if aisvs_flag:
         from rich.table import Table as _RTable
 
-        con.print("\n[bold blue]Running AISVS v1.0 compliance checks...[/bold blue]\n")
+        if verbose and not quiet:
+            print_lane_header(con, "govern", "AISVS v1.0 compliance")
         try:
             from agent_bom.cloud.aisvs_benchmark import run_benchmark as _run_aisvs
 
-            ctx.aisvs_report = _run_aisvs()
+            with stage_status(con, "[bold]AISVS v1.0 compliance[/bold]", enabled=not quiet and not verbose):
+                ctx.aisvs_report = _run_aisvs()
             passed = ctx.aisvs_report.passed
             failed = ctx.aisvs_report.failed
             total = ctx.aisvs_report.total
             rate = ctx.aisvs_report.pass_rate
-            con.print(
-                f"  [bold]AISVS v1.0[/bold]: {passed}/{total} checks passed "
-                f"([{'green' if rate >= 80 else 'yellow' if rate >= 50 else 'red'}]{rate:.1f}%[/])"
-            )
-            tbl = _RTable(title="AISVS Compliance", show_lines=True)
-            tbl.add_column("Check", width=8)
-            tbl.add_column("Title", max_width=45)
-            tbl.add_column("Status", width=8)
-            tbl.add_column("Sev", width=8)
-            tbl.add_column("MAESTRO", width=22)
-            tbl.add_column("Evidence", max_width=40)
-            _aiv_status = {
-                "pass": "[green]PASS[/]",
-                "fail": "[red]FAIL[/]",
-                "error": "[yellow]ERR[/]",
-                "not_applicable": "[dim]N/A[/]",
-            }
-            from agent_bom.maestro import tag_aisvs_check as _maestro_tag
+            if not quiet:
+                print_benchmark_line(con, "AISVS", total=total, passed=passed, failed=failed, pass_rate=rate)
+            if verbose and not quiet:
+                tbl = _RTable(title="AISVS Compliance", show_lines=True)
+                tbl.add_column("Check", width=8)
+                tbl.add_column("Title", max_width=45)
+                tbl.add_column("Status", width=8)
+                tbl.add_column("Sev", width=8)
+                tbl.add_column("MAESTRO", width=22)
+                tbl.add_column("Evidence", max_width=40)
+                _aiv_status = {
+                    "pass": "[green]PASS[/]",
+                    "fail": "[red]FAIL[/]",
+                    "error": "[yellow]ERR[/]",
+                    "not_applicable": "[dim]N/A[/]",
+                }
+                from agent_bom.maestro import tag_aisvs_check as _maestro_tag
 
-            for c in ctx.aisvs_report.checks:
-                maestro = _maestro_tag(c.check_id).value
-                tbl.add_row(
-                    c.check_id,
-                    c.title,
-                    _aiv_status.get(c.status.value, c.status.value),
-                    c.severity,
-                    maestro,
-                    c.evidence,
-                )
-            con.print()
-            con.print(tbl)
+                for c in ctx.aisvs_report.checks:
+                    maestro = _maestro_tag(c.check_id).value
+                    tbl.add_row(
+                        c.check_id,
+                        c.title,
+                        _aiv_status.get(c.status.value, c.status.value),
+                        c.severity,
+                        maestro,
+                        c.evidence,
+                    )
+                con.print()
+                con.print(tbl)
         except Exception as exc:
-            con.print(f"  [red]AISVS benchmark error: {exc}[/red]")
-
-    # Grouped CIS posture: prioritized failed-first plan with evidence + fix
-    # per check and PASS collapsed (the flat per-provider tables above are
-    # unreadable past ~60 checks). Renders once across every benchmarked cloud.
-    _render_cis_findings(ctx)
+            if not quiet:
+                con.print(f"  [red]AISVS benchmark error: {exc}[/red]")
 
 
 # click.Context.meta key the cloud command writes when --show-passed is set;
@@ -604,8 +678,8 @@ def run_benchmarks(
 CIS_SHOW_PASSED_META = "cis_show_passed"
 
 
-def _render_cis_findings(ctx: ScanContext) -> None:
-    """Route benchmarked CIS results through the grouped console renderer.
+def render_cis_findings_from_context(ctx: ScanContext) -> None:
+    """Render grouped CIS posture once at report time (not during discovery).
 
     Builds a lightweight report-shaped view exposing each provider's
     serialized bundle under the attribute name the renderer reads

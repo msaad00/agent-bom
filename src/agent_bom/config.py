@@ -475,6 +475,14 @@ POSTGRES_CONNECT_TIMEOUT_SECONDS = _int("AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECO
 POSTGRES_STATEMENT_TIMEOUT_MS = _int("AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS", 15_000)
 POSTGRES_GRAPH_SEARCH_TIMEOUT_MS = _int("AGENT_BOM_POSTGRES_GRAPH_SEARCH_TIMEOUT_MS", 3_000)
 
+# Tenant isolation on Postgres relies on Row-Level Security. Postgres superusers
+# and roles with BYPASSRLS ignore ``FORCE ROW LEVEL SECURITY``, which silently
+# voids every tenant policy. By default the store refuses to start when the
+# connected role can bypass RLS. Set this to ``1`` only for single-tenant or
+# local dev deployments, where it downgrades the hard error to a one-time
+# warning. See ``agent_bom.api.postgres_common`` (#3665).
+ALLOW_SUPERUSER_DB = _bool("AGENT_BOM_ALLOW_SUPERUSER_DB", False)
+
 # Compliance hub reference-table normalization (#3513). When enabled, repeated
 # CVE/framework blobs are stored once per tenant and ledger rows keep join keys.
 # Set to 0 to disable new extractions (reads still hydrate existing refs).

@@ -29,7 +29,7 @@ class TestRBAC:
     def test_admin_has_all_permissions(self):
         from agent_bom.rbac import Role, check_permission
 
-        for action in ["scan", "read", "fleet_write", "policy_write", "exception_approve", "config"]:
+        for action in ["scan", "read", "fleet_write", "policy_write", "policy.manage", "exception_approve", "config"]:
             assert check_permission(Role.ADMIN, action) is True
 
     def test_analyst_can_scan_and_read(self):
@@ -44,6 +44,7 @@ class TestRBAC:
 
         assert check_permission(Role.ANALYST, "fleet_write") is False
         assert check_permission(Role.ANALYST, "policy_write") is False
+        assert check_permission(Role.ANALYST, "policy.manage") is False
         assert check_permission(Role.ANALYST, "exception_approve") is False
 
     def test_viewer_read_only(self):
@@ -52,6 +53,7 @@ class TestRBAC:
         assert check_permission(Role.VIEWER, "read") is True
         assert check_permission(Role.VIEWER, "scan") is False
         assert check_permission(Role.VIEWER, "fleet_write") is False
+        assert check_permission(Role.VIEWER, "policy.manage") is False
         assert check_permission(Role.VIEWER, "config") is False
 
     def test_unknown_action_denied(self):

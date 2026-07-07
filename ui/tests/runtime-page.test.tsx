@@ -13,11 +13,11 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("tab=proxy"),
 }));
 
-vi.mock("@/app/proxy/page", () => ({
+vi.mock("@/app/proxy/ProxyDashboard", () => ({
   default: () => proxyMock(),
 }));
 
-vi.mock("@/app/gateway/page", () => ({
+vi.mock("@/app/gateway/GatewayDashboard", () => ({
   default: () => gatewayMock(),
 }));
 

@@ -4,6 +4,11 @@
 changes how data arrives and who operates it; it should not change the finding,
 graph, audit, or export semantics.
 
+For the canonical product flow (intake → scan → evidence → control → artifacts)
+and the symbol-level CVE reachability differentiator, see
+[HOW_IT_WORKS.md](HOW_IT_WORKS.md). This map focuses on lanes, surfaces, and
+backend choices rather than re-deriving the flow.
+
 ## Service lanes
 
 | Lane | Use it for | Entry point | Backing services | Output |
@@ -39,6 +44,9 @@ graph, audit, or export semantics.
 | Evidence exports | caller-selected destination; compliance exports have audit/signing paths where configured | [COMPLIANCE_SIGNING.md](COMPLIANCE_SIGNING.md), [DATA_GOVERNANCE_RETENTION.md](DATA_GOVERNANCE_RETENTION.md) |
 
 ## Data flow
+
+The canonical stage-by-stage narrative is [HOW_IT_WORKS.md](HOW_IT_WORKS.md);
+the map-level view of the same flow is:
 
 1. **Discover** from local files, packages, MCP clients, cloud APIs, imports, or runtime events.
 2. **Match and enrich** with advisory, exploitability, posture, policy, identity, and cloud context.

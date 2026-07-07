@@ -22,6 +22,18 @@
       "title": "Role",
       "type": "string"
     },
+    "scim_subject_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scim Subject Id"
+    },
     "scopes": {
       "items": {
         "type": "string"

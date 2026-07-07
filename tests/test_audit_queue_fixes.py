@@ -63,7 +63,7 @@ def test_forward_fixed_version_rejects_downgrade() -> None:
 
 def test_resolve_effective_approximate_total_uses_cached_threshold(monkeypatch) -> None:
     reset_findings_count_cache()
-    monkeypatch.setenv("AGENT_BOM_FINDINGS_APPROXIMATE_TOTAL_THRESHOLD", "1000")
+    monkeypatch.setattr("agent_bom.config.FINDINGS_APPROXIMATE_TOTAL_THRESHOLD", 1000)
     key = cache_key(tenant_id="t1", severity=None, scan_id=None, origin="bulk_ingest")
     set_cached_total(key, 50_000)
     assert resolve_effective_approximate_total(requested=False, tenant_id="t1", severity=None, scan_id=None) is True
@@ -106,12 +106,12 @@ def test_scim_revoke_matches_scim_subject_id(monkeypatch) -> None:
 
 
 def test_no_auth_role_defaults_to_viewer(monkeypatch) -> None:
-    monkeypatch.delenv("AGENT_BOM_DEMO_ESTATE", raising=False)
-    monkeypatch.delenv("AGENT_BOM_NO_AUTH_ROLE", raising=False)
+    monkeypatch.setattr("agent_bom.config.DEMO_ESTATE", False)
+    monkeypatch.setattr("agent_bom.config.NO_AUTH_ROLE", "viewer")
     assert _no_auth_role() is RbacRole.VIEWER
 
 
 def test_demo_estate_clamps_no_auth_to_viewer(monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_BOM_DEMO_ESTATE", "1")
-    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "admin")
+    monkeypatch.setattr("agent_bom.config.DEMO_ESTATE", True)
+    monkeypatch.setattr("agent_bom.config.NO_AUTH_ROLE", "admin")
     assert _no_auth_role() is RbacRole.VIEWER

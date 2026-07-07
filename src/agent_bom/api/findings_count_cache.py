@@ -13,6 +13,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from agent_bom import config
+
 
 def _ttl_seconds() -> float:
     raw = os.environ.get("AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS", "60")
@@ -86,13 +88,10 @@ def reset_findings_count_cache() -> None:
 
 def approximate_total_threshold() -> int | None:
     """Return the tenant-size threshold for auto approximate totals, or ``None`` to disable."""
-    raw = os.environ.get("AGENT_BOM_FINDINGS_APPROXIMATE_TOTAL_THRESHOLD", "50000").strip()
-    if raw.lower() in {"", "0", "off", "false", "none", "disabled"}:
+    threshold = config.FINDINGS_APPROXIMATE_TOTAL_THRESHOLD
+    if threshold <= 0:
         return None
-    try:
-        return max(1, int(raw))
-    except (TypeError, ValueError):
-        return 50_000
+    return threshold
 
 
 def resolve_effective_approximate_total(

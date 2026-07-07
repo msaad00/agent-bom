@@ -25,6 +25,8 @@ from typing import Callable
 
 from fastapi import HTTPException, Request
 
+from agent_bom import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,9 +36,9 @@ def _no_auth_role() -> Role:
     Defaults to ``viewer``. ``AGENT_BOM_DEMO_ESTATE=1`` always clamps to viewer
     so public demo stacks cannot mutate tenant state anonymously.
     """
-    if os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in {"1", "true", "yes", "on"}:
+    if config.DEMO_ESTATE:
         return Role.VIEWER
-    raw = os.environ.get("AGENT_BOM_NO_AUTH_ROLE", "viewer").strip().lower()
+    raw = config.NO_AUTH_ROLE
     if raw == "admin":
         return Role.ADMIN
     if raw == "analyst":

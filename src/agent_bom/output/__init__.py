@@ -41,6 +41,13 @@ from agent_bom.output.cyclonedx_fmt import (  # noqa: E402
     export_cyclonedx,  # noqa: F401
     to_cyclonedx,  # noqa: F401
 )
+from agent_bom.output.iceberg_catalog import (  # noqa: E402
+    IcebergCatalogConfig,  # noqa: F401
+    maybe_register_iceberg,  # noqa: F401
+)
+from agent_bom.output.iceberg_catalog import (
+    register_findings as register_iceberg_findings,  # noqa: F401
+)
 from agent_bom.output.json_fmt import (  # noqa: E402
     _build_framework_summary,  # noqa: F401
     _build_remediation_json,  # noqa: F401
@@ -58,6 +65,7 @@ from agent_bom.output.markdown import (  # noqa: E402
 )
 from agent_bom.output.parquet_fmt import (  # noqa: E402
     export_parquet,  # noqa: F401
+    to_arrow_table,  # noqa: F401
     to_parquet_bytes,  # noqa: F401
 )
 from agent_bom.output.sarif import (  # noqa: E402

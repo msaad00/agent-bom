@@ -2,9 +2,27 @@
 
 from __future__ import annotations
 
+import os
+
 import click
 
 from agent_bom.cli.options_helpers import _apply
+
+
+def _set_env(var: str):
+    """Click callback: mirror a CLI value into ``os.environ`` when provided.
+
+    Keeps Iceberg-catalog config env-driven (the canonical contract) while
+    letting ``--iceberg-*`` flags act as sugar, without threading extra params
+    through the large scan command signature (``expose_value=False``).
+    """
+
+    def _cb(_ctx, _param, value):
+        if value:
+            os.environ[var] = value
+        return value
+
+    return _cb
 
 
 def input_options(fn):
@@ -178,6 +196,39 @@ def output_options(fn):
                     "Visualization: mermaid, graph-html (interactive), svg.\n"
                     "Other: graph (Cytoscape.js graph JSON), badge (single-line status)."
                 ),
+            ),
+            click.option(
+                "--iceberg-catalog-url",
+                "iceberg_catalog_url",
+                default=None,
+                metavar="URL",
+                expose_value=False,
+                callback=_set_env("AGENT_BOM_ICEBERG_CATALOG_URL"),
+                help=(
+                    "Register Parquet findings into an Iceberg REST catalog as a table snapshot "
+                    "(in addition to the flat .parquet file). Requires agent-bom[lake]. "
+                    "Env: AGENT_BOM_ICEBERG_CATALOG_URL. Namespace/table default to agent_bom.findings; "
+                    "override with --iceberg-namespace / --iceberg-table. "
+                    "Auth via AGENT_BOM_ICEBERG_CREDENTIAL or AGENT_BOM_ICEBERG_TOKEN. Disabled by default."
+                ),
+            ),
+            click.option(
+                "--iceberg-namespace",
+                "iceberg_namespace",
+                default=None,
+                metavar="NS",
+                expose_value=False,
+                callback=_set_env("AGENT_BOM_ICEBERG_NAMESPACE"),
+                help="Iceberg namespace for the findings table (default: agent_bom). Env: AGENT_BOM_ICEBERG_NAMESPACE.",
+            ),
+            click.option(
+                "--iceberg-table",
+                "iceberg_table",
+                default=None,
+                metavar="NAME",
+                expose_value=False,
+                callback=_set_env("AGENT_BOM_ICEBERG_TABLE"),
+                help="Iceberg table name for findings (default: findings). Env: AGENT_BOM_ICEBERG_TABLE.",
             ),
             click.option(
                 "--mermaid-mode",

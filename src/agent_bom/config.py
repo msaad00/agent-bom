@@ -254,6 +254,17 @@ DSPM_DB_MAX_CELL_CHARS = _int("AGENT_BOM_DSPM_DB_MAX_CELL_CHARS", 4096)
 LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 
 
+# ── Iceberg Catalog Export ───────────────────────────────────────────────────
+# Optional findings-lake side-write. Disabled unless a REST catalog URL is set.
+# Credentials are deliberately not mirrored here; they stay env/KMS-only and are
+# allowlisted as secret material in scripts/env_var_allowlist.txt.
+
+ICEBERG_CATALOG_URL = _str("AGENT_BOM_ICEBERG_CATALOG_URL", "")
+ICEBERG_NAMESPACE = _str("AGENT_BOM_ICEBERG_NAMESPACE", "agent_bom")
+ICEBERG_TABLE = _str("AGENT_BOM_ICEBERG_TABLE", "findings")
+ICEBERG_WAREHOUSE = _str("AGENT_BOM_ICEBERG_WAREHOUSE", "")
+
+
 # ── Graph Retention ───────────────────────────────────────────────────────
 # Age-based graph snapshot retention for self-hosted graph stores. Per-tenant
 # overrides resolve from ``AGENT_BOM_GRAPH_RETENTION_OVERRIDES`` (JSON map) and
@@ -299,6 +310,40 @@ NEPTUNE_TRAVERSAL_SOURCE = _str("AGENT_BOM_NEPTUNE_TRAVERSAL_SOURCE", "g")
 
 AI_CACHE_MAX_ENTRIES = _int("AGENT_BOM_AI_CACHE_MAX", 1_000)
 OLLAMA_BASE_URL = _str("AGENT_BOM_OLLAMA_URL", "http://localhost:11434")
+
+# ── Multi-provider LLM harness (issue #3206) ──────────────────────────────
+# The enrichment layer is a pluggable, multi-provider harness. These knobs
+# make it configurable per-deployment without code changes. All are additive
+# and optional — with none set the layer behaves exactly as before.
+#
+# Per-task model selection: enrichment runs several task *kinds* (narrative,
+# summary, tagging, detection, triage). A cheap local model is fine for
+# tagging/summaries; detection/remediation benefit from a stronger model.
+# Empty string means "fall back to the single resolved model" (legacy path).
+AI_MODEL_CHEAP = _str("AGENT_BOM_AI_MODEL_CHEAP", "")  # tagging, summaries
+AI_MODEL_STRONG = _str("AGENT_BOM_AI_MODEL_STRONG", "")  # detection, remediation
+
+# Redaction: scrub secret-looking material from every prompt before it leaves
+# the control plane. On by default — "no exfiltration by default" (issue #3206
+# hard requirement #4). Set to False only for trusted local-only deployments.
+AI_REDACT_PROMPTS = _bool("AGENT_BOM_AI_REDACT_PROMPTS", True)
+
+# Deterministic mode: temperature 0 + cache, so AI-derived findings are stable
+# enough to (optionally, explicitly) gate on. Default temperature stays 0.3 for
+# richer narratives when determinism is not required.
+AI_DETERMINISTIC = _bool("AGENT_BOM_AI_DETERMINISTIC", False)
+AI_TEMPERATURE = _float("AGENT_BOM_AI_TEMPERATURE", 0.3)
+
+# Reliability: bounded retries with exponential backoff around remote provider
+# calls, and a per-call timeout. Graceful degradation is preserved — exhausted
+# retries return None (no model) rather than raising.
+AI_MAX_RETRIES = _int("AGENT_BOM_AI_MAX_RETRIES", 2)
+AI_RETRY_BASE_DELAY = _float("AGENT_BOM_AI_RETRY_BASE_DELAY", 0.5)
+AI_RETRY_MAX_DELAY = _float("AGENT_BOM_AI_RETRY_MAX_DELAY", 8.0)
+AI_REQUEST_TIMEOUT = _float("AGENT_BOM_AI_REQUEST_TIMEOUT", 120.0)
+
+# Per-run cap on total LLM calls (cost/latency control). 0 disables the cap.
+AI_MAX_CALLS_PER_RUN = _int("AGENT_BOM_AI_MAX_CALLS", 50)
 
 
 # ── OIDC discovery shim ──────────────────────────────────────────────────

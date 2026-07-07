@@ -51,6 +51,7 @@ jobs:
       action: ${{ steps.classify.outputs.action }}
       alpine: ${{ steps.classify.outputs.alpine }}
       alpine_full: ${{ steps.classify.outputs.alpine_full }}
+      docs: ${{ steps.classify.outputs.docs }}
       endpoint: ${{ steps.classify.outputs.endpoint }}
       postgres: ${{ steps.classify.outputs.postgres }}
       ui: ${{ steps.classify.outputs.ui }}
@@ -68,6 +69,7 @@ jobs:
           action=false
           alpine=false
           alpine_full=false
+          docs=false
           endpoint=false
           postgres=false
           # UI Validate boots a real Next.js standalone container and runs a
@@ -86,6 +88,13 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/)'; then
             alpine_full=true
           fi
+          # Strict docs build guard: any change to the MkDocs source tree, its
+          # config, or the workflows that build/deploy it must prove
+          # `mkdocs build --strict` still passes before it can reach main and
+          # then break the release docs-deploy lane (issue #3631).
+          if printf '%s\n' "$changed" | grep -Eq '^(site-docs/|mkdocs\.yml$|\.github/workflows/(docs|ci)\.yml$|\.github/actions/setup-python/)'; then
+            docs=true
+          fi
           if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_)'; then
             postgres=true
           fi
@@ -99,6 +108,7 @@ jobs:
             echo "action=${action}"
             echo "alpine=${alpine}"
             echo "alpine_full=${alpine_full}"
+            echo "docs=${docs}"
             echo "endpoint=${endpoint}"
             echo "postgres=${postgres}"
             echo "ui=${ui}"
@@ -109,6 +119,7 @@ jobs:
             echo "- GitHub Action dogfood required: \`${action}\`"
             echo "- Alpine/musl compatibility required: \`${alpine}\`"
             echo "- Alpine/musl full-suite required: \`${alpine_full}\`"
+            echo "- Docs strict build required: \`${docs}\`"
             echo "- Endpoint packaging required: \`${endpoint}\`"
             echo "- Real Postgres integration required: \`${postgres}\`"
             echo "- UI Validate (lint + test + build + e2e) required: \`${ui}\`"
@@ -327,6 +338,35 @@ jobs:
 
       - name: Skill CLI citation alignment
         run: uv run python scripts/check_skill_cli_citations.py
+
+  docs-strict:
+    name: Docs Strict Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: changes
+    # Build the MkDocs site in strict mode on PRs that touch docs so a broken
+    # link or nav entry fails here — fast, deploy-free — instead of only being
+    # caught by the release docs-deploy lane after it has already reached main
+    # (issue #3631). Mirrors the exact build invocation in
+    # .github/workflows/docs.yml but never publishes.
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.docs == 'true')
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.11'
+
+      - name: Build site (strict, no deploy)
+        run: >-
+          uv tool run
+          --from mkdocs==1.6.1
+          --with mkdocs-material==9.7.5
+          --with mkdocstrings==1.0.3
+          --with mkdocstrings-python==2.0.3
+          mkdocs build --strict
 
   ui:
     name: UI Validate

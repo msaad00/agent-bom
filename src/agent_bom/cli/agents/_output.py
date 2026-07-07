@@ -82,6 +82,19 @@ _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
 }
 
 
+def _is_null_device(output: Any) -> bool:
+    """Return True when ``output`` points at the platform null device."""
+    import os
+
+    if not output or output == "-":
+        return False
+    candidates = {os.devnull, "/dev/null"}
+    try:
+        return os.path.realpath(str(output)) in {os.path.realpath(c) for c in candidates}
+    except OSError:
+        return str(output) in candidates
+
+
 def _resolve_output_path(output: Any, output_format: str) -> str:
     """Return an output path whose suffix matches the selected format."""
     default_name, allowed_suffixes = _FORMAT_OUTPUT_RULES[output_format]
@@ -89,6 +102,11 @@ def _resolve_output_path(output: Any, output_format: str) -> str:
         return default_name
 
     raw_path = str(output)
+    # Null device is a discard sink: keep the path verbatim so the write lands on
+    # /dev/null (which succeeds silently) rather than a suffixed sibling like
+    # `/dev/null.json` that lives in an unwritable dir and would fail (#3643).
+    if _is_null_device(raw_path):
+        return raw_path
     lower_path = raw_path.lower()
     if any(lower_path.endswith(suffix) for suffix in allowed_suffixes):
         return raw_path
@@ -223,6 +241,24 @@ def _enospc_report_fallback(
             )
 
 
+def _register_iceberg_if_configured(report, blast_radii, con, quiet: bool) -> None:
+    """Best-effort Iceberg REST-catalog registration alongside the .parquet file.
+
+    No-op unless an Iceberg catalog URL is configured (env / --iceberg-catalog-url).
+    A catalog/deps error is surfaced as a warning without failing the scan, since
+    the flat Parquet file has already been written.
+    """
+    from agent_bom.output.iceberg_catalog import maybe_register_iceberg
+
+    try:
+        result = maybe_register_iceberg(report, blast_radii)
+    except Exception as exc:  # noqa: BLE001 - degrade cleanly, file already written
+        con.print(f"  [yellow]⚠[/yellow] Iceberg catalog registration skipped: {exc}")
+        return
+    if result and not quiet:
+        con.print(f"  [green]✓[/green] Iceberg snapshot: {result['identifier']} ({result['rows']} rows) → {result['catalog_url']}")
+
+
 def render_output(
     ctx: ScanContext,
     *,
@@ -326,6 +362,12 @@ def render_output(
             else:
                 sys.stdout.write(json.dumps(to_json(report), indent=2))
             sys.stdout.write("\n")
+        elif _is_null_device(output) and output_format in ("console", "text", "plain"):
+            # `-o /dev/null` with a terminal-only format: discard silently rather
+            # than falling through to extension inference (which exited 2 and
+            # masked --fail-on-severity). The scan already ran; the policy exit
+            # code stands (#3643).
+            pass
         elif output_format == "console" and not output:
             _skill_audit_obj = ctx._skill_audit_obj
             if verbose:
@@ -447,6 +489,7 @@ def render_output(
             out_path = _resolve_output_path(output, output_format)
             export_parquet(report, out_path, blast_radii)
             con.print(f"\n  [green]✓[/green] Parquet findings: {out_path}")
+            _register_iceberg_if_configured(report, blast_radii, con, quiet)
         elif output_format == "markdown":
             out_path = _resolve_output_path(output, output_format)
             export_markdown(report, out_path, blast_radii)
@@ -543,6 +586,7 @@ def render_output(
                 export_csv(report, output, blast_radii)
             elif output.endswith(".parquet"):
                 export_parquet(report, output, blast_radii)
+                _register_iceberg_if_configured(report, blast_radii, con, quiet)
             elif output.endswith(".md"):
                 export_markdown(report, output, blast_radii)
             else:

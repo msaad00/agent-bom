@@ -188,4 +188,4 @@ finding, inventory object, or runtime event means.
 - [Data Retention by Class](data-retention.md)
 - [Backend Parity](backend-parity.md)
 - [Snowflake-Native Backend](snowflake-backend.md)
-- [How Agent-BOM Works](../architecture/how-agent-bom-works.md)
+- [How agent-bom Works](../architecture/how-agent-bom-works.md)

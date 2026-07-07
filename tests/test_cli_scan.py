@@ -1060,6 +1060,136 @@ def test_scan_sarif_auto_enables_enrich(monkeypatch):
     assert captured["enable_enrichment"] is True
 
 
+def _critical_scan_mocks():
+    """Return (agent, blast_radii) with one CRITICAL CVE for output-parity tests."""
+    vuln = Vulnerability(id="CVE-2099-0001", summary="crit", severity=Severity.CRITICAL, fixed_version="9.9.9")
+    pkg = Package(name="badpkg", version="1.0.0", ecosystem="pypi", vulnerabilities=[vuln])
+    server = MCPServer(name="srv", command="python", packages=[pkg])
+    agent = Agent(name="ag", agent_type=AgentType.CUSTOM, config_path="a.json", mcp_servers=[server])
+    br = [
+        BlastRadius(
+            vulnerability=vuln,
+            package=pkg,
+            affected_servers=[server],
+            affected_agents=[agent],
+            exposed_credentials=[],
+            exposed_tools=[],
+        )
+    ]
+    return agent, br
+
+
+def test_scan_sarif_does_not_auto_enable_context_graph(tmp_path):
+    """`-f sarif` must not silently run the context graph / toxic-combo evaluator.
+
+    Gating it on the output format made SARIF emit COMBINATION findings that the
+    same input as `-f json`/`-f csv` never produced — a SIEM/API parity bug
+    (#3643). Enrichment (annotation only) stays on; the finding set must not.
+    """
+    agent, br = _critical_scan_mocks()
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=[agent]),
+        patch("agent_bom.cli.agents.extract_packages", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=br),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+        patch("agent_bom.context_graph.build_context_graph") as build_cg,
+    ):
+        result = _run(["scan", "--project", str(tmp_path), "-f", "sarif", "-o", str(tmp_path / "r.sarif"), "--no-auto-update-db"])
+    assert result.exit_code in (0, 1), result.output
+    build_cg.assert_not_called()
+
+
+def test_scan_finding_count_parity_across_formats(tmp_path):
+    """json/csv/sarif of the same scan must report identical finding counts (#3643)."""
+    out = tmp_path / "out"
+    out.mkdir()
+
+    def _scan(fmt: str, path):
+        agent, br = _critical_scan_mocks()
+        with (
+            patch("agent_bom.cli.agents.discover_all", return_value=[agent]),
+            patch("agent_bom.cli.agents.extract_packages", return_value=[]),
+            patch("agent_bom.cli.agents.scan_agents_sync", return_value=br),
+            patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+        ):
+            return _run(["scan", "--project", str(tmp_path), "-f", fmt, "-o", str(path), "--no-auto-update-db"])
+
+    jf, sf, cf = out / "r.json", out / "r.sarif", out / "r.csv"
+    _scan("json", jf)
+    _scan("sarif", sf)
+    _scan("csv", cf)
+
+    json_count = len(json.loads(jf.read_text())["findings"])
+    sarif_count = len(json.loads(sf.read_text())["runs"][0]["results"])
+    csv_count = cf.read_text().strip().count("\n")  # minus header
+    assert json_count == sarif_count == csv_count == 1
+
+
+def test_scan_reproducible_pins_agent_timestamps(tmp_path):
+    """--reproducible must pin per-agent discovered_at/last_seen, not just generated_at (#3643)."""
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "generated_at": "2026-05-09T00:00:00Z",
+                "agents": [{"name": "fixture-agent", "agent_type": "custom", "mcp_servers": []}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _emit(path):
+        return _run(
+            [
+                "scan",
+                "--inventory",
+                str(inventory),
+                "--inventory-only",
+                "--no-scan",
+                "--reproducible",
+                "--format",
+                "json",
+                "--output",
+                str(path),
+            ]
+        )
+
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    assert _emit(a).exit_code == 0
+    assert _emit(b).exit_code == 0
+
+    report = json.loads(a.read_text(encoding="utf-8"))
+    agent = report["agents"][0]
+    assert agent["discovered_at"] == "1970-01-01T00:00:00Z"
+    assert agent["last_seen"] == "1970-01-01T00:00:00Z"
+    # Byte-identical across repeated runs of the same input.
+    assert a.read_text(encoding="utf-8") == b.read_text(encoding="utf-8")
+
+
+def test_scan_dev_null_output_honors_policy_exit_code(tmp_path):
+    """`-o /dev/null` discards output but must not mask --fail-on-severity (#3643).
+
+    Previously the null sink tripped SystemExit(2) (console-to-file guard /
+    extension inference) regardless of findings.
+    """
+    agent, br = _critical_scan_mocks()
+
+    def _scan(extra):
+        with (
+            patch("agent_bom.cli.agents.discover_all", return_value=[agent]),
+            patch("agent_bom.cli.agents.extract_packages", return_value=[]),
+            patch("agent_bom.cli.agents.scan_agents_sync", return_value=br),
+            patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+        ):
+            return _run(["scan", "--project", str(tmp_path), "-o", "/dev/null", *extra, "--no-auto-update-db"])
+
+    # Critical present + fail-on-severity critical -> policy exit 1 (not 2).
+    assert _scan(["-f", "json", "--fail-on-severity", "critical"]).exit_code == 1
+    # Default console format + null sink no longer false-exits 2.
+    assert _scan(["--fail-on-severity", "critical"]).exit_code == 1
+
+
 def test_scan_format_html(tmp_path):
     """--format html should produce an HTML file."""
     out = tmp_path / "report.html"

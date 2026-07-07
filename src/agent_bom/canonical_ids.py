@@ -50,7 +50,18 @@ def canonical_package_id(name: str, version: str, ecosystem: str, purl: str | No
     return canonical_id("package", canonical_package_key(name, version, ecosystem, purl))
 
 
-def canonical_agent_id(agent_type: str, name: str, *, source_id: str = "") -> str:
+def canonical_agent_id(agent_type: str, name: str, *, source_id: str = "", device_fingerprint: str = "") -> str:
+    """Return a deterministic agent identity.
+
+    A hardware-backed ``device_fingerprint`` (derived from attestation evidence)
+    is preferred when present, so the identity is rooted in the physical device
+    rather than a mutable hostname/config path. Falls back to ``source_id`` and
+    finally the agent name when no fingerprint is available — preserving the
+    identity of agents that carry no hardware evidence.
+    """
+    fingerprint = (device_fingerprint or "").strip()
+    if fingerprint:
+        return canonical_id("agent", agent_type, f"device:{fingerprint}")
     source = (source_id or "").strip()
     if source:
         return canonical_id("agent", agent_type, source)

@@ -32,7 +32,7 @@ package, and workload reachability.
 | Applications | LangChain, CrewAI, OpenAI/Anthropic SDK usage, Shield decisions | AI inventory scan, application logs |
 | Warehouses and observability | Snowflake, Databricks, W&B, MLflow, Langfuse/LangSmith references | read-only provider inventory, config review |
 
-## What Agent-BOM Can Prove
+## What agent-bom Can Prove
 
 - Which MCP clients, servers, package dependencies, tools, and credential
   environment variable names are visible in scanned configs.

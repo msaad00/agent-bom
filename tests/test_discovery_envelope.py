@@ -165,7 +165,8 @@ def test_aws_envelope_attached_to_discovered_agents(monkeypatch: pytest.MonkeyPa
 
     import agent_bom.cloud.aws as aws_module
 
-    # Feed a single fake Bedrock agent. ECS/SageMaker/etc. are off by default.
+    # Feed a single fake Bedrock agent. Disable the other discovery lanes so this
+    # stays an envelope-wiring test and does not require a fake client per AWS API.
     fake_agent = Agent(
         name="bedrock-agent-1",
         agent_type=AgentType.CUSTOM,
@@ -189,8 +190,8 @@ def test_aws_envelope_attached_to_discovered_agents(monkeypatch: pytest.MonkeyPa
 
     agents, warnings = aws_module.discover(
         include_ecs=False,
-        include_sagemaker=False,
         include_lambda=False,
+        include_sagemaker=False,
         include_eks=False,
         include_step_functions=False,
         include_ec2=False,

@@ -237,6 +237,24 @@ def _scan_output_target_was_explicit() -> bool:
     return ctx.get_parameter_source("output") in explicit_sources or ctx.get_parameter_source("output_format") in explicit_sources
 
 
+def _is_null_device(output: Any) -> bool:
+    """Return True when ``-o`` points at the platform null device (discard sink).
+
+    Writing to the null device must succeed silently and never override the
+    policy exit code, so callers treat it as "produce no file" rather than a
+    real path (which would otherwise gain a format suffix and fail to write).
+    """
+    import os
+
+    if not output or output == "-":
+        return False
+    candidates = {os.devnull, "/dev/null"}
+    try:
+        return os.path.realpath(str(output)) in {os.path.realpath(c) for c in candidates}
+    except OSError:
+        return str(output) in candidates
+
+
 def _reproducible_generated_at(enabled: bool):
     """Return a pinned report timestamp when reproducible output is requested."""
     import os
@@ -581,9 +599,15 @@ def scan(
         verify_instructions = True
 
     if output_format == "sarif" and not enrich and not no_scan and not offline:
+        # SARIF benefits from EPSS/KEV enrichment (annotation only — never adds or
+        # removes findings). Do NOT auto-enable dynamic discovery or the context
+        # graph here: those *change the finding set* (e.g. the graph evaluator
+        # emits toxic-combination COMBINATION findings). Gating them on the output
+        # format made `-f sarif` surface findings that `-f json`/`-f csv` of the
+        # same input never emitted — a SIEM/API parity bug (#3643). Discovery and
+        # graph analysis stay driven by explicit flags/presets so the finding set
+        # is identical across every output format.
         enrich = True
-        dynamic_discovery = True
-        context_graph_flag = True
     elif preset == "quick":
         transitive = False
         enrich = False
@@ -629,11 +653,16 @@ def scan(
 
     # Route console output based on flags
     is_stdout = output == "-"
+    is_null_sink = _is_null_device(output)
     con = _make_console(quiet=quiet or is_stdout, output_format=output_format, no_color=no_color)
     runtime_console = Console(stderr=True, quiet=quiet or is_stdout, no_color=no_color)
     _sync_runtime_consoles(runtime_console)
 
-    if output and output != "-" and output_format == "console" and _output_format_was_explicit():
+    # `-o /dev/null` is a discard sink: run the scan, write nothing, and let the
+    # policy exit code stand. Without this the console-to-file guard below tripped
+    # `SystemExit(2)` (because passing `-o` alone makes the format "explicit"),
+    # masking `--fail-on-severity` (#3643).
+    if output and output != "-" and not is_null_sink and output_format == "console" and _output_format_was_explicit():
         click.echo(
             "Error: --format console renders to the terminal only; use --format plain, markdown, or json with --output.",
             err=True,
@@ -1719,6 +1748,16 @@ def scan(
 
     _generated_at = _reproducible_generated_at(reproducible)
     _report_kwargs = {"generated_at": _generated_at} if _generated_at is not None else {}
+    if _generated_at is not None:
+        # Reproducible/attestable output: entity discovery timestamps are
+        # wall-clock by default, so two scans of the same input diverged on every
+        # agent's discovered_at/last_seen (#3643). Pin them to the same pinned
+        # report timestamp so `--reproducible` (or SOURCE_DATE_EPOCH) yields a
+        # byte-identical artifact.
+        _pinned_ts = _generated_at.isoformat().replace("+00:00", "Z")
+        for _agent in agents:
+            _agent.discovered_at = _pinned_ts
+            _agent.last_seen = _pinned_ts
     report = AIBOMReport(
         agents=agents,
         blast_radii=blast_radii,

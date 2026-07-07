@@ -187,7 +187,15 @@ def test_aws_envelope_attached_to_discovered_agents(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(aws_module.boto3 if hasattr(aws_module, "boto3") else __import__("boto3"), "Session", lambda **kw: _FakeSession())
 
-    agents, warnings = aws_module.discover(include_ecs=False)
+    agents, warnings = aws_module.discover(
+        include_ecs=False,
+        include_sagemaker=False,
+        include_lambda=False,
+        include_eks=False,
+        include_step_functions=False,
+        include_ec2=False,
+        include_iam=False,
+    )
     assert len(agents) == 1
     envelope = agents[0].discovery_envelope
     assert envelope is not None

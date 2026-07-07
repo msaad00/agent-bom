@@ -1,6 +1,6 @@
 # Deployment Overview
 
-> **Unified quickstart:** [`docs/DEPLOY_QUICKSTART.md`](../../docs/DEPLOY_QUICKSTART.md)
+> **Unified quickstart:** [`docs/DEPLOY_QUICKSTART.md`](https://github.com/msaad00/agent-bom/blob/main/docs/DEPLOY_QUICKSTART.md)
 > — `scripts/deploy/install.sh` for pilot, EKS, AKS, GKE, Snowflake, and
 > read-only cloud connect.
 

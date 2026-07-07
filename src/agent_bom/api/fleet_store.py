@@ -38,6 +38,7 @@ class FleetAgent(BaseModel):
     agent_type: str
     config_path: str = ""
     source_id: str = ""
+    device_fingerprint: str = ""
     enrollment_name: str = ""
     mdm_provider: str = ""
     lifecycle_state: FleetLifecycleState = FleetLifecycleState.DISCOVERED
@@ -76,7 +77,12 @@ class FleetAgent(BaseModel):
         if not self.updated_at:
             self.updated_at = self.created_at
         if not self.canonical_id:
-            self.canonical_id = canonical_agent_id(self.agent_type, self.name, source_id=self.source_id)
+            self.canonical_id = canonical_agent_id(
+                self.agent_type,
+                self.name,
+                source_id=self.source_id,
+                device_fingerprint=self.device_fingerprint,
+            )
         return self
 
 
@@ -279,14 +285,19 @@ class SQLiteFleetStore:
                 lifecycle_state TEXT NOT NULL,
                 trust_score REAL DEFAULT 0.0,
                 updated_at TEXT NOT NULL,
+                device_fingerprint TEXT NOT NULL DEFAULT '',
                 data TEXT NOT NULL
             )
         """)
         if "canonical_id" not in _table_columns(self._conn, "fleet_agents"):
             self._conn.execute("ALTER TABLE fleet_agents ADD COLUMN canonical_id TEXT NOT NULL DEFAULT ''")
+        if "device_fingerprint" not in _table_columns(self._conn, "fleet_agents"):
+            self._conn.execute("ALTER TABLE fleet_agents ADD COLUMN device_fingerprint TEXT NOT NULL DEFAULT ''")
         self._backfill_canonical_ids()
+        self._backfill_device_fingerprints()
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_canonical_id ON fleet_agents(canonical_id)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_device_fingerprint ON fleet_agents(device_fingerprint)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state_trust_name ON fleet_agents(lifecycle_state, trust_score DESC, name)")
         self._conn.commit()
@@ -300,12 +311,31 @@ class SQLiteFleetStore:
                 (agent.canonical_id, agent.model_dump_json(), agent_id),
             )
 
+    def _backfill_device_fingerprints(self) -> None:
+        """Mirror the persisted ``device_fingerprint`` into its dedicated column.
+
+        Idempotent and cheap: only rows whose column is empty *and* whose stored
+        JSON actually carries a fingerprint are touched, so evidence-less agents
+        (the common case) keep a null/empty column and are never re-processed.
+        """
+        rows = self._conn.execute(
+            "SELECT agent_id, data FROM fleet_agents "
+            "WHERE COALESCE(device_fingerprint, '') = '' "
+            "AND COALESCE(json_extract(data, '$.device_fingerprint'), '') != ''"
+        ).fetchall()
+        for agent_id, raw in rows:
+            agent = FleetAgent.model_validate_json(raw)
+            self._conn.execute(
+                "UPDATE fleet_agents SET device_fingerprint = ? WHERE agent_id = ?",
+                (agent.device_fingerprint, agent_id),
+            )
+
     def put(self, agent: FleetAgent) -> None:
         normalized = FleetAgent.model_validate(agent.model_dump())
         self._conn.execute(
             """INSERT OR REPLACE INTO fleet_agents
-               (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, data)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, device_fingerprint, data)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 normalized.agent_id,
                 normalized.canonical_id,
@@ -313,6 +343,7 @@ class SQLiteFleetStore:
                 normalized.lifecycle_state.value,
                 normalized.trust_score,
                 normalized.updated_at,
+                normalized.device_fingerprint,
                 normalized.model_dump_json(),
             ),
         )
@@ -449,8 +480,8 @@ class SQLiteFleetStore:
             return 0
         self._conn.executemany(
             """INSERT OR REPLACE INTO fleet_agents
-               (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, data)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (agent_id, canonical_id, name, lifecycle_state, trust_score, updated_at, device_fingerprint, data)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             [
                 (
                     normalized.agent_id,
@@ -459,6 +490,7 @@ class SQLiteFleetStore:
                     normalized.lifecycle_state.value,
                     normalized.trust_score,
                     normalized.updated_at,
+                    normalized.device_fingerprint,
                     normalized.model_dump_json(),
                 )
                 for normalized in (FleetAgent.model_validate(agent.model_dump()) for agent in agents)

@@ -9,7 +9,7 @@ For the end-to-end intake story across direct scans, read-only integrations, pus
 For the operator model behind attack paths, reachability, runtime evidence, and
 large graph readability, see [Security Graph Model](security-graph-model.md).
 
-For the shortest operator-facing explanation of inputs, engine, outputs, deployment models, and product surfaces, see [How Agent-BOM Works](how-agent-bom-works.md).
+For the shortest operator-facing explanation of inputs, engine, outputs, deployment models, and product surfaces, see [How agent-bom Works](how-agent-bom-works.md).
 
 For the governance map that ties Agent BOM manifests, runtime decisions, graph
 evidence, and human/agent surfaces together, see [AI Governance Control Plane](ai-governance-control-plane.md).

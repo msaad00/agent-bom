@@ -82,6 +82,19 @@ _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
 }
 
 
+def _is_null_device(output: Any) -> bool:
+    """Return True when ``output`` points at the platform null device."""
+    import os
+
+    if not output or output == "-":
+        return False
+    candidates = {os.devnull, "/dev/null"}
+    try:
+        return os.path.realpath(str(output)) in {os.path.realpath(c) for c in candidates}
+    except OSError:
+        return str(output) in candidates
+
+
 def _resolve_output_path(output: Any, output_format: str) -> str:
     """Return an output path whose suffix matches the selected format."""
     default_name, allowed_suffixes = _FORMAT_OUTPUT_RULES[output_format]
@@ -89,6 +102,11 @@ def _resolve_output_path(output: Any, output_format: str) -> str:
         return default_name
 
     raw_path = str(output)
+    # Null device is a discard sink: keep the path verbatim so the write lands on
+    # /dev/null (which succeeds silently) rather than a suffixed sibling like
+    # `/dev/null.json` that lives in an unwritable dir and would fail (#3643).
+    if _is_null_device(raw_path):
+        return raw_path
     lower_path = raw_path.lower()
     if any(lower_path.endswith(suffix) for suffix in allowed_suffixes):
         return raw_path
@@ -326,6 +344,12 @@ def render_output(
             else:
                 sys.stdout.write(json.dumps(to_json(report), indent=2))
             sys.stdout.write("\n")
+        elif _is_null_device(output) and output_format in ("console", "text", "plain"):
+            # `-o /dev/null` with a terminal-only format: discard silently rather
+            # than falling through to extension inference (which exited 2 and
+            # masked --fail-on-severity). The scan already ran; the policy exit
+            # code stands (#3643).
+            pass
         elif output_format == "console" and not output:
             _skill_audit_obj = ctx._skill_audit_obj
             if verbose:

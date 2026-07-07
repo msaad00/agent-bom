@@ -123,35 +123,43 @@ def _render_connect_guidance(con: object, source: _ConnectSource) -> None:
     Output is fixed for a given environment (only the credential-detection line
     reflects the current env), so it is safe to snapshot in tests.
     """
-    printer = con.print  # type: ignore[attr-defined]
-    printer()
-    printer(f"  [bold]Connect {source.title}[/bold] [dim](read-only)[/dim]")
-    printer(f"  [dim]{source.role_summary}[/dim]")
-    printer()
-    printer("  [bold]1. Provision the read-only grant[/bold]")
-    printer(f"     [cyan]terraform -chdir={source.terraform_module} init && terraform -chdir={source.terraform_module} apply[/cyan]")
-    printer("     [dim]Module mints exactly the read-only role agent-bom needs — nothing is created or modified in your account.[/dim]")
-    printer()
-    printer("  [bold]2. Opt in to inventory[/bold] [dim](default-off; agent-bom does zero network I/O until set)[/dim]")
-    printer(f"     [cyan]export {source.inventory_env}={source.inventory_value}[/cyan]")
-    printer()
-    printer("  [bold]3. Scan[/bold]")
-    printer(f"     [cyan]{source.scan_command}[/cyan]")
-    printer()
+    from agent_bom.cli._terminal_sections import render_connect_card
 
+    body_lines = [
+        "[bold]1. Provision the read-only grant[/bold]",
+        f"   [cyan]terraform -chdir={source.terraform_module} init && terraform -chdir={source.terraform_module} apply[/cyan]",
+        "   [dim]Read-only role only — nothing is created or modified in your account.[/dim]",
+        "",
+        "[bold]2. Opt in to inventory[/bold] [dim](default-off)[/dim]",
+        f"   [cyan]export {source.inventory_env}={source.inventory_value}[/cyan]",
+        "",
+        "[bold]3. Scan[/bold]",
+        f"   [cyan]{source.scan_command}[/cyan]",
+    ]
     if source.audit_trail_note:
-        printer("  [bold]Optional: audit-trail behavioral edges[/bold] [dim](opt-in, read-only)[/dim]")
-        printer("     [cyan]export AGENT_BOM_AUDIT_TRAIL=1[/cyan]")
-        printer(f"     [dim]{source.audit_trail_note}[/dim]")
-        printer()
+        body_lines.extend(
+            [
+                "",
+                "[bold]Optional: audit-trail edges[/bold] [dim](opt-in)[/dim]",
+                "   [cyan]export AGENT_BOM_AUDIT_TRAIL=1[/cyan]",
+                f"   [dim]{source.audit_trail_note}[/dim]",
+            ]
+        )
 
     detected = _detected_cred_vars(source)
     if detected:
-        printer(f"  [green]Credentials detected:[/green] {', '.join(detected)}")
+        body_lines.extend(["", f"[green]Credentials detected:[/green] {', '.join(detected)}"])
     else:
         expected = ", ".join(source.cred_env_vars)
-        printer(f"  [yellow]No credentials detected.[/yellow] Set one of: [dim]{expected}[/dim]")
-    printer()
+        body_lines.extend(["", f"[yellow]No credentials detected.[/yellow] Set one of: [dim]{expected}[/dim]"])
+
+    render_connect_card(
+        con,  # type: ignore[arg-type]
+        title=source.title,
+        role_summary=f"{source.role_summary} (read-only)",
+        body="\n".join(body_lines),
+        next_command=source.scan_command,
+    )
 
 
 def _list_connect_sources() -> None:

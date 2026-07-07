@@ -300,7 +300,7 @@ class TestShowPassedWiring:
         assert seen == [True]
 
 
-# ── grouped CIS renderer routing (run_benchmarks → print_cis_findings) ────────
+# ── grouped CIS renderer routing (render_output → print_cis_findings) ────────
 
 
 class _FakeBenchmarkReport:
@@ -351,14 +351,14 @@ def _cis_bundle() -> dict:
 
 
 def _render_ctx_cis(monkeypatch, *, show_passed: bool) -> str:
-    """Run ``_render_cis_findings`` with one AWS bundle and capture console output."""
+    """Run ``render_cis_findings_from_context`` with one AWS bundle and capture console output."""
     from io import StringIO
 
     import click
     from rich.console import Console
 
     import agent_bom.output as output_mod
-    from agent_bom.cli.agents._cloud import CIS_SHOW_PASSED_META, _render_cis_findings
+    from agent_bom.cli.agents._cloud import CIS_SHOW_PASSED_META, render_cis_findings_from_context
     from agent_bom.cli.agents._context import ScanContext
 
     buf = StringIO()
@@ -372,7 +372,7 @@ def _render_ctx_cis(monkeypatch, *, show_passed: bool) -> str:
     # context that mirrors how the cloud command sets it.
     with click.Context(click.Command("scan")) as click_ctx:
         click_ctx.meta[CIS_SHOW_PASSED_META] = show_passed
-        _render_cis_findings(ctx)
+        render_cis_findings_from_context(ctx)
     return buf.getvalue()
 
 
@@ -402,13 +402,13 @@ class TestGroupedCisRendererRouting:
         from rich.console import Console
 
         import agent_bom.output as output_mod
-        from agent_bom.cli.agents._cloud import _render_cis_findings
+        from agent_bom.cli.agents._cloud import render_cis_findings_from_context
         from agent_bom.cli.agents._context import ScanContext
 
         buf = StringIO()
         con = Console(file=buf, force_terminal=False, width=200)
         monkeypatch.setattr(output_mod, "console", con)
-        _render_cis_findings(ScanContext(con=con))
+        render_cis_findings_from_context(ScanContext(con=con))
         assert buf.getvalue() == ""
 
 

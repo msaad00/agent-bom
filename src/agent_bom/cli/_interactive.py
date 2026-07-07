@@ -51,8 +51,9 @@ def _print_interactive_help(output: Callable[[str], None]) -> None:
     output("")
     output("Run normal commands without the program name, for example:")
     output("  agents --demo --offline")
+    output("  cloud aws --no-cis          # discovery without CIS wall")
+    output("  report -f html -o out.html  # generate shareable report")
     output("  doctor")
-    output("  report history")
 
 
 def _invoke_root_command(root_command: click.Command, args: Sequence[str], output: Callable[[str], None]) -> int:

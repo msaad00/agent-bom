@@ -846,7 +846,7 @@ def scan(
         return
 
     # Create shared context object
-    ctx = ScanContext(con=con)
+    ctx = ScanContext(con=con, quiet=quiet, verbose=verbose)
     try:
         from agent_bom.resolver import reset_performance_stats as _reset_resolver_performance
         from agent_bom.scanners import reset_scan_performance as _reset_scan_performance

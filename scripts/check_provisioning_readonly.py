@@ -88,8 +88,16 @@ AWS_READONLY_MANAGED_POLICIES = {
 }
 AWS_MANAGED_POLICY_RE = re.compile(r'"(arn:aws[a-z-]*:iam::aws:policy/[^"]+)"')
 
-# Azure built-in roles that are read-only.
-AZURE_READONLY_ROLES = {"reader", "security reader", "monitoring reader"}
+# Azure built-in roles that are read-only. "Key Vault Reader" reads key/secret
+# METADATA only (never secret values); "AcrPull" is a data-plane image *pull*
+# (read). Both are read-only deep-scan content grants — no mutation.
+AZURE_READONLY_ROLES = {
+    "reader",
+    "security reader",
+    "monitoring reader",
+    "key vault reader",
+    "acrpull",
+}
 AZURE_ROLE_RE = re.compile(r'role_definition_name\s*=\s*"([^"]+)"')
 
 # GCP predefined roles that are read-only (viewer-family + securityReviewer).
@@ -100,6 +108,7 @@ GCP_READONLY_ROLES = {
     "roles/browser",
     "roles/iam.workloaduser",  # impersonation binding, not a data-plane write
     "roles/iam.workloadidentityuser",
+    "roles/artifactregistry.reader",  # read-only image pull (downloadArtifacts)
 }
 
 # Snowflake privileges that mutate. Read-only role may grant only the read set.

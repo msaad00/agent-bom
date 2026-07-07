@@ -11,6 +11,8 @@ class ScanContext:
     """Mutable state accumulated across scan phases."""
 
     con: Any  # rich Console
+    quiet: bool = False
+    verbose: bool = False
     agents: list = field(default_factory=list)
     blast_radii: list = field(default_factory=list)
     report: Any = None

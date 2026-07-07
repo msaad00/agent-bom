@@ -114,6 +114,7 @@ def _run_cloud_scan(
     output_format: str = "console",
     output_path: Optional[str] = None,
     quiet: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Run the shared cloud-scan body across one or more providers.
 
@@ -163,9 +164,9 @@ def _run_cloud_scan(
             f"\n[bold]Cloud scan[/bold] [dim]· {', '.join(p.upper() for p in providers)} · {'CIS + ' if cis else ''}discovery[/dim]"
         )
 
-    # Pass --show-passed through to the grouped CIS renderer in run_benchmarks
-    # (the scan command itself has no such flag). click.Context.meta is shared
-    # across the whole context stack, so it survives the invoke into `scan`.
+    # Pass --show-passed through to the grouped CIS renderer at report time.
+    # click.Context.meta is shared across the whole context stack, so it survives
+    # the invoke into `scan`.
     from agent_bom.cli.agents._cloud import CIS_SHOW_PASSED_META
 
     ctx = click.get_current_context()
@@ -190,6 +191,7 @@ def _run_cloud_scan(
         output_format=output_format,
         output=output_path,
         quiet=quiet,
+        verbose=verbose,
     )
 
 
@@ -266,6 +268,7 @@ def cloud_group(ctx: click.Context) -> None:
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True)
+@click.option("--verbose", "-v", is_flag=True, help="Expanded terminal output (full CIS plan, detail tables).")
 def scan_cmd(
     provider: str,
     region: Optional[str],
@@ -282,6 +285,7 @@ def scan_cmd(
     output_format: str,
     output_path: Optional[str],
     quiet: bool,
+    verbose: bool,
 ) -> None:
     """Scan one or every configured cloud — AI agents, infra, and CIS compliance.
 
@@ -315,6 +319,7 @@ def scan_cmd(
         output_format=output_format,
         output_path=output_path,
         quiet=quiet,
+        verbose=verbose,
     )
 
 
@@ -331,6 +336,7 @@ def scan_cmd(
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True)
+@click.option("--verbose", "-v", is_flag=True, help="Expanded terminal output (full CIS plan, detail tables).")
 def aws_cmd(
     region: Optional[str],
     profile: Optional[str],
@@ -344,6 +350,7 @@ def aws_cmd(
     output_format: str,
     output_path: Optional[str],
     quiet: bool,
+    verbose: bool,
 ) -> None:
     """Scan AWS for AI agents, infrastructure, and CIS compliance.
 
@@ -363,6 +370,7 @@ def aws_cmd(
         output_format=output_format,
         output_path=output_path,
         quiet=quiet,
+        verbose=verbose,
     )
 
 
@@ -374,6 +382,7 @@ def aws_cmd(
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True)
+@click.option("--verbose", "-v", is_flag=True, help="Expanded terminal output (full CIS plan, detail tables).")
 def azure_cmd(
     subscription: Optional[str],
     cis: bool,
@@ -382,6 +391,7 @@ def azure_cmd(
     output_format: str,
     output_path: Optional[str],
     quiet: bool,
+    verbose: bool,
 ) -> None:
     """Scan Azure for AI agents, infrastructure, and CIS compliance.
 
@@ -406,6 +416,7 @@ def azure_cmd(
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
 @click.option("--quiet", "-q", is_flag=True)
+@click.option("--verbose", "-v", is_flag=True, help="Expanded terminal output (full CIS plan, detail tables).")
 def gcp_cmd(
     project: Optional[str],
     cis: bool,
@@ -414,6 +425,7 @@ def gcp_cmd(
     output_format: str,
     output_path: Optional[str],
     quiet: bool,
+    verbose: bool,
 ) -> None:
     """Scan GCP for AI agents, infrastructure, and CIS compliance.
 
@@ -427,6 +439,7 @@ def gcp_cmd(
         output_format=output_format,
         output_path=output_path,
         quiet=quiet,
+        verbose=verbose,
     )
 
 

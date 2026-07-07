@@ -884,10 +884,27 @@ def _extract_lambda_packages(
             except Exception as exc:
                 warnings.append(f"Could not extract packages from Lambda layer {layer_arn}: {exc}")
 
+        # Extract from the function's own deployment package. Most functions
+        # bundle their dependencies inline (vendored into the zip) rather than
+        # in a layer, so scanning layers alone misses the common case.
+        code_location = func_config.get("Code", {}).get("Location", "")
+        if code_location and ecosystem in ("pypi", "npm"):
+            try:
+                from agent_bom.http_client import fetch_bytes
+
+                code_bytes = fetch_bytes(code_location, timeout=60)
+                with zipfile.ZipFile(io.BytesIO(code_bytes)) as zf:
+                    if ecosystem == "pypi":
+                        packages.extend(_parse_python_packages_from_zip(zf))
+                    else:
+                        packages.extend(_parse_node_packages_from_zip(zf))
+            except Exception as exc:
+                warnings.append(f"Could not extract packages from Lambda deployment package {lambda_arn}: {exc}")
+
     except Exception as exc:
         warnings.append(f"Could not get Lambda function {lambda_arn}: {exc}")
 
-    return packages
+    return _dedupe_packages(packages)
 
 
 def _packages_from_layer(
@@ -917,6 +934,20 @@ def _packages_from_layer(
             packages = _parse_node_packages_from_zip(zf)
 
     return packages
+
+
+def _dedupe_packages(packages: list[Package]) -> list[Package]:
+    """Drop duplicate packages when the same dep appears in a layer and the
+    function's own zip (or across multiple layers)."""
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[Package] = []
+    for pkg in packages:
+        key = (pkg.ecosystem, pkg.name.lower(), pkg.version)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(pkg)
+    return unique
 
 
 def _parse_python_packages_from_zip(zf: zipfile.ZipFile) -> list[Package]:

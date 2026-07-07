@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import re
 import threading
@@ -982,3 +983,114 @@ def _escape(value: str) -> str:
     sanitized = "".join(ch if ch == "\t" or ch == "\n" or ch == "\r" or 32 <= ord(ch) <= 126 else " " for ch in sanitized)
     sanitized = " ".join(_CLICKHOUSE_SAFE_STRING_RE.findall(sanitized))
     return sanitized.replace("\\", "\\\\").replace("'", "\\'")
+
+
+# ------------------------------------------------------------------
+# Best-effort findings ingest from a serialized scan report
+# ------------------------------------------------------------------
+
+
+def build_scan_ingest_rows(
+    report_json: dict[str, Any],
+    *,
+    source: str = "cli",
+) -> tuple[str, dict[str, list[dict[str, Any]]], dict[str, Any]]:
+    """Derive ClickHouse ingest rows from a serialized scan report dict.
+
+    Returns ``(scan_id, findings_by_agent, scan_metadata)``. This mirrors
+    ``agent_bom.analytics_contract._build_agent_findings`` / scan-metadata but
+    operates purely on the report JSON (no in-memory ``AIBOMReport``), so the
+    history save hook can ingest a completed CLI scan. Column names match what
+    the ``analytics`` query command reads from ``vulnerability_scans`` and
+    ``scan_metadata``.
+
+    The ``scan_id`` is derived deterministically from the report's
+    ``scan_id``/``generated_at`` so re-saving the same report collapses under
+    the ``vulnerability_scans`` ReplacingMergeTree dedup (finding_key) instead
+    of double-counting — consistent with the local analytics mirror.
+    """
+    blast_radius = report_json.get("blast_radius") or report_json.get("blast_radii") or []
+    if not isinstance(blast_radius, list):
+        blast_radius = []
+
+    scan_id = str(report_json.get("scan_id") or "").strip()
+    if not scan_id:
+        generated_key = "".join(ch for ch in str(report_json.get("generated_at") or "") if ch.isalnum())
+        scan_id = f"local-{generated_key}" if generated_key else str(uuid.uuid4())
+
+    findings_by_agent: dict[str, list[dict[str, Any]]] = {}
+    for item in blast_radius:
+        if not isinstance(item, dict):
+            continue
+        finding = {
+            "package_name": item.get("package_name", ""),
+            "package_version": item.get("package_version", ""),
+            "package": item.get("package", ""),
+            "ecosystem": item.get("ecosystem", ""),
+            "cve_id": item.get("vulnerability_id", "") or item.get("cve_id", ""),
+            "cvss_score": float(item.get("cvss_score") or 0.0),
+            "epss_score": float(item.get("epss_score") or 0.0),
+            "severity": item.get("severity", "unknown"),
+            "source": item.get("primary_advisory_source") or item.get("source") or "osv",
+            "environment": item.get("environment", ""),
+            "cmmc_tags": list(item.get("cmmc_tags", []) or []),
+        }
+        # Fan out per affected agent (matching the API/CLI contract path). When
+        # a finding is not attributed to any agent, still record it once under
+        # an empty agent_name so no finding is silently dropped from analytics.
+        agents = [a for a in (item.get("affected_agents") or []) if a] or [""]
+        for agent_name in agents:
+            findings_by_agent.setdefault(agent_name, []).append(dict(finding))
+
+    summary = report_json.get("summary")
+    summary = summary if isinstance(summary, dict) else {}
+    posture = report_json.get("posture_scorecard")
+    posture = posture if isinstance(posture, dict) else {}
+    scan_metadata = {
+        "scan_id": scan_id,
+        "agent_count": int(summary.get("total_agents", 0) or 0),
+        "package_count": int(summary.get("total_packages", 0) or 0),
+        "vuln_count": int(summary.get("total_vulnerabilities", 0) or 0),
+        "critical_count": int(summary.get("critical_findings", 0) or 0),
+        "high_count": sum(
+            1 for item in blast_radius if isinstance(item, dict) and str(item.get("severity", "")).lower() == "high"
+        ),
+        "posture_grade": str(posture.get("grade", "") or ""),
+        "scan_duration_ms": int(report_json.get("scan_duration_ms", 0) or 0),
+        "source": source,
+    }
+    return scan_id, findings_by_agent, scan_metadata
+
+
+def ingest_scan_report_best_effort(
+    report_json: dict[str, Any],
+    *,
+    source: str = "cli",
+    tenant_id: str = "default",
+    url: str | None = None,
+    store: Any | None = None,
+) -> str | None:
+    """Best-effort ClickHouse mirror of a completed scan report.
+
+    No-op (zero overhead — one env lookup then return) when neither *store* nor
+    *url* is supplied and ``AGENT_BOM_CLICKHOUSE_URL`` is unset. Any ClickHouse
+    connection/insert error is swallowed and logged at debug so analytics
+    ingest can never fail a scan — mirrors
+    ``agent_bom.db.local_analytics.record_scan_report_best_effort``.
+
+    Returns the ingested ``scan_id`` on success, else ``None``.
+    """
+    resolved_url = url or os.environ.get("AGENT_BOM_CLICKHOUSE_URL")
+    if store is None and not resolved_url:
+        return None
+    try:
+        ch_store = store if store is not None else ClickHouseAnalyticsStore(url=resolved_url)
+        scan_id, findings_by_agent, metadata = build_scan_ingest_rows(report_json, source=source)
+        for agent_name, findings in findings_by_agent.items():
+            if findings:
+                ch_store.record_scan(scan_id, agent_name, findings, tenant_id=tenant_id)
+        ch_store.record_scan_metadata(metadata, tenant_id=tenant_id)
+        return scan_id
+    except Exception:
+        logger.debug("ClickHouse findings-ingest skipped (best-effort)", exc_info=True)
+        return None

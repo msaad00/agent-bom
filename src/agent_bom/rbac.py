@@ -66,6 +66,7 @@ _PERMISSIONS: dict[str, set[Role]] = {
     "fleet_write": {Role.ADMIN},
     "fleet_read": {Role.ADMIN, Role.ANALYST, Role.VIEWER},
     "policy_write": {Role.ADMIN},
+    "policy.manage": {Role.ADMIN},
     "policy_read": {Role.ADMIN, Role.ANALYST, Role.VIEWER},
     "exception_create": {Role.ADMIN, Role.ANALYST},
     "exception_approve": {Role.ADMIN},

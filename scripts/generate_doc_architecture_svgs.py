@@ -11,6 +11,14 @@ import re
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parents[1] / "docs" / "images"
+VENDOR_LOGO_DIR = Path(__file__).resolve().parents[1] / "ui" / "public" / "logos"
+
+CLOUD_VENDOR_LOGOS = (
+    ("aws", "AWS", "#232F3E"),
+    ("azure", "Azure", "#0078D4"),
+    ("gcp", "GCP", "#4285F4"),
+    ("snowflake", "Snowflake", "#29B5E8"),
+)
 
 THEMES = {
     "dark": {
@@ -336,56 +344,45 @@ ICONS = {
 }
 
 
-def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict) -> tuple[str, int]:
-    """2x2 provider grid — stylized marks (not trademark logos) for GitHub-safe docs."""
-    items = [
-        (
-            "AWS",
-            "#ff9900",
-            '<path d="M4 17c4.5-1.2 11.5-1.2 16 0" stroke="#ff9900" fill="none" stroke-width="1.8" stroke-linecap="round"/>'
-            '<path d="M6 13.5c3-.8 9-.8 12 0" stroke="#ff9900" fill="none" stroke-width="1.6" stroke-linecap="round"/>'
-            '<path d="M8.5 10c2.2-.5 5-.5 7.5 0" stroke="#ff9900" fill="none" stroke-width="1.4" stroke-linecap="round"/>'
-            '<path d="M10.5 7.5c1.2-.3 2.3-.3 3.5 0" stroke="#ff9900" fill="none" stroke-width="1.2" stroke-linecap="round"/>',
-        ),
-        (
-            "Azure",
-            "#0078d4",
-            '<path d="M5 17 L12 5.5 L19 17 Z" fill="#0078d4" opacity="0.92"/>'
-            '<path d="M8.5 17 L12 10 L15.5 17 Z" fill="#50e6ff" opacity="0.85"/>',
-        ),
-        (
-            "GCP",
-            "#4285f4",
-            '<circle cx="12" cy="8.5" r="3" fill="#fbbc04"/>'
-            '<circle cx="9" cy="12.5" r="3" fill="#ea4335"/>'
-            '<circle cx="15" cy="12.5" r="3" fill="#4285f4"/>'
-            '<circle cx="12" cy="16.5" r="3" fill="#34a853"/>',
-        ),
-        (
-            "Snow",
-            "#29b5e8",
-            '<path d="M12 5v14M6.5 8.5l11 7M17.5 8.5l-11 7M6.5 15.5l11-7M17.5 15.5l-11-7" '
-            'stroke="#29b5e8" stroke-width="1.4" stroke-linecap="round"/>',
-        ),
-    ]
+def _vendor_logo_inner(vendor: str, *, uid: str) -> str:
+    """Inline public vector mark from ui/public/logos (same assets as the dashboard)."""
+    raw = (VENDOR_LOGO_DIR / f"{vendor}.svg").read_text(encoding="utf-8")
+    inner = re.sub(r"^.*?<svg[^>]*>", "", raw, count=1, flags=re.DOTALL)
+    inner = re.sub(r"</svg>\s*$", "", inner, flags=re.DOTALL)
+    for gid in sorted(set(re.findall(r'id="([^"]+)"', inner)), key=len, reverse=True):
+        namespaced = f"{uid}-{gid}"
+        inner = inner.replace(f'id="{gid}"', f'id="{namespaced}"')
+        inner = inner.replace(f"url(#{gid})", f"url(#{namespaced})")
+    return inner.strip()
+
+
+def _cloud_logos(x: int, y: int, lane_inner_w: int, t: dict, *, theme: str) -> tuple[str, int]:
+    """2x2 provider grid using the same public vector marks as the dashboard."""
     cols = 2
     gap_x = 6
     gap_y = 6
     card_w = (lane_inner_w - gap_x) // cols
-    card_h = 40
+    card_h = 44
+    aws_wordmark = "#e9e9ec" if theme == "dark" else "#232F3E"
     out: list[str] = []
-    for i, (label, color, art) in enumerate(items):
+    for i, (vendor, label, accent) in enumerate(CLOUD_VENDOR_LOGOS):
         col, row = i % cols, i // cols
         bx = x + col * (card_w + gap_x)
         by = y + row * (card_h + gap_y)
-        icon_area = 22
+        icon_area = 28
         icon_x = bx + (card_w - icon_area) / 2
+        inner = _vendor_logo_inner(vendor, uid=f"cl-{vendor}")
+        color_attr = f' color="{aws_wordmark}"' if vendor == "aws" else ""
+        scale = icon_area / 24
         out.append(
             f'<rect x="{bx}" y="{by}" width="{card_w}" height="{card_h}" rx="7" fill="{t["card"]}" stroke="{t["card_stroke"]}"/>'
-            f'<g transform="translate({icon_x},{by + 5}) scale({icon_area / 24})">{art}</g>'
-            f'<text x="{bx + card_w / 2}" y="{by + card_h - 6}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
-            f'font-size="7" font-weight="700" fill="{color}">{_esc(label)}</text>'
+            f'<g transform="translate({icon_x},{by + 6}) scale({scale})"{color_attr}>{inner}</g>'
         )
+        if vendor != "aws":
+            out.append(
+                f'<text x="{bx + card_w / 2}" y="{by + card_h - 5}" text-anchor="middle" font-family="Inter,system-ui,sans-serif" '
+                f'font-size="8" font-weight="700" fill="{accent}">{_esc(label)}</text>'
+            )
     return "".join(out), gap_y + 2 * card_h
 
 
@@ -497,7 +494,7 @@ def how_it_works(theme_name: str) -> str:
         )
 
     cloud_y = lane_top + 238
-    cloud_svg, cloud_h = _cloud_logos(intake_x, cloud_y, intake_inner, t)
+    cloud_svg, cloud_h = _cloud_logos(intake_x, cloud_y, intake_inner, t, theme=theme_name)
     parts.append(cloud_svg)
     lock_y = cloud_y + cloud_h + 8
     lock_x = lane_x[0] + lane_w // 2 - 12
@@ -1045,21 +1042,21 @@ def _persona_lane_card(
     parts.append(
         _text(
             x + 62,
-            y + 37,
+            y + 40,
             persona_title,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "15", "font-weight": "800", "fill": t["text"]},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "17", "font-weight": "800", "fill": t["text"]},
         )
     )
     parts.append(
         _text(
             x + 16,
-            y + 68,
+            y + 74,
             persona_sub,
-            **{"font-family": "ui-monospace,monospace", "font-size": "9.5", "font-weight": "600", "fill": t["text_muted"]},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "11.5", "font-weight": "600", "fill": t["text_muted"]},
         )
     )
 
-    divider_y = y + 80
+    divider_y = y + 92
     parts.append(
         f'<line x1="{x + 16}" y1="{divider_y}" x2="{x + w - 16}" y2="{divider_y}" '
         f'stroke="{t["card_stroke"]}" stroke-width="1"/>'
@@ -1070,8 +1067,8 @@ def _persona_lane_card(
         f'fill="{accent}" opacity="0.9"/>'
     )
 
-    value_y = divider_y + 14
-    value_h = h - (value_y - y) - 12
+    value_y = divider_y + 16
+    value_h = h - (value_y - y) - 14
     parts.append(
         f'<rect x="{x + 12}" y="{value_y}" width="{w - 24}" height="{value_h}" rx="8" '
         f'fill="{accent}" opacity="{tint_opacity}"/>'
@@ -1083,17 +1080,17 @@ def _persona_lane_card(
     parts.append(
         _text(
             x + 24,
-            value_y + 20,
+            value_y + 24,
             value_title,
-            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "12.5", "font-weight": "800", "fill": t["text"]},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "14", "font-weight": "800", "fill": t["text"]},
         )
     )
     parts.append(
         _text(
             x + 24,
-            value_y + 37,
+            value_y + 44,
             value_sub,
-            **{"font-family": "ui-monospace,monospace", "font-size": "8.5", "font-weight": "600", "fill": t["text_muted"]},
+            **{"font-family": "Inter,system-ui,sans-serif", "font-size": "10.5", "font-weight": "600", "fill": t["text_muted"]},
         )
     )
     return parts
@@ -1102,7 +1099,7 @@ def _persona_lane_card(
 def persona_value(theme: str) -> str:
     """Compact single-row buyer-lane band — persona -> value proof per card."""
     t = THEMES[theme]
-    w, h = 1080, 218
+    w, h = 1080, 236
     persona_bg = "#16161d" if theme == "dark" else t["bg"]
 
     cards = [
@@ -1115,7 +1112,7 @@ def persona_value(theme: str) -> str:
     margin_x, margin_y = 23, 18
     gap = 14
     card_w = (w - margin_x * 2 - gap * 3) // 4
-    card_h = 148
+    card_h = 174
 
     parts = _svg_open(w, h, "agent-bom personas and value")
     parts.append(f'<rect width="{w}" height="{h}" rx="12" fill="{persona_bg}"/>')

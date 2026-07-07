@@ -658,3 +658,22 @@ AUDIT_TRAIL_ENABLED = _bool("AGENT_BOM_AUDIT_TRAIL", False)
 AUDIT_TRAIL_LOOKBACK_HOURS = _int("AGENT_BOM_AUDIT_TRAIL_LOOKBACK_HOURS", 24)
 # Per-provider event cap; the reader clamps to a hard ceiling and warns when hit.
 AUDIT_TRAIL_MAX_EVENTS = _int("AGENT_BOM_AUDIT_TRAIL_MAX_EVENTS", 2000)
+
+
+# ── Partition Retention (#3463) ───────────────────────────────────────────
+# Age-based RANGE-partition rollover for append-only Postgres tables managed by
+# ``api/partition_maintenance.py``. Each knob is a retention window in days;
+# ``<= 0`` disables rollover for that table (the safe default — partitions are
+# never dropped until an operator opts in). Maintenance is Postgres-only and a
+# strict no-op on unpartitioned/legacy tables and on SQLite: retention only acts
+# on tables an operator has actually converted to declarative partitioning
+# (see ``partitioned_parent_ddl`` / ``migrate_table_to_partitioned``).
+#
+# ``audit_log`` is append-only and partition-safe (UUID entry_id PK; migration
+# adds ``timestamp`` to the PK). ``llm_costs`` / ``runtime_observations`` are
+# registered but partition-UNSAFE — their idempotency key excludes the time
+# column, so partitioning would regress ingest dedup; they stay disabled until
+# the dedup key is redesigned.
+AUDIT_LOG_RETENTION_DAYS = _int("AGENT_BOM_AUDIT_LOG_RETENTION_DAYS", 0)
+LLM_COSTS_RETENTION_DAYS = _int("AGENT_BOM_LLM_COSTS_RETENTION_DAYS", 0)
+RUNTIME_OBSERVATIONS_RETENTION_DAYS = _int("AGENT_BOM_RUNTIME_OBSERVATIONS_RETENTION_DAYS", 0)

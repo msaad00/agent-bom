@@ -36,6 +36,7 @@ import {
   Activity,
 } from "lucide-react";
 import { GatewayFeedPanel } from "./GatewayFeedPanel";
+import { GatewayFeedKpiBar } from "@/components/gateway-feed-kpi-bar";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { useRuntimeEmbedded } from "@/components/runtime-embed-context";
 
@@ -59,6 +60,7 @@ const RUNTIME_COLORS: Record<GatewayPolicyRuntimeSummary["rollout_mode"], string
 export default function GatewayPage() {
   const embedded = useRuntimeEmbedded();
   const { counts } = useDeploymentContext();
+  const [kpiRefreshKey, setKpiRefreshKey] = useState(0);
   const [policies, setPolicies] = useState<GatewayPolicy[]>([]);
   const [stats, setStats] = useState<GatewayStatsResponse | null>(null);
   const [audit, setAudit] = useState<PolicyAuditEntry[]>([]);
@@ -177,6 +179,8 @@ export default function GatewayPage() {
       </div>
       ) : null}
 
+      <GatewayFeedKpiBar refreshKey={kpiRefreshKey} />
+
       {/* Stats */}
       {stats && (
         <>
@@ -218,7 +222,9 @@ export default function GatewayPage() {
       </div>
 
       {/* Live Feed tab — self-contained, has its own data + WebSocket lifecycle */}
-      {tab === "feed" && <GatewayFeedPanel />}
+      {tab === "feed" && (
+        <GatewayFeedPanel onActivity={() => setKpiRefreshKey((current) => current + 1)} />
+      )}
 
       {/* Loading */}
       {loading && tab !== "feed" && (

@@ -1135,11 +1135,15 @@ BEGIN
     app_pass := current_setting('init.app_password', true);
 
     IF app_pass IS NOT NULL AND app_pass != '' THEN
-        -- Create app user if not exists
+        -- Create app user if not exists.
+        -- NOSUPERUSER NOBYPASSRLS is explicit (and the CREATE ROLE default) so
+        -- FORCE ROW LEVEL SECURITY tenant policies are always enforced for the
+        -- app role. A superuser/BYPASSRLS role silently voids tenant isolation
+        -- (#3665).
         IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_app') THEN
-            EXECUTE format('CREATE ROLE agent_bom_app LOGIN PASSWORD %L', app_pass);
+            EXECUTE format('CREATE ROLE agent_bom_app LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD %L', app_pass);
         ELSE
-            EXECUTE format('ALTER ROLE agent_bom_app PASSWORD %L', app_pass);
+            EXECUTE format('ALTER ROLE agent_bom_app NOSUPERUSER NOBYPASSRLS PASSWORD %L', app_pass);
         END IF;
 
         -- Connection limit: prevent app from exhausting all connections
@@ -1189,13 +1193,42 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO agent_bom_readonly;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_readonly;
 
 -- ══════════════════════════════════════════════════════════════════════════════
+-- TENANT ISOLATION: strip RLS-bypassing attributes from the app/admin role (#3665)
+-- ══════════════════════════════════════════════════════════════════════════════
+--
+-- The bundled quickstart connects as POSTGRES_USER (default: agent_bom), which
+-- the postgres image creates as a SUPERUSER. Superusers and BYPASSRLS roles
+-- IGNORE the FORCE ROW LEVEL SECURITY clause on every table, so the tenant
+-- isolation policies become silent no-ops and cross-tenant queries return other
+-- tenants' rows.
+--
+-- This runs as the very last init step, after all extensions and tables are
+-- created and owned by agent_bom. Dropping SUPERUSER/BYPASSRLS does NOT remove
+-- table ownership: agent_bom still performs the app's runtime idempotent DDL
+-- (table creation, ENABLE/FORCE RLS, policy and function definition) as the
+-- schema owner, but is now itself subject to the tenant RLS policies.
+-- The change only takes effect on the next connection (the current bootstrap
+-- session keeps its cached superuser status), so the rest of init is unaffected.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = current_user AND (rolsuper OR rolbypassrls)
+    ) THEN
+        EXECUTE format('ALTER ROLE %I NOSUPERUSER NOBYPASSRLS', current_user);
+        RAISE NOTICE 'Stripped SUPERUSER/BYPASSRLS from % so tenant RLS is enforced (#3665)', current_user;
+    END IF;
+END
+$$;
+
+-- ══════════════════════════════════════════════════════════════════════════════
 -- SUMMARY
 -- ══════════════════════════════════════════════════════════════════════════════
 --
 --  Role               | Can do                          | Cannot do
 --  -------------------|--------------------------------|---------------------------
---  agent_bom (admin)  | DDL + DML (schema owner)       | — (superuser on this DB)
---  agent_bom_app      | SELECT, INSERT, UPDATE, DELETE  | CREATE, DROP, ALTER, TRUNCATE
+--  agent_bom (owner)  | DDL + DML (schema owner)       | bypass tenant RLS (NOSUPERUSER NOBYPASSRLS)
+--  agent_bom_app      | SELECT, INSERT, UPDATE, DELETE  | CREATE, DROP, ALTER, TRUNCATE, bypass RLS
 --  agent_bom_readonly | SELECT only                     | Any writes
 --
 --  Connection: AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app:<pw>@<host>:5432/agent_bom

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import os
+import sys
 import tempfile
+from typing import Any
 
 import pytest
 
@@ -181,6 +185,25 @@ def _reset_api_runtime_state() -> None:
         pass
 
 
+def _reset_proxy_route_state() -> None:
+    # The proxy status/alerts route keeps process-global in-memory buffers:
+    # a bounded _proxy_alerts deque, its _proxy_alerts_total counter, and the
+    # latest _proxy_metrics / _proxy_metrics_by_tenant snapshots. _load_proxy_alerts
+    # only falls back to the AGENT_BOM_LOG file when _proxy_alerts is EMPTY, so an
+    # alert left in the deque by an earlier test makes /v1/proxy/status ignore the
+    # log and report the wrong alert count (order-dependent: test_proxy_status_from_log
+    # asserting total_alerts==1 gets 0). Clear all four so each test starts clean.
+    try:
+        from agent_bom.api.routes import proxy as proxy_routes
+
+        proxy_routes._proxy_alerts.clear()
+        proxy_routes._proxy_alerts_total = 0
+        proxy_routes._proxy_metrics = None
+        proxy_routes._proxy_metrics_by_tenant.clear()
+    except Exception:
+        pass
+
+
 def _reset_durable_store_singletons() -> None:
     # The agent-identity, JIT-grant, and runtime session/event stores are now
     # durable by default (SQLite under AGENT_BOM_STATE_DIR — the isolated temp
@@ -254,6 +277,147 @@ _SERVER_RUNTIME_ENV_VARS = (
 )
 
 
+# ── Global store-singleton snapshot/restore (order-flake root cause) ─────────
+# The API exposes ~35 ``set_*_store`` accessors across these modules, each of
+# which mutates a process-global singleton holder. A test that swaps a backend
+# via ``set_*`` and skips restoring it (e.g. on an assertion error) leaks that
+# singleton into later tests on the same xdist worker — the order-dependent
+# flake class behind the leaked durable job store (#3663) and NO_AUTH_ROLE
+# poisoning (#3660). Rather than hand-maintain a per-store reset list (which
+# goes stale as stores are added), we snapshot EVERY singleton holder in these
+# modules before each test and restore it verbatim afterward, so a leaked
+# ``set_*`` can never cross a test boundary. New stores added to any of these
+# modules are covered automatically.
+_STORE_SINGLETON_MODULES = (
+    "agent_bom.api.stores",
+    "agent_bom.api.auth",
+    "agent_bom.api.audit_log",
+    "agent_bom.api.proxy_replay_store",
+    "agent_bom.api.agent_identity_store",
+    "agent_bom.api.connection_store",
+    "agent_bom.api.drift_incident_store",
+    "agent_bom.api.cost_store",
+    "agent_bom.api.webhook_store",
+    "agent_bom.api.dataset_version_store",
+    "agent_bom.api.evaluation_store",
+    "agent_bom.api.report_job_store",
+    "agent_bom.api.access_review",
+    "agent_bom.api.hitl_approval_store",
+    "agent_bom.api.runtime_event_store",
+    "agent_bom.api.compliance_hub_store",
+)
+
+# Swappable process-globals in the modules above whose identifier does not end
+# in ``_store`` (case-insensitively) and so is not caught by the suffix rule.
+_STORE_SINGLETON_EXTRA_NAMES = frozenset(
+    {
+        "_last_scan_report",  # stores.py — baseline comparison snapshot
+        "_audit_log",  # audit_log.py — audit sink singleton
+        "_CAPTURE_REPLAY_ENABLED",  # proxy_replay_store.py — capture toggle
+    }
+)
+
+# Auth-posture constants that live-config code (server.py auth wiring) reads
+# directly. ``_sync_test_auth_config_from_env`` re-derives most from env, but a
+# test that assigns the module attribute directly would still leak; snapshot and
+# restore them verbatim as a backstop.
+_CONFIG_AUTH_CONSTANTS = ("NO_AUTH_ROLE", "DEMO_ESTATE", "API_ALLOW_UNAUTHENTICATED")
+
+
+def _is_store_singleton_name(name: str) -> bool:
+    return name.lower().endswith("_store") or name in _STORE_SINGLETON_EXTRA_NAMES
+
+
+def _snapshot_store_singletons() -> list[tuple[Any, str, Any]]:
+    """Capture every process-global store singleton so it can be restored.
+
+    Returns (module, attr_name, value) triples. The ``set_*``/``_get_*``
+    accessors themselves also end in ``_store``; functions and classes are
+    skipped so only state holders (None or a store instance) are captured.
+    Modules are imported eagerly so the very first test to touch a store still
+    has a pristine baseline to restore to (an unimported module has no state to
+    leak, but importing here closes the first-mutation gap).
+    """
+    snapshot: list[tuple[Any, str, Any]] = []
+    for mod_path in _STORE_SINGLETON_MODULES:
+        mod = sys.modules.get(mod_path)
+        if mod is None:
+            try:
+                mod = importlib.import_module(mod_path)
+            except Exception:
+                continue
+        try:
+            members = list(vars(mod).items())
+        except Exception:
+            continue
+        for name, value in members:
+            if not _is_store_singleton_name(name):
+                continue
+            if inspect.isroutine(value) or inspect.isclass(value):
+                continue
+            snapshot.append((mod, name, value))
+    return snapshot
+
+
+def _restore_store_singletons(snapshot: list[tuple[Any, str, Any]]) -> None:
+    for mod, name, value in snapshot:
+        try:
+            setattr(mod, name, value)
+        except Exception:
+            pass
+
+
+def _snapshot_output_console() -> Any:
+    """Capture the shared Rich console the CLI renders through.
+
+    ``console_render._console()`` resolves ``agent_bom.output.console`` at call
+    time. Many tests swap this barrel attribute for a StringIO-backed capture
+    console and restore it in a ``finally`` — but a test that skips its restore
+    (assertion error before cleanup, or no cleanup at all) leaks the capture
+    console into later CLI tests, whose output then lands in the stale console
+    instead of Click's captured stdout — surfacing as empty ``result.output``
+    (e.g. test_diff_quiet_prints_compact_summary asserting on missing text).
+    Snapshot the barrel console and restore it verbatim after each test.
+    """
+    try:
+        import agent_bom.output as output_mod
+
+        return getattr(output_mod, "console", None)
+    except Exception:
+        return None
+
+
+def _restore_output_console(console_obj: Any) -> None:
+    if console_obj is None:
+        return
+    try:
+        import agent_bom.output as output_mod
+
+        output_mod.console = console_obj
+    except Exception:
+        pass
+
+
+def _snapshot_config_auth() -> dict[str, Any]:
+    try:
+        import agent_bom.config as config
+    except Exception:
+        return {}
+    return {name: getattr(config, name) for name in _CONFIG_AUTH_CONSTANTS if hasattr(config, name)}
+
+
+def _restore_config_auth(snapshot: dict[str, Any]) -> None:
+    try:
+        import agent_bom.config as config
+    except Exception:
+        return
+    for name, value in snapshot.items():
+        try:
+            setattr(config, name, value)
+        except Exception:
+            pass
+
+
 @pytest.fixture(autouse=True)
 def reset_global_test_state():
     """Reset process-global caches so test order does not affect outcomes."""
@@ -262,6 +426,7 @@ def reset_global_test_state():
     _reset_identity_cache_state()
     _reset_api_runtime_state()
     _reset_durable_store_singletons()
+    _reset_proxy_route_state()
     _reset_runtime_state()
 
     # Snapshot auth env AFTER module-scoped setup has run (setup_module fires
@@ -274,7 +439,19 @@ def reset_global_test_state():
     storage_env_snapshot = {var: os.environ.get(var) for var in _STORAGE_ENV_VARS}
     server_env_snapshot = {var: os.environ.get(var) for var in _SERVER_RUNTIME_ENV_VARS}
 
+    # Snapshot the pluggable store singletons and auth-config constants AFTER the
+    # resets above have established a clean baseline. Any set_*_store a test body
+    # performs (and skips restoring) is reverted on teardown, killing the
+    # order-dependent flake class at the root.
+    store_singleton_snapshot = _snapshot_store_singletons()
+    config_auth_snapshot = _snapshot_config_auth()
+    output_console_snapshot = _snapshot_output_console()
+
     yield
+
+    _restore_store_singletons(store_singleton_snapshot)
+    _restore_config_auth(config_auth_snapshot)
+    _restore_output_console(output_console_snapshot)
 
     for var, value in {
         **auth_env_snapshot,
@@ -291,4 +468,5 @@ def reset_global_test_state():
     _reset_identity_cache_state()
     _reset_api_runtime_state()
     _reset_durable_store_singletons()
+    _reset_proxy_route_state()
     _reset_runtime_state()

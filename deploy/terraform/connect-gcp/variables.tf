@@ -75,3 +75,9 @@ variable "wif_principal_set" {
   type        = string
   default     = ""
 }
+
+variable "assign_artifact_registry_reader" {
+  type        = bool
+  default     = true
+  description = "Grant roles/artifactregistry.reader so agent-bom can pull GAR images (downloadArtifacts) for SBOM/CVE extraction. Primitive viewer does not guarantee image pull."
+}

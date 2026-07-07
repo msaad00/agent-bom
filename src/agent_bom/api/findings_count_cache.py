@@ -13,6 +13,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from agent_bom import config
+
 
 def _ttl_seconds() -> float:
     raw = os.environ.get("AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS", "60")
@@ -82,3 +84,30 @@ def reset_findings_count_cache() -> None:
     """Test helper — never call from production code."""
     with _lock:
         _entries.clear()
+
+
+def approximate_total_threshold() -> int | None:
+    """Return the tenant-size threshold for auto approximate totals, or ``None`` to disable."""
+    threshold = config.FINDINGS_APPROXIMATE_TOTAL_THRESHOLD
+    if threshold <= 0:
+        return None
+    return threshold
+
+
+def resolve_effective_approximate_total(
+    *,
+    requested: bool,
+    tenant_id: str,
+    severity: str | None,
+    scan_id: str | None,
+    origin: str | None = "bulk_ingest",
+) -> bool:
+    """Return whether list-findings should skip ``COUNT(*)`` for the bulk slice."""
+    if requested:
+        return True
+    threshold = approximate_total_threshold()
+    if threshold is None:
+        return False
+    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin=origin)
+    cached = get_cached_total(key)
+    return cached is not None and cached >= threshold

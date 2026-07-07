@@ -50,8 +50,10 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_CONNECTIONS_SCHEDULER_MAX_CONCURRENCY` | `int` | `4` | — |
 | `AGENT_BOM_CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES` | `int` | `15` | — |
 | `AGENT_BOM_CONNECTIONS_SCHEDULER_POLL_SECONDS` | `int` | `60` | Cloud-connection scan scheduler (Phase B.2). The background loop re-scans cloud connections that carry an interval, so "connect once, keeps evaluating" is automatic. Disabled by default (AGENT_BOM_CONNECTIONS_SCHEDULER, read live) so it nev |
+| `AGENT_BOM_FINDINGS_APPROXIMATE_TOTAL_THRESHOLD` | `int` | `50000` | Skip exact COUNT(*) on /v1/findings once cached total exceeds this threshold (0 = disabled). |
 | `AGENT_BOM_GCP_EVENT_MAX_BATCHES` | `int` | `10` | — |
 | `AGENT_BOM_GCP_EVENT_MAX_MESSAGES` | `int` | `10` | Event-driven GCP posture ingestion. When an operator wires Cloud Asset Inventory feed / audit logs → a Pub/Sub subscription (opt-in via AGENT_BOM_GCP_EVENT_SUBSCRIPTION, read live, default off), the bounded Pub/Sub consumer drains change ev |
+| `AGENT_BOM_NO_AUTH_ROLE` | `str` | `'admin'` | Role granted when unauthenticated API access is explicitly enabled. Default preserves local/dev compatibility; demo-estate mode clamps this to viewer. |
 
 ## Agent-to-Agent (A2A) auth posture
 | Env var | Type | Default | Description |

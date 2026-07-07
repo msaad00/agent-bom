@@ -1293,10 +1293,16 @@ def _resolve_bulk_findings_total(
     """Return ``(total, total_approximate)`` for the bulk-ingest slice."""
     from agent_bom.api.findings_count_cache import cache_key, get_cached_total, set_cached_total
 
+    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest")
     if not approximate_total:
+        if bulk_total is not None:
+            set_cached_total(key, bulk_total)
+            return bulk_total, False
+        cached = get_cached_total(key)
+        if cached is not None:
+            return cached, True
         return bulk_total, False
 
-    key = cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest")
     if offset == 0 and bulk_total is not None:
         set_cached_total(key, bulk_total)
         return bulk_total, False
@@ -1445,10 +1451,12 @@ async def list_findings(
     CVSS-only ordering, or ``?sort=severity`` for severity-band ordering.
 
     Pass ``?approximate_total=true`` to skip ``COUNT(*)`` on deep pages.
-    The first page (``offset=0``) still computes an exact total and caches it
-    for roughly ``AGENT_BOM_FINDINGS_COUNT_CACHE_TTL_SECONDS`` (default 60s).
-    Later pages reuse the cached count; when the cache is cold the response
-    carries a conservative lower bound and ``total_approximate: true``.
+    Tenants above ``AGENT_BOM_FINDINGS_APPROXIMATE_TOTAL_THRESHOLD`` (default
+    50000) automatically reuse cached totals and skip ``COUNT(*)`` once a warm
+    cache entry exists. The first page (``offset=0``) still computes an exact
+    total and caches it when the cache is cold and the tenant is below the
+    threshold. Later pages reuse the cached count; when the cache is cold the
+    response carries a conservative lower bound and ``total_approximate: true``.
 
     Pass ``?cursor=`` with the ``next_cursor`` from a prior response for
     keyset pagination through bulk-ingested hub findings (avoids deep
@@ -1468,7 +1476,28 @@ async def list_findings(
             decode_finding_cursor(cursor, expected_sort=sort_key)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
-    include_bulk_total = (not approximate_total and not cursor) or (offset == 0 and not cursor)
+
+    from agent_bom.api.findings_count_cache import (
+        cache_key,
+        get_cached_total,
+        resolve_effective_approximate_total,
+    )
+
+    effective_approximate_total = resolve_effective_approximate_total(
+        requested=approximate_total,
+        tenant_id=tenant_id,
+        severity=severity,
+        scan_id=scan_id,
+    )
+    cached_bulk_total = get_cached_total(
+        cache_key(tenant_id=tenant_id, severity=severity, scan_id=scan_id, origin="bulk_ingest")
+    )
+    if approximate_total:
+        include_bulk_total = not cursor and offset == 0
+    elif effective_approximate_total:
+        include_bulk_total = not cursor and cached_bulk_total is None and offset == 0
+    else:
+        include_bulk_total = not cursor and cached_bulk_total is None
 
     scan_findings: list[dict[str, Any]] = []
     for job in _completed_jobs_for_tenant(tenant_id):
@@ -1516,7 +1545,7 @@ async def list_findings(
                 tenant_id=tenant_id,
                 severity=severity,
                 scan_id=scan_id,
-                approximate_total=approximate_total,
+                approximate_total=approximate_total or effective_approximate_total,
                 offset=offset,
                 bulk_total=bulk_total,
                 page_len=len(page_rows),
@@ -1542,7 +1571,7 @@ async def list_findings(
                 tenant_id=tenant_id,
                 severity=severity,
                 scan_id=scan_id,
-                approximate_total=approximate_total,
+                approximate_total=approximate_total or effective_approximate_total,
                 offset=0 if cursor else offset,
                 bulk_total=bulk_total,
                 page_len=len(page_rows),

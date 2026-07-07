@@ -405,9 +405,24 @@ def revoke_credentials_for_scim_user(tenant_id: str, user: Any) -> int:
     external_id = getattr(user, "external_id", None)
     if external_id:
         subjects.add(str(external_id))
+    subject_ids = {str(user.user_id)}
+    if external_id:
+        subject_ids.add(str(external_id))
     subjects_lower = {entry.lower() for entry in subjects if entry}
     revoked = 0
     for key in store.list_keys(tenant_id):
+        if key.scim_subject_id and key.scim_subject_id in subject_ids:
+            store.remove(key.key_id)
+            revoked += 1
+            log_action(
+                "scim.api_key_revoked",
+                actor="scim-provisioner",
+                resource=f"key/{key.key_id}",
+                tenant_id=tenant_id,
+                user_name=user.user_name,
+                match="scim_subject_id",
+            )
+            continue
         if key.name in subjects or key.name.lower() in subjects_lower:
             store.remove(key.key_id)
             revoked += 1

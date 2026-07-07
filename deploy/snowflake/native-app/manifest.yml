@@ -161,3 +161,32 @@ external_access_integrations:
       enabled: false
       egress_destinations:
         - api.github.com
+  - nvd_api:
+      label: "NVD REST API"
+      description: >-
+        Allows agent-bom to query the NVD REST API for CVSS enrichment.
+        Disabled by default.
+      enabled: false
+      egress_destinations:
+        - services.nvd.nist.gov
+  - deps_dev:
+      label: "deps.dev"
+      description: >-
+        Allows agent-bom to resolve package versions via deps.dev.
+        Disabled by default.
+      enabled: false
+      egress_destinations:
+        - api.deps.dev
+        - deps.dev
+  - package_registries:
+      label: "Package registries"
+      description: >-
+        Allows agent-bom to resolve package metadata from public registries.
+        Disabled by default.
+      enabled: false
+      egress_destinations:
+        - registry.npmjs.org
+        - pypi.org
+        - files.pythonhosted.org
+        - repo1.maven.org
+        - proxy.golang.org

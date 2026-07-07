@@ -35,6 +35,7 @@ class ApiKey:
     revoked_at: str | None = None
     rotation_overlap_until: str | None = None
     replacement_key_id: str | None = None
+    scim_subject_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -124,6 +125,7 @@ class ApiKey:
             "revoked_at": self.revoked_at,
             "rotation_overlap_until": self.rotation_overlap_until,
             "replacement_key_id": self.replacement_key_id,
+            "scim_subject_id": self.scim_subject_id,
             "state": self.lifecycle_state(now=current),
             "overlap_seconds_remaining": overlap_remaining_seconds,
         }
@@ -314,6 +316,7 @@ def create_api_key(
     expires_at: str | None = None,
     scopes: list[str] | None = None,
     tenant_id: str = "default",
+    scim_subject_id: str | None = None,
 ) -> tuple[str, ApiKey]:
     """Generate a new API key.
 
@@ -328,6 +331,7 @@ def create_api_key(
         expires_at=expires_at,
         scopes=scopes,
         tenant_id=tenant_id,
+        scim_subject_id=scim_subject_id,
     )
 
 
@@ -338,6 +342,7 @@ def create_api_key_record(
     expires_at: str | None = None,
     scopes: list[str] | None = None,
     tenant_id: str = "default",
+    scim_subject_id: str | None = None,
 ) -> ApiKey:
     """Create a stored API key record for an operator-supplied raw key."""
     salt = os.urandom(16)
@@ -353,6 +358,7 @@ def create_api_key_record(
         expires_at=normalized_expiry,
         scopes=scopes or [],
         tenant_id=tenant_id,
+        scim_subject_id=scim_subject_id,
     )
 
 

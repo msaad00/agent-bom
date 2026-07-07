@@ -270,6 +270,7 @@ def compute_exit_code(
     push_url: Any,
     push_api_key: Any,
     quiet: bool,
+    fail_on_malicious: bool = False,
     **kwargs: Any,
 ) -> int:
     """Step 9: compute final exit code based on policy flags."""
@@ -360,6 +361,23 @@ def compute_exit_code(
                 f"{str(warn_on_severity).upper()} severity (--warn-on threshold). "
                 f"Upgrade to --fail-on-severity to enforce."
             )
+
+    if fail_on_malicious and exit_code == 0:
+        for br in _active_blast_radii:
+            if getattr(br.package, "is_malicious", False):
+                if not quiet:
+                    reason = getattr(br.package, "malicious_reason", None) or "known malicious package"
+                    con.print(f"\n  [red]Exiting with code 1: malicious package {br.package.name} ({reason})[/red]")
+                exit_code = 1
+                break
+        if exit_code == 0 and report:
+            for finding in report.to_findings():
+                if getattr(finding, "is_malicious", False):
+                    if not quiet:
+                        reason = finding.malicious_reason or "known malicious package"
+                        con.print(f"\n  [red]Exiting with code 1: malicious package {finding.asset.name} ({reason})[/red]")
+                    exit_code = 1
+                    break
 
     if fail_on_kev and _active_blast_radii:
         kev_findings = [br for br in _active_blast_radii if br.vulnerability.is_kev]

@@ -235,6 +235,8 @@ class Finding:
     network_exploitable: bool = False
     epss_score: Optional[float] = None
     is_kev: bool = False  # CISA Known Exploited Vulnerability
+    is_malicious: bool = False  # Known-malicious package (MAL- IDs, typosquat, etc.)
+    malicious_reason: Optional[str] = None
 
     # Remediation
     fixed_version: Optional[str] = None
@@ -435,6 +437,8 @@ class Finding:
             "network_exploitable": self.network_exploitable,
             "epss_score": self.epss_score,
             "is_kev": self.is_kev,
+            "is_malicious": self.is_malicious,
+            "malicious_reason": self.malicious_reason,
             "fixed_version": self.fixed_version,
             "remediation_guidance": self.remediation_guidance,
             # Structured advisory remediation — emitted only when populated so
@@ -610,6 +614,11 @@ def _remediation_guidance_for_vulnerability(vuln: object, pkg: object) -> str:
         return explicit.strip()
 
     package_name = getattr(pkg, "name", "the affected package") or "the affected package"
+    if getattr(pkg, "is_malicious", False):
+        reason = getattr(pkg, "malicious_reason", None)
+        detail = f" ({reason})" if isinstance(reason, str) and reason.strip() else ""
+        return f"Remove {package_name} from all environments immediately{detail}."
+
     fixed_version = getattr(vuln, "fixed_version", None)
     if isinstance(fixed_version, str) and fixed_version.strip():
         return f"Upgrade {package_name} to {fixed_version.strip()}."
@@ -623,6 +632,22 @@ def _remediation_guidance_for_vulnerability(vuln: object, pkg: object) -> str:
     if references:
         return "Review the linked advisory references and apply the vendor-recommended mitigation or upgrade path."
     return "Review the advisory and apply the vendor-recommended mitigation, upgrade path, or compensating control."
+
+
+def _forward_fixed_version(fixed_version: str | None, current_version: str | None, ecosystem: str | None) -> str | None:
+    """Return ``fixed_version`` only when it is a forward upgrade for ``current_version``."""
+    if not isinstance(fixed_version, str) or not fixed_version.strip():
+        return None
+    fixed = fixed_version.strip()
+    current = (current_version or "").strip()
+    if not current:
+        return fixed
+    from agent_bom.version_utils import compare_versions
+
+    eco = (ecosystem or "").strip()
+    if compare_versions(current, fixed, eco):
+        return fixed
+    return None
 
 
 def _safe_secret_preview(value: object) -> str:
@@ -853,6 +878,11 @@ def blast_radius_to_finding(br: object) -> "Finding":
     if package_provenance:
         evidence["package_discovery_provenance"] = package_provenance
     evidence["package_version_provenance"] = package_version_provenance(pkg)
+    if getattr(pkg, "is_malicious", False):
+        evidence["package_is_malicious"] = True
+        reason = getattr(pkg, "malicious_reason", None)
+        if isinstance(reason, str) and reason.strip():
+            evidence["malicious_reason"] = reason.strip()
     if vuln.references:
         evidence["references"] = _sanitized_evidence_field(vuln.references[:5])
 
@@ -917,7 +947,9 @@ def blast_radius_to_finding(br: object) -> "Finding":
         network_exploitable=bool(getattr(vuln, "network_exploitable", False)),
         epss_score=vuln.epss_score,
         is_kev=bool(vuln.is_kev),
-        fixed_version=vuln.fixed_version,
+        is_malicious=bool(getattr(pkg, "is_malicious", False)),
+        malicious_reason=getattr(pkg, "malicious_reason", None),
+        fixed_version=_forward_fixed_version(vuln.fixed_version, pkg.version, pkg.ecosystem),
         remediation_guidance=_remediation_guidance_for_vulnerability(vuln, pkg),
         owasp_tags=list(br.owasp_tags),
         atlas_tags=list(br.atlas_tags),

@@ -1138,7 +1138,7 @@ def build_remediation_plan(blast_radii: Sequence[object]) -> list[dict]:
     from collections import defaultdict
 
     from agent_bom.finding import Asset, Finding, FindingSource, FindingType, blast_radius_to_finding
-    from agent_bom.remediation_commands import build_fix_command, build_verify_command
+    from agent_bom.remediation_commands import build_fix_command, build_remove_command, build_verify_command
 
     if not blast_radii:
         return []
@@ -1268,6 +1268,7 @@ def build_remediation_plan(blast_radii: Sequence[object]) -> list[dict]:
             "max_risk_score": 0.0,
             "references": set(),
             "suppressed_prerelease_fixes": set(),
+            "is_malicious": False,
         }
     )
     severity_order = {sev: severity_rank(sev.value) for sev in Severity}
@@ -1350,10 +1351,12 @@ def build_remediation_plan(blast_radii: Sequence[object]) -> list[dict]:
         if finding.ai_risk_context:
             g["ai_risk"] = True
         g["max_risk_score"] = max(g["max_risk_score"], finding.risk_score)
+        if getattr(finding, "is_malicious", False) or bool((finding.evidence or {}).get("package_is_malicious")):
+            g["is_malicious"] = True
 
     plan = []
     for g in groups.values():
-        g["vulns"] = list(set(g["vulns"]))
+        g["vulns"] = sorted(set(g["vulns"]))
         g["agents"] = sorted(g["agents"])
         g["creds"] = sorted(g["creds"])
         g["tools"] = sorted(g["tools"])
@@ -1382,7 +1385,13 @@ def build_remediation_plan(blast_radii: Sequence[object]) -> list[dict]:
         else:
             g["priority"] = "P4"
 
-        if g["fix"]:
+        if g["is_malicious"]:
+            action = f"Remove {g['package']} from all environments immediately"
+            g["fix"] = None
+            g["command"] = build_remove_command(g["ecosystem"], g["package"])
+            g["verify_command"] = None
+            g["reason"] = "known malicious package"
+        elif g["fix"]:
             action = f"Upgrade {g['package']} to {g['fix']}"
             g["command"] = build_fix_command(g["ecosystem"], g["package"], g["fix"])
             g["verify_command"] = build_verify_command(g["ecosystem"], g["package"], g["fix"])

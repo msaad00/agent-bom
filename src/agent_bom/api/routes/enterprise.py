@@ -549,6 +549,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
             expires_at=req.expires_at,
             scopes=req.scopes,
             tenant_id=tenant_id,
+            scim_subject_id=req.scim_subject_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc

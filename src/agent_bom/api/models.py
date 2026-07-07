@@ -706,6 +706,7 @@ class CreateKeyRequest(BaseModel):
     role: str = "viewer"
     expires_at: str | None = None
     scopes: list[str] = Field(default_factory=list)
+    scim_subject_id: str | None = None
 
 
 class RotateKeyRequest(BaseModel):

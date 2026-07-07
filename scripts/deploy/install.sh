@@ -11,7 +11,7 @@
 #   scripts/deploy/install.sh connect aws
 #   scripts/deploy/install.sh onboard --url https://agent-bom.example.com --api-key "$KEY"
 #
-# See docs/DEPLOY_QUICKSTART.md for the Wiz-style onboarding story.
+# See docs/DEPLOY_QUICKSTART.md for the read-only cloud onboarding story.
 
 set -euo pipefail
 
@@ -69,7 +69,7 @@ Targets (control plane):
   snowflake         Snowflake POV path (Helm snowflake-backend + connect module)
   snowflake-native  Snowflake Native App / SPCS lane (docs pointer)
 
-Targets (connect read-only clouds — Wiz-style account onboarding):
+Targets (connect read-only clouds — account onboarding):
   connect aws       Mint read-only IAM role (deploy/terraform/connect-aws)
   connect azure     Mint Reader RBAC (deploy/terraform/connect-azure)
   connect gcp       Mint viewer + securityReviewer (deploy/terraform/connect-gcp)
@@ -179,7 +179,7 @@ print_onboarding_card() {
   cat <<EOF
 
 ══════════════════════════════════════════════════════════════════════
- Next: Wiz-style onboarding (read-only — nothing is mutated in your cloud)
+ Next: read-only cloud onboarding (nothing is mutated in your cloud)
 ══════════════════════════════════════════════════════════════════════
 
 1) Connect cloud accounts (inventory + posture, opt-in per provider)

@@ -80,6 +80,19 @@ Backup service account name.
 {{- end }}
 
 {{/*
+Control-plane API service account name (S3 async export / IRSA).
+*/}}
+{{- define "agent-bom.controlPlaneApiServiceAccountName" -}}
+{{- if .Values.controlPlane.api.serviceAccount.name }}
+{{- .Values.controlPlane.api.serviceAccount.name }}
+{{- else if .Values.controlPlane.api.serviceAccount.create }}
+{{- default (printf "%s-api" (include "agent-bom.name" .)) .Values.controlPlane.api.serviceAccount.name }}
+{{- else }}
+{{- include "agent-bom.serviceAccountName" . }}
+{{- end }}
+{{- end }}
+
+{{/*
 Control-plane affinity helper. If the operator provides a full affinity block,
 use it verbatim. Otherwise, optionally emit preferred pod anti-affinity so API
 and UI replicas avoid co-location on the same node.

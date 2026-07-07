@@ -1,7 +1,9 @@
 # Product Boundaries
 
 This is the GitHub-facing companion to
-`site-docs/deployment/product-boundaries.md`.
+`site-docs/deployment/product-boundaries.md`. For the lanes stated together with
+their cost posture, see [EDITIONS.md](EDITIONS.md) — the canonical editions page.
+This page is the boundary and copy-rules reference.
 
 `agent-bom` has three current product lanes:
 

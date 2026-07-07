@@ -535,6 +535,8 @@ def _cve_sarif_result(
         "ai_risk_context": finding.ai_risk_context,
         "ai_summary": finding.ai_summary,
         "suppressed": bool(finding.suppressed),
+        "is_malicious": finding.is_malicious,
+        "malicious_reason": (_sanitize_sarif_text("title", finding.malicious_reason) or None) if finding.malicious_reason else None,
     }
     vex_status = evidence(finding, "vex_status")
     if vex_status:
@@ -694,7 +696,7 @@ def to_sarif(
                 "evidence": _sanitize_sarif_property(finding.evidence),
                 "remediation_guidance": _sanitize_sarif_property(finding.remediation_guidance),
                 "is_malicious": finding.is_malicious,
-                "malicious_reason": _sanitize_sarif_property(finding.malicious_reason),
+                "malicious_reason": (_sanitize_sarif_text("title", finding.malicious_reason) or None) if finding.malicious_reason else None,
                 # Structured reach lists + AI-native context (unified Finding parity).
                 "affected_servers": list(finding.affected_servers),
                 "affected_agents": list(finding.affected_agents),

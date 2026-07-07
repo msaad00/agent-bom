@@ -35,10 +35,17 @@ def _no_auth_role() -> Role:
 
     Defaults to ``viewer``. ``AGENT_BOM_DEMO_ESTATE=1`` always clamps to viewer
     so public demo stacks cannot mutate tenant state anonymously.
+
+    ``AGENT_BOM_NO_AUTH_ROLE`` is resolved from the environment at call time
+    rather than the import-time ``config.NO_AUTH_ROLE`` constant: that
+    module-level value is poisonable by any test that ``importlib.reload(config)``
+    with the env transiently unset, which caused an order-dependent CI flake (a
+    leaked ``viewer`` 403'd later unauth-admin tests). Reading the env each call
+    is reload-immune and matches the runtime value (env is fixed per process).
     """
     if config.DEMO_ESTATE:
         return Role.VIEWER
-    raw = str(config.NO_AUTH_ROLE).strip().lower()
+    raw = os.environ.get("AGENT_BOM_NO_AUTH_ROLE", "viewer").strip().lower()
     if raw == "admin":
         return Role.ADMIN
     if raw == "analyst":

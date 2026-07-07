@@ -8,9 +8,25 @@ Use this page when the question is not "how do I install `agent-bom`?" but
 "what should I deploy first, what does that give me, and when do I add runtime
 enforcement?"
 
-Treat this as the primary deployment chooser. The rest of the deployment docs
-either deepen one of these supported paths or act as reference material for
-teams intentionally diverging from them.
+Treat this as the primary deployment chooser and the canonical deployment
+decision matrix. The rest of the deployment docs either deepen one of these
+supported paths or act as reference material for teams intentionally diverging
+from them.
+
+## Decision in one line
+
+| Situation | Deploy | Get |
+|---|---|---|
+| **Laptop scan** | `pip install agent-bom` | local findings, SBOM, SARIF, HTML, graph export |
+| **Team demo** | `docker compose` pilot | shared API + UI control plane on one workstation |
+| **Production** | Helm / EKS Terraform | tenant-aware self-hosted control plane in your cluster |
+| **Snowflake shop** | SPCS / Native App | warehouse-native governance lane in your account |
+
+Same one-liner in prose: laptop scan → pip; team demo → docker compose pilot;
+production → Helm / EKS Terraform; Snowflake shop → SPCS / Native App. Every lane
+here runs in your own boundary. Cost posture: all in-repo lanes are free and no
+managed public SaaS ships in this repo yet; see
+[Product boundaries](product-boundaries.md) for the full lane matrix.
 
 `agent-bom` is one product with two deployable images:
 

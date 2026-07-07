@@ -12,6 +12,8 @@ from typing import Any, Iterator
 import click
 
 from agent_bom.cli._agent_mode import dumps_envelope, success_envelope
+from agent_bom.cli._terminal_sections import print_scan_next_steps, print_section_divider
+from agent_bom.cli.agents._cloud import render_cis_findings_from_context
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.models import AIBOMReport
 from agent_bom.output import (
@@ -328,6 +330,7 @@ def render_output(
             _skill_audit_obj = ctx._skill_audit_obj
             if verbose:
                 # Full output (--verbose)
+                print_section_divider(con, "Report")
                 print_summary(report)
                 print_scan_performance_summary(report)
                 print_posture_summary(report)
@@ -340,9 +343,10 @@ def render_output(
                 print_threat_frameworks(report)
             else:
                 # Compact output (default) — verdict-led posture summary.
+                print_section_divider(con, "Summary")
                 print_compact_summary(report, verbose=verbose)
-                print_scan_performance_summary(report)
                 print_compact_agents(report)
+                print_section_divider(con, "Findings")
                 print_compact_blast_radius(report, fixable_only=fixable_only, page=compact_page)
 
             # AI enrichment output (both modes)
@@ -391,13 +395,18 @@ def render_output(
                             con.print(f"      [green]→ {sk_f.recommendation}[/green]")
 
             if verbose:
+                print_section_divider(con, "Remediation")
                 print_remediation_plan(report)
-                print_compact_cis_posture(report, limit=20)
+                print_section_divider(con, "CIS Posture")
+                render_cis_findings_from_context(ctx)
                 print_export_hint(report)
             else:
+                print_section_divider(con, "Remediation")
                 print_compact_remediation(report, page=compact_page)
+                print_section_divider(con, "CIS Posture")
                 print_compact_cis_posture(report)
                 print_compact_export_hint(report)
+            print_scan_next_steps(con, report, quiet=quiet)
         elif output_format in ("text", "plain") and not output:
             _print_text(report, blast_radii)
         elif output_format == "json":

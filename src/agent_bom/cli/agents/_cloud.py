@@ -180,7 +180,12 @@ def run_cloud_discovery(
     _cloud_image_targets: list[tuple[str, Any]] = []  # (image_ref, MCPServer to populate)
     for agent in ctx.agents[_pre_cloud_idx:]:
         for server in agent.mcp_servers:
-            if server.command == "docker" and len(server.args) >= 2 and server.args[0] == "run" and not server.packages:
+            # A ``container-image`` package is just the image name:tag placeholder
+            # that ECS/EKS/SageMaker/Cloud Run pre-fill — not real dependency
+            # extraction. Treat it as empty so those images still get deep-scanned
+            # (Azure already works because it leaves packages empty).
+            _real_pkgs = [p for p in server.packages if p.ecosystem != "container-image"]
+            if server.command == "docker" and len(server.args) >= 2 and server.args[0] == "run" and not _real_pkgs:
                 _cloud_image_targets.append((server.args[1], server))
 
     if _cloud_image_targets:

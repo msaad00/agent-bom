@@ -9,6 +9,59 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.93.5] - 2026-07-07
+
+Patch release closing the post-#3624 audit queue, hardening demo/hosted POC
+safety, and documenting public-repo custody boundaries before customer cloud
+connect.
+
+### Security / audit fixes
+- **PHP/Swift reachability** — mask comments and string literals before call-site
+  extraction so CVE reachability cannot be over-claimed from prose (#3626).
+- **GCP Cloud SQL inventory** — paginate `nextPageToken` so public instances past
+  page 1 are not dropped (#3626).
+- **OAuth AS issuer** — honor `X-Forwarded-Host` only when
+  `AGENT_BOM_TRUST_PROXY_AUTH=1` (#3626).
+- **Malicious findings parity** — `is_malicious` / `malicious_reason` in CSV,
+  Parquet, and SARIF; `--fail-on-malicious` gates typosquat and dependency
+  confusion packages (#3626).
+- **Remediation guidance** — suppress downgrade advice when forward fixed version
+  is null (#3626).
+- **Demo safety** — default `AGENT_BOM_NO_AUTH_ROLE=viewer`; hosted POC overlay
+  sets `AGENT_BOM_DEMO_ESTATE=1` (#3624, #3626).
+- **Compliance hub in-memory cursor** — align descending `last_seen` tie-break
+  with SQL keyset pagination (#3626).
+- **Credential ref `/test`** — validate `external_ref` shape and ambient provider
+  probe instead of marking configured without checks (#3626).
+
+### Cloud / inventory hardening
+- **EBS side-scan** — paginate volume discovery and orphan snapshot sweeps
+  (#3626).
+- **WAFv2** — paginate `list_web_acls` and `list_resources_for_web_acl`
+  (#3626).
+- **Trivy CVSS** — honor redhat, amazon, and oracle vendor CVSS sources
+  (#3626).
+- **Severity policy** — rank `info` above `none` in policy-order comparisons
+  (#3626).
+- **SCIM deprovision** — revoke rotation replacement keys; match `userName` on
+  `scim_subject_id` (#3624, #3626).
+
+### Docs / positioning
+- **`docs/PUBLICATION_POLICY.md`** — public OSS vs operator-private custody
+  (secrets, rotation timestamps, hosted bootstrap output).
+- Remove competitor names from deploy copy and NHI OpenAPI descriptions.
+- Label `docs/audits/` as historical engineering records.
+
+### Scale / ops
+- **`scripts/bench/agent_bom_scale_bench.py`** — stdlib scale bench for live API
+  + Postgres smoke (#3626).
+- Skip `vendor/` trees in Python AST analysis (#3626).
+
+### Also in this release line (since 0.93.0)
+- UI product-proof screenshot refresh (#3625).
+- GLM/Zhipu inventory and BYOM quickstart (#3623).
+- Deploy quickstart, unified install script, and intake diagrams (#3621).
+
 ## [0.93.0] - 2026-07-06
 
 Release deepens reachability proof, evidence ingest parity, and the unified
@@ -2074,7 +2127,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.93.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.93.5...HEAD
+[0.93.5]: https://github.com/msaad00/agent-bom/compare/v0.93.0...v0.93.5
 [0.93.0]: https://github.com/msaad00/agent-bom/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/msaad00/agent-bom/compare/v0.91.0...v0.92.0
 [0.91.0]: https://github.com/msaad00/agent-bom/compare/v0.90.0...v0.91.0

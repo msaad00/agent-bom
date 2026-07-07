@@ -8,6 +8,8 @@ docs_dir: site-docs
 
 theme:
   name: material
+  logo: assets/brand/mark-mono.svg
+  favicon: assets/brand/mark.svg
   palette:
     - scheme: default
       primary: indigo

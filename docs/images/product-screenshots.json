@@ -1,6 +1,6 @@
 {
   "release_version": "0.93.5",
-  "captured_at": "2026-07-07T00:51:18.280Z",
+  "captured_at": "2026-07-07T03:31:12.952Z",
   "capture_note": "Captured from real Next.js dashboard routes in capture mode with a visible Demo data — simulated estate label. The refreshed graph proof uses a deterministic Playwright harness that routes seeded scan, fleet, gateway, IAM, environment, runtime, and package evidence into the shipped pages so README media shows non-empty security graph, lineage topology, context map, fleet, and gateway states. The records are synthetic seeded evidence for docs proof, not a claim that those exact entities were discovered from a buyer environment.",
   "screenshots": [
     {
@@ -24,7 +24,7 @@
     {
       "path": "gateway-policies-live.png",
       "page": "/gateway?capture=1",
-      "scope": "Runtime gateway policy posture with one advisory baseline policy, two rules, and two bound agents",
+      "scope": "Runtime gateway KPI rollup and live tool-call feed",
       "visible_version": "0.93.5"
     },
     {

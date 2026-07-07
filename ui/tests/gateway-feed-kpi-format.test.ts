@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { fmtCount } from "@/app/gateway/GatewayFeedPanel";
+import { fmtCount } from "@/components/gateway-feed-kpi-bar";
 
 describe("fmtCount — partial KPI payload guard", () => {
   it("formats present numbers with grouping", () => {

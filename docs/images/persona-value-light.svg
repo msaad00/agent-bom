@@ -1,46 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="218" viewBox="0 0 1080 218" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="236" viewBox="0 0 1080 236" fill="none">
 <title>agent-bom personas and value</title>
-<rect width="1080" height="218" rx="12" fill="#ffffff"/>
-<rect x="23" y="18" width="248" height="148" rx="12" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.4"/>
+<rect width="1080" height="236" rx="12" fill="#ffffff"/>
+<rect x="23" y="18" width="248" height="174" rx="12" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.4"/>
 <rect x="37" y="30" width="40" height="40" rx="11" fill="#0d9488" opacity="0.10"/><g transform="translate(41,34) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#0d9488"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#0d9488"/><circle cx="18.5" cy="18" r="6" fill="#ffffff"/><circle cx="18.5" cy="18" r="4.6" fill="#0d9488"/><g fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="16.2" y="14.7" width="4.6" height="6.2" rx="1" fill="#ffffff" stroke="none"/><path d="M17.3 17.9l.95.95 1.75-1.75" stroke="#0d9488" stroke-width="1.05"/></g></g>
-<text x="85" y="55" font-family="Inter,system-ui,sans-serif" font-size="15" font-weight="800" fill="#18181b">AppSec / GRC</text>
-<text x="39" y="86" font-family="ui-monospace,monospace" font-size="9.5" font-weight="600" fill="#71717a">SARIF · compliance · audit chain</text>
-<line x1="39" y1="98" x2="255" y2="98" stroke="#e6e6ea" stroke-width="1"/>
-<polygon points="147,108 142,101 152,101" fill="#0d9488" opacity="0.9"/>
-<rect x="35" y="112" width="224" height="42" rx="8" fill="#0d9488" opacity="0.07"/>
-<rect x="35" y="112" width="224" height="42" rx="8" fill="none" stroke="#0d9488" opacity="0.4"/>
-<text x="47" y="132" font-family="Inter,system-ui,sans-serif" font-size="12.5" font-weight="800" fill="#18181b">Accurate SCA</text>
-<text x="47" y="149" font-family="ui-monospace,monospace" font-size="8.5" font-weight="600" fill="#71717a">15 ecosystems · EPSS/KEV · distro-aware</text>
-<rect x="285" y="18" width="248" height="148" rx="12" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.4"/>
+<text x="85" y="58" font-family="Inter,system-ui,sans-serif" font-size="17" font-weight="800" fill="#18181b">AppSec / GRC</text>
+<text x="39" y="92" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#71717a">SARIF · compliance · audit chain</text>
+<line x1="39" y1="110" x2="255" y2="110" stroke="#e6e6ea" stroke-width="1"/>
+<polygon points="147,120 142,113 152,113" fill="#0d9488" opacity="0.9"/>
+<rect x="35" y="126" width="224" height="52" rx="8" fill="#0d9488" opacity="0.07"/>
+<rect x="35" y="126" width="224" height="52" rx="8" fill="none" stroke="#0d9488" opacity="0.4"/>
+<text x="47" y="150" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="800" fill="#18181b">Accurate SCA</text>
+<text x="47" y="170" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="600" fill="#71717a">15 ecosystems · EPSS/KEV · distro-aware</text>
+<rect x="285" y="18" width="248" height="174" rx="12" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.4"/>
 <rect x="299" y="30" width="40" height="40" rx="11" fill="#0284c7" opacity="0.10"/><g transform="translate(303,34) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#0284c7"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#0284c7"/><circle cx="18.5" cy="18" r="6" fill="#ffffff"/><circle cx="18.5" cy="18" r="4.6" fill="#0284c7"/><g fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 15.1l3.1 1.55-3.1 1.55-3.1-1.55z"/><path d="M15.7 18.85l2.8 1.4 2.8-1.4"/></g></g>
-<text x="347" y="55" font-family="Inter,system-ui,sans-serif" font-size="15" font-weight="800" fill="#18181b">Platform / SRE</text>
-<text x="301" y="86" font-family="ui-monospace,monospace" font-size="9.5" font-weight="600" fill="#71717a">fleet sync · Helm · CI · SBOM</text>
-<line x1="301" y1="98" x2="517" y2="98" stroke="#e6e6ea" stroke-width="1"/>
-<polygon points="409,108 404,101 414,101" fill="#0284c7" opacity="0.9"/>
-<rect x="297" y="112" width="224" height="42" rx="8" fill="#0284c7" opacity="0.07"/>
-<rect x="297" y="112" width="224" height="42" rx="8" fill="none" stroke="#0284c7" opacity="0.4"/>
-<text x="309" y="132" font-family="Inter,system-ui,sans-serif" font-size="12.5" font-weight="800" fill="#18181b">Container coverage</text>
-<text x="309" y="149" font-family="ui-monospace,monospace" font-size="8.5" font-weight="600" fill="#71717a">OCI native · Grype · CIS posture</text>
-<rect x="547" y="18" width="248" height="148" rx="12" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.4"/>
+<text x="347" y="58" font-family="Inter,system-ui,sans-serif" font-size="17" font-weight="800" fill="#18181b">Platform / SRE</text>
+<text x="301" y="92" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#71717a">fleet sync · Helm · CI · SBOM</text>
+<line x1="301" y1="110" x2="517" y2="110" stroke="#e6e6ea" stroke-width="1"/>
+<polygon points="409,120 404,113 414,113" fill="#0284c7" opacity="0.9"/>
+<rect x="297" y="126" width="224" height="52" rx="8" fill="#0284c7" opacity="0.07"/>
+<rect x="297" y="126" width="224" height="52" rx="8" fill="none" stroke="#0284c7" opacity="0.4"/>
+<text x="309" y="150" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="800" fill="#18181b">Container coverage</text>
+<text x="309" y="170" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="600" fill="#71717a">OCI native · Grype · CIS posture</text>
+<rect x="547" y="18" width="248" height="174" rx="12" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.4"/>
 <rect x="561" y="30" width="40" height="40" rx="11" fill="#7c3aed" opacity="0.10"/><g transform="translate(565,34) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#7c3aed"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#7c3aed"/><circle cx="18.5" cy="18" r="6" fill="#ffffff"/><circle cx="18.5" cy="18" r="4.6" fill="#7c3aed"/><g fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16.4" width="5" height="3.8" rx="1.1"/><path d="M17.6 18.3h.01 M19.4 18.3h.01 M18.5 14.6v1.8"/></g></g>
-<text x="609" y="55" font-family="Inter,system-ui,sans-serif" font-size="15" font-weight="800" fill="#18181b">Agent builders</text>
-<text x="563" y="86" font-family="ui-monospace,monospace" font-size="9.5" font-weight="600" fill="#71717a">MCP inventory · Shield · runtime</text>
-<line x1="563" y1="98" x2="779" y2="98" stroke="#e6e6ea" stroke-width="1"/>
-<polygon points="671,108 666,101 676,101" fill="#7c3aed" opacity="0.9"/>
-<rect x="559" y="112" width="224" height="42" rx="8" fill="#7c3aed" opacity="0.07"/>
-<rect x="559" y="112" width="224" height="42" rx="8" fill="none" stroke="#7c3aed" opacity="0.4"/>
-<text x="571" y="132" font-family="Inter,system-ui,sans-serif" font-size="12.5" font-weight="800" fill="#18181b">Self-hosted control plane</text>
-<text x="571" y="149" font-family="ui-monospace,monospace" font-size="8.5" font-weight="600" fill="#71717a">your VPC · signed audit · Helm</text>
-<rect x="809" y="18" width="248" height="148" rx="12" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.4"/>
+<text x="609" y="58" font-family="Inter,system-ui,sans-serif" font-size="17" font-weight="800" fill="#18181b">Agent builders</text>
+<text x="563" y="92" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#71717a">MCP inventory · Shield · runtime</text>
+<line x1="563" y1="110" x2="779" y2="110" stroke="#e6e6ea" stroke-width="1"/>
+<polygon points="671,120 666,113 676,113" fill="#7c3aed" opacity="0.9"/>
+<rect x="559" y="126" width="224" height="52" rx="8" fill="#7c3aed" opacity="0.07"/>
+<rect x="559" y="126" width="224" height="52" rx="8" fill="none" stroke="#7c3aed" opacity="0.4"/>
+<text x="571" y="150" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="800" fill="#18181b">Self-hosted control plane</text>
+<text x="571" y="170" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="600" fill="#71717a">your VPC · signed audit · Helm</text>
+<rect x="809" y="18" width="248" height="174" rx="12" fill="#ffffff" stroke="#e6e6ea" stroke-width="1.4"/>
 <rect x="823" y="30" width="40" height="40" rx="11" fill="#e11d48" opacity="0.10"/><g transform="translate(827,34) scale(1.3333333333333333)"><circle cx="10.5" cy="7.5" r="3.4" fill="#e11d48"/><path d="M4 19.5c0-4 2.9-6 6.5-6s6.5 2 6.5 6z" fill="#e11d48"/><circle cx="18.5" cy="18" r="6" fill="#ffffff"/><circle cx="18.5" cy="18" r="4.6" fill="#e11d48"/><g fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 14.3l3.15 1.15v2.1c0 2.1-1.4 3.5-3.15 4-1.75-.5-3.15-1.9-3.15-4v-2.1z" fill="#ffffff" stroke="none"/><path d="M17.1 17.95l1 1 1.8-1.8" stroke="#e11d48" stroke-width="1.05"/></g></g>
-<text x="871" y="55" font-family="Inter,system-ui,sans-serif" font-size="15" font-weight="800" fill="#18181b">Security engineers</text>
-<text x="825" y="86" font-family="ui-monospace,monospace" font-size="9.5" font-weight="600" fill="#71717a">findings queue · paths · graph</text>
-<line x1="825" y1="98" x2="1041" y2="98" stroke="#e6e6ea" stroke-width="1"/>
-<polygon points="933,108 928,101 938,101" fill="#e11d48" opacity="0.9"/>
-<rect x="821" y="112" width="224" height="42" rx="8" fill="#e11d48" opacity="0.07"/>
-<rect x="821" y="112" width="224" height="42" rx="8" fill="none" stroke="#e11d48" opacity="0.4"/>
-<text x="833" y="132" font-family="Inter,system-ui,sans-serif" font-size="12.5" font-weight="800" fill="#18181b">Agent-native surface</text>
-<text x="833" y="149" font-family="ui-monospace,monospace" font-size="8.5" font-weight="600" fill="#71717a">283 API ops · 70 MCP tools · SARIF</text>
-<rect x="24" y="178" width="1032" height="28" rx="8" fill="#ecfdf5" stroke="#bbf7d0"/><text x="540" y="198" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#15803d">LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph</text>
+<text x="871" y="58" font-family="Inter,system-ui,sans-serif" font-size="17" font-weight="800" fill="#18181b">Security engineers</text>
+<text x="825" y="92" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#71717a">findings queue · paths · graph</text>
+<line x1="825" y1="110" x2="1041" y2="110" stroke="#e6e6ea" stroke-width="1"/>
+<polygon points="933,120 928,113 938,113" fill="#e11d48" opacity="0.9"/>
+<rect x="821" y="126" width="224" height="52" rx="8" fill="#e11d48" opacity="0.07"/>
+<rect x="821" y="126" width="224" height="52" rx="8" fill="none" stroke="#e11d48" opacity="0.4"/>
+<text x="833" y="150" font-family="Inter,system-ui,sans-serif" font-size="14" font-weight="800" fill="#18181b">Agent-native surface</text>
+<text x="833" y="170" font-family="Inter,system-ui,sans-serif" font-size="10.5" font-weight="600" fill="#71717a">283 API ops · 70 MCP tools · SARIF</text>
+<rect x="24" y="196" width="1032" height="28" rx="8" fill="#ecfdf5" stroke="#bbf7d0"/><text x="540" y="216" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.5" font-weight="600" fill="#15803d">LOCAL SCAN · CONTROL PLANE · RUNTIME — same Finding + UnifiedGraph</text>
 </svg>

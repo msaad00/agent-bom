@@ -8,6 +8,7 @@ tool handlers are dropped so headless agents do not inherit false
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -24,6 +25,7 @@ from agent_bom.ast_models import (
     _SwiftFunctionAnalysis,
     _SwiftToolRegistration,
 )
+from agent_bom.ast_source_mask import mask_swift_source
 from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_verified_swift_package
 
 if TYPE_CHECKING:
@@ -47,9 +49,78 @@ _SWIFT_FRAMEWORK_HINTS: dict[str, str] = {
     "mcp": "MCP",
 }
 
+logger = logging.getLogger(__name__)
+
+# ``.product(name: "Logging", package: "swift-log")`` in Package.swift — the
+# authoritative module->identity mapping for a dependency's products.
+_SWIFT_PRODUCT_RE = re.compile(
+    r'\.product\(\s*name:\s*"(?P<module>[^"]+)"\s*,\s*package:\s*"(?P<package>[^"]+)"',
+)
+
+# Common SPM packages whose product/module names differ from their identity.
+# Identity (lowercased) -> module names shipped by that package. The SPM
+# identity is a URL slug (``swift-log``) but code imports the module name
+# (``Logging``); no identity transform recovers this, so it must be tabulated.
+_SWIFT_MODULE_TABLE: dict[str, tuple[str, ...]] = {
+    "swift-log": ("Logging",),
+    "swift-nio": ("NIO", "NIOCore", "NIOPosix", "NIOHTTP1", "NIOFoundationCompat", "NIOEmbedded"),
+    "swift-nio-ssl": ("NIOSSL",),
+    "swift-nio-http2": ("NIOHTTP2",),
+    "swift-argument-parser": ("ArgumentParser",),
+    "swift-crypto": ("Crypto", "_CryptoExtras"),
+    "swift-collections": ("Collections", "OrderedCollections", "DequeModule"),
+    "swift-algorithms": ("Algorithms",),
+    "swift-numerics": ("Numerics", "RealModule", "ComplexModule"),
+    "swift-metrics": ("Metrics", "CoreMetrics"),
+    "swift-system": ("SystemPackage",),
+    "swift-syntax": ("SwiftSyntax", "SwiftParser"),
+    "swift-protobuf": ("SwiftProtobuf",),
+    "swift-markdown": ("Markdown",),
+    "async-http-client": ("AsyncHTTPClient",),
+    "grpc-swift": ("GRPC",),
+}
+
 
 def _line_number_from_index(source: str, index: int) -> int:
     return source[:index].count("\n") + 1
+
+
+def _swift_module_aliases(project: Path, identities: set[str]) -> dict[str, str]:
+    """Map real module names to package identities via Package.swift + table.
+
+    ``Package.resolved`` only carries identities (URL slugs), so ``import
+    Logging`` cannot be resolved to ``swift-log`` by any string transform.
+    We recover module names from (1) ``.product(name:package:)`` declarations
+    in ``Package.swift`` and (2) a curated identity->module table for common
+    packages. Only identities actually present in ``Package.resolved`` are
+    emitted so unverified modules never bind.
+    """
+    by_lower = {identity.lower(): identity for identity in identities}
+    aliases: dict[str, str] = {}
+
+    package_swift = Path(project) / "Package.swift"
+    if package_swift.is_file():
+        try:
+            manifest = package_swift.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            logger.warning("Cannot read %s for module names: %s", package_swift, exc)
+            manifest = ""
+        for match in _SWIFT_PRODUCT_RE.finditer(manifest):
+            module = match.group("module").strip()
+            identity = by_lower.get(match.group("package").strip().lower())
+            if module and identity:
+                aliases[module] = identity
+                aliases[module.lower()] = identity
+
+    for identity_lower, modules in _SWIFT_MODULE_TABLE.items():
+        identity = by_lower.get(identity_lower)
+        if not identity:
+            continue
+        for module in modules:
+            aliases.setdefault(module, identity)
+            aliases.setdefault(module.lower(), identity)
+
+    return aliases
 
 
 def load_swift_package_map(project: Path) -> dict[str, str]:
@@ -57,15 +128,23 @@ def load_swift_package_map(project: Path) -> dict[str, str]:
     from agent_bom.parsers.swift_parsers import parse_swift_packages
 
     mapping: dict[str, str] = {}
+    identities: set[str] = set()
     for pkg in parse_swift_packages(project):
         name = pkg.name.strip()
         if not name:
             continue
+        identities.add(name)
         mapping[name.lower()] = name
         mapping[name] = name
         studly = "".join(part[:1].upper() + part[1:] for part in re.split(r"[-_.]+", name) if part)
         if studly:
-            mapping[studly] = name
+            mapping.setdefault(studly, name)
+
+    # Real product/module names (Logging->swift-log, NIO->swift-nio, ...). These
+    # override the studly-cased guesses above, which rarely match real modules.
+    for module, identity in _swift_module_aliases(project, identities).items():
+        mapping[module] = identity
+
     return mapping
 
 
@@ -105,6 +184,10 @@ def _swift_function_body(source: str, func_start: int, func_end: int) -> tuple[s
 
 def _swift_call_sites(body: str, *, line_offset: int) -> list[_SwiftCallSite]:
     sites: list[_SwiftCallSite] = []
+    # Blank comments (incl. nested block comments) and single/triple-quoted
+    # string literals so a ``Module.method(`` token mentioned in text is never
+    # emitted as a call site. Offsets are preserved so line numbers stay right.
+    body = mask_swift_source(body)
     for match in _SWIFT_MODULE_CALL_RE.finditer(body):
         sites.append(
             _SwiftCallSite(
@@ -330,6 +413,12 @@ def scan_swift_file(
         return [], [], [], [], [], [], None
 
     if len(source) > _MAX_FILE_SIZE:
+        logger.warning(
+            "Skipping Swift reachability scan for %s: %d bytes exceeds %d-byte limit",
+            rel_path,
+            len(source),
+            _MAX_FILE_SIZE,
+        )
         return [], [], [], [], [], [], None
 
     scope_name = Path(rel_path).stem

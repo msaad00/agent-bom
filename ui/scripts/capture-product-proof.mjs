@@ -1204,7 +1204,13 @@ async function installRoutes(page) {
     count: scanJob().result.agents.length,
     warnings: [],
   }));
-  await page.route("**/v1/jobs**", (route) => {
+  await page.route((url) => {
+    try {
+      return new URL(url).pathname === "/v1/jobs";
+    } catch {
+      return false;
+    }
+  }, (route) => {
     const job = scanJob();
     return fulfill(route, {
       jobs: [{ ...job, summary: job.summary }],
@@ -1215,13 +1221,47 @@ async function installRoutes(page) {
       has_more: false,
     });
   });
-  await page.route(`**/v1/scan/${SCAN_ID}`, (route) => fulfill(route, scanJob()));
-  await page.route(`**/v1/scan/${SCAN_ID}/context-graph**`, (route) => fulfill(route, contextGraph()));
+  await page.route((url) => {
+    try {
+      return new URL(url).pathname === `/v1/scan/${SCAN_ID}/context-graph`;
+    } catch {
+      return false;
+    }
+  }, (route) => fulfill(route, contextGraph()));
+  await page.route((url) => {
+    try {
+      return new URL(url).pathname === `/v1/scan/${SCAN_ID}`;
+    } catch {
+      return false;
+    }
+  }, (route) => fulfill(route, scanJob()));
   await page.route("**/v1/graph/snapshots?**", (route) => fulfill(route, [
     { scan_id: SCAN_ID, created_at: CREATED_AT, node_count: graph.nodes.length, edge_count: graph.edges.length, risk_summary: graph.stats.severity_counts },
     { scan_id: PREVIOUS_SCAN_ID, created_at: "2026-06-03T19:00:00Z", node_count: 22, edge_count: 25, risk_summary: { critical: 5, high: 8, medium: 6 } },
   ]));
   await page.route("**/v1/graph/views/fix-first?**", (route) => fulfill(route, fixFirstView()));
+  await page.route("**/v1/graph/rollup?**", (route) => fulfill(route, {
+    scan_id: SCAN_ID,
+    tenant_id: "default",
+    created_at: CREATED_AT,
+    mode: "rollup",
+    filters: { min_severity: "high" },
+    top_level: graph.nodes.slice(0, 6).map((node) => ({
+      id: node.id,
+      label: node.label,
+      entity_type: node.entity_type,
+      severity: node.severity,
+      child_count: 3,
+      risk_score: node.risk_score,
+      rollup_has_children: true,
+    })),
+    summary: {
+      total_nodes: graph.nodes.length,
+      total_edges: graph.edges.length,
+      container_count: 6,
+      severity_counts: graph.stats.severity_counts,
+    },
+  }));
   await page.route("**/v1/graph/attack-paths?**", (route) => fulfill(route, graphResponseWithPagination()));
   await page.route("**/v1/graph/diff?**", (route) => fulfill(route, {
     nodes_added: ["sa:jit-review", "role:prod-admin", "policy:gateway-default-deny", "cve:next"],
@@ -1433,41 +1473,24 @@ function startServerIfNeeded() {
   return child;
 }
 
-async function stampDemoLabel(page) {
-  await page.evaluate(() => {
-    const existing = document.getElementById("demo-estate-watermark");
-    if (existing) existing.remove();
-    const el = document.createElement("div");
-    el.id = "demo-estate-watermark";
-    el.textContent = "Demo data — simulated estate";
-    el.setAttribute("aria-hidden", "true");
-    Object.assign(el.style, {
-      position: "fixed",
-      bottom: "14px",
-      right: "16px",
-      zIndex: "99999",
-      padding: "6px 12px",
-      borderRadius: "999px",
-      border: "1px solid rgba(16,185,129,0.35)",
-      background: "rgba(9,9,11,0.92)",
-      color: "rgba(167,243,208,0.95)",
-      fontSize: "11px",
-      fontWeight: "600",
-      letterSpacing: "0.12em",
-      textTransform: "uppercase",
-      pointerEvents: "none",
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    });
-    document.body.appendChild(el);
-  });
-}
-
-async function capture(page, urlPath, filename, beforeShot) {
-  await page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" });
+async function capture(page, urlPath, filename, beforeShot, options = {}) {
+  const responseWaits = (options.awaitResponses ?? []).map((predicate) =>
+    page.waitForResponse(predicate, { timeout: 30_000 }),
+  );
+  if (responseWaits.length > 0) {
+    await Promise.all([
+      page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" }),
+      ...responseWaits,
+    ]);
+  } else {
+    await page.goto(`${BASE_URL}${urlPath}`, { waitUntil: "domcontentloaded" });
+  }
   await page.waitForLoadState("load");
   await page.waitForTimeout(400);
   if (beforeShot) await beforeShot(page);
-  await stampDemoLabel(page);
+  if (urlPath.includes("capture=1")) {
+    await page.locator("#demo-estate-watermark").waitFor({ state: "visible", timeout: 10_000 });
+  }
   await page.screenshot({ path: path.join(IMAGE_DIR, filename), fullPage: false });
   console.log(`captured ${filename}`);
 }
@@ -1546,8 +1569,8 @@ async function scrollTo(page, y) {
   await page.waitForTimeout(350);
 }
 
-async function fitReactFlow(page) {
-  await page.waitForSelector(".react-flow", { state: "visible", timeout: 15_000 });
+async function fitReactFlow(page, { timeout = 30_000 } = {}) {
+  await page.waitForSelector(".react-flow", { state: "visible", timeout });
   await page.waitForTimeout(250);
   await page.evaluate(() => {
     document.querySelector(".react-flow")?.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
@@ -1581,9 +1604,27 @@ async function main() {
     await capture(page, `/graph?capture=1&scan=${SCAN_ID}`, "lineage-graph-live.png", async (lineagePage) => {
       await fitReactFlow(lineagePage);
     });
-    await capture(page, "/context?capture=1", "context-map-live.png", async (contextPage) => {
-      await fitReactFlow(contextPage);
-    });
+    await capture(
+      page,
+      "/context?capture=1",
+      "context-map-live.png",
+      async (contextPage) => {
+        await contextPage.getByText("Lateral Movement").first().waitFor({ state: "visible", timeout: 30_000 });
+        const agentScope = contextPage.locator("select").first();
+        if ((await agentScope.count()) > 0) {
+          await agentScope.selectOption("");
+          await contextPage.waitForTimeout(600);
+        }
+        try {
+          await fitReactFlow(contextPage);
+        } catch {
+          await contextPage.waitForTimeout(500);
+        }
+      },
+      {
+        awaitResponses: [(response) => response.url().includes("/context-graph") && response.ok()],
+      },
+    );
     await capture(page, "/fleet?capture=1", "fleet-state-live.png", async (fleetPage) => {
       await fleetPage.getByText("developer-copilot").first().click();
       await fleetPage.waitForTimeout(500);

@@ -25,7 +25,7 @@ BANNER = r"""
  / __ |/ _ `/ -_) _ \/ __/_  / / __  / / / / /|_/ /
 /_/ |_/\_, /\__/_//_/\__/ /_/ /____/\____/_/  /_/
       /___/
-  Security scanner for AI infrastructure
+  Security for the AI supply chain and infrastructure
 """
 
 SEVERITY_ORDER = {label.lower(): rank for label, rank in SEVERITY_POLICY_ORDER.items()}

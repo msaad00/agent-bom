@@ -288,6 +288,7 @@ class PostgresComplianceHubStore:
             )
             _ensure_tenant_rls(conn, "compliance_hub_findings", "tenant_id")
             from agent_bom.api.finding_lifecycle import (
+                _CURRENT_LIFECYCLE_ORIGIN_INDEX_POSTGRES,
                 _CURRENT_LIFECYCLE_POSTGRES_DDL,
                 _CURRENT_LIFECYCLE_POSTGRES_OBSERVATIONS_LEGACY_DDL,
             )
@@ -309,6 +310,12 @@ class PostgresComplianceHubStore:
             _migrate_lifecycle_observations_l2_postgres(conn)
             _migrate_current_ledger_ref_postgres(conn)
             conn.execute("UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL")
+            # Promote origin to a materialised, indexed column so the exact
+            # COUNT(*) rides the (tenant_id, origin) prefix instead of scanning
+            # every row through payload->>'origin' (#3641). Idempotent guards.
+            conn.execute("ALTER TABLE hub_findings_current ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT ''")
+            conn.execute("UPDATE hub_findings_current SET origin = COALESCE(payload->>'origin', '') WHERE origin = ''")
+            conn.execute(_CURRENT_LIFECYCLE_ORIGIN_INDEX_POSTGRES)
             _ensure_tenant_rls(conn, "hub_findings_current", "tenant_id")
             _ensure_tenant_rls(conn, "hub_findings_current_observations", "tenant_id")
             ensure_postgres_reference_tables(conn)
@@ -604,14 +611,15 @@ class PostgresComplianceHubStore:
                     payload=payload,
                     updated_at=now,
                 )
+                origin_val = str(payload.get("origin") or "")
                 if has_ledger_col:
                     conn.execute(
                         """
                         INSERT INTO hub_findings_current
                             (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                              cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                             updated_at, payload, ledger_finding_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                             updated_at, payload, ledger_finding_id, origin)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
                         ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
                             first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
                             last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
@@ -625,7 +633,8 @@ class PostgresComplianceHubStore:
                             reopened_at = EXCLUDED.reopened_at,
                             updated_at = EXCLUDED.updated_at,
                             payload = EXCLUDED.payload,
-                            ledger_finding_id = EXCLUDED.ledger_finding_id
+                            ledger_finding_id = EXCLUDED.ledger_finding_id,
+                            origin = EXCLUDED.origin
                         """,
                         (
                             tenant_id,
@@ -643,6 +652,7 @@ class PostgresComplianceHubStore:
                             merged["updated_at"],
                             encode_hub_payload(overlay),
                             ledger_finding_id or None,
+                            origin_val,
                         ),
                     )
                 else:
@@ -651,8 +661,8 @@ class PostgresComplianceHubStore:
                         INSERT INTO hub_findings_current
                             (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
                              cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                             updated_at, payload)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                             updated_at, payload, origin)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                         ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
                             first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
                             last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
@@ -665,7 +675,8 @@ class PostgresComplianceHubStore:
                             resolved_at = EXCLUDED.resolved_at,
                             reopened_at = EXCLUDED.reopened_at,
                             updated_at = EXCLUDED.updated_at,
-                            payload = EXCLUDED.payload
+                            payload = EXCLUDED.payload,
+                            origin = EXCLUDED.origin
                         """,
                         (
                             tenant_id,
@@ -682,6 +693,7 @@ class PostgresComplianceHubStore:
                             merged["reopened_at"],
                             merged["updated_at"],
                             encode_hub_payload(overlay),
+                            origin_val,
                         ),
                     )
             conn.commit()
@@ -725,7 +737,10 @@ class PostgresComplianceHubStore:
         where = ["tenant_id = %s"]
         params: list[Any] = [tenant_id]
         if origin is not None:
-            where.append("payload->>'origin' = %s")
+            # Materialised column (backfilled) so the exact COUNT(*) rides the
+            # (tenant_id, origin, …) index prefix instead of scanning every row
+            # through payload->>'origin' (#3641).
+            where.append("origin = %s")
             params.append(origin)
         if severity is not None:
             where.append("severity_rank = %s")

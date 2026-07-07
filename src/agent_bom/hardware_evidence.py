@@ -113,6 +113,49 @@ def _str(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+# Attestation-block keys that anchor a *stable* hardware device identity, in
+# strongest-first order. The TPM endorsement-key public part is immutable per
+# device and is the gold-standard anchor; a signed TPM quote and the device
+# serial are progressively weaker but still hardware-rooted. PCR-derived quote
+# blobs can vary per boot, so they rank below the EK pub.
+_DEVICE_ANCHOR_KEYS: tuple[str, ...] = (
+    "ek_pub",
+    "ek_public_key",
+    "ek_public",
+    "tpm_quote",
+    "quote",
+)
+
+
+def device_fingerprint(host: dict[str, Any]) -> str | None:
+    """Derive a stable, privacy-preserving device fingerprint from evidence.
+
+    The fingerprint is a salt-free SHA-256 of the strongest available
+    hardware-rooted anchor — TPM endorsement-key public part, a signed TPM
+    quote, or the device serial — so the same physical device maps to the same
+    identifier across evidence files without exposing the raw anchor.
+
+    Returns ``None`` when the host carries no usable hardware evidence, letting
+    callers fall back to hostname/config-derived identity with no regression.
+
+    Args:
+        host: A single ``hosts[]`` entry from an
+            ``agent-bom.hardware-evidence/v1`` document.
+    """
+    if not isinstance(host, dict):
+        return None
+    attestation = host.get("attestation")
+    if isinstance(attestation, dict):
+        for key in _DEVICE_ANCHOR_KEYS:
+            anchor = _str(attestation.get(key))
+            if anchor:
+                return _fingerprint(f"{key}:{anchor}")
+    serial = _str(host.get("serial"))
+    if serial:
+        return _fingerprint(f"serial:{serial}")
+    return None
+
+
 def _host_key(host: dict[str, Any]) -> str:
     key = _str(host.get("host_id")) or _str(host.get("hostname"))
     if not key:

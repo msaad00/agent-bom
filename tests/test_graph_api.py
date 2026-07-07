@@ -364,6 +364,61 @@ class TestGraphEndpointLogic:
         assert diff["nodes_added"][0]["label"] == "new-agent"
         assert {node["id"] for node in diff["nodes_removed"]} >= {"agent:b"}
 
+
+def test_graph_diff_route_tags_change_kind(tmp_path) -> None:
+    """/v1/graph/diff must tag nodes/edges with change_kind for the drift lens."""
+    store = SQLiteGraphStore(tmp_path / "diff-graph.db")
+
+    g1 = UnifiedGraph(scan_id="drift-s1")
+    g1.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+    g1.add_node(UnifiedNode(id="agent:gone", entity_type=EntityType.AGENT, label="agent-gone"))
+    g1.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+    g1.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+    g1.add_edge(UnifiedEdge(source="agent:gone", target="server:s", relationship=RelationshipType.USES))
+    store.save_graph(g1)
+
+    g2 = UnifiedGraph(scan_id="drift-s2")
+    g2.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+    g2.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+    # Same id as s1 but a mutated risk_score -> classified as "changed".
+    g2.add_node(
+        UnifiedNode(
+            id="vuln:v",
+            entity_type=EntityType.VULNERABILITY,
+            label="vuln-v",
+            severity="critical",
+            risk_score=9.0,
+        )
+    )
+    g2.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+    g2.add_edge(UnifiedEdge(source="server:s", target="vuln:v", relationship=RelationshipType.VULNERABLE_TO))
+    store.save_graph(g2)
+
+    original = api_stores._graph_store
+    try:
+        set_graph_store(store)
+        client = TestClient(app)
+        resp = client.get("/v1/graph/diff?old=drift-s1&new=drift-s2")
+        assert resp.status_code == 200
+        body = resp.json()
+
+        # Per-entry tags on the dict-shaped node lists.
+        assert all(node["change_kind"] == "new" for node in body["nodes_added"])
+        assert {node["id"] for node in body["nodes_added"]} == {"vuln:v"}
+        assert all(node["change_kind"] == "removed" for node in body["nodes_removed"])
+        assert {node["id"] for node in body["nodes_removed"]} == {"agent:gone"}
+
+        # Unified index the client consumes to classify the rendered graph.
+        index = body["change_kind_index"]
+        assert index["nodes"]["vuln:v"] == "new"
+        assert index["nodes"]["agent:gone"] == "removed"
+        # server:s + agent:a persisted unchanged, so they are absent from the index.
+        assert "server:s" not in index["nodes"]
+        assert index["edges"]["server:s|vuln:v|vulnerable_to"] == "new"
+        assert index["edges"]["agent:gone|server:s|uses"] == "removed"
+    finally:
+        set_graph_store(original)
+
     def test_edge_history_tracks_new_changed_removed_and_unchanged_edges(self, graph_db):
         g1 = UnifiedGraph(scan_id="history-s1", tenant_id="default", created_at="2026-06-01T00:00:00Z")
         for node_id in ("agent:a", "server:b", "tool:c", "vuln:d"):

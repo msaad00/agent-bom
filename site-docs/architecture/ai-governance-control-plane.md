@@ -122,7 +122,7 @@ replacing the shipped evidence model.
 
 ## Related docs
 
-- [How Agent-BOM Works](how-agent-bom-works.md)
+- [How agent-bom Works](how-agent-bom-works.md)
 - [Unified Platform Control Plane](unified-platform-control-plane.md)
 - [Security Graph Model](security-graph-model.md)
 - [Data Ingestion and Security](data-ingestion-and-security.md)

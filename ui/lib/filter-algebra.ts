@@ -28,6 +28,7 @@ import {
   type UnifiedNode,
 } from "@/lib/graph-schema";
 import type { UnifiedGraphResponse } from "@/lib/api-types";
+import type { ChangeKind } from "@/lib/graph-utils";
 
 // ───────────────────────────────────────────────────────────────────────
 // Public types
@@ -545,6 +546,57 @@ export function computeValidValues(
   }
 
   return { severities, agents, layers, relationships };
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Drift lens predicates (#3192)
+// ───────────────────────────────────────────────────────────────────────
+//
+// The drift lens is a focus overlay, not a hard filter: when a chip other than
+// "all" is active, non-matching nodes are dimmed rather than removed so the
+// surrounding topology stays legible (mirroring the blast-radius / reachability
+// overlays). These predicates are the pure decision core the client dims by.
+
+export type DriftLensFilter = "all" | "new" | "removed" | "changed" | "critical";
+
+export const DRIFT_LENS_FILTERS: DriftLensFilter[] = [
+  "all",
+  "new",
+  "changed",
+  "critical",
+  "removed",
+];
+
+/**
+ * Whether a node with the given change kind passes the active drift chip.
+ *
+ * `critical` is a cross-cutting chip: it keeps any node the client has flagged
+ * as a critical change (a new/changed asset carrying a high-or-worse severity),
+ * independent of its raw new/changed kind.
+ */
+export function driftFilterPasses(
+  kind: ChangeKind,
+  filter: DriftLensFilter,
+  isCritical: boolean,
+): boolean {
+  if (filter === "all") return true;
+  if (filter === "critical") return isCritical;
+  return kind === filter;
+}
+
+/**
+ * A node counts as a critical change when it appeared or drifted (new/changed)
+ * *and* it carries a high-or-worse severity. Removed criticality is intentionally
+ * excluded here — removed assets are surfaced by the dedicated `removed` chip.
+ */
+export function isCriticalChange(
+  kind: ChangeKind,
+  severity: string | null | undefined,
+): boolean {
+  if (kind !== "new" && kind !== "changed") return false;
+  const rank = SEVERITY_RANK[String(severity ?? "").toLowerCase()] ?? 0;
+  const highRank = SEVERITY_RANK["high"] ?? 0;
+  return rank >= highRank && highRank > 0;
 }
 
 // ───────────────────────────────────────────────────────────────────────

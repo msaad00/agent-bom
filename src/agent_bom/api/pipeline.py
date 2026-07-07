@@ -513,6 +513,7 @@ def _sync_scan_agents_to_fleet(agents: list, tenant_id: str = "default") -> None
             fleet_agent = FleetAgent(
                 agent_id=str(uuid.uuid4()),
                 canonical_id=_optional_str(getattr(agent, "canonical_id", "")),
+                device_fingerprint=_optional_str(getattr(agent, "device_fingerprint", "")),
                 name=agent.name,
                 agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
                 config_path=agent.config_path or "",
@@ -1026,9 +1027,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 sym_stamped = apply_symbol_reachability_to_blast_radii(blast_radii, _ast_for_reach)
                 if sym_stamped:
                     with lock:
-                        job.progress.append(
-                            f"Symbol reachability: stamped {sym_stamped} blast-radius row(s) with function-level evidence"
-                        )
+                        job.progress.append(f"Symbol reachability: stamped {sym_stamped} blast-radius row(s) with function-level evidence")
         except Exception as reach_exc:  # noqa: BLE001
             _logger.warning("Reachability surfacing skipped: %s", sanitize_error(reach_exc))
         pipeline.complete_step("analysis", f"Computed {len(blast_radii)} blast radius entries", {"blast_radius": len(blast_radii)})

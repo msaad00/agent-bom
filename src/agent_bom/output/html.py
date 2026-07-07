@@ -56,6 +56,88 @@ _SEV_COLOR = {
 # Max packages shown per server before collapsing
 _PKG_PREVIEW = 15
 
+# Client-side pagination: rows shown per page for large findings tables.
+_PAGE_SIZE = 50
+
+# Tab grouping for the report. Each entry: (tab-key, label, [section ids]).
+# Only tabs whose sections are actually rendered appear in the tab bar, so a
+# small scan collapses to a couple of tabs while a large multi-cloud scan gets
+# the full set. Order here is the tab order left-to-right.
+_TAB_DEFS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("summary", "Summary", ("summary", "charts")),
+    ("agents", "Agents &amp; Servers", ("riskmap", "inventory", "aiinventory")),
+    (
+        "findings",
+        "CVEs &amp; Findings",
+        ("attackflow", "vulns", "policyfindings", "exposure-paths", "blast", "remediation"),
+    ),
+    ("compliance", "CIS &amp; Compliance", ("compliance", "cisbenchmarks", "skillaudit")),
+    ("governance", "Trust &amp; Governance", ("trust", "enforcement")),
+)
+
+
+def _pager_controls(table_id: str, total: int, page_size: int = _PAGE_SIZE) -> str:
+    """Server-rendered pagination bar bound to a table by ``data-pager``.
+
+    Rendered for every findings table so the controls exist in the static file
+    (and in tests); the paginator JS wires the buttons and hides the whole bar
+    when the filtered set fits on a single page.
+    """
+    return (
+        f'<div class="pager" data-pager="{table_id}" data-page-size="{page_size}">'
+        '<button class="pager-btn" data-act="first" title="First page">&laquo;</button>'
+        '<button class="pager-btn" data-act="prev" title="Previous page">&lsaquo; Prev</button>'
+        f'<span class="pager-info">1&ndash;{min(page_size, total)} of {total}</span>'
+        '<button class="pager-btn" data-act="next" title="Next page">Next &rsaquo;</button>'
+        '<button class="pager-btn" data-act="last" title="Last page">&raquo;</button>'
+        '<span class="pager-sep"></span>'
+        '<label class="pager-size-label">Rows'
+        '<select class="pager-size">'
+        '<option value="25">25</option>'
+        f'<option value="50"{" selected" if page_size == 50 else ""}>50</option>'
+        '<option value="100">100</option>'
+        '<option value="250">250</option>'
+        '</select></label>'
+        "</div>"
+    )
+
+
+def _apply_tabs(html: str, tab_counts: dict[str, int]) -> str:
+    """Reorganise the flat report into JS-driven tabs.
+
+    Tags each ``<section id=...>`` with its ``data-tab`` group, injects a tab
+    bar at the top of the container, and relies on CSS (``body.js-tabs``) plus a
+    small script (added in the main IIFE) to show one tab at a time. Degrades to
+    the full scrollable page when JS is off or when printing.
+    """
+    present: list[tuple[str, str]] = []
+    for tab_key, label, section_ids in _TAB_DEFS:
+        has_any = False
+        for sid in section_ids:
+            needle = f'<section id="{sid}"'
+            if needle in html:
+                html = html.replace(needle, f'<section id="{sid}" data-tab="{tab_key}"', 1)
+                has_any = True
+        if has_any:
+            present.append((tab_key, label))
+
+    if len(present) < 2:  # nothing worth tabbing
+        return html
+
+    buttons = []
+    for idx, (tab_key, label) in enumerate(present):
+        count = tab_counts.get(tab_key, 0)
+        badge = f'<span class="tab-count">{count}</span>' if count else ""
+        active = " active" if idx == 0 else ""
+        buttons.append(
+            f'<button class="tab-btn{active}" data-tab="{tab_key}" '
+            f'role="tab">{label}{badge}</button>'
+        )
+    tab_bar = '<nav class="tab-bar" role="tablist">' + "".join(buttons) + "</nav>\n"
+
+    marker = '<div class="container">\n'
+    return html.replace(marker, marker + tab_bar, 1)
+
 _EXTERNAL_SCRIPT_TAGS = (
     '  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>\n',
     '  <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>\n',
@@ -239,7 +321,7 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
         reverse=True,
     )
     rows = []
-    for finding in sorted_findings:
+    for idx, finding in enumerate(sorted_findings):
         sev = severity_value(finding)
         color = _SEV_COLOR.get(sev, "#6b7280")
         cvss_bar = ""
@@ -291,8 +373,9 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
         vuln_id = finding.cve_id or finding.id
         pkg_name = package_name(finding)
         pkg_version = package_version(finding)
+        pg_cls = " pg-hidden" if idx >= _PAGE_SIZE else ""
         rows.append(
-            f'<tr data-severity="{sev}" data-kev="{"1" if finding.is_kev else "0"}" '
+            f'<tr class="pg-row{pg_cls}" data-severity="{sev}" data-kev="{"1" if finding.is_kev else "0"}" '
             f'data-exploit-likelihood="{exploit_level}" '
             f'data-match-tier="{_esc(tier or "")}" '
             f'data-cvss="{finding.cvss_score if finding.cvss_score else 0}">'
@@ -337,11 +420,12 @@ def _vuln_table(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
     return (
         hint
         + filter_bar
-        + '<div class="table-wrap"><table class="data-table sortable" id="vulnTable">'
+        + '<div class="table-wrap"><table class="data-table sortable paginated" id="vulnTable">'
         + "<thead><tr>"
         + "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
         + "</tr></thead>"
         + f"<tbody>{''.join(rows)}</tbody></table></div>"
+        + _pager_controls("vulnTable", len(rows))
     )
 
 
@@ -494,7 +578,7 @@ def _policy_findings_section(findings: list["Finding"]) -> str:
         return ""
 
     rows = []
-    for finding in sorted(findings, key=lambda f: severity_policy_rank(str(f.severity)), reverse=True):
+    for idx, finding in enumerate(sorted(findings, key=lambda f: severity_policy_rank(str(f.severity)), reverse=True)):
         sev = str(finding.severity or "unknown").lower()
         title = finding.title or finding.description or finding.finding_type.value
         asset_label = finding.asset.name or finding.asset.identifier or "unknown asset"
@@ -511,8 +595,9 @@ def _policy_findings_section(findings: list["Finding"]) -> str:
         remediation = finding.remediation_guidance or ""
         description_html = f'<br><span style="color:#94a3b8">{_esc(description)}</span>' if description else ""
         remediation_html = _esc(remediation) if remediation else '<span style="color:#334155">&mdash;</span>'
+        pg_cls = " pg-hidden" if idx >= _PAGE_SIZE else ""
         rows.append(
-            f'<tr data-severity="{sev}" data-type="{_esc(finding.finding_type.value)}" '
+            f'<tr class="pg-row{pg_cls}" data-severity="{sev}" data-type="{_esc(finding.finding_type.value)}" '
             f'data-source="{_esc(finding.source.value)}" data-asset-type="{_esc(finding.asset.asset_type)}">'
             f"<td>{_sev_badge(sev)}</td>"
             f'<td><code style="color:#c4b5fd;font-size:.75rem">{_esc(finding.finding_type.value)}</code></td>'
@@ -571,9 +656,10 @@ def _policy_findings_section(findings: list["Finding"]) -> str:
         f"These are the same findings emitted in JSON and SARIF."
         f"</div>"
         f"{filter_bar}"
-        f'<div class="table-wrap"><table class="data-table sortable" id="policyFindingsTable">'
+        f'<div class="table-wrap"><table class="data-table sortable paginated" id="policyFindingsTable">'
         f"<thead><tr>{header_html}</tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div>"
+        f'{_pager_controls("policyFindingsTable", len(rows))}'
         f"</div></section>"
     )
 
@@ -1590,6 +1676,32 @@ def to_html(
     /* TOOLTIP */
     #tip{{position:fixed;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 14px;font-size:.76rem;color:#e2e8f0;pointer-events:none;white-space:pre-line;max-width:280px;z-index:9999;display:none;line-height:1.5;box-shadow:0 8px 24px rgba(0,0,0,.4)}}
 
+    /* TABS */
+    .tab-bar{{display:flex;gap:2px;flex-wrap:wrap;margin:0 0 28px;border-bottom:1px solid #1e293b;position:sticky;top:0;background:#0b1120;z-index:60;padding-top:6px}}
+    .tab-btn{{background:transparent;border:none;border-bottom:2px solid transparent;color:#64748b;font-size:.82rem;font-weight:600;padding:11px 18px;cursor:pointer;transition:color .15s,border-color .15s;letter-spacing:.01em;white-space:nowrap}}
+    .tab-btn:hover{{color:#e2e8f0}}
+    .tab-btn.active{{color:#10b981;border-bottom-color:#10b981}}
+    .tab-count{{font-size:.66rem;background:#1e293b;color:#94a3b8;border-radius:10px;padding:1px 7px;margin-left:7px;font-weight:700}}
+    .tab-btn.active .tab-count{{background:rgba(16,185,129,.15);color:#6ee7b7}}
+    body.js-tabs .container>section[data-tab]{{display:none}}
+    body.js-tabs .container>section[data-tab].tab-active{{display:block}}
+
+    /* PAGINATION */
+    .pager{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;padding:10px 14px;background:#0f172a;border:1px solid #1e293b;border-radius:8px;font-size:.76rem;color:#94a3b8}}
+    .pager-btn{{background:#1e293b;border:1px solid #334155;color:#cbd5e1;font-size:.74rem;font-weight:600;padding:5px 11px;border-radius:6px;cursor:pointer;transition:all .12s}}
+    .pager-btn:hover:not(:disabled){{background:#334155;color:#f1f5f9}}
+    .pager-btn:disabled{{opacity:.35;cursor:default}}
+    .pager-info{{color:#cbd5e1;font-variant-numeric:tabular-nums;padding:0 4px}}
+    .pager-sep{{flex:1}}
+    .pager-size-label{{display:flex;align-items:center;gap:6px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;font-size:.68rem;font-weight:700}}
+    .pager-size{{background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.74rem;padding:4px 6px;outline:none}}
+    .pg-hidden{{display:none}}
+    @media print{{
+      .tab-bar,.pager{{display:none!important}}
+      body.js-tabs .container>section[data-tab]{{display:block!important}}
+      .pg-hidden{{display:table-row!important}}
+    }}
+
     /* TABLES */
     .table-wrap{{overflow-x:auto;border-radius:8px}}
     .data-table{{width:100%;border-collapse:collapse;font-size:.83rem}}
@@ -1868,6 +1980,157 @@ def to_html(
   <a href="https://github.com/msaad00/agent-bom">github.com/msaad00/agent-bom</a> &middot;
   Vulnerability data: OSV.dev &middot; NVD &middot; CISA KEV &middot; EPSS
 </footer>
+
+<script>
+// agent-bom scale-report: tabs + client-side pagination. Kept in a standalone
+// script (distinct opening so offline mode does not strip it) and independent of
+// the CDN chart/graph libs, so a large report stays tabbed and paginated even
+// when opened offline or from an email attachment.
+(function scaleReport() {{
+  window.PAGINATORS = window.PAGINATORS || {{}};
+
+  function makePaginator(tableId, filterFn) {{
+    var table = document.getElementById(tableId);
+    if (!table) return null;
+    var tbody = table.querySelector('tbody');
+    var bar = document.querySelector('.pager[data-pager="' + tableId + '"]');
+    var allRows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    var pageSize = bar ? (parseInt(bar.getAttribute('data-page-size'), 10) || 50) : 50;
+    var page = 1;
+    var matched = allRows;
+    var infoEl = bar ? bar.querySelector('.pager-info') : null;
+    function render() {{
+      var total = matched.length;
+      var pages = Math.max(1, Math.ceil(total / pageSize));
+      if (page > pages) page = pages;
+      if (page < 1) page = 1;
+      var start = (page - 1) * pageSize;
+      var end = start + pageSize;
+      allRows.forEach(function(r) {{ r.classList.add('pg-hidden'); }});
+      matched.slice(start, end).forEach(function(r) {{ r.classList.remove('pg-hidden'); }});
+      if (bar) {{
+        if (infoEl) infoEl.innerHTML = total ? (start + 1) + '&ndash;' + Math.min(end, total) + ' of ' + total : '0 of 0';
+        var f = bar.querySelector('[data-act="first"]'), pv = bar.querySelector('[data-act="prev"]'),
+            nx = bar.querySelector('[data-act="next"]'), ls = bar.querySelector('[data-act="last"]');
+        if (f) f.disabled = page <= 1;
+        if (pv) pv.disabled = page <= 1;
+        if (nx) nx.disabled = page >= pages;
+        if (ls) ls.disabled = page >= pages;
+        bar.style.display = pages > 1 ? '' : 'none';
+      }}
+    }}
+    function apply() {{ matched = filterFn ? allRows.filter(filterFn) : allRows; page = 1; render(); }}
+    function resort() {{ allRows = Array.prototype.slice.call(tbody.querySelectorAll('tr')); apply(); }}
+    if (bar) {{
+      bar.addEventListener('click', function(e) {{
+        var act = e.target.getAttribute && e.target.getAttribute('data-act');
+        if (!act) return;
+        var pages = Math.max(1, Math.ceil(matched.length / pageSize));
+        if (act === 'first') page = 1;
+        else if (act === 'prev') page = Math.max(1, page - 1);
+        else if (act === 'next') page = Math.min(pages, page + 1);
+        else if (act === 'last') page = pages;
+        render();
+      }});
+      var sizeSel = bar.querySelector('.pager-size');
+      if (sizeSel) sizeSel.addEventListener('change', function() {{ pageSize = parseInt(this.value, 10) || 50; page = 1; render(); }});
+    }}
+    var api = {{ apply: apply, resort: resort, render: render }};
+    window.PAGINATORS[tableId] = api;
+    apply();
+    return api;
+  }}
+
+  // Vulnerability table filter (drives its paginator).
+  function vulnRowMatch(row) {{
+    var checkedSevs = Array.prototype.slice.call(document.querySelectorAll('.vuln-sev-filter:checked')).map(function(c) {{ return c.value; }});
+    var kevOnly = document.getElementById('kevToggle') && document.getElementById('kevToggle').checked;
+    var q = ((document.getElementById('vulnSearch') || {{}}).value || '').toLowerCase();
+    var sev = row.getAttribute('data-severity') || '';
+    if (checkedSevs.indexOf(sev) === -1) return false;
+    if (kevOnly && row.getAttribute('data-kev') !== '1') return false;
+    if (q && row.textContent.toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  }}
+  function filterVulnTable() {{ if (window.PAGINATORS.vulnTable) window.PAGINATORS.vulnTable.apply(); }}
+  makePaginator('vulnTable', vulnRowMatch);
+  document.querySelectorAll('.vuln-sev-filter').forEach(function(cb) {{ cb.addEventListener('change', filterVulnTable); }});
+  var kevToggle = document.getElementById('kevToggle');
+  if (kevToggle) kevToggle.addEventListener('change', filterVulnTable);
+  var vulnSearchInput = document.getElementById('vulnSearch');
+  if (vulnSearchInput) vulnSearchInput.addEventListener('input', filterVulnTable);
+
+  // Unified policy/security finding filter (drives its paginator).
+  function policyRowMatch(row) {{
+    var checkedSevs = Array.prototype.slice.call(document.querySelectorAll('.policy-sev-filter:checked')).map(function(c) {{ return c.value; }});
+    var typeFilter = (document.getElementById('policyTypeFilter') || {{}}).value || '';
+    var assetFilter = (document.getElementById('policyAssetFilter') || {{}}).value || '';
+    var q = ((document.getElementById('policySearch') || {{}}).value || '').toLowerCase();
+    var sev = row.getAttribute('data-severity') || '';
+    if (checkedSevs.indexOf(sev) === -1) return false;
+    if (typeFilter && (row.getAttribute('data-type') || '') !== typeFilter) return false;
+    if (assetFilter && (row.getAttribute('data-asset-type') || '') !== assetFilter) return false;
+    if (q && row.textContent.toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  }}
+  function filterPolicyFindingsTable() {{
+    if (window.PAGINATORS.policyFindingsTable) window.PAGINATORS.policyFindingsTable.apply();
+    var count = document.getElementById('policyVisibleCount');
+    var table = document.getElementById('policyFindingsTable');
+    if (count && table) {{
+      var all = table.querySelectorAll('tbody tr');
+      var vis = Array.prototype.slice.call(all).filter(policyRowMatch).length;
+      count.textContent = vis + ' of ' + all.length + ' shown';
+    }}
+  }}
+  makePaginator('policyFindingsTable', policyRowMatch);
+  document.querySelectorAll('.policy-sev-filter').forEach(function(cb) {{ cb.addEventListener('change', filterPolicyFindingsTable); }});
+  var policyTypeFilter = document.getElementById('policyTypeFilter');
+  if (policyTypeFilter) policyTypeFilter.addEventListener('change', filterPolicyFindingsTable);
+  var policyAssetFilter = document.getElementById('policyAssetFilter');
+  if (policyAssetFilter) policyAssetFilter.addEventListener('change', filterPolicyFindingsTable);
+  var policySearchInput = document.getElementById('policySearch');
+  if (policySearchInput) policySearchInput.addEventListener('input', filterPolicyFindingsTable);
+  filterPolicyFindingsTable();
+
+  // ── Tabbed navigation ─────────────────────────────────────────────────────
+  var tabBar = document.querySelector('.tab-bar');
+  function tabForSection(id) {{
+    var sec = document.getElementById(id);
+    return sec ? sec.getAttribute('data-tab') : null;
+  }}
+  function activateTab(key) {{
+    if (!key) return;
+    document.querySelectorAll('.tab-btn').forEach(function(b) {{ b.classList.toggle('active', b.getAttribute('data-tab') === key); }});
+    document.querySelectorAll('.container>section[data-tab]').forEach(function(s) {{ s.classList.toggle('tab-active', s.getAttribute('data-tab') === key); }});
+    // Tables re-render because a hidden tab had zero layout width.
+    Object.keys(window.PAGINATORS).forEach(function(id) {{ window.PAGINATORS[id].render(); }});
+  }}
+  if (tabBar) {{
+    document.body.classList.add('js-tabs');
+    tabBar.querySelectorAll('.tab-btn').forEach(function(b) {{
+      b.addEventListener('click', function() {{ activateTab(b.getAttribute('data-tab')); window.scrollTo(0, 0); }});
+    }});
+    var firstTab = tabBar.querySelector('.tab-btn');
+    if (firstTab) activateTab(firstTab.getAttribute('data-tab'));
+  }}
+
+  // Sidebar / in-page anchors reveal the target's tab, then scroll to it.
+  document.querySelectorAll('a[href^="#"]').forEach(function(a) {{
+    a.addEventListener('click', function(e) {{
+      var id = a.getAttribute('href').slice(1);
+      if (!id) return;
+      var el = document.getElementById(id);
+      var key = tabForSection(id);
+      if (tabBar && key) {{
+        e.preventDefault();
+        activateTab(key);
+        if (el) setTimeout(function() {{ el.scrollIntoView({{ behavior: 'smooth', block: 'start' }}); }}, 30);
+      }}
+    }});
+  }});
+}})();
+</script>
 
 <script>
 (function() {{
@@ -2611,73 +2874,10 @@ def to_html(
     cyContainer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#4ade80;font-size:.9rem">&#x2705; No supply chain nodes to display</div>';
   }}
 
-  // Vulnerability table filtering
-  function filterVulnTable() {{
-    var table = document.getElementById('vulnTable');
-    if (!table) return;
-    var rows = table.querySelectorAll('tbody tr');
-    var checkedSevs = Array.from(document.querySelectorAll('.vuln-sev-filter:checked')).map(function(c) {{ return c.value; }});
-    var kevOnly = document.getElementById('kevToggle') && document.getElementById('kevToggle').checked;
-    var q = (document.getElementById('vulnSearch') || {{}}).value || '';
-    q = q.toLowerCase();
-    var visible = 0;
-    rows.forEach(function(row) {{
-      var sev = row.getAttribute('data-severity') || '';
-      var kev = row.getAttribute('data-kev') === '1';
-      var text = row.textContent.toLowerCase();
-      var show = true;
-      if (checkedSevs.indexOf(sev) === -1) show = false;
-      if (kevOnly && !kev) show = false;
-      if (q && text.indexOf(q) === -1) show = false;
-      row.style.display = show ? '' : 'none';
-      if (show) visible++;
-    }});
-  }}
-  document.querySelectorAll('.vuln-sev-filter').forEach(function(cb) {{
-    cb.addEventListener('change', filterVulnTable);
-  }});
-  var kevToggle = document.getElementById('kevToggle');
-  if (kevToggle) kevToggle.addEventListener('change', filterVulnTable);
-  var vulnSearchInput = document.getElementById('vulnSearch');
-  if (vulnSearchInput) vulnSearchInput.addEventListener('input', filterVulnTable);
-
-  // Unified policy/security finding filtering
-  function filterPolicyFindingsTable() {{
-    var table = document.getElementById('policyFindingsTable');
-    if (!table) return;
-    var rows = table.querySelectorAll('tbody tr');
-    var checkedSevs = Array.from(document.querySelectorAll('.policy-sev-filter:checked')).map(function(c) {{ return c.value; }});
-    var typeFilter = (document.getElementById('policyTypeFilter') || {{}}).value || '';
-    var assetFilter = (document.getElementById('policyAssetFilter') || {{}}).value || '';
-    var q = (document.getElementById('policySearch') || {{}}).value || '';
-    q = q.toLowerCase();
-    var visible = 0;
-    rows.forEach(function(row) {{
-      var sev = row.getAttribute('data-severity') || '';
-      var type = row.getAttribute('data-type') || '';
-      var assetType = row.getAttribute('data-asset-type') || '';
-      var text = row.textContent.toLowerCase();
-      var show = true;
-      if (checkedSevs.indexOf(sev) === -1) show = false;
-      if (typeFilter && type !== typeFilter) show = false;
-      if (assetFilter && assetType !== assetFilter) show = false;
-      if (q && text.indexOf(q) === -1) show = false;
-      row.style.display = show ? '' : 'none';
-      if (show) visible++;
-    }});
-    var count = document.getElementById('policyVisibleCount');
-    if (count) count.textContent = visible + ' of ' + rows.length + ' shown';
-  }}
-  document.querySelectorAll('.policy-sev-filter').forEach(function(cb) {{
-    cb.addEventListener('change', filterPolicyFindingsTable);
-  }});
-  var policyTypeFilter = document.getElementById('policyTypeFilter');
-  if (policyTypeFilter) policyTypeFilter.addEventListener('change', filterPolicyFindingsTable);
-  var policyAssetFilter = document.getElementById('policyAssetFilter');
-  if (policyAssetFilter) policyAssetFilter.addEventListener('change', filterPolicyFindingsTable);
-  var policySearchInput = document.getElementById('policySearch');
-  if (policySearchInput) policySearchInput.addEventListener('input', filterPolicyFindingsTable);
-  filterPolicyFindingsTable();
+  // Findings-table pagination, filtering, and tabs live in the standalone
+  // scale-report script (below) so they keep working even if the CDN chart /
+  // graph libraries fail to load — the common case for an offline or emailed
+  // report. Nothing table/tab related runs here.
 
   // Cytoscape: CVE Attack Flow graph
   var cyAtkContainer = document.getElementById('cyAttack');
@@ -3021,6 +3221,9 @@ def to_html(
         return asc ? at.localeCompare(bt) : bt.localeCompare(at);
       }});
       rows.forEach(function(r) {{ tbody.appendChild(r); }});
+      // Re-slice the current page after re-ordering the DOM (paginator lives in
+      // the standalone scale-report script; guard in case it did not load).
+      if (window.PAGINATORS && window.PAGINATORS[table.id]) window.PAGINATORS[table.id].resort();
     }});
   }});
 
@@ -3048,13 +3251,11 @@ def to_html(
     if (hidden && !btn.dataset.orig) btn.dataset.orig = btn.innerHTML;
   }};
 
-  // Smooth scroll + close mobile sidebar
+  // Smooth scroll + close mobile sidebar. Tab reveal + robust anchor handling
+  // live in the standalone scale-report script so they survive CDN/graph load
+  // failures (offline / emailed reports).
   document.querySelectorAll('a[href^="#"]').forEach(function(a) {{
-    a.addEventListener('click', function(e) {{
-      e.preventDefault();
-      var el = document.querySelector(a.getAttribute('href'));
-      if (el) el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-      // Close mobile sidebar
+    a.addEventListener('click', function() {{
       var sb = document.getElementById('mainSidebar');
       if (sb) sb.classList.remove('mobile-open');
     }});
@@ -3084,8 +3285,14 @@ def to_html(
 </body>
 </html>"""
     if offline_assets:
+        # Offline mode strips the interactive script layer, so keep the report a
+        # single scrollable page (no tab bar to click into a dead end).
         return _apply_offline_assets_mode(html)
-    return html
+    tab_counts = {
+        "findings": total_vulns + len(policy_findings),
+        "agents": len(report.agents),
+    }
+    return _apply_tabs(html, tab_counts)
 
 
 def export_html(

@@ -1685,6 +1685,68 @@ async def get_fix_first_graph_view(
     return await _graph_compute_call(_fix_first_graph_view_payload, graph, cve=cve, package=package, agent=agent, limit=limit)
 
 
+def _diff_entry_node_id(entry: Any) -> str | None:
+    """Node id for a diff entry, tolerating both dict and bare-id shapes."""
+    if isinstance(entry, dict):
+        nid = entry.get("id")
+        return str(nid) if nid is not None else None
+    if entry is None:
+        return None
+    return str(entry)
+
+
+def _diff_entry_edge_key(entry: Any) -> str:
+    """Stable ``source|target|relationship`` key for a diff edge entry.
+
+    Handles the three shapes the stores emit: ``(source, target, relationship)``
+    tuples for added/removed edges, and ``{"before"|"after": edge}`` wrappers
+    (or a bare edge dict) for changed edges.
+    """
+    if isinstance(entry, dict):
+        edge = entry.get("after") or entry.get("before") or entry
+        src = edge.get("source_id") or edge.get("source") or ""
+        tgt = edge.get("target_id") or edge.get("target") or ""
+        rel = edge.get("relationship") or ""
+        return f"{src}|{tgt}|{rel}"
+    if isinstance(entry, (list, tuple)) and len(entry) >= 3:
+        return f"{entry[0]}|{entry[1]}|{entry[2]}"
+    return str(entry)
+
+
+def _tag_diff_change_kinds(diff: dict[str, Any]) -> dict[str, Any]:
+    """Tag each diff node/edge with a ``change_kind`` for the drift UI lens.
+
+    Adds an in-place ``change_kind`` (``new`` | ``removed`` | ``changed``) to
+    every dict-shaped node/edge entry (leaving any pre-existing value intact)
+    and attaches a ``change_kind_index`` mapping node ids and edge keys to
+    their kind so the client can classify the rendered graph without having to
+    reconcile the three heterogeneous entry shapes. Entries not present in the
+    index are treated as ``unchanged`` by consumers.
+    """
+    if not isinstance(diff, dict):
+        return diff
+
+    node_kinds: dict[str, str] = {}
+    for kind, key in (("new", "nodes_added"), ("removed", "nodes_removed"), ("changed", "nodes_changed")):
+        for entry in diff.get(key) or []:
+            nid = _diff_entry_node_id(entry)
+            if nid is None:
+                continue
+            node_kinds[nid] = kind
+            if isinstance(entry, dict):
+                entry.setdefault("change_kind", kind)
+
+    edge_kinds: dict[str, str] = {}
+    for kind, key in (("new", "edges_added"), ("removed", "edges_removed"), ("changed", "edges_changed")):
+        for entry in diff.get(key) or []:
+            edge_kinds[_diff_entry_edge_key(entry)] = kind
+            if isinstance(entry, dict):
+                entry.setdefault("change_kind", kind)
+
+    diff["change_kind_index"] = {"nodes": node_kinds, "edges": edge_kinds}
+    return diff
+
+
 @router.get("/v1/graph/diff", tags=["graph"])
 async def get_graph_diff(
     request: Request,
@@ -1692,7 +1754,8 @@ async def get_graph_diff(
     new: str = Query(..., description="New scan ID"),
 ) -> dict:
     """Diff two scan snapshots — nodes/edges added, removed, changed."""
-    return await _graph_store_call(_get_graph_store_or_503().diff_snapshots, old, new, tenant_id=_tenant(request))
+    diff = await _graph_store_call(_get_graph_store_or_503().diff_snapshots, old, new, tenant_id=_tenant(request))
+    return _tag_diff_change_kinds(diff)
 
 
 @router.get("/v1/graph/edges/active", tags=["graph"])

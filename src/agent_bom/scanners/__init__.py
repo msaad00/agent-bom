@@ -57,6 +57,7 @@ from agent_bom.package_utils import (
 )
 from agent_bom.scanners.blast_radius import _HOP_RISK_FACTORS, expand_blast_radius_hops
 from agent_bom.scanners.osv import candidate_package_names as _candidate_package_names
+from agent_bom.scanners.osv import ecosystem_matches as _ecosystem_matches
 from agent_bom.scanners.osv import enrich_results_if_needed as _enrich_results_if_needed_impl
 from agent_bom.scanners.osv import is_valid_fix_version as _is_valid_fix_version
 from agent_bom.scanners.osv import package_lookup_names as _package_lookup_names
@@ -385,6 +386,28 @@ async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
     )
 
 
+def _version_matches_list(version: str, versions_list: list[str], ecosystem: str = "") -> bool:
+    """Whether ``version`` equals any entry in an OSV ``affected[].versions`` list.
+
+    Uses version-normalized equality so PEP 440 / SemVer trailing-zero forms
+    match (``2.2.0`` == ``2.2``, ``2.3`` == ``2.3.0``). Falls back to the raw
+    membership test first for speed and for versions that don't parse.
+    """
+    if version in versions_list:
+        return True
+    from agent_bom.version_utils import compare_version_order
+
+    for candidate in versions_list:
+        if candidate == version:
+            return True
+        try:
+            if compare_version_order(version, candidate, ecosystem) == 0:
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
 def _is_version_affected(
     vuln_data: dict,
     package_name: str,
@@ -414,16 +437,23 @@ def _is_version_affected(
     for affected in vuln_data.get("affected", []):
         pkg = affected.get("package", {})
         osv_eco = pkg.get("ecosystem", ecosystem)
+        # Shared advisories list affected entries across ecosystems; only match
+        # against same-ecosystem entries so a different ecosystem's range/version
+        # set can't (falsely) include or exclude our package.
+        if not _ecosystem_matches(osv_eco, ecosystem):
+            continue
         osv_name = normalize_package_name(pkg.get("name", ""), osv_eco)
         if osv_name not in norm_names:
             continue
 
         found_package = True
 
-        # Check explicit version list first
+        # Check explicit version list first (OSV enumerates affected versions
+        # here). Compare version-normalized so "2.2.0" matches an enumerated
+        # "2.2" — a raw string ``in`` check drops trailing-zero equivalents.
         versions_list = affected.get("versions", [])
         if versions_list:
-            if package_version in versions_list:
+            if _version_matches_list(package_version, versions_list, ecosystem):
                 return True
             # If explicit list exists and our version isn't in it, not affected
             continue

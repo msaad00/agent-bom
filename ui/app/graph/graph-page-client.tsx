@@ -71,6 +71,10 @@ import {
 import {
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
+  buildDriftIndex,
+  changeKindForEdge,
+  changeKindForNode,
+  CHANGE_KIND_META,
   CONTROLS_CLASS,
   legendItemsForVisibleGraph,
   MINIMAP_BG,
@@ -78,6 +82,7 @@ import {
   MINIMAP_MASK,
   minimapNodeColor,
   readableGraphEdges,
+  type ChangeKind,
 } from "@/lib/graph-utils";
 import {
   graphFitViewOptions,
@@ -114,9 +119,20 @@ import {
 import {
   applyFilters,
   decodeFiltersFromParams,
+  driftFilterPasses,
   encodeFiltersToParams,
+  isCriticalChange,
+  type DriftLensFilter,
 } from "@/lib/filter-algebra";
 import { useCaptureMode } from "@/lib/use-capture-mode";
+
+const GraphDriftLegend = dynamic(
+  () =>
+    import("@/components/graph-drift-legend").then(
+      (mod) => mod.GraphDriftLegend,
+    ),
+  { ssr: false },
+);
 
 const SigmaGraphOverview = dynamic(
   () =>
@@ -644,6 +660,8 @@ function GraphPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
   const [graphDiff, setGraphDiff] = useState<GraphDiffResponse | null>(null);
+  const [driftLensActive, setDriftLensActive] = useState(false);
+  const [driftFilter, setDriftFilter] = useState<DriftLensFilter>("all");
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(
     null,
   );
@@ -1341,7 +1359,7 @@ function GraphPageInner() {
   const canvasLayoutNodes = rollupNavigationActive
     ? (aggregated.nodes as Node<LineageNodeData>[])
     : lineageLayoutNodes;
-  const displayNodes = useMemo<Node<LineageNodeData>[]>(() => {
+  const baseDisplayNodes = useMemo<Node<LineageNodeData>[]>(() => {
     if (blastRadius) {
       return canvasLayoutNodes.map((node) => {
         const inBlast = blastRadius.nodeIds.has(node.id);
@@ -1431,13 +1449,75 @@ function GraphPageInner() {
     effectiveLodBand,
   ]);
 
+  // Drift lens (#3192) — classify the currently-rendered snapshot against the
+  // previous one using the diff index the server tags. The lens is inert unless
+  // a diff exists AND the operator armed it, so the default view never changes.
+  const driftIndex = useMemo(() => buildDriftIndex(graphDiff), [graphDiff]);
+  const driftLensEngaged =
+    driftLensActive && Boolean(graphDiff) && driftIndex.hasChanges;
+
+  // Keep the lens honest: a snapshot with no older baseline (or no changes)
+  // disarms the lens and resets the focus chip so it can never linger as a
+  // stale overlay on the default view.
+  useEffect(() => {
+    if (!graphDiff) {
+      setDriftLensActive(false);
+      setDriftFilter("all");
+    }
+  }, [graphDiff]);
+
+  const displayNodes = useMemo<Node<LineageNodeData>[]>(() => {
+    if (!driftLensEngaged) return baseDisplayNodes;
+    return baseDisplayNodes.map((node) => {
+      const kind = changeKindForNode(node.id, driftIndex);
+      const critical = isCriticalChange(kind, node.data.severity);
+      const passes = driftFilterPasses(kind, driftFilter, critical);
+      const ringClass =
+        driftFilter === "critical" && critical
+          ? "drift-ring-critical"
+          : CHANGE_KIND_META[kind].ringClass;
+      const className = [node.className, ringClass].filter(Boolean).join(" ");
+      // Focus (not filter): non-matching nodes dim so topology stays legible.
+      const dimmed = Boolean(node.data.dimmed) || !passes;
+      return {
+        ...node,
+        className,
+        data: { ...node.data, dimmed },
+      };
+    });
+  }, [baseDisplayNodes, driftIndex, driftLensEngaged, driftFilter]);
+
+  // Live change-kind tallies over the rendered graph — `unchanged` is derived
+  // here (the diff index only carries actively-changed ids) so the legend and
+  // chips reflect exactly what the operator sees on the canvas.
+  const drift = useMemo<{
+    counts: Record<ChangeKind, number>;
+    critical: number;
+  }>(() => {
+    const counts: Record<ChangeKind, number> = {
+      new: 0,
+      changed: 0,
+      removed: driftIndex.counts.removed,
+      unchanged: 0,
+    };
+    let critical = 0;
+    for (const node of baseDisplayNodes) {
+      const kind = changeKindForNode(node.id, driftIndex);
+      if (kind === "new" || kind === "changed" || kind === "unchanged") {
+        counts[kind] += 1;
+      }
+      if (isCriticalChange(kind, node.data.severity)) critical += 1;
+    }
+    return { counts, critical };
+  }, [baseDisplayNodes, driftIndex]);
+
   const compressedGroupCount = aggregatedClusterNodes.length;
   const sourceNodeCount = rollupNavigationActive
     ? (rollupView?.summary.total_nodes ?? estateNodeCount)
     : (graphData?.nodes.length ?? flow.nodes.length);
   const renderedNodeCount = displayNodes.length;
 
-  const displayEdges = useMemo(() => {
+  const baseDisplayEdges = useMemo(() => {
     if (attackPathEdgeKeys) {
       return layoutEdges
         .filter((edge) =>
@@ -1554,6 +1634,42 @@ function GraphPageInner() {
     graphLayoutKind,
     captureMode,
   ]);
+
+  // Drift lens edge emphasis — new/changed edges adopt their change-kind colour
+  // so the lens reads as one system with the node rings. Inert (identity) when
+  // the lens is disengaged.
+  const displayEdges = useMemo(() => {
+    if (!driftLensEngaged) return baseDisplayEdges;
+    return baseDisplayEdges.map((edge): Edge => {
+      const relationship =
+        typeof edge.data?.relationship === "string"
+          ? edge.data.relationship
+          : "";
+      const kind = changeKindForEdge(
+        edge.source,
+        edge.target,
+        relationship,
+        driftIndex,
+      );
+      if (kind === "unchanged") return edge;
+      const meta = CHANGE_KIND_META[kind];
+      const currentOpacity =
+        typeof edge.style?.opacity === "number" ? edge.style.opacity : 0.4;
+      const currentWidth =
+        typeof edge.style?.strokeWidth === "number"
+          ? edge.style.strokeWidth
+          : 1.4;
+      return {
+        ...edge,
+        style: {
+          ...edge.style,
+          stroke: meta.color,
+          opacity: Math.max(currentOpacity, 0.85),
+          strokeWidth: Math.max(currentWidth, 2.2),
+        },
+      };
+    });
+  }, [baseDisplayEdges, driftLensEngaged, driftIndex]);
 
   const graphEvaluation = useMemo(
     () => evaluateGraphUx(graphData, displayNodes, displayEdges),
@@ -2399,6 +2515,21 @@ function GraphPageInner() {
                 </div>
               )}
           </details>
+        )}
+
+        {graphDiff && (
+          <GraphDriftLegend
+            active={driftLensActive}
+            onToggleActive={(next) => {
+              setDriftLensActive(next);
+              if (!next) setDriftFilter("all");
+            }}
+            filter={driftFilter}
+            onFilterChange={setDriftFilter}
+            counts={drift.counts}
+            criticalCount={drift.critical}
+            comparedLabel={previousSnapshot?.scan_id.slice(0, 12)}
+          />
         )}
 
         <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400 group">

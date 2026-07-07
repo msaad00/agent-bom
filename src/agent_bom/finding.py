@@ -619,7 +619,11 @@ def _remediation_guidance_for_vulnerability(vuln: object, pkg: object) -> str:
         detail = f" ({reason})" if isinstance(reason, str) and reason.strip() else ""
         return f"Remove {package_name} from all environments immediately{detail}."
 
-    fixed_version = getattr(vuln, "fixed_version", None)
+    fixed_version = _forward_fixed_version(
+        getattr(vuln, "fixed_version", None),
+        getattr(pkg, "version", None),
+        getattr(pkg, "ecosystem", None),
+    )
     if isinstance(fixed_version, str) and fixed_version.strip():
         return f"Upgrade {package_name} to {fixed_version.strip()}."
 

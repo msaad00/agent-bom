@@ -101,15 +101,27 @@ class _WafClient:
     def __init__(self, *, deny: bool = False):
         self.deny = deny
 
-    def list_web_acls(self, Scope):  # noqa: N803 — boto3 API param
+    def list_web_acls(self, Scope, NextMarker=None):  # noqa: N803 — boto3 API param
         if self.deny:
             raise _AccessDeniedError()
+        if NextMarker == "page2":
+            if Scope == "REGIONAL":
+                return {"WebACLs": [{"Name": "web-acl-2", "Id": "acl-id-2", "ARN": "arn:waf:regional-2"}]}
+            return {"WebACLs": [{"Name": "cf-acl-2", "Id": "cf-id-2", "ARN": "arn:waf:cloudfront-2"}]}
         if Scope == "REGIONAL":
-            return {"WebACLs": [{"Name": "web-acl", "Id": "acl-id", "ARN": "arn:waf:regional"}]}
-        return {"WebACLs": [{"Name": "cf-acl", "Id": "cf-id", "ARN": "arn:waf:cloudfront"}]}
+            return {
+                "WebACLs": [{"Name": "web-acl", "Id": "acl-id", "ARN": "arn:waf:regional"}],
+                "NextMarker": "page2",
+            }
+        return {
+            "WebACLs": [{"Name": "cf-acl", "Id": "cf-id", "ARN": "arn:waf:cloudfront"}],
+            "NextMarker": "page2",
+        }
 
-    def list_resources_for_web_acl(self, WebACLArn):  # noqa: N803
-        return {"ResourceArns": ["arn:alb:web"]}
+    def list_resources_for_web_acl(self, WebACLArn, NextMarker=None):  # noqa: N803
+        if NextMarker == "assoc2":
+            return {"ResourceArns": ["arn:alb:web-2"]}
+        return {"ResourceArns": ["arn:alb:web"], "NextMarker": "assoc2"}
 
 
 class _ApiGwClient:
@@ -146,9 +158,11 @@ def test_discover_waf_enumerates_acls_and_associations() -> None:
 
     warnings: list[str] = []
     acls = aws._discover_waf(_Session(), "us-east-1", account_id="111122223333", warnings=warnings, missing=[])
-    by_scope = {a["scope"]: a for a in acls}
-    assert "regional" in by_scope and "cloudfront" in by_scope  # both scopes from us-east-1
-    assert by_scope["regional"]["protected_targets"] == ["arn:alb:web"]
+    regional = [a for a in acls if a["scope"] == "regional"]
+    cloudfront = [a for a in acls if a["scope"] == "cloudfront"]
+    assert len(regional) == 2
+    assert len(cloudfront) == 2
+    assert regional[0]["protected_targets"] == ["arn:alb:web", "arn:alb:web-2"]
     assert warnings == []
 
 

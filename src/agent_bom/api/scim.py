@@ -395,6 +395,14 @@ def scim_error_body(*, status_code: int, detail: str) -> dict[str, Any]:
     }
 
 
+def _scim_key_matches_user(key: Any, *, subjects: set[str], subjects_lower: set[str], subject_ids: set[str]) -> bool:
+    if key.scim_subject_id and key.scim_subject_id in subject_ids:
+        return True
+    if key.name in subjects or key.name.lower() in subjects_lower:
+        return True
+    return False
+
+
 def revoke_credentials_for_scim_user(tenant_id: str, user: Any) -> int:
     """Revoke tenant API keys whose display name matches a deprovisioned SCIM user."""
     from agent_bom.api.audit_log import log_action
@@ -405,32 +413,33 @@ def revoke_credentials_for_scim_user(tenant_id: str, user: Any) -> int:
     external_id = getattr(user, "external_id", None)
     if external_id:
         subjects.add(str(external_id))
-    subject_ids = {str(user.user_id)}
+    subject_ids = {str(user.user_id), str(user.user_name)}
     if external_id:
         subject_ids.add(str(external_id))
     subjects_lower = {entry.lower() for entry in subjects if entry}
-    revoked = 0
+    key_ids: set[str] = set()
     for key in store.list_keys(tenant_id):
-        if key.scim_subject_id and key.scim_subject_id in subject_ids:
-            store.remove(key.key_id)
-            revoked += 1
-            log_action(
-                "scim.api_key_revoked",
-                actor="scim-provisioner",
-                resource=f"key/{key.key_id}",
-                tenant_id=tenant_id,
-                user_name=user.user_name,
-                match="scim_subject_id",
-            )
+        if not _scim_key_matches_user(
+            key,
+            subjects=subjects,
+            subjects_lower=subjects_lower,
+            subject_ids=subject_ids,
+        ):
             continue
-        if key.name in subjects or key.name.lower() in subjects_lower:
-            store.remove(key.key_id)
-            revoked += 1
-            log_action(
-                "scim.api_key_revoked",
-                actor="scim-provisioner",
-                resource=f"key/{key.key_id}",
-                tenant_id=tenant_id,
-                user_name=user.user_name,
-            )
+        key_ids.add(key.key_id)
+        if key.replacement_key_id:
+            key_ids.add(key.replacement_key_id)
+    revoked = 0
+    for key_id in key_ids:
+        if store.get(key_id) is None:
+            continue
+        store.remove(key_id)
+        revoked += 1
+        log_action(
+            "scim.api_key_revoked",
+            actor="scim-provisioner",
+            resource=f"key/{key_id}",
+            tenant_id=tenant_id,
+            user_name=user.user_name,
+        )
     return revoked

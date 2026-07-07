@@ -378,6 +378,20 @@ def compute_exit_code(
                         con.print(f"\n  [red]Exiting with code 1: malicious package {finding.asset.name} ({reason})[/red]")
                     exit_code = 1
                     break
+            if exit_code == 0:
+                for agent in report.agents:
+                    for server in agent.mcp_servers:
+                        for pkg in server.packages:
+                            if getattr(pkg, "is_malicious", False):
+                                if not quiet:
+                                    reason = getattr(pkg, "malicious_reason", None) or "known malicious package"
+                                    con.print(f"\n  [red]Exiting with code 1: malicious package {pkg.name} ({reason})[/red]")
+                                exit_code = 1
+                                break
+                        if exit_code:
+                            break
+                    if exit_code:
+                        break
 
     if fail_on_kev and _active_blast_radii:
         kev_findings = [br for br in _active_blast_radii if br.vulnerability.is_kev]

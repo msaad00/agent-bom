@@ -11,7 +11,15 @@ import io
 
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport, BlastRadius
-from agent_bom.output.finding_views import cve_findings, evidence, package_ecosystem, package_name, package_version, severity_value
+from agent_bom.output.finding_views import (
+    cve_findings,
+    evidence,
+    is_package_malicious,
+    package_ecosystem,
+    package_name,
+    package_version,
+    severity_value,
+)
 
 _COLUMNS = [
     "cve_id",
@@ -22,6 +30,8 @@ _COLUMNS = [
     "cvss_score",
     "epss_score",
     "is_kev",
+    "is_malicious",
+    "malicious_reason",
     "published_at",
     "modified_at",
     "fixed_version",
@@ -60,6 +70,8 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
                 "cvss_score": finding.cvss_score if finding.cvss_score is not None else "",
                 "epss_score": f"{finding.epss_score:.4f}" if finding.epss_score is not None else "",
                 "is_kev": "yes" if finding.is_kev else "no",
+                "is_malicious": "yes" if (finding.is_malicious or is_package_malicious(finding)) else "no",
+                "malicious_reason": finding.malicious_reason or evidence(finding, "malicious_reason", ""),
                 "published_at": evidence(finding, "published_at", ""),
                 "modified_at": evidence(finding, "modified_at", ""),
                 "fixed_version": finding.fixed_version or "",

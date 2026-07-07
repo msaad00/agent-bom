@@ -39,6 +39,7 @@ class FakeEc2Client:
         self.calls: list[tuple[str, dict]] = []
         self._volumes = volumes if volumes is not None else [{"VolumeId": "vol-target", "Attachments": [{"InstanceId": "i-target"}]}]
         self._orphan_snapshots = orphan_snapshots or []
+        self._orphan_snapshots_page2: list[dict] = []
         self._snap_counter = 0
         self._vol_counter = 0
 
@@ -53,8 +54,18 @@ class FakeEc2Client:
         self._record("describe_volumes", **kwargs)
         return {"Volumes": self._volumes}
 
+    def get_paginator(self, operation_name: str) -> "_FakePaginator":
+        if operation_name != "describe_volumes":
+            raise ValueError(operation_name)
+        return _FakePaginator(self)
+
     def describe_snapshots(self, **kwargs: object) -> dict:
         self._record("describe_snapshots", **kwargs)
+        next_token = kwargs.get("NextToken")
+        if next_token == "page2":
+            return {"Snapshots": self._orphan_snapshots_page2}
+        if self._orphan_snapshots_page2:
+            return {"Snapshots": self._orphan_snapshots, "NextToken": "page2"}
         return {"Snapshots": self._orphan_snapshots}
 
     # snapshot lifecycle
@@ -86,6 +97,14 @@ class FakeEc2Client:
         return {}
 
     # waiters are optional; omit get_waiter so the scanner skips them
+
+
+class _FakePaginator:
+    def __init__(self, client: FakeEc2Client) -> None:
+        self._client = client
+
+    def paginate(self, **kwargs: object):
+        yield self._client.describe_volumes(**kwargs)
 
 
 class FakeMountController:
@@ -329,6 +348,18 @@ class TestOrphanSweep:
         scanner = AwsEbsSideScanner(ec2_client=ec2)
         assert scanner.sweep_orphan_snapshots() == []
 
+    def test_sweep_paginates_describe_snapshots(self, enabled: None) -> None:
+        ec2 = FakeEc2Client(
+            orphan_snapshots=[{"SnapshotId": "snap-orphan-1"}],
+        )
+        ec2._orphan_snapshots_page2 = [{"SnapshotId": "snap-orphan-2"}]
+        scanner = AwsEbsSideScanner(ec2_client=ec2)
+        deleted = scanner.sweep_orphan_snapshots()
+        assert deleted == ["snap-orphan-1", "snap-orphan-2"]
+        describe_calls = [c for c in ec2.calls if c[0] == "describe_snapshots"]
+        assert len(describe_calls) == 2
+        assert describe_calls[1][1].get("NextToken") == "page2"
+
     @pytest.mark.asyncio
     async def test_run_side_scan_sweeps_then_scans(self, enabled: None, debian_rootfs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         async def _no_cves(_self: object, _pkgs: object) -> int:
@@ -432,3 +463,29 @@ class TestEnumeration:
         scanner = AwsEbsSideScanner(ec2_client=ec2)
         targets = scanner.enumerate_target_volumes()
         assert {t["volume_id"] for t in targets} == {"vol-1", "vol-2"}
+
+    def test_enumerate_all_paginates(self, enabled: None) -> None:
+        page1 = [{"VolumeId": f"vol-{idx}", "Attachments": []} for idx in range(500)]
+        page2 = [{"VolumeId": "vol-500", "Attachments": []}]
+
+        class _PagingEc2(FakeEc2Client):
+            def describe_volumes(self, **kwargs: object) -> dict:
+                self._record("describe_volumes", **kwargs)
+                if kwargs.get("NextToken"):
+                    return {"Volumes": page2}
+                return {"Volumes": self._volumes, "NextToken": "page-2"}
+
+            def get_paginator(self, operation_name: str) -> _FakePaginator:
+                return _PagingPaginator(self)
+
+        class _PagingPaginator(_FakePaginator):
+            def paginate(self, **kwargs: object):
+                first = self._client.describe_volumes(**kwargs)
+                yield first
+                if first.get("NextToken"):
+                    yield self._client.describe_volumes(NextToken=first["NextToken"])
+
+        scanner = AwsEbsSideScanner(ec2_client=_PagingEc2(volumes=page1))
+        targets = scanner.enumerate_target_volumes()
+        assert len(targets) == 501
+        assert targets[-1]["volume_id"] == "vol-500"

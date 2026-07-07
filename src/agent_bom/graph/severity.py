@@ -64,6 +64,7 @@ SEVERITY_POLICY_ORDER: dict[str, int] = {
     "HIGH": 3,
     "MEDIUM": 2,
     "LOW": 1,
+    "INFO": 1,
     "NONE": 0,
     "UNKNOWN": -1,
 }

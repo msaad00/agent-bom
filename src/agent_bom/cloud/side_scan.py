@@ -310,21 +310,23 @@ class AwsEbsSideScanner:
         Returns a list of ``{"volume_id", "instance_id"}`` dicts.
         """
         if volume_id:
-            resp = self._ec2.describe_volumes(VolumeIds=[volume_id])
+            paginate_kwargs: dict[str, object] = {"VolumeIds": [volume_id]}
         elif instance_id:
-            resp = self._ec2.describe_volumes(Filters=[{"Name": "attachment.instance-id", "Values": [instance_id]}])
+            paginate_kwargs = {"Filters": [{"Name": "attachment.instance-id", "Values": [instance_id]}]}
         else:
-            resp = self._ec2.describe_volumes()
+            paginate_kwargs = {}
 
         targets: list[dict[str, str]] = []
-        for vol in resp.get("Volumes", []):
-            vid = vol.get("VolumeId", "")
-            if not vid:
-                continue
-            attached_instance = ""
-            for att in vol.get("Attachments", []):
-                attached_instance = att.get("InstanceId", "") or attached_instance
-            targets.append({"volume_id": vid, "instance_id": attached_instance or (instance_id or "")})
+        paginator = self._ec2.get_paginator("describe_volumes")
+        for page in paginator.paginate(**paginate_kwargs):
+            for vol in page.get("Volumes", []):
+                vid = vol.get("VolumeId", "")
+                if not vid:
+                    continue
+                attached_instance = ""
+                for att in vol.get("Attachments", []):
+                    attached_instance = att.get("InstanceId", "") or attached_instance
+                targets.append({"volume_id": vid, "instance_id": attached_instance or (instance_id or "")})
         return targets
 
     # ── Full scan with guaranteed cleanup ─────────────────────────────────
@@ -531,25 +533,29 @@ class AwsEbsSideScanner:
         Returns the list of snapshot ids deleted.
         """
         deleted: list[str] = []
+        filters = [{"Name": f"tag:{SIDESCAN_TAG_KEY}", "Values": [SIDESCAN_TAG_VALUE]}]
+        next_token: str | None = None
         try:
-            resp = self._ec2.describe_snapshots(
-                Filters=[{"Name": f"tag:{SIDESCAN_TAG_KEY}", "Values": [SIDESCAN_TAG_VALUE]}],
-                OwnerIds=["self"],
-            )
+            while True:
+                kwargs: dict[str, object] = {"Filters": filters, "OwnerIds": ["self"]}
+                if next_token:
+                    kwargs["NextToken"] = next_token
+                resp = self._ec2.describe_snapshots(**kwargs)
+                for snap in resp.get("Snapshots", []):
+                    snap_id = snap.get("SnapshotId", "")
+                    if not snap_id:
+                        continue
+                    try:
+                        self._ec2.delete_snapshot(SnapshotId=snap_id)
+                        deleted.append(snap_id)
+                        logger.info("side-scan: orphan sweep deleted stranded snapshot %s", snap_id)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("side-scan: orphan sweep could not delete %s: %s", snap_id, sanitize_text(exc))
+                next_token = resp.get("NextToken")
+                if not next_token:
+                    break
         except Exception as exc:  # noqa: BLE001
             logger.warning("side-scan: orphan sweep describe failed: %s", sanitize_text(exc))
-            return deleted
-
-        for snap in resp.get("Snapshots", []):
-            snap_id = snap.get("SnapshotId", "")
-            if not snap_id:
-                continue
-            try:
-                self._ec2.delete_snapshot(SnapshotId=snap_id)
-                deleted.append(snap_id)
-                logger.info("side-scan: orphan sweep deleted stranded snapshot %s", snap_id)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("side-scan: orphan sweep could not delete %s: %s", snap_id, sanitize_text(exc))
         return deleted
 
 

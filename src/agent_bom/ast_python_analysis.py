@@ -237,6 +237,7 @@ _SKIP_DIRS = frozenset(
         "testing",
         "fixtures",
         "fuzz",
+        "vendor",
     }
 )
 

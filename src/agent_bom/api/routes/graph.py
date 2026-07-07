@@ -1829,7 +1829,7 @@ async def get_nhi_governance(
     """Return the non-human-identity governance posture for the latest graph.
 
     Loads the latest unified graph, projects the live governance control plane
-    and resolves effective permissions, then computes the three Natoma-parity
+    and resolves effective permissions, then computes the three core NHI governance
     analytics — usage-based right-sizing, dormant/orphaned detection, and the
     0-100 per-identity risk score — and returns a non-secret posture ranked
     worst risk first. Right-sizing here uses the durable `last_used_at` markers

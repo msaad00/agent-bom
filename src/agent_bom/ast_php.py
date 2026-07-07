@@ -24,6 +24,7 @@ from agent_bom.ast_models import (
     _PhpMethodAnalysis,
     _PhpToolRegistration,
 )
+from agent_bom.ast_source_mask import mask_line_comments_and_strings
 from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_verified_composer_package
 
 if TYPE_CHECKING:
@@ -132,15 +133,16 @@ def _php_method_body(source: str, method_start: int, method_end: int) -> tuple[s
 
 
 def _php_call_sites(body: str, *, line_offset: int) -> list[_PhpCallSite]:
+    masked = mask_line_comments_and_strings(body, hash_comments=True)
     sites: list[_PhpCallSite] = []
-    for match in _PHP_OBJECT_CALL_RE.finditer(body):
+    for match in _PHP_OBJECT_CALL_RE.finditer(masked):
         sites.append(
             _PhpCallSite(
                 name=f"{match.group('receiver')}->{match.group('method')}",
                 line_number=line_offset + body[: match.start()].count("\n") + 1,
             ),
         )
-    for match in _PHP_STATIC_CALL_RE.finditer(body):
+    for match in _PHP_STATIC_CALL_RE.finditer(masked):
         sites.append(
             _PhpCallSite(
                 name=f"{match.group('class')}::{match.group('method')}",

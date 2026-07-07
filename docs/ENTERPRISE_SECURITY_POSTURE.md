@@ -141,6 +141,10 @@ secret material.
 access management system. The product exposes posture and supports rotation
 paths; the operator owns secret authority, approval workflow, and key custody.
 
+Rotation procedures and `*_LAST_ROTATED` env var names are public in this
+repository; live secret values and production rotation timestamps are
+operator-private. See [PUBLICATION_POLICY.md](PUBLICATION_POLICY.md).
+
 ## SCIM And Revocation Boundary
 
 SCIM is the provisioned identity lifecycle store. User and group resources

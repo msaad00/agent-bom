@@ -27,6 +27,11 @@ def test_policy_order_unknown_below_none():
     assert severity_at_or_above("unknown", "none") is False
 
 
+def test_policy_order_info_above_none():
+    assert severity_policy_rank("info") > severity_policy_rank("none")
+    assert severity_worst_first_rank("info") < severity_worst_first_rank("none")
+
+
 def test_worst_first_rank_sorts_critical_before_low():
     assert severity_worst_first_rank("critical") < severity_worst_first_rank("high")
     assert severity_worst_first_rank("high") < severity_worst_first_rank("medium")

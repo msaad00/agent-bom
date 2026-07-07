@@ -13757,7 +13757,7 @@
     },
     "/v1/graph/nhi/governance": {
       "get": {
-        "description": "Return the non-human-identity governance posture for the latest graph.\n\nLoads the latest unified graph, projects the live governance control plane\nand resolves effective permissions, then computes the three Natoma-parity\nanalytics \u2014 usage-based right-sizing, dormant/orphaned detection, and the\n0-100 per-identity risk score \u2014 and returns a non-secret posture ranked\nworst risk first. Right-sizing here uses the durable `last_used_at` markers\nin the graph (no caller usage map is accepted over the API).",
+        "description": "Return the non-human-identity governance posture for the latest graph.\n\nLoads the latest unified graph, projects the live governance control plane\nand resolves effective permissions, then computes the three core NHI governance\nanalytics \u2014 usage-based right-sizing, dormant/orphaned detection, and the\n0-100 per-identity risk score \u2014 and returns a non-secret posture ranked\nworst risk first. Right-sizing here uses the durable `last_used_at` markers\nin the graph (no caller usage map is accepted over the API).",
         "operationId": "get_nhi_governance_v1_graph_nhi_governance_get",
         "parameters": [
           {

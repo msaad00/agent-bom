@@ -1969,7 +1969,49 @@ def _discover_waf(
     for scope in scopes:
         try:
             client = session.client("wafv2", region_name="us-east-1" if scope == "CLOUDFRONT" else region)
-            resp = client.list_web_acls(Scope=scope)
+            next_marker: str | None = None
+            while True:
+                list_kwargs: dict[str, str] = {"Scope": scope}
+                if next_marker:
+                    list_kwargs["NextMarker"] = next_marker
+                resp = client.list_web_acls(**list_kwargs)
+                for acl in resp.get("WebACLs", []) or []:
+                    name = str(acl.get("Name", "") or "")
+                    arn = str(acl.get("ARN", "") or "")
+                    if not (name or arn):
+                        continue
+                    targets: list[str] = []
+                    # Regional web ACLs expose their associated resources directly;
+                    # CloudFront associations are read from the distribution side and are
+                    # left empty here to avoid a per-distribution describe storm.
+                    if scope == "REGIONAL" and arn:
+                        try:
+                            assoc_marker: str | None = None
+                            while True:
+                                assoc_kwargs: dict[str, str] = {"WebACLArn": arn}
+                                if assoc_marker:
+                                    assoc_kwargs["NextMarker"] = assoc_marker
+                                assoc = client.list_resources_for_web_acl(**assoc_kwargs)
+                                targets.extend(str(r) for r in assoc.get("ResourceArns", []) or [] if r)
+                                assoc_marker = assoc.get("NextMarker")
+                                if not assoc_marker:
+                                    break
+                        except Exception as exc:  # noqa: BLE001 — association read is best-effort
+                            warnings.append(f"Could not list resources for WAF {name}: {sanitize_discovery_warning(exc)}")
+                    out.append(
+                        {
+                            "name": name or arn.rsplit("/", 1)[-1],
+                            "id": str(acl.get("Id", "") or ""),
+                            "arn": arn,
+                            "scope": scope.lower(),
+                            "protected_targets": targets,
+                            "location": "global" if scope == "CLOUDFRONT" else region,
+                            "account_id": account_id or "",
+                        }
+                    )
+                next_marker = resp.get("NextMarker")
+                if not next_marker:
+                    break
         except Exception as exc:  # noqa: BLE001 — one failed WAF list must not sink the scan
             record_discovery_failure(
                 exc=exc,
@@ -1980,32 +2022,6 @@ def _discover_waf(
                 missing=missing,
             )
             continue
-        for acl in resp.get("WebACLs", []) or []:
-            name = str(acl.get("Name", "") or "")
-            arn = str(acl.get("ARN", "") or "")
-            if not (name or arn):
-                continue
-            targets: list[str] = []
-            # Regional web ACLs expose their associated resources directly;
-            # CloudFront associations are read from the distribution side and are
-            # left empty here to avoid a per-distribution describe storm.
-            if scope == "REGIONAL" and arn:
-                try:
-                    assoc = client.list_resources_for_web_acl(WebACLArn=arn)
-                    targets = [str(r) for r in assoc.get("ResourceArns", []) or [] if r]
-                except Exception as exc:  # noqa: BLE001 — association read is best-effort
-                    warnings.append(f"Could not list resources for WAF {name}: {sanitize_discovery_warning(exc)}")
-            out.append(
-                {
-                    "name": name or arn.rsplit("/", 1)[-1],
-                    "id": str(acl.get("Id", "") or ""),
-                    "arn": arn,
-                    "scope": scope.lower(),
-                    "protected_targets": targets,
-                    "location": "global" if scope == "CLOUDFRONT" else region,
-                    "account_id": account_id or "",
-                }
-            )
     return out
 
 

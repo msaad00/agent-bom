@@ -24,6 +24,7 @@ from agent_bom.ast_models import (
     _SwiftFunctionAnalysis,
     _SwiftToolRegistration,
 )
+from agent_bom.ast_source_mask import mask_line_comments_and_strings
 from agent_bom.ast_symbol_reach_guards import is_actionable_dependency_symbol, is_verified_swift_package
 
 if TYPE_CHECKING:
@@ -129,15 +130,16 @@ def _swift_function_body(source: str, func_start: int, func_end: int) -> tuple[s
 
 
 def _swift_call_sites(body: str, *, line_offset: int) -> list[_SwiftCallSite]:
+    masked = mask_line_comments_and_strings(body)
     sites: list[_SwiftCallSite] = []
-    for match in _SWIFT_MODULE_CALL_RE.finditer(body):
+    for match in _SWIFT_MODULE_CALL_RE.finditer(masked):
         sites.append(
             _SwiftCallSite(
                 name=f"{match.group('module')}.{match.group('method')}",
                 line_number=line_offset + body[: match.start()].count("\n") + 1,
             ),
         )
-    for match in _SWIFT_DOT_CALL_RE.finditer(body):
+    for match in _SWIFT_DOT_CALL_RE.finditer(masked):
         if match.group("receiver") in {"if", "for", "while", "switch", "return", "let", "var"}:
             continue
         sites.append(
@@ -146,7 +148,7 @@ def _swift_call_sites(body: str, *, line_offset: int) -> list[_SwiftCallSite]:
                 line_number=line_offset + body[: match.start()].count("\n") + 1,
             ),
         )
-    for match in _SWIFT_BARE_CALL_RE.finditer(body):
+    for match in _SWIFT_BARE_CALL_RE.finditer(masked):
         name = match.group("name")
         if name in _SWIFT_CALL_KEYWORDS:
             continue

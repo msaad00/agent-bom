@@ -56,6 +56,7 @@ from agent_bom.graph.severity import severity_policy_rank
 FindingPage = tuple[list[dict[str, Any]], int | None]
 FindingCursorPage = tuple[list[dict[str, Any]], int | None, str | None]
 _HubFindingRows = list[dict[str, Any]]
+_CurrentPageSortKey = tuple[float | str, str | tuple[int, ...], str]
 
 # Sort keys supported by ``list_page``. ``effective_reach`` (default),
 # ``cvss`` and ``severity`` are each backed by a materialised column +
@@ -876,11 +877,11 @@ def _desc_tie_break(value: str) -> tuple[int, ...]:
     return tuple(-ord(ch) for ch in value)
 
 
-def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], tuple[float | str, str, str]]:
+def _current_page_sort_key(sort: str) -> Callable[[dict[str, Any]], _CurrentPageSortKey]:
     """Sort key for in-memory current-state pages (descending primary signal)."""
     normalized = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
 
-    def _key(row: dict[str, Any]) -> tuple[float | str, str, str]:
+    def _key(row: dict[str, Any]) -> _CurrentPageSortKey:
         tie = str(row.get("last_seen") or "")
         canonical = str(row.get("canonical_id") or "")
         if normalized == "ordinal":

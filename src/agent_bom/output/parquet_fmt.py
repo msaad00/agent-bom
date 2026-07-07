@@ -57,9 +57,7 @@ def _require_pyarrow():
         import pyarrow as pa  # noqa: PLC0415
         import pyarrow.parquet as pq  # noqa: PLC0415
     except ImportError as exc:  # pragma: no cover - exercised via test monkeypatch
-        raise RuntimeError(
-            "Parquet export requires pyarrow. Install with: pip install 'agent-bom[lake]'"
-        ) from exc
+        raise RuntimeError("Parquet export requires pyarrow. Install with: pip install 'agent-bom[lake]'") from exc
     return pa, pq
 
 
@@ -89,18 +87,27 @@ def _row_dict(finding) -> dict[str, Any]:
         "kev_due_date": evidence(finding, "kev_due_date", "") or None,
         "compliance_tags": ";".join(framework_qualified_finding_tags(finding)) or None,
         "symbol_reachability": evidence(finding, "symbol_reachability", "") or None,
-        "reachable_affected_symbols": ";".join(evidence(finding, "reachable_affected_symbols", []) or [])
-        or None,
+        "reachable_affected_symbols": ";".join(evidence(finding, "reachable_affected_symbols", []) or []) or None,
         "graph_reachable": evidence(finding, "graph_reachable", None),
         "graph_min_hop_distance": evidence(finding, "graph_min_hop_distance", None),
     }
 
 
+def to_arrow_table(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None):
+    """Build a PyArrow table of CVE findings using the shared 27-col schema.
+
+    Shared by the Parquet file writer and the Iceberg catalog exporter so lake
+    consumers always see one consistent table shape.
+    """
+    pa, _ = _require_pyarrow()
+    rows = [_row_dict(finding) for finding in cve_findings(report, blast_radii)]
+    return pa.Table.from_pylist(rows, schema=_schema(pa))
+
+
 def to_parquet_bytes(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) -> bytes:
     """Serialize CVE findings to an in-memory Parquet file."""
     pa, pq = _require_pyarrow()
-    rows = [_row_dict(finding) for finding in cve_findings(report, blast_radii)]
-    table = pa.Table.from_pylist(rows, schema=_schema(pa))
+    table = to_arrow_table(report, blast_radii)
     sink = pa.BufferOutputStream()
     pq.write_table(table, sink, compression="snappy")
     return sink.getvalue().to_pybytes()
@@ -149,4 +156,4 @@ def _schema(pa):
     )
 
 
-__all__ = ["export_parquet", "to_parquet_bytes"]
+__all__ = ["export_parquet", "to_arrow_table", "to_parquet_bytes"]

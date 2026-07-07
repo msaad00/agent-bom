@@ -266,6 +266,17 @@ LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 CLICKHOUSE_URL = _str("AGENT_BOM_CLICKHOUSE_URL", "")
 
 
+# ── Iceberg Catalog Export ───────────────────────────────────────────────────
+# Optional findings-lake side-write. Disabled unless a REST catalog URL is set.
+# Credentials are deliberately not mirrored here; they stay env/KMS-only and are
+# allowlisted as secret material in scripts/env_var_allowlist.txt.
+
+ICEBERG_CATALOG_URL = _str("AGENT_BOM_ICEBERG_CATALOG_URL", "")
+ICEBERG_NAMESPACE = _str("AGENT_BOM_ICEBERG_NAMESPACE", "agent_bom")
+ICEBERG_TABLE = _str("AGENT_BOM_ICEBERG_TABLE", "findings")
+ICEBERG_WAREHOUSE = _str("AGENT_BOM_ICEBERG_WAREHOUSE", "")
+
+
 # ── Graph Retention ───────────────────────────────────────────────────────
 # Age-based graph snapshot retention for self-hosted graph stores. Per-tenant
 # overrides resolve from ``AGENT_BOM_GRAPH_RETENTION_OVERRIDES`` (JSON map) and

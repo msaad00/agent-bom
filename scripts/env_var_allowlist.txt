@@ -91,6 +91,10 @@ AGENT_BOM_DSPM_S3_SAMPLING
 AGENT_BOM_DSPM_GCS_SAMPLING
 # Opt-in (default OFF) bounded database/warehouse row sampling for DSPM content classification. Stores redacted classification counts, never raw row values.
 AGENT_BOM_DSPM_DB_SAMPLING
+# Iceberg REST catalog OAuth2 credential; secret material stays env/KMS-only and out of generated config docs.
+AGENT_BOM_ICEBERG_CREDENTIAL
+# Iceberg REST catalog bearer token; secret material stays env/KMS-only and out of generated config docs.
+AGENT_BOM_ICEBERG_TOKEN
 # base64 Fernet key for at-rest encryption of cloud-connection secrets (ExternalId); secret, env/KMS-only, never in config.py or ENV_VARS.md. With provider=aws-kms it holds the base64 KMS-wrapped data key instead. Accepts a comma-separated list of keys for MultiFernet rotation (first key = primary/encrypt, any key decrypts).
 AGENT_BOM_CONNECTIONS_KEY
 # Selects how the connection encryption key is resolved: env (default) | aws-secrets | aws-kms | vault; read at key-load time in api/connection_crypto.py.

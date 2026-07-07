@@ -266,11 +266,11 @@ def compute_exit_code(
     fail_on_severity: Any,
     warn_on_severity: Any,
     fail_on_kev: bool,
-    fail_on_malicious: bool,
     fail_if_ai_risk: bool,
     push_url: Any,
     push_api_key: Any,
     quiet: bool,
+    fail_on_malicious: bool = False,
     **kwargs: Any,
 ) -> int:
     """Step 9: compute final exit code based on policy flags."""

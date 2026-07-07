@@ -38,7 +38,7 @@ def _no_auth_role() -> Role:
     """
     if config.DEMO_ESTATE:
         return Role.VIEWER
-    raw = config.NO_AUTH_ROLE
+    raw = str(config.NO_AUTH_ROLE).strip().lower()
     if raw == "admin":
         return Role.ADMIN
     if raw == "analyst":

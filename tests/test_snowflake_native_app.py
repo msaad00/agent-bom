@@ -115,15 +115,23 @@ def test_advisory_feed_eais_are_default_off(manifest: dict):
 
 
 def test_no_eai_egresses_to_unexpected_destinations(manifest: dict):
-    """Every EAI's egress destination list must match a known advisory feed.
+    """Every EAI's egress destination list must match a known advisory/package feed.
     A future PR adding a fifth destination would surface here so we can
-    review whether the new outbound call is actually advisory-only."""
+    review whether the new outbound call is actually metadata-only."""
     allowed = {
         "api.osv.dev",
         "osv.dev",
         "www.cisa.gov",
         "api.first.org",
         "api.github.com",
+        "services.nvd.nist.gov",
+        "api.deps.dev",
+        "deps.dev",
+        "registry.npmjs.org",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "repo1.maven.org",
+        "proxy.golang.org",
     }
     for eai in manifest.get("external_access_integrations", []):
         body = next(iter(eai.values()))

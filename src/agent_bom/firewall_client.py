@@ -122,9 +122,8 @@ class FirewallClient:
                     sanitize_text(str(exc)),
                 )
 
-        evaluation = self._fallback_decision(source_agent, target_agent, source_roles, target_roles)
-        self._store(key, evaluation)
-        return evaluation
+        # Do not cache fallback decisions — a gateway blip must not pin ALLOW for TTL.
+        return self._fallback_decision(source_agent, target_agent, source_roles, target_roles)
 
     def invalidate_cache(self) -> None:
         """Drop all cached decisions (call when the policy file mtime changes)."""

@@ -4,8 +4,8 @@ Covers the back-compat guarantees and the new help tiering introduced by the
 "CLI front door" cleanup:
 
 * ``scan`` is the visible canonical verb; ``agents`` stays as a hidden alias.
-* ``scan --help`` tiers options into Core / More; vendor-token flags only show
-  under ``scan --help-all`` (with their env var).
+* ``scan --help`` shows Core options only (~25–40 flags); advanced More and
+  vendor-token flags only show under ``scan --help-all`` (with their env var).
 * ``-f text`` remains accepted as a deprecated alias of ``plain``.
 * ``--inventory-only`` remains accepted as a hidden alias of ``--no-discover``.
 * ``api`` is hidden but reachable; ``serve --no-ui`` provides REST-only mode.
@@ -57,11 +57,21 @@ class TestFlagTiering:
         for flag in ("--jira-url", "--siem-token", "--vanta-token", "--drata-token", "--wandb-api-key"):
             assert flag not in out, f"{flag} should be hidden in default help"
 
-    def test_default_help_shows_core_and_more(self):
+    def test_default_help_shows_core_only(self):
         out = _run(["scan", "--help"]).output
         assert "Core options:" in out
-        # A representative core flag and a non-vendor "more" flag.
         assert "--fail-on-severity" in out
+        assert "additional scan flags" in out
+        assert not any(line.strip().startswith("--sbom") for line in out.splitlines())
+        assert "scan --help-all" in out
+
+    def test_default_help_core_option_count_bounded(self):
+        out = _run(["scan", "--help"]).output
+        option_lines = [line for line in out.splitlines() if line.strip().startswith("--")]
+        assert 20 <= len(option_lines) <= 40, f"expected 20–40 core flags, got {len(option_lines)}"
+
+    def test_help_all_shows_advanced_more_flags(self):
+        out = _run(["scan", "--help-all"]).output
         assert "--sbom" in out
 
     def test_help_all_reveals_vendor_tokens_with_env(self):

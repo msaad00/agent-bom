@@ -395,7 +395,7 @@ class TestCLIFlags:
         from agent_bom.cli import scan
 
         runner = CliRunner()
-        result = runner.invoke(scan, ["--help"])
+        result = runner.invoke(scan, ["--help-all"])
         assert "--model-provenance" in result.output
 
     def test_hf_model_in_help(self):
@@ -404,5 +404,5 @@ class TestCLIFlags:
         from agent_bom.cli import scan
 
         runner = CliRunner()
-        result = runner.invoke(scan, ["--help"])
+        result = runner.invoke(scan, ["--help-all"])
         assert "--hf-model" in result.output

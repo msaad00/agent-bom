@@ -7,7 +7,9 @@ three tiers without changing any option's behavior:
 
 * **Core options** — the narrow front-door set (path, ``-f/--format``,
   ``-o/--output``, ``--fail-on-*``, ``--demo``, provider connect flags, …).
+  This is the only option block rendered by default ``--help``.
 * **More options** — everything else that is not a vendor-token integration.
+  Shown only under ``--help-all``.
 * **Integrations & vendor tokens** — third-party credential/endpoint flags
   (Jira, Slack, ServiceNow, Snyk tokens, Drata, Vanta, W&B, Nebius, OpenAI, HF
   tokens, Iceberg, SIEM, …). These are shown only under ``--help-all`` and their
@@ -190,8 +192,16 @@ class TieredCommand(click.Command):
             with formatter.section("Core options"):
                 formatter.write_dl(core)
         if more:
-            with formatter.section("More options"):
-                formatter.write_dl(more)
+            if show_all:
+                with formatter.section("More options"):
+                    formatter.write_dl(more)
+            else:
+                with formatter.section("More options"):
+                    formatter.write_text(
+                        f"{len(more)} additional scan flags (SBOM, compliance, cloud deep-scan, "
+                        "output formats, analytics, …) are hidden. Run "
+                        "`agent-bom scan --help-all` to see the full catalog."
+                    )
         if show_all:
             if vendor:
                 with formatter.section("Integrations & vendor tokens"):

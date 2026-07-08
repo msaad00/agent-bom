@@ -468,15 +468,19 @@ class TestInventoryCSV:
         with pytest.raises(ValueError, match="empty"):
             _load_csv_inventory(io.StringIO(""))
 
-    def test_rows_with_empty_name_skipped(self, caplog):
+    def test_rows_with_empty_name_skipped(self, monkeypatch):
+        from agent_bom import inventory
         from agent_bom.inventory import _load_csv_inventory
+
+        warnings: list[tuple[str, tuple[object, ...]]] = []
+        monkeypatch.setattr(inventory.logger, "warning", lambda msg, *args, **_kwargs: warnings.append((msg, args)))
 
         csv_data = "name,version,ecosystem\n,1.0,pypi\nfoo,2.0,pypi\n"
         result = _load_csv_inventory(io.StringIO(csv_data))
         pkgs = result["agents"][0]["mcp_servers"][0]["packages"]
         assert len(pkgs) == 1
         assert pkgs[0]["name"] == "foo"
-        assert "Skipped 1 CSV inventory row" in caplog.text
+        assert any(message.startswith("Skipped %s CSV inventory row") and args == (1,) for message, args in warnings)
 
     def test_ecosystem_defaults_to_unknown(self):
         from agent_bom.inventory import _load_csv_inventory

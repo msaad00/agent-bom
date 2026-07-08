@@ -44,20 +44,22 @@ def _reset_enrichment(tmp_path, monkeypatch):
     monkeypatch.setattr(enrichment, "_low_disk_warned", False)
 
 
-def test_enrichment_cache_enospc_warns_and_continues(monkeypatch, caplog):
+def test_enrichment_cache_enospc_warns_and_continues(monkeypatch):
     """A full disk on the NVD/EPSS cache write degrades to no-cache, never raises."""
+    warnings: list[tuple[str, tuple[object, ...]]] = []
+    monkeypatch.setattr(enrichment._logger, "warning", lambda msg, *args, **_kwargs: warnings.append((msg, args)))
     monkeypatch.setattr(enrichment.tempfile, "mkstemp", _enospc)
-    with caplog.at_level("WARNING"):
-        enrichment._save_enrichment_cache()  # must not raise
-    assert any("Disk full" in r.message for r in caplog.records)
+    enrichment._save_enrichment_cache()  # must not raise
+    assert any("Disk full" in message for message, _args in warnings)
 
 
-def test_enrichment_cache_enospc_warning_deduped(monkeypatch, caplog):
+def test_enrichment_cache_enospc_warning_deduped(monkeypatch):
     """The low-disk warning is emitted once, not once per cache file."""
+    warnings: list[tuple[str, tuple[object, ...]]] = []
+    monkeypatch.setattr(enrichment._logger, "warning", lambda msg, *args, **_kwargs: warnings.append((msg, args)))
     monkeypatch.setattr(enrichment.tempfile, "mkstemp", _enospc)
-    with caplog.at_level("WARNING"):
-        enrichment._save_enrichment_cache()
-    low_disk = [r for r in caplog.records if "Disk full" in r.message]
+    enrichment._save_enrichment_cache()
+    low_disk = [message for message, _args in warnings if "Disk full" in message]
     assert len(low_disk) == 1  # two cache files (nvd + epss), one warning
 
 

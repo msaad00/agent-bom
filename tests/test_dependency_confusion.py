@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_bom.malicious import check_dependency_confusion
+from agent_bom.malicious import check_dependency_confusion, check_typosquat
 from agent_bom.models import Package, Severity, Vulnerability
 
 
@@ -51,6 +51,15 @@ def test_scoped_npm_safe():
     assert check_dependency_confusion(_pkg("@modelcontextprotocol/server-internal", "npm")) is None
     assert check_dependency_confusion(_pkg("@anthropic-ai/sdk-internal", "npm")) is None
     assert check_dependency_confusion(_pkg("@aws-sdk/client-internal", "npm")) is None
+    assert check_dependency_confusion(_pkg("@babel/core", "npm")) is None
+    assert check_dependency_confusion(_pkg("@eslint-community/eslint-utils", "npm")) is None
+    assert check_dependency_confusion(_pkg("@opentelemetry/api", "npm")) is None
+    assert check_dependency_confusion(_pkg("@typescript-eslint/project-service", "npm")) is None
+    assert check_dependency_confusion(_pkg("@typescript-eslint/tsconfig-utils", "npm")) is None
+
+
+def test_safe_scoped_npm_not_flagged_as_typosquat():
+    assert check_typosquat("@babel/core", "npm") is None
 
 
 def test_unknown_npm_scope_with_internal_name():
@@ -73,14 +82,32 @@ def test_common_public_suffixes_not_flagged_as_confusion_without_org_signal():
     assert check_dependency_confusion(_pkg("openai-sdk")) is None
 
 
-def test_platform_suffix_flagged():
-    pkg = _pkg("mycompany-platform")
+def test_public_cloud_and_telemetry_namespaces_not_flagged_as_confusion():
+    """Cloud SDK namespaces use service-like public package names."""
+    assert check_dependency_confusion(_pkg("azure-common")) is None
+    assert check_dependency_confusion(_pkg("azure-mgmt-apimanagement")) is None
+    assert check_dependency_confusion(_pkg("azure-mgmt-servicebus")) is None
+    assert check_dependency_confusion(_pkg("google-api-core")) is None
+    assert check_dependency_confusion(_pkg("google-api-python-client")) is None
+    assert check_dependency_confusion(_pkg("googleapis-common-protos")) is None
+    assert check_dependency_confusion(_pkg("opentelemetry-api")) is None
+    assert check_dependency_confusion(_pkg("dom-accessibility-api", "npm")) is None
+    assert check_dependency_confusion(_pkg("eslint-module-utils", "npm")) is None
+    assert check_dependency_confusion(_pkg("graphology-utils", "npm")) is None
+    assert check_dependency_confusion(_pkg("internal-slot", "npm")) is None
+    assert check_dependency_confusion(_pkg("is-shared-array-buffer", "npm")) is None
+    assert check_dependency_confusion(_pkg("jsx-ast-utils", "npm")) is None
+    assert check_dependency_confusion(_pkg("ts-api-utils", "npm")) is None
+
+
+def test_weak_internal_suffix_flagged_when_version_unresolved():
+    pkg = _pkg("mycompany-platform", version="unknown")
     result = check_dependency_confusion(pkg)
     assert result is not None
 
 
-def test_service_suffix_flagged():
-    pkg = _pkg("auth-service")
+def test_weak_service_suffix_flagged_when_version_unresolved():
+    pkg = _pkg("auth-service", version="unknown")
     result = check_dependency_confusion(pkg)
     assert result is not None
 

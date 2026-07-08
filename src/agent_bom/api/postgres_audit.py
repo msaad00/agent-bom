@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from agent_bom.api.audit_log import AuditEntry
+from agent_bom.api.audit_log import AuditEntry, _verify_audit_chain
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.baseline import TrendPoint
 
@@ -152,18 +152,41 @@ class PostgresAuditLog:
             row = conn.execute(sql, tuple(params)).fetchone()
         return row[0] if row else 0
 
+    def _list_entries_chronological(
+        self,
+        limit: int,
+        tenant_id: str | None = None,
+    ) -> list[AuditEntry]:
+        clauses: list[str] = []
+        params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("team_id = %s")
+            params.append(tenant_id)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = (
+            "SELECT entry_id, timestamp, action, actor, resource, details, prev_signature, hmac_signature "
+            f"FROM audit_log{where} ORDER BY timestamp ASC, entry_id ASC LIMIT %s"  # nosec B608
+        )
+        params.append(limit)
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        return [
+            AuditEntry(
+                entry_id=row[0],
+                timestamp=row[1],
+                action=row[2],
+                actor=row[3],
+                resource=row[4],
+                details=row[5] if isinstance(row[5], dict) else json.loads(row[5]),
+                prev_signature=row[6],
+                hmac_signature=row[7],
+            )
+            for row in rows
+        ]
+
     def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
-        entries = list(reversed(self.list_entries(limit=limit, tenant_id=tenant_id)))
-        verified = 0
-        tampered = 0
-        prev_sig = entries[0].prev_signature if entries else ""
-        for entry in entries:
-            if entry.prev_signature != prev_sig or not entry.verify():
-                tampered += 1
-            else:
-                verified += 1
-            prev_sig = entry.hmac_signature
-        return verified, tampered
+        entries = self._list_entries_chronological(limit=limit, tenant_id=tenant_id)
+        return _verify_audit_chain(entries)
 
 
 class PostgresTrendStore:

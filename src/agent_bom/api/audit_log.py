@@ -342,6 +342,20 @@ def _entry_tenant(entry: AuditEntry) -> str:
     return str((entry.details or {}).get("tenant_id") or "default")
 
 
+def _verify_audit_chain(entries: list[AuditEntry]) -> tuple[int, int]:
+    """Verify HMAC chain from genesis (``prev_signature`` must start at ``""``)."""
+    verified = 0
+    tampered = 0
+    prev_sig = ""
+    for entry in entries:
+        if entry.prev_signature != prev_sig or not entry.verify():
+            tampered += 1
+        else:
+            verified += 1
+        prev_sig = entry.hmac_signature
+    return verified, tampered
+
+
 class InMemoryAuditLog:
     """In-memory audit log for development."""
 
@@ -396,17 +410,12 @@ class InMemoryAuditLog:
 
     def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
         """Verify chain-hashed HMAC signatures. Returns (verified_count, tampered_count)."""
-        entries = list(reversed(self.list_entries(limit=limit, tenant_id=tenant_id)))
-        verified = 0
-        tampered = 0
-        prev_sig = entries[0].prev_signature if entries else ""
-        for entry in entries:
-            if entry.prev_signature != prev_sig or not entry.verify():
-                tampered += 1
-            else:
-                verified += 1
-            prev_sig = entry.hmac_signature
-        return verified, tampered
+        with self._lock:
+            filtered = self._entries
+            if tenant_id is not None:
+                filtered = [e for e in filtered if str((e.details or {}).get("tenant_id", "")) == tenant_id]
+            entries = filtered[:limit]
+        return _verify_audit_chain(entries)
 
 
 class SQLiteAuditLog:
@@ -565,21 +574,41 @@ class SQLiteAuditLog:
         row = self._conn.execute(f"SELECT COUNT(*) FROM audit_log{where}", params).fetchone()  # nosec B608
         return row[0] if row else 0
 
+    def _list_entries_chronological(
+        self,
+        limit: int,
+        tenant_id: str | None = None,
+    ) -> list[AuditEntry]:
+        clauses: list[str] = []
+        params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("json_extract(details, '$.tenant_id') = ?")
+            params.append(tenant_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = (
+            f"SELECT entry_id, timestamp, action, actor, resource, details, prev_signature, hmac_signature"  # nosec B608
+            f" FROM audit_log {where} ORDER BY timestamp ASC, rowid ASC LIMIT ?"
+        )
+        params.append(limit)
+        rows = self._conn.execute(sql, params).fetchall()
+        return [
+            AuditEntry(
+                entry_id=r[0],
+                timestamp=r[1],
+                action=r[2],
+                actor=r[3],
+                resource=r[4],
+                details=json.loads(r[5]),
+                prev_signature=r[6],
+                hmac_signature=r[7],
+            )
+            for r in rows
+        ]
+
     def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
         """Verify chain-hashed HMAC signatures. Returns (verified_count, tampered_count)."""
-        entries = self.list_entries(limit=limit, tenant_id=tenant_id)
-        # list_entries returns most-recent-first; reverse for chronological chain verification
-        entries = list(reversed(entries))
-        verified = 0
-        tampered = 0
-        prev_sig = entries[0].prev_signature if entries else ""
-        for entry in entries:
-            if entry.prev_signature != prev_sig or not entry.verify():
-                tampered += 1
-            else:
-                verified += 1
-            prev_sig = entry.hmac_signature
-        return verified, tampered
+        entries = self._list_entries_chronological(limit=limit, tenant_id=tenant_id)
+        return _verify_audit_chain(entries)
 
 
 # ── Module-level singleton ──

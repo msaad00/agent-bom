@@ -542,6 +542,12 @@ def version_in_range(
     fix = fixed or None
     last = last_affected or None
 
+    # Git-commit bounds (common in OSS-Fuzz / OSV-2022-* advisories) cannot
+    # establish semver range membership — compare_version_order returns None
+    # and falling through would mark every version as affected.
+    if any(boundary and _looks_like_commit_sha(boundary) for boundary in (intro, fix, last)):
+        return False
+
     if ecosystem.lower() == "go":
         ver_ts = _go_pseudo_timestamp(version)
         if ver_ts:

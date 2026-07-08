@@ -34,6 +34,29 @@ def test_chain_hash_detects_details_tamper():
     assert tampered > 0
 
 
+def test_chain_hash_detects_leading_truncation():
+    """Lazy deletion of oldest entries without re-signing must fail verification."""
+    log = InMemoryAuditLog()
+    log.append(AuditEntry(action="scan", actor="test", resource="pkg-a"))
+    log.append(AuditEntry(action="scan", actor="test", resource="pkg-b"))
+    log.append(AuditEntry(action="scan", actor="test", resource="pkg-c"))
+    log._entries.pop(0)
+    verified, tampered = log.verify_integrity()
+    assert verified == 1
+    assert tampered == 1
+
+
+def test_chain_hash_head_deletion_still_verifies_internal_chain():
+    """Deleting newest entries leaves a valid sub-chain (known limitation)."""
+    log = InMemoryAuditLog()
+    for i in range(3):
+        log.append(AuditEntry(action="scan", actor="test", resource=f"pkg-{i}"))
+    log._entries.pop()
+    verified, tampered = log.verify_integrity()
+    assert verified == 2
+    assert tampered == 0
+
+
 def test_sqlite_audit_hydrates_last_signature_after_restart(tmp_path):
     db = str(tmp_path / "audit.db")
     first = SQLiteAuditLog(db)

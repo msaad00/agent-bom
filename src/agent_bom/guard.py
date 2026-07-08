@@ -14,7 +14,9 @@ Shell alias (recommended):
 The guard exits with code 1 (blocking install) if any package has:
   - Critical or High CVEs (configurable via --min-severity)
   - Known-exploited vulnerabilities (CISA KEV)
-  - Malicious package indicators
+
+Malicious-package indicators are surfaced by ``agent-bom agents --fail-on-malicious``
+and policy rules; the pre-install guard does not yet block typosquats without CVEs.
 
 Use --allow-risky to install despite findings (logs a warning).
 """

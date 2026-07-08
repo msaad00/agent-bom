@@ -889,10 +889,10 @@ jobs:
             uv run pytest tests/ -q --tb=short -m "not network" -x --durations=20
           else
             uv run pytest -q --tb=short -m "not network" --durations=20 \
-              tests/test_api_auth_me.py \
+              tests/api/test_api_auth_me.py \
               tests/test_quickstart.py \
               tests/test_deploy_teardown.py \
-              tests/test_api_compliance_auth.py::test_posture_accepts_trusted_proxy_headers \
+              tests/api/test_api_compliance_auth.py::test_posture_accepts_trusted_proxy_headers \
               tests/test_context_graph.py::TestAPIContextGraph::test_api_endpoint_returns_graph \
               tests/test_context_graph.py::TestAPIContextGraph::test_api_agent_filter
           fi

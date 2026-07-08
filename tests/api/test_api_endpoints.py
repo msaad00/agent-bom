@@ -320,7 +320,7 @@ def test_ui_csp_headers_do_not_allow_eval():
     the vitest sync test. The source-of-truth and the rendered output must
     both forbid eval-style execution.
     """
-    root = Path(__file__).parent.parent
+    root = Path(__file__).resolve().parent.parent.parent
     canonical = (root / "ui" / "lib" / "security-headers.mjs").read_text(encoding="utf-8")
     vercel_config = (root / "ui" / "vercel.json").read_text(encoding="utf-8")
 

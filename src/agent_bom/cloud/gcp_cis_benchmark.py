@@ -117,13 +117,32 @@ def _discovery_client(service: str, version: str) -> Any:
 
 
 def _gcp_paginate_list(resource_api: Any, items_key: str, **list_kwargs: Any) -> list[dict]:
-    """Collect all pages from a googleapiclient ``*.list`` resource."""
+    """Collect all pages from a googleapiclient ``*.list`` resource.
+
+    Stops when ``list_next`` returns ``None`` or when the response has no
+    string page token. MagicMock stubs that omit ``list_next = None`` used to
+    hang forever because MagickMock is truthy — require an explicit string
+    token before advancing.
+    """
     items: list[dict] = []
     request = resource_api.list(**list_kwargs)
+    seen_requests: set[int] = set()
     while request is not None:
+        request_id = id(request)
+        if request_id in seen_requests:
+            break
+        seen_requests.add(request_id)
         response = request.execute()
+        if not isinstance(response, dict):
+            break
         items.extend(response.get(items_key, []) or [])
-        request = resource_api.list_next(request, response)
+        next_token = response.get("nextPageToken") or response.get("pageToken")
+        if not isinstance(next_token, str) or not next_token.strip():
+            break
+        next_request = resource_api.list_next(request, response)
+        if next_request is None or next_request is request:
+            break
+        request = next_request
     return items
 
 

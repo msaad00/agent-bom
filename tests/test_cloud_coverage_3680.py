@@ -24,6 +24,16 @@ def test_gcp_paginate_list_collects_all_pages() -> None:
     resource.list.assert_called_once_with(project="demo")
 
 
+def test_gcp_paginate_list_stops_when_magicmock_omits_list_next_none() -> None:
+    """Regression: MagickMock list_next is truthy and used to hang CI."""
+    resource = MagicMock()
+    resource.list.return_value.execute.return_value = {"items": [{"name": "solo"}]}
+
+    items = _gcp_paginate_list(resource, "items", project="demo")
+
+    assert [item["name"] for item in items] == ["solo"]
+
+
 def test_aws_cis_report_surfaces_errored_checks() -> None:
     report = CISBenchmarkReport(
         checks=[

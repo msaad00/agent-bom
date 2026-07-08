@@ -538,6 +538,8 @@ def _cve_sarif_result(
         "is_malicious": finding.is_malicious,
         "malicious_reason": (_sanitize_sarif_text("title", finding.malicious_reason) or None) if finding.malicious_reason else None,
     }
+    if finding.fixed_version:
+        result_properties["fixed_version"] = finding.fixed_version
     vex_status = evidence(finding, "vex_status")
     if vex_status:
         result_properties["vex_status"] = vex_status

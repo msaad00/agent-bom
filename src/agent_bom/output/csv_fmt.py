@@ -45,6 +45,10 @@ _COLUMNS = [
     "kev_date_added",
     "kev_due_date",
     "compliance_tags",
+    "symbol_reachability",
+    "reachable_affected_symbols",
+    "graph_reachable",
+    "graph_min_hop_distance",
 ]
 
 
@@ -85,6 +89,10 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
                 "kev_date_added": evidence(finding, "kev_date_added", ""),
                 "kev_due_date": evidence(finding, "kev_due_date", ""),
                 "compliance_tags": _compliance_tags_cell(finding),
+                "symbol_reachability": evidence(finding, "symbol_reachability", ""),
+                "reachable_affected_symbols": ";".join(evidence(finding, "reachable_affected_symbols", []) or []),
+                "graph_reachable": evidence(finding, "graph_reachable", ""),
+                "graph_min_hop_distance": evidence(finding, "graph_min_hop_distance", ""),
             }
         )
 

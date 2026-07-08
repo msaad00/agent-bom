@@ -47,7 +47,7 @@ def run_integrations(
             policy_data = load_policy(policy)
             from agent_bom.output import print_policy_results
 
-            policy_result = evaluate_policy(policy_data, blast_radii)
+            policy_result = evaluate_policy(policy_data, blast_radii, report=ctx.report)
             print_policy_results(policy_result)
             ctx.policy_passed = policy_result["passed"]
 

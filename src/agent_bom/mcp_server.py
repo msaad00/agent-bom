@@ -1114,6 +1114,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     register_specialized_ai_tools(
         mcp,
         read_only=_READ_ONLY,
+        write_action=_WRITE_ACTION,
         execute_tool_async=_execute_tool_async,
         safe_path=_safe_path,
         truncate_response=_truncate_response,

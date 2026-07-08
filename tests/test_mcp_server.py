@@ -464,7 +464,9 @@ def test_ingest_external_scan_sanitizes_errors(mock_detect):
     mock_detect.side_effect = Exception("failed to parse https://example.com/report at /Users/mohamedsaad/secret.txt " + ("x" * 400))
 
     server = create_mcp_server()
-    result = _call_tool(server, "ingest_external_scan", {"scan_json": "{}"})
+    # parse_only stays an allowed read (the write path is destructive-gated, #3681);
+    # error sanitization runs in the parse path so this still exercises the envelope.
+    result = _call_tool(server, "ingest_external_scan", {"scan_json": "{}", "parse_only": True})
 
     # Stable envelope from #1960 — error is now a dict, not a string. The
     # message field still flows through sanitize_error so paths and URLs
@@ -477,6 +479,124 @@ def test_ingest_external_scan_sanitizes_errors(mock_detect):
     assert "<url>" in message
     assert "<path>" in message
     assert len(message) <= 200
+
+
+# ---------------------------------------------------------------------------
+# Tool: ingest_external_scan — destructive-write authorization (#3681)
+#
+# When ``parse_only`` is false the tool bulk-ingests findings into the control
+# plane (and, with ``reconcile_absent``, mass-resolves open findings). That
+# write must be gated as a destructive action requiring ``findings:write``.
+# ``parse_only`` parses locally only and stays an allowed read.
+# ---------------------------------------------------------------------------
+
+
+def _fixed_request_meta(auth_scopes: str):
+    """Return a request-meta factory that reports a fixed authenticated scope set."""
+
+    def _factory():
+        return {
+            "caller": "test-caller",
+            "client_id": None,
+            "request_id": "req-test",
+            "auth_scopes": auth_scopes,
+        }
+
+    return _factory
+
+
+@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+def test_ingest_external_scan_write_denied_for_read_scope(mock_detect):
+    """A read-scope/unauthenticated caller cannot write (parse_only=False)."""
+    from agent_bom import mcp_server
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("read")):
+        result = _call_tool(
+            server,
+            "ingest_external_scan",
+            {"scan_json": "{}", "parse_only": False, "reconcile_absent": True},
+        )
+
+    assert result.get("status") == "blocked", result
+    assert result.get("required_role") == "admin", result
+    assert "write action" in result.get("error", "").lower(), result
+    # Dispatch fails closed before the handler runs — no parsing, no client call.
+    mock_detect.assert_not_called()
+
+
+@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+def test_ingest_external_scan_write_denied_without_findings_write_scope(mock_detect):
+    """Admin baseline without findings:write is still blocked (defense in depth)."""
+    from agent_bom import mcp_server
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("admin")):
+        result = _call_tool(
+            server,
+            "ingest_external_scan",
+            {"scan_json": "{}", "parse_only": False},
+        )
+
+    assert result.get("status") == "blocked", result
+    assert result.get("required_scope") == "findings:write", result
+    mock_detect.assert_not_called()
+
+
+@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+def test_ingest_external_scan_write_allowed_with_findings_write_scope(mock_detect):
+    """A caller with findings:write is allowed through to the handler."""
+    from agent_bom import mcp_server
+    from agent_bom.mcp_server import create_mcp_server
+
+    mock_detect.return_value = []  # no packages -> no network, deterministic
+    server = create_mcp_server()
+    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("admin,findings:write")):
+        result = _call_tool(
+            server,
+            "ingest_external_scan",
+            {"scan_json": "[]", "parse_only": False},
+        )
+
+    assert result.get("status") != "blocked", result
+    assert result.get("packages") == 0, result
+    mock_detect.assert_called_once()
+
+
+@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+def test_ingest_external_scan_parse_only_allowed_without_scope(mock_detect):
+    """parse_only stays a read: no control-plane mutation, no scope required."""
+    from agent_bom import mcp_server
+    from agent_bom.mcp_server import create_mcp_server
+
+    mock_detect.return_value = []
+    server = create_mcp_server()
+    with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("")):
+        result = _call_tool(
+            server,
+            "ingest_external_scan",
+            {"scan_json": "[]", "parse_only": True},
+        )
+
+    assert result.get("status") != "blocked", result
+    assert result.get("packages") == 0, result
+    assert "control_plane" not in result, result
+    mock_detect.assert_called_once()
+
+
+def test_ingest_external_scan_annotation_is_write():
+    """The tool must advertise a mutating annotation, not readOnlyHint=true."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    tools = {t.name: t for t in _run(server.list_tools())}
+    tool = tools["ingest_external_scan"]
+    ann = tool.annotations
+    assert ann is not None
+    assert ann.readOnlyHint is False, ann
+    assert ann.destructiveHint is True, ann
 
 
 # ---------------------------------------------------------------------------

@@ -230,9 +230,7 @@ def _enospc_report_fallback(
         )
         if serialized is not None:
             con.print(f"\n  [yellow]⚠[/yellow] Could not write report to {target} ({reason}) — emitting results to stdout instead.")
-            sys.stdout.write(serialized)
-            if not serialized.endswith("\n"):
-                sys.stdout.write("\n")
+            click.echo(serialized, nl=not serialized.endswith("\n"))
         else:
             con.print(
                 f"\n  [yellow]⚠[/yellow] Could not write report to {target} ({reason}) — "
@@ -358,7 +356,7 @@ def render_output(
                     full=agent_mode_full,
                     output_path=output if isinstance(output, str) else None,
                 )
-                sys.stdout.write(dumps_envelope(payload))
+                click.echo(dumps_envelope(payload), nl=False)
             else:
                 safe_json = json.dumps(to_redacted_json(report), indent=2)
                 click.echo(safe_json, nl=False)

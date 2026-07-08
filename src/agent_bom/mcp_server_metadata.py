@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 _SERVER_CARD_TOOLS = [
@@ -416,6 +418,36 @@ _TOOL_CAPABILITY_CLASSES = {
 
 for _tool in _SERVER_CARD_TOOLS:
     _tool["capability_classes"] = _TOOL_CAPABILITY_CLASSES.get(str(_tool["name"]), ["READ"])
+
+
+def server_card_tool_names() -> frozenset[str]:
+    """Return the MCP server-card tool names advertised to clients."""
+    return frozenset(str(tool["name"]) for tool in _SERVER_CARD_TOOLS)
+
+
+def _is_mcp_tool_decorator(node: ast.expr) -> bool:
+    target = node.func if isinstance(node, ast.Call) else node
+    return (
+        isinstance(target, ast.Attribute)
+        and target.attr == "tool"
+        and isinstance(target.value, ast.Name)
+        and target.value.id == "mcp"
+    )
+
+
+def registered_mcp_tool_decorator_names() -> frozenset[str]:
+    """Return MCP tool function names across server registration modules."""
+    package_root = Path(__file__).resolve().parent
+    names: set[str] = set()
+    for path in sorted(package_root.glob("mcp_server*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if any(_is_mcp_tool_decorator(decorator) for decorator in node.decorator_list):
+                names.add(node.name)
+    return frozenset(names)
+
 
 _SERVER_CARD_PROMPTS = [
     {"name": "quick-audit", "description": "Run a complete security audit of your AI agent setup"},

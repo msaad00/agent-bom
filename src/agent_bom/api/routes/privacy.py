@@ -22,12 +22,12 @@ from agent_bom.api.stores import (
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.platform_invariants import normalize_tenant_id
 from agent_bom.rbac import require_authenticated_permission
-from agent_bom.security import sanitize_error
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
 
 _MAX_EXPORT_RECORDS = 500
+_TENANT_STORE_UNAVAILABLE = "An internal error occurred. Please contact support."
 
 
 def _dep(permission: str) -> Any:
@@ -83,8 +83,8 @@ def _redact_source(record: Any) -> dict[str, Any]:
 def _try_records(name: str, func: Callable[[], list[Any]], unavailable: dict[str, str]) -> list[Any]:
     try:
         return func()
-    except RuntimeError as exc:
-        unavailable[name] = sanitize_error(exc, generic=True)
+    except RuntimeError:
+        unavailable[name] = _TENANT_STORE_UNAVAILABLE
         return []
 
 
@@ -112,8 +112,8 @@ def _tenant_dataset(tenant_id: str, *, include_records: bool = False, record_lim
     quota = None
     try:
         quota = _get_tenant_quota_store().get(tenant_id)
-    except RuntimeError as exc:
-        unavailable["tenant_quota"] = sanitize_error(exc, generic=True)
+    except RuntimeError:
+        unavailable["tenant_quota"] = _TENANT_STORE_UNAVAILABLE
 
     counts = {
         "jobs": len(jobs),

@@ -327,7 +327,7 @@ function evidenceLinks(scanId: string) {
   return [
     { label: "Scan result", href: `/scan?id=${encoded}`, icon: FileSearch },
     { label: "Jobs", href: `/jobs?q=${encoded}`, icon: ClipboardList },
-    { label: "Findings", href: `/vulns?scan=${encoded}`, icon: ListChecks },
+    { label: "Findings", href: `/findings?scan=${encoded}`, icon: ListChecks },
     { label: "Graph", href: `/graph?scan_id=${encoded}`, icon: GitGraph },
     { label: "Compliance", href: `/compliance?q=${encoded}`, icon: ShieldCheck },
   ];

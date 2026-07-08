@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import ProxyDashboard from "@/app/proxy/page";
+import ProxyDashboard from "@/app/proxy/ProxyDashboard";
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {

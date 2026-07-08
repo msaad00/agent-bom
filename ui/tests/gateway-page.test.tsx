@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import GatewayPage from "@/app/gateway/page";
+import GatewayPage from "@/app/gateway/GatewayDashboard";
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {

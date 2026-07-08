@@ -1,21 +1,35 @@
 # First Run Guide
 
-This guide gives new users a deterministic path from install to a real
-inventory and graph without asking them to scan a private repository first.
+This guide is the canonical quickstart for `agent-bom`. It gives new users a
+deterministic path from install to a real inventory and graph.
 
 **Hosting the control plane?** See [`DEPLOY_QUICKSTART.md`](DEPLOY_QUICKSTART.md) —
 `scripts/deploy/install.sh pilot` for local Docker, or EKS/AKS/GKE/Snowflake
 paths with read-only cloud connect.
 
+## 0. One command to see value
+
+```bash
+pip install agent-bom
+agent-bom scan -p .
+```
+
+`agent-bom scan -p .` prints a rich console panel — posture grade, blast radius,
+and fix-first findings inline — with nothing to open. This is the recommended
+first command. When you need a file, add `-f html -o agent-bom-report.html` (or
+`-f json`, `-f sarif`); run `agent-bom db update` first for offline package/image
+scans.
+
 ## 1. Run the Release-Pinned Demo
 
 ```bash
-agent-bom agents --demo --offline
+agent-bom scan --demo --offline
 ```
 
-Use this when you need reproducible output. The package versions and
-advisory-backed ranges are curated in code and guarded by tests, so screenshots
-and docs do not depend on fabricated CVEs or a machine-specific local DB.
+Use this when you need reproducible output — for example a screenshot or a bug
+report. The package versions and advisory-backed ranges are curated in code and
+guarded by tests, so it does not depend on fabricated CVEs or a machine-specific
+local DB. Everyday scans should use `agent-bom scan -p .` (section 0) instead.
 
 ### Annotated demo output
 
@@ -76,7 +90,7 @@ Those names are environment variable identifiers, not secret values.
 The most useful next command is usually a structured export:
 
 ```bash
-agent-bom agents --demo --offline -f json -o /tmp/agent-bom-demo.json
+agent-bom scan --demo --offline -f json -o /tmp/agent-bom-demo.json
 ```
 
 Use that JSON to push the same evidence into a control plane, inspect the graph,
@@ -89,13 +103,13 @@ From any directory after installing `agent-bom`:
 ```bash
 agent-bom samples first-run
 cd agent-bom-first-run
-agent-bom agents --inventory inventory.json -p . --enrich
+agent-bom scan --inventory inventory.json -p . --enrich
 ```
 
 From a repository checkout, you can also scan the checked-in fixture directly:
 
 ```bash
-agent-bom agents \
+agent-bom scan \
   --inventory examples/first-run-ai-stack/inventory.json \
   --project examples/first-run-ai-stack \
   --enrich
@@ -142,7 +156,7 @@ For the sample project, export JSON and push it through your normal API import
 flow:
 
 ```bash
-agent-bom agents \
+agent-bom scan \
   --inventory agent-bom-first-run/inventory.json \
   --project agent-bom-first-run \
   -f json \
@@ -154,7 +168,7 @@ agent-bom agents \
 After the sample makes sense, scan your own project:
 
 ```bash
-agent-bom agents -p .
+agent-bom scan -p .
 ```
 
 Add `--inventory <file>` when you already have agent/server inventory from a

@@ -220,7 +220,7 @@ export interface CompoundIssue {
   count: number;
   severity: "critical" | "high";
   findings: BlastRadius[];
-  filter: string; // URL param for /vulns deep-link
+  filter: string; // URL param for /findings deep-link
 }
 
 export function blastTools(blast: BlastRadius): string[] {

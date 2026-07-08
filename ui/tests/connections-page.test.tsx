@@ -272,7 +272,7 @@ describe("ConnectionsPage", () => {
     );
     expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute(
       "href",
-      "/vulns?scan=abcdef12-3456-7890-abcd-ef1234567890",
+      "/findings?scan=abcdef12-3456-7890-abcd-ef1234567890",
     );
     expect(screen.getByRole("link", { name: "Graph" })).toHaveAttribute(
       "href",
@@ -355,7 +355,7 @@ describe("ConnectionsPage", () => {
     );
     expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute(
       "href",
-      "/vulns?scan=persisted-scan-123",
+      "/findings?scan=persisted-scan-123",
     );
     expect(screen.getByRole("link", { name: "Graph" })).toHaveAttribute(
       "href",

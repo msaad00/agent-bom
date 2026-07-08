@@ -91,7 +91,7 @@ agent-bom mcp validate inventory.json
 Scan locally:
 
 ```bash
-agent-bom agents --inventory inventory.json --format json --output agent-bom-findings.json
+agent-bom scan --inventory inventory.json --format json --output agent-bom-findings.json
 ```
 
 Choose output by consumer:

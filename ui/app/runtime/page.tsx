@@ -4,8 +4,8 @@ import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Lock, Shield } from "lucide-react";
 
-import ProxyDashboard from "@/app/proxy/page";
-import GatewayPage from "@/app/gateway/page";
+import ProxyDashboard from "@/app/proxy/ProxyDashboard";
+import GatewayPage from "@/app/gateway/GatewayDashboard";
 import { RuntimeEmbedProvider } from "@/components/runtime-embed-context";
 
 type RuntimeTab = "proxy" | "gateway";

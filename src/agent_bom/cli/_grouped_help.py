@@ -13,7 +13,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
     [
         (
             "Get started",
-            ["connect", "agents", "graph", "report", "up", "quickstart", "capabilities", "doctor", "samples"],
+            ["connect", "scan", "graph", "report", "up", "quickstart", "capabilities", "doctor", "samples"],
         ),
         (
             "Scanning",
@@ -40,7 +40,6 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
                 "cost",
                 "identity",
                 "serve",
-                "api",
                 "schedule",
                 "remediate",
                 "teardown",

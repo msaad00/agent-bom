@@ -54,6 +54,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_GCP_EVENT_MAX_BATCHES` | `int` | `10` | — |
 | `AGENT_BOM_GCP_EVENT_MAX_MESSAGES` | `int` | `10` | Event-driven GCP posture ingestion. When an operator wires Cloud Asset Inventory feed / audit logs → a Pub/Sub subscription (opt-in via AGENT_BOM_GCP_EVENT_SUBSCRIPTION, read live, default off), the bounded Pub/Sub consumer drains change ev |
 | `AGENT_BOM_NO_AUTH_ROLE` | `str` | `'viewer'` | Role granted when unauthenticated API access is explicitly enabled. Default preserves local/dev compatibility; demo-estate mode clamps this to viewer. |
+| `AGENT_BOM_NO_UI` | `bool` | `False` | Hide the bundled browser UI when serving an API-only/local control-plane process. Some CLI paths set this immediately before loading the API server, so the server still reads the live environment value at request time. |
 
 ## Agent-to-Agent (A2A) auth posture
 | Env var | Type | Default | Description |

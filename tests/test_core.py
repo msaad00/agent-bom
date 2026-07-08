@@ -2358,12 +2358,19 @@ def test_api_jobs_list():
     assert "jobs" in resp.json()
 
 
-def test_cli_main_help_has_api_in_listing():
-    """Main --help lists the api subcommand."""
+def test_cli_main_help_hides_api_but_keeps_it_reachable():
+    """`api` is folded into `serve --no-ui`: hidden from the top-level listing
+    but still reachable as a back-compat alias."""
     runner = CliRunner()
     result = runner.invoke(main, ["--help"])
     assert result.exit_code == 0
-    assert "api" in result.output
+    # api no longer appears as its own listed verb under any section.
+    assert "\n  api " not in result.output
+    # ...but the command still resolves and runs.
+    assert main.get_command(None, "api") is not None
+    assert runner.invoke(main, ["api", "--help"]).exit_code == 0
+    # REST-only mode is now reachable via the canonical serve verb.
+    assert "--no-ui" in runner.invoke(main, ["serve", "--help"]).output
 
 
 # ─── v0.7.0 tests: Grype, OWASP, trust signals, registry ─────────────────────

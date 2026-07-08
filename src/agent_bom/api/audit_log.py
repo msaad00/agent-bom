@@ -356,6 +356,27 @@ def _verify_audit_chain(entries: list[AuditEntry]) -> tuple[int, int]:
     return verified, tampered
 
 
+@dataclass(frozen=True)
+class _AuditChainCheckpoint:
+    entry_count: int
+    head_signature: str
+
+
+def _verify_audit_chain_with_checkpoint(
+    entries: list[AuditEntry],
+    checkpoint: _AuditChainCheckpoint | None,
+) -> tuple[int, int]:
+    """Verify chain integrity and detect tail truncation via signed checkpoint."""
+    verified, tampered = _verify_audit_chain(entries)
+    if checkpoint is None or not entries:
+        return verified, tampered
+    if len(entries) != checkpoint.entry_count:
+        return verified, tampered + 1
+    if entries[-1].hmac_signature != checkpoint.head_signature:
+        return verified, tampered + 1
+    return verified, tampered
+
+
 class InMemoryAuditLog:
     """In-memory audit log for development."""
 
@@ -365,6 +386,14 @@ class InMemoryAuditLog:
         self._entries: list[AuditEntry] = []
         self._lock = threading.Lock()
         self._last_sig_by_tenant: dict[str, str] = defaultdict(str)
+        self._checkpoint_by_tenant: dict[str, _AuditChainCheckpoint] = {}
+
+    def _update_checkpoint(self, tenant_id: str, head_signature: str) -> None:
+        current = self._checkpoint_by_tenant.get(tenant_id)
+        self._checkpoint_by_tenant[tenant_id] = _AuditChainCheckpoint(
+            entry_count=(current.entry_count + 1) if current else 1,
+            head_signature=head_signature,
+        )
 
     def append(self, entry: AuditEntry) -> None:
         tenant_id = _entry_tenant(entry)
@@ -373,6 +402,7 @@ class InMemoryAuditLog:
         self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
         with self._lock:
             self._entries.append(entry)
+            self._update_checkpoint(tenant_id, entry.hmac_signature)
             if len(self._entries) > self._MAX_ENTRIES:
                 self._entries = self._entries[self._MAX_ENTRIES // 2 :]
 
@@ -414,8 +444,9 @@ class InMemoryAuditLog:
             filtered = self._entries
             if tenant_id is not None:
                 filtered = [e for e in filtered if str((e.details or {}).get("tenant_id", "")) == tenant_id]
-            entries = filtered[:limit]
-        return _verify_audit_chain(entries)
+            entries = filtered
+            checkpoint = self._checkpoint_by_tenant.get(tenant_id or "default")
+        return _verify_audit_chain_with_checkpoint(entries, checkpoint)
 
 
 class SQLiteAuditLog:
@@ -454,7 +485,61 @@ class SQLiteAuditLog:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(timestamp)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log(resource)")
+        self._conn.execute("""CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (
+            tenant_id TEXT PRIMARY KEY,
+            entry_count INTEGER NOT NULL,
+            head_signature TEXT NOT NULL
+        )""")
         self._conn.commit()
+        self._hydrate_checkpoints()
+
+    def _hydrate_checkpoints(self) -> None:
+        existing = self._conn.execute("SELECT COUNT(*) FROM audit_chain_checkpoint").fetchone()
+        if existing and int(existing[0]) > 0:
+            return
+        tenants = self._conn.execute(
+            """
+            SELECT DISTINCT COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default')
+            FROM audit_log
+            """
+        ).fetchall()
+        for (tenant_id,) in tenants:
+            count_row = self._conn.execute(
+                """
+                SELECT COUNT(*) FROM audit_log
+                WHERE COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default') = ?
+                """,
+                (str(tenant_id),),
+            ).fetchone()
+            head = self._latest_signature_for_tenant(str(tenant_id))
+            if not count_row or not head:
+                continue
+            self._conn.execute(
+                "INSERT OR REPLACE INTO audit_chain_checkpoint (tenant_id, entry_count, head_signature) VALUES (?, ?, ?)",
+                (str(tenant_id), int(count_row[0]), head),
+            )
+        self._conn.commit()
+
+    def _get_checkpoint(self, tenant_id: str) -> _AuditChainCheckpoint | None:
+        row = self._conn.execute(
+            "SELECT entry_count, head_signature FROM audit_chain_checkpoint WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return _AuditChainCheckpoint(entry_count=int(row[0]), head_signature=str(row[1]))
+
+    def _upsert_checkpoint(self, tenant_id: str, head_signature: str) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO audit_chain_checkpoint (tenant_id, entry_count, head_signature)
+            VALUES (?, 1, ?)
+            ON CONFLICT(tenant_id) DO UPDATE SET
+                entry_count = entry_count + 1,
+                head_signature = excluded.head_signature
+            """,
+            (tenant_id, head_signature),
+        )
 
     def _latest_signature_for_tenant(self, tenant_id: str) -> str:
         row = self._conn.execute(
@@ -513,6 +598,7 @@ class SQLiteAuditLog:
                 entry.hmac_signature,
             ),
         )
+        self._upsert_checkpoint(tenant_id, entry.hmac_signature)
         self._conn.commit()
 
     def list_entries(
@@ -607,8 +693,12 @@ class SQLiteAuditLog:
 
     def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
         """Verify chain-hashed HMAC signatures. Returns (verified_count, tampered_count)."""
-        entries = self._list_entries_chronological(limit=limit, tenant_id=tenant_id)
-        return _verify_audit_chain(entries)
+        tenant_key = tenant_id or "default"
+        total = self.count(tenant_id=tenant_id)
+        fetch_limit = total if total else limit
+        entries = self._list_entries_chronological(limit=fetch_limit, tenant_id=tenant_id)
+        checkpoint = self._get_checkpoint(tenant_key)
+        return _verify_audit_chain_with_checkpoint(entries, checkpoint)
 
 
 # ── Module-level singleton ──

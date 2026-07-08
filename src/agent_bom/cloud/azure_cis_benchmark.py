@@ -50,7 +50,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from .aws_cis_benchmark import CheckStatus, CISCheckResult
+from .aws_cis_benchmark import CheckStatus, CISCheckResult, finalize_read_coverage
+from .aws_inventory import is_access_denied_error
 from .base import CloudDiscoveryError
 
 logger = logging.getLogger(__name__)
@@ -1048,6 +1049,8 @@ def _check_3_10(storage_client: Any) -> CISCheckResult:
     try:
         accounts = list(storage_client.storage_accounts.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for acct in accounts:
             acct_name = acct.name or "unknown"
             # Extract resource group from account ID
@@ -1062,11 +1065,14 @@ def _check_3_10(storage_client: Any) -> CISCheckResult:
 
             try:
                 blob_props = storage_client.blob_services.get_service_properties(resource_group, acct_name)
+                inspected += 1
                 retention = getattr(blob_props, "delete_retention_policy", None)
                 enabled = getattr(retention, "enabled", False) if retention else False
                 if not enabled:
                     failing.append(acct_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(acct_name)
                 logger.debug("Could not check soft delete for %s: %s", acct_name, exc)
 
         if failing:
@@ -1074,8 +1080,14 @@ def _check_3_10(storage_client: Any) -> CISCheckResult:
             result.evidence = f"Storage accounts without blob soft delete: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(accounts)} storage account(s) have blob soft delete enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.Storage/storageAccounts/blobServices/read",
+                resource_kind="storage account",
+                pass_evidence=f"All {len(accounts)} storage account(s) have blob soft delete enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check storage account soft delete settings: {exc}"
@@ -1336,6 +1348,8 @@ def _check_4_1_1(sql_client: Any) -> CISCheckResult:
     try:
         servers = list(sql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -1349,10 +1363,13 @@ def _check_4_1_1(sql_client: Any) -> CISCheckResult:
 
             try:
                 audit_settings = sql_client.server_blob_auditing_policies.get(resource_group, server_name)
+                inspected += 1
                 state = getattr(audit_settings, "state", None)
                 if str(state or "").lower() != "enabled":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check auditing for SQL server %s: %s", server_name, exc)
 
         if failing:
@@ -1360,8 +1377,14 @@ def _check_4_1_1(sql_client: Any) -> CISCheckResult:
             result.evidence = f"SQL servers without auditing enabled: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} SQL server(s) have auditing enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.Sql/servers/auditingSettings/read",
+                resource_kind="SQL server",
+                pass_evidence=f"All {len(servers)} SQL server(s) have auditing enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check SQL server auditing settings: {exc}"
@@ -1417,6 +1440,8 @@ def _check_4_1_2(sql_client: Any) -> CISCheckResult:
     try:
         servers = list(sql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -1428,19 +1453,28 @@ def _check_4_1_2(sql_client: Any) -> CISCheckResult:
                 continue
             try:
                 enc_protectors = sql_client.encryption_protectors.get(resource_group, server_name)
+                inspected += 1
                 _ = getattr(enc_protectors, "kind", "") or ""  # noqa: F841
                 server_key_type = getattr(enc_protectors, "server_key_type", "") or ""
                 if not server_key_type:
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check TDE for SQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"SQL servers without TDE configured: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} SQL server(s) have Transparent Data Encryption configured."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.Sql/servers/encryptionProtector/read",
+                resource_kind="SQL server",
+                pass_evidence=f"All {len(servers)} SQL server(s) have Transparent Data Encryption configured.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check SQL server TDE settings: {exc}"
@@ -1460,6 +1494,8 @@ def _check_4_1_3(sql_client: Any) -> CISCheckResult:
     try:
         servers = list(sql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -1471,17 +1507,26 @@ def _check_4_1_3(sql_client: Any) -> CISCheckResult:
                 continue
             try:
                 admins = list(sql_client.server_azure_ad_administrators.list_by_server(resource_group, server_name))
+                inspected += 1
                 if not admins:
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check AD admin for SQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"SQL servers without Azure AD admin: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} SQL server(s) have Azure AD admin configured."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.Sql/servers/administrators/read",
+                resource_kind="SQL server",
+                pass_evidence=f"All {len(servers)} SQL server(s) have Azure AD admin configured.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check SQL server AD admin settings: {exc}"
@@ -1501,6 +1546,8 @@ def _check_4_1_4(sql_client: Any) -> CISCheckResult:
     try:
         servers = list(sql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -1512,18 +1559,27 @@ def _check_4_1_4(sql_client: Any) -> CISCheckResult:
                 continue
             try:
                 atp = sql_client.server_advanced_threat_protection_settings.get(resource_group, server_name)
+                inspected += 1
                 state = getattr(atp, "state", "") or ""
                 if str(state).lower() != "enabled":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check ATP for SQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"SQL servers without Advanced Threat Protection: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} SQL server(s) have Advanced Threat Protection enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.Sql/servers/advancedThreatProtectionSettings/read",
+                resource_kind="SQL server",
+                pass_evidence=f"All {len(servers)} SQL server(s) have Advanced Threat Protection enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check SQL server ATP settings: {exc}"
@@ -1647,6 +1703,8 @@ def _check_4_2_3(mysql_client: Any) -> CISCheckResult:
     try:
         servers = list(mysql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -1658,18 +1716,27 @@ def _check_4_2_3(mysql_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = mysql_client.configurations.get(resource_group, server_name, "log_checkpoints")
+                inspected += 1
                 value = getattr(config, "value", "") or ""
                 if value.lower() != "on":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check log_checkpoints for MySQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"MySQL servers with log_checkpoints disabled: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} MySQL server(s) have log_checkpoints enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.DBforMySQL/servers/configurations/read",
+                resource_kind="MySQL server",
+                pass_evidence=f"All {len(servers)} MySQL server(s) have log_checkpoints enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check MySQL log_checkpoints setting: {exc}"
@@ -1720,6 +1787,8 @@ def _check_4_3_2(postgresql_client: Any) -> CISCheckResult:
     try:
         servers = list(postgresql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -1731,18 +1800,27 @@ def _check_4_3_2(postgresql_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = postgresql_client.configurations.get(resource_group, server_name, "log_checkpoints")
+                inspected += 1
                 value = getattr(config, "value", "") or ""
                 if value.lower() != "on":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check log_checkpoints for PostgreSQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_checkpoints disabled: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} PostgreSQL server(s) have log_checkpoints enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.DBforPostgreSQL/servers/configurations/read",
+                resource_kind="PostgreSQL server",
+                pass_evidence=f"All {len(servers)} PostgreSQL server(s) have log_checkpoints enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check PostgreSQL log_checkpoints setting: {exc}"
@@ -1762,6 +1840,8 @@ def _check_4_3_3(postgresql_client: Any) -> CISCheckResult:
     try:
         servers = list(postgresql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -1773,18 +1853,27 @@ def _check_4_3_3(postgresql_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = postgresql_client.configurations.get(resource_group, server_name, "log_connections")
+                inspected += 1
                 value = getattr(config, "value", "") or ""
                 if value.lower() != "on":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check log_connections for PostgreSQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_connections disabled: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} PostgreSQL server(s) have log_connections enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.DBforPostgreSQL/servers/configurations/read",
+                resource_kind="PostgreSQL server",
+                pass_evidence=f"All {len(servers)} PostgreSQL server(s) have log_connections enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check PostgreSQL log_connections setting: {exc}"
@@ -1804,6 +1893,8 @@ def _check_4_3_4(postgresql_client: Any) -> CISCheckResult:
     try:
         servers = list(postgresql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -1815,18 +1906,27 @@ def _check_4_3_4(postgresql_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = postgresql_client.configurations.get(resource_group, server_name, "log_disconnections")
+                inspected += 1
                 value = getattr(config, "value", "") or ""
                 if value.lower() != "on":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check log_disconnections for PostgreSQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_disconnections disabled: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} PostgreSQL server(s) have log_disconnections enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.DBforPostgreSQL/servers/configurations/read",
+                resource_kind="PostgreSQL server",
+                pass_evidence=f"All {len(servers)} PostgreSQL server(s) have log_disconnections enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check PostgreSQL log_disconnections setting: {exc}"
@@ -1846,6 +1946,8 @@ def _check_4_3_5(postgresql_client: Any) -> CISCheckResult:
     try:
         servers = list(postgresql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -1857,18 +1959,27 @@ def _check_4_3_5(postgresql_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = postgresql_client.configurations.get(resource_group, server_name, "connection_throttling")
+                inspected += 1
                 value = getattr(config, "value", "") or ""
                 if value.lower() != "on":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check connection_throttling for PostgreSQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with connection_throttling disabled: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} PostgreSQL server(s) have connection_throttling enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.DBforPostgreSQL/servers/configurations/read",
+                resource_kind="PostgreSQL server",
+                pass_evidence=f"All {len(servers)} PostgreSQL server(s) have connection_throttling enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check PostgreSQL connection_throttling setting: {exc}"
@@ -2043,6 +2154,8 @@ def _check_5_2_1(postgresql_client: Any) -> CISCheckResult:
     try:
         servers = list(postgresql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -2054,18 +2167,27 @@ def _check_5_2_1(postgresql_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = postgresql_client.configurations.get(resource_group, server_name, "log_connections")
+                inspected += 1
                 value = getattr(config, "value", "") or ""
                 if value.lower() != "on":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check log_connections for PostgreSQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_connections off: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} PostgreSQL server(s) have log_connections enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.DBforPostgreSQL/servers/configurations/read",
+                resource_kind="PostgreSQL server",
+                pass_evidence=f"All {len(servers)} PostgreSQL server(s) have log_connections enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check PostgreSQL log_connections setting: {exc}"
@@ -2085,6 +2207,8 @@ def _check_5_2_2(postgresql_client: Any) -> CISCheckResult:
     try:
         servers = list(postgresql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -2096,18 +2220,27 @@ def _check_5_2_2(postgresql_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = postgresql_client.configurations.get(resource_group, server_name, "log_disconnections")
+                inspected += 1
                 value = getattr(config, "value", "") or ""
                 if value.lower() != "on":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check log_disconnections for PostgreSQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with log_disconnections off: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} PostgreSQL server(s) have log_disconnections enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.DBforPostgreSQL/servers/configurations/read",
+                resource_kind="PostgreSQL server",
+                pass_evidence=f"All {len(servers)} PostgreSQL server(s) have log_disconnections enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check PostgreSQL log_disconnections setting: {exc}"
@@ -2127,6 +2260,8 @@ def _check_5_2_3(postgresql_client: Any) -> CISCheckResult:
     try:
         servers = list(postgresql_client.servers.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for server in servers:
             server_name = server.name or "unknown"
             server_id = getattr(server, "id", "") or ""
@@ -2138,18 +2273,27 @@ def _check_5_2_3(postgresql_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = postgresql_client.configurations.get(resource_group, server_name, "connection_throttling")
+                inspected += 1
                 value = getattr(config, "value", "") or ""
                 if value.lower() != "on":
                     failing.append(server_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(server_name)
                 logger.debug("Could not check connection_throttling for PostgreSQL server %s: %s", server_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers with connection_throttling off: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} PostgreSQL server(s) have connection_throttling enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.DBforPostgreSQL/servers/configurations/read",
+                resource_kind="PostgreSQL server",
+                pass_evidence=f"All {len(servers)} PostgreSQL server(s) have connection_throttling enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check PostgreSQL connection_throttling setting: {exc}"
@@ -2710,6 +2854,8 @@ def _check_8_3(kv_client: Any, subscription_id: str) -> CISCheckResult:
     try:
         vaults = list(kv_client.vaults.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for vault in vaults:
             vault_name = vault.name or "unknown"
             vault_id = getattr(vault, "id", "") or ""
@@ -2721,6 +2867,7 @@ def _check_8_3(kv_client: Any, subscription_id: str) -> CISCheckResult:
                 continue
             try:
                 full_vault = kv_client.vaults.get(resource_group, vault_name)
+                inspected += 1
                 props = getattr(full_vault, "properties", None)
                 soft_delete = getattr(props, "enable_soft_delete", False) if props else False
                 purge_protection = getattr(props, "enable_purge_protection", False) if props else False
@@ -2732,14 +2879,22 @@ def _check_8_3(kv_client: Any, subscription_id: str) -> CISCheckResult:
                         missing.append("purge-protection")
                     failing.append(f"{vault_name} (missing: {', '.join(missing)})")
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(vault_name)
                 logger.debug("Could not check recoverability for vault %s: %s", vault_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Key Vaults without full recoverability: {', '.join(failing[:10])}"
             result.resource_ids = [f.split(" ")[0] for f in failing]
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = "All Key Vault(s) have soft-delete and purge protection enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.KeyVault/vaults/read",
+                resource_kind="Key Vault",
+                pass_evidence="All Key Vault(s) have soft-delete and purge protection enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check Key Vault recoverability: {exc}"
@@ -2951,6 +3106,8 @@ def _check_8_7(kv_client: Any, subscription_id: str) -> CISCheckResult:
     try:
         vaults = list(kv_client.vaults.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for vault in vaults:
             vault_name = vault.name or "unknown"
             vault_id = getattr(vault, "id", "") or ""
@@ -2962,19 +3119,28 @@ def _check_8_7(kv_client: Any, subscription_id: str) -> CISCheckResult:
                 continue
             try:
                 full_vault = kv_client.vaults.get(resource_group, vault_name)
+                inspected += 1
                 props = getattr(full_vault, "properties", None)
                 pe_conns = getattr(props, "private_endpoint_connections", None) if props else None
                 if not pe_conns:
                     failing.append(vault_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(vault_name)
                 logger.debug("Could not check private endpoints for vault %s: %s", vault_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Key Vaults without private endpoints: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = "All Key Vault(s) have private endpoints configured."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.KeyVault/vaults/read",
+                resource_kind="Key Vault",
+                pass_evidence="All Key Vault(s) have private endpoints configured.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check Key Vault private endpoints: {exc}"
@@ -2999,6 +3165,8 @@ def _check_9_1(webapp_client: Any) -> CISCheckResult:
     try:
         apps = list(webapp_client.web_apps.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for app in apps:
             app_name = app.name or "unknown"
             app_id = getattr(app, "id", "") or ""
@@ -3010,18 +3178,27 @@ def _check_9_1(webapp_client: Any) -> CISCheckResult:
                 continue
             try:
                 auth_settings = webapp_client.web_apps.get_auth_settings(resource_group, app_name)
+                inspected += 1
                 enabled = getattr(auth_settings, "enabled", False)
                 if not enabled:
                     failing.append(app_name)
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(app_name)
                 logger.debug("Could not check auth settings for app %s: %s", app_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Web apps without authentication enabled: {', '.join(failing[:10])}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(apps)} web app(s) have App Service Authentication enabled."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.Web/sites/config/list (authsettings)",
+                resource_kind="web app",
+                pass_evidence=f"All {len(apps)} web app(s) have App Service Authentication enabled.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check App Service authentication settings: {exc}"
@@ -3072,6 +3249,8 @@ def _check_9_3(webapp_client: Any) -> CISCheckResult:
     try:
         apps = list(webapp_client.web_apps.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for app in apps:
             app_name = app.name or "unknown"
             app_id = getattr(app, "id", "") or ""
@@ -3083,18 +3262,31 @@ def _check_9_3(webapp_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = webapp_client.web_apps.get_configuration(resource_group, app_name)
-                min_tls = getattr(config, "min_tls_version", "") or ""
-                if min_tls and "1.2" not in str(min_tls) and "1.3" not in str(min_tls):
+                inspected += 1
+                min_tls = str(getattr(config, "min_tls_version", "") or "").strip()
+                if not min_tls:
+                    # An unreported minimum TLS version is not a pass — the app is
+                    # not demonstrably enforcing TLS 1.2+, so flag it.
+                    failing.append(f"{app_name} (TLS version not set)")
+                elif "1.2" not in min_tls and "1.3" not in min_tls:
                     failing.append(f"{app_name} (TLS: {min_tls})")
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(app_name)
                 logger.debug("Could not check TLS for app %s: %s", app_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Web apps not using TLS 1.2+: {', '.join(failing[:10])}"
             result.resource_ids = [f.split(" ")[0] for f in failing]
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(apps)} web app(s) use TLS 1.2 or higher."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.Web/sites/config/read",
+                resource_kind="web app",
+                pass_evidence=f"All {len(apps)} web app(s) use TLS 1.2 or higher.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check web app TLS settings: {exc}"
@@ -3180,6 +3372,8 @@ def _check_9_6(webapp_client: Any) -> CISCheckResult:
     try:
         apps = list(webapp_client.web_apps.list())
         failing = []
+        inspected = 0
+        denied: list[str] = []
         for app in apps:
             app_name = app.name or "unknown"
             app_id = getattr(app, "id", "") or ""
@@ -3191,18 +3385,27 @@ def _check_9_6(webapp_client: Any) -> CISCheckResult:
                 continue
             try:
                 config = webapp_client.web_apps.get_configuration(resource_group, app_name)
+                inspected += 1
                 ftp_state = getattr(config, "ftp_state", "") or ""
                 if ftp_state.lower() not in ("disabled", "ftpsonly"):
                     failing.append(f"{app_name} (FTP: {ftp_state})")
             except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(app_name)
                 logger.debug("Could not check FTP state for app %s: %s", app_name, exc)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Web apps with FTP enabled: {', '.join(failing[:10])}"
             result.resource_ids = [f.split(" ")[0] for f in failing]
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(apps)} web app(s) have FTP access disabled or FTPS-only."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="Microsoft.Web/sites/config/read",
+                resource_kind="web app",
+                pass_evidence=f"All {len(apps)} web app(s) have FTP access disabled or FTPS-only.",
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check App Service FTP settings: {exc}"

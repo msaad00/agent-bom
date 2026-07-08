@@ -40,7 +40,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
-from .aws_cis_benchmark import CheckStatus, CISCheckResult
+from .aws_cis_benchmark import CheckStatus, CISCheckResult, finalize_read_coverage
+from .aws_inventory import is_access_denied_error
 from .base import CloudDiscoveryError
 
 try:
@@ -2137,10 +2138,13 @@ def _check_5_1(project_id: str) -> CISCheckResult:
 
         client = storage.Client(project=project_id, **_creds_kwargs())
         public_buckets: list[str] = []
+        inspected = 0
+        denied: list[str] = []
 
         for bucket in client.list_buckets():
             try:
                 policy = bucket.get_iam_policy(requested_policy_version=3)
+                inspected += 1
                 for binding in policy.bindings:
                     members = binding.get("members", [])
                     if "allUsers" in members or "allAuthenticatedUsers" in members:
@@ -2148,6 +2152,8 @@ def _check_5_1(project_id: str) -> CISCheckResult:
                         break
             except Exception as exc:
                 # IAM check is best-effort per bucket
+                if is_access_denied_error(exc):
+                    denied.append(bucket.name)
                 logger.debug("Could not check IAM policy for bucket %s: %s", bucket.name, exc)
 
         if public_buckets:
@@ -2155,8 +2161,14 @@ def _check_5_1(project_id: str) -> CISCheckResult:
             result.evidence = f"Publicly accessible buckets: {', '.join(public_buckets[:10])}"
             result.resource_ids = public_buckets
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = "No buckets with public (allUsers/allAuthenticatedUsers) IAM bindings found."
+            finalize_read_coverage(
+                result,
+                inspected=inspected,
+                denied=denied,
+                permission="storage.buckets.getIamPolicy",
+                resource_kind="bucket",
+                pass_evidence="No buckets with public (allUsers/allAuthenticatedUsers) IAM bindings found.",
+            )
     except ImportError:
         result.status = CheckStatus.ERROR
         result.evidence = "google-cloud-storage not installed. Install with: pip install google-cloud-storage"

@@ -60,6 +60,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable
 
+from .aws_inventory import is_access_denied_error
 from .base import CloudDiscoveryError
 
 logger = logging.getLogger(__name__)
@@ -175,6 +176,47 @@ class CISBenchmarkReport:
                 for c in self.checks
             ],
         }
+
+
+def finalize_read_coverage(
+    result: CISCheckResult,
+    *,
+    inspected: int,
+    denied: list,
+    permission: str,
+    resource_kind: str,
+    pass_evidence: str,
+) -> CISCheckResult:
+    """Decide PASS vs ERROR for a per-resource read check with no failures.
+
+    Guards the "list-but-not-get" false-PASS class: a check that lists N
+    resources but is denied the per-resource read on every one of them has
+    inspected *nothing*, so it must not report PASS. Call this only in the
+    branch where the ``failing`` accumulator is empty — FAIL is decided by the
+    caller and left untouched.
+
+    Decision table (``denied`` is the list of resources whose read was denied):
+      * ``inspected == 0 and denied``  -> ERROR (names the missing permission);
+        zero resources were actually evaluated, so compliance is unknown.
+      * otherwise                      -> PASS with ``pass_evidence`` (plus a
+        note when some — but not all — reads were denied). This preserves the
+        genuine "0 resources exist" PASS/NOT_APPLICABLE semantics because that
+        path reaches here with ``inspected == 0`` and an empty ``denied``.
+    """
+    denied_count = len(denied)
+    if inspected == 0 and denied_count:
+        result.status = CheckStatus.ERROR
+        result.evidence = (
+            f"Could not read {denied_count} {resource_kind}(s) — permission denied on every one "
+            f"(0 inspected). Grant '{permission}' so this check can be evaluated; "
+            "reporting PASS here would be a false compliant."
+        )
+        result.resource_ids = list(denied)[:20]
+    else:
+        note = f" ({denied_count} {resource_kind}(s) skipped — permission denied)" if denied_count else ""
+        result.status = CheckStatus.PASS
+        result.evidence = pass_evidence + note
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -725,6 +767,8 @@ def _check_1_16(iam_client: Any) -> CISCheckResult:
 
     paginator = iam_client.get_paginator("list_policies")
     admin_policies: list[str] = []
+    inspected = 0
+    denied: list[str] = []
 
     for page in paginator.paginate(Scope="Local", OnlyAttached=True):
         for policy in page["Policies"]:
@@ -734,6 +778,7 @@ def _check_1_16(iam_client: Any) -> CISCheckResult:
                     PolicyArn=policy["Arn"],
                     VersionId=version_id,
                 )["PolicyVersion"]
+                inspected += 1
                 doc = version.get("Document", {})
                 # Document may be URL-encoded JSON string
                 if isinstance(doc, str):
@@ -755,7 +800,9 @@ def _check_1_16(iam_client: Any) -> CISCheckResult:
                     if "*" in actions and "*" in resources:
                         admin_policies.append(policy["PolicyName"])
                         break
-            except Exception:
+            except Exception as exc:
+                if is_access_denied_error(exc):
+                    denied.append(policy.get("PolicyName") or policy.get("Arn", "unknown"))
                 logger.debug("Could not inspect policy %s", policy.get("Arn"))
 
     if admin_policies:
@@ -765,7 +812,14 @@ def _check_1_16(iam_client: Any) -> CISCheckResult:
             result.evidence += f" (+{len(admin_policies) - 5} more)"
         result.resource_ids = admin_policies[:20]
     else:
-        result.evidence = "No attached customer-managed policies grant full '*:*' admin privileges."
+        finalize_read_coverage(
+            result,
+            inspected=inspected,
+            denied=denied,
+            permission="iam:GetPolicyVersion",
+            resource_kind="policy",
+            pass_evidence="No attached customer-managed policies grant full '*:*' admin privileges.",
+        )
     return result
 
 
@@ -943,15 +997,24 @@ def _check_2_1_2(s3_client: Any) -> CISCheckResult:
     )
     buckets = s3_client.list_buckets().get("Buckets", [])
     unencrypted = []
+    inspected = 0
+    denied: list[str] = []
     for bucket in buckets:
         name = bucket["Name"]
         try:
             s3_client.get_bucket_encryption(Bucket=name)
+            inspected += 1
         except Exception as exc:
             error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
             if error_code == "ServerSideEncryptionConfigurationNotFoundError":
+                # Successful determination: bucket has no default encryption.
                 unencrypted.append(name)
-            # Skip buckets we can't access (cross-region, etc.)
+                inspected += 1
+            elif is_access_denied_error(exc):
+                denied.append(name)
+            else:
+                # Skip buckets we can't access (cross-region, deleted, etc.)
+                logger.debug("Could not check encryption for bucket %s: %s", name, exc)
 
     if unencrypted:
         result.status = CheckStatus.FAIL
@@ -960,7 +1023,14 @@ def _check_2_1_2(s3_client: Any) -> CISCheckResult:
             result.evidence += f" (+{len(unencrypted) - 5} more)"
         result.resource_ids = [f"arn:aws:s3:::{b}" for b in unencrypted]
     else:
-        result.evidence = f"All {len(buckets)} bucket(s) have server-side encryption enabled."
+        finalize_read_coverage(
+            result,
+            inspected=inspected,
+            denied=denied,
+            permission="s3:GetEncryptionConfiguration",
+            resource_kind="bucket",
+            pass_evidence=f"All {len(buckets)} bucket(s) have server-side encryption enabled.",
+        )
     return result
 
 
@@ -976,13 +1046,18 @@ def _check_2_1_3(s3_client: Any) -> CISCheckResult:
     )
     buckets = s3_client.list_buckets().get("Buckets", [])
     no_mfa_delete: list[str] = []
+    inspected = 0
+    denied: list[str] = []
     for bucket in buckets:
         name = bucket["Name"]
         try:
             versioning = s3_client.get_bucket_versioning(Bucket=name)
+            inspected += 1
             if versioning.get("MFADelete") != "Enabled":
                 no_mfa_delete.append(name)
         except Exception as exc:
+            if is_access_denied_error(exc):
+                denied.append(name)
             logger.debug("Could not check MFA Delete for bucket %s: %s", name, exc)
 
     if no_mfa_delete:
@@ -992,7 +1067,14 @@ def _check_2_1_3(s3_client: Any) -> CISCheckResult:
             result.evidence += f" (+{len(no_mfa_delete) - 5} more)"
         result.resource_ids = [f"arn:aws:s3:::{b}" for b in no_mfa_delete]
     else:
-        result.evidence = f"All {len(buckets)} bucket(s) have MFA Delete enabled."
+        finalize_read_coverage(
+            result,
+            inspected=inspected,
+            denied=denied,
+            permission="s3:GetBucketVersioning",
+            resource_kind="bucket",
+            pass_evidence=f"All {len(buckets)} bucket(s) have MFA Delete enabled.",
+        )
     return result
 
 
@@ -1008,14 +1090,19 @@ def _check_2_1_4(s3_client: Any) -> CISCheckResult:
     )
     buckets = s3_client.list_buckets().get("Buckets", [])
     unversioned = []
+    inspected = 0
+    denied: list[str] = []
     for bucket in buckets:
         name = bucket["Name"]
         try:
             versioning = s3_client.get_bucket_versioning(Bucket=name)
+            inspected += 1
             if versioning.get("Status") != "Enabled":
                 unversioned.append(name)
         except Exception as exc:
             # Skip inaccessible buckets (permissions, deleted, etc.)
+            if is_access_denied_error(exc):
+                denied.append(name)
             logger.debug("Could not check versioning for bucket %s: %s", name, exc)
 
     if unversioned:
@@ -1025,7 +1112,14 @@ def _check_2_1_4(s3_client: Any) -> CISCheckResult:
             result.evidence += f" (+{len(unversioned) - 5} more)"
         result.resource_ids = [f"arn:aws:s3:::{b}" for b in unversioned]
     else:
-        result.evidence = f"All {len(buckets)} bucket(s) have versioning enabled."
+        finalize_read_coverage(
+            result,
+            inspected=inspected,
+            denied=denied,
+            permission="s3:GetBucketVersioning",
+            resource_kind="bucket",
+            pass_evidence=f"All {len(buckets)} bucket(s) have versioning enabled.",
+        )
     return result
 
 
@@ -1124,6 +1218,8 @@ def _check_2_4_1(kms_client: Any) -> CISCheckResult:
     )
     paginator = kms_client.get_paginator("list_keys")
     no_rotation: list[str] = []
+    inspected = 0
+    denied: list[str] = []
 
     for page in paginator.paginate():
         for key in page["Keys"]:
@@ -1131,6 +1227,7 @@ def _check_2_4_1(kms_client: Any) -> CISCheckResult:
             try:
                 # Only check customer-managed keys (skip AWS-managed and AWS-owned)
                 desc = kms_client.describe_key(KeyId=key_id)["KeyMetadata"]
+                inspected += 1
                 if desc.get("KeyManager") != "CUSTOMER":
                     continue
                 if desc.get("KeyState") != "Enabled":
@@ -1140,7 +1237,11 @@ def _check_2_4_1(kms_client: Any) -> CISCheckResult:
                     no_rotation.append(key_id)
             except Exception as exc:
                 error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-                if error_code in ("AccessDeniedException", "NotFoundException"):
+                if error_code == "NotFoundException":
+                    # Key was deleted between list and read — legitimate skip.
+                    continue
+                if is_access_denied_error(exc):
+                    denied.append(key_id)
                     continue
                 logger.debug("Could not check rotation for key %s: %s", key_id, exc)
 
@@ -1151,7 +1252,14 @@ def _check_2_4_1(kms_client: Any) -> CISCheckResult:
             result.evidence += f" (+{len(no_rotation) - 5} more)"
         result.resource_ids = no_rotation[:20]
     else:
-        result.evidence = "All customer-managed KMS keys have rotation enabled (or no keys found)."
+        finalize_read_coverage(
+            result,
+            inspected=inspected,
+            denied=denied,
+            permission="kms:GetKeyRotationStatus",
+            resource_kind="KMS key",
+            pass_evidence="All customer-managed KMS keys have rotation enabled (or no keys found).",
+        )
     return result
 
 
@@ -1316,13 +1424,18 @@ def _check_3_6(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
 
     ct_buckets = {t["S3BucketName"] for t in trails if t.get("S3BucketName")}
     no_logging = []
+    inspected = 0
+    denied: list[str] = []
     for bucket_name in ct_buckets:
         try:
             logging_conf = s3_client.get_bucket_logging(Bucket=bucket_name)
+            inspected += 1
             if not logging_conf.get("LoggingEnabled"):
                 no_logging.append(bucket_name)
         except Exception as exc:
             # Skip inaccessible buckets
+            if is_access_denied_error(exc):
+                denied.append(bucket_name)
             logger.debug("Could not check logging for bucket %s: %s", bucket_name, exc)
 
     if no_logging:
@@ -1330,7 +1443,14 @@ def _check_3_6(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
         result.evidence = f"CloudTrail S3 bucket(s) without access logging: {', '.join(no_logging)}"
         result.resource_ids = [f"arn:aws:s3:::{b}" for b in no_logging]
     else:
-        result.evidence = "All CloudTrail S3 buckets have access logging enabled."
+        finalize_read_coverage(
+            result,
+            inspected=inspected,
+            denied=denied,
+            permission="s3:GetBucketLogging",
+            resource_kind="CloudTrail bucket",
+            pass_evidence="All CloudTrail S3 buckets have access logging enabled.",
+        )
     return result
 
 
@@ -1354,10 +1474,13 @@ def _check_3_3(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
 
     ct_buckets = {t["S3BucketName"] for t in trails if t.get("S3BucketName")}
     public_buckets: list[str] = []
+    inspected = 0
+    denied: list[str] = []
 
     for bucket_name in ct_buckets:
         try:
             policy_resp = s3_client.get_bucket_policy(Bucket=bucket_name)
+            inspected += 1
             policy_doc = _json.loads(policy_resp["Policy"])
             for stmt in policy_doc.get("Statement", []):
                 principal = stmt.get("Principal", {})
@@ -1370,7 +1493,12 @@ def _check_3_3(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
         except Exception as exc:
             error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
             if error_code == "NoSuchBucketPolicy":
-                continue  # No policy = not public via policy
+                # No policy = not public via policy — a successful determination.
+                inspected += 1
+                continue
+            if is_access_denied_error(exc):
+                denied.append(bucket_name)
+                continue
             logger.debug("Could not check bucket policy for %s: %s", bucket_name, exc)
 
     if public_buckets:
@@ -1378,7 +1506,14 @@ def _check_3_3(s3_client: Any, cloudtrail_client: Any) -> CISCheckResult:
         result.evidence = f"CloudTrail S3 bucket(s) with public policy: {', '.join(public_buckets)}"
         result.resource_ids = [f"arn:aws:s3:::{b}" for b in public_buckets]
     else:
-        result.evidence = "No CloudTrail S3 buckets have public bucket policies."
+        finalize_read_coverage(
+            result,
+            inspected=inspected,
+            denied=denied,
+            permission="s3:GetBucketPolicy",
+            resource_kind="CloudTrail bucket",
+            pass_evidence="No CloudTrail S3 buckets have public bucket policies.",
+        )
     return result
 
 

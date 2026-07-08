@@ -803,24 +803,6 @@ def sanitize_error(exc: Exception | str, generic: bool = False) -> str:
     return msg[:200] if len(msg) > 200 else msg
 
 
-def write_scan_artifact_stdout(content: str, *, ensure_newline: bool = True) -> None:
-    """Write a sanitized scan artifact to stdout (intentional CLI export surface).
-
-    Callers must pass content already redacted by ``to_json`` / SARIF / CycloneDX
-    formatters. Used for ``-o -``, agent-mode envelopes, and disk-full fallback.
-    """
-    import sys
-
-    sys.stdout.write(content)  # codeql[py/clear-text-logging-sensitive-data]
-    if ensure_newline and content and not content.endswith("\n"):
-        sys.stdout.write("\n")
-
-
-def write_scan_artifact_file(path: str | Path, content: str) -> None:
-    """Write a sanitized scan artifact to an operator-chosen filesystem path."""
-    Path(path).write_text(content, encoding="utf-8")  # codeql[py/clear-text-storage-sensitive-data]
-
-
 # Export all validation functions
 __all__ = [
     "SecurityError",
@@ -845,6 +827,4 @@ __all__ = [
     "validate_mcp_server_config",
     "validate_image_ref",
     "sanitize_error",
-    "write_scan_artifact_file",
-    "write_scan_artifact_stdout",
 ]

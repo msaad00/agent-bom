@@ -50,15 +50,14 @@ from agent_bom.output import (
     push_to_gateway,
     to_csv,
     to_cyclonedx,
-    to_json,
     to_junit,
     to_markdown,
     to_prometheus,
+    to_redacted_json,
     to_sarif,
     to_spdx,
     to_spdx2,
 )
-from agent_bom.security import write_scan_artifact_stdout
 
 _FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     "json": ("agent-bom-report.json", (".json",)),
@@ -161,7 +160,7 @@ def _stdout_serialization(
             from agent_bom.output.badge import to_badge
 
             return json.dumps(to_badge(report), indent=2)
-        return json.dumps(to_json(report), indent=2)
+        return json.dumps(to_redacted_json(report), indent=2)
     if output_format == "cyclonedx":
         return json.dumps(to_cyclonedx(report), indent=2)
     if output_format == "sarif":
@@ -231,7 +230,9 @@ def _enospc_report_fallback(
         )
         if serialized is not None:
             con.print(f"\n  [yellow]⚠[/yellow] Could not write report to {target} ({reason}) — emitting results to stdout instead.")
-            write_scan_artifact_stdout(serialized)
+            sys.stdout.write(serialized)
+            if not serialized.endswith("\n"):
+                sys.stdout.write("\n")
         else:
             con.print(
                 f"\n  [yellow]⚠[/yellow] Could not write report to {target} ({reason}) — "
@@ -351,15 +352,15 @@ def render_output(
             elif agent_mode:
                 payload = success_envelope(
                     command="agents",
-                    report_json=to_json(report),
+                    report_json=to_redacted_json(report),
                     exit_code=ctx.exit_code,
                     token_budget=agent_token_budget,
                     full=agent_mode_full,
                     output_path=output if isinstance(output, str) else None,
                 )
-                write_scan_artifact_stdout(dumps_envelope(payload), ensure_newline=False)
+                sys.stdout.write(dumps_envelope(payload))
             else:
-                write_scan_artifact_stdout(json.dumps(to_json(report), indent=2), ensure_newline=False)
+                sys.stdout.write(json.dumps(to_redacted_json(report), indent=2))
             sys.stdout.write("\n")
         elif _is_null_device(output) and output_format in ("console", "text", "plain"):
             # `-o /dev/null` with a terminal-only format: discard silently rather
@@ -452,7 +453,8 @@ def render_output(
             _print_text(report, blast_radii)
         elif output_format == "json":
             if output in (None, "", "-"):
-                write_scan_artifact_stdout(json.dumps(to_json(report), indent=2))
+                sys.stdout.write(json.dumps(to_redacted_json(report), indent=2))
+                sys.stdout.write("\n")
             else:
                 out_path = _resolve_output_path(output, output_format)
                 export_json(report, out_path)

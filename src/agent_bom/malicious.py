@@ -160,9 +160,6 @@ _INTERNAL_NAME_PATTERNS: frozenset[str] = frozenset(
         "-shared",
         "-common",
         "-utils",
-        "-core",
-        "-sdk",
-        "-lib",
         "-service",
         "-api",
     }

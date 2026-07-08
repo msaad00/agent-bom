@@ -66,6 +66,13 @@ def test_package_with_scorecard_not_flagged():
     assert check_dependency_confusion(pkg) is None
 
 
+def test_common_public_suffixes_not_flagged_as_confusion_without_org_signal():
+    """Common public package suffixes alone are too broad for confusion risk."""
+    assert check_dependency_confusion(_pkg("pydantic-core")) is None
+    assert check_dependency_confusion(_pkg("cyclonedx-python-lib")) is None
+    assert check_dependency_confusion(_pkg("openai-sdk")) is None
+
+
 def test_platform_suffix_flagged():
     pkg = _pkg("mycompany-platform")
     result = check_dependency_confusion(pkg)

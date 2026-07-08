@@ -10,7 +10,13 @@ Environment variable convention: ``AGENT_BOM_<SECTION>_<NAME>``
 
 from __future__ import annotations
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
+
+_TRUTHY_BOOLS = frozenset({"1", "true", "yes", "on"})
+_FALSY_BOOLS = frozenset({"0", "false", "no", "off"})
 
 
 def _float(env_key: str, default: float) -> float:
@@ -21,6 +27,12 @@ def _float(env_key: str, default: float) -> float:
     try:
         return float(raw)
     except ValueError:
+        logger.warning(
+            "Ignoring unparseable float env %s=%r; using default %s",
+            env_key,
+            raw,
+            default,
+        )
         return default
 
 
@@ -32,6 +44,12 @@ def _int(env_key: str, default: int) -> int:
     try:
         return int(raw)
     except ValueError:
+        logger.warning(
+            "Ignoring unparseable int env %s=%r; using default %s",
+            env_key,
+            raw,
+            default,
+        )
         return default
 
 
@@ -40,7 +58,18 @@ def _bool(env_key: str, default: bool) -> bool:
     raw = os.environ.get(env_key)
     if raw is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    normalized = raw.strip().lower()
+    if normalized in _TRUTHY_BOOLS:
+        return True
+    if normalized in _FALSY_BOOLS:
+        return False
+    logger.warning(
+        "Ignoring unparseable boolean env %s=%r; using default %s",
+        env_key,
+        raw,
+        default,
+    )
+    return default
 
 
 def _str(env_key: str, default: str) -> str:

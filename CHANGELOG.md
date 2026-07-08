@@ -9,6 +9,81 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-07-08
+
+Minor release shipping the post-0.93.5 audit/security batch, cloud and runtime
+hardening, identity/SCIM fixes, CIS fail-closed coverage, and CI evidence
+improvements for self-hosted control planes.
+
+### Security / audit
+- **CIS fail-closed** — ~25 checks report ERROR (not PASS) when per-resource reads
+  are denied; strict GRC coverage mode for partial permission denial (#3691,
+  #3695).
+- **MCP ingest authz** — `ingest_external_scan` gated as a destructive write with
+  admin/scope checks (#3692).
+- **Shield runtime** — fail-closed defaults, credential redaction in proxy paths,
+  SSRF guard on egress URLs (#3699, #3706).
+- **SCIM / session** — PATCH remove/add semantics, audit-log viewer RBAC, session
+  logout hardening, auto-bind SCIM subject on API key issuance (#3701, #3705).
+- **CodeQL / export hygiene** — redacted JSON at formatter boundary; clear-text
+  logging and stack-trace exposure fixes on scan stdout and tenant export
+  (#3717, #3675).
+- **Audit chain** — signed checkpoint detects tail truncation (#3700).
+
+### Cloud / inventory
+- **Full cloud coverage** — GCP/AWS pagination, Lambda package fetch, container
+  deep-scan, Key Vault CIS fixes, Lambda on by default (#3634–#3636, #3706).
+- **Ingest scale** — chunked `reconcile_absent` avoids bind-variable overflow on
+  large batches (#3693).
+
+### Platform / API
+- **DB-aware `/readyz`** — readiness reflects database connectivity; firewall
+  policy reload fails closed on error (#3707).
+- **`/v1` router mount** — centralized API versioning foundation without wire
+  contract changes (#3715).
+- **Env aliases** — canonical deployment/CORS/Vault/ServiceNow env names with
+  regenerated `ENV_VARS.md` (#3713); warn on unparseable bool/int/float env
+  values (#3711).
+
+### Output / CI evidence
+- **SARIF fingerprints** — `partialFingerprints` for GitHub code-scanning dedup
+  (#3712).
+- **Malicious findings** — vuln-less malicious packages synthesized end-to-end in
+  exports (#3694).
+- **SARIF/JSON parity** — finding-count alignment, `--reproducible` timestamps,
+  `/dev/null` exit semantics (#3645).
+- **Scale-ready HTML** — tabbed, paginated report for large estates (#3637).
+
+### Runtime / graph / data
+- **Graph performance** — bounded snapshot stats, rollup orphans, deep-offset cap
+  (#3669); drift-as-UI lens (#3649).
+- **DB maintenance** — generic RANGE-partition retention rollover (#3657); hub
+  read perf fixes (#3654).
+- **Iceberg / ClickHouse** — catalog export and findings-ingest paths (#3648,
+  #3650).
+
+### MCP / developer experience
+- **MCP catalog drift guard** — `@mcp.tool` names must match `_SERVER_CARD_TOOLS`
+  set equality (#3675).
+- **CLI scan UX** — unified terminal sections, deduped CIS output, tiered
+  `--help` behind `--help-all` (#3633, #3672).
+- **`make preflight`** — local drift gate for OpenAPI, schemas, and release
+  consistency (#3702).
+
+### Docs / deploy
+- **Doc consolidation** — stage-1 hub structure for duplicate deploy/product
+  clusters (#3704).
+- **Deployment READMEs** — raw Kubernetes and Snowflake deploy paths (#3720;
+  Snowflake README in #3721 when merged).
+- **How-it-works** — canonical deployment matrix and editions page (#3668).
+
+### Also in this release line (since 0.93.5)
+- Endpoint-agent Phase 0 hardware-backed device identity (#3646).
+- LLM enrichment harness maturity (#3639).
+- Swift reachability tail precision (#3656).
+- Stricter mypy phase 1 for models + core API (#3655).
+- Test layout: `tests/cloud/`, `tests/api/` grouping (#3716, #3718).
+
 ## [0.93.5] - 2026-07-07
 
 Patch release closing the post-#3624 audit queue, hardening demo/hosted POC
@@ -2127,7 +2202,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.93.5...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.94.0...HEAD
+[0.94.0]: https://github.com/msaad00/agent-bom/compare/v0.93.5...v0.94.0
 [0.93.5]: https://github.com/msaad00/agent-bom/compare/v0.93.0...v0.93.5
 [0.93.0]: https://github.com/msaad00/agent-bom/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/msaad00/agent-bom/compare/v0.91.0...v0.92.0

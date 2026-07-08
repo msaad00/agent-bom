@@ -315,7 +315,7 @@ def test_cli_scan_smithery_flags():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["scan", "--help"])
+    result = runner.invoke(main, ["scan", "--help-all"])
     assert result.exit_code == 0
     assert "--smithery" in result.output
     assert "--smithery-token" in result.output

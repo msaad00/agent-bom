@@ -19,13 +19,16 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     api_server._runtime_api_key_seeded = False
     api_server._shutting_down = False
+    original_job_store = api_stores._store
     original_graph_store = api_stores._graph_store
+    api_stores._store = None
     api_stores._graph_store = None
 
     try:
         with TestClient(api_server.app) as client:
             yield client
     finally:
+        api_stores._store = original_job_store
         api_stores._graph_store = original_graph_store
 
 

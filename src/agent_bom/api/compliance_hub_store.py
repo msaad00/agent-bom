@@ -530,9 +530,7 @@ def _migrate_current_origin_col_sqlite(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(hub_findings_current)").fetchall()}
     if "origin" not in cols:
         conn.execute("ALTER TABLE hub_findings_current ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
-        conn.execute(
-            "UPDATE hub_findings_current SET origin = COALESCE(json_extract(payload, '$.origin'), '') WHERE origin = ''"
-        )
+        conn.execute("UPDATE hub_findings_current SET origin = COALESCE(json_extract(payload, '$.origin'), '') WHERE origin = ''")
 
 
 def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:

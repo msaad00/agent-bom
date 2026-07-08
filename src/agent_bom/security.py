@@ -490,7 +490,7 @@ def sanitize_path_label(value: object) -> str:
 
 def sanitize_sensitive_payload(value: object, *, key: object | None = None, max_str_len: int = 1000, depth: int = 0) -> object:
     """Recursively redact sensitive runtime/audit payloads before persistence/export."""
-    if depth >= 8:
+    if depth >= 24:
         return "[truncated]"
     if value is None or isinstance(value, bool | int | float):
         return value

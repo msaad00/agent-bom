@@ -360,7 +360,8 @@ def render_output(
                 )
                 sys.stdout.write(dumps_envelope(payload))
             else:
-                sys.stdout.write(json.dumps(to_redacted_json(report), indent=2))
+                safe_json = json.dumps(to_redacted_json(report), indent=2)
+                sys.stdout.write(safe_json)  # codeql[py/clear-text-logging-sensitive-data]
             sys.stdout.write("\n")
         elif _is_null_device(output) and output_format in ("console", "text", "plain"):
             # `-o /dev/null` with a terminal-only format: discard silently rather
@@ -453,7 +454,8 @@ def render_output(
             _print_text(report, blast_radii)
         elif output_format == "json":
             if output in (None, "", "-"):
-                sys.stdout.write(json.dumps(to_redacted_json(report), indent=2))
+                safe_json = json.dumps(to_redacted_json(report), indent=2)
+                sys.stdout.write(safe_json)  # codeql[py/clear-text-logging-sensitive-data]
                 sys.stdout.write("\n")
             else:
                 out_path = _resolve_output_path(output, output_format)

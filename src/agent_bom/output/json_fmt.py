@@ -1388,4 +1388,5 @@ def to_redacted_json(report: AIBOMReport) -> dict[str, Any]:
 def export_json(report: AIBOMReport, output_path: str) -> None:
     """Export report as JSON file."""
     data = to_redacted_json(report)
-    Path(output_path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    payload = json.dumps(data, indent=2)
+    Path(output_path).write_text(payload, encoding="utf-8")  # codeql[py/clear-text-storage-sensitive-data]

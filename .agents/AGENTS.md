@@ -216,6 +216,24 @@ Minimum verification matrix:
   (pre-commit + CI) fails on new `detail=str(exc)` / `detail=f"...{exc}"` bodies
   and raw-exception log f-strings; use `# exc-safe: <reason>` only for a vetted
   exception.
+- Before opening or updating a PR that touches `src/agent_bom/api/` routes or
+  models (and after any change that regenerates a checked-in artifact), run
+  `make preflight` — it runs the same drift gates as CI's **Version Alignment**
+  job (OpenAPI `docs/openapi/`, v1 schemas `docs/schemas/v1/`, product-surface
+  contract, release consistency, env-var reference, SDK `patterns.json`). Use
+  `make preflight-fix` to regenerate the artifacts, then review and commit them.
+  Skipping this is the most common cause of an approved PR going red on a stale
+  generated file — regenerate locally instead of round-tripping through CI.
+- Run the tests for the code you touched **before** pushing (`pytest` on the
+  affected `tests/test_*.py` files; test order is randomized by pytest-randomly,
+  so a green local run on your files is the fastest signal). Push a PR branch
+  **once and let CI finish** — CI uses `cancel-in-progress` on non-`main`
+  branches, so stacking rapid commits (formatter, merge-main, review-dismissals)
+  cancels the in-flight run and the canceled jobs surface as red "failing"
+  checks. When a check's annotation reads "The operation was canceled," that is a
+  supersede/cancel, not a test failure: re-run the job (`gh run rerun --failed`)
+  and leave the branch untouched until it completes — do not debug it as a code
+  bug.
 - For docs, avoid vague capability lists. Prefer "first command -> artifact ->
   next step."
 

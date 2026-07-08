@@ -1,4 +1,4 @@
-.PHONY: help install test lint docker-build docker-run scan clean build-ui analytics dev check-dupes clean-dupes
+.PHONY: help install test lint preflight preflight-fix docker-build docker-run scan clean build-ui analytics dev check-dupes clean-dupes
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -34,6 +34,23 @@ lint:  ## Run linters (ruff + mypy)
 
 format:  ## Format code with ruff
 	ruff format src/ tests/
+
+preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do this before pushing a PR
+	@echo "→ OpenAPI artifacts (docs/openapi/)";   python scripts/export_openapi.py --check
+	@echo "→ v1 schemas (docs/schemas/v1/)";        python scripts/generate_v1_schemas.py --check
+	@echo "→ product surface contract";             python scripts/check_product_surface_contract.py
+	@echo "→ release/README consistency";           python scripts/check_release_consistency.py
+	@echo "→ env-var reference";                    python scripts/generate_env_var_reference.py --check
+	@echo "→ SDK patterns.json";                    python sdks/shared/generate-patterns.py --check
+	@echo "✓ preflight passed — CI's Version Alignment gate will be green (run 'make lint' separately for ruff/mypy)"
+
+preflight-fix:  ## Regenerate every drift artifact so you never push stale OpenAPI/schemas/patterns; then review + commit
+	python scripts/export_openapi.py
+	python scripts/generate_v1_schemas.py
+	python scripts/generate_env_var_reference.py
+	python sdks/shared/generate-patterns.py
+	ruff format src/ tests/
+	@echo "✓ regenerated — run 'git status', review, and commit the artifacts"
 
 docker-build:  ## Build Docker image
 	docker build -t agent-bom:latest .

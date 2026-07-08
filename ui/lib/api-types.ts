@@ -329,8 +329,32 @@ export interface GraphRollupSummary {
   top_level_count?: number;
   container_count?: number;
   orphan_count?: number;
+  orphan_shown_count?: number;
+  orphan_truncated_count?: number;
   direct_child_count?: number;
   returned_child_count?: number;
+}
+
+export interface GraphRollupOrphanSummarySample {
+  id: string;
+  label: string;
+  entity_type: string;
+  severity: string;
+}
+
+export interface GraphRollupOrphanSummary {
+  total: number;
+  shown: number;
+  truncated: number;
+  by_type: Record<string, number>;
+  severity_counts: Record<string, number>;
+  worst_severity: string;
+  worst_severity_rank: number;
+  internet_exposed: boolean;
+  toxic_combo: boolean;
+  exposed_count: number;
+  toxic_count: number;
+  sample: GraphRollupOrphanSummarySample[];
 }
 
 export interface GraphRollupResponse {
@@ -340,6 +364,7 @@ export interface GraphRollupResponse {
   mode: "rollup" | "drilldown" | "attack_path";
   filters: Record<string, unknown>;
   top_level?: GraphRollupContainer[];
+  orphan_summary?: GraphRollupOrphanSummary;
   children?: GraphRollupContainer[];
   node?: {
     id: string;

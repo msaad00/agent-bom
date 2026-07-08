@@ -28,6 +28,12 @@ from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 # behaviour so the SQL paging path and the in-memory path agree.
 _FINDING_ENTITY_VALUES: tuple[str, ...] = tuple(sorted(t.value for t in FINDING_ENTITY_TYPES))
 
+# Deep OFFSET paging is O(offset): the store still walks and discards every
+# skipped row, so ``offset=490000`` costs seconds even with the sort indexes.
+# Past this threshold callers must switch to the flat keyset ``cursor=`` path.
+# Shallow, human-scale offset browsing below the cap stays supported.
+MAX_NODE_PAGE_OFFSET = 10_000
+
 
 def _min_severity_clause(
     min_severity_rank: int,
@@ -1276,10 +1282,31 @@ class SQLiteGraphStore:
                 params.extend(sev_params)
             where_sql = " AND ".join(node_where)
 
-            total_nodes = conn.execute(
-                f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
-                params,
-            ).fetchone()[0]
+            # Unfiltered node/edge totals are already materialised on the snapshot
+            # row at write time. Re-deriving them here re-scans graph_edges with a
+            # double id-membership subquery (seconds at 500k edges), so read the
+            # stored counts and only fall back to COUNT(*) when the snapshot row is
+            # missing or the counts were never populated. Any active entity-type or
+            # severity filter narrows the set, so the recompute path still runs.
+            filters_active = bool(entity_types) or bool(min_severity_rank)
+            stored_node_count: int | None = None
+            stored_edge_count: int | None = None
+            if not filters_active:
+                snap_row = conn.execute(
+                    "SELECT node_count, edge_count FROM graph_snapshots WHERE scan_id = ? AND tenant_id = ?",
+                    (effective_scan_id, tenant_id),
+                ).fetchone()
+                if snap_row is not None:
+                    stored_node_count = snap_row[0] if snap_row[0] is not None else None
+                    stored_edge_count = snap_row[1] if snap_row[1] is not None else None
+
+            if stored_node_count is not None:
+                total_nodes = stored_node_count
+            else:
+                total_nodes = conn.execute(
+                    f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
+                    params,
+                ).fetchone()[0]
             node_type_rows = conn.execute(
                 f"SELECT entity_type, COUNT(*) FROM graph_nodes WHERE {where_sql} GROUP BY entity_type",  # nosec B608 - where_sql is built from static clause fragments
                 params,
@@ -1288,16 +1315,19 @@ class SQLiteGraphStore:
                 f"SELECT severity, COUNT(*) FROM graph_nodes WHERE {where_sql} AND severity <> '' GROUP BY severity",  # nosec B608 - where_sql is built from static clause fragments
                 params,
             ).fetchall()
-            total_edges = conn.execute(
-                f"""
-                SELECT COUNT(*)
-                FROM graph_edges
-                WHERE tenant_id = ? AND scan_id = ?
-                  AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                  AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                """,  # nosec B608 - where_sql is built from static clause fragments
-                [tenant_id, effective_scan_id, *params, *params],
-            ).fetchone()[0]
+            if stored_edge_count is not None:
+                total_edges = stored_edge_count
+            else:
+                total_edges = conn.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM graph_edges
+                    WHERE tenant_id = ? AND scan_id = ?
+                      AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                      AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                    """,  # nosec B608 - where_sql is built from static clause fragments
+                    [tenant_id, effective_scan_id, *params, *params],
+                ).fetchone()[0]
             rel_rows = conn.execute(
                 f"""
                 SELECT relationship, COUNT(*)
@@ -1343,6 +1373,11 @@ class SQLiteGraphStore:
         limit: int = 500,
     ) -> tuple[str, str, list[UnifiedNode], int, str | None]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        if not cursor and offset > MAX_NODE_PAGE_OFFSET:
+            raise ValueError(
+                f"offset={offset} exceeds the maximum supported node offset ({MAX_NODE_PAGE_OFFSET}); "
+                "use the cursor= keyset parameter from the previous page's next_cursor for deep pagination."
+            )
         conn = self._open_ro_conn()
         if conn is None:
             return scan_id, "", [], 0, None

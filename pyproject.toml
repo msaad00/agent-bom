@@ -416,7 +416,7 @@ ignore = []
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "fuzz/*.py" = ["N802", "T201"]  # TestOneInput is required atheris entry; harnesses print repro output
-"src/agent_bom/output/html.py" = ["E501"]  # Inline HTML/CSS/JS template strings cannot be meaningfully wrapped
+"src/agent_bom/output/html/*.py" = ["E501", "F541"]  # Inline HTML/CSS/JS template strings cannot be wrapped; f-prefix is load-bearing (unescapes `{{`)
 "scripts/generate_doc_architecture_svgs.py" = ["E501"]  # SVG coordinate strings are intentionally single-line
 # T201 allowlist — places where bare `print()` is legitimately the contract:
 "scripts/*.py" = ["T201"]  # Ops scripts — stdout is the documented interface

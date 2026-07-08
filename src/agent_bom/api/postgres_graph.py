@@ -10,7 +10,13 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Iterable, Iterator, Sequence
 
-from agent_bom.api.graph_store import _escape_like_query, _node_search_text, decode_graph_cursor, encode_graph_cursor
+from agent_bom.api.graph_store import (
+    MAX_NODE_PAGE_OFFSET,
+    _escape_like_query,
+    _node_search_text,
+    decode_graph_cursor,
+    encode_graph_cursor,
+)
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS
 from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, graph_retention_policy, normalize_graph_tenant_id
@@ -1567,11 +1573,33 @@ class PostgresGraphStore:
         where_sql = " AND ".join(node_where)
 
         with _tenant_connection(self._pool) as conn:
-            total_nodes_row = conn.execute(
-                f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
-                params,
-            ).fetchone()
-            total_nodes = int((total_nodes_row[0] if total_nodes_row else 0) or 0)
+            # Unfiltered node/edge totals are already materialised on the snapshot
+            # row at write time. Re-deriving the edge count here re-scans
+            # graph_edges with a double id-membership subquery (~seconds at 500k
+            # edges on every paged /v1/graph call), so read the stored counts and
+            # only fall back to COUNT(*) when the snapshot row is missing or the
+            # counts were never populated. Any active entity-type or severity
+            # filter narrows the set, so the recompute path still runs then.
+            filters_active = bool(entity_types) or bool(min_severity_rank)
+            stored_node_count: int | None = None
+            stored_edge_count: int | None = None
+            if not filters_active:
+                snap_row = conn.execute(
+                    "SELECT node_count, edge_count FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
+                    (effective_scan_id, tenant_id),
+                ).fetchone()
+                if snap_row is not None:
+                    stored_node_count = snap_row[0] if snap_row[0] is not None else None
+                    stored_edge_count = snap_row[1] if snap_row[1] is not None else None
+
+            if stored_node_count is not None:
+                total_nodes = int(stored_node_count)
+            else:
+                total_nodes_row = conn.execute(
+                    f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
+                    params,
+                ).fetchone()
+                total_nodes = int((total_nodes_row[0] if total_nodes_row else 0) or 0)
             node_type_rows = conn.execute(
                 f"SELECT entity_type, COUNT(*) FROM graph_nodes WHERE {where_sql} GROUP BY entity_type",  # nosec B608 - where_sql is built from static clause fragments
                 params,
@@ -1580,17 +1608,20 @@ class PostgresGraphStore:
                 f"SELECT severity, COUNT(*) FROM graph_nodes WHERE {where_sql} AND severity <> '' GROUP BY severity",  # nosec B608 - where_sql is built from static clause fragments
                 params,
             ).fetchall()
-            total_edges_row = conn.execute(
-                f"""
-                SELECT COUNT(*)
-                FROM graph_edges
-                WHERE tenant_id = %s AND scan_id = %s
-                  AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                  AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                """,  # nosec B608 - where_sql is built from static clause fragments
-                [tenant_id, effective_scan_id, *params, *params],
-            ).fetchone()
-            total_edges = int((total_edges_row[0] if total_edges_row else 0) or 0)
+            if stored_edge_count is not None:
+                total_edges = int(stored_edge_count)
+            else:
+                total_edges_row = conn.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM graph_edges
+                    WHERE tenant_id = %s AND scan_id = %s
+                      AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                      AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                    """,  # nosec B608 - where_sql is built from static clause fragments
+                    [tenant_id, effective_scan_id, *params, *params],
+                ).fetchone()
+                total_edges = int((total_edges_row[0] if total_edges_row else 0) or 0)
             rel_rows = conn.execute(
                 f"""
                 SELECT relationship, COUNT(*)
@@ -1635,6 +1666,11 @@ class PostgresGraphStore:
     ) -> tuple[str, str, list[Any], int, str | None]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
+        if not cursor and offset > MAX_NODE_PAGE_OFFSET:
+            raise ValueError(
+                f"offset={offset} exceeds the maximum supported node offset ({MAX_NODE_PAGE_OFFSET}); "
+                "use the cursor= keyset parameter from the previous page's next_cursor for deep pagination."
+            )
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
             return scan_id, "", [], 0, None

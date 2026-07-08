@@ -15,6 +15,7 @@ from typing import Any
 from agent_bom.api.compliance_hub_store import (
     FindingCursorPage,
     FindingPage,
+    RECONCILE_ABSENT_CHUNK,
     _cvss_value,
     _frameworks_csv,
     _now_utc_iso,
@@ -808,22 +809,32 @@ class PostgresComplianceHubStore:
     ) -> int:
         now = _now_utc_iso()
         where = ["tenant_id = %s", "status IN ('open', 'reopened')"]
-        params: list[Any] = [observed_at, now, tenant_id]
+        params: list[Any] = [tenant_id]
         if scope_source is not None:
             where.append("payload->>'source' = %s")
             params.append(scope_source)
-        if present_canonical_ids:
-            placeholders = ",".join("%s" for _ in present_canonical_ids)
-            where.append(f"canonical_id NOT IN ({placeholders})")
-            params.extend(sorted(present_canonical_ids))
+        where_sql = " AND ".join(where)
+        total = 0
         with _tenant_connection(self._pool) as conn:
-            cur = conn.execute(
-                f"""
-                UPDATE hub_findings_current
-                SET status = 'resolved', resolved_at = %s, updated_at = %s
-                WHERE {" AND ".join(where)}
-                """,  # nosec B608
+            rows = conn.execute(
+                f"SELECT canonical_id FROM hub_findings_current WHERE {where_sql}",  # nosec B608
                 tuple(params),
-            )
+            ).fetchall()
+            open_ids = {str(row[0]) for row in rows}
+            absent = sorted(open_ids - present_canonical_ids)
+            if not absent:
+                return 0
+            for offset in range(0, len(absent), RECONCILE_ABSENT_CHUNK):
+                chunk = absent[offset : offset + RECONCILE_ABSENT_CHUNK]
+                placeholders = ",".join("%s" for _ in chunk)
+                cur = conn.execute(
+                    f"""
+                    UPDATE hub_findings_current
+                    SET status = 'resolved', resolved_at = %s, updated_at = %s
+                    WHERE {where_sql} AND canonical_id IN ({placeholders})
+                    """,  # nosec B608
+                    (observed_at, now, *params, *chunk),
+                )
+                total += int(cur.rowcount or 0)
             conn.commit()
-        return int(cur.rowcount or 0)
+        return total

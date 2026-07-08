@@ -129,7 +129,14 @@ wandb = ["wandb>=0.16"]
 # Temporarily unbundled from agent-bom extras until upstream MLflow CVEs are fixed.
 # MLflow discovery still works if users install `mlflow` separately.
 openai = ["openai>=1.12"]
-ai-enrich = ["litellm>=1.83.14"]
+ai-enrich = [
+    "litellm>=1.83.14",
+    # Security floors mirrored from [tool.uv].override-dependencies so pip installs
+    # cannot land vulnerable litellm transitives (Closes #3684).
+    "python-dotenv>=1.2.2",
+    "aiohttp>=3.13.4",
+    "openai>=2.30.0",
+]
 graph = [
     "networkx>=3.0",
     "numpy>=1.26",

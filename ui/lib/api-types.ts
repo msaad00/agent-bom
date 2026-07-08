@@ -1023,6 +1023,10 @@ export interface PostureScorecard {
 export interface HealthResponse {
   status: string;
   version: string;
+  auth_required?: boolean | undefined;
+  auth_configured?: boolean | undefined;
+  configured_auth_modes?: string[] | undefined;
+  unauthenticated_allowed?: boolean | undefined;
 }
 
 export interface VersionInfo {

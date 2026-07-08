@@ -2,11 +2,13 @@ declare global {
   interface Window {
     __AGENT_BOM_CONFIG__?: {
       apiUrl?: string | undefined;
+      signInUrl?: string | undefined;
     } | undefined;
   }
 }
 
 const DEFAULT_API_URL = "http://localhost:8422";
+const DEFAULT_SIGN_IN_URL = "/login";
 
 function normalizeApiUrl(value: string | undefined | null): string | undefined {
   if (value == null) {
@@ -50,4 +52,25 @@ export function getConfiguredApiUrl(): string {
 
 export function getDisplayApiUrl(): string {
   return getConfiguredApiUrl() || DEFAULT_API_URL;
+}
+
+/**
+ * Target for the demo-mode "connect your cloud" CTA. Points at the sign-in /
+ * get-started flow of the authenticated product. Configurable at runtime via
+ * ``window.__AGENT_BOM_CONFIG__.signInUrl`` (for hosted deployments that funnel
+ * to an external product URL) or the ``NEXT_PUBLIC_SIGN_IN_URL`` build env,
+ * defaulting to the in-app ``/login`` route.
+ */
+export function getSignInUrl(): string {
+  if (typeof window !== "undefined") {
+    const runtimeValue = normalizeApiUrl(window.__AGENT_BOM_CONFIG__?.signInUrl);
+    if (runtimeValue) {
+      return runtimeValue;
+    }
+  }
+  const envValue = normalizeApiUrl(process.env.NEXT_PUBLIC_SIGN_IN_URL);
+  if (envValue) {
+    return envValue;
+  }
+  return DEFAULT_SIGN_IN_URL;
 }

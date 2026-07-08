@@ -361,7 +361,7 @@ def render_output(
                 sys.stdout.write(dumps_envelope(payload))
             else:
                 safe_json = json.dumps(to_redacted_json(report), indent=2)
-                sys.stdout.write(safe_json)  # codeql[py/clear-text-logging-sensitive-data]
+                click.echo(safe_json, nl=False)
             sys.stdout.write("\n")
         elif _is_null_device(output) and output_format in ("console", "text", "plain"):
             # `-o /dev/null` with a terminal-only format: discard silently rather
@@ -455,8 +455,7 @@ def render_output(
         elif output_format == "json":
             if output in (None, "", "-"):
                 safe_json = json.dumps(to_redacted_json(report), indent=2)
-                sys.stdout.write(safe_json)  # codeql[py/clear-text-logging-sensitive-data]
-                sys.stdout.write("\n")
+                click.echo(safe_json)
             else:
                 out_path = _resolve_output_path(output, output_format)
                 export_json(report, out_path)

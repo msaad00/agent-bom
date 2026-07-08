@@ -856,6 +856,7 @@ from agent_bom.api.routes.plugins import router as _plugins_router  # noqa: E402
 from agent_bom.api.routes.posture_streaming import router as _posture_streaming_router  # noqa: E402
 from agent_bom.api.routes.privacy import router as _privacy_router  # noqa: E402
 from agent_bom.api.routes.proxy import router as _proxy_router  # noqa: E402
+from agent_bom.api.routes.proxy import ws_router as _proxy_ws_router  # noqa: E402
 from agent_bom.api.routes.reports import router as _reports_router  # noqa: E402
 from agent_bom.api.routes.runtime_blueprints import router as _runtime_blueprints_router  # noqa: E402
 from agent_bom.api.routes.scan import router as _scan_router  # noqa: E402
@@ -909,6 +910,8 @@ app.include_router(_v1_api_router)
 app.include_router(_scim_router)
 # Prometheus scrape surface stays unversioned (infra contract).
 app.include_router(_observability_infra_router)
+# Proxy live streams are root-level WebSocket paths (/ws/proxy/*), not /v1.
+app.include_router(_proxy_ws_router)
 
 # Resolve agent-bom-issued (abi_) identity tokens through the lifecycle store so
 # the proxy/gateway honor issuance, rotation overlap, and revocation.

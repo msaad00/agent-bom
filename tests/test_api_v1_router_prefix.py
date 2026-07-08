@@ -25,3 +25,9 @@ def test_versioned_and_infra_paths_unchanged_at_runtime() -> None:
     assert "/v1/findings" in schema_paths
     assert "/metrics" in schema_paths
     assert "/metrics" not in {p for p in schema_paths if p.startswith("/v1/")}
+
+
+def test_proxy_websocket_stays_at_root_unversioned() -> None:
+    client = TestClient(app)
+    with client.websocket_connect("/ws/proxy/metrics"):
+        pass

@@ -34,6 +34,7 @@ from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 router = APIRouter()
+ws_router = APIRouter()
 
 # ── In-process ring buffer for proxy alerts/metrics ──────────────────────────
 #
@@ -903,7 +904,7 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
     return None
 
 
-@router.websocket("/ws/proxy/metrics")
+@ws_router.websocket("/ws/proxy/metrics")
 async def ws_proxy_metrics(websocket: WebSocket) -> None:
     """WebSocket endpoint — push proxy metrics every second.
 
@@ -972,7 +973,7 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
         pass
 
 
-@router.websocket("/ws/proxy/alerts")
+@ws_router.websocket("/ws/proxy/alerts")
 async def ws_proxy_alerts(websocket: WebSocket) -> None:
     """WebSocket endpoint — push new proxy alerts as they arrive.
 

@@ -51,6 +51,7 @@ class FindingType(str, Enum):
     RATE_LIMIT = "RATE_LIMIT"  # Rate limit abuse by MCP tool
     MCP_BLOCKLIST = "MCP_BLOCKLIST"  # Curated malicious/suspicious MCP server match
     COMBINATION = "COMBINATION"  # Toxic combination — multiple signals chained into one exploitable path
+    MALICIOUS_PACKAGE = "MALICIOUS_PACKAGE"  # Known-malicious / typosquat package with no CVE row
 
 
 class FindingSource(str, Enum):
@@ -988,4 +989,47 @@ def blast_radius_to_finding(br: object) -> "Finding":
         exposed_credentials=list(br.exposed_credentials),
         exposed_tools=[getattr(t, "name", str(t)) for t in br.exposed_tools],
     )
+    return apply_hub_classification(finding)
+
+
+def malicious_package_to_finding(
+    pkg: object,
+    *,
+    affected_agents: list[str],
+    affected_servers: list[str],
+) -> Finding:
+    """Synthesize a unified finding for a malicious package with no CVE BlastRadius."""
+    from agent_bom.package_utils import normalize_package_ecosystem
+
+    name = str(getattr(pkg, "name", "") or "unknown")
+    version = str(getattr(pkg, "version", "") or "unknown")
+    ecosystem = normalize_package_ecosystem(str(getattr(pkg, "ecosystem", "") or ""))
+    purl = getattr(pkg, "purl", None)
+    identifier = str(purl) if purl else f"pkg:{ecosystem}/{name}@{version}"
+    reason = str(getattr(pkg, "malicious_reason", "") or "").strip() or "Known malicious or typosquat package"
+    evidence_payload: dict[str, object] = {
+        "package_name": name,
+        "package_version": version,
+        "ecosystem": ecosystem,
+        "package_is_malicious": True,
+        "malicious_reason": reason,
+        "finding_kind": "malicious-package",
+    }
+    finding = Finding(
+        finding_type=FindingType.MALICIOUS_PACKAGE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name=name, asset_type="package", identifier=identifier),
+        severity="critical",
+        title=f"Malicious package: {name}@{version}",
+        description=reason,
+        is_malicious=True,
+        malicious_reason=reason,
+        is_actionable=True,
+        risk_score=10.0,
+        affected_agents=list(affected_agents),
+        affected_servers=list(affected_servers),
+        evidence=evidence_payload,
+    )
+    from agent_bom.compliance_hub import apply_hub_classification
+
     return apply_hub_classification(finding)

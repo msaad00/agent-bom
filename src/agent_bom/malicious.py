@@ -33,6 +33,28 @@ def flag_malicious_from_vulns(package: Package) -> None:
         package.malicious_reason = f"Known malicious package ({', '.join(mal_ids[:3])})"
 
 
+# Scoped npm packages from known orgs are NOT confusion risks
+_SAFE_NPM_SCOPES: frozenset[str] = frozenset(
+    {
+        "@modelcontextprotocol/",
+        "@anthropic-ai/",
+        "@google-cloud/",
+        "@azure/",
+        "@aws-sdk/",
+        "@types/",
+        "@babel/",
+        "@eslint/",
+        "@eslint-community/",
+        "@opentelemetry/",
+        "@typescript-eslint/",
+        "@testing-library/",
+        "@playwright/",
+        "@vercel/",
+        "@next/",
+    }
+)
+
+
 # ─── Typosquat detection ─────────────────────────────────────────────────────
 
 # Popular packages commonly targeted by typosquat attacks.
@@ -116,14 +138,21 @@ def check_typosquat(name: str, ecosystem: str, threshold: float = 0.85) -> str |
     if not popular:
         return None
 
+    normalized = name.lower()
+
+    # Official scoped npm packages such as @babel/core are allowed to look
+    # similar to older unscoped package names like babel-core.
+    if ecosystem.lower() == "npm" and any(normalized.startswith(scope) for scope in _SAFE_NPM_SCOPES):
+        return None
+
     # Exact match = not a typosquat
-    if name.lower() in {p.lower() for p in popular}:
+    if normalized in {p.lower() for p in popular}:
         return None
 
     best_ratio = 0.0
     best_match = ""
     for pkg_name in popular:
-        ratio = SequenceMatcher(None, name.lower(), pkg_name.lower()).ratio()
+        ratio = SequenceMatcher(None, normalized, pkg_name.lower()).ratio()
         if ratio > best_ratio:
             best_ratio = ratio
             best_match = pkg_name
@@ -145,46 +174,48 @@ def check_typosquat(name: str, ecosystem: str, threshold: float = 0.85) -> str |
 # 2. Package not found in OSV/NVD (no vulnerability data = likely private)
 # 3. Package has no registry metadata (version resolution failed)
 
-# Patterns that suggest internal/private package names
-_INTERNAL_NAME_PATTERNS: frozenset[str] = frozenset(
+# Patterns that strongly suggest internal/private package names.
+_STRONG_INTERNAL_NAME_PATTERNS: frozenset[str] = frozenset(
     {
-        "internal-",
         "private-",
         "corp-",
         "company-",
         "-internal",
         "-private",
         "-corp",
+    }
+)
+
+# Service-ish tokens are weak signals. They are common in public SDKs and npm
+# utility packages, so only use them when no public registry version was
+# resolved.
+_WEAK_INTERNAL_NAME_PATTERNS: frozenset[str] = frozenset(
+    {
+        "internal-",
         "-infra",
         "-platform",
         "-shared",
         "-common",
         "-utils",
-        "-core",
-        "-sdk",
-        "-lib",
         "-service",
         "-api",
     }
 )
 
-# Scoped npm packages from known orgs are NOT confusion risks
-_SAFE_NPM_SCOPES: frozenset[str] = frozenset(
-    {
-        "@modelcontextprotocol/",
-        "@anthropic-ai/",
-        "@google-cloud/",
-        "@azure/",
-        "@aws-sdk/",
-        "@types/",
-        "@babel/",
-        "@eslint/",
-        "@testing-library/",
-        "@playwright/",
-        "@vercel/",
-        "@next/",
-    }
-)
+# Public SDK families commonly use service-oriented package names such as
+# ``azure-mgmt-servicebus`` or ``google-api-core``. Those names contain broad
+# internal-looking tokens (-api, -common, -service) but are public namespace
+# conventions, not dependency-confusion signals by themselves.
+_SAFE_PUBLIC_NAME_PREFIXES_BY_ECOSYSTEM: dict[str, frozenset[str]] = {
+    "pypi": frozenset(
+        {
+            "azure-",
+            "google-",
+            "googleapis-",
+            "opentelemetry-",
+        }
+    ),
+}
 
 
 def check_dependency_confusion(package: "Package") -> str | None:
@@ -203,8 +234,14 @@ def check_dependency_confusion(package: "Package") -> str | None:
     if eco == "npm" and any(name.startswith(scope) for scope in _SAFE_NPM_SCOPES):
         return None
 
-    # Check for internal naming patterns
-    has_internal_pattern = any(pat in name for pat in _INTERNAL_NAME_PATTERNS)
+    if any(name.startswith(prefix) for prefix in _SAFE_PUBLIC_NAME_PREFIXES_BY_ECOSYSTEM.get(eco, frozenset())):
+        return None
+
+    # Check for internal naming patterns. Weak service-ish tokens only count
+    # when the package does not have a concrete public-registry version.
+    has_strong_internal_pattern = any(pat in name for pat in _STRONG_INTERNAL_NAME_PATTERNS)
+    has_weak_internal_pattern = any(pat in name for pat in _WEAK_INTERNAL_NAME_PATTERNS)
+    has_internal_pattern = has_strong_internal_pattern or has_weak_internal_pattern
     if not has_internal_pattern:
         return None
 
@@ -213,7 +250,11 @@ def check_dependency_confusion(package: "Package") -> str | None:
         return None
 
     # If version was resolved from a registry, it's a known public package
-    if package.version not in ("unknown", "latest", ""):
+    resolved_public_version = package.version not in ("unknown", "latest", "")
+    if resolved_public_version and not has_strong_internal_pattern:
+        return None
+
+    if resolved_public_version:
         # Has a resolved version — likely exists on public registry
         # Only flag if it also has internal naming AND no scorecard data
         if getattr(package, "scorecard_score", None) is not None:

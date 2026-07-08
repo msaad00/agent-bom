@@ -187,12 +187,18 @@ def _reset_api_runtime_state() -> None:
 
 def _reset_proxy_route_state() -> None:
     # The proxy status/alerts route keeps process-global in-memory buffers:
-    # a bounded _proxy_alerts deque, its _proxy_alerts_total counter, and the
-    # latest _proxy_metrics / _proxy_metrics_by_tenant snapshots. _load_proxy_alerts
-    # only falls back to the AGENT_BOM_LOG file when _proxy_alerts is EMPTY, so an
-    # alert left in the deque by an earlier test makes /v1/proxy/status ignore the
-    # log and report the wrong alert count (order-dependent: test_proxy_status_from_log
-    # asserting total_alerts==1 gets 0). Clear all four so each test starts clean.
+    # a bounded _proxy_alerts deque, its _proxy_alerts_total counter, the latest
+    # _proxy_metrics / _proxy_metrics_by_tenant snapshots, and a 24h audit-event
+    # dedupe table (_audit_dedupe, guarded by _audit_dedupe_lock, up to 50k
+    # entries). _load_proxy_alerts only falls back to the AGENT_BOM_LOG file when
+    # _proxy_alerts is EMPTY, so an alert left in the deque by an earlier test
+    # makes /v1/proxy/status ignore the log and report the wrong count (e.g.
+    # test_proxy_status_from_log asserting total_alerts==1 gets 0). The dedupe
+    # table is just as order-sensitive: a (tenant, event_id) key emitted by one
+    # test suppresses the same event in a later test asserting emission, so a
+    # test that ingests then one that re-ingests the same id can flake. Clear all
+    # of them so each test starts clean. The dedupe table uses the route's own
+    # lock-safe reset helper.
     try:
         from agent_bom.api.routes import proxy as proxy_routes
 
@@ -200,6 +206,7 @@ def _reset_proxy_route_state() -> None:
         proxy_routes._proxy_alerts_total = 0
         proxy_routes._proxy_metrics = None
         proxy_routes._proxy_metrics_by_tenant.clear()
+        proxy_routes._reset_audit_dedupe_for_tests()
     except Exception:
         pass
 

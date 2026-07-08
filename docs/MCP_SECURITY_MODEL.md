@@ -273,7 +273,7 @@ should_i_deploy     — allow/warn/block guidance from ExposurePath risk
 ### CI/CD (GitHub Action)
 
 ```yaml
-- uses: msaad00/agent-bom@v0.93.5
+- uses: msaad00/agent-bom@v0.94.0
   with:
     format: sarif
     upload-sarif: 'true'

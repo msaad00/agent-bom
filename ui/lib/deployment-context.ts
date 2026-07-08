@@ -113,7 +113,7 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
   },
   proxy: {
     label: "Proxy",
-    navHref: "/runtime?tab=proxy",
+    navHref: "/proxy",
     isAvailable: (counts) => bool(counts?.has_proxy),
     requirement: "Runtime proxy audit or detector telemetry",
     command: "agent-bom proxy --help",
@@ -127,7 +127,7 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
   },
   gateway: {
     label: "Gateway",
-    navHref: "/runtime?tab=gateway",
+    navHref: "/gateway",
     isAvailable: (counts) => bool(counts?.has_gateway),
     requirement: "Gateway policy usage or managed runtime policy state",
     command: "helm upgrade --install agent-bom deploy/helm/agent-bom --set gateway.enabled=true",
@@ -170,9 +170,9 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
 };
 
 export function deploymentSurfaceForHref(href: string): DeploymentSurface | null {
-  const normalized = href === "/vulns" ? "/findings" : href.split("?")[0] ?? href;
-  if (normalized === "/proxy") return "proxy";
-  if (normalized === "/gateway") return "gateway";
+  const normalized = href.split("?")[0] ?? href;
+  // /runtime hosts the proxy and gateway surfaces as tabs, so it maps to no
+  // single surface; its nav visibility is handled directly in isNavLinkVisible.
   if (normalized === "/runtime") return null;
   const match = Object.entries(SURFACE_DEFINITIONS).find(([, definition]) => definition.navHref === normalized);
   return (match?.[0] as DeploymentSurface | undefined) ?? null;

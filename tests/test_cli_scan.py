@@ -75,7 +75,8 @@ def test_scan_help():
     assert "--output" in result.output
     assert "--format" in result.output
     assert "--no-discover" in result.output
-    assert "--inventory-only" in result.output
+    # --inventory-only is a deprecated hidden alias — no longer advertised.
+    assert "--inventory-only" not in result.output
     assert "--no-follow-symlinks" in result.output
     assert "graph (Cytoscape.js graph JSON)" in normalized
     assert "graph (raw graph JSON)" not in normalized

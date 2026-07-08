@@ -100,7 +100,7 @@ python examples/operator_pull/snowflake_inventory_adapter.py \
 Scan only when the operator asks for findings:
 
 ```bash
-agent-bom agents --inventory snowflake-inventory.json --format json --output agent-bom-snowflake-findings.json
+agent-bom scan --inventory snowflake-inventory.json --format json --output agent-bom-snowflake-findings.json
 ```
 
 ## Evidence Contract

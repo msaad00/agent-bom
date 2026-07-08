@@ -210,5 +210,24 @@ def test_enrichment_cache_age_missing_returns_none(tmp_path, monkeypatch):
     assert enrichment.enrichment_cache_age_hours(now=_NOW) is None
 
 
+def test_offline_empty_db_signals_first_run_nudge_contract(tmp_path, monkeypatch):
+    """The first-run empty-DB nudge keys off ``mode == 'offline'`` with a
+    zero ``record_count``. Lock that contract so an absent local advisory DB
+    scanned ``--offline`` stays detectable as "no coverage", not a clean run.
+    """
+    from agent_bom.db import schema
+
+    monkeypatch.setattr(schema, "DB_PATH", tmp_path / "does-not-exist.db")
+
+    freshness = compute_freshness(offline=True)
+
+    assert freshness.mode == "offline"
+    assert freshness.record_count == 0
+    assert freshness.sources == []
+    # Same probe without --offline degrades to live mode (network fallback),
+    # so the nudge must not fire there.
+    assert compute_freshness(offline=False).mode == "live"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])

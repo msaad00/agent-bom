@@ -114,7 +114,7 @@ agent-bom iac infra/         # scan Terraform/CloudFormation/K8s
 agent-bom cloud aws          # AWS CIS benchmark
 agent-bom cloud azure        # Azure CIS benchmark
 agent-bom cloud gcp          # GCP CIS benchmark
-agent-bom agents --snowflake --snowflake-cis-benchmark
+agent-bom scan --snowflake --snowflake-cis-benchmark
 agent-bom secrets .          # find secrets in current directory
 ```
 
@@ -138,7 +138,7 @@ agent-bom iac infra/
 agent-bom cloud aws
 agent-bom cloud azure
 agent-bom cloud gcp
-agent-bom agents --snowflake --snowflake-cis-benchmark
+agent-bom scan --snowflake --snowflake-cis-benchmark
 
 # Find secrets in files
 agent-bom secrets .

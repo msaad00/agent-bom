@@ -174,12 +174,14 @@ const NAV_GROUPS: NavGroup[] = [
 const ALL_GROUP_LABELS = NAV_GROUPS.map((group) => group.label);
 
 /** Curated first-session proof path (#3618). Full nav stays in groups + ⌘K. */
+// Reuse the canonical nav labels so proof-path tiles don't give the same route
+// a second name (e.g. Findings vs "Queue"). Icons mirror each route's nav icon.
 const PROOF_PATH_LINKS: NavLink[] = [
-  { href: "/findings", label: "Queue", icon: Bug },
-  { href: "/security-graph", label: "Graph", icon: Network },
+  { href: "/findings", label: "Findings", icon: Bug },
+  { href: "/security-graph", label: "Security Graph", icon: Network },
   { href: "/runtime", label: "Runtime", icon: Shield },
-  { href: "/compliance", label: "Reports", icon: FileText },
-  { href: "/connections", label: "Connections", icon: Cloud },
+  { href: "/compliance", label: "Compliance", icon: FileText },
+  { href: "/connections", label: "Cloud Accounts", icon: Cloud },
 ];
 
 // ─── Risk counts for badges ─────────────────────────────────────────────────
@@ -558,10 +560,10 @@ export function Nav() {
                       href === "/"
                         ? path === "/"
                         : href === "/findings"
-                        ? path.startsWith("/findings") || path.startsWith("/vulns")
+                        ? path.startsWith("/findings")
                         : path.startsWith(href);
-                    const isVulns = href === "/findings";
-                    const showVulnBadge = isVulns && counts && counts.critical > 0;
+                    const isFindings = href === "/findings";
+                    const showVulnBadge = isFindings && counts && counts.critical > 0;
                     const needsSetup = !active && !showVulnBadge && navLinkNeedsSetup(href, counts);
 
                     return (
@@ -696,7 +698,7 @@ export function Nav() {
                           href === "/"
                             ? path === "/"
                             : href === "/findings"
-                            ? path.startsWith("/findings") || path.startsWith("/vulns")
+                            ? path.startsWith("/findings")
                             : path.startsWith(href);
                         return (
                           <Link

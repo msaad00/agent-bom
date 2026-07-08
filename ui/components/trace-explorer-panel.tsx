@@ -168,7 +168,7 @@ export function TraceExplorerPanel() {
                   {selectedSpan.linked_findings.map((finding) => (
                     <div key={String(finding.finding_id)} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <Link href={`/vulns?cve=${encodeURIComponent(String(finding.vulnerability_id || ""))}`} className="font-mono text-xs text-emerald-300 hover:underline">
+                        <Link href={`/findings?cve=${encodeURIComponent(String(finding.vulnerability_id || ""))}`} className="font-mono text-xs text-emerald-300 hover:underline">
                           {finding.vulnerability_id}
                         </Link>
                         {finding.effective_reach_band ? (

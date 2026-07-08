@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import VulnsPage from "@/app/vulns/page";
+import FindingsPage from "@/app/findings/page";
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
@@ -19,7 +19,7 @@ const { apiMock } = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ replace: vi.fn() }),
-  usePathname: () => "/vulns",
+  usePathname: () => "/findings",
 }));
 
 vi.mock("next/link", () => ({
@@ -89,7 +89,7 @@ function scanJob() {
   };
 }
 
-describe("VulnsPage", () => {
+describe("FindingsPage", () => {
   beforeEach(() => {
     apiMock.listJobs.mockReset();
     apiMock.getScan.mockReset();
@@ -123,7 +123,7 @@ describe("VulnsPage", () => {
   });
 
   it("keeps findings as a compact queue and opens evidence in a drawer", async () => {
-    render(<VulnsPage />);
+    render(<FindingsPage />);
 
     expect(await screen.findByText("Findings queue")).toBeInTheDocument();
     expect(screen.getByText("25 per page")).toBeInTheDocument();

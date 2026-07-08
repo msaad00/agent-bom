@@ -280,14 +280,18 @@ server = "agent_bom.mcp_server:create_smithery_server"
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 pythonpath = ["src"]
-# pytest-randomly is installed as a dev dep but kept OFF by default so CI runs
-# in deterministic order — a failing job is then reproducible without hunting
-# for the shuffle seed. The suite is genuinely order-independent (all known
-# coupling was fixed via the global-state resets in tests/conftest.py and the
-# per-module fixtures); contributors can prove it locally by overriding this
-# with `pytest -p randomly`. Disabling here (not per-CI-command) covers every
-# job — main matrix, Alpine/musl, Postgres — and local runs alike.
-addopts = "-p no:randomly"
+# pytest-randomly is ON by default: every run (local + CI — main matrix,
+# Alpine/musl, Postgres) shuffles test order to keep order-dependence from
+# creeping back in. Order-independence is enforced structurally by the autouse
+# reset_global_test_state fixture in tests/conftest.py, which snapshots and
+# restores every process-global store singleton (the ~35 set_*_store accessors),
+# the shared Rich output console, the proxy in-memory alert/metric buffers, and
+# the auth env/config — so a test that swaps a global and skips its own cleanup
+# cannot leak into the next test regardless of order. A failing run stays
+# reproducible: pytest-randomly prints "Using --randomly-seed=N"; re-run with
+# `--randomly-seed=N` to replay the exact order. To force deterministic order
+# for a one-off local run, pass `-p no:randomly`.
+addopts = ""
 markers = [
     "network: tests that require network access (OSV API)",
     "slow: slow tests (e.g. large-scale perf benchmarks) — opt-in only",

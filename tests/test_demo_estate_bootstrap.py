@@ -39,7 +39,7 @@ def test_demo_estate_bootstrap_seeds_jobs_and_graph(demo_estate_client: TestClie
     assert any("demo" in str(src).lower() for src in sources)
 
     graph = demo_estate_client.get("/v1/graph", headers={"X-Agent-Bom-Role": "viewer"})
-    assert graph.status_code == 200
+    assert graph.status_code == 200, graph.text
     payload = graph.json()
     node_count = len(payload.get("nodes") or [])
     assert node_count > 0

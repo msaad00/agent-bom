@@ -106,7 +106,7 @@ bundled 427+ MCP server registry.
 
 ```bash
 pipx install agent-bom
-agent-bom agents             # discover all AI agents and MCP servers
+agent-bom scan             # discover all AI agents and MCP servers
 agent-bom doctor             # check prerequisites and configuration health
 agent-bom mcp inventory      # list all discovered MCP servers
 agent-bom where              # show all discovery paths
@@ -125,7 +125,7 @@ agent-bom where              # show all discovery paths
 
 ```bash
 # Discover all AI agents and MCP servers
-agent-bom agents
+agent-bom scan
 
 # Check configuration health and prerequisites
 agent-bom doctor

@@ -41,6 +41,25 @@ _SARIF_SEVERITY_MAP = {
     Severity.UNKNOWN: "note",
 }
 
+
+def _sarif_fingerprint_fields(
+    *,
+    stable_input: str,
+    artifact_uri: str,
+    start_line: int = 1,
+) -> dict[str, dict[str, str]]:
+    """Return SARIF fingerprints and GitHub partialFingerprints for dedup."""
+    return {
+        "fingerprints": {
+            "agent-bom/v1": hashlib.sha256(stable_input.encode()).hexdigest(),
+        },
+        "partialFingerprints": {
+            "primaryLocationLineHash": hashlib.sha256(
+                f"{artifact_uri}:{start_line}".encode()
+            ).hexdigest(),
+        },
+    }
+
 # GitHub Security tab uses security-severity (0.0–10.0) for granular sorting.
 # Ranges per docs.github.com: >9.0=critical, 7.0–8.9=high, 4.0–6.9=medium, 0.1–3.9=low
 _SECURITY_SEVERITY_SCORE = {
@@ -488,14 +507,13 @@ def _cve_sarif_result(
 
     config_path = _finding_artifact_uri(report, finding)
     fp_input = f"{rule_id}:{pkg_name}:{pkg_version}:{config_path}"
-    fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
     kind = "informational" if sev == Severity.NONE else "fail"
     result: dict = {
         "ruleId": rule_id,
         "level": level,
         "kind": kind,
         "message": {"text": _sanitize_sarif_text("title", message_text, fallback=f"{rule_id} package vulnerability")},
-        "fingerprints": {"agent-bom/v1": fingerprint},
+        **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=config_path, start_line=1),
         "locations": [
             {
                 "physicalLocation": {
@@ -670,7 +688,6 @@ def to_sarif(
             _ecosystem_from_purl(finding.asset.identifier),
         )
         fp_input = f"{finding.id}:{file_path}:{finding.asset.stable_id}"
-        fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
         finding_result: dict = {
             "ruleId": rule_id,
             "level": level,
@@ -682,7 +699,7 @@ def to_sarif(
                     fallback=_sanitize_sarif_text("description", finding.description, fallback=finding.finding_type.value),
                 )
             },
-            "fingerprints": {"agent-bom/v1": fingerprint},
+            **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=1),
             "locations": [
                 {
                     "physicalLocation": {
@@ -750,7 +767,6 @@ def to_sarif(
                 )
 
             fp_input = f"{rule_id}:{file_path}:{line_num}"
-            fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
             results.append(
                 {
                     "ruleId": rule_id,
@@ -763,7 +779,7 @@ def to_sarif(
                             fallback=_sanitize_sarif_text("title", iac_finding.get("title", "IaC misconfiguration")),
                         )
                     },
-                    "fingerprints": {"agent-bom/v1": fingerprint},
+                    **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=line_num),
                     "locations": [
                         {
                             "physicalLocation": {
@@ -812,8 +828,8 @@ def to_sarif(
                 )
 
             file_path = _to_relative_path(comp.get("file", "unknown") or "unknown")
-            fp_input = f"{rule_id}:{file_path}:{comp.get('line', 1)}"
-            fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
+            line_num = int(comp.get("line", 1) or 1)
+            fp_input = f"{rule_id}:{file_path}:{line_num}"
             desc = _sanitize_sarif_text("description", comp.get("description", ""), fallback=f"{comp_type.replace('_', ' ')}: {name}")
             results.append(
                 {
@@ -821,7 +837,7 @@ def to_sarif(
                     "level": level,
                     "kind": "fail",
                     "message": {"text": desc},
-                    "fingerprints": {"agent-bom/v1": fingerprint},
+                    **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=line_num),
                     "locations": [
                         {
                             "physicalLocation": {
@@ -885,7 +901,7 @@ def to_sarif(
 
             # Synthetic fingerprint so repeat runs produce stable IDs.
             fp_input = f"{rule_id}:{','.join(check.get('resource_ids') or [])}"
-            fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
+            artifact_uri = f"cis-{cloud_key}-benchmark"
 
             # CIS findings are cloud-control-level, not file-level. Point
             # at a conventional manifest so GitHub renders the result;
@@ -918,11 +934,11 @@ def to_sarif(
                             fallback=rule_id,
                         )
                     },
-                    "fingerprints": {"agent-bom/v1": fingerprint},
+                    **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=artifact_uri, start_line=1),
                     "locations": [
                         {
                             "physicalLocation": {
-                                "artifactLocation": {"uri": f"cis-{cloud_key}-benchmark", "uriBaseId": "%SRCROOT%"},
+                                "artifactLocation": {"uri": artifact_uri, "uriBaseId": "%SRCROOT%"},
                                 "region": {"startLine": 1, "startColumn": 1},
                             },
                         }

@@ -46,6 +46,7 @@ def _reset_enrichment(tmp_path, monkeypatch):
 
 def test_enrichment_cache_enospc_warns_and_continues(monkeypatch, caplog):
     """A full disk on the NVD/EPSS cache write degrades to no-cache, never raises."""
+    monkeypatch.setattr(enrichment, "_low_disk_warned", False)
     monkeypatch.setattr(enrichment.tempfile, "mkstemp", _enospc)
     with caplog.at_level("WARNING"):
         enrichment._save_enrichment_cache()  # must not raise
@@ -54,6 +55,7 @@ def test_enrichment_cache_enospc_warns_and_continues(monkeypatch, caplog):
 
 def test_enrichment_cache_enospc_warning_deduped(monkeypatch, caplog):
     """The low-disk warning is emitted once, not once per cache file."""
+    monkeypatch.setattr(enrichment, "_low_disk_warned", False)
     monkeypatch.setattr(enrichment.tempfile, "mkstemp", _enospc)
     with caplog.at_level("WARNING"):
         enrichment._save_enrichment_cache()

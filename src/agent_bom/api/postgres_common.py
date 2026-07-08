@@ -17,6 +17,7 @@ from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING
 
 from agent_bom.config import (
+    ALLOW_SUPERUSER_DB,
     POSTGRES_CONNECT_TIMEOUT_SECONDS,
     POSTGRES_POOL_MAX_SIZE,
     POSTGRES_POOL_MIN_SIZE,
@@ -36,8 +37,20 @@ else:
 logger = logging.getLogger(__name__)
 
 _pool = None
+_rls_role_checked = False
 _current_tenant: ContextVar[str] = ContextVar("agent_bom_postgres_tenant", default="default")
 _bypass_tenant_rls: ContextVar[bool] = ContextVar("agent_bom_postgres_bypass_rls", default=False)
+
+
+class RlsRolePrivilegeError(RuntimeError):
+    """Raised when the connected Postgres role can bypass tenant RLS.
+
+    Postgres superusers and roles with ``BYPASSRLS`` ignore
+    ``FORCE ROW LEVEL SECURITY``, so every ``*_tenant_isolation`` policy in
+    this module becomes a no-op and tenants can read each other's rows. We
+    refuse to start rather than serve traffic with tenant isolation silently
+    disabled.
+    """
 
 
 def set_current_tenant(tenant_id: str) -> Token[str]:
@@ -113,13 +126,70 @@ def _get_pool() -> ConnectionPool:
             max_size=max_size,
             kwargs=kwargs,
         )
+    _guard_rls_capable_role(_pool)
     return _pool
+
+
+def _guard_rls_capable_role(pool: ConnectionPool) -> None:
+    """Fail closed when the connected role can bypass tenant RLS.
+
+    Tenant isolation on Postgres is enforced entirely through the
+    ``FORCE ROW LEVEL SECURITY`` policies created by :func:`_ensure_tenant_rls`.
+    Superusers and ``BYPASSRLS`` roles ignore that clause, so if the app
+    connects as such a role every tenant policy is void and cross-tenant reads
+    succeed. We inspect the role once per pool and refuse to continue unless the
+    operator has explicitly opted into a single-tenant / dev setup via
+    ``AGENT_BOM_ALLOW_SUPERUSER_DB`` (#3665).
+    """
+    global _rls_role_checked
+    if _rls_role_checked:
+        return
+    try:
+        with pool.connection() as conn:
+            cursor = conn.execute(
+                "SELECT rolsuper, rolbypassrls, rolname FROM pg_roles WHERE rolname = current_user"
+            )
+            row = cursor.fetchone() if cursor is not None else None
+    except Exception:
+        # Best-effort probe: a transient connect error or a store mock without a
+        # real role table must not mask the primary failure. A genuinely
+        # RLS-bypassing role is still caught on the next successful pool use.
+        logger.debug("Postgres RLS role guard could not inspect role attributes", exc_info=True)
+        return
+
+    _rls_role_checked = True
+    if not row:
+        return
+    rolsuper, rolbypassrls = bool(row[0]), bool(row[1])
+    role_name = row[2] if len(row) > 2 and row[2] else "current_user"
+    if not (rolsuper or rolbypassrls):
+        return
+
+    attrs = " and ".join(
+        label for label, present in (("SUPERUSER", rolsuper), ("BYPASSRLS", rolbypassrls)) if present
+    )
+    message = (
+        f"Postgres role {role_name!r} has {attrs}, which bypasses FORCE ROW LEVEL SECURITY "
+        "and silently disables agent-bom tenant isolation — cross-tenant reads/writes would "
+        "succeed. Connect as a NOSUPERUSER NOBYPASSRLS role (e.g. run "
+        f"'ALTER ROLE {role_name} NOSUPERUSER NOBYPASSRLS;' or point AGENT_BOM_POSTGRES_URL at the "
+        "dedicated agent_bom_app role). For a single-tenant or local dev deployment, set "
+        "AGENT_BOM_ALLOW_SUPERUSER_DB=1 to acknowledge this and downgrade to a warning."
+    )
+    if ALLOW_SUPERUSER_DB:
+        logger.warning(
+            "AGENT_BOM_ALLOW_SUPERUSER_DB is set: %s Tenant isolation is NOT enforced by the database.",
+            message,
+        )
+        return
+    raise RlsRolePrivilegeError(message)
 
 
 def reset_pool() -> None:
     """Reset the connection pool (for testing)."""
-    global _pool
+    global _pool, _rls_role_checked
     _pool = None
+    _rls_role_checked = False
 
 
 def _apply_tenant_session(conn: Connection) -> None:

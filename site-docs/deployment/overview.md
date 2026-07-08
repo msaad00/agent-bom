@@ -20,6 +20,7 @@ from them.
 | **Laptop scan** | `pip install agent-bom` | local findings, SBOM, SARIF, HTML, graph export |
 | **Team demo** | `docker compose` pilot | shared API + UI control plane on one workstation |
 | **Production** | Helm / EKS Terraform | tenant-aware self-hosted control plane in your cluster |
+| **Private customer / CISO instance** | `docker compose` platform + product overlay | login-gated single host, no demo data, real cloud connected read-only |
 | **Snowflake shop** | SPCS / Native App | warehouse-native governance lane in your account |
 
 Same one-liner in prose: laptop scan → pip; team demo → docker compose pilot;
@@ -27,6 +28,11 @@ production → Helm / EKS Terraform; Snowflake shop → SPCS / Native App. Every
 here runs in your own boundary. Cost posture: all in-repo lanes are free and no
 managed public SaaS ships in this repo yet; see
 [Product boundaries](product-boundaries.md) for the full lane matrix.
+
+For the private, login-gated single-host instance where a real cloud account is
+connected read-only (the customer / CISO experience, distinct from the public
+anonymous demo), follow
+[Hosted Authenticated Instance + Connect Your Cloud](authenticated-hosted-instance.md).
 
 `agent-bom` is one product with two deployable images:
 

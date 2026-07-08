@@ -1020,6 +1020,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if resolution.role is None:
             return None, JSONResponse(status_code=403, content={"detail": "Forbidden — SCIM user has no runtime role"})
         self._record_scim_role_state(request, user_id=resolution.user_id, user_name=resolution.user_name)
+        if resolution.user_id:
+            request.state.scim_subject_id = resolution.user_id
         return resolution.role, None
 
     async def dispatch(self, request: StarletteRequest, call_next):
@@ -1166,6 +1168,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 request.state.tenant_id = api_key.tenant_id
                 request.state.api_key_id = api_key.key_id
                 request.state.api_key_scopes = list(api_key.scopes)
+                if api_key.scim_subject_id:
+                    request.state.scim_subject_id = api_key.scim_subject_id
                 # SAML-minted keys are named "saml:<subject>" — surface that
                 # as a distinct auth method so operators can trace who came
                 # in via which IdP path even after the key has been issued.

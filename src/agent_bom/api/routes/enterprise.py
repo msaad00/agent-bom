@@ -532,7 +532,7 @@ async def delete_browser_session(request: Request, response: Response) -> None:
 async def create_key(request: Request, req: CreateKeyRequest) -> dict:
     """Create a new API key. Returns the raw key once — store it securely."""
     from agent_bom.api.audit_log import log_action
-    from agent_bom.api.auth import Role, create_api_key, get_key_store
+    from agent_bom.api.auth import Role, create_api_key, get_key_store, resolve_scim_subject_binding
 
     tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or req.name
@@ -549,7 +549,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
             expires_at=req.expires_at,
             scopes=req.scopes,
             tenant_id=tenant_id,
-            scim_subject_id=req.scim_subject_id,
+            scim_subject_id=resolve_scim_subject_binding(request, req.scim_subject_id),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
@@ -1024,7 +1024,7 @@ async def saml_relay_state() -> dict:
 async def saml_login(req: SAMLLoginRequest) -> dict:
     """Verify a SAML assertion and return a short-lived API key."""
     from agent_bom.api.audit_log import log_action
-    from agent_bom.api.auth import Role, create_api_key, get_key_store
+    from agent_bom.api.auth import Role, create_api_key, get_key_store, resolve_scim_user_role
     from agent_bom.api.saml import SAML_INSTALL_HINT, SAMLConfig, SAMLError, saml_runtime_available
 
     if not saml_runtime_available():
@@ -1041,12 +1041,15 @@ async def saml_login(req: SAMLLoginRequest) -> dict:
         raise HTTPException(status_code=401, detail=sanitize_error(exc)) from exc
 
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=cfg.session_ttl_seconds)).isoformat()
+    scim_resolution = resolve_scim_user_role(assertion.tenant_id, assertion.subject)
+    scim_subject_id = scim_resolution.user_id if scim_resolution.user_id else assertion.subject
     raw_key, api_key = create_api_key(
         name=f"saml:{assertion.subject}",
         role=Role(assertion.role),
         expires_at=expires_at,
         scopes=["saml-session"],
         tenant_id=assertion.tenant_id,
+        scim_subject_id=scim_subject_id,
     )
     get_key_store().add(api_key)
     log_action(

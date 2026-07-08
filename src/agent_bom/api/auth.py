@@ -231,6 +231,41 @@ def resolve_scim_user_role(tenant_id: str, *subjects: object) -> SCIMRoleResolut
     return SCIMRoleResolution(matched=True, active=True, role=best_role, user_id=best_user.user_id, user_name=best_user.user_name)
 
 
+def resolve_scim_subject_binding(request: object, explicit: str | None = None) -> str | None:
+    """Resolve the SCIM subject id to persist on a newly issued API key.
+
+    Precedence: explicit request field → runtime SCIM resolution on the session →
+    parent key binding → canonical SCIM user id for OIDC/SAML callers.
+    """
+    if explicit and str(explicit).strip():
+        return str(explicit).strip()
+
+    state = getattr(request, "state", request)
+    state_user_id = getattr(state, "scim_user_id", None)
+    if state_user_id:
+        return str(state_user_id)
+
+    bound = getattr(state, "scim_subject_id", None)
+    if bound:
+        return str(bound)
+
+    key_id = getattr(state, "api_key_id", None)
+    if key_id:
+        parent = get_key_store().get(str(key_id))
+        if parent and parent.scim_subject_id:
+            return parent.scim_subject_id
+
+    tenant_id = getattr(state, "tenant_id", None) or "default"
+    auth_method = str(getattr(state, "auth_method", "") or "")
+    api_key_name = str(getattr(state, "api_key_name", "") or "")
+    if auth_method in {"saml", "oidc", "browser_session"} and api_key_name:
+        subjects: tuple[object, ...] = (api_key_name.removeprefix("saml:"), api_key_name)
+        resolution = resolve_scim_user_role(tenant_id, *subjects)
+        if resolution.user_id:
+            return resolution.user_id
+    return None
+
+
 def get_api_key_policy() -> ApiKeyPolicy:
     """Load API key lifetime policy from env with safe defaults."""
     default_ttl = int(os.environ.get("AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS", str(30 * 24 * 60 * 60)))

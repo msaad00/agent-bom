@@ -63,12 +63,11 @@ def test_to_findings_dedupes_secret_findings_by_id():
 def test_secret_findings_in_json_output():
     import json
 
-    from agent_bom.output.json_fmt import to_json
+    from agent_bom.output.json_fmt import to_redacted_json
 
     report = AIBOMReport(agents=[], blast_radii=[])
     report.ai_inventory_data = {"secrets": {"findings": [_SECRET], "total": 1}}
-    raw = to_json(report)
-    data = raw if isinstance(raw, dict) else json.loads(raw)
+    data = to_redacted_json(report)
     fts = [f.get("finding_type") for f in data.get("findings", [])]
     assert "CREDENTIAL_EXPOSURE" in fts
     # The raw value never appears; redacted preview is fine.

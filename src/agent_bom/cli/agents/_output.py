@@ -50,10 +50,10 @@ from agent_bom.output import (
     push_to_gateway,
     to_csv,
     to_cyclonedx,
-    to_json,
     to_junit,
     to_markdown,
     to_prometheus,
+    to_redacted_json,
     to_sarif,
     to_spdx,
     to_spdx2,
@@ -160,7 +160,7 @@ def _stdout_serialization(
             from agent_bom.output.badge import to_badge
 
             return json.dumps(to_badge(report), indent=2)
-        return json.dumps(to_json(report), indent=2)
+        return json.dumps(to_redacted_json(report), indent=2)
     if output_format == "cyclonedx":
         return json.dumps(to_cyclonedx(report), indent=2)
     if output_format == "sarif":
@@ -352,7 +352,7 @@ def render_output(
             elif agent_mode:
                 payload = success_envelope(
                     command="agents",
-                    report_json=to_json(report),
+                    report_json=to_redacted_json(report),
                     exit_code=ctx.exit_code,
                     token_budget=agent_token_budget,
                     full=agent_mode_full,
@@ -360,7 +360,8 @@ def render_output(
                 )
                 sys.stdout.write(dumps_envelope(payload))
             else:
-                sys.stdout.write(json.dumps(to_json(report), indent=2))
+                safe_json = json.dumps(to_redacted_json(report), indent=2)
+                click.echo(safe_json, nl=False)
             sys.stdout.write("\n")
         elif _is_null_device(output) and output_format in ("console", "text", "plain"):
             # `-o /dev/null` with a terminal-only format: discard silently rather
@@ -453,8 +454,8 @@ def render_output(
             _print_text(report, blast_radii)
         elif output_format == "json":
             if output in (None, "", "-"):
-                sys.stdout.write(json.dumps(to_json(report), indent=2))
-                sys.stdout.write("\n")
+                safe_json = json.dumps(to_redacted_json(report), indent=2)
+                click.echo(safe_json)
             else:
                 out_path = _resolve_output_path(output, output_format)
                 export_json(report, out_path)

@@ -422,6 +422,43 @@ def test_sanitize_sensitive_payload_preserves_safe_shape():
     assert result == {"package": "express", "version": "4.18.2", "count": 2}
 
 
+def test_sanitize_sensitive_payload_preserves_deep_inventory_metadata():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    payload = {
+        "inventory_snapshot": {
+            "agents": [
+                {
+                    "mcp_servers": [
+                        {
+                            "packages": [
+                                {
+                                    "name": "agent-bom",
+                                    "version": "0.89.2",
+                                    "ecosystem": "pypi",
+                                    "discovery_provenance": {
+                                        "version_provenance": {
+                                            "evidence": [{"package_path": "<path:mcp.json>"}],
+                                        },
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+
+    result = sanitize_sensitive_payload(payload)
+
+    package = result["inventory_snapshot"]["agents"][0]["mcp_servers"][0]["packages"][0]
+    assert package["name"] == "agent-bom"
+    assert package["version"] == "0.89.2"
+    assert package["ecosystem"] == "pypi"
+    assert package["discovery_provenance"]["version_provenance"]["evidence"] == [{"package_path": "<path:mcp.json>"}]
+
+
 # ---------------------------------------------------------------------------
 # create_safe_subprocess_env
 # ---------------------------------------------------------------------------

@@ -165,6 +165,24 @@ def test_tenant_data_export_rejects_cross_tenant_access(tenant_stores) -> None:
     assert getattr(exc.value, "status_code", None) == 403
 
 
+def test_tenant_dataset_unavailable_never_echoes_raw_exception(tenant_stores, monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.routes import privacy as privacy_mod
+
+    def _boom(*_args: object, **_kwargs: object) -> list[object]:
+        raise RuntimeError("Traceback (most recent call last): secret=AKIATEST at /etc/passwd")
+
+    monkeypatch.setattr(
+        privacy_mod,
+        "_get_store",
+        lambda: SimpleNamespace(list_summary=_boom),
+    )
+    payload = privacy_mod._tenant_dataset("tenant-a", include_records=False)
+
+    assert payload["unavailable"]["jobs"] == "An internal error occurred. Please contact support."
+    assert "Traceback" not in payload["unavailable"]["jobs"]
+    assert "AKIATEST" not in payload["unavailable"]["jobs"]
+
+
 def test_tenant_data_delete_defaults_to_dry_run(tenant_stores) -> None:
     response = delete_tenant_data("tenant-a", _request("tenant-a"))
 

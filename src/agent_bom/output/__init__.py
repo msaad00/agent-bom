@@ -54,6 +54,7 @@ from agent_bom.output.json_fmt import (  # noqa: E402
     _risk_narrative,  # noqa: F401
     export_json,  # noqa: F401
     to_json,  # noqa: F401
+    to_redacted_json,  # noqa: F401
 )
 from agent_bom.output.junit import (  # noqa: E402
     export_junit,  # noqa: F401

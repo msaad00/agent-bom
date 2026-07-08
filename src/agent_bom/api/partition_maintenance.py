@@ -324,8 +324,8 @@ def rollover_partitions(
         conn.execute(f"DROP TABLE IF EXISTS {name}")  # nosec B608 — name from pg_catalog
         dropped += 1
         logger.info(
-            "partition retention dropped %s (end=%s cutoff=%s)",
-            name,
+            "partition retention dropped expired partition #%d (end=%s cutoff=%s)",
+            dropped,
             end.isoformat(),
             cutoff.isoformat(),
         )

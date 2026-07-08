@@ -920,3 +920,28 @@ def test_readyz_red_during_shutdown() -> None:
         assert resp.json() == {"status": "draining"}
     finally:
         _server_mod._shutting_down = False
+
+
+def test_readyz_red_when_clustered_without_postgres(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    from agent_bom.api.readiness import evaluate_control_plane_readiness
+
+    status = evaluate_control_plane_readiness()
+    assert not status.ready
+    assert status.reason == "shared_postgres_required"
+
+
+def test_readyz_red_when_postgres_unreachable(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://invalid:5432/agent_bom")
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "1")
+    _server_mod._shutting_down = False
+
+    def _boom():
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr("agent_bom.api.postgres_common._get_pool", _boom)
+    client = TestClient(app)
+    resp = client.get("/readyz")
+    assert resp.status_code == 503
+    assert resp.json()["reason"] == "database_unavailable"

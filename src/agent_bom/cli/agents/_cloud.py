@@ -369,16 +369,24 @@ def run_benchmarks(
 
                     ctx.cis_benchmark_report = run_all_account_benchmarks(profile=aws_profile)
                 else:
+                    from agent_bom.cloud import aws_inventory
                     from agent_bom.cloud.aws_cis_benchmark import run_benchmark as run_cis
+                    from agent_bom.cloud.aws_cis_benchmark import run_benchmark_all_regions
 
-                    ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
+                    if aws_inventory.all_regions_enabled():
+                        ctx.cis_benchmark_report = run_benchmark_all_regions(profile=aws_profile, region=aws_region)
+                    else:
+                        ctx.cis_benchmark_report = run_cis(region=aws_region, profile=aws_profile)
             passed = ctx.cis_benchmark_report.passed
             failed = ctx.cis_benchmark_report.failed
             total = ctx.cis_benchmark_report.total
             rate = ctx.cis_benchmark_report.pass_rate
             errored = getattr(ctx.cis_benchmark_report, "errored", 0)
             scanned = getattr(ctx.cis_benchmark_report, "accounts_scanned", []) or []
+            regions_scanned = getattr(ctx.cis_benchmark_report, "regions_scanned", []) or []
             scope = f"{len(scanned)} account(s)" if len(scanned) > 1 else ""
+            if len(regions_scanned) > 1:
+                scope = f"{len(regions_scanned)} region(s)" if not scope else f"{scope}, {len(regions_scanned)} region(s)"
             if not quiet:
                 print_benchmark_line(
                     con,

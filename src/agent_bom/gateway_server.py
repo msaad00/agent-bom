@@ -360,6 +360,36 @@ def _open_drift_violates_tool(tenant_id: str, source_agent: str, tool_name: str)
     return False, ""
 
 
+def _validate_gateway_rule_patterns(policies: list[Any]) -> tuple[bool, str]:
+    """Fail closed when a control-plane rule carries an invalid regex pattern."""
+    import re
+
+    for policy in policies:
+        for rule in policy.rules:
+            if rule.tool_name_pattern:
+                try:
+                    re.compile(rule.tool_name_pattern)
+                except re.error:
+                    logger.error(
+                        "gateway control-plane bundle: invalid tool_name_pattern in rule %s (policy %s); failing closed",
+                        rule.id,
+                        policy.policy_id,
+                    )
+                    return False, "control-plane policy malformed"
+            for arg_name, arg_regex in (rule.arg_pattern or {}).items():
+                try:
+                    re.compile(arg_regex)
+                except re.error:
+                    logger.error(
+                        "gateway control-plane bundle: invalid arg_pattern for %s in rule %s (policy %s); failing closed",
+                        arg_name,
+                        rule.id,
+                        policy.policy_id,
+                    )
+                    return False, "control-plane policy malformed"
+    return True, ""
+
+
 def _evaluate_control_plane_bundle(
     policy_dicts: list[dict[str, Any]], source_agent: str, tool_name: str, arguments: dict
 ) -> tuple[bool, str]:
@@ -399,6 +429,9 @@ def _evaluate_control_plane_bundle(
                 parse_errors,
             )
             return False, "control-plane policy malformed"
+        patterns_ok, pattern_reason = _validate_gateway_rule_patterns(policies)
+        if not patterns_ok:
+            return False, pattern_reason
         return _evaluate_gateway_policy_bundle(policies, source_agent, tool_name, arguments)
     except Exception as exc:  # noqa: BLE001
         # Fail closed: a bundle that cannot be evaluated must not silently pass.

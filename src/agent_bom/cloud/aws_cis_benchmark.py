@@ -125,6 +125,7 @@ class CISBenchmarkReport:
     # evaluated and any per-account warnings (e.g. an account skipped because the
     # read-only role could not be assumed). Empty on a single-account run.
     accounts_scanned: list[str] = field(default_factory=list)
+    regions_scanned: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -163,6 +164,7 @@ class CISBenchmarkReport:
             "benchmark_version": self.benchmark_version,
             "account_id": self.account_id,
             "accounts_scanned": self.accounts_scanned,
+            "regions_scanned": self.regions_scanned,
             "region": self.region,
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
@@ -2874,6 +2876,155 @@ def run_benchmark(
     attach_all(report, cloud="aws")
 
     return report
+
+
+# Regional checks (EC2/RDS/KMS/logging/network) must run in every enabled region.
+# Global IAM/S3/account checks run once on the home region only.
+_REGIONAL_CIS_CHECK_IDS: frozenset[str] = frozenset(
+    {
+        "1.19",
+        "1.20",
+        "2.2.1",
+        "2.3.1",
+        "2.3.2",
+        "2.4.1",
+        "3.1",
+        "3.2",
+        "3.4",
+        "3.5",
+        "3.7",
+        "3.9",
+        "3.10",
+        "3.11",
+        "4.1",
+        "4.2",
+        "4.3",
+        "4.4",
+        "4.5",
+        "4.6",
+        "4.7",
+        "4.8",
+        "4.9",
+        "4.10",
+        "4.11",
+        "4.12",
+        "4.13",
+        "4.14",
+        "4.15",
+        "4.16",
+        "5.1",
+        "5.2",
+        "5.3",
+        "5.4",
+        "5.5",
+        "5.6",
+    }
+)
+
+_STATUS_RANK = {
+    CheckStatus.FAIL: 0,
+    CheckStatus.ERROR: 1,
+    CheckStatus.PASS: 2,
+    CheckStatus.NOT_APPLICABLE: 3,
+}
+
+
+def _merge_regional_cis_check(existing: CISCheckResult, incoming: CISCheckResult, region: str) -> CISCheckResult:
+    """Merge two results for the same check_id across regions (worst status wins)."""
+    if _STATUS_RANK[incoming.status] < _STATUS_RANK[existing.status]:
+        winner = incoming
+        other = existing
+    else:
+        winner = existing
+        other = incoming
+    suffix = f"[{region}] {other.evidence}" if other.evidence else f"[{region}]"
+    evidence = winner.evidence
+    if suffix not in evidence:
+        evidence = f"{evidence}; {suffix}" if evidence else suffix
+    return CISCheckResult(
+        check_id=winner.check_id,
+        title=winner.title,
+        status=winner.status,
+        severity=winner.severity,
+        evidence=evidence,
+        resource_ids=list(dict.fromkeys([*winner.resource_ids, *other.resource_ids]))[:20],
+        account_id=winner.account_id or other.account_id,
+        network_exposure=winner.network_exposure or other.network_exposure,
+        remediation=winner.remediation or other.remediation,
+    )
+
+
+def run_benchmark_all_regions(
+    region: str | None = None,
+    profile: str | None = None,
+    checks: list[str] | None = None,
+    *,
+    regions: list[str] | None = None,
+) -> CISBenchmarkReport:
+    """Run CIS AWS checks across every enabled region in the account.
+
+    Global IAM/S3/account checks run once on the home region; regional checks
+    (EC2, RDS, KMS, logging, networking) fan out to each enabled region.
+    """
+    try:
+        import boto3
+    except ImportError:
+        raise CloudDiscoveryError("boto3 is required for CIS AWS Benchmark checks. Install with: pip install 'agent-bom[aws]'")
+
+    from agent_bom.cloud.aws_inventory import _resolve_region_list
+    from agent_bom.cloud.normalization import sanitize_discovery_warning
+
+    session_kwargs: dict[str, Any] = {}
+    if region:
+        session_kwargs["region_name"] = region
+    if profile:
+        session_kwargs["profile_name"] = profile
+    session = boto3.Session(**session_kwargs)
+    default_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    scan_warnings: list[str] = []
+    region_list = _resolve_region_list(session, default_region, regions=regions, warnings=scan_warnings)
+    if len(region_list) <= 1:
+        report = run_benchmark(region=default_region, profile=profile, checks=checks, session=session)
+        report.warnings.extend(scan_warnings)
+        return report
+
+    home_region = region_list[0]
+    merged = run_benchmark(region=home_region, profile=profile, checks=checks)
+    merged.regions_scanned = list(region_list)
+    merged.region = f"multi:{','.join(region_list)}"
+    merged.warnings.extend(scan_warnings)
+
+    if checks is None:
+        regional_ids = sorted(_REGIONAL_CIS_CHECK_IDS)
+    else:
+        regional_ids = [check_id for check_id in checks if check_id in _REGIONAL_CIS_CHECK_IDS]
+    if not regional_ids:
+        return merged
+
+    by_id = {check.check_id: check for check in merged.checks}
+    for scan_region in region_list[1:]:
+        try:
+            partial = run_benchmark(region=scan_region, profile=profile, checks=regional_ids)
+        except Exception as exc:  # noqa: BLE001
+            merged.warnings.append(
+                f"CIS benchmark skipped region {scan_region}: {sanitize_discovery_warning(exc)}"
+            )
+            continue
+        for check in partial.checks:
+            prev = by_id.get(check.check_id)
+            if prev is None:
+                by_id[check.check_id] = check
+            else:
+                by_id[check.check_id] = _merge_regional_cis_check(prev, check, scan_region)
+
+    merged.checks = sorted(
+        by_id.values(),
+        key=lambda c: [int(x) if x.isdigit() else x for x in c.check_id.replace(".", " ").split()],
+    )
+    from agent_bom.cloud.cis_remediation import attach_all
+
+    attach_all(merged, cloud="aws")
+    return merged
 
 
 # Bounded concurrency for the multi-account fan-out — mirrors the AWS inventory

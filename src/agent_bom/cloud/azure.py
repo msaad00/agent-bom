@@ -552,6 +552,12 @@ def _discover_azure_functions(
                     # Site config read is best-effort
                     logger.debug("Could not read site config for function app %s: %s", app_name, exc)
 
+            from agent_bom.cloud.serverless_zip import extract_azure_function_packages
+
+            dep_packages = extract_azure_function_packages(client, rg_name, app_name, runtime_stack, warnings)
+            if dep_packages:
+                packages.extend(dep_packages)
+
             server = MCPServer(
                 name=f"function-app:{app_name}",
                 command=f"azure://functions/{app_name}",

@@ -96,3 +96,83 @@ def test_discover_lambda_attaches_packages_for_ai_runtime() -> None:
 
     assert rows[0]["package_count"] == 1
     assert rows[0]["packages"][0]["name"] == "requests"
+
+
+def test_discover_ecr_wires_sbom_pull() -> None:
+    from agent_bom.cloud import aws_inventory as inv
+    from agent_bom.cloud.sbom_pull import CloudSBOMResult
+
+    class _EcrClient:
+        def get_paginator(self, name: str):
+            assert name == "describe_repositories"
+
+            class _Pag:
+                def paginate(self):
+                    yield {"repositories": [{"repositoryName": "app", "repositoryUri": "123.dkr.ecr.us-east-1.amazonaws.com/app"}]}
+
+            return _Pag()
+
+    class _Session:
+        def client(self, svc, **_kw):
+            assert svc == "ecr"
+            return _EcrClient()
+
+    sbom = CloudSBOMResult(provider="ecr", image_ref="123.dkr.ecr.us-east-1.amazonaws.com/app:latest")
+    sbom.packages = [{"name": "flask", "version": "3.0.0"}]
+
+    with (
+        patch.object(inv, "_latest_ecr_image_ref", return_value="123.dkr.ecr.us-east-1.amazonaws.com/app:latest"),
+        patch("agent_bom.cloud.sbom_pull.pull_cloud_sbom", return_value=sbom),
+    ):
+        rows = inv._discover_ecr(_Session(), "us-east-1", account_id="123", warnings=[])
+
+    assert rows[0]["package_count"] == 1
+    assert rows[0]["packages"][0]["name"] == "flask"
+
+
+def test_run_benchmark_all_regions_merges_regional_checks() -> None:
+    from agent_bom.cloud.aws_cis_benchmark import (
+        CheckStatus,
+        CISBenchmarkReport,
+        CISCheckResult,
+        run_benchmark_all_regions,
+    )
+
+    home_report = CISBenchmarkReport(
+        checks=[
+            CISCheckResult(check_id="1.4", title="root", status=CheckStatus.PASS, severity="high"),
+            CISCheckResult(check_id="5.1", title="sg", status=CheckStatus.PASS, severity="high", evidence="ok"),
+        ]
+    )
+    other_report = CISBenchmarkReport(
+        checks=[CISCheckResult(check_id="5.1", title="sg", status=CheckStatus.FAIL, severity="high", evidence="open")]
+    )
+
+    with (
+        patch.dict("sys.modules", {"boto3": MagicMock()}),
+        patch("agent_bom.cloud.aws_cis_benchmark.run_benchmark") as run_mock,
+        patch("agent_bom.cloud.aws_inventory._resolve_region_list", return_value=["us-east-1", "eu-west-1"]),
+    ):
+        run_mock.side_effect = [home_report, other_report]
+        report = run_benchmark_all_regions(region="us-east-1")
+
+    assert report.regions_scanned == ["us-east-1", "eu-west-1"]
+    merged = next(c for c in report.checks if c.check_id == "5.1")
+    assert merged.status == CheckStatus.FAIL
+    assert "eu-west-1" in merged.evidence
+
+
+def test_serverless_zip_parses_python_metadata() -> None:
+    import io
+    import zipfile
+
+    from agent_bom.cloud.serverless_zip import packages_from_zip_bytes
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("requests-2.32.0.dist-info/METADATA", "Name: requests\nVersion: 2.32.0\n")
+
+    pkgs = packages_from_zip_bytes(buf.getvalue(), ecosystem="pypi")
+    assert len(pkgs) == 1
+    assert pkgs[0].name == "requests"
+

@@ -172,6 +172,31 @@ async def test_invalidate_cache_drops_entries() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fallback_decision_is_not_cached() -> None:
+    clock = _ManualClock()
+    fake = _FakeAsyncClient(
+        [
+            _FakeHTTPError("connection refused"),
+            _FakeResponse(_deny_payload()),
+        ]
+    )
+    client = FirewallClient(
+        gateway_url="http://gateway",
+        fail_mode=FirewallFailMode.OPEN,
+        cache_ttl_seconds=60.0,
+        http_client=fake,
+        clock=clock,
+    )
+    first = await client.decision(source_agent="cursor", target_agent="snowflake-cli")
+    assert first.effective_decision == FirewallDecision.ALLOW
+
+    clock.advance(5)
+    second = await client.decision(source_agent="cursor", target_agent="snowflake-cli")
+    assert second.effective_decision == FirewallDecision.DENY
+    assert len(fake.calls) == 2
+
+
+@pytest.mark.asyncio
 async def test_fail_open_on_gateway_error_without_local_policy() -> None:
     fake = _FakeAsyncClient([_FakeHTTPError("connection refused")])
     client = FirewallClient(

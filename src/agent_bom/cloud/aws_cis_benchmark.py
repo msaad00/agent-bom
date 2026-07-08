@@ -136,13 +136,24 @@ class CISBenchmarkReport:
         return sum(1 for c in self.checks if c.status == CheckStatus.FAIL)
 
     @property
+    def errored(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.ERROR)
+
+    @property
+    def not_applicable(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.NOT_APPLICABLE)
+
+    @property
+    def evaluated(self) -> int:
+        return self.passed + self.failed
+
+    @property
     def total(self) -> int:
         return len(self.checks)
 
     @property
     def pass_rate(self) -> float:
-        evaluated = sum(1 for c in self.checks if c.status in (CheckStatus.PASS, CheckStatus.FAIL))
-        return (self.passed / evaluated * 100) if evaluated else 0.0
+        return (self.passed / self.evaluated * 100) if self.evaluated else 0.0
 
     def to_dict(self) -> dict:
         from agent_bom.mitre_attack import tag_cis_check
@@ -156,6 +167,9 @@ class CISBenchmarkReport:
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
             "failed": self.failed,
+            "errored": self.errored,
+            "not_applicable": self.not_applicable,
+            "evaluated": self.evaluated,
             "total": self.total,
             "warnings": self.warnings,
             "checks": [

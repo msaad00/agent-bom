@@ -378,6 +378,7 @@ def run_benchmarks(
             failed = ctx.cis_benchmark_report.failed
             total = ctx.cis_benchmark_report.total
             rate = ctx.cis_benchmark_report.pass_rate
+            errored = getattr(ctx.cis_benchmark_report, "errored", 0)
             scanned = getattr(ctx.cis_benchmark_report, "accounts_scanned", []) or []
             scope = f"{len(scanned)} account(s)" if len(scanned) > 1 else ""
             if not quiet:
@@ -389,6 +390,7 @@ def run_benchmarks(
                     failed=failed,
                     pass_rate=rate,
                     scope=scope,
+                    errored=errored,
                 )
         except CloudDiscoveryError as exc:
             if not quiet:
@@ -446,6 +448,7 @@ def run_benchmarks(
             failed = ctx.azure_cis_benchmark_report.failed
             total = ctx.azure_cis_benchmark_report.total
             rate = ctx.azure_cis_benchmark_report.pass_rate
+            errored = getattr(ctx.azure_cis_benchmark_report, "errored", 0)
             scanned = getattr(ctx.azure_cis_benchmark_report, "subscriptions_scanned", []) or []
             scope = f"{len(scanned)} subscription(s)" if len(scanned) > 1 else ""
             if not quiet:
@@ -457,6 +460,7 @@ def run_benchmarks(
                     failed=failed,
                     pass_rate=rate,
                     scope=scope,
+                    errored=errored,
                 )
         except _AZCISError as exc:
             if not quiet:
@@ -489,6 +493,7 @@ def run_benchmarks(
             failed = ctx.gcp_cis_benchmark_report.failed
             total = ctx.gcp_cis_benchmark_report.total
             rate = ctx.gcp_cis_benchmark_report.pass_rate
+            errored = getattr(ctx.gcp_cis_benchmark_report, "errored", 0)
             scanned = getattr(ctx.gcp_cis_benchmark_report, "projects_scanned", []) or []
             scope = f"{len(scanned)} project(s)" if len(scanned) > 1 else ""
             if not quiet:
@@ -500,6 +505,7 @@ def run_benchmarks(
                     failed=failed,
                     pass_rate=rate,
                     scope=scope,
+                    errored=errored,
                 )
         except _GCPCISError as exc:
             if not quiet:

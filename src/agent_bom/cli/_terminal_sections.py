@@ -105,12 +105,14 @@ def print_benchmark_line(
     failed: int,
     pass_rate: float,
     scope: str = "",
+    errored: int = 0,
 ) -> None:
     """Compact one-line benchmark result."""
     scope_bit = f" · {scope}" if scope else ""
+    errored_bit = f" · {errored} errored" if errored else ""
     con.print(
         f"  [green]✓[/green] {label} · {total} checks{scope_bit} · "
-        f"{passed} passed · {failed} failed ({pass_rate:.0f}% pass)"
+        f"{passed} passed · {failed} failed{errored_bit} ({pass_rate:.0f}% pass)"
     )
 
 

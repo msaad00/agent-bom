@@ -116,6 +116,40 @@ def _discovery_client(service: str, version: str) -> Any:
     return googleapiclient.discovery.build(service, version, cache_discovery=False, **_creds_kwargs())
 
 
+def _gcp_paginate_list(resource_api: Any, items_key: str, **list_kwargs: Any) -> list[dict]:
+    """Collect all pages from a googleapiclient ``*.list`` resource."""
+    items: list[dict] = []
+    request = resource_api.list(**list_kwargs)
+    while request is not None:
+        response = request.execute()
+        items.extend(response.get(items_key, []) or [])
+        request = resource_api.list_next(request, response)
+    return items
+
+
+def _gcp_cloud_sql_instances(project_id: str) -> list[dict]:
+    sqladmin = _discovery_client("sqladmin", "v1beta4")
+    return _gcp_paginate_list(sqladmin.instances(), "items", project=project_id)
+
+
+def _gcp_kms_crypto_keys(project_id: str) -> list[dict]:
+    """Return every Cloud KMS crypto key in the project (all locations/key rings)."""
+    kms = _discovery_client("cloudkms", "v1")
+    keys: list[dict] = []
+    locations = _gcp_paginate_list(kms.projects().locations(), "locations", name=f"projects/{project_id}")
+    for loc in locations:
+        loc_name = loc.get("name", "")
+        if not loc_name:
+            continue
+        keyrings = _gcp_paginate_list(kms.projects().locations().keyRings(), "keyRings", parent=loc_name)
+        for kr in keyrings:
+            kr_name = kr.get("name", "")
+            if not kr_name:
+                continue
+            keys.extend(_gcp_paginate_list(kms.projects().locations().keyRings().cryptoKeys(), "cryptoKeys", parent=kr_name))
+    return keys
+
+
 # ---------------------------------------------------------------------------
 # Report model
 # ---------------------------------------------------------------------------
@@ -143,13 +177,24 @@ class GCPCISReport:
         return sum(1 for c in self.checks if c.status == CheckStatus.FAIL)
 
     @property
+    def errored(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.ERROR)
+
+    @property
+    def not_applicable(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.NOT_APPLICABLE)
+
+    @property
+    def evaluated(self) -> int:
+        return self.passed + self.failed
+
+    @property
     def total(self) -> int:
         return len(self.checks)
 
     @property
     def pass_rate(self) -> float:
-        evaluated = sum(1 for c in self.checks if c.status in (CheckStatus.PASS, CheckStatus.FAIL))
-        return (self.passed / evaluated * 100) if evaluated else 0.0
+        return (self.passed / self.evaluated * 100) if self.evaluated else 0.0
 
     def to_dict(self) -> dict:
         from agent_bom.mitre_attack import tag_cis_check
@@ -163,6 +208,9 @@ class GCPCISReport:
             "pass_rate": round(self.pass_rate, 1),
             "passed": self.passed,
             "failed": self.failed,
+            "errored": self.errored,
+            "not_applicable": self.not_applicable,
+            "evaluated": self.evaluated,
             "total": self.total,
             "checks": [
                 {
@@ -505,22 +553,17 @@ def _check_1_9(project_id: str) -> CISCheckResult:
     )
     try:
         kms = _discovery_client("cloudkms", "v1")
-        locations = kms.projects().locations().list(name=f"projects/{project_id}").execute()
         public_keys: list[str] = []
 
-        for loc in locations.get("locations", []):
-            loc_name = loc.get("name", "")
-            keyrings = kms.projects().locations().keyRings().list(parent=loc_name).execute()
-            for kr in keyrings.get("keyRings", []):
-                kr_name = kr.get("name", "")
-                keys_resp = kms.projects().locations().keyRings().cryptoKeys().list(parent=kr_name).execute()
-                for key in keys_resp.get("cryptoKeys", []):
-                    key_name = key.get("name", "")
-                    policy = kms.projects().locations().keyRings().cryptoKeys().getIamPolicy(resource=key_name).execute()
-                    for binding in policy.get("bindings", []):
-                        members = binding.get("members", [])
-                        if "allUsers" in members or "allAuthenticatedUsers" in members:
-                            public_keys.append(key_name)
+        for key in _gcp_kms_crypto_keys(project_id):
+            key_name = key.get("name", "")
+            if not key_name:
+                continue
+            policy = kms.projects().locations().keyRings().cryptoKeys().getIamPolicy(resource=key_name).execute()
+            for binding in policy.get("bindings", []):
+                members = binding.get("members", [])
+                if "allUsers" in members or "allAuthenticatedUsers" in members:
+                    public_keys.append(key_name)
 
         if public_keys:
             result.status = CheckStatus.FAIL
@@ -549,27 +592,19 @@ def _check_1_10(project_id: str) -> CISCheckResult:
         cis_section=_IAM_SECTION,
     )
     try:
-        kms = _discovery_client("cloudkms", "v1")
-        locations = kms.projects().locations().list(name=f"projects/{project_id}").execute()
         failing: list[str] = []
         max_rotation_seconds = 90 * 24 * 60 * 60  # 90 days in seconds
 
-        for loc in locations.get("locations", []):
-            loc_name = loc.get("name", "")
-            keyrings = kms.projects().locations().keyRings().list(parent=loc_name).execute()
-            for kr in keyrings.get("keyRings", []):
-                kr_name = kr.get("name", "")
-                keys_resp = kms.projects().locations().keyRings().cryptoKeys().list(parent=kr_name).execute()
-                for key in keys_resp.get("cryptoKeys", []):
-                    key_name = key.get("name", "")
-                    rotation_period = key.get("rotationPeriod", "")
-                    if not rotation_period:
-                        failing.append(key_name)
-                    else:
-                        # rotationPeriod is like "7776000s"
-                        period_s = int(rotation_period.rstrip("s"))
-                        if period_s > max_rotation_seconds:
-                            failing.append(key_name)
+        for key in _gcp_kms_crypto_keys(project_id):
+            key_name = key.get("name", "")
+            rotation_period = key.get("rotationPeriod", "")
+            if not rotation_period:
+                failing.append(key_name)
+            else:
+                # rotationPeriod is like "7776000s"
+                period_s = int(rotation_period.rstrip("s"))
+                if period_s > max_rotation_seconds:
+                    failing.append(key_name)
 
         if failing:
             result.status = CheckStatus.FAIL
@@ -2233,9 +2268,7 @@ def _check_6_1(project_id: str) -> CISCheckResult:
         cis_section=_SQL_SECTION,
     )
     try:
-        sqladmin = _discovery_client("sqladmin", "v1beta4")
-        resp = sqladmin.instances().list(project=project_id).execute()
-        instances = resp.get("items", [])
+        instances = _gcp_cloud_sql_instances(project_id)
 
         failing: list[str] = []
         for inst in instances:
@@ -2273,9 +2306,7 @@ def _check_6_2(project_id: str) -> CISCheckResult:
         cis_section=_SQL_SECTION,
     )
     try:
-        sqladmin = _discovery_client("sqladmin", "v1beta4")
-        resp = sqladmin.instances().list(project=project_id).execute()
-        instances = resp.get("items", [])
+        instances = _gcp_cloud_sql_instances(project_id)
 
         failing: list[str] = []
         for inst in instances:
@@ -2313,9 +2344,7 @@ def _check_6_3(project_id: str) -> CISCheckResult:
         cis_section=_SQL_SECTION,
     )
     try:
-        sqladmin = _discovery_client("sqladmin", "v1beta4")
-        resp = sqladmin.instances().list(project=project_id).execute()
-        instances = resp.get("items", [])
+        instances = _gcp_cloud_sql_instances(project_id)
 
         failing: list[str] = []
         for inst in instances:
@@ -2352,9 +2381,7 @@ def _check_6_4(project_id: str) -> CISCheckResult:
         cis_section=_SQL_SECTION,
     )
     try:
-        sqladmin = _discovery_client("sqladmin", "v1beta4")
-        resp = sqladmin.instances().list(project=project_id).execute()
-        instances = resp.get("items", [])
+        instances = _gcp_cloud_sql_instances(project_id)
 
         failing: list[str] = []
         acceptable_values = {"default", "terse"}
@@ -2400,9 +2427,7 @@ def _check_6_5(project_id: str) -> CISCheckResult:
         cis_section=_SQL_SECTION,
     )
     try:
-        sqladmin = _discovery_client("sqladmin", "v1beta4")
-        resp = sqladmin.instances().list(project=project_id).execute()
-        instances = resp.get("items", [])
+        instances = _gcp_cloud_sql_instances(project_id)
 
         failing: list[str] = []
         for inst in instances:
@@ -2447,9 +2472,7 @@ def _check_6_6(project_id: str) -> CISCheckResult:
         cis_section=_SQL_SECTION,
     )
     try:
-        sqladmin = _discovery_client("sqladmin", "v1beta4")
-        resp = sqladmin.instances().list(project=project_id).execute()
-        instances = resp.get("items", [])
+        instances = _gcp_cloud_sql_instances(project_id)
 
         failing: list[str] = []
         for inst in instances:
@@ -2494,9 +2517,7 @@ def _check_6_7(project_id: str) -> CISCheckResult:
         cis_section=_SQL_SECTION,
     )
     try:
-        sqladmin = _discovery_client("sqladmin", "v1beta4")
-        resp = sqladmin.instances().list(project=project_id).execute()
-        instances = resp.get("items", [])
+        instances = _gcp_cloud_sql_instances(project_id)
 
         failing: list[str] = []
         for inst in instances:

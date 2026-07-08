@@ -112,6 +112,7 @@ _AWS_DATA_PERMISSIONS: tuple[str, ...] = (
 )
 _AWS_COMPUTE_PERMISSIONS: tuple[str, ...] = (
     "lambda:ListFunctions",
+    "lambda:GetFunction",
     "eks:ListClusters",
     "eks:DescribeCluster",
     "ecr:DescribeRepositories",
@@ -1538,6 +1539,8 @@ def _discover_lambda(
     session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
 ) -> list[dict[str, Any]]:
     """Enumerate Lambda functions (read-only). Become ``SERVERLESS_FUNCTION`` resources."""
+    from agent_bom.cloud.aws import _AI_RUNTIMES, _extract_lambda_packages
+
     out: list[dict[str, Any]] = []
     try:
         client = session.client("lambda", region_name=region)
@@ -1547,18 +1550,28 @@ def _discover_lambda(
                 name = str(fn.get("FunctionName", "") or "")
                 if not name:
                     continue
+                runtime = str(fn.get("Runtime", "") or "")
                 vpc = fn.get("VpcConfig") or {}
-                out.append(
-                    {
-                        "name": name,
-                        "arn": str(fn.get("FunctionArn", "") or ""),
-                        "runtime": str(fn.get("Runtime", "") or ""),
-                        "role": str(fn.get("Role", "") or ""),
-                        "in_vpc": bool(vpc.get("VpcId")),
-                        "account_id": account_id or "",
-                        "location": region,
-                    }
-                )
+                entry: dict[str, Any] = {
+                    "name": name,
+                    "arn": str(fn.get("FunctionArn", "") or ""),
+                    "runtime": runtime,
+                    "role": str(fn.get("Role", "") or ""),
+                    "in_vpc": bool(vpc.get("VpcId")),
+                    "account_id": account_id or "",
+                    "location": region,
+                }
+                if runtime in _AI_RUNTIMES:
+                    arn = entry["arn"]
+                    if arn:
+                        packages = _extract_lambda_packages(session, arn, region, warnings)
+                        if packages:
+                            entry["packages"] = [
+                                {"name": pkg.name, "version": pkg.version, "ecosystem": pkg.ecosystem}
+                                for pkg in packages
+                            ]
+                            entry["package_count"] = len(packages)
+                out.append(entry)
     except Exception as exc:  # noqa: BLE001 — one failed Lambda list must not sink the scan
         record_discovery_failure(
             exc=exc, resource_type="Lambda functions", permission="lambda:ListFunctions", cloud="aws", warnings=warnings, missing=missing

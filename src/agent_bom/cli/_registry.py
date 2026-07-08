@@ -128,8 +128,17 @@ def registry_list(category, risk_level, ecosystem, fmt):
     from rich.table import Table
 
     con = Console(width=160)
+    longest_name = max(
+        (len(entry.get("package", entry.get("name", ""))) for entry in entries),
+        default=10,
+    )
     table = Table(title=f"MCP Server Registry ({len(entries)} servers)", expand=False)
-    table.add_column("Name", style="cyan", overflow="fold")
+    table.add_column(
+        "Name",
+        style="cyan",
+        overflow="fold",
+        min_width=min(longest_name, 120),
+    )
     table.add_column("Version", style="green", no_wrap=True)
     table.add_column("Ecosystem", no_wrap=True)
     table.add_column("Category", overflow="fold")

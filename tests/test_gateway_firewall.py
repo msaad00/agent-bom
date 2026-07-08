@@ -242,9 +242,7 @@ def test_healthz_surfaces_firewall_runtime_when_file_loaded(tmp_path: Path) -> N
     assert runtime["tenant_id"] == "acme"
 
 
-def test_firewall_invalid_policy_file_keeps_default_allow(tmp_path: Path) -> None:
-    # File present but malformed -> gateway must not crash; it falls back to
-    # the default-allow policy (already initialised) and surfaces last_error.
+def test_firewall_invalid_policy_file_fails_closed(tmp_path: Path) -> None:
     policy_path = tmp_path / "fw.json"
     policy_path.write_text("{not json")
     settings = GatewaySettings(
@@ -256,15 +254,15 @@ def test_firewall_invalid_policy_file_keeps_default_allow(tmp_path: Path) -> Non
         resp = client.get("/healthz")
         runtime = resp.json()["firewall_runtime"]
         assert runtime["last_error"] is not None
+        assert runtime["load_failed"] is True
         assert runtime["rule_count"] == 0
 
-        # Decision endpoint still works — falls through to default allow.
         decision = client.post(
             "/v1/firewall/check",
             json={"source_agent": "a", "target_agent": "b"},
         )
         assert decision.status_code == 200
-        assert decision.json()["effective_decision"] == "allow"
+        assert decision.json()["effective_decision"] == "deny"
 
 
 def test_firewall_check_invalid_json_body() -> None:

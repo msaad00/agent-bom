@@ -540,7 +540,47 @@ DELTA_STREAM_SIGNING_SECRET = _str("AGENT_BOM_DELTA_STREAM_SIGNING_SECRET", "")
 
 RATE_LIMIT_KEY_ROTATION_DAYS = _int("AGENT_BOM_RATE_LIMIT_KEY_ROTATION_DAYS", 30)
 RATE_LIMIT_KEY_MAX_AGE_DAYS = _int("AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS", 90)
-RATE_LIMIT_KEY_LAST_ROTATED = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED") or "").strip()
+RATE_LIMIT_KEY_LAST_ROTATED = _str("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED", "")
+
+
+# ── Deployment / integration env aliases ───────────────────────────────────
+# Canonical AGENT_BOM_* keys below. Legacy unprefixed or alternate names are
+# still honored via the resolved_* helpers for back-compat:
+#   AGENT_BOM_ENV / ENVIRONMENT → DEPLOYMENT_ENV
+#   CORS_ORIGINS → CORS_ORIGINS (prefixed)
+#   SERVICENOW_INSTANCE → SERVICENOW_INSTANCE (prefixed)
+#   VAULT_ADDR → VAULT_ADDR (prefixed)
+
+DEPLOYMENT_ENV = _str("AGENT_BOM_DEPLOYMENT_ENV", "")
+CORS_ORIGINS = _str("AGENT_BOM_CORS_ORIGINS", "")
+SERVICENOW_INSTANCE = _str("AGENT_BOM_SERVICENOW_INSTANCE", "")
+VAULT_ADDR = _str("AGENT_BOM_VAULT_ADDR", "")
+
+
+def _env_first_non_empty(*keys: str) -> str:
+    for key in keys:
+        raw = os.environ.get(key)
+        if raw is not None and str(raw).strip():
+            return str(raw).strip()
+    return ""
+
+
+def resolved_deployment_env() -> str:
+    """Return the normalized deployment label from canonical + legacy env keys."""
+    return _env_first_non_empty("AGENT_BOM_DEPLOYMENT_ENV", "AGENT_BOM_ENV", "ENVIRONMENT").lower()
+
+
+def resolved_cors_origins_raw() -> str:
+    """Return comma-separated CORS origins from canonical or legacy env key."""
+    return _env_first_non_empty("AGENT_BOM_CORS_ORIGINS", "CORS_ORIGINS")
+
+
+def resolved_servicenow_instance_url() -> str:
+    return _env_first_non_empty("AGENT_BOM_SERVICENOW_INSTANCE", "SERVICENOW_INSTANCE")
+
+
+def resolved_vault_addr() -> str:
+    return _env_first_non_empty("AGENT_BOM_VAULT_ADDR", "VAULT_ADDR")
 
 
 # ── Runtime → graph incident feedback ────────────────────────────────────

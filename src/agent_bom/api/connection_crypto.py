@@ -82,6 +82,8 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+from agent_bom.config import resolved_vault_addr
+
 CONNECTIONS_KEY_ENV = "AGENT_BOM_CONNECTIONS_KEY"
 CONNECTIONS_KEY_PROVIDER_ENV = "AGENT_BOM_CONNECTIONS_KEY_PROVIDER"
 CONNECTIONS_KEY_REF_ENV = "AGENT_BOM_CONNECTIONS_KEY_REF"
@@ -146,7 +148,7 @@ def connections_key_configured() -> bool:
         return bool(os.environ.get(CONNECTIONS_KEY_ENV, "").strip())
     if provider == PROVIDER_VAULT:
         return bool(
-            os.environ.get(VAULT_ADDR_ENV, "").strip()
+            resolved_vault_addr()
             and os.environ.get(VAULT_TOKEN_ENV, "").strip()
             and os.environ.get(CONNECTIONS_KEY_REF_ENV, "").strip()
         )
@@ -250,7 +252,7 @@ def _parse_vault_ref(ref: str) -> tuple[str, str, str]:
 
 def _resolve_vault() -> bytes:
     """Fetch the base64 Fernet key from a HashiCorp Vault KV v2 secret (read-only)."""
-    addr = os.environ.get(VAULT_ADDR_ENV, "").strip().rstrip("/")
+    addr = resolved_vault_addr().rstrip("/")
     token = os.environ.get(VAULT_TOKEN_ENV, "").strip()
     ref = os.environ.get(CONNECTIONS_KEY_REF_ENV, "").strip()
     if not addr or not token or not ref:

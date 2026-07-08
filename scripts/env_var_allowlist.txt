@@ -101,8 +101,6 @@ AGENT_BOM_CONNECTIONS_KEY
 AGENT_BOM_CONNECTIONS_KEY_PROVIDER
 # Reference (not a secret value) to the managed connection key: the Secrets Manager secret id/ARN for provider=aws-secrets, or the Vault KV v2 'mount/path#field' for provider=vault; resolved read-only at key-load time. The resolved value may be a comma-separated list of Fernet keys for rotation.
 AGENT_BOM_CONNECTIONS_KEY_REF
-# Base URL of the HashiCorp Vault server for provider=vault (e.g. https://vault.internal:8200); read-only KV v2 GET at key-load time in api/connection_crypto.py. Not a secret.
-AGENT_BOM_VAULT_ADDR
 # HashiCorp Vault token for provider=vault, sent as the X-Vault-Token header on the read-only KV v2 GET; secret, env/reference-only, never logged.
 AGENT_BOM_VAULT_TOKEN
 # opt-in flag (default OFF) enabling the background loop that re-scans due cloud connections (Phase B.2); read live in api/connection_scheduler.py
@@ -147,7 +145,6 @@ AGENT_BOM_DELIVERY_DB  # optional SQLite path for the outbound delivery foundati
 AGENT_BOM_DB_PATH
 AGENT_BOM_DB_SOURCES
 AGENT_BOM_DEFAULT_ROLE
-AGENT_BOM_DEPLOYMENT_ENV
 AGENT_BOM_DISABLE_DOCS
 AGENT_BOM_DISTRIBUTED_SCANS
 AGENT_BOM_ENABLE_LOCAL_PATH_SCANS

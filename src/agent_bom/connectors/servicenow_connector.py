@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 
+from agent_bom.config import resolved_servicenow_instance_url
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
@@ -30,7 +31,7 @@ def _get_config(
     token: str | None = None,
 ) -> tuple[str, str]:
     """Resolve ServiceNow config from args or env vars."""
-    url = instance_url or os.environ.get("SERVICENOW_INSTANCE", "")
+    url = instance_url or resolved_servicenow_instance_url()
     tok = token or os.environ.get("AGENT_BOM_SERVICENOW_TOKEN", "")
     if not url:
         raise ConnectorError("ServiceNow instance URL required. Set --servicenow-instance or SERVICENOW_INSTANCE env var.")

@@ -165,7 +165,7 @@ class PostgresAuditLog:
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = (
             "SELECT entry_id, timestamp, action, actor, resource, details, prev_signature, hmac_signature "
-            f"FROM audit_log{where} ORDER BY timestamp ASC, entry_id ASC LIMIT %s"
+            f"FROM audit_log{where} ORDER BY timestamp ASC, entry_id ASC LIMIT %s"  # nosec B608
         )
         params.append(limit)
         with _tenant_connection(self._pool) as conn:

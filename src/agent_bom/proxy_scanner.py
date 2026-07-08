@@ -50,7 +50,7 @@ class ScanConfig:
     """Configuration for inline proxy scanning."""
 
     enabled: bool = False
-    mode: str = "audit"  # "audit" | "enforce"
+    mode: str = "enforce"  # "audit" | "enforce"
     scanners: list[str] = field(default_factory=lambda: ["injection", "pii", "secrets", "payload_vuln"])
     pii_action: str = "redact"  # "redact" | "block"
 
@@ -331,7 +331,7 @@ def load_scan_config(policy: dict) -> ScanConfig:
 
     return ScanConfig(
         enabled=bool(section.get("enabled", False)),
-        mode=str(section.get("mode", "audit")),
+        mode=str(section.get("mode", "enforce")),
         scanners=list(section.get("scanners", ["injection", "pii", "secrets", "payload_vuln"])),
         pii_action=str(section.get("pii_action", "redact")),
     )

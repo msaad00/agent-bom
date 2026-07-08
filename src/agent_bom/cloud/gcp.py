@@ -329,6 +329,15 @@ def _discover_cloud_functions(
                 transport=TransportType.STREAMABLE_HTTP,
                 url=service_url or f"https://{region}-{project_id}.cloudfunctions.net/{fn_name}",
             )
+            dep_packages: list[Package] = []
+            if source_uri.startswith("gs://"):
+                from agent_bom.cloud.serverless_zip import extract_gcp_storage_source_packages
+
+                without_scheme = source_uri[len("gs://") :]
+                bucket, _, obj = without_scheme.partition("/")
+                dep_packages = extract_gcp_storage_source_packages(bucket, obj, runtime, warnings)
+            if dep_packages:
+                server.packages = dep_packages
 
             agent = Agent(
                 name=f"cloud-function:{fn_name}",

@@ -51,7 +51,7 @@ class TestLoadScanConfig:
         policy = {"inline_scanning": {"enabled": True}}
         cfg = load_scan_config(policy)
         assert cfg.enabled is True
-        assert cfg.mode == "audit"
+        assert cfg.mode == "enforce"
         assert cfg.pii_action == "redact"
 
 

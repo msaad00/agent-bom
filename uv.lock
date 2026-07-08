@@ -52,9 +52,13 @@ dependencies = [
 
 [package.optional-dependencies]
 ai-enrich = [
+    { name = "aiohttp" },
     { name = "litellm" },
+    { name = "openai" },
+    { name = "python-dotenv" },
 ]
 all = [
+    { name = "aiohttp" },
     { name = "alembic" },
     { name = "azure-ai-projects" },
     { name = "azure-containerregistry" },
@@ -122,6 +126,7 @@ all = [
     { name = "psycopg-pool" },
     { name = "pyjwt" },
     { name = "pytesseract" },
+    { name = "python-dotenv" },
     { name = "python3-saml" },
     { name = "requests" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -403,6 +408,7 @@ requires-dist = [
     { name = "agent-bom", extras = ["visual"], marker = "extra == 'all'" },
     { name = "agent-bom", extras = ["wandb"], marker = "extra == 'cloud'" },
     { name = "agent-bom", extras = ["watch"], marker = "extra == 'all'" },
+    { name = "aiohttp", marker = "extra == 'ai-enrich'", specifier = ">=3.13.4" },
     { name = "alembic", marker = "extra == 'postgres'", specifier = ">=1.13" },
     { name = "azure-ai-projects", marker = "extra == 'azure'", specifier = ">=1.0" },
     { name = "azure-containerregistry", marker = "extra == 'azure'", specifier = ">=1.2" },
@@ -468,6 +474,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "networkx", marker = "extra == 'graph'", specifier = ">=3.0" },
     { name = "numpy", marker = "extra == 'graph'", specifier = ">=1.26" },
+    { name = "openai", marker = "extra == 'ai-enrich'", specifier = ">=2.30.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.12" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.20" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.20" },
@@ -493,6 +500,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.1.0" },
     { name = "pytest-randomly", marker = "extra == 'dev'", specifier = ">=3.15" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
+    { name = "python-dotenv", marker = "extra == 'ai-enrich'", specifier = ">=1.2.2" },
     { name = "python3-saml", marker = "extra == 'saml'", specifier = ">=1.16.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "requests", specifier = ">=2.33.0" },

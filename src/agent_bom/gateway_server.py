@@ -394,7 +394,11 @@ def _evaluate_control_plane_bundle(
                 return False, "control-plane policy malformed"
             return True, ""
         if parse_errors:
-            logger.warning("gateway control-plane bundle: %d policy/policies failed to parse and were skipped", parse_errors)
+            logger.error(
+                "gateway control-plane bundle: %d policy/policies failed to parse; failing closed",
+                parse_errors,
+            )
+            return False, "control-plane policy malformed"
         return _evaluate_gateway_policy_bundle(policies, source_agent, tool_name, arguments)
     except Exception as exc:  # noqa: BLE001
         # Fail closed: a bundle that cannot be evaluated must not silently pass.

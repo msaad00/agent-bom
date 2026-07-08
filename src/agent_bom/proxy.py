@@ -1899,6 +1899,20 @@ async def run_proxy(
                         tool_for_resp = pending_calls[resp_id][0]
                     cred_alerts = cred_detector.check(tool_for_resp or "unknown", result_text)
                     await _handle_alerts(cred_alerts, log_file)
+                    if cred_alerts and not log_only:
+                        from agent_bom.runtime.detectors import CredentialLeakDetector
+
+                        redacted_text = CredentialLeakDetector.redact(result_text)
+                        if "result" in msg:
+                            try:
+                                msg["result"] = json.loads(redacted_text)
+                            except json.JSONDecodeError:
+                                msg["result"] = redacted_text
+                        else:
+                            try:
+                                msg["error"] = json.loads(redacted_text)
+                            except json.JSONDecodeError:
+                                msg["error"] = redacted_text
 
                 # Runtime detector: response content inspection (cloaking, SVG, invisible chars,
                 # prompt injection). For confirmed vector DB / RAG retrieval tools, also run
@@ -2007,6 +2021,22 @@ async def run_proxy(
                             "code": -32600,
                             "message": "[BLOCKED] Security scanner detected sensitive content in response",
                         }
+                        line = (json.dumps(msg) + "\n").encode()
+                    elif (
+                        scan_config.mode == "enforce"
+                        and scan_config.pii_action == "redact"
+                        and any(sr.scanner == "pii" for sr in resp_results)
+                    ):
+                        from agent_bom.proxy_scanner import redact_pii
+
+                        if isinstance(msg.get("result"), str):
+                            msg["result"] = redact_pii(msg["result"])
+                        elif isinstance(msg.get("result"), dict):
+                            redacted_text = redact_pii(json.dumps(msg["result"]))
+                            try:
+                                msg["result"] = json.loads(redacted_text)
+                            except json.JSONDecodeError:
+                                pass
                         line = (json.dumps(msg) + "\n").encode()
 
                 # Complete latency tracking for tool call responses

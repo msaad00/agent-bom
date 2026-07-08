@@ -63,6 +63,8 @@ _HEALTH_ENDPOINTS: dict[str, str] = {
 
 _DEFAULT_TIMEOUT = 3  # seconds
 
+_PROBE_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
 MAESTRO_LAYER = "KC4: Memory & Context"
 
 
@@ -126,6 +128,19 @@ def _is_loopback(host: str) -> bool:
         return addr.startswith("127.") or addr == "::1"
     except OSError:
         return False
+
+
+def _validate_probe_target(host: str, port: int) -> str | None:
+    """Return an error string when the host must not be probed (SSRF guard)."""
+    from agent_bom.security import SecurityError, validate_url
+
+    cleaned = (host or "").strip().lower()
+    allow_private = cleaned in _PROBE_LOOPBACK_HOSTS
+    try:
+        validate_url(f"http://{host}:{port}/", allowed_schemes=("http",), allow_private=allow_private)
+    except SecurityError as exc:
+        return str(exc)
+    return None
 
 
 def _http_get(host: str, port: int, path: str, timeout: int = _DEFAULT_TIMEOUT) -> tuple[int, bytes]:
@@ -231,6 +246,21 @@ def check_vector_db(
             is_loopback=_is_loopback(host),
             risk_flags=[],
             metadata={"error": f"Unknown db_type '{db_type}'"},
+        )
+
+    deny_reason = _validate_probe_target(host, resolved_port)
+    if deny_reason:
+        return VectorDBResult(
+            db_type=db_type,
+            host=host,
+            port=resolved_port,
+            is_reachable=False,
+            requires_auth=True,
+            version="",
+            collection_count=0,
+            is_loopback=_is_loopback(host),
+            risk_flags=[],
+            metadata={"error": deny_reason},
         )
 
     result = VectorDBResult(

@@ -1,5 +1,9 @@
 # Runtime Proxy Audit JSONL
 
+> Part of the **runtime doc set**. For the canonical runtime surface map see
+> [`RUNTIME_REFERENCE.md`](RUNTIME_REFERENCE.md); for proxy deployment see
+> [`RUNTIME_MONITORING.md`](RUNTIME_MONITORING.md).
+
 `agent-bom proxy --log audit.jsonl` writes one JSON object per line. The file
 is intended for local review, SIEM forwarding, runtime correlation, and release
 evidence. Durable records are sanitized before they are appended to the log.

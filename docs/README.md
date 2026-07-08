@@ -36,10 +36,11 @@ material. The index below groups the canonical docs by audience.
 
 ## Platform / SRE (self-host · deploy · operate)
 
-- [`DEPLOYMENT.md`](DEPLOYMENT.md) — deployment reference
-- [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md) — enterprise deployment
-- [`ENTERPRISE.md`](ENTERPRISE.md) — enterprise capabilities
-- [`ENTERPRISE_SECURITY_POSTURE.md`](ENTERPRISE_SECURITY_POSTURE.md) — security posture
+Two hubs cover the clustered material — start at the hub, then follow it to the detail sibling:
+
+- [`DEPLOY_PLATFORM.md`](DEPLOY_PLATFORM.md) — **deployment doc-set hub**: deploy anywhere (Compose · EKS · hosted); indexes `DEPLOYMENT.md`, `DEPLOY_QUICKSTART.md`, `ENTERPRISE_DEPLOYMENT.md`
+- [`ENTERPRISE.md`](ENTERPRISE.md) — **enterprise doc-set hub**: controls-to-code map; indexes deployment, security posture, playbook, procurement, operations-evidence, and support siblings
+- [`RUNTIME_REFERENCE.md`](RUNTIME_REFERENCE.md) — runtime surface map; indexes `RUNTIME_MONITORING.md` and `RUNTIME_PROXY_AUDIT_JSONL.md`
 - [`PERMISSIONS.md`](PERMISSIONS.md) — RBAC roles and permissions
 - [`DATABASE_EVIDENCE.md`](DATABASE_EVIDENCE.md) — persistence and evidence stores
 - [`RELEASE_VERIFICATION.md`](RELEASE_VERIFICATION.md) — release verification

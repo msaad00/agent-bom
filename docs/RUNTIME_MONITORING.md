@@ -1,5 +1,10 @@
 # Runtime Monitoring — Deployment Guide
 
+> Part of the **runtime doc set**. For the canonical map of all five runtime
+> surfaces and which one owns which decision, see
+> [`RUNTIME_REFERENCE.md`](RUNTIME_REFERENCE.md). The audit record format is in
+> [`RUNTIME_PROXY_AUDIT_JSONL.md`](RUNTIME_PROXY_AUDIT_JSONL.md).
+
 agent-bom includes a runtime security proxy (`agent-bom proxy`) that sits between MCP clients and servers, intercepting JSON-RPC messages in real time. This guide covers sidecar deployment, detector configuration, enforcement modes, and alert routing.
 
 ## What the Runtime Proxy Does

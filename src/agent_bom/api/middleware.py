@@ -806,6 +806,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/graph/query", "viewer"),
         ("POST", "/v1/graph/should-i-deploy", "viewer"),
         ("POST", "/v1/audit/export/verify", "viewer"),
+        ("GET", "/v1/audit", "analyst"),
+        ("GET", "/v1/audit/", "analyst"),
         ("GET", "/scim/v2", "admin"),
         ("POST", "/scim/v2", "admin"),
         ("PATCH", "/scim/v2", "admin"),
@@ -1135,12 +1137,15 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 required = self._required_role(request.method, request.url.path)
                 required_role = Role(required)
                 effective_role = api_key.role
-                if api_key.name.startswith("saml:"):
+                if api_key.name.startswith("saml:") or api_key.scim_subject_id:
+                    subjects = [api_key.name.removeprefix("saml:"), api_key.name]
+                    if api_key.scim_subject_id:
+                        subjects.append(api_key.scim_subject_id)
                     effective_role, scim_error = self._resolve_runtime_role(
                         request,
                         tenant_id=api_key.tenant_id,
                         upstream_role=api_key.role,
-                        subjects=(api_key.name.removeprefix("saml:"), api_key.name),
+                        subjects=tuple(subjects),
                     )
                     if scim_error is not None:
                         return scim_error

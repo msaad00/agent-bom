@@ -44,6 +44,12 @@ HEALTHCHECK_EXEMPT: dict[str, set[str]] = {
         # base platform compose and inherited at merge time.
         "api",
     },
+    "docker-compose.product.yml": {
+        # Overlay applied on top of docker-compose.platform.yml; it only sets
+        # authenticated-product environment. Healthchecks are defined once in
+        # the base platform compose and inherited at merge time.
+        "api",
+    },
 }
 
 

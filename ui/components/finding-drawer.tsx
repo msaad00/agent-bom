@@ -346,7 +346,7 @@ function VulnDetailPanel({
               <ExternalLink className="h-3 w-3" />
             </a>
             <Link
-              href={`/vulns?cve=${vuln.id}`}
+              href={`/findings?cve=${vuln.id}`}
               className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70"
             >
               Keep this CVE scoped

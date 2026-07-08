@@ -56,7 +56,7 @@ def _print_startup_banner() -> None:
     con.print("    [dim]agent → MCP server → packages → CVEs → blast radius[/dim]")
     con.print()
     con.print("    [bold]Quick start[/bold]")
-    con.print("    [cyan]▶[/cyan] [bold]agent-bom agents[/bold]              discover + scan local agents and MCP servers")
+    con.print("    [cyan]▶[/cyan] [bold]agent-bom scan[/bold]                 discover + scan local agents and MCP servers")
     con.print("    [cyan]▶[/cyan] [bold]agent-bom samples first-run[/bold]   write an inspectable sample AI stack")
     con.print("    [cyan]▶[/cyan] [bold]agent-bom -h[/bold]                  full command catalog (grouped)")
     con.print()
@@ -96,8 +96,8 @@ def main(ctx: click.Context, profile: str | None, agent_mode: bool):
     \b
     Quick start:
       agent-bom quickstart                          print local scan, sample-data, and API/UI next steps
-      agent-bom agents                               discover + scan local agents and MCP servers
-      agent-bom agents -p .                          scan project manifests plus agent/MCP context
+      agent-bom scan                                 discover + scan local agents and MCP servers
+      agent-bom scan -p .                            scan project manifests plus agent/MCP context
       agent-bom samples first-run                    write an inspectable sample AI stack
       agent-bom where                                show MCP discovery paths checked on this machine
       agent-bom mesh                                 show the live machine-wide agent/MCP topology
@@ -143,18 +143,19 @@ def main(ctx: click.Context, profile: str | None, agent_mode: bool):
 from agent_bom.cli._agent_manifest import manifest_cmd  # noqa: E402
 from agent_bom.cli.agents import scan as _agents_cmd  # noqa: E402
 
-# 'agents' is the primary visible command.
-main.add_command(_agents_cmd, "agents")
+# 'scan' is the canonical visible verb — it matches the front-door tagline
+# (connect → scan → graph → report) and reads correctly for a first-time user.
+main.add_command(_agents_cmd, "scan")
 main.add_command(manifest_cmd, "manifest")
 
-# 'scan' kept as hidden backward-compat CLI alias (50+ tests + CI use it).
-# Clone the command object so hiding doesn't affect 'agents'.
+# 'agents' kept as a hidden backward-compat CLI alias (existing invocations +
+# CI use it). Clone the command object so hiding doesn't affect 'scan'.
 import copy as _copy  # noqa: E402
 
-_scan_hidden = _copy.copy(_agents_cmd)
-_scan_hidden.hidden = True
-_scan_hidden.name = "scan"
-main.commands["scan"] = _scan_hidden
+_agents_hidden = _copy.copy(_agents_cmd)
+_agents_hidden.hidden = True
+_agents_hidden.name = "agents"
+main.commands["agents"] = _agents_hidden
 
 from agent_bom.cli._inventory import completions_cmd, inventory, validate, where  # noqa: E402
 
@@ -209,7 +210,10 @@ main.add_command(findings_cmd, "findings")
 from agent_bom.cli._server import api_cmd, mcp_server_cmd, serve_cmd  # noqa: E402
 
 main.add_command(serve_cmd, "serve")
+# 'api' (REST-only) is folded into `serve --no-ui`; kept as a hidden back-compat
+# alias so existing `agent-bom api ...` invocations keep working.
 main.add_command(api_cmd, "api")
+main.commands["api"].hidden = True
 # mcp-server is under `mcp server` — no top-level duplicate
 
 # ---------------------------------------------------------------------------

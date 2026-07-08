@@ -85,7 +85,7 @@ metadata:
       (2) Review sanitize_env_vars() at security.py#L159 — confirms env value
       redaction; (3) Review discovery/__init__.py — confirms only structural
       config data extracted; (4) agent-bom verify agent-bom — Sigstore
-      provenance check; (5) Only then run agent-bom agents
+      provenance check; (5) Only then run agent-bom scan
     credential_handling: >-
       Env var values are NEVER extracted from config files. sanitize_env_vars()
       replaces all env values with ***REDACTED*** BEFORE any config data is
@@ -210,7 +210,7 @@ framework layers.
 
 ```bash
 pipx install agent-bom
-agent-bom agents            # auto-discover + scan
+agent-bom scan            # auto-discover + scan
 agent-bom check langchain==0.1.0  # check a specific package with version
 agent-bom fs .              # scan filesystem packages
 agent-bom image nginx:1.25  # scan container image (native)
@@ -402,7 +402,7 @@ pip install agent-bom
 agent-bom verify agent-bom
 
 # Step 5: Only then run scans
-agent-bom agents
+agent-bom scan
 ```
 
 **What is extracted**: Server names, commands, args, and URLs from MCP client

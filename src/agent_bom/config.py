@@ -450,6 +450,10 @@ API_MAX_SCHEDULES_PER_TENANT = _int("AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT", 10
 API_MAX_BATCH_SCAN_TARGETS = _int("AGENT_BOM_API_MAX_BATCH_SCAN_TARGETS", 100)
 API_MAX_OCSF_INGEST_EVENTS = _int("AGENT_BOM_API_MAX_OCSF_INGEST_EVENTS", 1_000)
 API_ALLOW_UNAUTHENTICATED = _bool("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", False)
+# Hide the bundled browser UI when serving an API-only/local control-plane process.
+# Some CLI paths set this immediately before loading the API server, so the server
+# still reads the live environment value at request time.
+API_NO_UI = _bool("AGENT_BOM_NO_UI", False)
 # Role granted when unauthenticated API access is explicitly enabled. Default
 # preserves local/dev compatibility; demo-estate mode clamps this to viewer.
 NO_AUTH_ROLE = _str("AGENT_BOM_NO_AUTH_ROLE", "viewer")

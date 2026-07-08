@@ -1228,7 +1228,13 @@ async def status() -> HealthResponse:
 
 def _mount_dashboard(application: FastAPI) -> None:
     """Mount pre-built Next.js dashboard if ui_dist/ exists in the package."""
+    import os as _os
+
     from fastapi import HTTPException as _HTTPException
+
+    # REST-only mode (`serve --no-ui` / legacy `api`): never mount the dashboard.
+    if _os.environ.get("AGENT_BOM_NO_UI"):
+        return
 
     ui_dist = _dashboard_dist_dir()
     if not ui_dist.is_dir() or not (ui_dist / "index.html").exists():

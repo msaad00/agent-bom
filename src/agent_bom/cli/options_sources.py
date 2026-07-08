@@ -6,6 +6,7 @@ import os
 
 import click
 
+from agent_bom.cli._scan_help import AliasedChoice
 from agent_bom.cli.options_helpers import _apply
 
 
@@ -47,7 +48,6 @@ def input_options(fn):
             click.option("--inventory", type=str, default=None, help="Inventory file (JSON or CSV). Use '-' for stdin."),
             click.option(
                 "--no-discover",
-                "--inventory-only",
                 "no_discover",
                 is_flag=True,
                 default=False,
@@ -55,6 +55,14 @@ def input_options(fn):
                     "Use only explicit input artifacts such as --inventory, --sbom, --external-scan, --image, "
                     "or --filesystem; do not merge ambient project, cwd, skill, model, dataset, or secret discovery."
                 ),
+            ),
+            click.option(
+                "--inventory-only",
+                "inventory_only",
+                is_flag=True,
+                default=False,
+                hidden=True,
+                help="Deprecated alias for --no-discover.",
             ),
             click.option(
                 "--follow-symlinks/--no-follow-symlinks",
@@ -160,7 +168,7 @@ def output_options(fn):
                 "--format",
                 "-f",
                 "output_format",
-                type=click.Choice(
+                type=AliasedChoice(
                     [
                         "console",
                         "json",
@@ -175,14 +183,16 @@ def output_options(fn):
                         "parquet",
                         "markdown",
                         "plain",
-                        "text",
                         "prometheus",
                         "graph",
                         "graph-html",
                         "mermaid",
                         "svg",
                         "badge",
-                    ]
+                    ],
+                    # `text` is a deprecated spelling of the canonical `plain`;
+                    # still accepted, but hidden from the advertised choices.
+                    aliases={"text": "plain"},
                 ),
                 default="console",
                 help=(
@@ -191,9 +201,9 @@ def output_options(fn):
                     "SBOM: spdx (SPDX 3.0 JSON-LD), spdx2 (SPDX 2.3 JSON, broad tool compatibility).\n"
                     "CI/CD: junit (JUnit XML for Jenkins/GitLab/Azure DevOps), csv (spreadsheet/SIEM), "
                     "parquet (columnar lake; requires agent-bom[lake]), markdown (PR comments/wiki).\n"
-                    "Plain: plain (no color, for piping/logging) — alias: text.\n"
+                    "Plain: plain (no color, for piping/logging; legacy alias 'text' still accepted).\n"
                     "Monitoring: prometheus (Prometheus exposition format).\n"
-                    "Visualization: mermaid, graph-html (interactive), svg.\n"
+                    "Visualization: mermaid, graph-html (interactive graph HTML), svg.\n"
                     "Other: graph (Cytoscape.js graph JSON), badge (single-line status)."
                 ),
             ),

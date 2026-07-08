@@ -94,7 +94,7 @@ python examples/operator_pull/azure_inventory_adapter.py \
 Scan only when the operator asks for findings:
 
 ```bash
-agent-bom agents --inventory azure-inventory.json --format json --output agent-bom-azure-findings.json
+agent-bom scan --inventory azure-inventory.json --format json --output agent-bom-azure-findings.json
 ```
 
 ## Evidence Contract

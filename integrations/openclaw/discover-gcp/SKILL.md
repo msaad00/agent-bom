@@ -100,7 +100,7 @@ python examples/operator_pull/gcp_inventory_adapter.py \
 Scan only when the operator asks for findings:
 
 ```bash
-agent-bom agents --inventory gcp-inventory.json --format json --output agent-bom-gcp-findings.json
+agent-bom scan --inventory gcp-inventory.json --format json --output agent-bom-gcp-findings.json
 ```
 
 ## Evidence Contract

@@ -27,7 +27,7 @@ def test_aws_discovery_skill_declares_guardrailed_skill_invoked_inventory_flow()
     assert "discover-only by default" in content
     assert "The skill does not push inventory to an API by default" in content
     assert "separate operator-approved handoff" in content
-    assert "agent-bom agents --inventory aws-inventory.json" in content
+    assert "agent-bom scan --inventory aws-inventory.json" in content
 
 
 def test_aws_discovery_skill_trust_assessment_stays_review_not_blocked() -> None:
